@@ -236,7 +236,11 @@ export const invitationsRouter = router({
     const result = await resendInvitation(input.id);
     if ('error' in result) {
       if (result.error === 'not_found') throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
-      if (result.error === 'delivery_failed') throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Email delivery unconfirmed; invitation was not marked sent' });
+      if (result.error === 'delivery_failed')
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Email delivery unconfirmed; invitation was not marked sent',
+        });
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot resend accepted or revoked invitation' });
     }
     return result;
@@ -338,11 +342,13 @@ export const invitationsRouter = router({
     });
     if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
 
-    const isExpired = invitation.expiresAt < new Date();
-    if (isExpired && invitation.status !== InvitationStatus.expired) {
-      await db.platformInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.expired } });
-      invitation.status = InvitationStatus.expired;
-    }
+    // A public read must not race a revoke or resend and overwrite its terminal/new expiry state.
+    // Expiry is derived for this response; administrative writers persist lifecycle transitions.
+    const status =
+      invitation.expiresAt < new Date() &&
+      (invitation.status === InvitationStatus.pending || invitation.status === InvitationStatus.sent)
+        ? InvitationStatus.expired
+        : invitation.status;
 
     return {
       id: invitation.id,
@@ -351,32 +357,17 @@ export const invitationsRouter = router({
       organizationName: invitation.organization?.name || invitation.organizationName,
       organizationSlug: invitation.organizationSlug,
       roleSlug: invitation.roleSlug,
-      status: invitation.status,
+      status,
       expiresAt: invitation.expiresAt,
     };
   }),
 
   acceptInvitation: publicProcedure.input(z.object({ token: z.string().uuid() })).mutation(async ({ input }) => {
-    const invitation = await db.platformInvitation.findUnique({
-      where: { token: input.token },
-      select: { id: true, status: true, expiresAt: true, organizationId: true, type: true },
+    void input;
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'Completa la configuracion de tu cuenta desde el enlace de invitacion.',
     });
-    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
-    if (invitation.status === InvitationStatus.accepted)
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion ya fue aceptada' });
-    if (invitation.status === InvitationStatus.revoked)
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion fue revocada' });
-    if (invitation.expiresAt < new Date()) {
-      await db.platformInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.expired } });
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion ha expirado' });
-    }
-
-    await db.platformInvitation.update({
-      where: { id: invitation.id },
-      data: { status: InvitationStatus.accepted, acceptedAt: new Date() },
-    });
-
-    return { accepted: true, organizationId: invitation.organizationId, type: invitation.type };
   }),
 
   bulkInviteUsers: platformProcedure

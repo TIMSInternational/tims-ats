@@ -44,7 +44,7 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
     });
     const appUrl = getAppUrl();
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${appUrl}/auth/callback`,
+      redirectTo: `${appUrl}/auth/callback?setup=1`,
     });
     if (error || !data?.user?.id) {
       throw new TRPCError({

@@ -26,10 +26,20 @@ export async function GET(request: Request) {
   }
 
   // Get the authenticated user
-  const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+  const {
+    data: { user: supabaseUser },
+  } = await supabase.auth.getUser();
   if (!supabaseUser?.email) {
     return NextResponse.redirect(`${origin}/login?error=no_email`);
   }
+
+  const invitationToken = searchParams.get('invitation');
+  if (invitationToken && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invitationToken)) {
+    const destination =
+      searchParams.get('recovery') === '1' ? '/reset-password?invitation=' : '/accept-invitation?token=';
+    return NextResponse.redirect(`${origin}${destination}${encodeURIComponent(invitationToken)}`);
+  }
+  if (searchParams.get('setup') === '1') return NextResponse.redirect(`${origin}/reset-password`);
 
   // Portal (candidate) login: a safe /careers/ `next` target means this is a
   // candidate magic-link sign-in. Candidates are NOT staff — do NOT provision a
@@ -58,8 +68,14 @@ export async function GET(request: Request) {
       data: {
         supabaseUserId: supabaseUser.id,
         email: supabaseUser.email,
-        firstName: supabaseUser.user_metadata?.full_name?.split(' ')[0] || supabaseUser.user_metadata?.name?.split(' ')[0] || 'Admin',
-        lastName: supabaseUser.user_metadata?.full_name?.split(' ').slice(1).join(' ') || supabaseUser.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
+        firstName:
+          supabaseUser.user_metadata?.full_name?.split(' ')[0] ||
+          supabaseUser.user_metadata?.name?.split(' ')[0] ||
+          'Admin',
+        lastName:
+          supabaseUser.user_metadata?.full_name?.split(' ').slice(1).join(' ') ||
+          supabaseUser.user_metadata?.name?.split(' ').slice(1).join(' ') ||
+          '',
         avatar: supabaseUser.user_metadata?.avatar_url,
         isPlatformOwner: true,
         lastLoginAt: new Date(),
@@ -72,8 +88,12 @@ export async function GET(request: Request) {
   // a query param (OAuth redirect) OR only in user_metadata (email/password signUp),
   // so check both — otherwise a password company signup falls through.
   if (accountType === 'company' || supabaseUser.user_metadata?.account_type === 'company') {
-    const companyName = supabaseUser.user_metadata?.company_name || `${supabaseUser.email.split('@')[1].split('.')[0]} Org`;
-    const slug = companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const companyName =
+      supabaseUser.user_metadata?.company_name || `${supabaseUser.email.split('@')[1].split('.')[0]} Org`;
+    const slug = companyName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
 
     // Create org + user + role in transaction
     await db.$transaction(async (tx) => {

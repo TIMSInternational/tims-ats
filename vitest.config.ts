@@ -47,6 +47,12 @@ export default defineConfig({
       // Lets tests vi.mock('@tims/auth/client'): the wrapper's client.ts resolves that specifier
       // via apps/web's workspace dep; the mock must resolve it to the same module id to intercept.
       '@tims/auth/client': resolve(__dirname, 'packages/auth/src/client.ts'),
+      // Keep middleware imports on the same module id so auth-boundary tests can
+      // replace Supabase session refresh without opening a network connection.
+      '@tims/auth/middleware': resolve(__dirname, 'packages/auth/src/middleware.ts'),
+      // Component code resolves Next through apps/web while root tests resolve the
+      // workspace copy. Unify navigation so useSearchParams mocks are reliable.
+      'next/navigation': resolve(__dirname, 'apps/web/node_modules/next/navigation.js'),
     },
   },
   test: {

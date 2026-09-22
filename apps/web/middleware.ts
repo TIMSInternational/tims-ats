@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   '/reset-password',
   '/auth/callback',
   '/auth/confirm',
+  '/accept-invitation',
   '/careers',
   // Candidate AI voice-interview magic-link is unauthenticated — the candidateToken
   // in the URL is the bearer credential (verified server-side). Must be public or
@@ -75,6 +76,10 @@ export async function middleware(request: NextRequest) {
   // Mirror the CSP onto every response we return (including redirects).
   const applyCsp = <T extends NextResponse>(res: T): T => {
     res.headers.set('content-security-policy', csp);
+    if (request.nextUrl.pathname === '/accept-invitation') {
+      res.headers.set('referrer-policy', 'no-referrer');
+      res.headers.set('cache-control', 'no-store');
+    }
     return res;
   };
   applyCsp(supabaseResponse);
@@ -110,7 +115,7 @@ export async function middleware(request: NextRequest) {
   // portal (/careers/*) is intentionally excluded: a candidate has a Supabase
   // session and must stay in the portal (e.g. /careers/[org]/dashboard) rather than be
   // bounced into the staff app. /auth/* (callback/confirm) is also excluded.
-  const STAFF_AUTH_PAGES = ['/login', '/register', '/forgot-password', '/reset-password'];
+  const STAFF_AUTH_PAGES = ['/login', '/register', '/forgot-password'];
   if (user && STAFF_AUTH_PAGES.some((p) => pathname.startsWith(p))) {
     return applyCsp(NextResponse.redirect(new URL('/', request.url)));
   }
