@@ -70,6 +70,23 @@ public sealed class InvitationOnboardingRepositoryTests(InvitationOnboardingRepo
         Assert.Equal("sent", (await _fixture.StateAsync(seeded.InvitationId)).Status);
     }
 
+    [Theory]
+    [InlineData("candidate")]
+    [InlineData("external")]
+    public async Task Non_staff_role_hides_invitation_and_never_provisions_access(string role)
+    {
+        var seeded = await _fixture.SeedAsync($"{role}@example.test", "user", role);
+        var repository = _fixture.Repository();
+
+        Assert.Null(await repository.PreviewAsync(seeded.Token, default));
+        Assert.False(await repository.CompleteAsync(seeded.Token,
+            new(Guid.NewGuid().ToString(), $"{role}@example.test"), new("Non", "Staff"), default));
+
+        var state = await _fixture.StateAsync(seeded.InvitationId);
+        Assert.Equal("sent", state.Status);
+        Assert.Equal((0, 0, 0), (state.Users, state.Grants, state.Audits));
+    }
+
     [Fact]
     public async Task Existing_tenant_user_receives_the_invited_role_idempotently()
     {
@@ -202,12 +219,15 @@ public sealed class InvitationOnboardingRepositoryFixture : IAsyncLifetime
         command.CommandText = """
             INSERT INTO organizations(id,name) VALUES(@org,@name);
             INSERT INTO roles(id,organization_id,slug,is_active) VALUES
-              (@recruiter,@org,'recruiter',true),(@admin,@org,'super_admin',true),(@inactive,@org,'inactive_role',false);
+              (@recruiter,@org,'recruiter',true),(@admin,@org,'super_admin',true),
+              (@candidate,@org,'candidate',true),(@external,@org,'external',true),
+              (@inactive,@org,'inactive_role',false);
             INSERT INTO platform_invitations(id,email,type,organization_id,role_slug,token,status,expires_at,updated_at)
             VALUES(@invitation,@email,@type::"InvitationType",@org,@role,@token,'sent',now()+interval '1 day',now());
             """;
         command.Parameters.AddWithValue("org", org); command.Parameters.AddWithValue("name", "Test " + org);
         command.Parameters.AddWithValue("recruiter", Guid.NewGuid()); command.Parameters.AddWithValue("admin", Guid.NewGuid());
+        command.Parameters.AddWithValue("candidate", Guid.NewGuid()); command.Parameters.AddWithValue("external", Guid.NewGuid());
         command.Parameters.AddWithValue("inactive", Guid.NewGuid()); command.Parameters.AddWithValue("invitation", invitation);
         command.Parameters.AddWithValue("email", email); command.Parameters.AddWithValue("type", type);
         command.Parameters.AddWithValue("role", (object?)role ?? DBNull.Value); command.Parameters.AddWithValue("token", token);

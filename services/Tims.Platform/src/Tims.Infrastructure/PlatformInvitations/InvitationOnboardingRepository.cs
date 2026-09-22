@@ -1,5 +1,6 @@
 using Npgsql;
 using Tims.Application.PlatformInvitations;
+using Tims.Domain.Identity;
 
 namespace Tims.Infrastructure.PlatformInvitations;
 
@@ -21,9 +22,11 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             WHERE i.token=@token AND o.is_active AND o.deleted_at IS NULL
               AND ((i.type::text='user' AND i.role_slug IS NULL) OR EXISTS(SELECT 1 FROM roles r
                 WHERE r.organization_id=i.organization_id AND r.is_active
+                  AND r.slug=ANY(@staff_roles)
                   AND r.slug=CASE WHEN i.type::text='org_admin' THEN 'super_admin' ELSE i.role_slug END))
             """, connection);
         command.Parameters.AddWithValue("token", token);
+        command.Parameters.AddWithValue("staff_roles", RoleSlugs.AssignableStaffRoles.ToArray());
         await using var reader = await command.ExecuteReaderAsync(ct);
         return await reader.ReadAsync(ct) ? Read(reader) : null;
     }
@@ -68,6 +71,8 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             !string.Equals(invitation.Email, identity.Email, StringComparison.OrdinalIgnoreCase)) return false;
 
         var roleSlug = kind == "org_admin" ? "super_admin" : invitation.RoleSlug;
+        if (roleSlug is not null && !RoleSlugs.AssignableStaffRoles.Contains(roleSlug, StringComparer.Ordinal))
+            return false;
         Guid? roleId = null;
         if (roleSlug is not null)
         {
