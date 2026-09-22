@@ -286,6 +286,7 @@
     "updatePassword": "Update password",
     "showPasswords": "Show passwords",
     "hidePasswords": "Hide passwords",
+    "invalidPasswordSetupLink": "The password setup link is invalid or has expired",
     "passwordMinLength": "Password must be at least 8 characters",
     "emailAlreadyRegistered": "This email is already registered. Try signing in.",
     "confirmationSentTo": "We sent a confirmation link to",

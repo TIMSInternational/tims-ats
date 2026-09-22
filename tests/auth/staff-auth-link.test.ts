@@ -35,7 +35,7 @@ describe('staff provisioning service (invite-time linking)', () => {
     expect(PROVISION).toContain('redirectTo: `${appUrl}/reset-password?setup=1`');
     expect(BACKFILL).toContain('redirectTo: `${appUrl}/reset-password?setup=1`');
     expect(PROVISION).not.toContain('/auth/callback?setup=1');
-    expect(RESET_PASSWORD).toContain('supabase.auth.getSession()');
+    expect(RESET_PASSWORD).toContain('establishPasswordSetupSession(supabase.auth)');
     expect(RESET_PASSWORD).toContain('disabled={loading || !sessionReady}');
   });
 

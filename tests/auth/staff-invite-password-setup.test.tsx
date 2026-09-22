@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   getSession: vi.fn(),
+  setSession: vi.fn(),
   updateUser: vi.fn(),
   push: vi.fn(),
 }));
@@ -14,7 +15,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@tims/auth/client', () => ({
   createSupabaseBrowserClient: () => ({
-    auth: { getSession: state.getSession, updateUser: state.updateUser },
+    auth: { getSession: state.getSession, setSession: state.setSession, updateUser: state.updateUser },
   }),
 }));
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -26,9 +27,16 @@ import ResetPasswordPage from '../../apps/web/app/(auth)/reset-password/page';
 
 beforeEach(() => {
   state.getSession.mockReset();
+  state.setSession.mockReset();
   state.updateUser.mockReset();
   state.push.mockReset();
-  state.getSession.mockResolvedValue({ data: { session: { access_token: 'invite-session' } }, error: null });
+  window.history.replaceState(
+    null,
+    '',
+    '/reset-password?setup=1#access_token=invite-access&refresh_token=invite-refresh&type=invite',
+  );
+  state.getSession.mockResolvedValue({ data: { session: null }, error: null });
+  state.setSession.mockResolvedValue({ data: { session: { access_token: 'invite-access' } }, error: null });
   state.updateUser.mockResolvedValue({ error: null });
 });
 
@@ -39,6 +47,12 @@ describe('staff invitation password setup', () => {
     const submit = screen.getByRole('button', { name: 'Update password' });
     expect(submit).toBeDisabled();
     await waitFor(() => expect(submit).not.toBeDisabled());
+    expect(state.setSession).toHaveBeenCalledWith({
+      access_token: 'invite-access',
+      refresh_token: 'invite-refresh',
+    });
+    expect(window.location.hash).toBe('');
+    expect(state.getSession).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-private-staff-password' } });
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });
@@ -49,10 +63,11 @@ describe('staff invitation password setup', () => {
   });
 
   it('keeps password submission disabled when the invite link has no valid session', async () => {
+    window.history.replaceState(null, '', '/reset-password?setup=1');
     state.getSession.mockResolvedValue({ data: { session: null }, error: null });
     render(<ResetPasswordPage />);
 
-    expect(await screen.findByText('El enlace para establecer la contrasena no es valido o ha expirado')).toBeVisible();
+    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
     expect(state.updateUser).not.toHaveBeenCalled();
   });

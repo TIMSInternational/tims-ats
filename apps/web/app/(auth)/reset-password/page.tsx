@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { establishPasswordSetupSession } from './password-setup-session';
 
 export default function ResetPasswordPage() {
   return (
@@ -29,14 +30,11 @@ function ResetPasswordForm() {
   useEffect(() => {
     let active = true;
     const supabase = createSupabaseBrowserClient();
-    // getSession waits for the SDK's URL initialization. That initialization
-    // consumes both PKCE recovery codes and the implicit fragment used by
-    // Supabase admin invitations, then persists the session in secure cookies.
     void (async () => {
-      const { data, error: sessionError } = await supabase.auth.getSession();
+      const ready = await establishPasswordSetupSession(supabase.auth);
       if (!active) return;
-      if (sessionError || !data.session) {
-        setError('El enlace para establecer la contrasena no es valido o ha expirado');
+      if (!ready) {
+        setError(t.auth.invalidPasswordSetupLink);
         return;
       }
       setSessionReady(true);
@@ -44,7 +42,7 @@ function ResetPasswordForm() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [t.auth.invalidPasswordSetupLink]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
