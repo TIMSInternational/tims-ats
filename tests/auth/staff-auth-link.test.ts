@@ -17,6 +17,8 @@ const USER_ROUTER = read('packages/api/src/routers/user.ts');
 const OFFER_LIFECYCLE = read('packages/api/src/routers/offer/lifecycle.ts');
 const TRPC_ROUTE = read('apps/web/app/api/trpc/[trpc]/route.ts');
 const CALLBACK = read('apps/web/app/auth/callback/route.ts');
+const RESET_PASSWORD = read('apps/web/app/(auth)/reset-password/page.tsx');
+const BACKFILL = read('packages/api/scripts/backfill-staff-supabase-links.ts');
 // The admin layout + dashboard page now resolve identity through this shared
 // server-only helper (impersonation-effective identity), so the staff-recognition
 // guard + /logout redirect live here. The RSCs are thin consumers of it.
@@ -27,6 +29,14 @@ describe('staff provisioning service (invite-time linking)', () => {
   it('reuses an existing Supabase identity by email, else invites a new one', () => {
     expect(PROVISION).toMatch(/FROM auth\.users/);
     expect(PROVISION).toContain('inviteUserByEmail');
+  });
+
+  it('sends admin invite fragments directly to browser password setup', () => {
+    expect(PROVISION).toContain('redirectTo: `${appUrl}/reset-password?setup=1`');
+    expect(BACKFILL).toContain('redirectTo: `${appUrl}/reset-password?setup=1`');
+    expect(PROVISION).not.toContain('/auth/callback?setup=1');
+    expect(RESET_PASSWORD).toContain('supabase.auth.getSession()');
+    expect(RESET_PASSWORD).toContain('disabled={loading || !sessionReady}');
   });
 
   it('rejects an auth id already owned by a REAL staff row with a clean CONFLICT (no raw P2002)', () => {
@@ -84,8 +94,12 @@ describe('every recognition site matches by supabaseUserId only (no email-join)'
     // tRPC context + admin SSR (via the shared effective-identity helper) must not
     // treat an inactive or org-less non-owner row as staff just because it shares
     // the Supabase id.
-    expect(TRPC_ROUTE).toMatch(/!appUser\.isActive\s*\|\|\s*\(!appUser\.isPlatformOwner\s*&&\s*!appUser\.organizationId\)/);
-    expect(EFFECTIVE_IDENTITY).toMatch(/!appUser\.isActive\s*\|\|\s*\(!appUser\.isPlatformOwner\s*&&\s*!appUser\.organizationId\)/);
+    expect(TRPC_ROUTE).toMatch(
+      /!appUser\.isActive\s*\|\|\s*\(!appUser\.isPlatformOwner\s*&&\s*!appUser\.organizationId\)/,
+    );
+    expect(EFFECTIVE_IDENTITY).toMatch(
+      /!appUser\.isActive\s*\|\|\s*\(!appUser\.isPlatformOwner\s*&&\s*!appUser\.organizationId\)/,
+    );
   });
 
   it('the effective-identity helper looks up the staff row by supabaseUserId and never email', () => {

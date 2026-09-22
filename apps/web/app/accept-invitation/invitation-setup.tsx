@@ -144,9 +144,12 @@ export function InvitationSetup() {
   async function social(provider: 'google' | 'azure') {
     setBusy(true);
     setError('');
-    const { error: failure } = await invitationSocialSignIn(provider, token);
-    if (failure) {
+    try {
+      const { error: failure } = await invitationSocialSignIn(provider, token);
+      if (failure) setError(t.error);
+    } catch {
       setError(t.error);
+    } finally {
       setBusy(false);
     }
   }

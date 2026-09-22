@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
@@ -22,8 +22,29 @@ function ResetPasswordForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createSupabaseBrowserClient();
+    // getSession waits for the SDK's URL initialization. That initialization
+    // consumes both PKCE recovery codes and the implicit fragment used by
+    // Supabase admin invitations, then persists the session in secure cookies.
+    void (async () => {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (!active) return;
+      if (sessionError || !data.session) {
+        setError('El enlace para establecer la contrasena no es valido o ha expirado');
+        return;
+      }
+      setSessionReady(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,9 +117,12 @@ function ResetPasswordForm() {
             )}
 
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.newPasswordLabel}</label>
+              <label htmlFor="new-password" className="block text-[12px] font-medium text-[#585858] mb-1.5">
+                {t.auth.newPasswordLabel}
+              </label>
               <div className="relative">
                 <input
+                  id="new-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -110,6 +134,7 @@ function ResetPasswordForm() {
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? t.auth.hidePasswords : t.auth.showPasswords}
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B8B8B] hover:text-[#585858] transition-colors"
                 >
@@ -140,10 +165,11 @@ function ResetPasswordForm() {
             </div>
 
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">
+              <label htmlFor="confirm-password" className="block text-[12px] font-medium text-[#585858] mb-1.5">
                 {t.auth.confirmPasswordLabel}
               </label>
               <input
+                id="confirm-password"
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -157,7 +183,7 @@ function ResetPasswordForm() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !sessionReady}
               className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
             >
               {loading ? t.auth.updatingPassword : t.auth.updatePassword}

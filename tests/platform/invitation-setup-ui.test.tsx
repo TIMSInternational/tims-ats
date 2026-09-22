@@ -151,6 +151,20 @@ describe('invitation account setup', () => {
     await waitFor(() => expect(state.oauth).toHaveBeenCalledWith('google', token));
   });
 
+  it('recovers the controls when the OAuth provider throws before redirecting', async () => {
+    state.request.mockImplementation((action: string) =>
+      action === 'preview'
+        ? Promise.resolve({ ...invitation, accountExists: true })
+        : Promise.resolve({ outcome: 'complete' }),
+    );
+    state.oauth.mockRejectedValue(new Error('provider unavailable'));
+    render(<InvitationSetup />);
+    await screen.findByText('TIMS Test');
+    fireEvent.click(screen.getByRole('button', { name: 'Google' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos completar');
+    expect(screen.getByRole('button', { name: 'Google' })).not.toBeDisabled();
+  });
+
   it('does not reopen a legacy accepted invitation without completion evidence', async () => {
     state.request.mockImplementation((action: string) =>
       action === 'preview'

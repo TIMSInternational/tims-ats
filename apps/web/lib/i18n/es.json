@@ -284,6 +284,8 @@
     "repeatPassword": "Repite la contraseña",
     "updatingPassword": "Actualizando...",
     "updatePassword": "Actualizar contraseña",
+    "showPasswords": "Mostrar contraseñas",
+    "hidePasswords": "Ocultar contraseñas",
     "passwordMinLength": "La contrasena debe tener al menos 8 caracteres",
     "emailAlreadyRegistered": "Este email ya esta registrado. Intenta iniciar sesion.",
     "confirmationSentTo": "Enviamos un enlace de confirmacion a",

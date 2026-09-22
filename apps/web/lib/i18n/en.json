@@ -284,6 +284,8 @@
     "repeatPassword": "Repeat your password",
     "updatingPassword": "Updating...",
     "updatePassword": "Update password",
+    "showPasswords": "Show passwords",
+    "hidePasswords": "Hide passwords",
     "passwordMinLength": "Password must be at least 8 characters",
     "emailAlreadyRegistered": "This email is already registered. Try signing in.",
     "confirmationSentTo": "We sent a confirmation link to",
