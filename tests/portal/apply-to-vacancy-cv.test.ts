@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const VACANCY_ID = '11111111-1111-1111-1111-111111111111';
 const ORG_ID = '22222222-2222-2222-2222-222222222222';
@@ -66,7 +66,55 @@ beforeEach(() => {
   dbMocks.application.create.mockResolvedValue({ id: APPLICATION_ID });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe('portal.applyToVacancy — CAPTCHA verification', () => {
+  it('rejects a missing token before writing candidate data when a secret is configured', async () => {
+    vi.stubEnv('TURNSTILE_SECRET_KEY', 'test-secret');
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow('Verificacion de seguridad fallida');
+    expect(dbMocks.candidate.upsert).not.toHaveBeenCalled();
+  });
+
+  it('accepts a successfully verified token', async () => {
+    vi.stubEnv('TURNSTILE_SECRET_KEY', 'test-secret');
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy({ ...baseApplyInput, captchaToken: 'test-token' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(dbMocks.application.create).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a malformed or failed verification response', async () => {
+    vi.stubEnv('TURNSTILE_SECRET_KEY', 'test-secret');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ success: 'true' }), { status: 200 }));
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy({ ...baseApplyInput, captchaToken: 'test-token' })).rejects.toThrow();
+    expect(dbMocks.candidate.upsert).not.toHaveBeenCalled();
+  });
+});
+
 describe('portal.applyToVacancy — CV processing', () => {
+  it('does not overwrite an existing candidate profile based on an unauthenticated email claim', async () => {
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy({ ...baseApplyInput, firstName: 'Impersonator' });
+
+    expect(dbMocks.candidate.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId_email: { organizationId: ORG_ID, email: baseApplyInput.email } },
+        update: {},
+      }),
+    );
+  });
+
   it('processes the CV for a new application when cvFileKey is provided', async () => {
     const caller = await makeCaller();
     await caller.portal.applyToVacancy({

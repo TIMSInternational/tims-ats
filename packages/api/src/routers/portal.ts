@@ -20,9 +20,11 @@ async function verifyCaptcha(token: string | undefined): Promise<boolean> {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ secret, response: token }),
+      signal: AbortSignal.timeout(5000),
     });
-    const data = (await res.json()) as { success?: boolean };
-    return data.success === true;
+    if (!res.ok) return false;
+    const data = z.object({ success: z.boolean() }).safeParse(await res.json());
+    return data.success && data.data.success;
   } catch {
     return false; // fail closed on verification error
   }
@@ -197,16 +199,9 @@ export const portalRouter = router({
           yearsExperience: input.yearsExperience,
           location: input.location,
         },
-        update: {
-          firstName: input.firstName,
-          lastName: input.lastName,
-          phone: input.phone,
-          linkedinUrl: input.linkedinUrl,
-          currentTitle: input.currentTitle,
-          currentCompany: input.currentCompany,
-          yearsExperience: input.yearsExperience,
-          location: input.location,
-        },
+        // This endpoint is unauthenticated. Knowing an email address must not
+        // let a submitter overwrite an existing candidate's profile.
+        update: {},
       });
 
       // Idempotent: a candidate may only have one application per vacancy
