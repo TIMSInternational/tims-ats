@@ -73,7 +73,7 @@ export const learningRouter = router({
         include: {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           enrollments: {
-            where: enrollScope as Prisma.EnrollmentWhereInput,
+            where: { AND: [{ organizationId: ctx.user.organizationId }, enrollScope as Prisma.EnrollmentWhereInput] },
             include: {
               user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
             },
@@ -147,11 +147,18 @@ export const learningRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertSubjectInScope(ctx.access, ctx.user.id, input.userId, 'No puedes inscribir a este usuario');
 
-      const course = await db.course.findFirst({
-        where: { id: input.courseId, organizationId: ctx.user.organizationId, isActive: true },
-        select: { id: true },
-      });
+      const [course, user] = await Promise.all([
+        db.course.findFirst({
+          where: { id: input.courseId, organizationId: ctx.user.organizationId, isActive: true },
+          select: { id: true },
+        }),
+        db.user.findFirst({
+          where: { id: input.userId, organizationId: ctx.user.organizationId, isActive: true },
+          select: { id: true },
+        }),
+      ]);
       if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario activo no encontrado en esta organizacion' });
 
       return db.enrollment.create({
         data: {
@@ -179,6 +186,13 @@ export const learningRouter = router({
         select: { id: true },
       });
       if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
+
+      const userCount = await db.user.count({
+        where: { id: { in: uniqueTargets }, organizationId: ctx.user.organizationId, isActive: true },
+      });
+      if (userCount !== uniqueTargets.length) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas usuarios activos no pertenecen a esta organizacion' });
+      }
 
       // At narrow scope every target must be within the caller's subject set.
       // Compute the set once (mirrors assertSubjectInScope logic) and set-diff.
