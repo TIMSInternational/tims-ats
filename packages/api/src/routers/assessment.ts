@@ -118,18 +118,25 @@ export const assessmentRouter = router({
       // AssessmentType and candidate get plain org-checks (not scope-filtered:
       // assessment types are org-catalog items; users are permitted to assess
       // any org candidate once the vacancy is in scope).
-      const [assessmentType, candidate] = await Promise.all([
+      const [assessmentType, candidate, application] = await Promise.all([
         db.assessmentType.findFirst({
           where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true },
           select: { id: true },
         }),
         db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
+        db.application.findFirst({
+          where: { organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId, status: 'active' },
+          select: { id: true },
+        }),
       ]);
       if (!assessmentType) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
       }
       if (!candidate) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+      }
+      if (!application) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene una postulacion activa para esta vacante' });
       }
 
       return db.assessmentAssignment.create({
@@ -166,12 +173,13 @@ export const assessmentRouter = router({
       // Probe parent vacancy through scope once (one vacancyId, many candidates).
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, orgId);
 
-      const [assessmentType, candidateCount] = await Promise.all([
+      const [assessmentType, candidateCount, applicationCount] = await Promise.all([
         db.assessmentType.findFirst({
           where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true },
           select: { id: true },
         }),
         db.candidate.count({ where: { id: { in: uniqueCandidateIds }, organizationId: orgId } }),
+        db.application.count({ where: { candidateId: { in: uniqueCandidateIds }, vacancyId: input.vacancyId, organizationId: orgId, status: 'active' } }),
       ]);
       if (!assessmentType) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
@@ -179,9 +187,12 @@ export const assessmentRouter = router({
       if (candidateCount !== uniqueCandidateIds.length) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas candidatos no encontrados en esta organizacion' });
       }
+      if (applicationCount !== uniqueCandidateIds.length) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas candidatos no tienen una postulacion activa para esta vacante' });
+      }
 
       const result = await db.assessmentAssignment.createMany({
-        data: input.candidateIds.map((candidateId) => ({
+        data: uniqueCandidateIds.map((candidateId) => ({
           organizationId: ctx.user.organizationId,
           candidateId,
           vacancyId: input.vacancyId,
