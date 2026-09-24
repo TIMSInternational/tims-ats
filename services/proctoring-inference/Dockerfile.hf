@@ -1,0 +1,18 @@
+# Evaluation-only image. The model is fetched at BUILD time at an immutable
+# commit and its weights are checked against the published SHA-256. The Lambda
+# still requires HF_OBJECT_DETECTOR_ENABLED=true to run this detector.
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY requirements.txt requirements-hf.txt /tmp/
+RUN python -m pip install --no-cache-dir --disable-pip-version-check -r /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir --disable-pip-version-check \
+    --index-url https://download.pytorch.org/whl/cpu 'torch==2.7.1+cpu'
+RUN python -m pip install --no-cache-dir --disable-pip-version-check -r /tmp/requirements-hf.txt
+
+COPY proctoring_inference/ ${LAMBDA_TASK_ROOT}/proctoring_inference/
+COPY scripts/fetch_model.py ${LAMBDA_TASK_ROOT}/scripts/fetch_model.py
+RUN cd ${LAMBDA_TASK_ROOT} && python -m scripts.fetch_model /opt/model && \
+    python -c 'from pathlib import Path; from proctoring_inference.hf_detector import verify_bundle; verify_bundle(Path("/opt/model"))'
+
+ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_MODEL_DIR=/opt/model
+CMD ["proctoring_inference.handler.lambda_handler"]

@@ -59,7 +59,7 @@ describe('candidateAssessmentLifecycleService.getMyAssessments', () => {
       { id: 'a1', status: 'assigned', result: null },
     ] as never);
     expect(await candidateAssessmentLifecycleService.getMyAssessments(EMAIL, SLUG)).toEqual([
-      { id: 'a1', status: 'assigned', result: null },
+      { id: 'a1', status: 'assigned', proctoringRequired: false, proctoring: null, result: null },
     ]);
   });
 
@@ -74,7 +74,8 @@ describe('candidateAssessmentLifecycleService.getMyAssessments', () => {
     ] as never);
     const result = await candidateAssessmentLifecycleService.getMyAssessments(EMAIL, SLUG);
     expect(result).toEqual([
-      { id: 'a1', status: 'completed', result: { normalizedScore: 80, percentile: null, hasPending: true } },
+      { id: 'a1', status: 'completed', proctoringRequired: false, proctoring: null,
+        result: { normalizedScore: 80, percentile: null, hasPending: true } },
     ]);
   });
 
@@ -89,7 +90,8 @@ describe('candidateAssessmentLifecycleService.getMyAssessments', () => {
     ] as never);
     const result = await candidateAssessmentLifecycleService.getMyAssessments(EMAIL, SLUG);
     expect(result).toEqual([
-      { id: 'a2', status: 'completed', result: { normalizedScore: 100, percentile: 90, hasPending: false } },
+      { id: 'a2', status: 'completed', proctoringRequired: false, proctoring: null,
+        result: { normalizedScore: 100, percentile: 90, hasPending: false } },
     ]);
   });
 });

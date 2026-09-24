@@ -107,6 +107,7 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput)
         status: true,
         assignedAt: true,
         completedAt: true,
+        proctoringRequired: true,
         assessmentType: { select: { id: true, name: true, code: true } },
         // Field-level safety (Wave 2.5 slice 6): rawScore + breakdown are
         // Psychometric Raw = restricted, super_admin ONLY (matrix §21). This

@@ -12,6 +12,7 @@ import {
 } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
 import { clientIpFrom } from '../lib/client-ip';
+import { policyForNewAssignment } from '../services/proctoring-policy';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ export const assessmentRouter = router({
       const [assessmentType, candidate] = await Promise.all([
         db.assessmentType.findFirst({
           where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true },
-          select: { id: true },
+          select: { id: true, config: true },
         }),
         db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
       ]);
@@ -131,6 +132,7 @@ export const assessmentRouter = router({
       if (!candidate) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
       }
+      const proctoringRequired = await policyForNewAssignment(orgId, assessmentType.config);
 
       return db.assessmentAssignment.create({
         data: {
@@ -138,6 +140,7 @@ export const assessmentRouter = router({
           candidateId: input.candidateId,
           vacancyId: input.vacancyId,
           assessmentTypeId: input.assessmentTypeId,
+          proctoringRequired,
           assignedById: ctx.user.id,
           status: 'assigned',
           expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined,
@@ -169,7 +172,7 @@ export const assessmentRouter = router({
       const [assessmentType, candidateCount] = await Promise.all([
         db.assessmentType.findFirst({
           where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true },
-          select: { id: true },
+          select: { id: true, config: true },
         }),
         db.candidate.count({ where: { id: { in: uniqueCandidateIds }, organizationId: orgId } }),
       ]);
@@ -179,6 +182,7 @@ export const assessmentRouter = router({
       if (candidateCount !== uniqueCandidateIds.length) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas candidatos no encontrados en esta organizacion' });
       }
+      const proctoringRequired = await policyForNewAssignment(orgId, assessmentType.config);
 
       const result = await db.assessmentAssignment.createMany({
         data: input.candidateIds.map((candidateId) => ({
@@ -186,6 +190,7 @@ export const assessmentRouter = router({
           candidateId,
           vacancyId: input.vacancyId,
           assessmentTypeId: input.assessmentTypeId,
+          proctoringRequired,
           assignedById: ctx.user.id,
           status: 'assigned',
           expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined,
@@ -419,99 +424,6 @@ export const assessmentRouter = router({
         assessmentName: assignment.assessmentType.name,
         status: 'stub_sent',
       };
-    }),
-
-  // 7.9 — Get proctoring events for an assignment
-  getProctoringEvents: permissionProcedure('assessment', 'read')
-    .input(z.object({ assignmentId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      // Fetch-then-probe hop: ProctoringSession is keyed by assignmentId (no
-      // direct scope policy on it). Fetch the session org-scoped first, then
-      // probe the assignment it belongs to — ensures the caller can reach it.
-      const session = await db.proctoringSession.findFirst({
-        where: {
-          assignmentId: input.assignmentId,
-          organizationId: ctx.user.organizationId,
-        },
-      });
-
-      if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
-      }
-
-      await assertScoped(
-        'assessmentAssignment',
-        session.assignmentId,
-        ctx.access,
-        ctx.user.id,
-        ctx.user.organizationId,
-      );
-
-      return {
-        sessionId: session.id,
-        assignmentId: session.assignmentId,
-        startedAt: session.startedAt,
-        endedAt: session.endedAt,
-        flagCount: session.flagCount,
-        severity: session.severity,
-        events: session.events,
-      };
-    }),
-
-  // 7.10 — Flag a proctoring event
-  flagProctoring: permissionProcedure('assessment', 'update')
-    .input(
-      z.object({
-        assignmentId: z.string().uuid(),
-        event: z.object({
-          type: z.string().max(100),
-          description: z.string().max(1000),
-          timestamp: z.string().datetime(),
-          severity: z.enum(['low', 'medium', 'high', 'critical']),
-        }),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Fetch-then-probe hop (same as getProctoringEvents — see comment there).
-      const session = await db.proctoringSession.findFirst({
-        where: {
-          assignmentId: input.assignmentId,
-          organizationId: ctx.user.organizationId,
-        },
-      });
-
-      if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
-      }
-
-      await assertScoped(
-        'assessmentAssignment',
-        session.assignmentId,
-        ctx.access,
-        ctx.user.id,
-        ctx.user.organizationId,
-      );
-
-      const existingEvents = (session.events as Array<Record<string, unknown>>) ?? [];
-      const updatedEvents = [...existingEvents, input.event];
-
-      // Determine highest severity
-      const severityOrder = ['low', 'medium', 'high', 'critical'];
-      const maxSeverity = updatedEvents.reduce<string>((max, e) => {
-        const sev = (e as Record<string, unknown>).severity as string | undefined;
-        const eSev = severityOrder.indexOf(sev ?? 'low');
-        const mSev = severityOrder.indexOf(max);
-        return eSev > mSev ? (sev ?? 'low') : max;
-      }, session.severity ?? 'low');
-
-      return db.proctoringSession.update({
-        where: { id: session.id },
-        data: {
-          events: updatedEvents as unknown as Prisma.JsonArray,
-          flagCount: { increment: 1 },
-          severity: maxSeverity,
-        },
-      });
     }),
 
   // 7.11 — AI explainability for an assessment result.

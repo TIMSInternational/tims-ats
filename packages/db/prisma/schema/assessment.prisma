@@ -24,6 +24,7 @@ model AssessmentAssignment {
   candidateId      String    @map("candidate_id") @db.Uuid
   vacancyId        String    @map("vacancy_id") @db.Uuid
   assessmentTypeId String    @map("assessment_type_id") @db.Uuid
+  proctoringRequired Boolean @default(false) @map("proctoring_required")
   status           String
   assignedById     String    @map("assigned_by_id") @db.Uuid
   assignedAt       DateTime  @default(now()) @map("assigned_at")
@@ -42,7 +43,11 @@ model AssessmentAssignment {
   session        ProctoringSession?
   responses      AssessmentResponse[]
   consent        AssessmentConsent?
+  proctoringEvidence ProctoringEvidence[]
+  proctoringExplanations ProctoringCandidateExplanation[]
 
+  @@unique([id, organizationId])
+  @@unique([id, organizationId, candidateId], map: "assessment_assignments_id_org_candidate_key")
   @@index([organizationId])
   @@index([candidateId])
   @@index([vacancyId])
@@ -82,13 +87,184 @@ model ProctoringSession {
   flagCount      Int       @default(0) @map("flag_count")
   severity       String?
   events         Json?
+  // A separate, explicit consent is required before camera/screen monitoring.
+  consentedAt    DateTime? @map("consented_at")
+  consentVersion String?   @map("consent_version")
+  mediaConsentedAt DateTime? @map("media_consented_at")
+  mediaConsentVersion String? @map("media_consent_version") @db.VarChar(128)
+  mediaStoppedAt DateTime? @map("media_stopped_at")
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  reviewStatus   String    @default("unreviewed") @map("review_status")
+  reviewNotes    String?   @map("review_notes") @db.Text
+  reviewedAt     DateTime? @map("reviewed_at")
+  reviewedById   String?   @map("reviewed_by_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   assignment AssessmentAssignment @relation(fields: [assignmentId], references: [id])
+  signalEvents ProctoringEvent[]
+  evidence ProctoringEvidence[]
+  candidateExplanation ProctoringCandidateExplanation?
 
+  @@unique([id, organizationId])
+  @@unique([id, organizationId, assignmentId])
   @@index([organizationId])
   @@map("proctoring_sessions")
+}
+
+// Append-only observations. Browser/face signals are review cues, not a finding
+// of misconduct. Media is never stored in this table.
+model ProctoringEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sessionId     String   @map("session_id") @db.Uuid
+  clientEventId String   @map("client_event_id") @db.Uuid
+  type          String
+  source        String
+  severity      String
+  clientAt      DateTime? @map("client_at")
+  occurredAt    DateTime @default(now()) @map("occurred_at")
+
+  session ProctoringSession @relation(fields: [sessionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  alertDeliveries ProctoringAlertDelivery[]
+
+  @@unique([sessionId, clientEventId])
+  @@unique([id, organizationId])
+  @@index([organizationId, sessionId, occurredAt])
+  @@map("proctoring_events")
+}
+
+// Durable in-app alert receipt. A staff member can delete a notification,
+// but the same event must not be delivered again on the next sweep.
+model ProctoringAlertDelivery {
+  id             String   @id @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  eventId        String   @map("event_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  notificationId String   @unique @map("notification_id") @db.Uuid
+  deliveredAt    DateTime @default(now()) @map("delivered_at")
+
+  event ProctoringEvent @relation(fields: [eventId, organizationId], references: [id, organizationId], onDelete: Cascade, onUpdate: NoAction, map: "proctoring_alert_deliveries_event_tenant_fkey")
+  user  User            @relation(fields: [userId, organizationId], references: [id, organizationId], onDelete: Cascade, onUpdate: NoAction, map: "proctoring_alert_deliveries_user_tenant_fkey")
+
+  @@unique([eventId, userId], map: "proctoring_alert_deliveries_event_user_key")
+  @@index([deliveredAt, organizationId], map: "proctoring_alert_deliveries_expiry_idx")
+  @@index([organizationId, eventId], map: "proctoring_alert_deliveries_org_event_idx")
+  @@map("proctoring_alert_deliveries")
+}
+
+// One row starts as a short-lived upload intent and becomes the authoritative
+// media identity after the API verifies and seals the object. Image bytes stay
+// in private S3; client timestamps and object keys are never trusted as proof.
+model ProctoringEvidence {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  assignmentId      String    @map("assignment_id") @db.Uuid
+  sessionId         String    @map("session_id") @db.Uuid
+  clientCaptureId   String    @map("client_capture_id") @db.Uuid
+  mediaType         String    @map("media_type") @db.VarChar(16)
+  captureReason     String    @map("capture_reason") @db.VarChar(16)
+  captureSlot       Int       @map("capture_slot")
+  status            String    @default("intent") @db.VarChar(16)
+  stagingObjectKey  String    @unique @map("staging_object_key") @db.VarChar(512)
+  sealedObjectKey   String?   @unique @map("sealed_object_key") @db.VarChar(512)
+  contentType       String    @map("content_type") @db.VarChar(32)
+  maxBytes          Int       @map("max_bytes")
+  byteSize          Int?      @map("byte_size")
+  sha256            String?   @db.VarChar(64)
+  stagingEtag       String?   @map("staging_etag") @db.VarChar(128)
+  sealedEtag        String?   @map("sealed_etag") @db.VarChar(128)
+  modelRevision     String?   @map("model_revision") @db.VarChar(128)
+  intentExpiresAt   DateTime  @map("intent_expires_at")
+  confirmedAt       DateTime? @map("confirmed_at")
+  expiresAt         DateTime? @map("expires_at")
+  processedAt       DateTime? @map("processed_at")
+  deletedAt         DateTime? @map("deleted_at")
+  failureCode       String?   @map("failure_code") @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  assignment AssessmentAssignment @relation(fields: [assignmentId, organizationId], references: [id, organizationId], onDelete: Restrict, map: "proctoring_evidence_assignment_tenant_fkey")
+  session ProctoringSession @relation(fields: [sessionId, organizationId, assignmentId], references: [id, organizationId, assignmentId], onDelete: Restrict, map: "proctoring_evidence_session_assignment_tenant_fkey")
+  findings ProctoringFinding[]
+  outbox ProctoringInferenceOutbox?
+
+  @@unique([id, organizationId])
+  @@unique([sessionId, clientCaptureId])
+  @@unique([sessionId, mediaType, captureReason, captureSlot], map: "proctoring_evidence_session_media_reason_slot_key")
+  @@index([organizationId, sessionId, createdAt])
+  @@index([organizationId, assignmentId])
+  @@index([status, expiresAt])
+  @@index([status, intentExpiresAt])
+  @@map("proctoring_evidence")
+}
+
+// Append-only, bounded cues tied to a verified evidence object. An unavailable
+// detector has a failure code, never a fabricated zero-confidence clean result.
+model ProctoringFinding {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  evidenceId     String   @map("evidence_id") @db.Uuid
+  detector       String   @db.VarChar(64)
+  modelRevision  String   @map("model_revision") @db.VarChar(128)
+  label          String   @db.VarChar(64)
+  resultKind     String   @map("result_kind") @db.VarChar(16)
+  confidence     Float?
+  detectedCount  Int?     @map("detected_count")
+  failureCode    String?  @map("failure_code") @db.VarChar(64)
+  inferredAt     DateTime @default(now()) @map("inferred_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  evidence ProctoringEvidence @relation(fields: [evidenceId, organizationId], references: [id, organizationId], onDelete: Restrict, map: "proctoring_findings_evidence_tenant_fkey")
+
+  @@unique([evidenceId, detector, modelRevision, label], map: "proctoring_findings_evidence_detector_revision_label_key")
+  @@index([organizationId, evidenceId, inferredAt])
+  @@map("proctoring_findings")
+}
+
+// Insert in the same transaction that marks evidence ready. A dispatcher may
+// retry safely; it sends only sealed evidence, never a browser-controlled key.
+model ProctoringInferenceOutbox {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  evidenceId     String    @unique @map("evidence_id") @db.Uuid
+  status         String    @default("pending") @db.VarChar(16)
+  attemptCount   Int       @default(0) @map("attempt_count")
+  availableAt    DateTime  @default(now()) @map("available_at")
+  dispatchedAt   DateTime? @map("dispatched_at")
+  lastErrorCode  String?   @map("last_error_code") @db.VarChar(64)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  evidence ProctoringEvidence @relation(fields: [evidenceId, organizationId], references: [id, organizationId], onDelete: Restrict, map: "proctoring_inference_outbox_evidence_tenant_fkey")
+
+  @@unique([evidenceId, organizationId])
+  @@index([status, availableAt])
+  @@index([organizationId, status])
+  @@map("proctoring_inference_outbox")
+}
+
+// One immutable explanation from the candidate, accepted after assessment
+// completion and before human review. The seven-day deadline is derived from
+// completion; the retention job deletes the text when that deadline passes.
+model ProctoringCandidateExplanation {
+  id            String   @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  assignmentId  String   @map("assignment_id") @db.Uuid
+  sessionId     String   @unique @map("session_id") @db.Uuid
+  candidateId   String   @map("candidate_id") @db.Uuid
+  submissionId  String   @map("submission_id") @db.Uuid
+  text          String   @db.VarChar(2000)
+  submittedAt   DateTime @default(now()) @map("submitted_at")
+  expiresAt     DateTime @map("expires_at")
+
+  assignment AssessmentAssignment @relation(fields: [assignmentId, organizationId, candidateId], references: [id, organizationId, candidateId], onDelete: Restrict, map: "proctoring_candidate_explanations_assignment_tenant_fkey")
+  session ProctoringSession @relation(fields: [sessionId, organizationId, assignmentId], references: [id, organizationId, assignmentId], onDelete: Restrict, map: "proctoring_candidate_explanations_session_tenant_fkey")
+
+  @@index([organizationId, assignmentId], map: "proctoring_candidate_explanations_organization_assignment_idx")
+  @@index([expiresAt], map: "proctoring_candidate_explanations_expires_at_idx")
+  @@unique([sessionId, organizationId, assignmentId], map: "proctoring_candidate_explanations_session_tenant_key")
+  @@map("proctoring_candidate_explanations")
 }
 
 enum QuestionType {

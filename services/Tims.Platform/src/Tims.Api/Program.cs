@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Security.Claims;
+using Amazon;
+using Amazon.S3;
+using Amazon.SQS;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +39,7 @@ using Tims.Api.Monitoring;
 using Tims.Api.PlatformDashboard;
 using Tims.Api.PlatformInvitations;
 using Tims.Api.PlatformOrganizations;
+using Tims.Api.Proctoring;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
@@ -59,6 +63,7 @@ using Tims.Application.Monitoring;
 using Tims.Application.PlatformDashboard;
 using Tims.Application.PlatformInvitations;
 using Tims.Application.PlatformOrganizations;
+using Tims.Application.Proctoring;
 using Tims.Application.TeamIntel;
 using Tims.Application.Validation;
 using Tims.Domain.Access;
@@ -88,6 +93,7 @@ using Tims.Infrastructure.Monitoring;
 using Tims.Infrastructure.PlatformDashboard;
 using Tims.Infrastructure.PlatformInvitations;
 using Tims.Infrastructure.PlatformOrganizations;
+using Tims.Infrastructure.Proctoring;
 using Tims.Infrastructure.TeamIntel;
 using Tims.Infrastructure.Validation;
 
@@ -221,6 +227,66 @@ try
         options.UseNpgsql(sp.GetRequiredService<ExternalAssessmentDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IExternalAssessmentRepository, ExternalAssessmentRepository>();
     builder.Services.AddScoped<ExternalAssessmentReadUseCase>();
+
+    // Proctoring beta: .NET 10 owns candidate monitoring and staff review
+    // behavior; Prisma retains DDL ownership until the assessment-domain flip.
+    // The deployment route flag and assessment-type policy are both default-off.
+    builder.Services.AddDbContext<ProctoringDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<CandidateProctoringRepository>();
+    builder.Services.AddScoped<ICandidateProctoringRepository>(sp =>
+        sp.GetRequiredService<CandidateProctoringRepository>());
+    builder.Services.AddScoped<CandidateProctoringUseCase>();
+    builder.Services.AddScoped<ICandidateExplanationRepository, CandidateExplanationRepository>();
+    builder.Services.AddScoped<CandidateExplanationUseCase>();
+    builder.Services.AddScoped<StaffProctoringStore>();
+    builder.Services.AddScoped<IProctoringEvidenceRepository, ProctoringEvidenceRepository>();
+    builder.Services.AddScoped<ProctoringEvidenceUseCase>();
+    builder.Services.AddScoped<ProctoringEvidenceRetentionRepository>();
+    builder.Services.AddScoped<CandidateExplanationRetentionRepository>();
+    builder.Services.AddHostedService<CandidateExplanationRetentionService>();
+    builder.Services.AddScoped<ProctoringOperationalAlertsRepository>();
+    if (platformSection.GetValue<bool>(nameof(PlatformOptions.ProctoringEnabled)))
+        builder.Services.AddHostedService<ProctoringOperationalAlertsService>();
+    // Retention continues after upload/inference flags are disabled, so already
+    // accepted evidence still expires on schedule. The service exits when no
+    // evidence store is configured.
+    builder.Services.AddHostedService<ProctoringEvidenceRetentionService>();
+    builder.Services.AddSingleton<IAmazonS3>(sp =>
+    {
+        var media = sp.GetRequiredService<IOptions<PlatformOptions>>().Value;
+        return new AmazonS3Client(RegionEndpoint.GetBySystemName(
+            media.ProctoringEvidenceRegion ?? "us-west-2"));
+    });
+    builder.Services.AddScoped<IProctoringEvidenceStore>(sp =>
+    {
+        var media = sp.GetRequiredService<IOptions<PlatformOptions>>().Value;
+        return new S3ProctoringEvidenceStore(sp.GetRequiredService<IAmazonS3>(),
+            media.ProctoringEvidenceBucketName ?? string.Empty,
+            media.ProctoringEvidenceKmsKeyArn ?? string.Empty);
+    });
+    var requestQueueConfigured = !string.IsNullOrWhiteSpace(
+        platformSection[nameof(PlatformOptions.ProctoringInferenceRequestQueueUrl)]);
+    var resultQueueConfigured = !string.IsNullOrWhiteSpace(
+        platformSection[nameof(PlatformOptions.ProctoringInferenceResultQueueUrl)]);
+    if (requestQueueConfigured || resultQueueConfigured)
+    {
+        builder.Services.AddSingleton<IAmazonSQS>(sp =>
+        {
+            var inference = sp.GetRequiredService<IOptions<PlatformOptions>>().Value;
+            return new AmazonSQSClient(RegionEndpoint.GetBySystemName(
+                inference.ProctoringEvidenceRegion ?? "us-west-2"));
+        });
+        builder.Services.AddScoped<ProctoringInferenceSqsTransport>();
+        // Drain confirmed work and in-flight results even after the new-session
+        // CloudInferenceEnabled flag is turned off.
+        if (requestQueueConfigured)
+        {
+            builder.Services.AddHostedService<ProctoringInferenceOutboxHostedService>();
+            builder.Services.AddHostedService<ProctoringInferenceTimeoutHostedService>();
+        }
+        if (resultQueueConfigured)
+            builder.Services.AddHostedService<ProctoringInferenceResultHostedService>();
+    }
 
     // --- External-vendor validation WRITE plane (Phase-5 Slice 2) ----------------------
     // The FIRST C# write to a PRODUCT table: the external-vendor validation submit surface ported to C#.
@@ -1178,6 +1244,43 @@ try
     var externalOptions = app.Services.GetRequiredService<IOptions<PlatformOptions>>().Value;
     var isOpenApiDocGeneration =
         string.Equals(Assembly.GetEntryAssembly()?.GetName().Name, "GetDocument.Insider", StringComparison.Ordinal);
+
+    // Browser preflight must know the live server flag before requesting camera
+    // or screen capture. This authenticated capability route is always mapped,
+    // including when the write routes below are dark.
+    if (externalOptions.MediaEvidenceEnabled &&
+        (!externalOptions.ProctoringEnabled
+         || string.IsNullOrWhiteSpace(externalOptions.ProctoringEvidenceBucketName)
+         || string.IsNullOrWhiteSpace(externalOptions.ProctoringEvidenceKmsKeyArn)
+         || string.IsNullOrWhiteSpace(externalOptions.ProctoringEvidenceRegion)))
+        throw new InvalidOperationException("Media evidence requires enabled proctoring and configured S3 storage.");
+    if (externalOptions.CloudInferenceEnabled &&
+        (!externalOptions.MediaEvidenceEnabled
+         || string.IsNullOrWhiteSpace(externalOptions.ProctoringInferenceRequestQueueUrl)
+         || string.IsNullOrWhiteSpace(externalOptions.ProctoringInferenceResultQueueUrl)
+         || string.IsNullOrWhiteSpace(externalOptions.ProctoringModelRevision)))
+        throw new InvalidOperationException("Cloud inference requires media evidence, SQS queues, and a model revision.");
+
+    app.MapGet("/proctoring/capabilities", () => Results.Ok(new
+    {
+        enabled = externalOptions.ProctoringEnabled,
+        mediaEvidenceEnabled = externalOptions.ProctoringEnabled && externalOptions.MediaEvidenceEnabled,
+        cloudInferenceEnabled = externalOptions.ProctoringEnabled && externalOptions.CloudInferenceEnabled,
+    }))
+        .RequireAuthorization()
+        .WithName("GetProctoringCapabilities")
+        .WithTags("Proctoring");
+
+    // Proctoring is dark at deployment until the C# route, Prisma migration,
+    // browser checks and consent/retention controls are ready for a test org.
+    if (externalOptions.ProctoringEnabled || isOpenApiDocGeneration)
+    {
+        app.MapCandidateProctoringEndpoints(externalOptions.MediaEvidenceEnabled || isOpenApiDocGeneration);
+        app.MapStaffProctoringEndpoints();
+        app.MapStaffProctoringAccommodationEndpoints();
+        if (externalOptions.MediaEvidenceEnabled || isOpenApiDocGeneration)
+            app.MapStaffProctoringMediaEndpoints();
+    }
 
     // External-vendor assessment READ surface (Phase-5 Slice 1): GET /external/assessment-results (list,
     // cursor) + /external/assessment-results/{assignmentId} (getOne). ApiKey scheme + assessment:read
