@@ -18,6 +18,8 @@ import {
   useProctoringReviewQueue,
   useReviewProctoring,
   useGrantProctoringAccommodation,
+  useProctoringMedia,
+  useProctoringMediaReadGrant,
 } from '../../apps/web/lib/platform-api/proctoring-staff';
 
 const assignmentId = '11111111-1111-4111-8111-111111111111';
@@ -33,6 +35,7 @@ describe('C# proctoring response boundary', () => {
   afterEach(() => {
     platformGetRaw.mockReset();
     platformPostRaw.mockReset();
+    vi.unstubAllEnvs();
   });
 
   it('uses the live C# feature flag before showing capture or review UI', async () => {
@@ -74,10 +77,12 @@ describe('C# proctoring response boundary', () => {
   it('sends a human review decision to the C# API', async () => {
     platformPostRaw.mockResolvedValue({ status: 'concern', notes: 'Check context', reviewedAt: '2026-09-24T12:30:00Z' });
     const { result } = renderHook(() => useReviewProctoring(), { wrapper });
-    await result.current.mutateAsync({ assignmentId, status: 'concern', notes: 'Check context' });
+    await result.current.mutateAsync({
+      assignmentId, status: 'concern', notes: 'Check context', seenExplanationId: null,
+    });
     expect(platformPostRaw).toHaveBeenCalledWith(
       '/proctoring/assignments/{assignmentId}/review',
-      { status: 'concern', notes: 'Check context' },
+      { status: 'concern', notes: 'Check context', seenExplanationId: null },
       { assignmentId },
     );
   });
@@ -90,5 +95,38 @@ describe('C# proctoring response boundary', () => {
       '/proctoring/assignments/{assignmentId}/accommodation',
       { reason: 'technical_unavailable' }, { assignmentId },
     );
+  });
+
+  it('loads bounded media metadata and detector cues', async () => {
+    platformGetRaw.mockResolvedValue({
+      sessionId, assignmentId,
+      mediaConsented: true,
+      items: [{
+        evidenceId: candidateId, mediaType: 'camera', captureReason: 'periodic',
+        status: 'processed', createdAt: '2026-09-24T12:00:00Z',
+        confirmedAt: '2026-09-24T12:00:02Z', expiresAt: '2026-10-01T12:00:02Z',
+        findings: [{ detector: 'rekognition_detect_faces', modelRevision: 'v1',
+          label: 'face_count', resultKind: 'signal', confidence: null,
+          detectedCount: 1, failureCode: null, inferredAt: '2026-09-24T12:00:03Z' }],
+      }],
+    });
+    const { result } = renderHook(() => useProctoringMedia(assignmentId), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.items[0].findings[0].detectedCount).toBe(1);
+    expect(platformGetRaw).toHaveBeenCalledWith(
+      '/proctoring/assignments/{assignmentId}/media', undefined, { assignmentId },
+    );
+  });
+
+  it('refuses a signed read URL from any unconfigured S3 origin', async () => {
+    vi.stubEnv('NEXT_PUBLIC_PROCTORING_EVIDENCE_S3_ORIGIN', 'https://bucket.s3.us-west-2.amazonaws.com');
+    platformGetRaw.mockResolvedValue({
+      evidenceId: candidateId, contentType: 'image/jpeg',
+      url: 'https://other-bucket.s3.us-west-2.amazonaws.com/sealed/photo.jpg',
+      expiresAt: new Date(Date.now() + 40_000).toISOString(),
+    });
+    const { result } = renderHook(() => useProctoringMediaReadGrant(), { wrapper });
+    await expect(result.current.mutateAsync({ assignmentId, evidenceId: candidateId }))
+      .rejects.toThrow('Invalid evidence read grant');
   });
 });

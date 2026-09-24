@@ -33,21 +33,27 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
 
 ### Proctoring slice (2026-09-24)
 
-`assessment_assignments`, `assessment_types`, `proctoring_sessions`, and the new
-`proctoring_events` table remain **Prisma-owned** under `defaultOwner: prisma`.
+`assessment_assignments`, `assessment_types`, `proctoring_sessions`,
+`proctoring_events`, `proctoring_evidence`, `proctoring_findings`,
+`proctoring_inference_outbox`, `proctoring_candidate_explanations`, and
+`proctoring_alert_deliveries` remain **Prisma-owned** under `defaultOwner: prisma`.
 The direct .NET 10 proctoring routes are opt-in behind
 `Platform:ProctoringEnabled` (default false). They write the Prisma-owned
-`assessment_assignments`, `assessment_types`, and `proctoring_sessions` through
-tenant-scoped EF/raw SQL, so those tables are registered as
-`efcoreStranglerWrite`. The .NET service INSERTs only into
-`assessment_consents` and `proctoring_events`, registered as
-`efcoreAppendOnly`. The remaining TypeScript assignment authoring and
+`assessment_assignments`, `assessment_types`, `proctoring_sessions`,
+`proctoring_evidence`, `proctoring_inference_outbox`,
+`proctoring_candidate_explanations`, and `proctoring_alert_deliveries` through tenant-scoped
+EF/raw SQL, so those tables are registered as `efcoreStranglerWrite`. The .NET
+service INSERTs into `assessment_consents`, `proctoring_events`, and
+`proctoring_findings`, registered as `efcoreAppendOnly`. The remaining TypeScript assignment authoring and
 assessment submission paths still write their respective assessment tables;
 this is a route-level strangler, not a DDL ownership transfer. Do not add an
 EF migration for these tables while Prisma owns their DDL.
 
-`proctoring_events` is tenant RLS-forced, has a composite session/tenant FK,
-and grants `app_tenant` only SELECT and INSERT. Candidate observations are
+`proctoring_events` and the three evidence metadata tables are tenant
+RLS-forced. Evidence has composite assignment/session/tenant FKs; findings and
+outbox rows have composite evidence/tenant FKs. `app_tenant` may append and
+read findings but cannot edit or delete them, and may update only the approved
+processing fields of evidence/outbox rows. Candidate observations are
 metadata signals, never captured media or an automatic misconduct finding.
 The current platform-wide CB-6 retention/erasure automation is still pending:
 before a customer beta using proctoring, approve the event retention period and
@@ -117,12 +123,16 @@ limited to consenting test users.
     "job_profiles",
     "ai_interview_sessions"
   ],
-  "efcoreAppendOnly": ["data_access_logs", "audit_logs", "assessment_consents", "proctoring_events"],
+  "efcoreAppendOnly": ["data_access_logs", "audit_logs", "assessment_consents", "proctoring_events", "proctoring_findings"],
   "efcoreStranglerWrite": [
     "platform_invitations",
     "assessment_assignments",
     "assessment_types",
     "proctoring_sessions",
+    "proctoring_evidence",
+    "proctoring_inference_outbox",
+    "proctoring_candidate_explanations",
+    "proctoring_alert_deliveries",
     "organizations",
     "preemployment_validations",
     "subscriptions",

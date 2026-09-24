@@ -56,11 +56,34 @@ public sealed class CandidateProctoringRateLimitMiddlewareTests
         }
     }
 
+    [Fact]
+    public async Task TwentyFiveCandidatesBehindOneIp_CanRequestAndConfirmMedia()
+    {
+        using var services = Services();
+        var guard = Guard();
+        var middleware = new RateLimitMiddleware(_ => Task.CompletedTask);
+        var requests = Enumerable.Range(1, 25)
+            .SelectMany(index => new[] { "media-intents", "media-confirm" }
+                .Select(action => Request(services, $"cohort{index}@tims.test",
+                    $"/candidate/{Slug}/assessments/{AssignmentId}/proctoring/{action}")))
+            .ToArray();
+
+        await Task.WhenAll(requests.Select(context => middleware.InvokeAsync(context, guard)));
+
+        Assert.All(requests, context => Assert.NotEqual(StatusCodes.Status429TooManyRequests,
+            context.Response.StatusCode));
+    }
+
     [Theory]
     [InlineData("start")]
     [InlineData("events")]
     [InlineData("heartbeat")]
     [InlineData("complete")]
+    [InlineData("explanation")]
+    [InlineData("media-consent")]
+    [InlineData("media-stop")]
+    [InlineData("media-intents")]
+    [InlineData("media-confirm")]
     public async Task DynamicOrgSlugAndAssignmentSegment_CannotChooseAiOrExportTier(string action)
     {
         using var services = Services();
@@ -206,7 +229,9 @@ public sealed class CandidateProctoringRateLimitMiddlewareTests
             ["first@tims.test"] = Guid.Parse("13bf8bfd-8ebe-4a4c-8ae2-901375e287bb"),
             ["second@tims.test"] = Guid.Parse("76086562-a88b-4fdb-a00e-6a71f1b9b5a5"),
             ["dual@tims.test"] = Guid.Parse("13bf8bfd-8ebe-4a4c-8ae2-901375e287bb"),
-        };
+        }.Concat(Enumerable.Range(1, 25).Select(index =>
+            new KeyValuePair<string, Guid>($"cohort{index}@tims.test", new Guid(index, 0, 0, new byte[8]))))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
 
         public Task<CandidateRow?> FindByEmailAsync(string email, string organizationId, CancellationToken ct) =>
             failLookup ? throw new InvalidOperationException("candidate lookup unavailable")

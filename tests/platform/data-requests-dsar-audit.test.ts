@@ -26,6 +26,9 @@ const findMany = {
   assessmentConsent: vi.fn(),
   proctoringSession: vi.fn(),
   proctoringEvent: vi.fn(),
+  proctoringEvidence: vi.fn(),
+  proctoringFinding: vi.fn(),
+  proctoringCandidateExplanation: vi.fn(),
   employeeDemographics: vi.fn(),
   employeeCompensation: vi.fn(),
 };
@@ -51,6 +54,9 @@ vi.mock('@tims/db', () => ({
     assessmentConsent: { findMany: (...a: unknown[]) => findMany.assessmentConsent(...a) },
     proctoringSession: { findMany: (...a: unknown[]) => findMany.proctoringSession(...a) },
     proctoringEvent: { findMany: (...a: unknown[]) => findMany.proctoringEvent(...a) },
+    proctoringEvidence: { findMany: (...a: unknown[]) => findMany.proctoringEvidence(...a) },
+    proctoringFinding: { findMany: (...a: unknown[]) => findMany.proctoringFinding(...a) },
+    proctoringCandidateExplanation: { findMany: (...a: unknown[]) => findMany.proctoringCandidateExplanation(...a) },
     employeeDemographics: { findMany: (...a: unknown[]) => findMany.employeeDemographics(...a) },
     employeeCompensation: { findMany: (...a: unknown[]) => findMany.employeeCompensation(...a) },
     dataAccessLog: { createMany: (...a: unknown[]) => dataAccessCreateMany(...a) },
@@ -132,6 +138,9 @@ function seed(opts: { sensitive?: boolean } = {}) {
   findMany.assessmentConsent.mockResolvedValue([]);
   findMany.proctoringSession.mockResolvedValue([]);
   findMany.proctoringEvent.mockResolvedValue([]);
+  findMany.proctoringEvidence.mockResolvedValue([]);
+  findMany.proctoringFinding.mockResolvedValue([]);
+  findMany.proctoringCandidateExplanation.mockResolvedValue([]);
   queryRaw.mockResolvedValue([]);
   findMany.employeeDemographics.mockResolvedValue(
     sensitive ? [{ id: DEMO_ID, organizationId: SUBJECT_ORG, gender: 'female', dateOfBirth: null }] : [],
@@ -342,8 +351,9 @@ describe('DSAR export — the bundle shape is pinned', () => {
     expect(Object.keys(bundle.recruitment).sort()).toEqual(['applications', 'assessments', 'interviews', 'offers']);
     expect(Object.keys(bundle.hr).sort()).toEqual(['compensation', 'demographics']);
     expect(Object.keys(bundle.proctoring).sort()).toEqual([
-      'assessmentConsents', 'events', 'legacyEventsJsonIncluded', 'limits',
-      'manualAccessNotice', 'manualAccessRequired', 'sessions', 'truncated',
+      'assessmentConsents', 'events', 'evidence', 'explanations', 'findings', 'legacyEventsJsonIncluded', 'limits',
+      'manualAccessNotice', 'manualAccessRequired', 'physicalMediaIncluded',
+      'physicalMediaManualAccessRequired', 'sessions', 'truncated',
     ]);
     expect(bundle.recruitment.assessments[0]).not.toHaveProperty('candidateId');
     expect(bundle.recruitment.assessments[0]).not.toHaveProperty('organizationId');
@@ -355,6 +365,9 @@ describe('DSAR export — proctoring metadata', () => {
   const SESSION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const EVENT_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const CONSENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const EVIDENCE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const FINDING_ID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  const EXPLANATION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
   it('scopes every privileged read through matched assignment and organization IDs', async () => {
     // A corrupted cross-org assignment must never become a proctoring scope.
@@ -385,6 +398,34 @@ describe('DSAR export — proctoring metadata', () => {
     }]);
     expect(eventQuery.select.type).toBe(true);
     expect(eventQuery.take).toBe(10_001);
+    const evidenceQuery = findMany.proctoringEvidence.mock.calls[0][0] as {
+      where: { OR: unknown[] }; select: Record<string, boolean>; take: number;
+    };
+    expect(evidenceQuery.where.OR).toEqual([{
+      organizationId: SUBJECT_ORG, assignmentId: { in: ['asg-good'] },
+    }]);
+    expect(evidenceQuery.select).toHaveProperty('mediaType', true);
+    expect(evidenceQuery.take).toBe(1_001);
+    const findingQuery = findMany.proctoringFinding.mock.calls[0][0] as {
+      where: { OR: unknown[] }; select: Record<string, boolean>; take: number;
+    };
+    expect(findingQuery.where.OR).toEqual([{
+      organizationId: SUBJECT_ORG,
+      evidence: { is: { organizationId: SUBJECT_ORG, assignmentId: { in: ['asg-good'] } } },
+    }]);
+    expect(findingQuery.select).toHaveProperty('resultKind', true);
+    expect(findingQuery.take).toBe(10_001);
+    const explanationQuery = findMany.proctoringCandidateExplanation.mock.calls[0][0] as {
+      where: { OR: unknown[] }; select: Record<string, boolean>; take: number;
+    };
+    expect(explanationQuery.where.OR).toEqual([{
+      organizationId: SUBJECT_ORG,
+      assignmentId: { in: ['asg-good'] },
+      candidateId: { in: [CANDIDATE_ID] },
+    }]);
+    expect(explanationQuery.select).toMatchObject({ id: true, text: true, organizationId: true });
+    expect(explanationQuery.select).not.toHaveProperty('submissionId');
+    expect(explanationQuery.take).toBe(1_001);
   });
 
   it('skips all proctoring reads when the subject has no matching assignments', async () => {
@@ -394,10 +435,14 @@ describe('DSAR export — proctoring metadata', () => {
     expect(findMany.assessmentConsent).not.toHaveBeenCalled();
     expect(findMany.proctoringSession).not.toHaveBeenCalled();
     expect(findMany.proctoringEvent).not.toHaveBeenCalled();
+    expect(findMany.proctoringEvidence).not.toHaveBeenCalled();
+    expect(findMany.proctoringFinding).not.toHaveBeenCalled();
+    expect(findMany.proctoringCandidateExplanation).not.toHaveBeenCalled();
     expect(queryRaw).not.toHaveBeenCalled();
     expect(proctoring).toMatchObject({
-      assessmentConsents: [], sessions: [], events: [], manualAccessRequired: false,
-      truncated: { assessmentConsents: false, sessions: false, events: false },
+      assessmentConsents: [], sessions: [], events: [], evidence: [], findings: [], explanations: [],
+      manualAccessRequired: false, physicalMediaIncluded: false, physicalMediaManualAccessRequired: false,
+      truncated: { assessmentConsents: false, sessions: false, events: false, evidence: false, findings: false, explanations: false },
     });
   });
 
@@ -417,6 +462,11 @@ describe('DSAR export — proctoring metadata', () => {
     expect(consentQuery.where.OR).toEqual([
       { organizationId: SUBJECT_ORG, assignmentId: { in: ['asg-a'] }, candidateId: { in: [CANDIDATE_ID] } },
       { organizationId: ORG_B, assignmentId: { in: ['asg-b'] }, candidateId: { in: [CANDIDATE_B] } },
+    ]);
+    const evidenceQuery = findMany.proctoringEvidence.mock.calls[0][0] as { where: { OR: unknown[] } };
+    expect(evidenceQuery.where.OR).toEqual([
+      { organizationId: SUBJECT_ORG, assignmentId: { in: ['asg-a'] } },
+      { organizationId: ORG_B, assignmentId: { in: ['asg-b'] } },
     ]);
   });
 
@@ -486,6 +536,108 @@ describe('DSAR export — proctoring metadata', () => {
     expect(writtenRows().filter((row) => row.dataType === 'assessmentConsent')).toHaveLength(1_000);
     expect(dataAccessCreateMany.mock.calls.slice(0, 3).map((call) => (call[0] as { data: unknown[] }).data.length))
       .toEqual([500, 500, 1]);
+  });
+
+  it('exports only selected evidence and finding metadata, audits each record, and requires manual media follow-up', async () => {
+    findMany.proctoringEvidence.mockResolvedValue([{
+      id: EVIDENCE_ID, organizationId: SUBJECT_ORG, assignmentId: 'asg-1',
+      sessionId: SESSION_ID, mediaType: 'camera', captureReason: 'periodic',
+      captureSlot: 1, status: 'ready', byteSize: 1234,
+    }]);
+    findMany.proctoringFinding.mockResolvedValue([{
+      id: FINDING_ID, organizationId: SUBJECT_ORG, evidenceId: EVIDENCE_ID,
+      detector: 'rekognition', resultKind: 'observation', label: 'multiple_faces',
+      confidence: 0.81, detectedCount: 2,
+    }]);
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const p = JSON.parse(out.json).proctoring;
+    expect(p.evidence[0]).toMatchObject({ id: EVIDENCE_ID, mediaType: 'camera', status: 'ready' });
+    expect(p.findings[0]).toMatchObject({ id: FINDING_ID, evidenceId: EVIDENCE_ID, label: 'multiple_faces' });
+    expect(p.physicalMediaIncluded).toBe(false);
+    expect(p.physicalMediaManualAccessRequired).toBe(true);
+    expect(p.manualAccessRequired).toBe(true);
+    expect(p.manualAccessNotice).toContain('imágenes de proctoring');
+    expect(out.counts).toMatchObject({ proctoringEvidence: 1, proctoringFindings: 1 });
+    const evidenceSelect = (findMany.proctoringEvidence.mock.calls[0][0] as { select: Record<string, boolean> }).select;
+    for (const forbidden of ['stagingObjectKey', 'sealedObjectKey', 'sha256', 'stagingEtag', 'sealedEtag', 'clientCaptureId']) {
+      expect(evidenceSelect).not.toHaveProperty(forbidden);
+    }
+    const rows = writtenRows().filter((row) =>
+      ['proctoringEvidence', 'proctoringFinding'].includes(String(row.dataType)));
+    expect(rows.map((row) => [row.dataType, row.recordId, row.organizationId, row.action])).toEqual([
+      ['proctoringEvidence', EVIDENCE_ID, SUBJECT_ORG, 'export'],
+      ['proctoringFinding', FINDING_ID, SUBJECT_ORG, 'export'],
+    ]);
+  });
+
+  it('marks truncated evidence and findings for manual access and audits only exported rows', async () => {
+    findMany.proctoringEvidence.mockResolvedValue(Array.from({ length: 1_001 }, (_, i) => ({
+      id: `evidence-${i}`, organizationId: SUBJECT_ORG,
+    })));
+    findMany.proctoringFinding.mockResolvedValue(Array.from({ length: 10_001 }, (_, i) => ({
+      id: `finding-${i}`, organizationId: SUBJECT_ORG,
+    })));
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const p = JSON.parse(out.json).proctoring;
+    expect(p.evidence).toHaveLength(1_000);
+    expect(p.findings).toHaveLength(10_000);
+    expect(p.truncated).toMatchObject({ evidence: true, findings: true });
+    expect(p.manualAccessRequired).toBe(true);
+    expect(writtenRows().filter((row) => row.dataType === 'proctoringEvidence')).toHaveLength(1_000);
+    expect(writtenRows().filter((row) => row.dataType === 'proctoringFinding')).toHaveLength(10_000);
+  });
+
+  it('exports a candidate explanation with fail-closed audit and no idempotency token', async () => {
+    findMany.proctoringCandidateExplanation.mockResolvedValue([{
+      id: EXPLANATION_ID, organizationId: SUBJECT_ORG,
+      assignmentId: 'asg-1', sessionId: SESSION_ID, candidateId: CANDIDATE_ID,
+      text: 'My camera froze for a moment.', submittedAt: new Date('2026-09-24T10:00:00Z'),
+      expiresAt: new Date('2026-10-01T10:00:00Z'),
+    }]);
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const p = JSON.parse(out.json).proctoring;
+    expect(p.explanations).toHaveLength(1);
+    expect(p.explanations[0]).toMatchObject({ id: EXPLANATION_ID, text: 'My camera froze for a moment.' });
+    expect(p.explanations[0]).not.toHaveProperty('submissionId');
+    expect(out.counts.proctoringExplanations).toBe(1);
+    expect(writtenRows()).toContainEqual(expect.objectContaining({
+      dataType: 'proctoringCandidateExplanation', recordId: EXPLANATION_ID,
+      organizationId: SUBJECT_ORG, action: 'export',
+    }));
+
+    dataAccessCreateMany.mockRejectedValueOnce(new Error('explanation audit failed'));
+    await expect(caller().exportSubjectData({ email: 'a@b.com' })).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+  });
+
+  it('marks a capped explanation export for manual completion', async () => {
+    findMany.proctoringCandidateExplanation.mockResolvedValue(Array.from({ length: 1_001 }, (_, i) => ({
+      id: `explanation-${i}`, organizationId: SUBJECT_ORG,
+      assignmentId: 'asg-1', candidateId: CANDIDATE_ID, text: `Statement ${i}`,
+    })));
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const p = JSON.parse(out.json).proctoring;
+    expect(p.explanations).toHaveLength(1_000);
+    expect(p.truncated.explanations).toBe(true);
+    expect(p.manualAccessRequired).toBe(true);
+    expect(out.counts.proctoringExplanations).toBe(1_000);
+    expect(writtenRows().filter((row) => row.dataType === 'proctoringCandidateExplanation')).toHaveLength(1_000);
+  });
+
+  it('aborts before any export receipt when a media metadata audit fails', async () => {
+    findMany.proctoringEvidence.mockResolvedValue([{
+      id: EVIDENCE_ID, organizationId: SUBJECT_ORG, assignmentId: 'asg-1',
+    }]);
+    dataAccessCreateMany.mockImplementation((args: { data: Array<{ dataType: string }> }) =>
+      args.data.some((row) => row.dataType === 'proctoringEvidence')
+        ? Promise.reject(new Error('media audit write failed'))
+        : Promise.resolve({ count: args.data.length }),
+    );
+    await expect(caller().exportSubjectData({ email: 'a@b.com' })).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+    expect(auditLogCreate).not.toHaveBeenCalled();
   });
 
   it('aborts before any fail-soft or export-event audit if a proctoring audit insert fails', async () => {

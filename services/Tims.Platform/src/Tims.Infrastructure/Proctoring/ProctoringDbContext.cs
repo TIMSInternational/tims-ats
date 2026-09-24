@@ -14,6 +14,10 @@ public sealed class ProctoringDbContext(DbContextOptions<ProctoringDbContext> op
     public DbSet<ProctoringConsentRow> Consents => Set<ProctoringConsentRow>();
     public DbSet<ProctoringSessionRow> Sessions => Set<ProctoringSessionRow>();
     public DbSet<ProctoringEventRow> Events => Set<ProctoringEventRow>();
+    public DbSet<ProctoringEvidenceRow> Evidence => Set<ProctoringEvidenceRow>();
+    public DbSet<ProctoringFindingRow> Findings => Set<ProctoringFindingRow>();
+    public DbSet<ProctoringInferenceOutboxRow> InferenceOutbox => Set<ProctoringInferenceOutboxRow>();
+    public DbSet<ProctoringCandidateExplanationRow> CandidateExplanations => Set<ProctoringCandidateExplanationRow>();
     public DbSet<ProctoringEntitlementRow> Entitlements => Set<ProctoringEntitlementRow>();
     public DbSet<ProctoringAuditLogRow> AuditLogs => Set<ProctoringAuditLogRow>();
 
@@ -43,6 +47,7 @@ public sealed class ProctoringDbContext(DbContextOptions<ProctoringDbContext> op
             e.ToTable("vacancies"); e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.OrganizationId).HasColumnName("organization_id");
+            e.Property(x => x.CompanyId).HasColumnName("company_id");
             e.Property(x => x.TeamId).HasColumnName("team_id");
             e.Property(x => x.BusinessUnitId).HasColumnName("business_unit_id");
             e.Property(x => x.AssignedTo).HasColumnName("assigned_to");
@@ -55,6 +60,7 @@ public sealed class ProctoringDbContext(DbContextOptions<ProctoringDbContext> op
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.OrganizationId).HasColumnName("organization_id");
             e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.Duration).HasColumnName("duration");
             e.Property(x => x.ConfigJson).HasColumnName("config").HasColumnType("jsonb");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
         });
@@ -100,6 +106,9 @@ public sealed class ProctoringDbContext(DbContextOptions<ProctoringDbContext> op
             e.Property(x => x.EndedAt).HasColumnName("ended_at").HasColumnType("timestamp");
             e.Property(x => x.ConsentedAt).HasColumnName("consented_at").HasColumnType("timestamp");
             e.Property(x => x.ConsentVersion).HasColumnName("consent_version");
+            e.Property(x => x.MediaConsentedAt).HasColumnName("media_consented_at").HasColumnType("timestamp");
+            e.Property(x => x.MediaConsentVersion).HasColumnName("media_consent_version");
+            e.Property(x => x.MediaStoppedAt).HasColumnName("media_stopped_at").HasColumnType("timestamp");
             e.Property(x => x.LastHeartbeatAt).HasColumnName("last_heartbeat_at").HasColumnType("timestamp");
             e.Property(x => x.FlagCount).HasColumnName("flag_count");
             e.Property(x => x.Severity).HasColumnName("severity");
@@ -122,6 +131,79 @@ public sealed class ProctoringDbContext(DbContextOptions<ProctoringDbContext> op
             e.Property(x => x.Severity).HasColumnName("severity");
             e.Property(x => x.ClientAt).HasColumnName("client_at").HasColumnType("timestamp");
             e.Property(x => x.OccurredAt).HasColumnName("occurred_at").HasColumnType("timestamp");
+        });
+        modelBuilder.Entity<ProctoringEvidenceRow>(e =>
+        {
+            e.ToTable("proctoring_evidence"); e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.OrganizationId).HasColumnName("organization_id");
+            e.Property(x => x.AssignmentId).HasColumnName("assignment_id");
+            e.Property(x => x.SessionId).HasColumnName("session_id");
+            e.Property(x => x.ClientCaptureId).HasColumnName("client_capture_id");
+            e.Property(x => x.MediaType).HasColumnName("media_type");
+            e.Property(x => x.CaptureReason).HasColumnName("capture_reason");
+            e.Property(x => x.CaptureSlot).HasColumnName("capture_slot");
+            e.Property(x => x.Status).HasColumnName("status");
+            e.Property(x => x.StagingObjectKey).HasColumnName("staging_object_key");
+            e.Property(x => x.SealedObjectKey).HasColumnName("sealed_object_key");
+            e.Property(x => x.ContentType).HasColumnName("content_type");
+            e.Property(x => x.MaxBytes).HasColumnName("max_bytes");
+            e.Property(x => x.ByteSize).HasColumnName("byte_size");
+            e.Property(x => x.Sha256).HasColumnName("sha256");
+            e.Property(x => x.StagingEtag).HasColumnName("staging_etag");
+            e.Property(x => x.SealedEtag).HasColumnName("sealed_etag");
+            e.Property(x => x.ModelRevision).HasColumnName("model_revision");
+            e.Property(x => x.IntentExpiresAt).HasColumnName("intent_expires_at").HasColumnType("timestamp");
+            e.Property(x => x.ConfirmedAt).HasColumnName("confirmed_at").HasColumnType("timestamp");
+            e.Property(x => x.ExpiresAt).HasColumnName("expires_at").HasColumnType("timestamp");
+            e.Property(x => x.ProcessedAt).HasColumnName("processed_at").HasColumnType("timestamp");
+            e.Property(x => x.DeletedAt).HasColumnName("deleted_at").HasColumnType("timestamp");
+            e.Property(x => x.FailureCode).HasColumnName("failure_code");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
+        });
+        modelBuilder.Entity<ProctoringInferenceOutboxRow>(e =>
+        {
+            e.ToTable("proctoring_inference_outbox"); e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.OrganizationId).HasColumnName("organization_id");
+            e.Property(x => x.EvidenceId).HasColumnName("evidence_id");
+            e.Property(x => x.Status).HasColumnName("status");
+            e.Property(x => x.AttemptCount).HasColumnName("attempt_count");
+            e.Property(x => x.AvailableAt).HasColumnName("available_at").HasColumnType("timestamp");
+            e.Property(x => x.DispatchedAt).HasColumnName("dispatched_at").HasColumnType("timestamp");
+            e.Property(x => x.LastErrorCode).HasColumnName("last_error_code");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
+        });
+        modelBuilder.Entity<ProctoringFindingRow>(e =>
+        {
+            e.ToTable("proctoring_findings"); e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.OrganizationId).HasColumnName("organization_id");
+            e.Property(x => x.EvidenceId).HasColumnName("evidence_id");
+            e.Property(x => x.Detector).HasColumnName("detector");
+            e.Property(x => x.ModelRevision).HasColumnName("model_revision");
+            e.Property(x => x.Label).HasColumnName("label");
+            e.Property(x => x.ResultKind).HasColumnName("result_kind");
+            e.Property(x => x.Confidence).HasColumnName("confidence");
+            e.Property(x => x.DetectedCount).HasColumnName("detected_count");
+            e.Property(x => x.FailureCode).HasColumnName("failure_code");
+            e.Property(x => x.InferredAt).HasColumnName("inferred_at").HasColumnType("timestamp");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+        });
+        modelBuilder.Entity<ProctoringCandidateExplanationRow>(e =>
+        {
+            e.ToTable("proctoring_candidate_explanations"); e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.OrganizationId).HasColumnName("organization_id");
+            e.Property(x => x.AssignmentId).HasColumnName("assignment_id");
+            e.Property(x => x.SessionId).HasColumnName("session_id");
+            e.Property(x => x.CandidateId).HasColumnName("candidate_id");
+            e.Property(x => x.SubmissionId).HasColumnName("submission_id");
+            e.Property(x => x.Text).HasColumnName("text");
+            e.Property(x => x.SubmittedAt).HasColumnName("submitted_at").HasColumnType("timestamp");
+            e.Property(x => x.ExpiresAt).HasColumnName("expires_at").HasColumnType("timestamp");
         });
         modelBuilder.Entity<ProctoringEntitlementRow>(e =>
         {
@@ -171,6 +253,7 @@ public sealed class ProctoringVacancyRow
 {
     public Guid Id { get; set; }
     public Guid OrganizationId { get; set; }
+    public Guid? CompanyId { get; set; }
     public Guid? TeamId { get; set; }
     public Guid? BusinessUnitId { get; set; }
     public Guid? AssignedTo { get; set; }
@@ -183,6 +266,7 @@ public sealed class ProctoringAssessmentTypeRow
     public Guid Id { get; set; }
     public Guid OrganizationId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public int? Duration { get; set; }
     public string? ConfigJson { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -226,6 +310,9 @@ public sealed class ProctoringSessionRow
     public DateTime? EndedAt { get; set; }
     public DateTime? ConsentedAt { get; set; }
     public string? ConsentVersion { get; set; }
+    public DateTime? MediaConsentedAt { get; set; }
+    public string? MediaConsentVersion { get; set; }
+    public DateTime? MediaStoppedAt { get; set; }
     public DateTime? LastHeartbeatAt { get; set; }
     public int FlagCount { get; set; }
     public string? Severity { get; set; }
@@ -247,6 +334,79 @@ public sealed class ProctoringEventRow
     public string Severity { get; set; } = string.Empty;
     public DateTime? ClientAt { get; set; }
     public DateTime OccurredAt { get; set; }
+}
+
+public sealed class ProctoringEvidenceRow
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid AssignmentId { get; set; }
+    public Guid SessionId { get; set; }
+    public Guid ClientCaptureId { get; set; }
+    public string MediaType { get; set; } = string.Empty;
+    public string CaptureReason { get; set; } = string.Empty;
+    public int CaptureSlot { get; set; }
+    public string Status { get; set; } = "intent";
+    public string StagingObjectKey { get; set; } = string.Empty;
+    public string? SealedObjectKey { get; set; }
+    public string ContentType { get; set; } = string.Empty;
+    public int MaxBytes { get; set; }
+    public int? ByteSize { get; set; }
+    public string? Sha256 { get; set; }
+    public string? StagingEtag { get; set; }
+    public string? SealedEtag { get; set; }
+    public string? ModelRevision { get; set; }
+    public DateTime IntentExpiresAt { get; set; }
+    public DateTime? ConfirmedAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public DateTime? ProcessedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public string? FailureCode { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+public sealed class ProctoringInferenceOutboxRow
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid EvidenceId { get; set; }
+    public string Status { get; set; } = "pending";
+    public int AttemptCount { get; set; }
+    public DateTime AvailableAt { get; set; }
+    public DateTime? DispatchedAt { get; set; }
+    public string? LastErrorCode { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+public sealed class ProctoringFindingRow
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid EvidenceId { get; set; }
+    public string Detector { get; set; } = string.Empty;
+    public string ModelRevision { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string ResultKind { get; set; } = string.Empty;
+    public double? Confidence { get; set; }
+    public int? DetectedCount { get; set; }
+    public string? FailureCode { get; set; }
+    public DateTime InferredAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class ProctoringCandidateExplanationRow
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid AssignmentId { get; set; }
+    public Guid SessionId { get; set; }
+    public Guid CandidateId { get; set; }
+    public Guid SubmissionId { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public DateTime SubmittedAt { get; set; }
+    public DateTime ExpiresAt { get; set; }
 }
 
 public sealed class ProctoringEntitlementRow

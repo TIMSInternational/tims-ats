@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tims.Application.Access;
 using Tims.Application.Audit;
 using Tims.Domain.Access;
+using Tims.Domain.Identity;
 using Tims.Infrastructure;
 
 namespace Tims.Infrastructure.Proctoring;
@@ -19,21 +20,70 @@ public sealed partial class StaffProctoringStore(
     private readonly CandidateProctoringRepository _candidateRepository = candidateRepository;
 
     public async Task<StaffProctoringScope> ResolveScopeAsync(
-        Guid organizationId, Guid userId, AccessScope accessScope, CancellationToken ct)
+        Guid organizationId, Guid userId, PrincipalType principalType,
+        string action, CancellationToken ct)
     {
-        if (accessScope is AccessScope.Company or AccessScope.Organization)
+        if (principalType == PrincipalType.PlatformOwner)
         {
-            return new StaffProctoringScope(organizationId, userId, accessScope, [], []);
+            // The platform owner still requires an explicit selected tenant. All
+            // following assignment queries carry that tenant and use RLS.
+            return new StaffProctoringScope(organizationId, userId,
+                AccessScope.Organization, [], [],
+                [new StaffProctoringRoleGrant(AccessScope.Organization, null, null)]);
         }
+        if (principalType != PrincipalType.OrgUser || action is not ("read" or "update"))
+            throw new StaffProctoringFailure(403, "proctoring_scope_denied");
+
+        // PermissionService's 5-minute cache and super_admin shortcut do not
+        // carry user_roles company/unit scopes or expiry. Re-read the current,
+        // role-specific grant for this sensitive surface on every request.
+        var now = DateTime.UtcNow;
+        await using var tenant = await TenantScope.BeginAsync(_db, organizationId, ct);
+        var grantRows = await _db.Database.SqlQuery<ActiveStaffGrant>($"""
+            SELECT rp.scope AS "Scope", ur.company_scope AS "CompanyScope",
+                   ur.unit_scope AS "UnitScope"
+              FROM user_roles ur
+              JOIN users u ON u.id = ur.user_id
+                AND u.organization_id = {organizationId}
+                AND u.is_active AND u.deleted_at IS NULL
+              JOIN roles r ON r.id = ur.role_id
+                AND r.organization_id = {organizationId} AND r.is_active
+              JOIN role_permissions rp ON rp.role_id = r.id
+              JOIN permissions p ON p.id = rp.permission_id
+                AND p.module = 'assessment' AND p.action = {action}
+             WHERE ur.user_id = {userId}
+               AND ur.assigned_at <= ({now} AT TIME ZONE 'UTC')
+               AND (ur.expires_at IS NULL OR ur.expires_at > ({now} AT TIME ZONE 'UTC'))
+               AND (r.slug = 'super_admin'
+                 OR ({action} = 'read' AND r.slug IN ('hr_admin', 'hrbp')))
+            """).ToListAsync(ct);
+        await tenant.CommitAsync(ct);
+
+        var grants = new List<StaffProctoringRoleGrant>();
+        foreach (var row in grantRows)
+        {
+            var rawScope = row.Scope == "all" ? "organization" : row.Scope;
+            if (AccessScopes.TryParse(rawScope, out var parsed))
+                grants.Add(new StaffProctoringRoleGrant(parsed,
+                    row.CompanyScope, row.UnitScope));
+        }
+        if (grants.Count == 0)
+            throw new StaffProctoringFailure(403, "proctoring_scope_denied");
+
+        var accessScope = AccessScopes.WidestScope(grants.Select(grant => grant.Scope));
+        if (grants.All(grant => grant.Scope is not (AccessScope.Team or AccessScope.Unit)))
+            return new StaffProctoringScope(organizationId, userId, accessScope,
+                [], [], grants);
 
         var loader = _anchors.Create(organizationId, userId);
         try
         {
-            var teamIds = accessScope == AccessScope.Team
+            var teamIds = grants.Any(grant => grant.Scope == AccessScope.Team)
                 ? ParseIds(await loader.LedTeamIdsAsync(ct)) : [];
-            var unitIds = accessScope == AccessScope.Unit
+            var unitIds = grants.Any(grant => grant.Scope == AccessScope.Unit)
                 ? ParseIds(await loader.UnitIdsAsync(ct)) : [];
-            return new StaffProctoringScope(organizationId, userId, accessScope, teamIds, unitIds);
+            return new StaffProctoringScope(organizationId, userId, accessScope,
+                teamIds, unitIds, grants);
         }
         finally
         {
@@ -46,6 +96,13 @@ public sealed partial class StaffProctoringStore(
                 disposable.Dispose();
             }
         }
+    }
+
+    private sealed class ActiveStaffGrant
+    {
+        public string Scope { get; set; } = string.Empty;
+        public Guid? CompanyScope { get; set; }
+        public Guid? UnitScope { get; set; }
     }
 
     private static Guid[] ParseIds(IReadOnlyList<string> values) =>
@@ -76,7 +133,7 @@ public sealed partial class StaffProctoringStore(
 
     private async Task ReconcileQueueAsync(StaffProctoringScope scope, CancellationToken ct)
     {
-        if (scope.Scope is AccessScope.Company or AccessScope.Organization)
+        if (scope.AllowsOrganizationPolicy)
         {
             await _candidateRepository.ReconcileCompletedForOrganizationAsync(
                 scope.OrganizationId, null, ct);

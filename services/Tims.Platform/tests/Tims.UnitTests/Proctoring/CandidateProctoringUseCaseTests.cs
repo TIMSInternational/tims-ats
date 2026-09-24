@@ -31,8 +31,9 @@ public sealed class CandidateProctoringUseCaseTests
 
     [Theory]
     [InlineData("tab_hidden", "low")]
-    [InlineData("face_missing", "medium")]
-    [InlineData("model_unavailable", "medium")]
+    [InlineData("camera_stopped", "medium")]
+    [InlineData("screen_share_stopped", "medium")]
+    [InlineData("media_capture_stopped", "low")]
     public async Task Reports_only_server_ranked_advisory_signals(string type, string severity)
     {
         var repository = new RecordingRepository();
@@ -51,6 +52,9 @@ public sealed class CandidateProctoringUseCaseTests
     [Theory]
     [InlineData("cheating")]
     [InlineData("heartbeat_gap")]
+    [InlineData("face_missing")]
+    [InlineData("multiple_faces")]
+    [InlineData("model_unavailable")]
     [InlineData("")]
     public async Task Rejects_untrusted_or_server_only_signal_types(string type)
     {

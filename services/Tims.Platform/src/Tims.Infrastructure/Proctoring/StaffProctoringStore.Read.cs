@@ -90,16 +90,16 @@ public sealed partial class StaffProctoringStore
             if (cursorId is { } cursor)
             {
                 var visible = from session in sessions
-                    join assignment in ScopedAssignments(scope) on session.AssignmentId equals assignment.Id
-                    where session.Id == cursor
-                        && (session.EndedAt != null || assignment.Status == "completed"
-                            || (assignment.Status == "in_progress"
-                                && (session.LastHeartbeatAt ?? session.StartedAt) < staleBefore))
-                    let effectiveEnd = session.EndedAt ?? (assignment.Status == "completed"
-                        ? (assignment.CompletedAt > session.StartedAt
-                            ? assignment.CompletedAt : session.StartedAt)
-                        : null)
-                    select new { session.ReviewedAt, EffectiveEnd = effectiveEnd };
+                              join assignment in ScopedAssignments(scope) on session.AssignmentId equals assignment.Id
+                              where session.Id == cursor
+                                  && (session.EndedAt != null || assignment.Status == "completed"
+                                      || (assignment.Status == "in_progress"
+                                          && (session.LastHeartbeatAt ?? session.StartedAt) < staleBefore))
+                              let effectiveEnd = session.EndedAt ?? (assignment.Status == "completed"
+                                  ? (assignment.CompletedAt > session.StartedAt
+                                      ? assignment.CompletedAt : session.StartedAt)
+                                  : null)
+                              select new { session.ReviewedAt, EffectiveEnd = effectiveEnd };
                 var cursorRow = await visible.SingleOrDefaultAsync(ct)
                     ?? throw new StaffProctoringFailure(400, "invalid_cursor");
                 sessions = QueueSessions(scope.OrganizationId, staleBefore, cursor,
@@ -107,26 +107,26 @@ public sealed partial class StaffProctoringStore
             }
 
             var query = from session in sessions
-                join assignment in ScopedAssignments(scope) on session.AssignmentId equals assignment.Id
-                join candidate in _db.Candidates on assignment.CandidateId equals candidate.Id
-                join assessmentType in _db.AssessmentTypes on assignment.AssessmentTypeId equals assessmentType.Id
-                where candidate.OrganizationId == scope.OrganizationId
-                    && assessmentType.OrganizationId == scope.OrganizationId
-                    && (session.EndedAt != null || assignment.Status == "completed"
-                        || (assignment.Status == "in_progress"
-                            && (session.LastHeartbeatAt ?? session.StartedAt) < staleBefore))
-                let effectiveEnd = session.EndedAt ?? (assignment.Status == "completed"
-                    ? (assignment.CompletedAt > session.StartedAt
-                        ? assignment.CompletedAt : session.StartedAt)
-                    : null)
-                orderby session.ReviewedAt == null descending,
-                    session.ReviewedAt,
-                    effectiveEnd != null descending, effectiveEnd descending,
-                    session.Id descending
-                select new QueueRow(session.Id, assignment.Id, candidate.Id,
-                    candidate.FirstName, candidate.LastName, assessmentType.Name,
-                    effectiveEnd, session.FlagCount, session.Severity,
-                    session.ReviewStatus, effectiveEnd == null ? "needs_attention" : "completed");
+                        join assignment in ScopedAssignments(scope) on session.AssignmentId equals assignment.Id
+                        join candidate in _db.Candidates on assignment.CandidateId equals candidate.Id
+                        join assessmentType in _db.AssessmentTypes on assignment.AssessmentTypeId equals assessmentType.Id
+                        where candidate.OrganizationId == scope.OrganizationId
+                            && assessmentType.OrganizationId == scope.OrganizationId
+                            && (session.EndedAt != null || assignment.Status == "completed"
+                                || (assignment.Status == "in_progress"
+                                    && (session.LastHeartbeatAt ?? session.StartedAt) < staleBefore))
+                        let effectiveEnd = session.EndedAt ?? (assignment.Status == "completed"
+                            ? (assignment.CompletedAt > session.StartedAt
+                                ? assignment.CompletedAt : session.StartedAt)
+                            : null)
+                        orderby session.ReviewedAt == null descending,
+                            session.ReviewedAt,
+                            effectiveEnd != null descending, effectiveEnd descending,
+                            session.Id descending
+                        select new QueueRow(session.Id, assignment.Id, candidate.Id,
+                            candidate.FirstName, candidate.LastName, assessmentType.Name,
+                            effectiveEnd, session.FlagCount, session.Severity,
+                            session.ReviewStatus, effectiveEnd == null ? "needs_attention" : "completed");
 
             rows = await query.Take(limit + 1).ToListAsync(ct);
             await tenant.CommitAsync(ct);

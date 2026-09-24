@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
 import { PlatformApiError } from '../../apps/web/lib/platform-api/client';
 
 const mutateReview = vi.fn();
+const resetReview = vi.fn();
+const refetchExplanation = vi.fn();
 const fetchNextPage = vi.fn();
 let queryResult: {
   isLoading: boolean;
@@ -18,6 +20,8 @@ let queryResult: {
 let capabilityEnabled = true;
 let canRead = true;
 let canWrite = true;
+let explanationIsSuccess = true;
+let explanationId: string | null = null;
 
 vi.mock('../../apps/web/lib/proctoring/staff-access', () => ({
   useProctoringStaffAccess: () => ({ canRead, canWrite, isLoading: false }),
@@ -29,7 +33,15 @@ vi.mock('../../apps/web/lib/platform-api/proctoring', () => ({
 
 vi.mock('../../apps/web/lib/platform-api/proctoring-staff', () => ({
   useProctoringEvidence: () => queryResult,
-  useReviewProctoring: () => ({ mutate: mutateReview, isPending: false, isError: false }),
+  useReviewProctoring: () => ({ mutate: mutateReview, reset: resetReview, isPending: false, isError: false }),
+  useStaffCandidateExplanation: () => ({
+    isLoading: !explanationIsSuccess, isError: false, isSuccess: explanationIsSuccess,
+    data: explanationId ? {
+      id: explanationId, text: 'My connection failed.',
+      submittedAt: '2026-09-24T12:00:00Z', expiresAt: '2026-10-01T12:00:00Z',
+    } : null,
+    refetch: refetchExplanation,
+  }),
 }));
 
 import { ProctoringReview } from '../../apps/web/app/(admin)/recruitment/candidates/[id]/proctoring-review';
@@ -46,10 +58,15 @@ function renderPanel() {
 describe('staff proctoring review', () => {
   beforeEach(() => {
     mutateReview.mockClear();
+    resetReview.mockClear();
+    refetchExplanation.mockReset();
+    refetchExplanation.mockResolvedValue({ isSuccess: true });
     fetchNextPage.mockClear();
     capabilityEnabled = true;
     canRead = true;
     canWrite = true;
+    explanationIsSuccess = true;
+    explanationId = null;
     queryResult = { isLoading: false, isError: false };
   });
 
@@ -98,7 +115,8 @@ describe('staff proctoring review', () => {
       assignmentId: '11111111-1111-4111-8111-111111111111',
       status: 'concern',
       notes: 'Please review the session context.',
-    });
+      seenExplanationId: null,
+    }, expect.any(Object));
   });
 
   it('distinguishes no proctoring session from an unexpected load failure', () => {
@@ -153,6 +171,44 @@ describe('staff proctoring review', () => {
     fireEvent.click(screen.getByRole('button', { name: en.proctoring.review.title }));
     expect(screen.getByText(en.proctoring.review.signalsOnly)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.proctoring.review.save })).not.toBeInTheDocument();
+  });
+
+  it('waits for the candidate statement read before a reviewer can save a decision', () => {
+    explanationIsSuccess = false;
+    queryResult = { isLoading: false, isError: false, data: { pages: [{ status: 'completed',
+      flagCount: 0, startedAt: '2026-09-24T11:50:00Z', endedAt: '2026-09-24T12:00:00Z',
+      review: { status: 'unreviewed', notes: null, reviewedAt: null }, events: [] }] } };
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.review.title }));
+    const save = screen.getByRole('button', { name: en.proctoring.review.save });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(mutateReview).not.toHaveBeenCalled();
+  });
+
+  it('requires rereading a changed candidate statement after a review conflict', async () => {
+    explanationId = '55555555-5555-4555-8555-555555555555';
+    queryResult = { isLoading: false, isError: false, data: { pages: [{ status: 'completed',
+      flagCount: 0, startedAt: '2026-09-24T11:50:00Z', endedAt: '2026-09-24T12:00:00Z',
+      review: { status: 'unreviewed', notes: null, reviewedAt: null }, events: [] }] } };
+    mutateReview.mockImplementationOnce((_input, callbacks) => {
+      callbacks.onError(new PlatformApiError(409, 'Conflict'));
+    });
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.review.title }));
+    fireEvent.change(screen.getByRole('combobox', { name: en.proctoring.review.title }), {
+      target: { value: 'clear' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.review.save }));
+    expect(mutateReview).toHaveBeenCalledWith(expect.objectContaining({
+      seenExplanationId: explanationId,
+    }), expect.any(Object));
+    expect(screen.getByText(en.proctoring.review.explanationChanged)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.proctoring.review.save })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.review.refreshExplanation }));
+    await waitFor(() => expect(resetReview).toHaveBeenCalledOnce());
+    expect(refetchExplanation).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: en.proctoring.review.save })).not.toBeDisabled();
   });
 
   it('hides sensitive evidence controls from an unauthorized role', () => {

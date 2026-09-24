@@ -1,9 +1,10 @@
 /**
- * Advisory, on-device face-count signals for an assessment camera stream.
+ * Optional, candidate-only camera positioning hints.
  *
  * MediaPipe BlazeFace detects prominent, front-facing faces; it cannot verify
- * identity, intent, or whether misconduct occurred. Never upload frames,
- * landmarks, bounding boxes, or detection scores from this module.
+ * identity, intent, or whether misconduct occurred. Its output must not gate
+ * assessment access or be sent to the server. Never upload frames, landmarks,
+ * bounding boxes, or detection scores from this module.
  */
 
 export type FaceFinding = "no_face" | "multiple_faces";
@@ -184,7 +185,7 @@ class UnavailableFaceDetector implements FaceDetector {
 /**
  * Initializes the self-hosted MediaPipe Tasks Vision 1.0.1 runtime and Google's
  * Apache-2.0 BlazeFace short-range float16 model. If initialization fails,
- * `sample()` reports `unavailable`; assessment policy decides how to proceed.
+ * `sample()` reports `unavailable`; the assessment remains available.
  */
 async function loadMediaPipeDetector(): Promise<MediaPipeDetector> {
   // Import after camera consent so the 1.0.1 bundle is not part of ordinary

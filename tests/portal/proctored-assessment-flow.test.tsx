@@ -4,12 +4,15 @@ import { useEffect } from 'react';
 import { I18nProvider } from '../../apps/web/lib/i18n';
 import en from '../../apps/web/lib/i18n/en.json';
 
-const { startMutate, complete, availability, capabilityRefetch, monitorFlush } = vi.hoisted(() => ({
+const { startMutate, complete, consentMedia, availability, capabilityRefetch, monitorFlush, mediaOrigin, mediaOptIn } = vi.hoisted(() => ({
   startMutate: vi.fn(),
   complete: vi.fn(),
-  availability: { enabled: true, loading: false, error: false },
+  consentMedia: vi.fn(),
+  availability: { enabled: true, mediaEvidenceEnabled: false, loading: false, error: false },
   capabilityRefetch: vi.fn(),
   monitorFlush: vi.fn(),
+  mediaOrigin: { configured: false },
+  mediaOptIn: { value: false },
 }));
 const invalidate = vi.fn().mockResolvedValue(undefined);
 const cameraStop = vi.fn();
@@ -25,8 +28,12 @@ vi.mock('../../apps/web/lib/trpc', () => ({
 vi.mock('../../apps/web/lib/platform-api/proctoring', () => ({
   useStartCandidateProctoring: () => ({ mutateAsync: startMutate }),
   completeCandidateProctoring: complete,
+  consentCandidateProctoringMedia: consentMedia,
+  isMediaEvidenceUploadConfigured: () => mediaOrigin.configured,
   useProctoringCapability: () => ({
-    data: availability.loading || availability.error ? undefined : { enabled: availability.enabled },
+    data: availability.loading || availability.error ? undefined : {
+      enabled: availability.enabled, mediaEvidenceEnabled: availability.mediaEvidenceEnabled,
+    },
     isLoading: availability.loading,
     isError: availability.error,
     refetch: capabilityRefetch,
@@ -37,35 +44,38 @@ vi.mock(
   () => ({
     ProctoringPreflight: ({
       isResume,
+      mediaEvidenceUnavailableDuration,
       onAuthorize,
       onReady,
     }: {
       isResume: boolean;
-      onAuthorize: (media: { camera: MediaStream; screen: MediaStream }) => Promise<Date>;
-      onReady: (media: { camera: MediaStream; screen: MediaStream }, startedAt: Date) => void;
-    }) => (
+      mediaEvidenceUnavailableDuration?: boolean;
+      onAuthorize: (media: { camera: MediaStream; screen: MediaStream }, mediaEvidenceOptIn: boolean) => Promise<Date>;
+      onReady: (media: { camera: MediaStream; screen: MediaStream }, startedAt: Date, positioningHintsEnabled: boolean, mediaEvidenceOptIn: boolean) => void;
+    }) => (<>
+      {mediaEvidenceUnavailableDuration && <span>media-duration-unavailable</span>}
       <button
         type="button"
         onClick={async () => {
-          const media = { camera, screen: screenShare };
-          const startedAt = await onAuthorize(media);
-          onReady(media, startedAt);
+      const media = { camera, screen: screenShare };
+          const startedAt = await onAuthorize(media, mediaOptIn.value);
+          onReady(media, startedAt, false, mediaOptIn.value);
         }}
       >
         {isResume ? 'resume-preflight' : 'start-preflight'}
       </button>
-    ),
+    </>),
   }),
 );
 vi.mock(
   '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/proctoring-monitor',
   () => ({
-    ProctoringMonitor: ({ onRegisterFlush }: { onRegisterFlush?: (flush: (() => Promise<void>) | null) => void }) => {
+    ProctoringMonitor: ({ onRegisterFlush, mediaEvidenceConsented }: { onRegisterFlush?: (flush: (() => Promise<void>) | null) => void; mediaEvidenceConsented?: boolean }) => {
       useEffect(() => {
         onRegisterFlush?.(() => monitorFlush());
         return () => onRegisterFlush?.(null);
       }, [onRegisterFlush]);
-      return <div>monitor-stub</div>;
+      return <div><span>monitor-stub</span><span>{mediaEvidenceConsented ? 'media-on' : 'media-off'}</span></div>;
     },
   }),
 );
@@ -90,9 +100,13 @@ describe('ProctoredAssessmentFlow', () => {
     localStorage.setItem('tims-locale', 'EN');
     startMutate.mockReset().mockResolvedValue({ startedAt: new Date('2026-09-24T10:00:00.000Z') });
     complete.mockReset().mockResolvedValue({ status: 'completed' });
+    consentMedia.mockReset().mockResolvedValue({ accepted: true, consentVersion: 'media-v1' });
     availability.enabled = true;
+    availability.mediaEvidenceEnabled = false;
     availability.loading = false;
     availability.error = false;
+    mediaOrigin.configured = false;
+    mediaOptIn.value = false;
     capabilityRefetch.mockReset();
     monitorFlush.mockReset().mockResolvedValue(undefined);
     invalidate.mockClear();
@@ -101,6 +115,65 @@ describe('ProctoredAssessmentFlow', () => {
   });
 
   afterEach(() => vi.useRealTimers());
+
+  it('starts optional media capture only after the separate media consent succeeds', async () => {
+    availability.mediaEvidenceEnabled = true;
+    mediaOrigin.configured = true;
+    mediaOptIn.value = true;
+    render(
+      <I18nProvider>
+        <ProctoredAssessmentFlow orgSlug="test-org" assignmentId="00000000-0000-4000-8000-000000000001"
+          status="assigned" existingStartedAt={null} expiresAt={null} durationMinutes={30} onSubmitted={vi.fn()} />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'start-preflight' }));
+    await waitFor(() => expect(screen.getByText('media-on')).toBeInTheDocument());
+    expect(consentMedia).toHaveBeenCalledWith({ orgSlug: 'test-org', assignmentId: '00000000-0000-4000-8000-000000000001' });
+    expect(startMutate.mock.invocationCallOrder[0]).toBeLessThan(consentMedia.mock.invocationCallOrder[0]!);
+  });
+
+  it('continues event-only monitoring when media is available but the candidate does not opt in', async () => {
+    availability.mediaEvidenceEnabled = true;
+    mediaOrigin.configured = true;
+    render(
+      <I18nProvider>
+        <ProctoredAssessmentFlow orgSlug="test-org" assignmentId="00000000-0000-4000-8000-000000000001"
+          status="assigned" existingStartedAt={null} expiresAt={null} durationMinutes={30} onSubmitted={vi.fn()} />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'start-preflight' }));
+    await waitFor(() => expect(screen.getByText('media-off')).toBeInTheDocument());
+    expect(consentMedia).not.toHaveBeenCalled();
+  });
+
+  it('keeps longer assessments on browser connection monitoring without requesting media consent', async () => {
+    availability.mediaEvidenceEnabled = true;
+    mediaOrigin.configured = true;
+    mediaOptIn.value = true; // A stale preflight callback still cannot turn on media.
+    render(
+      <I18nProvider>
+        <ProctoredAssessmentFlow orgSlug="test-org" assignmentId="00000000-0000-4000-8000-000000000001"
+          status="assigned" existingStartedAt={null} expiresAt={null} durationMinutes={60} onSubmitted={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText('media-duration-unavailable')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'start-preflight' }));
+    await waitFor(() => expect(screen.getByText('media-off')).toBeInTheDocument());
+    expect(consentMedia).not.toHaveBeenCalled();
+  });
+
+  it('keeps media capture off when the capability is disabled even if a stale UI asks to opt in', async () => {
+    mediaOptIn.value = true;
+    render(
+      <I18nProvider>
+        <ProctoredAssessmentFlow orgSlug="test-org" assignmentId="00000000-0000-4000-8000-000000000001"
+          status="assigned" existingStartedAt={null} expiresAt={null} durationMinutes={30} onSubmitted={vi.fn()} />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'start-preflight' }));
+    await waitFor(() => expect(screen.getByText('media-off')).toBeInTheDocument());
+    expect(consentMedia).not.toHaveBeenCalled();
+  });
 
   it('starts atomically only after preflight and keeps monitoring mounted while questions load', async () => {
     const onSubmitted = vi.fn();

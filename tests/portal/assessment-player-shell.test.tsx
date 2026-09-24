@@ -28,6 +28,10 @@ vi.mock(
   '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/proctored-assessment-flow',
   () => ({ ProctoredAssessmentFlow: () => <div>proctored-preflight-stub</div> }),
 );
+vi.mock(
+  '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/candidate-proctoring-explanation',
+  () => ({ CandidateProctoringExplanation: () => <div>candidate-statement-stub</div> }),
+);
 
 import { AssessmentPlayerShell } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-player-shell';
 
@@ -54,6 +58,14 @@ describe('AssessmentPlayerShell', () => {
     renderShell();
     expect(screen.getByText(en.assessmentPlayer.notFound)).toBeInTheDocument();
     expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
+  });
+
+  it('offers the statement on the completed result only for a proctored assignment', () => {
+    assessmentsQueryData = [
+      { id: 'a1', status: 'completed', proctoringRequired: true, result: null },
+    ];
+    renderShell();
+    expect(screen.getByText('candidate-statement-stub')).toBeInTheDocument();
   });
 
   it('renders the consent gate for status=assigned', () => {
@@ -104,6 +116,7 @@ describe('AssessmentPlayerShell', () => {
     renderShell();
     expect(screen.getByText(/90%/)).toBeInTheDocument();
     expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
+    expect(screen.queryByText('candidate-statement-stub')).not.toBeInTheDocument();
   });
 
   it('renders a plain cancelled message for status=cancelled', () => {

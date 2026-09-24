@@ -5,6 +5,8 @@ import { trpc } from '../../../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../../../lib/i18n';
 import {
   completeCandidateProctoring,
+  consentCandidateProctoringMedia,
+  isMediaEvidenceUploadConfigured,
   useProctoringCapability,
   useStartCandidateProctoring,
 } from '../../../../../../../../lib/platform-api/proctoring';
@@ -57,13 +59,21 @@ export function ProctoredAssessmentFlow({
   const utils = trpc.useUtils();
   const [startedAt, setStartedAt] = useState<Date | null>(null);
   const [media, setMedia] = useState<ProctoringMedia | null>(null);
+  const [positioningHintsEnabled, setPositioningHintsEnabled] = useState(false);
+  const [mediaEvidenceConsented, setMediaEvidenceConsented] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [completionError, setCompletionError] = useState(false);
   const latestMedia = useRef<ProctoringMedia | null>(null);
   const flushRef = useRef<(() => Promise<void>) | null>(null);
+  const stopEvidenceRef = useRef<(() => void) | null>(null);
   const finishingRef = useRef(false);
   const capability = useProctoringCapability();
   const start = useStartCandidateProctoring();
+  const mediaEvidenceConfigured = capability.data?.mediaEvidenceEnabled === true
+    && isMediaEvidenceUploadConfigured();
+  const mediaDurationSupported = durationMinutes !== null && durationMinutes >= 1
+    && durationMinutes <= 30;
+  const mediaEvidenceAvailable = mediaEvidenceConfigured && mediaDurationSupported;
 
   const registerFlush = useCallback((flush: (() => Promise<void>) | null) => {
     flushRef.current = flush;
@@ -76,7 +86,7 @@ export function ProctoredAssessmentFlow({
     [],
   );
 
-  const onAuthorized = async (): Promise<Date> => {
+  const onAuthorized = async (_media: ProctoringMedia, mediaOptIn: boolean): Promise<Date> => {
     const result = await start.mutateAsync({
       orgSlug,
       assignmentId,
@@ -84,6 +94,9 @@ export function ProctoredAssessmentFlow({
       proctoringConsentAccepted: true,
       capabilities: { camera: true, screen: true },
     });
+    if (mediaOptIn && mediaEvidenceAvailable) {
+      await consentCandidateProctoringMedia({ orgSlug, assignmentId });
+    }
     return result.startedAt;
   };
 
@@ -92,6 +105,7 @@ export function ProctoredAssessmentFlow({
     finishingRef.current = true;
     setSubmitted(true);
     setCompletionError(false);
+    stopEvidenceRef.current?.();
     if (latestMedia.current) stopProctoringMedia(latestMedia.current);
     latestMedia.current = null;
     try {
@@ -152,10 +166,14 @@ export function ProctoredAssessmentFlow({
         {availabilityGate ?? (
           <ProctoringPreflight
             isResume={status === 'in_progress'}
+            mediaEvidenceAvailable={mediaEvidenceAvailable}
+            mediaEvidenceUnavailableDuration={mediaEvidenceConfigured && !mediaDurationSupported}
             onAuthorize={onAuthorized}
-            onReady={(readyMedia, started) => {
+            onReady={(readyMedia, started, showPositioningHints, mediaOptIn) => {
               latestMedia.current = readyMedia;
               setMedia(readyMedia);
+              setPositioningHintsEnabled(showPositioningHints);
+              setMediaEvidenceConsented(mediaOptIn && mediaEvidenceAvailable);
               setStartedAt(started);
               void utils.candidatePortal.getMyAssessments.invalidate();
             }}
@@ -172,10 +190,13 @@ export function ProctoredAssessmentFlow({
           orgSlug={orgSlug}
           assignmentId={assignmentId}
           initialMedia={media}
+          initialPositioningHintsEnabled={positioningHintsEnabled}
+          mediaEvidenceConsented={mediaEvidenceConsented}
           onMediaChange={(updated) => {
             latestMedia.current = updated;
           }}
           onRegisterFlush={registerFlush}
+          onRegisterMediaEvidenceStop={(stop) => { stopEvidenceRef.current = stop; }}
         />
       </div>
       <AssessmentQuestionWizard

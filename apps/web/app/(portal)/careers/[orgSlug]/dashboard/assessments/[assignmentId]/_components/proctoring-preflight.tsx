@@ -4,14 +4,18 @@ import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../../../../../lib/i18n';
 import { hasLiveVideo, isEntireScreenShare, stopMedia, type ProctoringMedia } from './proctoring-media';
 import { usePreflightFaceCheck } from './use-preflight-face-check';
+import { ProctoringConsentOptions } from './proctoring-consent-options';
+import { ProctoringPreflightIntro } from './proctoring-preflight-intro';
 
 interface ProctoringPreflightProps {
   isResume: boolean;
-  onAuthorize: (media: ProctoringMedia) => Promise<Date>;
-  onReady: (media: ProctoringMedia, startedAt: Date) => void;
+  mediaEvidenceAvailable?: boolean;
+  mediaEvidenceUnavailableDuration?: boolean;
+  onAuthorize: (media: ProctoringMedia, mediaEvidenceOptIn: boolean) => Promise<Date>;
+  onReady: (media: ProctoringMedia, startedAt: Date, positioningHintsEnabled: boolean, mediaEvidenceOptIn: boolean) => void;
 }
 
-export function ProctoringPreflight({ isResume, onAuthorize, onReady }: ProctoringPreflightProps) {
+export function ProctoringPreflight({ isResume, mediaEvidenceAvailable = false, mediaEvidenceUnavailableDuration = false, onAuthorize, onReady }: ProctoringPreflightProps) {
   const { t } = useI18n();
   const copy = t.proctoring.candidate;
   const cameraRef = useRef<MediaStream | null>(null);
@@ -26,9 +30,11 @@ export function ProctoringPreflight({ isResume, onAuthorize, onReady }: Proctori
   const [assessmentConsent, setAssessmentConsent] = useState(false);
   const [cameraConsent, setCameraConsent] = useState(false);
   const [screenConsent, setScreenConsent] = useState(false);
+  const [positioningHintsEnabled, setPositioningHintsEnabled] = useState(false);
+  const [mediaEvidenceOptIn, setMediaEvidenceOptIn] = useState(false);
   const [busy, setBusy] = useState<'camera' | 'screen' | 'start' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { videoRef, faceCheck } = usePreflightFaceCheck(camera);
+  const { videoRef, faceCheck } = usePreflightFaceCheck(camera, positioningHintsEnabled);
 
   useEffect(() => {
     disposedRef.current = false;
@@ -134,7 +140,6 @@ export function ProctoringPreflight({ isResume, onAuthorize, onReady }: Proctori
       !screenConsent ||
       !hasLiveVideo(currentCamera) ||
       !hasLiveVideo(currentScreen) ||
-      faceCheck !== 'ready' ||
       busy
     )
       return;
@@ -142,9 +147,10 @@ export function ProctoringPreflight({ isResume, onAuthorize, onReady }: Proctori
     setError(null);
     try {
       const media = { camera: currentCamera, screen: currentScreen };
-      const startedAt = await onAuthorize(media);
+      const optedIn = mediaEvidenceAvailable && mediaEvidenceOptIn;
+      const startedAt = await onAuthorize(media, optedIn);
       transferredRef.current = true;
-      onReady(media, startedAt);
+      onReady(media, startedAt, positioningHintsEnabled, optedIn);
     } catch {
       setError(copy.startError);
     } finally {
@@ -171,37 +177,23 @@ export function ProctoringPreflight({ isResume, onAuthorize, onReady }: Proctori
         className="bg-white rounded-2xl shadow-lg p-6 md:p-8 max-w-xl w-full space-y-5"
         aria-labelledby="proctoring-title"
       >
-        <div>
-          <h1 id="proctoring-title" className="text-lg font-semibold text-[#1F114C]">
-            {isResume ? copy.resumeTitle : copy.title}
-          </h1>
-          <p className="mt-2 text-[13px] text-[#585858] leading-relaxed">{copy.intro}</p>
-          {isResume && (
-            <p className="mt-2 text-[13px] text-[#B45309]" role="status">
-              {copy.timerContinues}
-            </p>
-          )}
-        </div>
-        <p className="rounded-xl bg-[#F4F1FA] p-3 text-[12px] text-[#493478] leading-relaxed">{copy.privacy}</p>
-        <label className="flex items-start gap-3 text-[13px] text-[#444]">
-          <input
-            type="checkbox"
-            checked={assessmentConsent}
-            onChange={(event) => {
-              assessmentConsentRef.current = event.target.checked;
-              setAssessmentConsent(event.target.checked);
-              if (!event.target.checked) {
-                disconnectCamera();
-                disconnectScreen();
-              }
-            }}
-            disabled={busy === 'start'}
-            className="mt-0.5 h-4 w-4"
-          />
-          <span>
-            {t.assessmentPlayer.consentBody} {t.assessmentPlayer.consentCheckboxLabel}
-          </span>
-        </label>
+        <ProctoringPreflightIntro isResume={isResume} />
+        <ProctoringConsentOptions
+          mediaEvidenceAvailable={mediaEvidenceAvailable}
+          mediaEvidenceUnavailableDuration={mediaEvidenceUnavailableDuration}
+          mediaEvidenceOptIn={mediaEvidenceOptIn}
+          assessmentConsent={assessmentConsent}
+          disabled={busy === 'start'}
+          onMediaOptInChange={setMediaEvidenceOptIn}
+          onAssessmentConsentChange={(accepted) => {
+            assessmentConsentRef.current = accepted;
+            setAssessmentConsent(accepted);
+            if (!accepted) {
+              disconnectCamera();
+              disconnectScreen();
+            }
+          }}
+        />
         <div className="rounded-xl border border-[#E5E5E5] p-4 space-y-3">
           <label className="flex items-start gap-3 text-[13px] text-[#444]">
             <input
@@ -228,7 +220,17 @@ export function ProctoringPreflight({ isResume, onAuthorize, onReady }: Proctori
           <p className="text-[12px] text-[#585858]" role="status">
             {cameraReady ? copy.cameraReady : copy.cameraNotReady}
           </p>
-          {cameraReady && (
+          <label className="flex items-start gap-3 text-[12px] text-[#585858]">
+            <input
+              type="checkbox"
+              checked={positioningHintsEnabled}
+              onChange={(event) => setPositioningHintsEnabled(event.target.checked)}
+              disabled={!cameraReady || busy === 'start'}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span>{copy.positioningHintsOption}</span>
+          </label>
+          {cameraReady && positioningHintsEnabled && (
             <p className="text-[12px] text-[#585858]" role="status">
               {faceStatus}
             </p>
@@ -269,6 +271,7 @@ export function ProctoringPreflight({ isResume, onAuthorize, onReady }: Proctori
             {screenReady ? copy.screenReady : copy.screenNotReady}
           </p>
         </div>
+        <p className="text-[12px] text-[#585858] leading-relaxed">{copy.accommodationHelp}</p>
         {error && (
           <p role="alert" className="text-[12px] text-[#B42318]">
             {error}
@@ -282,7 +285,6 @@ export function ProctoringPreflight({ isResume, onAuthorize, onReady }: Proctori
             !screenConsent ||
             !cameraReady ||
             !screenReady ||
-            faceCheck !== 'ready' ||
             busy !== null
           }
           onClick={start}

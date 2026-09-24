@@ -23,13 +23,14 @@ function stream(displaySurface?: string) {
   };
 }
 
-function setup() {
+function setup(mediaEvidenceAvailable = false, mediaEvidenceUnavailableDuration = false) {
   localStorage.setItem('tims-locale', 'EN');
   const onAuthorize = vi.fn().mockResolvedValue(new Date('2026-09-24T10:00:00.000Z'));
   const onReady = vi.fn();
   const view = render(
     <I18nProvider>
-      <ProctoringPreflight isResume={false} onAuthorize={onAuthorize} onReady={onReady} />
+      <ProctoringPreflight isResume={false} mediaEvidenceAvailable={mediaEvidenceAvailable}
+        mediaEvidenceUnavailableDuration={mediaEvidenceUnavailableDuration} onAuthorize={onAuthorize} onReady={onReady} />
     </I18nProvider>,
   );
   return { onAuthorize, onReady, ...view };
@@ -72,6 +73,37 @@ describe('ProctoringPreflight', () => {
     vi.restoreAllMocks();
   });
 
+  it('shows seven-day image retention and keeps media consent separate and off by default', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue(stream()),
+        getDisplayMedia: vi.fn().mockResolvedValue(stream('monitor')),
+      },
+    });
+    const { onAuthorize, onReady } = setup(true);
+    const mediaConsent = screen.getByLabelText(en.proctoring.candidate.mediaEvidenceConsent);
+    expect(mediaConsent).not.toBeChecked();
+    expect(screen.getByText(en.proctoring.candidate.privacyWithMedia)).toHaveTextContent('7 days');
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.cameraConsent));
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.screenConsent));
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableCamera }));
+    await waitFor(() => expect(screen.getByText(en.proctoring.candidate.cameraReady)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableScreen }));
+    await waitFor(() => expect(screen.getByRole('button', { name: en.proctoring.candidate.start })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.start }));
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
+    expect(onAuthorize.mock.calls[0]?.[1]).toBe(false);
+    expect(onReady.mock.calls[0]?.[3]).toBe(false);
+  });
+
+  it('explains why media sampling is unavailable for longer or untimed assessments', () => {
+    setup(false, true);
+    expect(screen.getByText(en.proctoring.candidate.mediaEvidenceDurationUnavailable)).toBeInTheDocument();
+    expect(screen.queryByLabelText(en.proctoring.candidate.mediaEvidenceConsent)).not.toBeInTheDocument();
+  });
+
   it('does not start the server timer until separate consents and both devices are ready', async () => {
     const camera = stream();
     const screenStream = stream('monitor');
@@ -95,6 +127,7 @@ describe('ProctoringPreflight', () => {
     expect(start).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableScreen }));
     await waitFor(() => expect(start).toBeEnabled(), { timeout: 5_000 });
+    expect(createFaceDetector).not.toHaveBeenCalled();
     fireEvent.click(start);
     await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
     expect(onAuthorize).toHaveBeenCalledTimes(1);
@@ -104,6 +137,33 @@ describe('ProctoringPreflight', () => {
     unmount();
     expect(camera.track.stop).not.toHaveBeenCalled();
     expect(screenStream.track.stop).not.toHaveBeenCalled();
+  });
+
+  it('does not use a local face-count hint as an entry condition', async () => {
+    vi.mocked(createFaceDetector).mockResolvedValue({
+      sample: vi.fn().mockResolvedValue({ status: 'ok', faceCount: 0, finding: 'no_face', sampledAtMs: 1 }),
+      dispose: vi.fn(),
+    });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue(stream()),
+        getDisplayMedia: vi.fn().mockResolvedValue(stream('monitor')),
+      },
+    });
+    const { onAuthorize } = setup();
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.cameraConsent));
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.screenConsent));
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableCamera }));
+    await waitFor(() => expect(screen.getByText(en.proctoring.candidate.cameraReady)).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.positioningHintsOption));
+    await waitFor(() => expect(screen.getByText(en.proctoring.candidate.faceMissing)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableScreen }));
+    const start = screen.getByRole('button', { name: en.proctoring.candidate.start });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await waitFor(() => expect(onAuthorize).toHaveBeenCalledTimes(1));
   });
 
   it('rejects tab/window sharing and releases the rejected media', async () => {
@@ -133,7 +193,7 @@ describe('ProctoringPreflight', () => {
     expect(camera.track.stop).toHaveBeenCalledTimes(1);
   });
 
-  it('does not start when local face analysis is unavailable', async () => {
+  it('allows the assessment to start when optional local positioning hints are unavailable', async () => {
     vi.mocked(createFaceDetector).mockRejectedValue(new Error('model unavailable'));
     const camera = stream();
     const screenStream = stream('monitor');
@@ -149,11 +209,15 @@ describe('ProctoringPreflight', () => {
     fireEvent.click(screen.getByLabelText(en.proctoring.candidate.cameraConsent));
     fireEvent.click(screen.getByLabelText(en.proctoring.candidate.screenConsent));
     fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableCamera }));
+    await waitFor(() => expect(screen.getByText(en.proctoring.candidate.cameraReady)).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.positioningHintsOption));
     await waitFor(() => expect(screen.getByText(en.proctoring.candidate.preflightFaceUnavailable)).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableScreen }));
     await waitFor(() => expect(screen.getByText(en.proctoring.candidate.screenReady)).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: en.proctoring.candidate.start })).toBeDisabled();
-    expect(onAuthorize).not.toHaveBeenCalled();
+    const start = screen.getByRole('button', { name: en.proctoring.candidate.start });
+    expect(start).toBeEnabled();
+    fireEvent.click(start);
+    await waitFor(() => expect(onAuthorize).toHaveBeenCalledTimes(1));
   });
 
   it('stops screen capture when consent is withdrawn before start', async () => {
@@ -177,27 +241,43 @@ describe('ProctoringPreflight', () => {
     expect(screen.getByRole('button', { name: en.proctoring.candidate.start })).toBeDisabled();
   });
 
-  it('shows a recoverable failure when the face model stalls instead of checking forever', async () => {
+  it('shows a non-blocking hint when the local positioning model stalls', async () => {
     vi.useFakeTimers();
     vi.mocked(createFaceDetector).mockImplementation(
       () => new Promise<Awaited<ReturnType<typeof createFaceDetector>>>(() => undefined),
     );
     const camera = stream();
+    const screenStream = stream('monitor');
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
-      value: { getUserMedia: vi.fn().mockResolvedValue(camera), getDisplayMedia: vi.fn() },
+      value: { getUserMedia: vi.fn().mockResolvedValue(camera), getDisplayMedia: vi.fn().mockResolvedValue(screenStream) },
     });
-    setup();
+    const { onAuthorize } = setup();
     fireEvent.click(screen.getAllByRole('checkbox')[0]);
     fireEvent.click(screen.getByLabelText(en.proctoring.candidate.cameraConsent));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableCamera }));
       await Promise.resolve();
     });
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.positioningHintsOption));
+    fireEvent.click(screen.getByLabelText(en.proctoring.candidate.screenConsent));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: en.proctoring.candidate.enableScreen }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText(en.proctoring.candidate.screenReady)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.proctoring.candidate.start })).toBeEnabled();
     await act(async () => {
       vi.advanceTimersByTime(15_000);
     });
     expect(screen.getByText(en.proctoring.candidate.preflightFaceUnavailable)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: en.proctoring.candidate.start })).toBeDisabled();
+    const start = screen.getByRole('button', { name: en.proctoring.candidate.start });
+    expect(start).toBeEnabled();
+    await act(async () => {
+      fireEvent.click(start);
+      await Promise.resolve();
+    });
+    expect(onAuthorize).toHaveBeenCalledTimes(1);
   });
 });

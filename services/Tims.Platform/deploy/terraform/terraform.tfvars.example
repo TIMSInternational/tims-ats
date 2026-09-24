@@ -63,7 +63,21 @@ feature_flags = {
   # first or the apply silently darkens it — the same drift class as team_intel_read above.
   monitoring_read         = false # #100, Q0b slice 1 — the six monitoring READ endpoints
   alert_metrics_cron_read = false # #172, Q0b slice 2 — GET /internal/alert-metrics (cron cross-org read)
+  proctoring                = false # existing local-observation beta; keep dark until pilot gates pass
+  proctoring_media_evidence = false # cloud S3 evidence requires new .NET route + approved notice
+  proctoring_cloud_inference = false # cloud model requires pinned, validated worker and result consumer
 }
+
+# Proctoring AWS foundation is separate from the application flags. No S3/SQS/KMS/Lambda
+# resources are created at the default false value. See proctoring-*.tf + README before enabling.
+proctoring_infrastructure_enabled = false
+# proctoring_evidence_bucket_name = "tims-ats-proctoring-evidence-<account>-us-west-2"
+# proctoring_upload_origins       = ["https://tims-ats.vercel.app"]
+# proctoring_budget_email         = "ops@example.com"
+# proctoring_alarm_topic_arn      = "arn:aws:sns:us-west-2:<account>:tims-alerts"
+# proctoring_worker_image_uri     = "<account>.dkr.ecr.us-west-2.amazonaws.com/tims-proctoring-worker@sha256:<digest>"
+# proctoring_model_revision       = "<pinned-evaluated-revision>"
+# proctoring_hf_detector_enabled = false # only with evaluated Dockerfile.hf image + cloud inference
 
 # #173 MFA step-up on the platform service. ⚠️ Also previously absent from main.tf, so the same
 # apply-will-now-write warning applies. ONLY the exact string "true" enables it; anything else fails

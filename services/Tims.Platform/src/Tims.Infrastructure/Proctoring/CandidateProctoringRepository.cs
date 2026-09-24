@@ -97,6 +97,28 @@ public sealed class CandidateProctoringRepository(ProctoringDbContext db) : ICan
         var now = DbNow();
         await LockActiveSessionAsync(orgId, session.Id, now, ct);
         await RecordGapIfNeededAsync(orgId, session, now, ct);
+        if (type == "media_capture_stopped")
+        {
+            // Withdrawal is committed in the same transaction as the event.
+            // It takes effect even if the ordinary signal cap was reached.
+            await _db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE proctoring_sessions
+                   SET media_stopped_at = COALESCE(media_stopped_at, {Timestamp(now)}),
+                       updated_at = {Timestamp(now)}
+                 WHERE id = {session.Id} AND organization_id = {orgId}
+                   AND ended_at IS NULL
+                """, ct);
+            var alreadyReported = await _db.Events.AsNoTracking().AnyAsync(e =>
+                e.OrganizationId == orgId && e.SessionId == session.Id &&
+                e.Type == "media_capture_stopped", ct);
+            var accepted = !alreadyReported && await InsertEventAsync(orgId,
+                session.Id, eventId, type, "client_observation", severity,
+                clientAt, now, ct) == 1;
+            if (accepted)
+                await IncrementSummaryAsync(orgId, session.Id, severity, now, ct);
+            await tenant.CommitAsync(ct);
+            return new ProctoringEventResult(accepted, eventId);
+        }
         var currentCount = await _db.Sessions.AsNoTracking()
             .Where(s => s.OrganizationId == orgId && s.Id == session.Id)
             .Select(s => s.FlagCount).SingleAsync(ct);
@@ -192,13 +214,13 @@ public sealed class CandidateProctoringRepository(ProctoringDbContext db) : ICan
     {
         await using var tenant = await TenantScope.BeginAsync(_db, orgId, ct);
         var pending = await (from session in _db.Sessions.AsNoTracking()
-            join assignment in _db.Assignments.AsNoTracking()
-                on session.AssignmentId equals assignment.Id
-            where session.OrganizationId == orgId && assignment.OrganizationId == orgId
-                && session.EndedAt == null && assignment.Status == "completed"
-                && (assignmentIds == null || assignmentIds.Contains(assignment.Id))
-            orderby assignment.CompletedAt, session.Id
-            select new { Session = session, assignment.CompletedAt })
+                             join assignment in _db.Assignments.AsNoTracking()
+                                 on session.AssignmentId equals assignment.Id
+                             where session.OrganizationId == orgId && assignment.OrganizationId == orgId
+                                 && session.EndedAt == null && assignment.Status == "completed"
+                                 && (assignmentIds == null || assignmentIds.Contains(assignment.Id))
+                             orderby assignment.CompletedAt, session.Id
+                             select new { Session = session, assignment.CompletedAt })
             .Take(assignmentIds?.Count ?? 100).ToListAsync(ct);
         var repaired = 0;
         foreach (var row in pending)

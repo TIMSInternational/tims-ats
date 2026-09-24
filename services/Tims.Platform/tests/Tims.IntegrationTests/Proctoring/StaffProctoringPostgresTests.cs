@@ -28,6 +28,12 @@ public sealed class StaffProctoringPostgresTests : IAsyncLifetime
         await ExecuteAsync("CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; GRANT app_tenant TO postgres;");
         await ExecuteAsync(SchemaSql);
         await ExecuteAsync(SeedSql);
+        await ExecuteAsync("""
+            ALTER TABLE assessment_types ADD COLUMN duration integer;
+            ALTER TABLE proctoring_sessions ADD COLUMN media_consented_at timestamp(3);
+            ALTER TABLE proctoring_sessions ADD COLUMN media_consent_version text;
+            ALTER TABLE proctoring_sessions ADD COLUMN media_stopped_at timestamp(3);
+            """);
     }
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
@@ -198,6 +204,12 @@ public sealed class StaffProctoringPostgresTests : IAsyncLifetime
             session_id uuid NOT NULL, client_event_id uuid NOT NULL, type text NOT NULL,
             source text NOT NULL, severity text NOT NULL, client_at timestamp(3),
             occurred_at timestamp(3) NOT NULL, UNIQUE(session_id, client_event_id));
+        CREATE TABLE proctoring_candidate_explanations (
+            id uuid PRIMARY KEY, organization_id uuid NOT NULL,
+            assignment_id uuid NOT NULL, session_id uuid NOT NULL UNIQUE,
+            candidate_id uuid NOT NULL, submission_id uuid NOT NULL,
+            text varchar(2000) NOT NULL, submitted_at timestamp(3) NOT NULL,
+            expires_at timestamp(3) NOT NULL);
         CREATE TABLE org_entitlements (id uuid PRIMARY KEY, organization_id uuid NOT NULL,
             module_code text NOT NULL, enabled boolean NOT NULL);
         CREATE TABLE audit_logs (id uuid PRIMARY KEY, organization_id uuid NOT NULL,
@@ -207,6 +219,7 @@ public sealed class StaffProctoringPostgresTests : IAsyncLifetime
         DO $$ DECLARE t text; BEGIN
           FOREACH t IN ARRAY ARRAY['vacancies','candidates','assessment_types',
               'assessment_assignments','proctoring_sessions','proctoring_events',
+              'proctoring_candidate_explanations',
               'org_entitlements','audit_logs'] LOOP
             EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
             EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);

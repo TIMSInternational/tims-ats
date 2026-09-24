@@ -2,31 +2,41 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../../../../../lib/i18n';
-import { useHeartbeatCandidateProctoring } from '../../../../../../../../lib/platform-api/proctoring';
+import { stopCandidateProctoringMedia, useHeartbeatCandidateProctoring } from '../../../../../../../../lib/platform-api/proctoring';
 import { hasLiveVideo, isEntireScreenShare, stopMedia, type ProctoringMedia } from './proctoring-media';
 import { useLiveFaceCheck } from './use-live-face-check';
 import { useProctoringEventQueue } from './use-proctoring-event-queue';
+import { CandidateMediaEvidenceController, type EvidenceState } from './proctoring-media-evidence';
+import { ProctoringEvidenceStatus } from './proctoring-evidence-status';
 
 interface ProctoringMonitorProps {
   orgSlug: string;
   assignmentId: string;
   initialMedia: ProctoringMedia;
+  initialPositioningHintsEnabled?: boolean;
+  mediaEvidenceConsented?: boolean;
   onMediaChange: (media: ProctoringMedia) => void;
   onRegisterFlush?: (flush: (() => Promise<void>) | null) => void;
+  onRegisterMediaEvidenceStop?: (stop: (() => void) | null) => void;
 }
 
-export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, onMediaChange, onRegisterFlush }: ProctoringMonitorProps) {
+export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, initialPositioningHintsEnabled = false, mediaEvidenceConsented = false, onMediaChange, onRegisterFlush, onRegisterMediaEvidenceStop }: ProctoringMonitorProps) {
   const { t } = useI18n();
   const copy = t.proctoring.candidate;
   const [camera, setCamera] = useState<MediaStream | null>(initialMedia.camera);
   const [screen, setScreen] = useState<MediaStream | null>(initialMedia.screen);
+  const [positioningHintsEnabled, setPositioningHintsEnabled] = useState(initialPositioningHintsEnabled);
   const [heartbeatError, setHeartbeatError] = useState(false);
   const [reconnecting, setReconnecting] = useState<'camera' | 'screen' | null>(null);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
+  const [mediaEvidenceActive, setMediaEvidenceActive] = useState(mediaEvidenceConsented);
+  const [mediaStopSyncError, setMediaStopSyncError] = useState(false);
+  const [evidenceState, setEvidenceState] = useState<EvidenceState>({ active: false, uploading: false, failed: false, unavailable: false });
   const cameraRef = useRef<MediaStream | null>(initialMedia.camera);
   const screenRef = useRef<MediaStream | null>(initialMedia.screen);
   const disposedRef = useRef(false);
   const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const evidenceRef = useRef<CandidateMediaEvidenceController | null>(null);
   const { enqueue, flush, syncError } = useProctoringEventQueue(orgSlug, assignmentId);
   const heartbeat = useHeartbeatCandidateProctoring();
   const heartbeatMutateRef = useRef(heartbeat.mutateAsync);
@@ -34,18 +44,53 @@ export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, onMedia
   useEffect(() => {
     heartbeatMutateRef.current = heartbeat.mutateAsync;
   }, [heartbeat.mutateAsync]);
-
   useEffect(() => {
     onRegisterFlush?.(flush);
     return () => onRegisterFlush?.(null);
   }, [flush, onRegisterFlush]);
-  const { videoRef, faceState } = useLiveFaceCheck(camera, enqueue);
+  const stopEvidence = useCallback(() => {
+    evidenceRef.current?.stop();
+    evidenceRef.current = null;
+  }, []);
+  const persistMediaStop = useCallback(async () => {
+    try {
+      await stopCandidateProctoringMedia({ orgSlug, assignmentId });
+      if (!disposedRef.current) setMediaStopSyncError(false);
+    } catch {
+      if (!disposedRef.current) setMediaStopSyncError(true);
+    }
+  }, [assignmentId, orgSlug]);
+  useEffect(() => {
+    onRegisterMediaEvidenceStop?.(stopEvidence);
+    return () => onRegisterMediaEvidenceStop?.(null);
+  }, [onRegisterMediaEvidenceStop, stopEvidence]);
+  useEffect(() => {
+    if (!mediaEvidenceConsented || !mediaEvidenceActive) return;
+    const controller = new CandidateMediaEvidenceController(
+      { orgSlug, assignmentId },
+      { camera: cameraRef.current!, screen: screenRef.current! },
+      setEvidenceState,
+    );
+    evidenceRef.current = controller;
+    controller.start();
+    return () => {
+      controller.stop();
+      if (evidenceRef.current === controller) evidenceRef.current = null;
+    };
+  }, [assignmentId, mediaEvidenceActive, mediaEvidenceConsented, orgSlug]);
+  const { videoRef, faceState } = useLiveFaceCheck(camera, positioningHintsEnabled);
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') enqueue('tab_hidden');
+      if (document.visibilityState === 'hidden') {
+        enqueue('tab_hidden');
+        evidenceRef.current?.captureEvent('screen');
+      }
     };
-    const onBlur = () => enqueue('focus_lost');
+    const onBlur = () => {
+      enqueue('focus_lost');
+      evidenceRef.current?.captureEvent('screen');
+    };
     const onOnline = () => void flush();
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('blur', onBlur);
@@ -63,6 +108,7 @@ export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, onMedia
     const onEnded = () => {
       setCamera(null);
       enqueue('camera_stopped');
+      evidenceRef.current?.captureEvent('screen');
     };
     track.addEventListener('ended', onEnded);
     return () => track.removeEventListener('ended', onEnded);
@@ -74,6 +120,7 @@ export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, onMedia
     const onEnded = () => {
       setScreen(null);
       enqueue('screen_share_stopped');
+      evidenceRef.current?.captureEvent('camera');
     };
     track.addEventListener('ended', onEnded);
     return () => track.removeEventListener('ended', onEnded);
@@ -143,7 +190,11 @@ export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, onMedia
         setScreen(next);
       }
       if (cameraRef.current && screenRef.current)
-        onMediaChange({ camera: cameraRef.current, screen: screenRef.current });
+        {
+          const updated = { camera: cameraRef.current, screen: screenRef.current };
+          evidenceRef.current?.updateMedia(updated);
+          onMediaChange(updated);
+        }
     } catch (cause) {
       setReconnectError(
         cause instanceof Error && cause.message === 'entire_screen_required'
@@ -179,9 +230,41 @@ export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, onMedia
         <strong>{copy.monitoring}</strong>
         <span role="status">{cameraLive ? copy.cameraLive : copy.cameraLost}</span>
         <span role="status">{screenLive ? copy.screenLive : copy.screenLost}</span>
-        <span role="status">{faceLabel}</span>
+        {positioningHintsEnabled && <span role="status">{faceLabel}</span>}
+        {mediaEvidenceConsented && (
+          <span role="status">{evidenceState.active ? copy.mediaEvidenceActive : copy.mediaEvidenceStopped}</span>
+        )}
         <span role="status">{syncError || heartbeatError ? copy.syncError : copy.syncOnline}</span>
       </div>
+      <ProctoringEvidenceStatus
+        consented={mediaEvidenceConsented}
+        active={mediaEvidenceActive}
+        state={evidenceState}
+        onStop={() => {
+          stopEvidence();
+          setMediaEvidenceActive(false);
+          enqueue('media_capture_stopped');
+          void persistMediaStop();
+        }}
+        onRetry={() => evidenceRef.current?.retry()}
+      />
+      {mediaStopSyncError && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-[#B42318]">
+          <span>{copy.mediaEvidenceStopSyncError}</span>
+          <button type="button" onClick={() => void persistMediaStop()} className="underline">
+            {copy.mediaEvidenceRetryStop}
+          </button>
+        </div>
+      )}
+      <label className="flex items-start gap-2 text-[#585858]">
+        <input
+          type="checkbox"
+          checked={positioningHintsEnabled}
+          onChange={(event) => setPositioningHintsEnabled(event.target.checked)}
+          className="mt-0.5 h-4 w-4"
+        />
+        <span>{copy.positioningHintsOption}</span>
+      </label>
       {(!cameraLive || !screenLive || syncError || heartbeatError) && (
         <div className="flex flex-wrap items-center gap-2" role="alert">
           {!cameraLive && (
@@ -221,14 +304,16 @@ export function ProctoringMonitor({ orgSlug, assignmentId, initialMedia, onMedia
           {reconnectError}
         </p>
       )}
-      <video
-        ref={videoRef}
-        muted
-        playsInline
-        autoPlay
-        aria-hidden="true"
-        className="absolute h-px w-px overflow-hidden opacity-0 pointer-events-none"
-      />
+      {positioningHintsEnabled && (
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          autoPlay
+          aria-hidden="true"
+          className="absolute h-px w-px overflow-hidden opacity-0 pointer-events-none"
+        />
+      )}
     </aside>
   );
 }

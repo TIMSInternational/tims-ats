@@ -30,6 +30,12 @@ public sealed class CandidateProctoringRepositoryTests : IAsyncLifetime
         await ExecuteAsync("CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; GRANT app_tenant TO postgres;");
         await ExecuteAsync(SchemaSql);
         await ExecuteAsync(SeedSql);
+        await ExecuteAsync("""
+            ALTER TABLE assessment_types ADD COLUMN duration integer;
+            ALTER TABLE proctoring_sessions ADD COLUMN media_consented_at timestamp(3);
+            ALTER TABLE proctoring_sessions ADD COLUMN media_consent_version text;
+            ALTER TABLE proctoring_sessions ADD COLUMN media_stopped_at timestamp(3);
+            """);
     }
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
@@ -73,9 +79,9 @@ public sealed class CandidateProctoringRepositoryTests : IAsyncLifetime
 
         var signalId = Guid.NewGuid();
         var signal = await useCase.ReportEventAsync(OrgA, CandidateA, AssignmentA,
-            signalId, "face_missing", DateTimeOffset.UtcNow, default);
+            signalId, "camera_stopped", DateTimeOffset.UtcNow, default);
         var retry = await useCase.ReportEventAsync(OrgA, CandidateA, AssignmentA,
-            signalId, "face_missing", DateTimeOffset.UtcNow, default);
+            signalId, "camera_stopped", DateTimeOffset.UtcNow, default);
         Assert.True(signal.Accepted);
         Assert.False(retry.Accepted);
         Assert.Equal(1L, await ScalarAsync<long>(

@@ -136,7 +136,8 @@ public sealed class StaffProctoringScopeTests
         assignment.Status = "in_progress";
         var session = new ProctoringSessionRow
         {
-            StartedAt = now.AddMinutes(-10), LastHeartbeatAt = now.AddMinutes(-3),
+            StartedAt = now.AddMinutes(-10),
+            LastHeartbeatAt = now.AddMinutes(-3),
         };
         Assert.False(StaffProctoringStore.NeedsAttention(session, assignment, now));
 

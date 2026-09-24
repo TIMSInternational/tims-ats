@@ -1,51 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createFaceDetector } from '../../../../../../../../lib/proctoring/face-detector';
 import { hasLiveVideo } from './proctoring-media';
 
-export type FaceState = 'checking' | 'ok' | 'no_face' | 'multiple_faces' | 'unavailable';
+export type FaceState = 'disabled' | 'checking' | 'ok' | 'no_face' | 'multiple_faces' | 'unavailable';
 
-export function useLiveFaceCheck(
-  camera: MediaStream | null,
-  reportFinding: (type: 'face_missing' | 'multiple_faces' | 'model_unavailable') => void,
-) {
+/** Optional, on-device positioning feedback. Model output never leaves the browser. */
+export function useLiveFaceCheck(camera: MediaStream | null, enabled: boolean) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const unavailableReportedRef = useRef(false);
   const [observation, setObservation] = useState<{ camera: MediaStream; state: FaceState } | null>(null);
-  const faceState: FaceState = !hasLiveVideo(camera)
+  const faceState: FaceState = !enabled
+    ? 'disabled'
+    : !hasLiveVideo(camera)
     ? 'unavailable'
     : observation?.camera === camera
       ? observation.state
       : 'checking';
-
-  const markUnavailable = useCallback(
-    (stream: MediaStream) => {
-      setObservation({ camera: stream, state: 'unavailable' });
-      if (!unavailableReportedRef.current) {
-        unavailableReportedRef.current = true;
-        reportFinding('model_unavailable');
-      }
-    },
-    [reportFinding],
-  );
 
   useEffect(() => {
     const element = videoRef.current;
     if (!element) return;
     element.srcObject = camera;
     if (camera) {
-      void element.play().catch(() => markUnavailable(camera));
+      void element.play().catch(() => setObservation({ camera, state: 'unavailable' }));
     }
-  }, [camera, markUnavailable]);
+  }, [camera, enabled]);
 
   useEffect(() => {
-    if (!hasLiveVideo(camera)) return;
+    if (!enabled || !hasLiveVideo(camera)) return;
     let disposed = false;
     let sampling = false;
     let observedFrame = false;
     let interval: ReturnType<typeof setInterval> | undefined;
     let detector: Awaited<ReturnType<typeof createFaceDetector>> | undefined;
     const readinessTimeout = setTimeout(() => {
-      if (!disposed && !observedFrame) markUnavailable(camera);
+      if (!disposed && !observedFrame) setObservation({ camera, state: 'unavailable' });
     }, 15_000);
     void createFaceDetector()
       .then((created) => {
@@ -64,19 +52,17 @@ export function useLiveFaceCheck(
               if (disposed) return;
               observedFrame = true;
               if (signal.status === 'unavailable') {
-                markUnavailable(camera);
+                setObservation({ camera, state: 'unavailable' });
                 return;
               }
               if (signal.finding === 'no_face') {
                 setObservation({ camera, state: 'no_face' });
-                reportFinding('face_missing');
               } else if (signal.finding === 'multiple_faces') {
                 setObservation({ camera, state: 'multiple_faces' });
-                reportFinding('multiple_faces');
               } else setObservation({ camera, state: 'ok' });
             })
             .catch(() => {
-              if (!disposed) markUnavailable(camera);
+              if (!disposed) setObservation({ camera, state: 'unavailable' });
             })
             .finally(() => {
               sampling = false;
@@ -84,7 +70,7 @@ export function useLiveFaceCheck(
         }, 1_000);
       })
       .catch(() => {
-        if (!disposed) markUnavailable(camera);
+        if (!disposed) setObservation({ camera, state: 'unavailable' });
       });
     return () => {
       disposed = true;
@@ -92,7 +78,7 @@ export function useLiveFaceCheck(
       if (interval) clearInterval(interval);
       detector?.dispose();
     };
-  }, [camera, markUnavailable, reportFinding]);
+  }, [camera, enabled]);
 
   return { videoRef, faceState };
 }

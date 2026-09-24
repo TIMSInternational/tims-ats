@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Tims.Api.Authentication;
 using Tims.Api.Configuration;
@@ -15,6 +16,11 @@ public sealed record CandidateProctoringStartRequest(
     bool ProctoringConsentAccepted,
     CandidateProctoringCapabilities? Capabilities);
 public sealed record CandidateProctoringEventRequest(Guid EventId, string? Type, DateTimeOffset? ClientTimestamp);
+public sealed record CandidateMediaConsentRequest(bool Accepted);
+public sealed record CandidateMediaIntentRequest(Guid ClientCaptureId, string? MediaType,
+    string? CaptureReason, string? ContentType);
+public sealed record CandidateMediaConfirmRequest(Guid EvidenceId);
+public sealed record CandidateExplanationRequest(Guid SubmissionId, string? Text);
 
 /// <summary>
 /// Authenticated candidate endpoints. The JWT supplies sub/email; the route
@@ -23,7 +29,8 @@ public sealed record CandidateProctoringEventRequest(Guid EventId, string? Type,
 /// </summary>
 public static class CandidateProctoringEndpoints
 {
-    public static void MapCandidateProctoringEndpoints(this WebApplication app)
+    public static void MapCandidateProctoringEndpoints(this WebApplication app,
+        bool mediaRoutesEnabled = false)
     {
         var group = app.MapGroup("/candidate/{orgSlug}/assessments/{assignmentId:guid}/proctoring")
             .RequireAuthorization();
@@ -93,6 +100,123 @@ public static class CandidateProctoringEndpoints
             }
             catch (ProctoringException ex) { return Error(ex); }
         }).WithName("CandidateCompleteProctoring");
+
+        group.MapGet("/explanation", async (
+            string orgSlug, Guid assignmentId,
+            ClaimsPrincipal user, HttpContext httpContext,
+            PrincipalResolver principalResolver, IOptions<PlatformOptions> options,
+            CandidateProctoringUseCase useCase,
+            CandidateExplanationUseCase explanationUseCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var gate = await GateAsync(orgSlug, user, httpContext,
+                    principalResolver, options.Value, useCase, ct);
+                if (gate.Failure is not null) return gate.Failure;
+                httpContext.Response.Headers.CacheControl = "no-store";
+                return Results.Ok(await explanationUseCase.GetAsync(
+                    gate.OrgId, gate.CandidateId, assignmentId, ct));
+            }
+            catch (ProctoringException ex) { return Error(ex); }
+        }).WithName("CandidateGetProctoringExplanation");
+
+        group.MapPost("/explanation", async (
+            string orgSlug, Guid assignmentId, CandidateExplanationRequest request,
+            ClaimsPrincipal user, HttpContext httpContext,
+            PrincipalResolver principalResolver, IOptions<PlatformOptions> options,
+            CandidateProctoringUseCase useCase,
+            CandidateExplanationUseCase explanationUseCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var gate = await GateAsync(orgSlug, user, httpContext,
+                    principalResolver, options.Value, useCase, ct);
+                if (gate.Failure is not null) return gate.Failure;
+                httpContext.Response.Headers.CacheControl = "no-store";
+                return Results.Ok(await explanationUseCase.SubmitAsync(
+                    gate.OrgId, gate.CandidateId, assignmentId,
+                    request.SubmissionId, request.Text, ct));
+            }
+            catch (ProctoringException ex) { return Error(ex); }
+        }).WithMetadata(new RequestSizeLimitAttribute(16 * 1024))
+            .WithName("CandidateSubmitProctoringExplanation");
+
+        if (!mediaRoutesEnabled) return;
+
+        group.MapPost("/media-consent", async (
+            string orgSlug, Guid assignmentId, CandidateMediaConsentRequest request,
+            ClaimsPrincipal user, HttpContext httpContext,
+            PrincipalResolver principalResolver, IOptions<PlatformOptions> options,
+            CandidateProctoringUseCase useCase,
+            ProctoringEvidenceUseCase evidenceUseCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var gate = await GateAsync(orgSlug, user, httpContext,
+                    principalResolver, options.Value, useCase, ct);
+                if (gate.Failure is not null) return gate.Failure;
+                return Results.Ok(await evidenceUseCase.AcceptMediaConsentAsync(
+                    gate.OrgId, gate.CandidateId, assignmentId, request.Accepted, ct));
+            }
+            catch (ProctoringException ex) { return Error(ex); }
+        }).WithName("CandidateAcceptProctoringMediaConsent");
+
+        group.MapPost("/media-stop", async (
+            string orgSlug, Guid assignmentId,
+            ClaimsPrincipal user, HttpContext httpContext,
+            PrincipalResolver principalResolver, IOptions<PlatformOptions> options,
+            CandidateProctoringUseCase useCase,
+            ProctoringEvidenceUseCase evidenceUseCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var gate = await GateAsync(orgSlug, user, httpContext,
+                    principalResolver, options.Value, useCase, ct);
+                if (gate.Failure is not null) return gate.Failure;
+                return Results.Ok(await evidenceUseCase.StopMediaCaptureAsync(
+                    gate.OrgId, gate.CandidateId, assignmentId, ct));
+            }
+            catch (ProctoringException ex) { return Error(ex); }
+        }).WithName("CandidateStopProctoringMedia");
+
+        group.MapPost("/media-intents", async (
+            string orgSlug, Guid assignmentId, CandidateMediaIntentRequest request,
+            ClaimsPrincipal user, HttpContext httpContext,
+            PrincipalResolver principalResolver, IOptions<PlatformOptions> options,
+            CandidateProctoringUseCase useCase,
+            ProctoringEvidenceUseCase evidenceUseCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var gate = await GateAsync(orgSlug, user, httpContext,
+                    principalResolver, options.Value, useCase, ct);
+                if (gate.Failure is not null) return gate.Failure;
+                return Results.Ok(await evidenceUseCase.CreateIntentAsync(gate.OrgId,
+                    gate.CandidateId, assignmentId, request.ClientCaptureId,
+                    request.MediaType, request.CaptureReason, request.ContentType, ct));
+            }
+            catch (ProctoringException ex) { return Error(ex); }
+        }).WithName("CandidateCreateProctoringMediaIntent");
+
+        group.MapPost("/media-confirm", async (
+            string orgSlug, Guid assignmentId, CandidateMediaConfirmRequest request,
+            ClaimsPrincipal user, HttpContext httpContext,
+            PrincipalResolver principalResolver, IOptions<PlatformOptions> options,
+            CandidateProctoringUseCase useCase,
+            ProctoringEvidenceUseCase evidenceUseCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var gate = await GateAsync(orgSlug, user, httpContext,
+                    principalResolver, options.Value, useCase, ct);
+                if (gate.Failure is not null) return gate.Failure;
+                return Results.Ok(await evidenceUseCase.ConfirmAsync(gate.OrgId,
+                    gate.CandidateId, assignmentId, request.EvidenceId,
+                    options.Value.CloudInferenceEnabled,
+                    options.Value.ProctoringModelRevision, ct));
+            }
+            catch (ProctoringException ex) { return Error(ex); }
+        }).WithName("CandidateConfirmProctoringMedia");
     }
 
     private static async Task<(Guid OrgId, Guid CandidateId, IResult? Failure)> GateAsync(

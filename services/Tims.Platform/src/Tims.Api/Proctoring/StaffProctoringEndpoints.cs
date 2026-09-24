@@ -6,6 +6,7 @@ using Tims.Api.Configuration;
 using Tims.Api.Http;
 using Tims.Application.Audit;
 using Tims.Application.Identity;
+using Tims.Application.Proctoring;
 using Tims.Domain.Access;
 using Tims.Infrastructure.Proctoring;
 
@@ -30,6 +31,11 @@ public static class StaffProctoringEndpoints
             .RequireAuthorization().WithName("GetProctoringEvents").WithTags("Proctoring")
             .Produces<StaffEvidenceResponse>().Produces(400).Produces(401).Produces(403)
             .Produces(404);
+        app.MapGet("/proctoring/assignments/{assignmentId}/explanation", ExplanationAsync)
+            .RequireAuthorization().WithName("GetProctoringCandidateExplanation")
+            .WithTags("Proctoring")
+            .Produces<CandidateExplanation>().Produces(400).Produces(401)
+            .Produces(403).Produces(404);
         app.MapPost("/proctoring/assignments/{assignmentId}/review", ReviewAsync)
             .RequireAuthorization().WithName("ReviewProctoring").WithTags("Proctoring")
             .Produces<StaffReviewResponse>().Produces(400).Produces(401).Produces(403)
@@ -46,7 +52,6 @@ public static class StaffProctoringEndpoints
         if (gate.Failure is not null) return gate.Failure;
         // Type policy affects every future assignment in the organization; a narrow
         // vacancy/assignment grant is insufficient to change this org-wide setting.
-        if (!CanSetOrgPolicy(gate.Scope!.Value)) return Results.StatusCode(403);
         if (!Guid.TryParse(typeId, out var typeGuid)) return Results.BadRequest();
         using var body = await ReadBodyAsync(http, ct);
         if (body is null || !HasOnlyProperties(body.RootElement, "enabled")
@@ -57,6 +62,9 @@ public static class StaffProctoringEndpoints
         try
         {
             var context = gate.Context!;
+            var scope = await store.ResolveScopeAsync(Guid.Parse(context.OrganizationId),
+                Guid.Parse(context.UserId), context.PrincipalType, "update", ct);
+            if (!scope.AllowsOrganizationPolicy) return Results.StatusCode(403);
             var result = await store.SetPolicyAsync(Guid.Parse(context.OrganizationId), typeGuid,
                 enabled.GetBoolean(), Guid.Parse(AuditActor.ActorFor(context)),
                 http.ClientIpFor(), UserAgent(http), ct);
@@ -82,7 +90,8 @@ public static class StaffProctoringEndpoints
             var context = gate.Context!;
             var orgId = Guid.Parse(context.OrganizationId);
             var userId = Guid.Parse(context.UserId);
-            var scope = await store.ResolveScopeAsync(orgId, userId, gate.Scope!.Value, ct);
+            var scope = await store.ResolveScopeAsync(orgId, userId,
+                context.PrincipalType, "read", ct);
             return Results.Ok(await store.ListQueueAsync(scope,
                 Guid.Parse(AuditActor.ActorFor(context)), pageSize, cursorId,
                 http.ClientIpFor(), UserAgent(http), ct));
@@ -107,7 +116,7 @@ public static class StaffProctoringEndpoints
         {
             var context = gate.Context!;
             var scope = await store.ResolveScopeAsync(Guid.Parse(context.OrganizationId),
-                Guid.Parse(context.UserId), gate.Scope!.Value, ct);
+                Guid.Parse(context.UserId), context.PrincipalType, "read", ct);
             return Results.Ok(await store.GetEvidenceAsync(scope, id,
                 Guid.Parse(AuditActor.ActorFor(context)), pageSize, cursorId,
                 http.ClientIpFor(), UserAgent(http), ct));
@@ -125,7 +134,7 @@ public static class StaffProctoringEndpoints
         if (gate.Failure is not null) return gate.Failure;
         if (!Guid.TryParse(assignmentId, out var id)) return Results.BadRequest();
         using var body = await ReadBodyAsync(http, ct);
-        if (body is null || !HasOnlyProperties(body.RootElement, "status", "notes")
+        if (body is null || !HasOnlyProperties(body.RootElement, "status", "notes", "seenExplanationId")
             || !body.RootElement.TryGetProperty("status", out var statusValue)
             || statusValue.ValueKind != JsonValueKind.String) return Results.BadRequest();
         var status = statusValue.GetString();
@@ -137,15 +146,48 @@ public static class StaffProctoringEndpoints
             notes = notesValue.GetString()?.Trim();
             if (notes?.Length > 2000) return Results.BadRequest();
         }
+        Guid? seenExplanationId = null;
+        if (body.RootElement.TryGetProperty("seenExplanationId", out var seenValue)
+            && seenValue.ValueKind != JsonValueKind.Null)
+        {
+            if (seenValue.ValueKind != JsonValueKind.String
+                || !Guid.TryParse(seenValue.GetString(), out var parsed)
+                || parsed == Guid.Empty) return Results.BadRequest();
+            seenExplanationId = parsed;
+        }
 
         try
         {
             var context = gate.Context!;
             var scope = await store.ResolveScopeAsync(Guid.Parse(context.OrganizationId),
-                Guid.Parse(context.UserId), gate.Scope!.Value, ct);
+                Guid.Parse(context.UserId), context.PrincipalType, "update", ct);
             return Results.Ok(await store.ReviewAsync(scope, id,
                 Guid.Parse(AuditActor.ActorFor(context)), status, notes,
-                http.ClientIpFor(), UserAgent(http), ct));
+                http.ClientIpFor(), UserAgent(http), ct, seenExplanationId));
+        }
+        catch (StaffProctoringFailure error) { return Failure(error); }
+    }
+
+    private static async Task<IResult> ExplanationAsync(
+        string assignmentId, ClaimsPrincipal user, HttpContext http,
+        PrincipalResolver resolver, PermissionService permissions,
+        IOptions<PlatformOptions> options, StaffProctoringStore store,
+        CancellationToken ct)
+    {
+        var gate = await StaffProctoringGate.AuthorizeAsync(
+            user, http, resolver, permissions, options.Value, "read", ct);
+        if (gate.Failure is not null) return gate.Failure;
+        if (!Guid.TryParse(assignmentId, out var id)) return Results.BadRequest();
+        try
+        {
+            var context = gate.Context!;
+            var scope = await store.ResolveScopeAsync(Guid.Parse(context.OrganizationId),
+                Guid.Parse(context.UserId), context.PrincipalType, "read", ct);
+            var explanation = await store.GetCandidateExplanationAsync(scope, id,
+                Guid.Parse(AuditActor.ActorFor(context)),
+                http.ClientIpFor(), UserAgent(http), ct);
+            http.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(explanation);
         }
         catch (StaffProctoringFailure error) { return Failure(error); }
     }

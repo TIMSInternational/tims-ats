@@ -22,6 +22,9 @@ import { platformProcedure } from './_common';
 const PROCTORING_CONSENT_LIMIT = 1_000;
 const PROCTORING_SESSION_LIMIT = 1_000;
 const PROCTORING_EVENT_LIMIT = 10_000;
+const PROCTORING_EVIDENCE_LIMIT = 1_000;
+const PROCTORING_FINDING_LIMIT = 10_000;
+const PROCTORING_EXPLANATION_LIMIT = 1_000;
 
 /** Fetch one extra row to distinguish a complete page from a capped export. */
 function boundedRows<T>(rows: ReadonlyArray<T>, limit: number): { data: T[]; truncated: boolean } {
@@ -271,9 +274,9 @@ export const dataRequestsRouter = router({
       // the matched subject's assignment ID and its organization ID. The database
       // limits are per export, not per assignment, and each query reads at most
       // one row beyond its documented cap so truncation cannot be silent.
-      const [consentRows, sessionRows, eventRows] =
+      const [consentRows, sessionRows, eventRows, evidenceRows, findingRows, explanationRows] =
         assignmentScopes.length === 0
-          ? [[], [], []] as const
+          ? [[], [], [], [], [], []] as const
           : await Promise.all([
               db.assessmentConsent.findMany({
                 where: {
@@ -325,10 +328,64 @@ export const dataRequestsRouter = router({
                   type: true, source: true, severity: true, clientAt: true, occurredAt: true,
                 },
               }),
+              db.proctoringEvidence.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds }) => ({
+                    organizationId,
+                    assignmentId: { in: assignmentIds },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_EVIDENCE_LIMIT + 1,
+                // Only subject-facing metadata. Storage keys, hashes, ETags,
+                // upload grants, and image bytes must not enter this JSON export.
+                select: {
+                  id: true, organizationId: true, assignmentId: true, sessionId: true,
+                  mediaType: true, captureReason: true, captureSlot: true,
+                  status: true, byteSize: true, modelRevision: true,
+                  confirmedAt: true, expiresAt: true, processedAt: true,
+                  deletedAt: true, createdAt: true,
+                },
+              }),
+              db.proctoringFinding.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds }) => ({
+                    organizationId,
+                    evidence: { is: { organizationId, assignmentId: { in: assignmentIds } } },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_FINDING_LIMIT + 1,
+                select: {
+                  id: true, organizationId: true, evidenceId: true,
+                  detector: true, modelRevision: true, label: true,
+                  resultKind: true, confidence: true, detectedCount: true,
+                  failureCode: true, inferredAt: true, createdAt: true,
+                },
+              }),
+              db.proctoringCandidateExplanation.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds, candidateIds: scopedCandidateIds }) => ({
+                    organizationId,
+                    assignmentId: { in: assignmentIds },
+                    candidateId: { in: scopedCandidateIds },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_EXPLANATION_LIMIT + 1,
+                select: {
+                  id: true, organizationId: true, assignmentId: true,
+                  sessionId: true, candidateId: true, text: true,
+                  submittedAt: true, expiresAt: true,
+                },
+              }),
             ]);
       const consents = boundedRows(consentRows, PROCTORING_CONSENT_LIMIT);
       const sessions = boundedRows(sessionRows, PROCTORING_SESSION_LIMIT);
       const events = boundedRows(eventRows, PROCTORING_EVENT_LIMIT);
+      const evidence = boundedRows(evidenceRows, PROCTORING_EVIDENCE_LIMIT);
+      const findings = boundedRows(findingRows, PROCTORING_FINDING_LIMIT);
+      const explanations = boundedRows(explanationRows, PROCTORING_EXPLANATION_LIMIT);
 
       // Reading only a boolean avoids fetching a potentially huge legacy JSON
       // blob into the automated metadata export. Every checked session was
@@ -374,10 +431,17 @@ export const dataRequestsRouter = router({
         assessmentConsents: consents.truncated,
         sessions: sessions.truncated,
         events: events.truncated,
+        evidence: evidence.truncated,
+        findings: findings.truncated,
+        explanations: explanations.truncated,
       };
+      const physicalMediaManualAccessRequired = evidence.data.length > 0 || findings.data.length > 0;
       const proctoringManualAccessRequired =
         Object.values(proctoringTruncated).some(Boolean)
-        || proctoringSessions.some((session) => session.legacyEventsManualAccessRequired);
+        || proctoringSessions.some((session) => session.legacyEventsManualAccessRequired)
+        // Physical media, if still retained, needs a controlled disclosure or
+        // erasure decision; the JSON file cannot fulfill that obligation.
+        || physicalMediaManualAccessRequired;
       const exportedAssessments = assessments.map(({ candidateId: _candidateId, organizationId: _organizationId, ...assessment }) => assessment);
 
       // §21 +AUDIT: one data_access_logs row per sensitive record actually exposed
@@ -404,6 +468,9 @@ export const dataRequestsRouter = router({
         ...consents.data.map((row) => ({ dataType: 'assessmentConsent', id: row.id, organizationId: row.organizationId })),
         ...proctoringSessions.map((row) => ({ dataType: 'proctoringSession', id: row.id, organizationId: row.organizationId })),
         ...events.data.map((row) => ({ dataType: 'proctoringEvent', id: row.id, organizationId: row.organizationId })),
+        ...evidence.data.map((row) => ({ dataType: 'proctoringEvidence', id: row.id, organizationId: row.organizationId })),
+        ...findings.data.map((row) => ({ dataType: 'proctoringFinding', id: row.id, organizationId: row.organizationId })),
+        ...explanations.data.map((row) => ({ dataType: 'proctoringCandidateExplanation', id: row.id, organizationId: row.organizationId })),
       ]);
       await Promise.all([
         // confidential → fail-SOFT.
@@ -424,16 +491,26 @@ export const dataRequestsRouter = router({
           assessmentConsents: consents.data,
           sessions: proctoringSessions,
           events: events.data,
+          evidence: evidence.data,
+          findings: findings.data,
+          explanations: explanations.data,
           truncated: proctoringTruncated,
           limits: {
             assessmentConsents: PROCTORING_CONSENT_LIMIT,
             sessions: PROCTORING_SESSION_LIMIT,
             events: PROCTORING_EVENT_LIMIT,
+            evidence: PROCTORING_EVIDENCE_LIMIT,
+            findings: PROCTORING_FINDING_LIMIT,
+            explanations: PROCTORING_EXPLANATION_LIMIT,
           },
           manualAccessRequired: proctoringManualAccessRequired,
-          manualAccessNotice: proctoringManualAccessRequired
-            ? 'La exportación automática está incompleta. Revise manualmente los registros truncados y los eventos heredados antes de cerrar esta solicitud de acceso.'
-            : null,
+          manualAccessNotice: physicalMediaManualAccessRequired
+            ? 'La exportación automática no incluye imágenes de proctoring. Verifique su divulgación o eliminación y revise cualquier registro truncado o evento heredado antes de cerrar esta solicitud.'
+            : proctoringManualAccessRequired
+              ? 'La exportación automática está incompleta. Revise manualmente los registros truncados y los eventos heredados antes de cerrar esta solicitud de acceso.'
+              : null,
+          physicalMediaIncluded: false,
+          physicalMediaManualAccessRequired,
           // True legacy free-text event JSON is intentionally excluded from the
           // automated bundle. A marked session requires manual access review to
           // fulfill the request completely; it must not be treated as complete.
@@ -516,6 +593,9 @@ export const dataRequestsRouter = router({
           proctoringConsents: consents.data.length,
           proctoringSessions: proctoringSessions.length,
           proctoringEvents: events.data.length,
+          proctoringEvidence: evidence.data.length,
+          proctoringFindings: findings.data.length,
+          proctoringExplanations: explanations.data.length,
         },
       };
     }),

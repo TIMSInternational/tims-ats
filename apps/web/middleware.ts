@@ -33,6 +33,20 @@ const PLATFORM_API_ORIGIN = (() => {
   }
 })();
 
+// The bucket origin is public metadata. Only the exact configured HTTPS origin
+// can receive candidate signed POSTs or serve staff signed GET previews.
+const EVIDENCE_S3_ORIGIN = (() => {
+  const value = process.env.NEXT_PUBLIC_PROCTORING_EVIDENCE_S3_ORIGIN;
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.origin === value && !url.username && !url.password
+      && url.pathname === '/' && !url.search && !url.hash ? value : '';
+  } catch {
+    return '';
+  }
+})();
+
 // Per-request, nonce-based Content-Security-Policy. In production the nonce
 // replaces 'unsafe-inline' on script-src (Next.js stamps the same nonce onto
 // its bootstrap scripts via the request CSP header), shrinking the XSS surface.
@@ -42,7 +56,7 @@ const PLATFORM_API_ORIGIN = (() => {
 function buildCsp(nonce: string, pathname: string): string {
   // The candidate assessment player runs the self-hosted MediaPipe face-count
   // model in WebAssembly. Permit only WASM compilation on this route; keep the
-  // stricter script policy for every other page and do not allow eval().
+  // stricter script policy for every other page and forbid dynamic JavaScript evaluation.
   const assessmentPlayer = /^\/careers\/[^/]+\/dashboard\/assessments\/[^/]+\/?$/.test(pathname);
   const scriptSrc = IS_PROD
     ? `script-src 'self' 'nonce-${nonce}'${assessmentPlayer ? " 'wasm-unsafe-eval'" : ''} https://challenges.cloudflare.com`
@@ -53,8 +67,8 @@ function buildCsp(nonce: string, pathname: string): string {
     scriptSrc,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.cloudfront.net",
-    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://login.microsoftonline.com https://*.daily.co wss://*.daily.co https://*.wss.daily.co https://*.elevenlabs.io wss://*.elevenlabs.io https://*.livekit.cloud wss://*.livekit.cloud https://challenges.cloudflare.com https://*.sentry.io${PLATFORM_API_ORIGIN ? ` ${PLATFORM_API_ORIGIN}` : ''}`,
+    `img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.cloudfront.net${EVIDENCE_S3_ORIGIN ? ` ${EVIDENCE_S3_ORIGIN}` : ''}`,
+    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://login.microsoftonline.com https://*.daily.co wss://*.daily.co https://*.wss.daily.co https://*.elevenlabs.io wss://*.elevenlabs.io https://*.livekit.cloud wss://*.livekit.cloud https://challenges.cloudflare.com https://*.sentry.io${PLATFORM_API_ORIGIN ? ` ${PLATFORM_API_ORIGIN}` : ''}${assessmentPlayer && EVIDENCE_S3_ORIGIN ? ` ${EVIDENCE_S3_ORIGIN}` : ''}`,
     "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
     "media-src 'self' blob: https://*.daily.co https://*.elevenlabs.io",
     // ElevenLabs Conversational AI loads its audio-processing AudioWorklet from a

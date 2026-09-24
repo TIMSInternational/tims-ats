@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { createFaceDetector } from '../../../../../../../../lib/proctoring/face-detector';
 import { hasLiveVideo } from './proctoring-media';
 
-export type PreflightFaceCheck = 'waiting' | 'checking' | 'ready' | 'missing' | 'multiple' | 'unavailable';
+export type PreflightFaceCheck = 'disabled' | 'waiting' | 'checking' | 'ready' | 'missing' | 'multiple' | 'unavailable';
 
-export function usePreflightFaceCheck(camera: MediaStream | null) {
+/** Optional, candidate-only positioning feedback. It never controls assessment access. */
+export function usePreflightFaceCheck(camera: MediaStream | null, enabled: boolean) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [observation, setObservation] = useState<{ camera: MediaStream; state: PreflightFaceCheck } | null>(null);
-  const faceCheck: PreflightFaceCheck = !hasLiveVideo(camera)
+  const faceCheck: PreflightFaceCheck = !enabled
+    ? 'disabled'
+    : !hasLiveVideo(camera)
     ? 'waiting'
     : observation?.camera === camera
       ? observation.state
@@ -22,7 +25,7 @@ export function usePreflightFaceCheck(camera: MediaStream | null) {
   }, [camera]);
 
   useEffect(() => {
-    if (!hasLiveVideo(camera)) return;
+    if (!enabled || !hasLiveVideo(camera)) return;
     let disposed = false;
     let sampling = false;
     let singleFaceSamples = 0;
@@ -79,7 +82,7 @@ export function usePreflightFaceCheck(camera: MediaStream | null) {
       if (interval) clearInterval(interval);
       detector?.dispose();
     };
-  }, [camera]);
+  }, [camera, enabled]);
 
   return { videoRef, faceCheck };
 }

@@ -25,7 +25,7 @@ internal static class RateLimitHttp
     }
 
     /// <summary>
-    /// Matches only the four mapped candidate proctoring operations. Do not parse
+    /// Matches only the mapped candidate proctoring operations. Do not parse
     /// or trust the dynamic segments here; the endpoint and candidate resolver
     /// validate the slug and assignment independently.
     /// </summary>
@@ -42,7 +42,12 @@ internal static class RateLimitHttp
             || !(parts[5].Equals("start", StringComparison.OrdinalIgnoreCase)
                 || parts[5].Equals("events", StringComparison.OrdinalIgnoreCase)
                 || parts[5].Equals("heartbeat", StringComparison.OrdinalIgnoreCase)
-                || parts[5].Equals("complete", StringComparison.OrdinalIgnoreCase)))
+                || parts[5].Equals("complete", StringComparison.OrdinalIgnoreCase)
+                || parts[5].Equals("explanation", StringComparison.OrdinalIgnoreCase)
+                || parts[5].Equals("media-consent", StringComparison.OrdinalIgnoreCase)
+                || parts[5].Equals("media-stop", StringComparison.OrdinalIgnoreCase)
+                || parts[5].Equals("media-intents", StringComparison.OrdinalIgnoreCase)
+                || parts[5].Equals("media-confirm", StringComparison.OrdinalIgnoreCase)))
             return false;
         orgSlug = parts[1];
         return true;

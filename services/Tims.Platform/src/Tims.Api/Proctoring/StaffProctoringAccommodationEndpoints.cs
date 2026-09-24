@@ -54,7 +54,7 @@ public static class StaffProctoringAccommodationEndpoints
         {
             var context = gate.Context!;
             var scope = await store.ResolveScopeAsync(Guid.Parse(context.OrganizationId),
-                Guid.Parse(context.UserId), gate.Scope!.Value, ct);
+                Guid.Parse(context.UserId), context.PrincipalType, "update", ct);
             return Results.Ok(await store.AccommodateAsync(scope, id,
                 Guid.Parse(AuditActor.ActorFor(context)), reason!,
                 http.ClientIpFor(), UserAgent(http), ct));

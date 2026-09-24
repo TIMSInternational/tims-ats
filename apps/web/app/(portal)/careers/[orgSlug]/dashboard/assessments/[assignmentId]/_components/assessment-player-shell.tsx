@@ -73,6 +73,7 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
           band={assignment.result?.band ?? null}
           percentile={assignment.result?.percentile ?? null}
           normSampleSize={assignment.result?.normSampleSize ?? null}
+          proctoringExplanation={assignment.proctoringRequired ? { orgSlug, assignmentId } : undefined}
         />
       </>
     );

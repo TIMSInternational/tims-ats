@@ -1,7 +1,7 @@
 namespace Tims.Domain.Proctoring;
 
 /// <summary>
-/// Browser and local face-detector reports are unverified review cues, never a
+/// Browser track and focus reports are unverified review cues, never a
 /// finding of misconduct. Risk priority is derived on the server; callers may
 /// not submit their own severity or arbitrary event names.
 /// </summary>
@@ -15,8 +15,8 @@ public static class ProctoringSignalPolicy
     public static string? SeverityFor(string type) => type switch
     {
         "tab_hidden" or "focus_lost" => "low",
-        "camera_stopped" or "screen_share_stopped" or "face_missing" or "multiple_faces"
-            or "model_unavailable" => "medium",
+        "camera_stopped" or "screen_share_stopped" => "medium",
+        "media_capture_stopped" => "low",
         _ => null,
     };
 }

@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { useProctoringCapability } from '../../../../../lib/platform-api/proctoring';
-import { useProctoringEvidence, useReviewProctoring } from '../../../../../lib/platform-api/proctoring-staff';
+import { useProctoringEvidence, useReviewProctoring, useStaffCandidateExplanation } from '../../../../../lib/platform-api/proctoring-staff';
 import { PlatformApiError } from '../../../../../lib/platform-api/client';
 import { useProctoringStaffAccess } from '../../../../../lib/proctoring/staff-access';
+import { ProctoringMediaReview } from './proctoring-media-review';
+import { CandidateProctoringExplanation } from './candidate-proctoring-explanation';
 
 interface ProctoringReviewProps {
   assignmentId: string;
@@ -40,11 +42,14 @@ function ProctoringReviewContent({ assignmentId, canWrite }: ProctoringReviewPro
   const { t, locale } = useI18n();
   const [decision, setDecision] = useState<ReviewDecision>('inconclusive');
   const [notes, setNotes] = useState('');
+  const [reviewConflict, setReviewConflict] = useState(false);
   const capability = useProctoringCapability();
   const session = useProctoringEvidence(assignmentId, capability.data?.enabled === true);
   const review = useReviewProctoring();
   const labels = t.proctoring.review;
   const summary = session.data?.pages[0];
+  const candidateExplanation = useStaffCandidateExplanation(assignmentId,
+    capability.data?.enabled === true && summary !== undefined && summary.status !== 'active');
   const events = session.data?.pages.flatMap((page) => page.events) ?? [];
 
   const formatTime = (date: Date | string) =>
@@ -102,6 +107,12 @@ function ProctoringReviewContent({ assignmentId, canWrite }: ProctoringReviewPro
               {labels.loadMore}
             </button>
           ) : null}
+          {capability.data?.mediaEvidenceEnabled ? (
+            <ProctoringMediaReview assignmentId={assignmentId} />
+          ) : null}
+          {summary.status !== 'active' ? (
+            <CandidateProctoringExplanation assignmentId={assignmentId} />
+          ) : null}
           {summary.review.reviewedAt ? (
             <p>
               {labels.status[summary.review.status]} · {formatTime(summary.review.reviewedAt)}
@@ -112,7 +123,15 @@ function ProctoringReviewContent({ assignmentId, canWrite }: ProctoringReviewPro
             className="space-y-2"
             onSubmit={(event) => {
               event.preventDefault();
-              review.mutate({ assignmentId, status: decision, notes: notes.trim() || undefined });
+              if (!candidateExplanation.isSuccess || candidateExplanation.isFetching || reviewConflict) return;
+              review.mutate({
+                assignmentId, status: decision, notes: notes.trim() || undefined,
+                seenExplanationId: candidateExplanation.data?.id ?? null,
+              }, {
+                onError: (error) => {
+                  if (error instanceof PlatformApiError && error.status === 409) setReviewConflict(true);
+                },
+              });
             }}
           >
             <select
@@ -135,14 +154,33 @@ function ProctoringReviewContent({ assignmentId, canWrite }: ProctoringReviewPro
               className="w-full rounded border border-[#D1D5DB] bg-white px-2 py-2"
               placeholder={labels.notes}
             />
-            {review.isError ? (
+            {reviewConflict ? (
+              <div className="space-y-2" role="alert">
+                <p className="text-[#B42318]">{labels.explanationChanged}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void candidateExplanation.refetch().then((result) => {
+                      if (result.isSuccess) {
+                        setReviewConflict(false);
+                        review.reset();
+                      }
+                    });
+                  }}
+                  className="font-medium text-[#493478] underline"
+                >
+                  {labels.refreshExplanation}
+                </button>
+              </div>
+            ) : review.isError ? (
               <p role="alert" className="text-[#B42318]">
                 {labels.saveError}
               </p>
             ) : null}
             <button
               type="submit"
-              disabled={review.isPending}
+              disabled={review.isPending || !candidateExplanation.isSuccess
+                || candidateExplanation.isFetching || reviewConflict}
               className="rounded bg-[#1F114C] px-3 py-2 font-medium text-white disabled:opacity-50"
             >
               {labels.save}

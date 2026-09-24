@@ -61,7 +61,8 @@ public sealed partial class StaffProctoringStore
 
     public async Task<StaffReviewResponse> ReviewAsync(
         StaffProctoringScope scope, Guid assignmentId, Guid actorId,
-        string status, string? notes, string? ip, string? userAgent, CancellationToken ct)
+        string status, string? notes, string? ip, string? userAgent, CancellationToken ct,
+        Guid? seenExplanationId = null)
     {
         if (status is not ("clear" or "concern" or "inconclusive"))
         {
@@ -83,17 +84,28 @@ public sealed partial class StaffProctoringStore
             throw new StaffProctoringFailure(404, "assignment_not_found");
         }
 
-        var session = await _db.Sessions.AsNoTracking()
-            .Where(row => row.OrganizationId == scope.OrganizationId
-                && row.AssignmentId == assignmentId)
-            .Select(row => new { row.Id, row.EndedAt, row.ReviewStatus,
-                row.ReviewedAt, row.UpdatedAt })
-            .SingleOrDefaultAsync(ct)
+        // Serialize the review with candidate submission. The reviewer must
+        // confirm exactly the statement they saw (including seeing none).
+        var locked = await _db.Sessions.FromSqlInterpolated($"""
+            SELECT * FROM proctoring_sessions
+             WHERE organization_id = {scope.OrganizationId}
+               AND assignment_id = {assignmentId}
+             FOR UPDATE
+            """).AsNoTracking().ToListAsync(ct);
+        var session = locked.SingleOrDefault()
             ?? throw new StaffProctoringFailure(404, "proctoring_session_not_found");
         if (session.EndedAt is null)
         {
             throw new StaffProctoringFailure(409, "proctoring_session_not_completed");
         }
+        var now = UtcTimestamp();
+        var currentExplanationId = await _db.CandidateExplanations.AsNoTracking()
+            .Where(row => row.OrganizationId == scope.OrganizationId
+                && row.AssignmentId == assignmentId && row.SessionId == session.Id
+                && row.ExpiresAt > now)
+            .Select(row => (Guid?)row.Id).SingleOrDefaultAsync(ct);
+        if (currentExplanationId != seenExplanationId)
+            throw new StaffProctoringFailure(409, "explanation_changed");
 
         var reviewedAt = UtcTimestamp();
         if (session.ReviewedAt is { } previousReviewAt && reviewedAt <= previousReviewAt)
@@ -129,10 +141,16 @@ public sealed partial class StaffProctoringStore
     private static ProctoringAuditLogRow NewAudit(
         Guid orgId, Guid actorId, string action, string entity, Guid entityId,
         string metadata, string? ip, string? userAgent) => new()
-    {
-        Id = Guid.NewGuid(), OrganizationId = orgId, ActorId = actorId,
-        Action = action, Entity = entity, EntityId = entityId.ToString(),
-        MetadataJson = metadata, IpAddress = ip, UserAgent = userAgent,
-        CreatedAt = UtcTimestamp(),
-    };
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = orgId,
+            ActorId = actorId,
+            Action = action,
+            Entity = entity,
+            EntityId = entityId.ToString(),
+            MetadataJson = metadata,
+            IpAddress = ip,
+            UserAgent = userAgent,
+            CreatedAt = UtcTimestamp(),
+        };
 }
