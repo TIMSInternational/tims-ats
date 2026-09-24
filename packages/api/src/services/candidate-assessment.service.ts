@@ -4,7 +4,7 @@ import type { Prisma } from '@tims/db';
 import { candidateAssessmentRepo, candidateAssessmentWriteRepo } from '../repositories/candidate-assessment.repository';
 import { candidatePortalRepo } from '../repositories/candidate-portal.repository';
 import { resolveOrg } from './candidate-portal.service';
-import { isExpired } from './candidate-assessment-lifecycle.service';
+import { isSubmissionWindowClosed } from './candidate-assessment-deadline';
 import {
   scoreChoice,
   computeResult,
@@ -44,8 +44,12 @@ export const candidateAssessmentService = {
     if (preCheck.status !== 'in_progress') {
       throw new TRPCError({ code: 'CONFLICT', message: 'assignment_not_in_progress' });
     }
-    if (isExpired(preCheck.expiresAt)) {
+    if (isSubmissionWindowClosed(preCheck.expiresAt, preCheck.startedAt,
+      preCheck.assessmentType?.duration ?? null)) {
       throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });
+    }
+    if (preCheck.proctoringRequired && (!preCheck.session || preCheck.session.endedAt)) {
+      throw new TRPCError({ code: 'CONFLICT', message: 'proctoring_session_not_active' });
     }
 
     return runTenantTransaction(org.id, async (tx) => {
@@ -59,8 +63,12 @@ export const candidateAssessmentService = {
       if (assignment.status !== 'in_progress') {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_not_in_progress' });
       }
-      if (isExpired(assignment.expiresAt)) {
+      if (isSubmissionWindowClosed(assignment.expiresAt, assignment.startedAt,
+        assignment.assessmentType?.duration ?? null)) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });
+      }
+      if (assignment.proctoringRequired && (!assignment.session || assignment.session.endedAt)) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'proctoring_session_not_active' });
       }
 
       const questions = await candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx(
@@ -191,6 +199,10 @@ export const candidateAssessmentService = {
       if (completion.count === 0) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_already_completed' });
       }
+
+      // The .NET 10 proctoring owner closes its session after this assessment
+      // transaction commits. A failed browser completion call is reconciled by
+      // the C# reviewer read path from this authoritative completed status.
 
       return { rawScore, normalizedScore, hasPending };
     });

@@ -24,6 +24,7 @@ model AssessmentAssignment {
   candidateId      String    @map("candidate_id") @db.Uuid
   vacancyId        String    @map("vacancy_id") @db.Uuid
   assessmentTypeId String    @map("assessment_type_id") @db.Uuid
+  proctoringRequired Boolean @default(false) @map("proctoring_required")
   status           String
   assignedById     String    @map("assigned_by_id") @db.Uuid
   assignedAt       DateTime  @default(now()) @map("assigned_at")
@@ -82,13 +83,43 @@ model ProctoringSession {
   flagCount      Int       @default(0) @map("flag_count")
   severity       String?
   events         Json?
+  // A separate, explicit consent is required before camera/screen monitoring.
+  consentedAt    DateTime? @map("consented_at")
+  consentVersion String?   @map("consent_version")
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  reviewStatus   String    @default("unreviewed") @map("review_status")
+  reviewNotes    String?   @map("review_notes") @db.Text
+  reviewedAt     DateTime? @map("reviewed_at")
+  reviewedById   String?   @map("reviewed_by_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   assignment AssessmentAssignment @relation(fields: [assignmentId], references: [id])
+  signalEvents ProctoringEvent[]
 
+  @@unique([id, organizationId])
   @@index([organizationId])
   @@map("proctoring_sessions")
+}
+
+// Append-only observations. Browser/face signals are review cues, not a finding
+// of misconduct. Media is never stored in this table.
+model ProctoringEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sessionId     String   @map("session_id") @db.Uuid
+  clientEventId String   @map("client_event_id") @db.Uuid
+  type          String
+  source        String
+  severity      String
+  clientAt      DateTime? @map("client_at")
+  occurredAt    DateTime @default(now()) @map("occurred_at")
+
+  session ProctoringSession @relation(fields: [sessionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([sessionId, clientEventId])
+  @@index([organizationId, sessionId, occurredAt])
+  @@map("proctoring_events")
 }
 
 enum QuestionType {

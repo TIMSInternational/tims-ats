@@ -24,6 +24,10 @@ vi.mock(
   '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-question-wizard',
   () => ({ AssessmentQuestionWizard: () => <div>wizard-stub</div> }),
 );
+vi.mock(
+  '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/proctored-assessment-flow',
+  () => ({ ProctoredAssessmentFlow: () => <div>proctored-preflight-stub</div> }),
+);
 
 import { AssessmentPlayerShell } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-player-shell';
 
@@ -73,6 +77,24 @@ describe('AssessmentPlayerShell', () => {
     renderShell();
     expect(screen.getByText('wizard-stub')).toBeInTheDocument();
     expect(screen.queryByText(en.assessmentPlayer.backToDashboard)).not.toBeInTheDocument();
+  });
+
+  it('routes required assignments through proctoring preflight before the question wizard', () => {
+    assessmentsQueryData = [
+      {
+        id: 'a1',
+        status: 'assigned',
+        proctoringRequired: true,
+        startedAt: null,
+        expiresAt: null,
+        assessmentType: { duration: 30 },
+        result: null,
+      },
+    ];
+    renderShell();
+    expect(screen.getByText('proctored-preflight-stub')).toBeInTheDocument();
+    expect(screen.queryByText(en.assessmentPlayer.consentTitle)).not.toBeInTheDocument();
+    expect(screen.queryByText('wizard-stub')).not.toBeInTheDocument();
   });
 
   it('renders the result screen for status=completed, using the list item result directly (no extra fetch)', () => {

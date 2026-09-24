@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../packages/api/src/repositories/candidate-assessment.repository', async () => {
   const actual = await vi.importActual<
@@ -50,6 +50,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(candidatePortalRepo.findOrgBySlug).mockResolvedValue(ORG as never);
 });
+afterEach(() => vi.useRealTimers());
 
 // getMyAssessments/startAssessment/getAssessmentQuestions now live in
 // candidate-assessment-lifecycle.service.ts — see
@@ -61,6 +62,73 @@ const FREE_TEXT_Q = { id: 'q2', type: 'free_text', correctOptionIds: [], points:
 describe('candidateAssessmentService.submitAssessment', () => {
   beforeEach(() => {
     vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+  });
+
+  function mockTimedAttempt(expiresAt: Date, startedAt: Date, duration: number) {
+    const assignment = {
+      id: ASSIGNMENT_ID, status: 'in_progress', startedAt, expiresAt,
+      assessmentTypeId: 'type-1', assessmentType: { duration },
+    };
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue(assignment as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue(assignment as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx)
+      .mockResolvedValue([SINGLE_CHOICE_Q] as never);
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx)
+      .mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx)
+      .mockResolvedValue({ count: 1 } as never);
+  }
+
+  it('accepts timer auto-submit just after a tighter assignment expiry', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-24T12:00:30.000Z'));
+    mockTimedAttempt(new Date('2026-09-24T12:00:00.000Z'),
+      new Date('2026-09-24T11:45:00.000Z'), 30);
+
+    await expect(candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID,
+      [{ questionId: 'q1', selectedOptionIds: ['b'] }])).resolves.toMatchObject({ rawScore: 5 });
+    expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects submission after the bounded assignment-expiry grace', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-24T12:02:01.000Z'));
+    mockTimedAttempt(new Date('2026-09-24T12:00:00.000Z'),
+      new Date('2026-09-24T11:45:00.000Z'), 30);
+
+    await expect(candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, []))
+      .rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_expired' });
+    expect(candidateAssessmentWriteRepo.findAssignmentInTx).not.toHaveBeenCalled();
+  });
+
+  it('applies the same bounded grace when duration is the tighter deadline', async () => {
+    vi.useFakeTimers();
+    mockTimedAttempt(new Date('2026-09-24T13:00:00.000Z'),
+      new Date('2026-09-24T11:59:00.000Z'), 1);
+    vi.setSystemTime(new Date('2026-09-24T12:00:30.000Z'));
+    await expect(candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID,
+      [{ questionId: 'q1', selectedOptionIds: ['b'] }])).resolves.toMatchObject({ rawScore: 5 });
+
+    vi.setSystemTime(new Date('2026-09-24T12:02:01.000Z'));
+    await expect(candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, []))
+      .rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_expired' });
+  });
+
+  it('rechecks the deadline inside the write transaction', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-24T12:01:59.000Z'));
+    const expiresAt = new Date('2026-09-24T12:00:00.000Z');
+    const startedAt = new Date('2026-09-24T11:45:00.000Z');
+    mockTimedAttempt(expiresAt, startedAt, 30);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockImplementationOnce(() => {
+      vi.setSystemTime(new Date('2026-09-24T12:02:01.000Z'));
+      return Promise.resolve({ id: ASSIGNMENT_ID, status: 'in_progress', startedAt, expiresAt,
+        assessmentTypeId: 'type-1', assessmentType: { duration: 30 } }) as never;
+    });
+
+    await expect(candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, []))
+      .rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_expired' });
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).not.toHaveBeenCalled();
   });
 
   it('throws NOT_FOUND when the assignment is not owned (pre-check)', async () => {

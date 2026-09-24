@@ -2,12 +2,15 @@
 
 import { useI18n } from '../../../../../lib/i18n';
 import { DiscChart } from '../../../../../components';
+import { ProctoringReview } from './proctoring-review';
+import { ProctoringAccommodation } from './proctoring-accommodation';
 
 interface Assignment {
   id: string;
   status: string;
   assignedAt: Date | string;
   completedAt: Date | string | null;
+  proctoringRequired: boolean;
   assessmentType: { id: string; name: string; code: string };
   // rawScore + breakdown are restricted Psychometric Raw (super_admin only) and
   // are no longer returned on the candidate-detail path (Wave 2.5 slice 6), so
@@ -100,6 +103,7 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
   for (const a of assignments) {
     byCode.set(a.assessmentType.code.toLowerCase(), a);
   }
+  const pcaAssignment = byCode.get('pca');
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
@@ -120,6 +124,10 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
               <div className="mt-2">
                 <DiscScoreBoxes breakdown={breakdown} />
               </div>
+              {pcaAssignment?.proctoringRequired && pcaAssignment.status === 'assigned'
+                ? <ProctoringAccommodation assignmentId={pcaAssignment.id} /> : null}
+              {pcaAssignment?.proctoringRequired && pcaAssignment.status !== 'assigned'
+                ? <ProctoringReview assignmentId={pcaAssignment.id} /> : null}
             </AssessmentRow>
           </>
         )}
@@ -164,6 +172,10 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
               !Array.isArray(a.result.breakdown) ? (
                 <BreakdownGrid data={a.result.breakdown as Record<string, number>} />
               ) : null}
+              {a.proctoringRequired && a.status === 'assigned'
+                ? <ProctoringAccommodation assignmentId={a.id} /> : null}
+              {a.proctoringRequired && a.status !== 'assigned'
+                ? <ProctoringReview assignmentId={a.id} /> : null}
             </AssessmentRow>
           );
         })}

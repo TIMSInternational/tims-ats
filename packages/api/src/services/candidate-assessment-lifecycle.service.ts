@@ -50,11 +50,24 @@ interface AssignmentResultSummary {
 
 // Strips the internal `breakdown` JSON and replaces it with a derived `hasPending` boolean —
 // the candidate-facing result screen (Wave 1.5a slice 3) must never receive raw breakdown JSON.
-function withPendingFlag<T extends { result: AssignmentResultSummary | null }>(assignment: T) {
-  const { result, ...rest } = assignment;
-  if (!result) return { ...rest, result: null };
+function withPendingFlag<T extends {
+  result: AssignmentResultSummary | null;
+  proctoringRequired?: boolean;
+  session?: { id: string; startedAt: Date; endedAt: Date | null } | null;
+}>(assignment: T) {
+  const { result, session, proctoringRequired, ...rest } = assignment;
+  const state = {
+    ...rest,
+    proctoringRequired: proctoringRequired === true,
+    proctoring: session ? {
+      sessionId: session.id,
+      status: session.endedAt ? 'completed' as const : 'active' as const,
+      startedAt: session.startedAt,
+    } : null,
+  };
+  if (!result) return { ...state, result: null };
   const { breakdown, ...resultRest } = result;
-  return { ...rest, result: { ...resultRest, hasPending: hasPendingManualReview(breakdown) } };
+  return { ...state, result: { ...resultRest, hasPending: hasPendingManualReview(breakdown) } };
 }
 
 const STARTABLE_STATUSES = new Set(['assigned', 'in_progress']);
@@ -99,6 +112,9 @@ export const candidateAssessmentLifecycleService = {
       if (!STARTABLE_STATUSES.has(assignment.status)) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_not_startable' });
       }
+      if (assignment.proctoringRequired) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'proctoring_preflight_required' });
+      }
 
       // Idempotent: record consent on first start only (upsertConsent no-ops on
       // repeat), then (re)confirm in_progress either way.
@@ -130,6 +146,9 @@ export const candidateAssessmentLifecycleService = {
       }
       if (isExpired(assignment.expiresAt)) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });
+      }
+      if (assignment.proctoringRequired && (!assignment.session || assignment.session.endedAt)) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'proctoring_session_not_active' });
       }
       return candidateAssessmentRepo.findQuestionsForType(org.id, assignment.assessmentTypeId);
     });

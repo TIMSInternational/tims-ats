@@ -23,14 +23,24 @@ const findMany = {
   interview: vi.fn(),
   offer: vi.fn(),
   assessmentAssignment: vi.fn(),
+  assessmentConsent: vi.fn(),
+  proctoringSession: vi.fn(),
+  proctoringEvent: vi.fn(),
   employeeDemographics: vi.fn(),
   employeeCompensation: vi.fn(),
 };
 const dataAccessCreateMany = vi.fn();
 const auditLogCreate = vi.fn();
 const loggerWarn = vi.fn();
+const queryRaw = vi.fn();
+const transaction = vi.fn(async (callback: (tx: { dataAccessLog: { createMany: typeof dataAccessCreateMany } }) => Promise<unknown>) =>
+  callback({ dataAccessLog: { createMany: dataAccessCreateMany } }));
 
 vi.mock('@tims/db', () => ({
+  Prisma: {
+    sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings: [...strings], values }),
+    join: (parts: unknown[]) => ({ parts }),
+  },
   db: {
     user: { findMany: (...a: unknown[]) => findMany.user(...a) },
     candidate: { findMany: (...a: unknown[]) => findMany.candidate(...a) },
@@ -38,10 +48,15 @@ vi.mock('@tims/db', () => ({
     interview: { findMany: (...a: unknown[]) => findMany.interview(...a) },
     offer: { findMany: (...a: unknown[]) => findMany.offer(...a) },
     assessmentAssignment: { findMany: (...a: unknown[]) => findMany.assessmentAssignment(...a) },
+    assessmentConsent: { findMany: (...a: unknown[]) => findMany.assessmentConsent(...a) },
+    proctoringSession: { findMany: (...a: unknown[]) => findMany.proctoringSession(...a) },
+    proctoringEvent: { findMany: (...a: unknown[]) => findMany.proctoringEvent(...a) },
     employeeDemographics: { findMany: (...a: unknown[]) => findMany.employeeDemographics(...a) },
     employeeCompensation: { findMany: (...a: unknown[]) => findMany.employeeCompensation(...a) },
     dataAccessLog: { createMany: (...a: unknown[]) => dataAccessCreateMany(...a) },
     auditLog: { create: (...a: unknown[]) => auditLogCreate(...a) },
+    $queryRaw: (...a: unknown[]) => queryRaw(...a),
+    $transaction: (...a: unknown[]) => transaction(a[0] as Parameters<typeof transaction>[0]),
   },
   // audit.ts binds to tenantDb at module load; never exercised on this path.
   tenantDb: {},
@@ -111,9 +126,13 @@ function seed(opts: { sensitive?: boolean } = {}) {
   findMany.offer.mockResolvedValue([]);
   findMany.assessmentAssignment.mockResolvedValue(
     sensitive
-      ? [{ id: 'asg-1', status: 'done', result: { id: RESULT_ID, organizationId: SUBJECT_ORG, normalizedScore: 71 } }]
+      ? [{ id: 'asg-1', candidateId: CANDIDATE_ID, organizationId: SUBJECT_ORG, status: 'done', result: { id: RESULT_ID, organizationId: SUBJECT_ORG, normalizedScore: 71 } }]
       : [],
   );
+  findMany.assessmentConsent.mockResolvedValue([]);
+  findMany.proctoringSession.mockResolvedValue([]);
+  findMany.proctoringEvent.mockResolvedValue([]);
+  queryRaw.mockResolvedValue([]);
   findMany.employeeDemographics.mockResolvedValue(
     sensitive ? [{ id: DEMO_ID, organizationId: SUBJECT_ORG, gender: 'female', dateOfBirth: null }] : [],
   );
@@ -251,8 +270,8 @@ describe('DSAR export — cases the first round of these tests did not cover', (
 
   it('writes no assessmentResult row for an assignment that was never completed', async () => {
     findMany.assessmentAssignment.mockResolvedValue([
-      { id: 'asg-1', status: 'pending', result: null },
-      { id: 'asg-2', status: 'done', result: { id: RESULT_ID, organizationId: SUBJECT_ORG, normalizedScore: 71 } },
+      { id: 'asg-1', candidateId: CANDIDATE_ID, organizationId: SUBJECT_ORG, status: 'pending', result: null },
+      { id: 'asg-2', candidateId: CANDIDATE_ID, organizationId: SUBJECT_ORG, status: 'done', result: { id: RESULT_ID, organizationId: SUBJECT_ORG, normalizedScore: 71 } },
     ]);
     const out = await caller().exportSubjectData({ email: 'a@b.com' });
     expect(out.counts.assessments).toBe(2);
@@ -318,11 +337,182 @@ describe('DSAR export — the bundle shape is pinned', () => {
     // zero tests.
     const out = await caller().exportSubjectData({ email: 'a@b.com' });
     const bundle = JSON.parse(out.json);
-    expect(Object.keys(bundle).sort()).toEqual(['generatedAt', 'hr', 'identity', 'recruitment', 'subject']);
+    expect(Object.keys(bundle).sort()).toEqual(['generatedAt', 'hr', 'identity', 'proctoring', 'recruitment', 'subject']);
     expect(Object.keys(bundle.identity).sort()).toEqual(['candidates', 'users']);
     expect(Object.keys(bundle.recruitment).sort()).toEqual(['applications', 'assessments', 'interviews', 'offers']);
     expect(Object.keys(bundle.hr).sort()).toEqual(['compensation', 'demographics']);
+    expect(Object.keys(bundle.proctoring).sort()).toEqual([
+      'assessmentConsents', 'events', 'legacyEventsJsonIncluded', 'limits',
+      'manualAccessNotice', 'manualAccessRequired', 'sessions', 'truncated',
+    ]);
+    expect(bundle.recruitment.assessments[0]).not.toHaveProperty('candidateId');
+    expect(bundle.recruitment.assessments[0]).not.toHaveProperty('organizationId');
     expect(bundle.subject).toBe('a@b.com');
+  });
+});
+
+describe('DSAR export — proctoring metadata', () => {
+  const SESSION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const EVENT_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const CONSENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  it('scopes every privileged read through matched assignment and organization IDs', async () => {
+    // A corrupted cross-org assignment must never become a proctoring scope.
+    findMany.assessmentAssignment.mockResolvedValue([
+      { id: 'asg-good', candidateId: CANDIDATE_ID, organizationId: SUBJECT_ORG, result: null },
+      { id: 'asg-wrong-org', candidateId: CANDIDATE_ID, organizationId: OPERATOR_ORG, result: null },
+    ]);
+    await caller().exportSubjectData({ email: 'a@b.com' });
+
+    for (const table of [findMany.assessmentConsent, findMany.proctoringSession]) {
+      const query = table.mock.calls[0][0] as { where: { OR: unknown[] }; select: Record<string, boolean>; take: number };
+      const expectedScope: Record<string, unknown> = {
+        organizationId: SUBJECT_ORG,
+        assignmentId: { in: ['asg-good'] },
+      };
+      if (table === findMany.assessmentConsent) expectedScope.candidateId = { in: [CANDIDATE_ID] };
+      expect(query.where.OR).toEqual([expectedScope]);
+      expect(query.select.id).toBe(true);
+      expect(query.select.organizationId).toBe(true);
+      expect(query.take).toBeGreaterThan(1);
+    }
+    const eventQuery = findMany.proctoringEvent.mock.calls[0][0] as {
+      where: { OR: unknown[] }; select: Record<string, boolean>; take: number;
+    };
+    expect(eventQuery.where.OR).toEqual([{
+      organizationId: SUBJECT_ORG,
+      session: { is: { organizationId: SUBJECT_ORG, assignmentId: { in: ['asg-good'] } } },
+    }]);
+    expect(eventQuery.select.type).toBe(true);
+    expect(eventQuery.take).toBe(10_001);
+  });
+
+  it('skips all proctoring reads when the subject has no matching assignments', async () => {
+    findMany.assessmentAssignment.mockResolvedValue([]);
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const proctoring = JSON.parse(out.json).proctoring;
+    expect(findMany.assessmentConsent).not.toHaveBeenCalled();
+    expect(findMany.proctoringSession).not.toHaveBeenCalled();
+    expect(findMany.proctoringEvent).not.toHaveBeenCalled();
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect(proctoring).toMatchObject({
+      assessmentConsents: [], sessions: [], events: [], manualAccessRequired: false,
+      truncated: { assessmentConsents: false, sessions: false, events: false },
+    });
+  });
+
+  it('keeps two same-email candidate organizations paired to their own assignments', async () => {
+    const ORG_B = '77777777-7777-4777-8777-777777777777';
+    const CANDIDATE_B = '88888888-8888-4888-8888-888888888888';
+    findMany.candidate.mockResolvedValue([
+      { id: CANDIDATE_ID, email: 'a@b.com', organizationId: SUBJECT_ORG },
+      { id: CANDIDATE_B, email: 'a@b.com', organizationId: ORG_B },
+    ]);
+    findMany.assessmentAssignment.mockResolvedValue([
+      { id: 'asg-a', candidateId: CANDIDATE_ID, organizationId: SUBJECT_ORG, result: null },
+      { id: 'asg-b', candidateId: CANDIDATE_B, organizationId: ORG_B, result: null },
+    ]);
+    await caller().exportSubjectData({ email: 'a@b.com' });
+    const consentQuery = findMany.assessmentConsent.mock.calls[0][0] as { where: { OR: unknown[] } };
+    expect(consentQuery.where.OR).toEqual([
+      { organizationId: SUBJECT_ORG, assignmentId: { in: ['asg-a'] }, candidateId: { in: [CANDIDATE_ID] } },
+      { organizationId: ORG_B, assignmentId: { in: ['asg-b'] }, candidateId: { in: [CANDIDATE_B] } },
+    ]);
+  });
+
+  it('includes consent, review, and normalized event metadata while marking legacy JSON for manual access', async () => {
+    findMany.assessmentConsent.mockResolvedValue([{
+      id: CONSENT_ID, organizationId: SUBJECT_ORG, assignmentId: 'asg-1', candidateId: CANDIDATE_ID,
+      consentType: 'assessment', textVersion: 'v1', agreedAt: '2026-09-24T10:00:00Z',
+      ipAddress: '203.0.113.4', userAgent: 'browser',
+    }]);
+    findMany.proctoringSession.mockResolvedValue([{
+      id: SESSION_ID, organizationId: SUBJECT_ORG, assignmentId: 'asg-1',
+      startedAt: '2026-09-24T10:00:00Z', endedAt: '2026-09-24T10:30:00Z',
+      flagCount: 1, severity: 'low', consentedAt: '2026-09-24T10:00:00Z', consentVersion: 'v1',
+      lastHeartbeatAt: '2026-09-24T10:29:00Z', reviewStatus: 'reviewed',
+      reviewNotes: 'Human review completed', reviewedAt: '2026-09-24T11:00:00Z', reviewedById: USER_ID,
+      events: [{ description: 'Legacy free text must not appear in the automated export' }],
+    }]);
+    findMany.proctoringEvent.mockResolvedValue([{
+      id: EVENT_ID, organizationId: SUBJECT_ORG, sessionId: SESSION_ID,
+      clientEventId: EVENT_ID, type: 'face_absent', source: 'on_device', severity: 'low',
+      clientAt: '2026-09-24T10:12:00Z', occurredAt: '2026-09-24T10:12:01Z',
+    }]);
+    queryRaw.mockResolvedValue([{ id: SESSION_ID, has_legacy_events: true }]);
+
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const p = JSON.parse(out.json).proctoring;
+    expect(p.assessmentConsents[0]).toMatchObject({ id: CONSENT_ID, ipAddress: '203.0.113.4' });
+    expect(p.sessions[0]).toMatchObject({
+      id: SESSION_ID, reviewNotes: 'Human review completed',
+      legacyEventsManualAccessRequired: true,
+    });
+    expect(p.sessions[0]).not.toHaveProperty('events');
+    expect(p.events[0]).toMatchObject({ id: EVENT_ID, type: 'face_absent' });
+    expect(p.legacyEventsJsonIncluded).toBe(false);
+    expect(p.manualAccessRequired).toBe(true);
+    expect(p.manualAccessNotice).toContain('incompleta');
+    expect(out.counts).toMatchObject({ proctoringConsents: 1, proctoringSessions: 1, proctoringEvents: 1 });
+    const proctoringAudits = writtenRows().filter((row) =>
+      ['assessmentConsent', 'proctoringSession', 'proctoringEvent'].includes(String(row.dataType)));
+    expect(proctoringAudits.map((row) => [row.dataType, row.recordId])).toEqual([
+      ['assessmentConsent', CONSENT_ID],
+      ['proctoringSession', SESSION_ID],
+      ['proctoringEvent', EVENT_ID],
+    ]);
+    expect(proctoringAudits.every((row) => row.organizationId === SUBJECT_ORG && row.action === 'export')).toBe(true);
+    const sessionQuery = findMany.proctoringSession.mock.calls[0][0] as { select: Record<string, boolean> };
+    expect(sessionQuery.select).not.toHaveProperty('events');
+    // The boolean probe itself remains tied to the subject org and exported session ID.
+    expect(JSON.stringify(queryRaw.mock.calls[0][0])).toContain(SUBJECT_ORG);
+    expect(JSON.stringify(queryRaw.mock.calls[0][0])).toContain(SESSION_ID);
+    expect(JSON.stringify(queryRaw.mock.calls[0][0])).not.toContain(OPERATOR_ORG);
+  });
+
+  it('marks capped metadata as incomplete instead of silently returning a partial export', async () => {
+    findMany.assessmentConsent.mockResolvedValue(
+      Array.from({ length: 1_001 }, (_, i) => ({ id: `consent-${i}`, organizationId: SUBJECT_ORG })),
+    );
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const p = JSON.parse(out.json).proctoring;
+    expect(p.assessmentConsents).toHaveLength(1_000);
+    expect(p.truncated.assessmentConsents).toBe(true);
+    expect(p.manualAccessRequired).toBe(true);
+    expect(p.limits.assessmentConsents).toBe(1_000);
+    expect(out.counts.proctoringConsents).toBe(1_000);
+    expect((findMany.assessmentConsent.mock.calls[0][0] as { take: number }).take).toBe(1_001);
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(writtenRows().filter((row) => row.dataType === 'assessmentConsent')).toHaveLength(1_000);
+    expect(dataAccessCreateMany.mock.calls.slice(0, 3).map((call) => (call[0] as { data: unknown[] }).data.length))
+      .toEqual([500, 500, 1]);
+  });
+
+  it('aborts before any fail-soft or export-event audit if a proctoring audit insert fails', async () => {
+    findMany.assessmentConsent.mockResolvedValue([{
+      id: CONSENT_ID, organizationId: SUBJECT_ORG, assignmentId: 'asg-1', candidateId: CANDIDATE_ID,
+    }]);
+    dataAccessCreateMany.mockImplementation((args: { data: Array<{ dataType: string }> }) =>
+      args.data.some((row) => row.dataType === 'assessmentConsent')
+        ? Promise.reject(new Error('proctoring audit write failed'))
+        : Promise.resolve({ count: args.data.length }),
+    );
+    await expect(caller().exportSubjectData({ email: 'a@b.com' })).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+    expect(dataAccessCreateMany).toHaveBeenCalledTimes(1);
+    expect(auditLogCreate).not.toHaveBeenCalled();
+  });
+
+  it('fails instead of claiming no manual legacy access when the presence probe is incomplete', async () => {
+    findMany.proctoringSession.mockResolvedValue([{
+      id: SESSION_ID, organizationId: SUBJECT_ORG, assignmentId: 'asg-1',
+    }]);
+    queryRaw.mockResolvedValue([]);
+    await expect(caller().exportSubjectData({ email: 'a@b.com' })).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+    expect(auditLogCreate).not.toHaveBeenCalled();
   });
 });
 

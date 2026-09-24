@@ -501,6 +501,13 @@ public sealed class PlatformOptions
     public bool AccessReviewWriteEnabled { get; init; }
 
     /// <summary>
+    /// Opt-in candidate monitoring and staff review for the proctoring beta. The
+    /// assessment type policy is separately default-off; this deployment flag
+    /// keeps every new C# route dark until the migration and database checks pass.
+    /// </summary>
+    public bool ProctoringEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Q0b slice 1 / issue #100 (efcoreReadOnly): when true, the C# monitoring READ surface is
     /// mapped and live — <c>GET /monitoring/executive-kpis</c>, <c>/monitoring/module-health</c>,
     /// <c>/monitoring/alerts</c>, <c>/monitoring/action-plan-alerts</c>,

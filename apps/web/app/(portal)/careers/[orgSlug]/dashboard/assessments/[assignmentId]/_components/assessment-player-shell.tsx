@@ -8,6 +8,7 @@ import { AssessmentQuestionWizard } from './assessment-question-wizard';
 import { AssessmentResultScreen } from './assessment-result-screen';
 import { mapAssessmentErrorMessage } from './assessment-error-messages';
 import { AssessmentBackLink } from './assessment-back-link';
+import { ProctoredAssessmentFlow } from './proctored-assessment-flow';
 
 interface AssessmentPlayerShellProps {
   orgSlug: string;
@@ -74,6 +75,20 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
           normSampleSize={assignment.result?.normSampleSize ?? null}
         />
       </>
+    );
+  }
+
+  if (assignment.proctoringRequired && (assignment.status === 'assigned' || assignment.status === 'in_progress')) {
+    return (
+      <ProctoredAssessmentFlow
+        orgSlug={orgSlug}
+        assignmentId={assignmentId}
+        status={assignment.status}
+        existingStartedAt={assignment.startedAt}
+        expiresAt={assignment.expiresAt}
+        durationMinutes={assignment.assessmentType.duration}
+        onSubmitted={() => utils.candidatePortal.getMyAssessments.invalidate()}
+      />
     );
   }
 

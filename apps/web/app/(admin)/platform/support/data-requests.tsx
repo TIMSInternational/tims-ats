@@ -5,10 +5,41 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function exportFollowUp(json: string): { required: boolean; notice: string | null } {
+  try {
+    const bundle: unknown = JSON.parse(json);
+    if (!isRecord(bundle) || !isRecord(bundle.proctoring)) return { required: true, notice: null };
+    const proctoring = bundle.proctoring;
+    if (typeof proctoring.manualAccessRequired !== 'boolean'
+        || !isRecord(proctoring.truncated)
+        || !Array.isArray(proctoring.sessions)) return { required: true, notice: null };
+    const truncated = isRecord(proctoring.truncated)
+      && Object.values(proctoring.truncated).some((value) => value === true);
+    const legacyEvents = Array.isArray(proctoring.sessions)
+      && proctoring.sessions.some((session: unknown) =>
+        isRecord(session) && session.legacyEventsManualAccessRequired === true);
+    const required = proctoring.manualAccessRequired === true || truncated || legacyEvents;
+    const notice = typeof proctoring.manualAccessNotice === 'string'
+      && proctoring.manualAccessNotice.trim().length > 0
+      ? proctoring.manualAccessNotice
+      : null;
+    return { required, notice };
+  } catch {
+    // A downloaded payload that cannot be checked is never presented as a
+    // complete statutory export. The operator must review it manually.
+    return { required: true, notice: null };
+  }
+}
+
 export function DataRequests() {
   const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [manualFollowUp, setManualFollowUp] = useState<{ subject: string; notice: string } | null>(null);
   const utils = trpc.useUtils();
 
   const handleExport = async (e: React.FormEvent) => {
@@ -16,6 +47,7 @@ export function DataRequests() {
     const subject = email.trim();
     if (!subject || !subject.includes('@')) return;
     setExporting(true);
+    setManualFollowUp(null);
     try {
       // staleTime/gcTime 0 is REQUIRED, not a tuning choice. The QueryClient default
       // is `staleTime: 300_000` (trpc-provider.tsx), and `utils.*.fetch` is
@@ -32,8 +64,15 @@ export function DataRequests() {
       a.download = `habeas-data-${subject}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      const total = Object.values(result.counts).reduce((s, n) => s + n, 0);
-      toast(`${t.support.dataExportDone}: ${total}`, { type: 'success' });
+      const followUp = exportFollowUp(result.json);
+      if (followUp.required) {
+        const notice = followUp.notice ?? t.support.dataExportManualFollowUp;
+        setManualFollowUp({ subject, notice });
+        toast(notice, { type: 'warning', duration: 8_000 });
+      } else {
+        const total = Object.values(result.counts).reduce((s, n) => s + n, 0);
+        toast(`${t.support.dataExportDone}: ${total}`, { type: 'success' });
+      }
     } catch (err) {
       // Only surface our own NOT_FOUND copy; for any other error show a generic
       // message so raw tRPC/Prisma internals never reach the browser.
@@ -74,6 +113,13 @@ export function DataRequests() {
         </div>
         <p className="text-[11px] text-[#ABABAB] mt-2">{t.support.dataExportDesc}</p>
       </form>
+
+      {manualFollowUp && (
+        <div role="alert" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong className="block break-all mb-1">{manualFollowUp.subject}</strong>
+          <p>{manualFollowUp.notice}</p>
+        </div>
+      )}
 
       <p className="text-[11px] text-[#ABABAB] mt-3">{t.support.dataDeletionNote}</p>
     </div>
