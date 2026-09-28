@@ -21,3 +21,4 @@ export {
 export { tenantDb, runTenantTransaction } from './tenant-client';
 export type { TenantDb } from './tenant-client';
 export { runWithTenant, getTenantOrgId } from './tenant-context';
+export { MATRIX, SYSTEM_ROLE_CATALOG, flattenEntries } from '../prisma/seed-access-matrix';

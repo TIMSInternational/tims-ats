@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { bulkInviteUsers, resendInvitation } from '../../services/bulk-invitation.service';
 import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
-import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
+import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '../../services/org-provisioning';
 import { renderInvitationEmail } from '../../services/invitation-email';
 
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
@@ -128,9 +128,7 @@ export const invitationsRouter = router({
         await provisionOrgDefaults(tx, org.id, input.organizationName);
         await provisionOrgEntitlements(tx, org.id);
 
-        await tx.role.create({
-          data: { organizationId: org.id, name: 'Super Administrador', slug: 'super_admin', isSystem: true },
-        });
+        await provisionOrgRoles(tx, org.id);
         await tx.subscription.create({
           data: {
             organizationId: org.id,

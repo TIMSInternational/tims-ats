@@ -1,0 +1,1421 @@
+{
+  "roles": [
+    {
+      "slug": "super_admin",
+      "name": "Super Administrador",
+      "description": "Full access to all modules",
+      "grants": [
+        {
+          "module": "vacancy",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "dei",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "dei",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "dei",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "dei",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "monitoring",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "monitoring",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "monitoring",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "monitoring",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "organization",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "organization",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "organization",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "organization",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "audit",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "audit",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "audit",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "audit",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "feature_flags",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "feature_flags",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "feature_flags",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "feature_flags",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "billing",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "billing",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "billing",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "billing",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "integration",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "integration",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "integration",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "integration",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "approve",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "publish",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "approve",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "approve",
+          "scope": "organization"
+        },
+        {
+          "module": "audit",
+          "action": "export",
+          "scope": "organization"
+        },
+        {
+          "module": "dei",
+          "action": "export",
+          "scope": "organization"
+        }
+      ]
+    },
+    {
+      "slug": "hr_admin",
+      "name": "Administrador RRHH",
+      "description": "Full access to all HR modules",
+      "grants": [
+        {
+          "module": "vacancy",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "onboarding",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "performance",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "learning",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "ninebox",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "succession",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "team_intel",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "engagement",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "user",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "notification",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "evaluation360",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "approve",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "publish",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "approve",
+          "scope": "organization"
+        },
+        {
+          "module": "compensation",
+          "action": "approve",
+          "scope": "organization"
+        },
+        {
+          "module": "dei",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "dei",
+          "action": "export",
+          "scope": "organization"
+        },
+        {
+          "module": "monitoring",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "monitoring",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "organization",
+          "action": "read",
+          "scope": "organization"
+        }
+      ]
+    },
+    {
+      "slug": "hrbp",
+      "name": "HR Business Partner",
+      "description": "Access to assigned business units",
+      "grants": [
+        {
+          "module": "vacancy",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "vacancy",
+          "action": "create",
+          "scope": "unit"
+        },
+        {
+          "module": "vacancy",
+          "action": "update",
+          "scope": "unit"
+        },
+        {
+          "module": "pipeline",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "pipeline",
+          "action": "update",
+          "scope": "unit"
+        },
+        {
+          "module": "candidate",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "candidate",
+          "action": "update",
+          "scope": "unit"
+        },
+        {
+          "module": "assessment",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "interview",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "interview",
+          "action": "create",
+          "scope": "unit"
+        },
+        {
+          "module": "offer",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "onboarding",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "onboarding",
+          "action": "create",
+          "scope": "unit"
+        },
+        {
+          "module": "onboarding",
+          "action": "update",
+          "scope": "unit"
+        },
+        {
+          "module": "performance",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "performance",
+          "action": "update",
+          "scope": "unit"
+        },
+        {
+          "module": "learning",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "ninebox",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "succession",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "engagement",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "compensation",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "monitoring",
+          "action": "read",
+          "scope": "unit"
+        },
+        {
+          "module": "fit_engine",
+          "action": "read",
+          "scope": "unit"
+        }
+      ]
+    },
+    {
+      "slug": "recruiter",
+      "name": "Reclutador",
+      "description": "ATS modules only",
+      "grants": [
+        {
+          "module": "pipeline",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "pipeline",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "candidate",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "interview",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "delete",
+          "scope": "organization"
+        },
+        {
+          "module": "vacancy",
+          "action": "publish",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "assessment",
+          "action": "update",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "offer",
+          "action": "create",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "fit_engine",
+          "action": "create",
+          "scope": "organization"
+        }
+      ]
+    },
+    {
+      "slug": "leader",
+      "name": "Lider",
+      "description": "Own team and assigned vacancies",
+      "grants": [
+        {
+          "module": "vacancy",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "vacancy",
+          "action": "create",
+          "scope": "team"
+        },
+        {
+          "module": "vacancy",
+          "action": "approve",
+          "scope": "team"
+        },
+        {
+          "module": "candidate",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "pipeline",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "pipeline",
+          "action": "update",
+          "scope": "team"
+        },
+        {
+          "module": "interview",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "interview",
+          "action": "create",
+          "scope": "team"
+        },
+        {
+          "module": "interview",
+          "action": "update",
+          "scope": "team"
+        },
+        {
+          "module": "offer",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "offer",
+          "action": "approve",
+          "scope": "team"
+        },
+        {
+          "module": "onboarding",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "onboarding",
+          "action": "update",
+          "scope": "team"
+        },
+        {
+          "module": "performance",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "performance",
+          "action": "create",
+          "scope": "team"
+        },
+        {
+          "module": "performance",
+          "action": "update",
+          "scope": "team"
+        },
+        {
+          "module": "learning",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "ninebox",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "engagement",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "compensation",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "fit_engine",
+          "action": "read",
+          "scope": "team"
+        }
+      ]
+    },
+    {
+      "slug": "committee",
+      "name": "Miembro de Comite",
+      "description": "Review panels only",
+      "grants": [
+        {
+          "module": "interview",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "interview",
+          "action": "create",
+          "scope": "team"
+        },
+        {
+          "module": "interview",
+          "action": "update",
+          "scope": "team"
+        },
+        {
+          "module": "ninebox",
+          "action": "read",
+          "scope": "team"
+        },
+        {
+          "module": "ninebox",
+          "action": "update",
+          "scope": "team"
+        }
+      ]
+    },
+    {
+      "slug": "employee",
+      "name": "Colaborador",
+      "description": "Self-service access",
+      "grants": [
+        {
+          "module": "performance",
+          "action": "read",
+          "scope": "own"
+        },
+        {
+          "module": "performance",
+          "action": "create",
+          "scope": "own"
+        },
+        {
+          "module": "performance",
+          "action": "update",
+          "scope": "own"
+        },
+        {
+          "module": "onboarding",
+          "action": "read",
+          "scope": "own"
+        },
+        {
+          "module": "onboarding",
+          "action": "update",
+          "scope": "own"
+        },
+        {
+          "module": "learning",
+          "action": "read",
+          "scope": "own"
+        },
+        {
+          "module": "engagement",
+          "action": "read",
+          "scope": "own"
+        },
+        {
+          "module": "engagement",
+          "action": "create",
+          "scope": "own"
+        },
+        {
+          "module": "compensation",
+          "action": "read",
+          "scope": "own"
+        }
+      ]
+    },
+    {
+      "slug": "external",
+      "name": "API Externa",
+      "description": "API access for integrations",
+      "grants": [
+        {
+          "module": "assessment",
+          "action": "read",
+          "scope": "organization"
+        },
+        {
+          "module": "validation",
+          "action": "update",
+          "scope": "organization"
+        }
+      ]
+    },
+    {
+      "slug": "candidate",
+      "name": "Candidato",
+      "description": "Portal access only",
+      "grants": []
+    }
+  ]
+}

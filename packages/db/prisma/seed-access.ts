@@ -22,27 +22,17 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { MATRIX, flattenEntries, type Scope, type Triple } from './seed-access-matrix';
+import { MATRIX, SYSTEM_ROLE_CATALOG, flattenEntries, type Scope, type Triple } from './seed-access-matrix';
 
 const db = new PrismaClient();
 const APPLY = process.argv.includes('--apply');
 
 // ---------------------------------------------------------------------------
-// SYSTEM_ROLES — names/descriptions copied from seed.ts.
+// System-role names and grants share seed-access-matrix.ts with new-tenant provisioning.
 // Name/description of existing roles are deliberately NOT reconciled here
 // (grants only): renaming a role is a separate intentional migration.
 // ---------------------------------------------------------------------------
-const SYSTEM_ROLES: Array<{ slug: string; name: string; description: string }> = [
-  { slug: 'super_admin',  name: 'Super Administrador',  description: 'Full access to all modules' },
-  { slug: 'hr_admin',     name: 'Administrador RRHH',   description: 'Full access to all HR modules' },
-  { slug: 'hrbp',         name: 'HR Business Partner',  description: 'Access to assigned business units' },
-  { slug: 'recruiter',    name: 'Reclutador',            description: 'ATS modules only' },
-  { slug: 'leader',       name: 'Lider',                 description: 'Own team and assigned vacancies' },
-  { slug: 'committee',    name: 'Miembro de Comite',     description: 'Review panels only' },
-  { slug: 'employee',     name: 'Colaborador',           description: 'Self-service access' },
-  { slug: 'external',     name: 'API Externa',           description: 'API access for integrations' },
-  { slug: 'candidate',    name: 'Candidato',             description: 'Portal access only' },
-];
+const SYSTEM_ROLES = SYSTEM_ROLE_CATALOG;
 
 // ---------------------------------------------------------------------------
 // Build a global Permission map (module:action → permissionId) by upserting
