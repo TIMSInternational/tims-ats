@@ -10,6 +10,7 @@ import { bulkInviteUsers, resendInvitation } from '../../services/bulk-invitatio
 import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
 import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
+import { renderInvitationEmail } from '../../services/invitation-email';
 
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
 const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'revoked']);
@@ -162,18 +163,7 @@ export const invitationsRouter = router({
       await sendEmail({
         to: input.email,
         subject: `Invitacion para administrar ${input.organizationName} en TIMS ATS`,
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;"><h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1></div>
-            <div style="background: #f8f9fa; border-radius: 12px; padding: 32px; margin-bottom: 24px;">
-              <h2 style="color: #333; font-size: 18px; margin: 0 0 16px;">Has sido invitado</h2>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 16px;">Has sido invitado a administrar <strong>${input.organizationName}</strong> en TIMS ATS.</p>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">Haz clic en el boton para configurar tu cuenta y comenzar.</p>
-              <div style="text-align: center;"><a href="${appUrl}/accept-invitation?token=${token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Aceptar Invitacion</a></div>
-            </div>
-            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">Esta invitacion expira en 7 dias.</p>
-          </div>
-        `,
+        html: renderInvitationEmail({ organization: input.organizationName, role: 'Administrador', url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
       });
 
       return invitation;
@@ -210,23 +200,11 @@ export const invitationsRouter = router({
         select: invitationListSelect,
       });
 
-      const roleLabel = input.roleSlug?.replace(/_/g, ' ') || 'usuario';
       const appUrl = getAppUrl();
       await sendEmail({
         to: input.email,
         subject: `Invitacion para unirte a ${org.name} en TIMS ATS`,
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;"><h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1></div>
-            <div style="background: #f8f9fa; border-radius: 12px; padding: 32px; margin-bottom: 24px;">
-              <h2 style="color: #333; font-size: 18px; margin: 0 0 16px;">Has sido invitado</h2>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 16px;">Has sido invitado a unirte a <strong>${org.name}</strong> en TIMS ATS como <strong>${roleLabel}</strong>.</p>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">Haz clic en el boton para aceptar la invitacion.</p>
-              <div style="text-align: center;"><a href="${appUrl}/accept-invitation?token=${token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Aceptar Invitacion</a></div>
-            </div>
-            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">Esta invitacion expira en 7 dias.</p>
-          </div>
-        `,
+        html: renderInvitationEmail({ organization: org.name, role: input.roleSlug, url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
       });
 
       return invitation;
