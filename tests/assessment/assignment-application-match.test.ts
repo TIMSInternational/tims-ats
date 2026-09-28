@@ -8,12 +8,14 @@ const createAssignment = vi.fn();
 const countCandidates = vi.fn();
 const countApplications = vi.fn();
 const createManyAssignments = vi.fn();
+const countQuestions = vi.fn();
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
     assessmentType: { findFirst: findType },
     candidate: { findFirst: findCandidate, count: countCandidates },
     application: { findFirst: findApplication, count: countApplications },
+    assessmentQuestion: { count: countQuestions },
     assessmentAssignment: { create: createAssignment, createMany: createManyAssignments },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
@@ -52,6 +54,7 @@ beforeEach(() => {
   createAssignment.mockResolvedValue({ id: 'assignment-1' });
   countCandidates.mockResolvedValue(1);
   countApplications.mockResolvedValue(0);
+  countQuestions.mockResolvedValue(1);
   createManyAssignments.mockResolvedValue({ count: 1 });
 });
 
