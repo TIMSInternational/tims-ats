@@ -4,5 +4,6 @@ export const OFFER_STATUS_LABEL: Record<string, { bg: string; text: string; labe
   approved: { bg: 'bg-blue-500/20', text: 'text-blue-300', label: 'Aprobada' },
   sent: { bg: 'bg-violet-500/20', text: 'text-violet-300', label: 'Enviada' },
   accepted: { bg: 'bg-green-500/20', text: 'text-green-300', label: 'Oferta Aceptada' },
+  converted: { bg: 'bg-green-600/20', text: 'text-green-300', label: 'Contratación registrada' },
   declined: { bg: 'bg-red-500/20', text: 'text-red-300', label: 'Rechazada' },
 };

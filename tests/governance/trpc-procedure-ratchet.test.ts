@@ -42,7 +42,7 @@ import { appRouter } from '@tims/api';
  * Measured 2026-08-31 at `7d1e6a94` + PR #249, exactly, from the router.
  * MAY ONLY EVER DECREASE.
  */
-const PROCEDURE_CEILING = 355;
+const PROCEDURE_CEILING = 353;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.

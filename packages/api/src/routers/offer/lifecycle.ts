@@ -17,14 +17,11 @@ export const offerLifecycleRouter = router({
   // eliminate the dangerous duplication (rule #4).
 
   // 9.17 — Convert accepted offer to employee (create User from Candidate)
-  convertToEmployee: permissionProcedure('offer', 'create')
+  convertToEmployee: permissionProcedure('offer', 'approve')
     .input(
       z.object({
         offerId: z.string().uuid(),
-        jobTitle: z.string().max(200),
-        companyId: z.string().uuid().optional(),
-        businessUnitId: z.string().uuid().optional(),
-        teamId: z.string().uuid().optional(),
+        jobTitle: z.string().trim().min(1).max(200),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -37,9 +34,17 @@ export const offerLifecycleRouter = router({
         where: {
           AND: [{ id: input.offerId, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.OfferWhereInput],
         },
-        include: {
-          candidate: true,
+        select: {
+          id: true,
+          status: true,
+          candidateId: true,
+          vacancyId: true,
+          applicationId: true,
+          startDate: true,
+          candidate: { select: { email: true, firstName: true, lastName: true, phone: true, avatar: true } },
           vacancy: { select: { companyId: true, businessUnitId: true, teamId: true } },
+          validations: { select: { status: true, isBlocking: true } },
+          legalChecks: { select: { completed: true } },
         },
       });
 
@@ -47,11 +52,41 @@ export const offerLifecycleRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Oferta no encontrada' });
       }
 
+      if (offer.status === 'converted') {
+        const priorHire = await db.hirePrediction.findFirst({
+          where: { organizationId: ctx.user.organizationId, offerId: offer.id },
+          select: { userId: true },
+        });
+        if (priorHire) {
+          const priorUser = await db.user.findFirst({
+            where: { id: priorHire.userId, organizationId: ctx.user.organizationId },
+            select: { id: true, email: true, firstName: true, lastName: true, jobTitle: true },
+          });
+          if (priorUser) return priorUser;
+        }
+        throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida, pero no se encontro al empleado' });
+      }
+
       if (offer.status !== 'accepted') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Solo se pueden convertir ofertas aceptadas',
         });
+      }
+
+      if (offer.validations.some((validation) => validation.isBlocking && !['passed', 'waived'].includes(validation.status))) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay validaciones obligatorias pendientes o fallidas' });
+      }
+      if (offer.legalChecks.some((check) => !check.completed)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay verificaciones legales pendientes' });
+      }
+
+      const employeeRole = await db.role.findFirst({
+        where: { organizationId: ctx.user.organizationId, slug: 'employee', isActive: true },
+        select: { id: true },
+      });
+      if (!employeeRole) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'El rol de colaborador no esta configurado' });
       }
 
       const candidate = offer.candidate;
@@ -64,6 +99,7 @@ export const offerLifecycleRouter = router({
           organizationId: ctx.user.organizationId,
           email: { equals: candidate.email, mode: 'insensitive' },
         },
+        select: { id: true },
       });
 
       if (existingUser) {
@@ -90,6 +126,16 @@ export const offerLifecycleRouter = router({
       // `tenantDb`, so the outer wrapper never composed and this multi-write hire
       // flow (user + onboarding plan + tasks + offer status) was not atomic.
       return runTenantTransaction(ctx.user.organizationId, async (tx) => {
+        // Claim the accepted offer before creating the employee. A concurrent
+        // retry cannot create a second hire, and a later failure rolls this back.
+        const claimed = await tx.offer.updateMany({
+          where: { id: offer.id, organizationId: ctx.user.organizationId, status: 'accepted' },
+          data: { status: 'converted' },
+        });
+        if (claimed.count !== 1) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida o cambio de estado' });
+        }
+
         // Create the user record, linked to its Supabase identity from birth.
         const newUser = await tx.user.create({
           data: {
@@ -101,17 +147,22 @@ export const offerLifecycleRouter = router({
             phone: candidate.phone,
             avatar: candidate.avatar,
             jobTitle: input.jobTitle,
-            companyId: input.companyId ?? offer.vacancy.companyId,
-            businessUnitId: input.businessUnitId ?? offer.vacancy.businessUnitId,
+            companyId: offer.vacancy.companyId,
+            businessUnitId: offer.vacancy.businessUnitId,
             isActive: true,
           },
+          select: { id: true, email: true, firstName: true, lastName: true, jobTitle: true },
+        });
+
+        await tx.userRole.create({
+          data: { userId: newUser.id, roleId: employeeRole.id, assignedBy: ctx.user.id },
         });
 
         // Auto-create an OnboardingPlan with the default task set so new hires
         // aren't plan-less until someone manually creates one. OnboardingTask has
         // no default/cascade fill for organizationId on the nested relation write,
         // so it's set explicitly on every task.
-        const startDate = new Date();
+        const startDate = offer.startDate;
         await tx.onboardingPlan.create({
           data: {
             organizationId: ctx.user.organizationId,
@@ -134,8 +185,9 @@ export const offerLifecycleRouter = router({
           },
         });
 
-        // Add to team if specified
-        const teamId = input.teamId ?? offer.vacancy.teamId;
+        // Carry over only the vacancy's tenant-scoped team. Callers cannot
+        // inject arbitrary company, unit, or team ids at hire time.
+        const teamId = offer.vacancy.teamId;
         if (teamId) {
           await tx.userTeam.create({
             data: {
@@ -145,12 +197,6 @@ export const offerLifecycleRouter = router({
             },
           });
         }
-
-        // Update offer status
-        await tx.offer.update({
-          where: { id: input.offerId },
-          data: { status: 'converted' },
-        });
 
         // Sprint 1.1.f — capture an immutable FIT-prediction snapshot at hire time
         // (Quality-of-Hire instrumentation). Always writes one row per hire; the

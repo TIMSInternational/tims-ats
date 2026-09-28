@@ -9,14 +9,18 @@ const mockOffer = {
   candidateId: 'cand-1',
   vacancyId: 'vac-1',
   applicationId: null,
+  startDate: new Date('2026-10-01T00:00:00.000Z'),
+  validations: [],
+  legalChecks: [],
   candidate: { email: 'candidate@example.com', firstName: 'Ana', lastName: 'Lopez', phone: null, avatar: null },
   vacancy: { companyId: 'co-1', businessUnitId: 'bu-1', teamId: 'team-1' },
 };
 
 const mockTx = {
   user: { create: vi.fn().mockResolvedValue({ id: 'user-new-1', email: 'candidate@example.com' }) },
+  userRole: { create: vi.fn() },
   userTeam: { create: vi.fn() },
-  offer: { update: vi.fn() },
+  offer: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   onboardingPlan: { create: vi.fn().mockResolvedValue({ id: 'plan-1' }) },
 };
 
@@ -24,6 +28,8 @@ vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },
     user: { findFirst: vi.fn().mockResolvedValue(null) },
+    role: { findFirst: vi.fn().mockResolvedValue({ id: 'employee-role-1' }) },
+    hirePrediction: { findFirst: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn(async (arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => Promise<unknown>)(mockTx)
