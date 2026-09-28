@@ -31,14 +31,14 @@ export const notificationRouter = router({
         },
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: notificationSelect,
       });
 
       let nextCursor: string | undefined;
       if (notifications.length > limit) {
-        const next = notifications.pop();
-        nextCursor = next?.id;
+        notifications.pop();
+        nextCursor = notifications[notifications.length - 1]?.id;
       }
 
       return { notifications, nextCursor };

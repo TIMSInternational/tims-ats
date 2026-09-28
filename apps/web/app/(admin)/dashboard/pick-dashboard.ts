@@ -5,7 +5,8 @@ export type DashboardKey =
   | 'recruiter'
   | 'manager'
   | 'committee'
-  | 'employee';
+  | 'employee'
+  | 'unassigned';
 
 // Each role gets its own purpose-built landing:
 //   super_admin → Org Command Center ('org')
@@ -14,7 +15,8 @@ export type DashboardKey =
 //   recruiter   → Recruiter dashboard ('recruiter')
 //   leader      → Manager dashboard ('manager') — the retired 'leader' key is gone
 //   committee   → Committee "My Tasks" participant landing ('committee')
-//   everyone else → Employee "My Home" landing ('employee')
+//   employee    → Employee "My Home" landing ('employee')
+//   no recognized staff role → access-pending landing ('unassigned')
 //
 // Precedence on multi-role collisions:
 //   super_admin > hr_admin > hrbp > recruiter > leader > committee > employee.
@@ -25,5 +27,6 @@ export function pickPrimaryDashboard(roleSlugs: readonly string[]): DashboardKey
   if (roleSlugs.includes('recruiter')) return 'recruiter';
   if (roleSlugs.includes('leader')) return 'manager';
   if (roleSlugs.includes('committee')) return 'committee';
-  return 'employee';
+  if (roleSlugs.includes('employee')) return 'employee';
+  return 'unassigned';
 }

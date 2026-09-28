@@ -56,8 +56,6 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "rater_responses"
   ],
   "efcoreReadOnly": [
-    "users",
-    "user_roles",
     "api_keys",
     "role_permissions",
     "permissions",
@@ -95,6 +93,8 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
   ],
   "efcoreAppendOnly": ["data_access_logs", "audit_logs"],
   "efcoreStranglerWrite": [
+    "users",
+    "user_roles",
     "platform_invitations",
     "organizations",
     "preemployment_validations",
@@ -239,3 +239,13 @@ the tables they mutate; Phase 1 keeps it deterministic against the single spike 
 ## 2026-09-14 bulk invitation coexistence
 
 The default-disabled bulk invitation endpoint reuses the user invitation writer and existing invitation/audit tables. No table ownership or DDL changes. Prisma/TS bulk remains active until controlled cutover. Bulk writers coordinate using the shared advisory-lock protocol; individual invitation writers do not participate. See [contract](csharp-migration/bulk-invitation-create.md).
+
+## 2026-09-22 invitation account onboarding coexistence
+
+The default-disabled C#/.NET 10 onboarding capability writes existing Prisma-owned `users`, `user_roles`,
+`platform_invitations` and `audit_logs` in one tenant-scoped transaction. This adds no table or DDL and is
+not an ownership flip: Prisma remains the schema owner, normal staff/profile flows still use Prisma, and
+the C# route is mapped only while `Invitations:SetupEnabled=true`. The invitation token determines the
+tenant; a verified matching Supabase identity is required before the write. `users`, `user_roles` and
+`platform_invitations` are strangler writes for this operation, while `audit_logs` remains append-only.
+See [the account-onboarding plan](../plans/2026-09-15-invitation-account-onboarding.md).

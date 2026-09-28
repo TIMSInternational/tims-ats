@@ -5,6 +5,7 @@ vi.mock('../../packages/api/src/repositories/assessment-question.repository', ()
     findTypeById: vi.fn(),
     findQuestionById: vi.fn(),
     countResponsesForQuestion: vi.fn(),
+    countActiveQuestions: vi.fn(),
     list: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -32,6 +33,22 @@ const validSingle = {
 };
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('assessmentQuestionService.assertHasActiveQuestions', () => {
+  it('rejects an empty or fully deactivated assessment before assignment', async () => {
+    vi.mocked(assessmentQuestionRepo.countActiveQuestions).mockResolvedValue(0);
+    await expect(assessmentQuestionService.assertHasActiveQuestions(ORG, TYPE_ID)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'assessment_has_no_questions',
+    });
+    expect(assessmentQuestionRepo.countActiveQuestions).toHaveBeenCalledWith(ORG, TYPE_ID);
+  });
+
+  it('allows an assessment with active questions', async () => {
+    vi.mocked(assessmentQuestionRepo.countActiveQuestions).mockResolvedValue(2);
+    await expect(assessmentQuestionService.assertHasActiveQuestions(ORG, TYPE_ID)).resolves.toBeUndefined();
+  });
+});
 
 describe('assessmentQuestionService.create', () => {
   it('rejects an incoherent question before touching the DB', async () => {

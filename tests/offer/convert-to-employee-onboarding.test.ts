@@ -97,5 +97,7 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     expect(arg.data.phase).toBe('day1_30');
     expect(arg.data.tasks.create.length).toBeGreaterThanOrEqual(8);
     expect(arg.data.tasks.create.every((t: { organizationId: string }) => t.organizationId === ORG_ID)).toBe(true);
+    expect(arg.data.checkIns.create.map((checkIn: { type: string }) => checkIn.type)).toEqual(['day1', 'day30', 'day60']);
+    expect(arg.data.checkIns.create.every((checkIn: { organizationId: string }) => checkIn.organizationId === ORG_ID)).toBe(true);
   });
 });

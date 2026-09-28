@@ -9,6 +9,7 @@ import { OfferTimeline } from './offer-timeline';
 import { OfferValidations } from './offer-validations';
 import { OfferLetterModal } from './offer-letter-modal';
 import { SigningLinkModal } from './signing-link-modal';
+import { OfferApprovalActions } from './offer-approval-actions';
 import { OFFER_STATUS_LABEL } from './offer-detail-view.helpers';
 import { CandidateHeader, OfferCard } from './offer-detail-view.parts';
 import { useState } from 'react';
@@ -85,6 +86,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         onViewLetter={() => setShowLetterModal(true)}
         onSendForSigning={() => generateSigningLink.mutate({ offerId })}
         isGeneratingLink={generateSigningLink.isPending}
+        canSendForSigning={o.status === 'approved' || o.status === 'sent'}
       />
 
       {/* Two columns */}
@@ -98,6 +100,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
             terms={terms}
           />
           <ApprovalChain approvals={o.approvals ?? []} />
+          <OfferApprovalActions offerId={offerId} status={o.status} approvals={o.approvals ?? []} onUpdated={() => { void offer.refetch(); }} />
           <OfferTimeline offer={o} />
         </div>
 

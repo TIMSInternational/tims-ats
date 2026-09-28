@@ -65,12 +65,41 @@ public sealed class SesEmailSenderTests
         Assert.False(logger.HasException);
     }
 
+    [Theory]
+    [InlineData("AccessDenied", "access_denied")]
+    [InlineData("MessageRejected", "message_rejected")]
+    [InlineData("ExpiredToken", "credential_rejected")]
+    [InlineData("Throttling", "throttled")]
+    [InlineData("MailFromDomainNotVerifiedException", "mail_from_unverified")]
+    [InlineData("AccountSendingPausedException", "sending_paused")]
+    [InlineData("recipient@example.test secret-token", "provider_failure")]
+    public async Task Provider_categories_are_allowlisted_and_never_log_raw_error_details(string code, string category)
+    {
+        using var client = new StubSes
+        {
+            Handler = (_, _) => throw new AmazonSimpleEmailServiceException(
+            "recipient@example.test secret-token", ErrorType.Sender, code, "secret-request-id", HttpStatusCode.BadRequest)
+        };
+        var logger = new RecordingLogger();
+        Assert.False(await Send(Create(client, logger)));
+        Assert.Equal(1, client.Calls);
+        Assert.Contains(category, logger.Output);
+        Assert.Contains("provider_send", logger.Output);
+        Assert.DoesNotContain("recipient", logger.Output);
+        Assert.DoesNotContain("secret", logger.Output);
+        Assert.False(logger.HasException);
+    }
+
     [Fact]
     public async Task Credential_resolution_failure_is_also_fail_soft()
     {
-        var sender = new SesEmailSender(new Lazy<IAmazonSimpleEmailService>(() => throw new InvalidOperationException("credentials unavailable")),
-            Options.Create(Enabled), NullLogger<SesEmailSender>.Instance);
+        var logger = new RecordingLogger();
+        var sender = new SesEmailSender(new Lazy<IAmazonSimpleEmailService>(() => throw new AmazonClientException("secret credentials unavailable")),
+            Options.Create(Enabled), logger);
         Assert.False(await Send(sender));
+        Assert.Contains("sdk_client_failure at before_provider_dispatch", logger.Output);
+        Assert.DoesNotContain("secret", logger.Output);
+        Assert.False(logger.HasException);
     }
 
     [Fact]
@@ -104,7 +133,7 @@ public sealed class SesEmailSenderTests
     }
 
     [Fact]
-    public async Task Slow_synchronous_client_initialization_is_bounded_and_never_sends_after_deadline()
+    public async Task Slow_synchronous_before_provider_dispatch_is_bounded_and_never_sends_after_deadline()
     {
         using var release = new ManualResetEventSlim();
         using var client = new StubSes();
