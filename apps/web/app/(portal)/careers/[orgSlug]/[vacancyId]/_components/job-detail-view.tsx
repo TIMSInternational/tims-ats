@@ -47,7 +47,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   const p = t.portal;
   const [search, setSearch] = useState('');
   const [showApply, setShowApply] = useState(false);
-  const vacancy = trpc.portal.getVacancy.useQuery({ id: vacancyId });
+  const vacancy = trpc.portal.getVacancy.useQuery({ id: vacancyId, orgSlug });
   const vacancies = trpc.portal.listVacancies.useQuery(
     { organizationId: vacancy.data?.organizationId ?? '', take: 20 },
     { enabled: !!vacancy.data?.organizationId },
