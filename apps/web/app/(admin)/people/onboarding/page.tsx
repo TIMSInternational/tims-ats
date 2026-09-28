@@ -2,17 +2,11 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
-import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
 import { OnboardingTable, type OnboardingPlan } from './onboarding-table';
 import { CreatePlanModal } from './create-plan-modal';
-import {
-  TasksByResponsible,
-  PendingDocuments,
-  CoursesAndAccesses,
-  LearningRoute,
-} from './onboarding-panels';
+import { TasksByResponsible, PendingTasks } from './onboarding-panels';
 
 /* ── KPI Icons ─────────────────────────────────────────────── */
 
@@ -56,14 +50,6 @@ function IconClock() {
   );
 }
 
-function ExportIcon() {
-  return (
-    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-      <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-    </svg>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -88,8 +74,8 @@ export default function OnboardingPage() {
 
   const k = kpis.data;
   const items = (plans.data?.plans ?? []) as OnboardingPlan[];
-  const atRiskCount = items.filter((p) => (p.riskScore ?? 0) > 0.3).length;
-  const pendingDocs = k ? k.totalTasks - k.completedTasks : 0;
+  const atRiskCount = k?.atRiskPlans ?? 0;
+  const pendingTasks = k ? k.totalTasks - k.completedTasks : 0;
 
   const handlePhaseChange = (p: string) => {
     setPhase(p === 'all' ? undefined : p);
@@ -107,11 +93,12 @@ export default function OnboardingPage() {
           <span className="text-sm font-medium text-[#1F114C]">{t.onboarding.title} Dashboard</span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => toast(`${t.common.export}: ${t.common.comingSoon}`, { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
-            <ExportIcon />{t.common.export}
-          </button>
-          <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
-            <PlusIcon />{t.onboarding.createPlanTitle}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition"
+          >
+            <PlusIcon />
+            {t.onboarding.createPlanTitle}
           </button>
         </div>
       </div>
@@ -132,7 +119,6 @@ export default function OnboardingPage() {
               <KpiCard
                 label="Onboardings Activos"
                 value={k?.activePlans ?? 0}
-                subtitle={`+${k?.activePlans ?? 0} este mes`}
                 icon={<IconActive />}
                 iconBg="bg-[#1F114C]"
                 valueColor="text-[#1F114C]"
@@ -146,13 +132,13 @@ export default function OnboardingPage() {
                 valueColor="text-green-600"
               />
               <KpiCard
-                label="Docs Pendientes"
-                value={pendingDocs}
+                label="Tareas Pendientes"
+                value={pendingTasks}
                 subtitle="requieren accion"
                 icon={<IconDoc />}
                 iconBg="bg-amber-500"
                 valueColor="text-amber-500"
-                highlight={pendingDocs > 0}
+                highlight={pendingTasks > 0}
               />
               <KpiCard
                 label="Riesgo Onboarding"
@@ -166,7 +152,7 @@ export default function OnboardingPage() {
               <KpiCard
                 label="Check-ins Vencidos"
                 value={k?.overdueCheckIns ?? 0}
-                subtitle="pendientes de agendar"
+                subtitle={t.onboarding.overdueCheckInDesc}
                 icon={<IconClock />}
                 iconBg="bg-[#1F114C]"
                 valueColor="text-[#1F114C]"
@@ -181,11 +167,7 @@ export default function OnboardingPage() {
             <ErrorState onRetry={() => plans.refetch()} />
           </div>
         ) : (
-          <OnboardingTable
-            plans={items}
-            isLoading={plans.isLoading}
-            onPhaseChange={handlePhaseChange}
-          />
+          <OnboardingTable plans={items} isLoading={plans.isLoading} onPhaseChange={handlePhaseChange} />
         )}
 
         {/* Row 2: Tasks + Docs + Courses */}
@@ -197,61 +179,48 @@ export default function OnboardingPage() {
           ) : (
             <>
               <TasksByResponsible plans={items} />
-              <PendingDocuments plans={items} />
+              <PendingTasks plans={items} />
             </>
           )}
-          <CoursesAndAccesses />
         </div>
 
-        {/* Row 3: Check-in Calendar + Learning Route */}
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.checkinCalendar}</h3>
-            {plans.isError ? (
-              <ErrorState onRetry={() => plans.refetch()} />
-            ) : (
+        {/* Only persisted check-ins are shown; elapsed days are not proof of completion. */}
+        <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.checkinCalendar}</h3>
+          {plans.isError ? (
+            <ErrorState onRetry={() => plans.refetch()} />
+          ) : plans.isLoading ? (
+            <KpiCardSkeleton />
+          ) : items.flatMap((plan) => plan.checkIns).length === 0 ? (
+            <p className="text-[12px] text-[#8B8B8B]">{t.onboarding.noCheckinData}</p>
+          ) : (
             <div className="overflow-x-auto rounded-lg border border-[#EDEDED]">
-              <table className="w-full min-w-[420px] text-[11px]">
+              <table className="w-full text-[11px]">
                 <thead>
                   <tr className="bg-[#FAFAFA]">
-                    <th className="py-2 px-3 text-left text-[#585858] font-medium">Colaborador</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day1}</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.week1}</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day30}</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day60}</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day90}</th>
+                    <th className="py-2 px-3 text-left">Colaborador</th>
+                    <th className="py-2 px-3 text-left">Check-in</th>
+                    <th className="py-2 px-3 text-left">{t.onboarding.scheduledDate}</th>
+                    <th className="py-2 px-3 text-left">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.length === 0 && !plans.isLoading && (
-                    <tr><td colSpan={6} className="py-8 text-center text-[12px] text-[#8B8B8B]">{t.onboarding.noCheckinData}</td></tr>
-                  )}
-                  {items.map((plan, idx) => {
-                    const day = Math.max(0, Math.floor((Date.now() - new Date(plan.startDate).getTime()) / 86400000));
-                    const start = new Date(plan.startDate);
-                    const fmtMilestone = (d: number) => {
-                      const dt = new Date(start.getTime() + d * 86400000);
-                      return dt.toLocaleDateString('es', { month: 'short', day: 'numeric' });
-                    };
-                    const risk = (plan.riskScore ?? 0) > 0.3;
-                    const completedCount = plan.checkIns.filter((c) => c.status === 'completed').length;
-                    return (
-                      <tr key={plan.id} className={`border-t border-[#F0F0F0] ${idx % 2 === 1 ? 'bg-[#FAFAFA]' : ''}`}>
-                        <td className={`py-2 px-3 font-medium ${risk ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{plan.user.firstName} {plan.user.lastName}</td>
-                        <td className="py-2 px-3 text-center">{day >= 1 ? <span className="text-green-600">✓</span> : <span className="text-[#8B8B8B]">{fmtMilestone(1)}</span>}</td>
-                        <td className="py-2 px-3 text-center">{day >= 7 && completedCount >= 1 ? <span className="text-green-600">✓</span> : day >= 7 && risk ? <span className="text-[#DD0C15] font-medium">Vencido!</span> : <span className="text-[#8B8B8B]">{fmtMilestone(7)}</span>}</td>
-                        <td className="py-2 px-3 text-center">{day >= 30 && completedCount >= 2 ? <span className="text-green-600">✓</span> : day >= 30 && risk ? <span className="text-[#DD0C15] font-medium">Vencido!</span> : day >= 25 ? <span className="text-amber-600 font-medium">{day >= 28 ? 'Pronto' : fmtMilestone(30)}</span> : <span className="text-[#8B8B8B]">{fmtMilestone(30)}</span>}</td>
-                        <td className="py-2 px-3 text-center">{day >= 60 && completedCount >= 3 ? <span className="text-green-600">✓</span> : day >= 60 ? <span className="text-amber-600 font-medium">Pendiente</span> : <span className="text-[#8B8B8B]">{fmtMilestone(60)}</span>}</td>
-                        <td className="py-2 px-3 text-center"><span className="text-[#8B8B8B]">{fmtMilestone(90)}</span></td>
+                  {items.flatMap((plan) =>
+                    plan.checkIns.map((checkIn) => (
+                      <tr key={checkIn.id} className="border-t border-[#F0F0F0]">
+                        <td className="py-2 px-3">
+                          {plan.user.firstName} {plan.user.lastName}
+                        </td>
+                        <td className="py-2 px-3">{checkIn.type}</td>
+                        <td className="py-2 px-3">{new Date(checkIn.scheduledDate).toLocaleDateString('es')}</td>
+                        <td className="py-2 px-3">{checkIn.status}</td>
                       </tr>
-                    );
-                  })}
+                    )),
+                  )}
                 </tbody>
               </table>
             </div>
-            )}
-          </div>
-          <LearningRoute />
+          )}
         </div>
       </div>
     </div>
