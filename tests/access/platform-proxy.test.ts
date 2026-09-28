@@ -62,6 +62,23 @@ describe('platform bearer relay', () => {
     );
     expect(response.status).toBe(413);
   });
+  it('forwards a JSON object to a bodyless POST endpoint', async () => {
+    vi.stubEnv('NEXT_PUBLIC_TIMS_PLATFORM_API_URL', 'https://platform.test');
+    const fetcher = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetcher);
+    const response = await proxyPlatformRequest(
+      new Request('https://tims.test/api/platform/platform/invitations/11111111-1111-4111-8111-111111111111/resend', {
+        method: 'POST',
+        headers: { authorization: 'Bearer test.jwt.signature', 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    );
+    expect(response.status).toBe(200);
+    const [upstream, options] = fetcher.mock.calls[0]!;
+    expect(String(upstream)).toContain('/platform/invitations/11111111-1111-4111-8111-111111111111/resend');
+    expect(options.headers.get('content-type')).toBe('application/json');
+    expect(new TextDecoder().decode(options.body)).toBe('{}');
+  });
 });
 
 it('routes browser reads and writes through same-origin transport', async () => {
