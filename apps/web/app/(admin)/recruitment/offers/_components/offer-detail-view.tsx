@@ -31,6 +31,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const [showLetterModal, setShowLetterModal] = useState(false);
   const [showSigningModal, setShowSigningModal] = useState(false);
   const [signingUrl, setSigningUrl] = useState('');
+  const [emailDeliveryAccepted, setEmailDeliveryAccepted] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState('');
   const [showHireConfirmation, setShowHireConfirmation] = useState(false);
 
   const convertToEmployee = trpc.offer.convertToEmployee.useMutation({
@@ -50,6 +52,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
     onSuccess: (data) => {
       setSigningUrl(window.location.origin + data.signingUrl);
+      setEmailDeliveryAccepted(data.emailDeliveryAccepted);
+      setRecipientEmail(data.candidateEmail);
       setShowSigningModal(true);
       offer.refetch();
     },
@@ -169,6 +173,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       {showSigningModal && (
         <SigningLinkModal
           signingUrl={signingUrl}
+          emailDeliveryAccepted={emailDeliveryAccepted}
+          recipientEmail={recipientEmail}
           onClose={() => setShowSigningModal(false)}
         />
       )}
