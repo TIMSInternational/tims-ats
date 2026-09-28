@@ -89,12 +89,24 @@ describe('assessment reminder delivery', () => {
       candidateEmail: 'candidate@example.com',
       assessmentUrl: expect.stringMatching(/\/careers\/tims\/dashboard$/),
     }));
-    expect(tenantDb.assessmentAssignment.updateMany).toHaveBeenCalledWith({
-      where: { id: TYPE_ID, organizationId: ORG_ID, status: { in: ['assigned', 'in_progress'] } },
+    expect(tenantDb.assessmentAssignment.updateMany).toHaveBeenNthCalledWith(1, {
+      where: { AND: [
+        { id: TYPE_ID, organizationId: ORG_ID, status: { in: ['assigned', 'in_progress'] } },
+        expect.any(Object),
+        { OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }] },
+        { OR: [{ reminderAttemptedAt: null }, { reminderAttemptedAt: { lte: expect.any(Date) } }] },
+      ] },
+      data: { reminderAttemptedAt: expect.any(Date) },
+    });
+    const attemptedAt = vi.mocked(tenantDb.assessmentAssignment.updateMany).mock.calls[0]![0].data.reminderAttemptedAt;
+    expect(tenantDb.assessmentAssignment.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: TYPE_ID, organizationId: ORG_ID, status: { in: ['assigned', 'in_progress'] }, reminderAttemptedAt: attemptedAt },
       data: { reminderSentAt: expect.any(Date) },
     });
-    expect(vi.mocked(emailService.sendAssessmentReminder).mock.invocationCallOrder[0])
-      .toBeLessThan(vi.mocked(tenantDb.assessmentAssignment.updateMany).mock.invocationCallOrder[0]);
+    const writes = vi.mocked(tenantDb.assessmentAssignment.updateMany).mock.invocationCallOrder;
+    const send = vi.mocked(emailService.sendAssessmentReminder).mock.invocationCallOrder[0]!;
+    expect(writes[0]).toBeLessThan(send);
+    expect(send).toBeLessThan(writes[1]);
   });
 
   it('reports provider delivery as unconfirmed without recording a reminder', async () => {
@@ -105,7 +117,9 @@ describe('assessment reminder delivery', () => {
       status: 'delivery_unconfirmed',
       reminderRecorded: false,
     });
-    expect(tenantDb.assessmentAssignment.updateMany).not.toHaveBeenCalled();
+    expect(tenantDb.assessmentAssignment.updateMany).toHaveBeenCalledOnce();
+    expect(vi.mocked(tenantDb.assessmentAssignment.updateMany).mock.calls[0]![0].data)
+      .toEqual({ reminderAttemptedAt: expect.any(Date) });
   });
 
   it('reports a transport exception as unconfirmed and never retries automatically', async () => {
@@ -117,7 +131,9 @@ describe('assessment reminder delivery', () => {
       reminderRecorded: false,
     });
     expect(emailService.sendAssessmentReminder).toHaveBeenCalledOnce();
-    expect(tenantDb.assessmentAssignment.updateMany).not.toHaveBeenCalled();
+    expect(tenantDb.assessmentAssignment.updateMany).toHaveBeenCalledOnce();
+    expect(vi.mocked(tenantDb.assessmentAssignment.updateMany).mock.calls[0]![0].data)
+      .toEqual({ reminderAttemptedAt: expect.any(Date) });
   });
 
   it('does not email an expired assignment', async () => {
@@ -136,7 +152,9 @@ describe('assessment reminder delivery', () => {
 
   it('does not mark a cancelled assignment reminded after an email race', async () => {
     vi.mocked(emailService.sendAssessmentReminder).mockResolvedValue(true);
-    vi.mocked(tenantDb.assessmentAssignment.updateMany).mockResolvedValue({ count: 0 } as never);
+    vi.mocked(tenantDb.assessmentAssignment.updateMany)
+      .mockResolvedValueOnce({ count: 1 } as never)
+      .mockResolvedValueOnce({ count: 0 } as never);
     const caller = await makeCaller();
     await expect(caller.assessment.resend({ assignmentId: TYPE_ID })).resolves.toMatchObject({
       sent: true,
@@ -150,7 +168,9 @@ describe('assessment reminder delivery', () => {
 
   it('preserves provider acceptance when recording the reminder throws', async () => {
     vi.mocked(emailService.sendAssessmentReminder).mockResolvedValue(true);
-    vi.mocked(tenantDb.assessmentAssignment.updateMany).mockRejectedValue(new Error('database unavailable'));
+    vi.mocked(tenantDb.assessmentAssignment.updateMany)
+      .mockResolvedValueOnce({ count: 1 } as never)
+      .mockRejectedValueOnce(new Error('database unavailable'));
     const caller = await makeCaller();
     await expect(caller.assessment.resend({ assignmentId: TYPE_ID })).resolves.toMatchObject({
       sent: true,
@@ -158,6 +178,54 @@ describe('assessment reminder delivery', () => {
       reminderRecorded: false,
     });
     expect(emailService.sendAssessmentReminder).toHaveBeenCalledOnce();
+  });
+
+  it('allows only one concurrent send for the same assignment', async () => {
+    let claimed = false;
+    vi.mocked(tenantDb.assessmentAssignment.updateMany).mockImplementation((args) => {
+      if ('reminderAttemptedAt' in args.data) {
+        if (claimed) return { count: 0 } as never;
+        claimed = true;
+      }
+      return { count: 1 } as never;
+    });
+    let finishSend: (accepted: boolean) => void = () => undefined;
+    vi.mocked(emailService.sendAssessmentReminder).mockImplementationOnce(
+      () => new Promise<boolean>((resolve) => { finishSend = resolve; }),
+    );
+
+    const caller = await makeCaller();
+    const first = caller.assessment.resend({ assignmentId: TYPE_ID });
+    await vi.waitFor(() => expect(emailService.sendAssessmentReminder).toHaveBeenCalledOnce());
+    await expect(caller.assessment.resend({ assignmentId: TYPE_ID })).rejects.toMatchObject({
+      code: 'CONFLICT', message: 'reminder_unavailable',
+    });
+    expect(emailService.sendAssessmentReminder).toHaveBeenCalledOnce();
+    finishSend(true);
+    await expect(first).resolves.toMatchObject({ status: 'provider_accepted' });
+  });
+
+  it('keeps an uncertain send in cooldown without marking it as sent', async () => {
+    let claimed = false;
+    vi.mocked(tenantDb.assessmentAssignment.updateMany).mockImplementation((args) => {
+      if ('reminderAttemptedAt' in args.data) {
+        if (claimed) return { count: 0 } as never;
+        claimed = true;
+      }
+      return { count: 1 } as never;
+    });
+    vi.mocked(emailService.sendAssessmentReminder).mockResolvedValue(false);
+
+    const caller = await makeCaller();
+    await expect(caller.assessment.resend({ assignmentId: TYPE_ID })).resolves.toMatchObject({
+      sent: null, reminderRecorded: false,
+    });
+    await expect(caller.assessment.resend({ assignmentId: TYPE_ID })).rejects.toMatchObject({
+      code: 'CONFLICT', message: 'reminder_unavailable',
+    });
+    expect(emailService.sendAssessmentReminder).toHaveBeenCalledOnce();
+    expect(vi.mocked(tenantDb.assessmentAssignment.updateMany).mock.calls.every(([args]) =>
+      'reminderAttemptedAt' in args.data)).toBe(true);
   });
 });
 

@@ -17,6 +17,8 @@ import { emailService } from '../services/email.service';
 import { clientIpFrom } from '../lib/client-ip';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
+const REMINDER_COOLDOWN_MS = 5 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // AssessmentResult field-level gating (Wave 2.5 slice 6)
 // ---------------------------------------------------------------------------
@@ -425,6 +427,30 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
       }
 
+      // Claim before the external call. The conditional update is atomic across
+      // concurrent requests and keeps uncertain sends in a short cooldown, while
+      // reminderSentAt remains reserved for provider acceptance.
+      const attemptedAt = new Date();
+      const cooldownCutoff = new Date(attemptedAt.getTime() - REMINDER_COOLDOWN_MS);
+      const claim = await db.assessmentAssignment.updateMany({
+        where: {
+          AND: [
+            {
+              id: input.assignmentId,
+              organizationId: ctx.user.organizationId,
+              status: { in: ['assigned', 'in_progress'] },
+            },
+            scopeWhere as Prisma.AssessmentAssignmentWhereInput,
+            { OR: [{ expiresAt: null }, { expiresAt: { gt: attemptedAt } }] },
+            { OR: [{ reminderAttemptedAt: null }, { reminderAttemptedAt: { lte: cooldownCutoff } }] },
+          ],
+        },
+        data: { reminderAttemptedAt: attemptedAt },
+      });
+      if (claim.count !== 1) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'reminder_unavailable' });
+      }
+
       const recipient = {
         to: assignment.candidate.email,
         assessmentName: assignment.assessmentType.name,
@@ -455,6 +481,7 @@ export const assessmentRouter = router({
             id: input.assignmentId,
             organizationId: ctx.user.organizationId,
             status: { in: ['assigned', 'in_progress'] },
+            reminderAttemptedAt: attemptedAt,
           },
           data: { reminderSentAt: new Date() },
         });
