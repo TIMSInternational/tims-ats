@@ -1,6 +1,7 @@
 using System.Net;
 using Tims.Application.Email;
 using Tims.Application.PlatformOrganizations;
+using Tims.Domain.Identity;
 
 namespace Tims.Application.PlatformInvitations;
 
@@ -36,6 +37,7 @@ public sealed class UserInvitationCreateUseCase(IUserInvitationCreateRepository 
     private async Task<UserInvitationCreateResult> ExecuteCoreAsync(UserInvitationInput input, Guid actor, Uri appOrigin, bool unique, CancellationToken ct)
     {
         if (!IsValid(input)) throw new ArgumentException("Invalid user invitation");
+        input = input with { RoleSlug = input.RoleSlug ?? RoleSlugs.DefaultStaffRole };
         var now = clock.GetUtcNow().UtcDateTime;
         now = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMillisecond, DateTimeKind.Utc);
         var pending = unique ? await repository.CreateUniqueAsync(input, actor, now, ct) : await repository.CreateAsync(input, actor, now, ct);
@@ -45,7 +47,7 @@ public sealed class UserInvitationCreateUseCase(IUserInvitationCreateRepository 
         var outcome = await new InitialInvitationDelivery(deliveryRepository, sender, clock).SendAsync(invitation, pending.ExpiresAt!.Value,
             "Invitacion para unirte a TIMS ATS",
             InvitationEmail.Render(invitation.OrganizationName ?? "TIMS ATS",
-                input.RoleSlug ?? "Acceso básico", url, pending.ExpiresAt.Value), ct);
+                input.RoleSlug, url, pending.ExpiresAt.Value), ct);
         return new(UserInvitationCreateOutcome.Created, new(invitation.Id, input.OrganizationId, outcome));
     }
 }

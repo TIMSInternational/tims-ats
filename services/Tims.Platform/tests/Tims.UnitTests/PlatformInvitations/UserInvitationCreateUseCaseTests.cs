@@ -1,5 +1,6 @@
 using Tims.Application.Email;
 using Tims.Application.PlatformInvitations;
+using Tims.Domain.Identity;
 
 namespace Tims.UnitTests.PlatformInvitations;
 
@@ -49,6 +50,21 @@ public sealed class UserInvitationCreateUseCaseTests
         Assert.False(UserInvitationCreateUseCase.IsValid(Input with { OrganizationId = Guid.Empty }));
         Assert.False(UserInvitationCreateUseCase.IsValid(Input with { Email = new string('a', 243) + "@example.com" }));
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Omitted_role_defaults_to_employee_in_single_and_bulk(bool unique)
+    {
+        var repo = new Repo(); var sender = new Sender();
+        var input = Input with { RoleSlug = null };
+        var action = Case(repo, sender);
+        var result = unique
+            ? await action.ExecuteUniqueAsync(input, Guid.NewGuid(), new Uri("https://app.example.test"), default)
+            : await action.ExecuteAsync(input, Guid.NewGuid(), new Uri("https://app.example.test"), default);
+        Assert.Equal(UserInvitationCreateOutcome.Created, result.Outcome);
+        Assert.Equal(RoleSlugs.DefaultStaffRole, repo.LastInput?.RoleSlug);
+        Assert.Contains(RoleSlugs.DefaultStaffRole, sender.Html);
+    }
     private static UserInvitationCreateUseCase Case(Repo repo, Sender sender) => new(repo, repo, sender, new Clock());
     private sealed class Clock : TimeProvider { public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class Repo : IUserInvitationCreateRepository, IInvitationResendRepository
@@ -57,12 +73,14 @@ public sealed class UserInvitationCreateUseCaseTests
         public bool Updated { get; init; } = true;
         public bool Throws { get; init; }
         public int Creates { get; private set; }
+        public UserInvitationInput? LastInput { get; private set; }
         public int Updates { get; private set; }
         public Task<IReadOnlyList<InvitationRole>?> ListRolesAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<UserInvitationPending> CreateUniqueAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct) => CreateAsync(input, actor, now, ct);
         public Task<UserInvitationPending> CreateAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct)
         {
             Creates++;
+            LastInput = input;
             return Task.FromResult(new UserInvitationPending(Outcome, new(Guid.NewGuid(), Input.Email, "private&token", "pending", Org, "<Org>", now), now.AddDays(7)));
         }
         public Task<InvitationResendSnapshot?> FindAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();

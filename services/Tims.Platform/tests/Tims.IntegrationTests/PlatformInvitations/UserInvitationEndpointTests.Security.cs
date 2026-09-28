@@ -38,13 +38,15 @@ public sealed partial class UserInvitationEndpointTests
     [Fact]
     public async Task Role_lookup_only_returns_active_roles_in_the_selected_tenant()
     {
-        var own = await SeedRole(PlatformOrganizationsCreateFixture.OtherOrg);
-        var foreign = await SeedRole(PlatformOrganizationsCreateFixture.HomeOrg);
-        var inactive = await SeedRole(PlatformOrganizationsCreateFixture.OtherOrg, false);
+        var own = await SeedRole(PlatformOrganizationsCreateFixture.OtherOrg, "hrbp");
+        var foreign = await SeedRole(PlatformOrganizationsCreateFixture.HomeOrg, "leader");
+        var inactive = await SeedRole(PlatformOrganizationsCreateFixture.OtherOrg, "committee", false);
+        var nonStaff = await SeedRole(PlatformOrganizationsCreateFixture.OtherOrg, "external");
         await using var factory = Factory(new FakeSender()); using var client = factory.CreateClient();
         var response = await GetRoles(client, PlatformOrganizationsCreateFixture.OtherOrg.ToString());
         Assert.Equal(HttpStatusCode.OK, response.StatusCode); var body = await response.Content.ReadAsStringAsync();
         Assert.Contains(own, body); Assert.DoesNotContain(foreign, body); Assert.DoesNotContain(inactive, body);
+        Assert.DoesNotContain(nonStaff, body);
         using var json = JsonDocument.Parse(body);
         Assert.All(json.RootElement.GetProperty("roles").EnumerateArray(), r => Assert.Equal(2, r.EnumerateObject().Count()));
         Assert.Equal(HttpStatusCode.NotFound, (await GetRoles(client, Guid.NewGuid().ToString())).StatusCode);
@@ -93,7 +95,7 @@ public sealed partial class UserInvitationEndpointTests
     }
 
     [Fact]
-    public async Task Role_lookup_is_ordered_and_capped_at_100()
+    public async Task Role_lookup_is_ordered_and_excludes_non_staff_roles()
     {
         var org = Guid.NewGuid();
         await using var db = new Npgsql.NpgsqlConnection(fixture.ConnectionString); await db.OpenAsync();
@@ -102,13 +104,17 @@ public sealed partial class UserInvitationEndpointTests
             INSERT INTO roles(id,organization_id,name,slug,updated_at)
               SELECT gen_random_uuid(),@org,'Role ' || lpad(i::text,3,'0'),'role_' || lpad(i::text,3,'0'),now()
               FROM generate_series(105,1,-1) i;
+            INSERT INTO roles(id,organization_id,name,slug,updated_at)
+              SELECT gen_random_uuid(),@org,'Role ' || slug,slug,now()
+              FROM unnest(ARRAY['super_admin','hr_admin','hrbp','recruiter','leader','committee','employee']) AS slug;
             """, db);
         cmd.Parameters.AddWithValue("org", org); cmd.Parameters.AddWithValue("slug", org.ToString()); await cmd.ExecuteNonQueryAsync();
         await using var factory = Factory(new FakeSender()); using var client = factory.CreateClient();
         var response = await GetRoles(client, org.ToString()); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); var roles = json.RootElement.GetProperty("roles");
-        Assert.Equal(100, roles.GetArrayLength()); Assert.Equal("role_001", roles[0].GetProperty("slug").GetString());
-        Assert.Equal("role_100", roles[99].GetProperty("slug").GetString());
+        Assert.Equal(7, roles.GetArrayLength());
+        Assert.Equal("committee", roles[0].GetProperty("slug").GetString());
+        Assert.Equal("super_admin", roles[6].GetProperty("slug").GetString());
     }
 
     private static Task<HttpResponseMessage> GetRoles(HttpClient client, string id, string? sub = PlatformOrganizationsCreateFixture.PlatformOwnerSub)

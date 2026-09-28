@@ -4,13 +4,13 @@ Implemented, default disabled. Stacked on organization invitation creation (#260
 
 ## API and persistence
 
-`POST /platform/invitations/users` accepts email (<=254), organizationId (nonempty UUID), and optional roleSlug (1–50, no control characters). An absent role is allowed; explicit null/empty is rejected. PlatformOwnerGate runs before the bounded 8 KiB body parse. Duplicate keys are rejected; unknown keys are ignored. Existing JWT/MFA and impersonation controls apply.
+`POST /platform/invitations/users` accepts email (<=254), organizationId (nonempty UUID), and optional roleSlug (1–50, no control characters). An omitted role now resolves to the active `employee` staff role before persistence and email delivery; explicit null/empty is rejected. PlatformOwnerGate runs before the bounded 8 KiB body parse. Duplicate keys are rejected; unknown keys are ignored. Existing JWT/MFA and impersonation controls apply.
 
-Inside the target organization's TenantScope, the repository verifies the organization is active and not deleted, and checks any selected role belongs to that organization and is active. Missing/inactive/deleted organization returns 404; unavailable role returns 400 without inserting or emailing. Pending invitation and creation audit commit together. This is intentionally stricter than TS, which accepts arbitrary role strings and checks only that the organization exists. Email bound is 254 to match the sender instead of TS's 255. No roles or memberships are created by this operation.
+Inside the target organization's TenantScope, the repository verifies the organization is active and not deleted, and checks the resolved role belongs to that organization, is active, and is an assignable staff role. Missing/inactive/deleted organization returns 404; unavailable role returns 400 without inserting or emailing. Pending invitation and creation audit commit together. The legacy TypeScript single and bulk writers now apply the same default and staff-role checks. Email bound is 254 to match the sender instead of TS's 255. No roles or memberships are created by this operation.
 
-`GET /platform/invitations/organizations/{id}/roles` uses the same gate/flag and target TenantScope. It returns at most 100 active roles ordered by name and slug, projecting only slug/name. Both frontend entry points use these results instead of fixed role choices when C# is selected. More than 100 roles requires a later paginated selector; arbitrary hidden roles are not invented as fallback choices.
+`GET /platform/invitations/organizations/{id}/roles` uses the same gate/flag and target TenantScope. It returns active assignable staff roles ordered by name and slug, projecting only slug/name. Both frontend entry points use these results when C# is selected. The empty selector choice states that `employee` is the default.
 
-Role and organization checks are point-in-time validations at invitation creation. They do not reserve the role through future acceptance. Acceptance must revalidate membership and role rules; its migration remains open.
+Role and organization checks are point-in-time validations at invitation creation. They do not reserve the role through future acceptance. The .NET 10 acceptance repository revalidates role availability and maps older pending invitations with a null role to `employee`, granting the role in the same tenant transaction as account completion. Accepted invitations never restore a role later removed by an administrator.
 
 ## Delivery and retries
 

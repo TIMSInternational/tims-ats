@@ -544,7 +544,7 @@
     "userEmail": "Email del Usuario",
     "organization": "Organizacion",
     "role": "Rol",
-    "selectRole": "Seleccionar rol...",
+    "selectRole": "Colaborador (predeterminado)",
     "sendInvitation": "Enviar Invitacion",
     "cancel": "Cancelar",
     "acceptanceRate": "tasa de aceptacion",
