@@ -28,7 +28,7 @@ public sealed class InvitationResendUseCase(IInvitationResendRepository reposito
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
         var accepted = await sender.SendEmailAsync(invitation.Email,
             $"Recordatorio: Invitacion pendiente - {organization}",
-            $"<h1>TIMS ATS</h1><p>Tienes una invitacion pendiente para <strong>{WebUtility.HtmlEncode(organization)}</strong>.</p><a href=\"{WebUtility.HtmlEncode(url)}\">Aceptar Invitacion</a><p>Esta invitacion expira en 7 dias.</p>", ct);
+            InvitationEmail.Render(organization, null, url, expiresAt, reminder: true), ct);
         if (!accepted) return new(InvitationResendOutcome.DeliveryUnconfirmed, invitation.OrganizationId);
 
         var sentAt = Now();

@@ -335,6 +335,18 @@ try
     builder.Services.AddScoped<OrganizationInvitationCreateUseCase>();
     builder.Services.AddScoped<IUserInvitationCreateRepository, UserInvitationCreateRepository>();
     builder.Services.AddScoped<UserInvitationCreateUseCase>();
+    builder.Services.AddScoped<IInvitationOnboardingRepository, InvitationOnboardingRepository>();
+    builder.Services.AddScoped<InvitationOnboarding>();
+    builder.Services.AddOptions<InvitationSetupOptions>().Bind(builder.Configuration.GetSection("Invitations"))
+        .Validate(options => options.IsValid(),
+            "Invitation setup requires configured identity credentials and HTTPS origin")
+        .ValidateOnStart();
+    builder.Services.AddHttpClient<IInvitationIdentityProvider, InvitationIdentityProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+            client.MaxResponseContentBufferSize = 65536;
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
     builder.Services.AddSingleton<IBulkInvitationWorker, BulkInvitationWorker>();
     builder.Services.AddScoped<BulkInvitationUseCase>();
     builder.Services.TryAddSingleton(TimeProvider.System);
@@ -1292,6 +1304,10 @@ try
     if (externalOptions.PlatformOrganizationInvitationCreateEnabled || isOpenApiDocGeneration)
     {
         app.MapOrganizationInvitationCreateEndpoints();
+    }
+    if (app.Configuration.GetValue<bool>("Invitations:SetupEnabled") || isOpenApiDocGeneration)
+    {
+        app.MapInvitationOnboardingEndpoints();
     }
     if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
     {

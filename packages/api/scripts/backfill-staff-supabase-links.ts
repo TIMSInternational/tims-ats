@@ -32,7 +32,9 @@ async function main() {
   // and a prod link would point invitees at the wrong Supabase project AFTER we've
   // already written their supabaseUserId. Require it explicitly for writes.
   if (APPLY && !process.env.NEXT_PUBLIC_APP_URL?.trim()) {
-    throw new Error('NEXT_PUBLIC_APP_URL must be set explicitly for --apply (invite links embed it; refusing to default to production to avoid wrong-environment onboarding)');
+    throw new Error(
+      'NEXT_PUBLIC_APP_URL must be set explicitly for --apply (invite links embed it; refusing to default to production to avoid wrong-environment onboarding)',
+    );
   }
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -156,7 +158,7 @@ async function main() {
 
     if (!supabaseUserId) {
       const { data, error } = await admin.auth.admin.inviteUserByEmail(user.email, {
-        redirectTo: `${appUrl}/auth/callback`,
+        redirectTo: `${appUrl}/reset-password?setup=1`,
       });
       if (error || !data?.user?.id) {
         console.error(`    FAILED to invite ${user.email}: ${error?.message ?? 'no id'}`);
