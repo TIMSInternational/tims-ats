@@ -3,7 +3,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformPost } from './client';
+import { isPlatformApiEnabled, platformPostRaw } from './client';
 
 const inputSchema = z.object({ id: z.string().uuid() }).strict();
 const responseSchema = z
@@ -34,7 +34,9 @@ export function useInvitationResend(
       }
       if (!isPlatformApiEnabled()) throw new Error('Invitation resend is unavailable. Please contact an administrator.');
       const response = responseSchema.parse(
-        await platformPost('/platform/invitations/{id}/resend', undefined, { id: parsed.id }),
+        // The same-origin relay requires a JSON body for POSTs. An empty object preserves
+        // the bodyless .NET endpoint contract while supplying application/json.
+        await platformPostRaw('/platform/invitations/{id}/resend', {}, { id: parsed.id }),
       );
       if (response.id.toLowerCase() !== parsed.id.toLowerCase())
         throw new Error('Invitation resend response does not match the requested invitation');
