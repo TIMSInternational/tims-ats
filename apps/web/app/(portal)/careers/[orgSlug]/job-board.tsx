@@ -24,15 +24,17 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
   const [appliedLocation, setAppliedLocation] = useState('');
 
   const stats = trpc.portal.getPortalStats.useQuery({ organizationId });
-  const vacancies = trpc.portal.listVacancies.useQuery({
+  const vacancies = trpc.portal.listVacancies.useInfiniteQuery({
     organizationId,
     take: 50,
     search: appliedSearch || undefined,
     location: appliedLocation || undefined,
+  }, {
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 
   type Salary = { min?: number; max?: number; currency?: string } | null;
-  const items = (vacancies.data?.items ?? []).map((v) => ({
+  const items = (vacancies.data?.pages.flatMap((page) => page.items) ?? []).map((v) => ({
     ...v,
     salary: v.salary as Salary,
   }));
@@ -83,7 +85,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
               </div>
             ))}
           </div>
-        ) : vacancies.isError ? (
+        ) : vacancies.isError && !vacancies.data ? (
           <div className="py-16">
             <ErrorState onRetry={() => vacancies.refetch()} />
           </div>
@@ -93,11 +95,15 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
             <p className="text-sm text-[#8B8B8B]">{isSearching ? t.portal.noSearchResults : t.portal.noVacanciesAvailable}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {allItems.map((v) => (
-              <VacancyCard key={v.id} vacancy={v} orgSlug={orgSlug} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {allItems.map((v) => (
+                <VacancyCard key={v.id} vacancy={v} orgSlug={orgSlug} />
+              ))}
+            </div>
+            {vacancies.hasNextPage && <div className="mt-8 text-center"><button type="button" onClick={() => void vacancies.fetchNextPage()} disabled={vacancies.isFetchingNextPage} className="rounded-lg border border-[#1F114C] px-5 py-2 text-sm font-medium text-[#1F114C] disabled:opacity-50">{vacancies.isFetchingNextPage ? t.portal.loadingMore : t.portal.loadMore}</button></div>}
+            {vacancies.isFetchNextPageError && <div className="mt-4"><ErrorState onRetry={() => void vacancies.fetchNextPage()} /></div>}
+          </>
         )}
       </section>
 

@@ -3258,6 +3258,8 @@
     "noVacanciesAvailable": "No vacancies available at this time",
     "noSearchResults": "No jobs match this search. Try another term or location.",
     "clearSearch": "Clear search",
+    "loadMore": "Load more jobs",
+    "loadingMore": "Loading jobs...",
     "exploreByArea": "Explore by Area",
     "applyModalDuplicateError": "You have already applied to this vacancy",
     "applicationSentTitle": "Application submitted",

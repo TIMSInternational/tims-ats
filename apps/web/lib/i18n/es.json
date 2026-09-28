@@ -3258,6 +3258,8 @@
     "noVacanciesAvailable": "No hay vacantes disponibles en este momento",
     "noSearchResults": "No encontramos vacantes para esta búsqueda. Prueba con otro término o ubicación.",
     "clearSearch": "Limpiar búsqueda",
+    "loadMore": "Ver más vacantes",
+    "loadingMore": "Cargando vacantes...",
     "exploreByArea": "Explorar por Área",
     "applyModalDuplicateError": "Ya aplicaste a esta vacante anteriormente",
     "applicationSentTitle": "Aplicación enviada",
