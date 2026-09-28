@@ -62,7 +62,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const validations = o.validations ?? [];
   const legalChecks = (o.legalChecks ?? []) as Array<{ id: string; checkName: string; completed: boolean; completedAt: Date | string | null; completedByUser: { id: string; firstName: string; lastName: string } | null }>;
   const completedValidations = validations.filter((v) => v.status === 'passed').length;
-  const totalValidations = validations.length || 6;
+  const totalValidations = validations.length;
   const progressPct = totalValidations > 0 ? (completedValidations / totalValidations) * 100 : 0;
   const allComplete = completedValidations === totalValidations && totalValidations > 0;
   const benefits = o.benefits as Record<string, string> | null;
@@ -117,6 +117,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       {/* Offer Letter Modal */}
       {showLetterModal && (
         <OfferLetterModal
+          companyName={o.organization.name}
           offer={{
             candidate: o.candidate,
             vacancy: o.vacancy,

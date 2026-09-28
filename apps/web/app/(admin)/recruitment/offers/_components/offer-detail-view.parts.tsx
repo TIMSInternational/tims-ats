@@ -177,7 +177,7 @@ export function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardPr
           </div>
           <div>
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.schedule}</p>
-            <p className="text-[13px] text-[#333]">{terms?.schedule || 'Full-time'}</p>
+            <p className="text-[13px] text-[#333]">{terms?.schedule || '—'}</p>
           </div>
           <div>
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.modality}</p>
