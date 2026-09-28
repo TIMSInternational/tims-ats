@@ -4,6 +4,13 @@
     "message": "No tienes permiso para ver esta seccion. Si crees que es un error, contacta a tu administrador.",
     "back": "Volver al inicio"
   },
+  "unassignedDashboard": {
+    "title": "Tu acceso está pendiente",
+    "description": "Tu cuenta está activa, pero todavía no tiene un rol asignado en la organización.",
+    "signedInAs": "Sesión iniciada como",
+    "nextStep": "Pide al administrador de tu organización que te asigne un rol. Después, actualiza esta página.",
+    "refresh": "Actualizar acceso"
+  },
   "notFound": {
     "title": "Página no encontrada",
     "message": "La página que buscas no existe o fue movida.",
@@ -272,7 +279,7 @@
     "verifyEmail": "Verifica tu email",
     "companyName": "Nombre de la empresa",
     "companyNamePlaceholder": "Tu Empresa S.A.S",
-    "passwordMinPlaceholder": "Mínimo 8 caracteres",
+    "passwordMinPlaceholder": "Entre 12 y 128 caracteres",
     "humanDriving": "Humano que impulsa",
     "growth": "el crecimiento",
     "newPassword": "Nueva Contraseña",
@@ -288,7 +295,7 @@
     "hidePasswords": "Ocultar contraseñas",
     "invalidPasswordSetupLink": "El enlace para establecer la contraseña no es válido o ha expirado",
     "passwordUpdateFailed": "No pudimos actualizar tu contraseña. Solicita un enlace nuevo e inténtalo de nuevo.",
-    "passwordMinLength": "La contrasena debe tener al menos 8 caracteres",
+    "passwordMinLength": "La contraseña debe tener entre 12 y 128 caracteres",
     "emailAlreadyRegistered": "Este email ya esta registrado. Intenta iniciar sesion.",
     "confirmationSentTo": "Enviamos un enlace de confirmacion a",
     "goToLogin": "Ir al login",
@@ -3576,6 +3583,7 @@
     "errorAssignmentNotInProgress": "Esta evaluacion no esta en progreso actualmente.",
     "errorQuestionNotInAssessment": "Una de tus respuestas hace referencia a una pregunta que no es parte de esta evaluacion.",
     "errorAnswerTypeMismatch": "Una de tus respuestas no coincide con el formato esperado de su pregunta.",
+    "errorAssessmentNotReady": "Esta evaluacion aun no tiene preguntas disponibles. Comunicate con el equipo que te la asigno.",
     "errorGeneric": "Algo salio mal. Intenta de nuevo.",
     "backToDashboard": "Volver al panel"
   }

@@ -91,6 +91,19 @@ function meetingLinkRow(meetingUrl?: string): string {
 type InterviewParams = { candidateName: string; vacancyTitle: string; companyName: string; interviewType: string; scheduledAt: Date; duration: number; location?: string; meetingUrl?: string; contactEmail: string };
 
 export const emailTemplates = {
+  assessmentReminder(p: { candidateName: string; assessmentName: string; companyName: string; assessmentUrl: string; expiresAt: Date | null }): { subject: string; html: string } {
+    const expiration = p.expiresAt ? detailsTable(detailRow('Disponible hasta', formatDate(p.expiresAt))) : '';
+    const content = heading('Evaluación pendiente') +
+      paragraph(`Estimado/a ${esc(p.candidateName)},`) +
+      paragraph(`Tiene pendiente la evaluación <strong>${esc(p.assessmentName)}</strong> de ${esc(p.companyName)}.`) +
+      expiration +
+      paragraph('Ingrese a su portal de candidato con el mismo correo electrónico para completar la evaluación.') +
+      ctaButton(p.assessmentUrl, 'Ir a mis evaluaciones') +
+      paragraph('Si ya completó esta evaluación, puede ignorar este recordatorio.') +
+      paragraph('Cordialmente,<br>Equipo de Talento Humano');
+    return { subject: `Recordatorio de evaluación — ${p.assessmentName}`, html: baseLayout(content, p.companyName) };
+  },
+
   interviewInvitation(p: InterviewParams): { subject: string; html: string } {
     const locationRow = p.location ? detailRow('Lugar', esc(p.location)) : '';
     const content = heading(`Invitación a Entrevista`) +

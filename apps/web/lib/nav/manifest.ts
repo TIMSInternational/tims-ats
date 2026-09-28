@@ -187,7 +187,14 @@ export const MANIFESTS: Record<NavRole, RoleManifest> = {
   employee: participantManifest(EMPLOYEE_HOME),
 };
 
-const FALLBACK_MANIFEST: RoleManifest = adminManifest(BASE_ADMIN);
+// A linked staff account may temporarily have no assigned role (or only a
+// legacy/non-staff slug). Never show admin-shaped navigation in that state.
+const FALLBACK_MANIFEST: RoleManifest = participantManifest([
+  {
+    labelKey: null,
+    items: [{ href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null }],
+  },
+]);
 
 /** The manifest for the user's primary (highest-precedence) role. */
 export function manifestFor(roles: readonly string[]): RoleManifest {

@@ -17,6 +17,7 @@ import { UnitHealthDashboard } from './unit-health-dashboard';
 import { ManagerDashboard } from './manager-dashboard';
 import { CommitteeTasksDashboard } from './committee-tasks-dashboard';
 import { EmployeeHomeDashboard } from './employee-home-dashboard';
+import { UnassignedDashboard } from './unassigned-dashboard';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
@@ -40,6 +41,7 @@ export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
       case 'manager': return <ManagerDashboard />;
       case 'committee': return <CommitteeTasksDashboard />;
       case 'employee': return <EmployeeHomeDashboard />;
+      case 'unassigned': return <UnassignedDashboard />;
       default: {
         // Exhaustiveness guard: if DashboardKey grows without a case here, this
         // line becomes a compile error instead of a silent fallthrough.

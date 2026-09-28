@@ -12,6 +12,7 @@ describe('mapAssessmentErrorMessage', () => {
     ['assignment_not_in_progress', t.errorAssignmentNotInProgress],
     ['question_not_in_assessment', t.errorQuestionNotInAssessment],
     ['answer_type_mismatch', t.errorAnswerTypeMismatch],
+    ['assessment_has_no_questions', t.errorAssessmentNotReady],
   ];
 
   it.each(cases)('maps backend code %s to its translated message', (code, expected) => {

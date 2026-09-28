@@ -1,6 +1,6 @@
 # TIMS ATS — Complete Product Map
 
-> **Last updated**: 2026-06-01 | **Status**: MVP Phase 1 (Recruitment)
+> **Last updated**: 2026-06-01 | **Historical product scope, not current implementation status.** For the latest evidence, see `docs/REMAINING-WORK.md` and `docs/audits/2026-09-28-product-flow-review.md`. The percentages and "Build Next" section below are from June and must not be used as current completion estimates.
 
 ---
 

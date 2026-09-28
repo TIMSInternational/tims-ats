@@ -45,19 +45,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               ))}
             </div>
 
-            {/* Social proof */}
-            <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                {['bg-emerald-500', 'bg-blue-500', 'bg-amber-500', 'bg-purple-500'].map((c, i) => (
-                  <div key={i} className={`w-8 h-8 rounded-full ${c} ring-2 ring-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold`}>
-                    {['ML', 'CA', 'JR', 'FT'][i]}
-                  </div>
-                ))}
-              </div>
-              <p className="text-white/35 text-[13px]">
-                +1,200 profesionales confian en TIMS
-              </p>
-            </div>
           </div>
         </div>
       </div>

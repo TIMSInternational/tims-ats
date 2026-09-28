@@ -17,6 +17,7 @@ const ERROR_MESSAGE_KEYS: Record<string, AssessmentPlayerStringKeys> = {
   assignment_not_in_progress: 'errorAssignmentNotInProgress',
   question_not_in_assessment: 'errorQuestionNotInAssessment',
   answer_type_mismatch: 'errorAnswerTypeMismatch',
+  assessment_has_no_questions: 'errorAssessmentNotReady',
 };
 
 export function mapAssessmentErrorMessage(rawMessage: string | undefined, t: AssessmentPlayerT): string {
