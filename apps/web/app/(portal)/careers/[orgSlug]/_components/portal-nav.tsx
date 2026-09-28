@@ -13,7 +13,6 @@ interface PortalNavProps {
 const navLinks = [
   { label: 'Inicio', href: '#', active: true },
   { label: 'Vacantes', href: '#vacantes', active: false },
-  { label: 'Nosotros', href: '#nosotros', active: false },
   { label: 'Beneficios', href: '#beneficios', active: false },
 ];
 
