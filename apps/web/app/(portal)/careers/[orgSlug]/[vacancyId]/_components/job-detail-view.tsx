@@ -4,8 +4,8 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton, ErrorState } from '../../../../../../components';
-import { toast } from '../../../../../../lib/toast';
 import { ApplyModal } from './apply-modal';
+import { JobDescription } from './job-description';
 import { useI18n } from '../../../../../../lib/i18n';
 
 interface JobDetailViewProps {
@@ -188,7 +188,6 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setShowApply(true)} className="h-11 rounded-lg bg-[#DD0C15] px-8 text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">{p.applyNow}</button>
-              <button onClick={() => toast('Guardado')} className="h-11 rounded-lg border border-[#1F114C] px-6 text-[14px] font-semibold text-[#1F114C] transition-colors hover:bg-[#F6F6F6]">Guardar</button>
             </div>
             {showApply && (
               <ApplyModal
@@ -205,7 +204,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
             {v.description && (
               <section>
                 <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.aboutPosition}</h2>
-                <div className="text-[14px] leading-relaxed text-[#585858] whitespace-pre-wrap">{v.description}</div>
+                <JobDescription description={v.description} />
               </section>
             )}
 
