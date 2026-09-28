@@ -140,6 +140,13 @@ export const offerCrudRouter = router({
       if (!candidate) throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado en esta organizacion' });
       if (input.applicationId) {
         await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
+        const application = await db.application.findFirst({
+          where: { id: input.applicationId, organizationId: orgId },
+          select: { candidateId: true, vacancyId: true, status: true },
+        });
+        if (!application || application.candidateId !== input.candidateId || application.vacancyId !== input.vacancyId || application.status !== 'active') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La postulacion no corresponde al candidato y la vacante activos' });
+        }
       }
 
       const { benefits, terms, ...rest } = input;

@@ -49,6 +49,8 @@ function mockTx() {
   };
 }
 
+let lastTx: ReturnType<typeof mockTx>;
+
 // Permission-aware mock: 'create' always allowed (the procedure-level check already
 // passed by the time we're in the handler); 'publish' toggles per-test via
 // setPublishAllowed, so the autoPublish branch's own vacancy:publish check (Codex
@@ -81,8 +83,9 @@ vi.mock('../../packages/api/src/access', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   setPublishAllowed(true);
+  lastTx = mockTx();
   runTenantTransactionMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
-    fn(mockTx()),
+    fn(lastTx),
   );
 });
 
@@ -124,6 +127,18 @@ describe('vacancy.create — autoPublish', () => {
     expect(runTenantTransactionMock).toHaveBeenCalledTimes(1);
     expect(runTenantTransactionMock).toHaveBeenCalledWith('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', expect.any(Function));
     expect(tenantDb.$transaction).not.toHaveBeenCalled();
+    expect(lastTx.vacancy.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stages: {
+            create: expect.arrayContaining([
+              expect.objectContaining({ name: 'Aplicado', order: 0, isDefault: true }),
+              expect.objectContaining({ name: 'Contratado', order: 6, isDefault: false }),
+            ]),
+          },
+        }),
+      }),
+    );
   });
 
   it('leaves the vacancy in draft when requireApproval is true (no behavior change)', async () => {
@@ -146,7 +161,14 @@ describe('vacancy.create — autoPublish', () => {
     });
 
     expect(tenantDb.vacancy.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'draft' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'draft',
+          stages: {
+            create: expect.arrayContaining([expect.objectContaining({ name: 'Aplicado', order: 0, isDefault: true })]),
+          },
+        }),
+      }),
     );
     expect(result.status).toBe('draft');
   });
@@ -170,7 +192,14 @@ describe('vacancy.create — autoPublish', () => {
     });
 
     expect(tenantDb.vacancy.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'approved' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'approved',
+          stages: {
+            create: expect.arrayContaining([expect.objectContaining({ name: 'Aplicado', order: 0, isDefault: true })]),
+          },
+        }),
+      }),
     );
     expect(runTenantTransactionMock).not.toHaveBeenCalled();
     expect(tenantDb.$transaction).not.toHaveBeenCalled();

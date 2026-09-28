@@ -39,6 +39,12 @@ export const assessmentQuestionRepo = {
     });
   },
 
+  countActiveQuestions(orgId: string, assessmentTypeId: string) {
+    return tenantDb.assessmentQuestion.count({
+      where: { organizationId: orgId, assessmentTypeId, isActive: true },
+    });
+  },
+
   list(orgId: string, assessmentTypeId: string, includeInactive: boolean) {
     return tenantDb.assessmentQuestion.findMany({
       where: {

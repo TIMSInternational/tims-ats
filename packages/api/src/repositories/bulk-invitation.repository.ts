@@ -40,7 +40,7 @@ export const bulkInvitationRepository = {
   },
   findForResend(id: string) {
     return bounded(tx => tx.platformInvitation.findUnique({
-      where: { id }, select: { id: true, email: true, token: true, status: true, organizationName: true },
+      where: { id }, select: { id: true, email: true, token: true, status: true, organizationName: true, roleSlug: true },
     }));
   },
   markResent(id: string, expiresAt: Date) {

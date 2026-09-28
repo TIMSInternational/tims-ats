@@ -19,6 +19,7 @@ interface CandidateHeaderProps {
   onViewLetter?: () => void;
   onSendForSigning?: () => void;
   isGeneratingLink?: boolean;
+  canSendForSigning?: boolean;
 }
 
 export function CandidateHeader({
@@ -31,6 +32,7 @@ export function CandidateHeader({
   onViewLetter,
   onSendForSigning,
   isGeneratingLink,
+  canSendForSigning,
 }: CandidateHeaderProps) {
   const { t } = useI18n();
 
@@ -83,17 +85,17 @@ export function CandidateHeader({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
             </svg>
-            Ver Carta de Oferta
+            {t.offers.viewOfferLetter}
           </button>
           <button
             className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#1F114C] text-[#1F114C] hover:bg-[#1F114C] hover:text-white transition"
-            disabled={isGeneratingLink}
+            disabled={isGeneratingLink || !canSendForSigning}
             onClick={onSendForSigning}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
             </svg>
-            {isGeneratingLink ? 'Generando...' : 'Enviar para Firma'}
+            {isGeneratingLink ? t.offers.generating : t.offers.sendForSignature}
           </button>
           <button
             className={`px-5 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 ${

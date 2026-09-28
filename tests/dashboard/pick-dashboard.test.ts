@@ -33,8 +33,8 @@ describe('pickPrimaryDashboard', () => {
   it('admin-tier outranks committee in a multi-role collision', () => {
     expect(pickPrimaryDashboard(['committee', 'hr_admin'])).toBe('hrExec');
   });
-  it('unknown / empty roles → employee dashboard', () => {
-    expect(pickPrimaryDashboard([])).toBe('employee');
-    expect(pickPrimaryDashboard(['some_unmapped_role'])).toBe('employee');
+  it('unknown / empty roles → access-pending dashboard', () => {
+    expect(pickPrimaryDashboard([])).toBe('unassigned');
+    expect(pickPrimaryDashboard(['some_unmapped_role'])).toBe('unassigned');
   });
 });

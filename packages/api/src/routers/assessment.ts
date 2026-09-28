@@ -9,10 +9,15 @@ import {
   listQuestionsSchema,
   deleteQuestionSchema,
   type ScoreBand,
+  getAppUrl,
+  logger,
 } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
+import { emailService } from '../services/email.service';
 import { clientIpFrom } from '../lib/client-ip';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
+
+const REMINDER_COOLDOWN_MS = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // AssessmentResult field-level gating (Wave 2.5 slice 6)
@@ -139,6 +144,8 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene una postulacion activa para esta vacante' });
       }
 
+      await assessmentQuestionService.assertHasActiveQuestions(orgId, input.assessmentTypeId);
+
       return db.assessmentAssignment.create({
         data: {
           organizationId: ctx.user.organizationId,
@@ -190,6 +197,8 @@ export const assessmentRouter = router({
       if (applicationCount !== uniqueCandidateIds.length) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas candidatos no tienen una postulacion activa para esta vacante' });
       }
+
+      await assessmentQuestionService.assertHasActiveQuestions(orgId, input.assessmentTypeId);
 
       const result = await db.assessmentAssignment.createMany({
         data: uniqueCandidateIds.map((candidateId) => ({
@@ -386,7 +395,7 @@ export const assessmentRouter = router({
       });
     }),
 
-  // 7.8 — Resend assessment invitation (stub)
+  // 7.8 — Resend assessment invitation
   resend: permissionProcedure('assessment', 'update')
     .input(z.object({ assignmentId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
@@ -417,18 +426,91 @@ export const assessmentRouter = router({
           message: 'Asignacion no encontrada o no reenviar invitaciones para evaluaciones completadas',
         });
       }
+      if (assignment.expiresAt && assignment.expiresAt.getTime() < Date.now()) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });
+      }
 
-      // Stub: in production this would trigger an SES email
-      await db.assessmentAssignment.update({
-        where: { id: input.assignmentId },
-        data: { reminderSentAt: new Date() },
+      const org = await db.organization.findFirst({
+        where: { id: ctx.user.organizationId },
+        select: { slug: true, name: true },
       });
+      if (!org) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
+      }
 
-      return {
-        sent: true,
+      // Claim before the external call. The conditional update is atomic across
+      // concurrent requests and keeps uncertain sends in a short cooldown, while
+      // reminderSentAt remains reserved for provider acceptance.
+      const attemptedAt = new Date();
+      const cooldownCutoff = new Date(attemptedAt.getTime() - REMINDER_COOLDOWN_MS);
+      const claim = await db.assessmentAssignment.updateMany({
+        where: {
+          AND: [
+            {
+              id: input.assignmentId,
+              organizationId: ctx.user.organizationId,
+              status: { in: ['assigned', 'in_progress'] },
+            },
+            scopeWhere as Prisma.AssessmentAssignmentWhereInput,
+            { OR: [{ expiresAt: null }, { expiresAt: { gt: attemptedAt } }] },
+            { OR: [{ reminderAttemptedAt: null }, { reminderAttemptedAt: { lte: cooldownCutoff } }] },
+          ],
+        },
+        data: { reminderAttemptedAt: attemptedAt },
+      });
+      if (claim.count !== 1) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'reminder_unavailable' });
+      }
+
+      const recipient = {
         to: assignment.candidate.email,
         assessmentName: assignment.assessmentType.name,
-        status: 'stub_sent',
+      };
+      let delivered = false;
+      try {
+        delivered = await emailService.sendAssessmentReminder({
+          candidateEmail: assignment.candidate.email,
+          candidateName: assignment.candidate.firstName,
+          assessmentName: assignment.assessmentType.name,
+          companyName: org.name,
+          assessmentUrl: `${getAppUrl()}/careers/${encodeURIComponent(org.slug)}/dashboard`,
+          expiresAt: assignment.expiresAt,
+        });
+      } catch {
+        logger.warn({ component: 'assessment', assignmentId: input.assignmentId }, 'Assessment reminder delivery outcome unconfirmed');
+      }
+      if (!delivered) {
+        // SES timeout/circuit failure is not proof that the recipient received
+        // nothing. Do not record a reminder or invite a blind automatic retry.
+        return { ...recipient, sent: null, status: 'delivery_unconfirmed' as const, reminderRecorded: false };
+      }
+
+      let reminderRecorded = false;
+      try {
+        const reminderUpdate = await db.assessmentAssignment.updateMany({
+          where: {
+            id: input.assignmentId,
+            organizationId: ctx.user.organizationId,
+            status: { in: ['assigned', 'in_progress'] },
+            reminderAttemptedAt: attemptedAt,
+          },
+          data: { reminderSentAt: new Date() },
+        });
+        reminderRecorded = reminderUpdate.count === 1;
+        if (!reminderRecorded) {
+          logger.warn({ component: 'assessment', assignmentId: input.assignmentId }, 'Provider accepted reminder after assignment status changed');
+        }
+      } catch {
+        // Provider acceptance already happened. Preserve that fact even if the
+        // status write failed; a generic error would encourage a duplicate resend.
+        logger.warn({ component: 'assessment', assignmentId: input.assignmentId }, 'Provider accepted reminder but reminder record failed');
+      }
+
+      return {
+        ...recipient,
+        sent: true,
+        status: reminderRecorded ? 'provider_accepted' as const : 'provider_accepted_record_unconfirmed' as const,
+        reminderRecorded,
       };
     }),
 

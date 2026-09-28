@@ -42,10 +42,10 @@ public sealed class UserInvitationCreateUseCase(IUserInvitationCreateRepository 
         if (pending.Outcome != UserInvitationCreateOutcome.Created) return new(pending.Outcome);
         var invitation = pending.Snapshot!;
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
-        var role = input.RoleSlug?.Replace('_', ' ') ?? "usuario";
         var outcome = await new InitialInvitationDelivery(deliveryRepository, sender, clock).SendAsync(invitation, pending.ExpiresAt!.Value,
             "Invitacion para unirte a TIMS ATS",
-            $"<h1>TIMS ATS</h1><p>Has sido invitado a unirte a <strong>{WebUtility.HtmlEncode(invitation.OrganizationName)}</strong> como <strong>{WebUtility.HtmlEncode(role)}</strong>.</p><a href=\"{WebUtility.HtmlEncode(url)}\">Aceptar Invitacion</a><p>Esta invitacion expira en 7 dias.</p>", ct);
+            InvitationEmail.Render(invitation.OrganizationName ?? "TIMS ATS",
+                input.RoleSlug ?? "Acceso básico", url, pending.ExpiresAt.Value), ct);
         return new(UserInvitationCreateOutcome.Created, new(invitation.Id, input.OrganizationId, outcome));
     }
 }

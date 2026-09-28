@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 process.env.NEXT_PUBLIC_INVITATION_RESEND_VIA_CSHARP = 'true';
 const mocks = vi.hoisted(() => ({ post: vi.fn(), legacy: vi.fn(), enabled: true }));
 vi.mock('../../apps/web/lib/platform-api/client', () => ({
-  platformPost: mocks.post,
+  platformPostRaw: mocks.post,
   isPlatformApiEnabled: () => mocks.enabled,
 }));
 vi.mock('../../apps/web/lib/trpc', () => ({
@@ -30,7 +30,7 @@ describe('C# invitation resend', () => {
     const { useInvitationResend } = await import('../../apps/web/lib/platform-api/invitation-resend');
     const { result } = renderHook(() => useInvitationResend({ onSuccess: success }), { wrapper });
     await act(() => result.current.mutateAsync({ id }));
-    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/platform/invitations/{id}/resend', undefined, { id });
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/platform/invitations/{id}/resend', {}, { id });
     expect(mocks.legacy).not.toHaveBeenCalled();
     expect(success).toHaveBeenCalledOnce();
   });

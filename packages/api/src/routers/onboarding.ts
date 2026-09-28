@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, protectedProcedure, permissionProcedure } from '../trpc';
+import { router, permissionProcedure } from '../trpc';
 // Tenant-scoped client: queries are automatically restricted to the request's org
 // via RLS (see docs/security/RLS-MIGRATION-PLAN.md). Behaves identically to the base
 // db until the RLS cutover (TENANT_DATABASE_URL) is enabled.
@@ -7,6 +7,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
+import { scheduledOnboardingCheckIns } from '../services/onboarding-defaults';
 
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
@@ -145,6 +146,9 @@ export const onboardingRouter = router({
           ...input,
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
+          checkIns: {
+            create: scheduledOnboardingCheckIns(input.startDate, ctx.user.organizationId),
+          },
         },
         include: {
           user: { select: { id: true, firstName: true, lastName: true } },
@@ -318,9 +322,9 @@ export const onboardingRouter = router({
   // 10.9 — List documents for a plan (stub — no OnboardingDocument model yet)
   listDocuments: permissionProcedure('onboarding', 'read')
     .input(z.object({ planId: z.string().uuid() }))
-    .query(async () => {
-      // TODO: implement when OnboardingDocument model is added to the schema
-      return [];
+    .query(async ({ ctx, input }) => {
+      await assertScoped('onboardingPlan', input.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Los documentos de onboarding aún no están disponibles' });
     }),
 
   // 10.10 — Request a document from the new hire (stub)
@@ -333,9 +337,9 @@ export const onboardingRouter = router({
         dueDate: z.coerce.date().optional(),
       })
     )
-    .mutation(async () => {
-      // TODO: implement when OnboardingDocument model is added to the schema
-      return { success: true, message: 'Documento solicitado (pendiente de implementacion)' };
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('onboardingPlan', input.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'La solicitud de documentos aún no está disponible' });
     }),
 
   // 10.11 — Get check-ins for a plan
@@ -375,10 +379,13 @@ export const onboardingRouter = router({
       // plan's check-ins by check-in id.
       const checkIn = await db.onboardingCheckIn.findFirst({
         where: { id, organizationId: ctx.user.organizationId },
-        select: { id: true, planId: true },
+        select: { id: true, planId: true, status: true },
       });
       if (!checkIn) throw new TRPCError({ code: 'NOT_FOUND', message: 'Check-in de onboarding no encontrado' });
       await assertScoped('onboardingPlan', checkIn.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      if (checkIn.status !== 'pending') {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Este check-in ya fue completado' });
+      }
 
       return db.onboardingCheckIn.update({
         where: { id },
@@ -453,9 +460,10 @@ export const onboardingRouter = router({
     }),
 
   // 10.14 — Get personalized learning route (stub — future AI integration)
-  getLearningRoute: protectedProcedure
+  getLearningRoute: permissionProcedure('onboarding', 'read')
     .input(z.object({ planId: z.string().uuid() }))
-    .query(async () => {
+    .query(async ({ ctx, input }) => {
+      await assertScoped('onboardingPlan', input.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
       // TODO: integrate with AI / learning module
       return {
         modules: [],
@@ -471,7 +479,7 @@ export const onboardingRouter = router({
 
     const orgId = ctx.user.organizationId;
 
-    const [activePlans, completedPlans, totalTasks, completedTasks, pendingCheckIns] =
+    const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns] =
       await Promise.all([
         db.onboardingPlan.count({
           where: { organizationId: orgId, status: 'active' },
@@ -479,15 +487,19 @@ export const onboardingRouter = router({
         db.onboardingPlan.count({
           where: { organizationId: orgId, status: 'completed' },
         }),
-        db.onboardingTask.count({
-          where: { organizationId: orgId },
+        db.onboardingPlan.count({
+          where: { organizationId: orgId, status: 'active', riskScore: { gt: 0.3 } },
         }),
         db.onboardingTask.count({
-          where: { organizationId: orgId, completed: true },
+          where: { organizationId: orgId, plan: { status: 'active' } },
+        }),
+        db.onboardingTask.count({
+          where: { organizationId: orgId, completed: true, plan: { status: 'active' } },
         }),
         db.onboardingCheckIn.count({
           where: {
             organizationId: orgId,
+            plan: { status: 'active' },
             status: 'pending',
             scheduledDate: { lt: new Date() },
           },
@@ -502,6 +514,7 @@ export const onboardingRouter = router({
     return {
       activePlans,
       completedPlans,
+      atRiskPlans,
       totalTasks,
       completedTasks,
       taskCompletionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,

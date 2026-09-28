@@ -4,7 +4,7 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
-import { DEFAULT_ONBOARDING_TASKS } from '../../services/onboarding-defaults';
+import { DEFAULT_ONBOARDING_TASKS, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
 
@@ -111,13 +111,17 @@ export const offerLifecycleRouter = router({
         // aren't plan-less until someone manually creates one. OnboardingTask has
         // no default/cascade fill for organizationId on the nested relation write,
         // so it's set explicitly on every task.
+        const startDate = new Date();
         await tx.onboardingPlan.create({
           data: {
             organizationId: ctx.user.organizationId,
             userId: newUser.id,
-            startDate: new Date(),
+            startDate,
             phase: 'day1_30',
             createdById: ctx.user.id,
+            checkIns: {
+              create: scheduledOnboardingCheckIns(startDate, ctx.user.organizationId),
+            },
             tasks: {
               create: DEFAULT_ONBOARDING_TASKS.map((task) => ({
                 organizationId: ctx.user.organizationId,

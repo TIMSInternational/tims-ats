@@ -30,6 +30,7 @@ model AssessmentAssignment {
   startedAt        DateTime? @map("started_at")
   completedAt      DateTime? @map("completed_at")
   expiresAt        DateTime? @map("expires_at")
+  reminderAttemptedAt DateTime? @map("reminder_attempted_at")
   reminderSentAt   DateTime? @map("reminder_sent_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
