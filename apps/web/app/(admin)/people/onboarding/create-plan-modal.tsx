@@ -46,7 +46,9 @@ export function CreatePlanModal({ onClose }: CreatePlanModalProps) {
     submit.mutate({
       userId: newHire.id,
       buddyId: buddy?.id,
-      startDate: new Date(startDate),
+      // Date-only fields represent a calendar day, not UTC midnight. Noon avoids
+      // displaying the preceding day for users west of UTC.
+      startDate: new Date(`${startDate}T12:00:00`),
       phase,
     });
   };

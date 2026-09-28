@@ -5,6 +5,7 @@ import { CandidateAvatar } from '../../../../components';
 import { formatDate } from '../../../../lib/format-utils';
 import { useI18n } from '../../../../lib/i18n';
 import { OnboardingTaskList } from './onboarding-task-list';
+import { CreateTaskModal } from './create-task-modal';
 
 type Phase = 'all' | 'day1_30' | 'day31_60' | 'day61_90';
 
@@ -100,6 +101,7 @@ export function OnboardingTable({
 }) {
   const [activeTab, setActiveTab] = useState<Phase>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [taskPlan, setTaskPlan] = useState<OnboardingPlan | null>(null);
   const { t } = useI18n();
 
   const handleTab = (key: Phase) => {
@@ -156,7 +158,7 @@ export function OnboardingTable({
             {!isLoading && plans.length === 0 && (
               <tr>
                 <td colSpan={9} className="py-12 text-center text-[13px] text-[#8B8B8B]">
-                  No hay planes de onboarding activos
+                  {t.onboarding.noPlan}
                 </td>
               </tr>
             )}
@@ -240,18 +242,16 @@ export function OnboardingTable({
                           <span className={`text-[11px] ${fractionColor(doneTasks, totalTasks, risk)}`}>
                             {doneTasks}/{totalTasks}
                           </span>
-                          {totalTasks > 0 && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpanded((prev) => (prev === plan.id ? null : plan.id));
-                              }}
-                              className="text-[9px] text-[#1F114C] underline hover:text-[#DD0C15] transition"
-                            >
-                              {t.onboarding.expandTasks}
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpanded((prev) => (prev === plan.id ? null : plan.id));
+                            }}
+                            className="text-[9px] text-[#1F114C] underline hover:text-[#DD0C15] transition"
+                          >
+                            {t.onboarding.expandTasks}
+                          </button>
                         </div>
                       </td>
 
@@ -294,13 +294,23 @@ export function OnboardingTable({
                         </div>
                       </td>
                     </tr>
-                    {expanded === plan.id && <OnboardingTaskList tasks={plan.tasks} />}
+                    {expanded === plan.id && (
+                      <>
+                        <OnboardingTaskList tasks={plan.tasks} />
+                        <tr className="bg-[#F9F9FB]">
+                          <td colSpan={9} className="px-6 pb-3">
+                            <button type="button" onClick={() => setTaskPlan(plan)} className="text-[11px] font-medium text-[#1F114C] underline">{t.onboarding.createTaskTitle}</button>
+                          </td>
+                        </tr>
+                      </>
+                    )}
                   </React.Fragment>
                 );
               })}
           </tbody>
         </table>
       </div>
+      {taskPlan && <CreateTaskModal planId={taskPlan.id} phase={taskPlan.phase} onClose={() => setTaskPlan(null)} />}
     </div>
   );
 }

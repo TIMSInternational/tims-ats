@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, protectedProcedure, permissionProcedure } from '../trpc';
+import { router, permissionProcedure } from '../trpc';
 // Tenant-scoped client: queries are automatically restricted to the request's org
 // via RLS (see docs/security/RLS-MIGRATION-PLAN.md). Behaves identically to the base
 // db until the RLS cutover (TENANT_DATABASE_URL) is enabled.
@@ -318,9 +318,9 @@ export const onboardingRouter = router({
   // 10.9 — List documents for a plan (stub — no OnboardingDocument model yet)
   listDocuments: permissionProcedure('onboarding', 'read')
     .input(z.object({ planId: z.string().uuid() }))
-    .query(async () => {
-      // TODO: implement when OnboardingDocument model is added to the schema
-      return [];
+    .query(async ({ ctx, input }) => {
+      await assertScoped('onboardingPlan', input.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Los documentos de onboarding aún no están disponibles' });
     }),
 
   // 10.10 — Request a document from the new hire (stub)
@@ -333,9 +333,9 @@ export const onboardingRouter = router({
         dueDate: z.coerce.date().optional(),
       })
     )
-    .mutation(async () => {
-      // TODO: implement when OnboardingDocument model is added to the schema
-      return { success: true, message: 'Documento solicitado (pendiente de implementacion)' };
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('onboardingPlan', input.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'La solicitud de documentos aún no está disponible' });
     }),
 
   // 10.11 — Get check-ins for a plan
@@ -453,9 +453,10 @@ export const onboardingRouter = router({
     }),
 
   // 10.14 — Get personalized learning route (stub — future AI integration)
-  getLearningRoute: protectedProcedure
+  getLearningRoute: permissionProcedure('onboarding', 'read')
     .input(z.object({ planId: z.string().uuid() }))
-    .query(async () => {
+    .query(async ({ ctx, input }) => {
+      await assertScoped('onboardingPlan', input.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
       // TODO: integrate with AI / learning module
       return {
         modules: [],
