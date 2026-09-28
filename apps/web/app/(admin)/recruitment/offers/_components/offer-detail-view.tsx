@@ -154,6 +154,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       {/* Offer Letter Modal */}
       {showLetterModal && (
         <OfferLetterModal
+          companyName={o.organization.name}
           offer={{
             candidate: o.candidate,
             vacancy: o.vacancy,
