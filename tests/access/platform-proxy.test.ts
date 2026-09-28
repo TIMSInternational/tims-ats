@@ -78,6 +78,9 @@ it('routes browser reads and writes through same-origin transport', async () => 
   const { platformGetRaw, platformPostRaw } = await import('../../apps/web/lib/platform-api/client');
   await platformGetRaw('/audit/logs');
   await platformPostRaw('/test', {});
+  const [, postOptions] = fetcher.mock.calls[1]!;
+  expect(postOptions.headers['Content-Type']).toBe('application/json');
+  expect(postOptions.body).toBe('{}');
   for (const [url, options] of fetcher.mock.calls) {
     expect(url).toMatch(/^\/api\/platform\//);
     expect(options.credentials).toBe('same-origin');
