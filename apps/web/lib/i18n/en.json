@@ -1140,6 +1140,7 @@
   },
   "talentPool": {
     "title": "Talent Pool / Candidate CRM",
+    "noCandidatesFound": "No candidates found",
     "candidateAdded": "Candidate added to pool",
     "candidateCreateError": "Error creating candidate",
     "exportStarted": "Export started",
@@ -1776,6 +1777,11 @@
   },
   "pipeline": {
     "title": "Pipeline",
+    "advance": "Advance →",
+    "viewProfile": "View profile",
+    "fitScore": "FIT score",
+    "fitPending": "FIT not calculated",
+    "fitPartial": "partial",
     "noCandidatesInPipeline": "No candidates in this pipeline",
     "selectVacancy": "Select vacancy...",
     "noVacancySelected": "Select a vacancy to view the pipeline",

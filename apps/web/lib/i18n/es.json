@@ -1140,6 +1140,7 @@
   },
   "talentPool": {
     "title": "Talent Pool / Candidate CRM",
+    "noCandidatesFound": "No se encontraron candidatos",
     "candidateAdded": "Candidato agregado al pool",
     "candidateCreateError": "Error al crear candidato",
     "exportStarted": "Exportación iniciada",
@@ -1776,6 +1777,11 @@
   },
   "pipeline": {
     "title": "Pipeline",
+    "advance": "Avanzar →",
+    "viewProfile": "Ver perfil",
+    "fitScore": "Puntuación FIT",
+    "fitPending": "FIT sin calcular",
+    "fitPartial": "parcial",
     "noCandidatesInPipeline": "No hay candidatos en este pipeline",
     "selectVacancy": "Seleccionar vacante...",
     "noVacancySelected": "Selecciona una vacante para ver el pipeline",

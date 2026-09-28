@@ -15,25 +15,12 @@ function hoursAgo(date: Date | string): number {
   return Math.max(0, (Date.now() - d.getTime()) / 3600000);
 }
 
-function fitColor(score: number): string {
-  if (score >= 75) return 'bg-green-500';
-  if (score >= 50) return 'bg-amber-500';
-  return 'bg-red-500';
-}
-
-function deriveFitScore(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  return 40 + Math.abs(hash % 55);
-}
-
 interface RiskItem {
   id: string;
   candidateId: string;
   firstName: string;
   lastName: string;
   avatar: string | null;
-  fitScore: number;
   title: string;
   riskLabel: string;
   riskColor: string;
@@ -72,7 +59,6 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
         if (!isOverdue && !isStalled) continue;
 
         const c = app.candidate as { id: string; firstName: string; lastName: string; avatar: string | null; currentTitle?: string | null };
-        const fit = deriveFitScore(app.id);
 
         let riskLabel: string;
         let riskColor: string;
@@ -98,7 +84,6 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
           firstName: c.firstName,
           lastName: c.lastName,
           avatar: c.avatar,
-          fitScore: fit,
           title: c.currentTitle ?? stage.name,
           riskLabel,
           riskColor,
@@ -150,9 +135,6 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] text-[#333]">{c.firstName} {c.lastName}</span>
-                    <span className={`${fitColor(c.fitScore)} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
-                      FIT: {c.fitScore}
-                    </span>
                   </div>
                   <p className="text-[11px] text-[#8B8B8B]">{c.title}</p>
                   <p className={`text-[11px] ${c.riskColor}`}>{c.riskLabel}</p>

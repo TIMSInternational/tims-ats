@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { CandidateAvatar } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
+import { getPipelineFit } from '../../../../lib/pipeline-fit';
 
 interface KanbanCardProps {
   application: {
@@ -22,6 +23,7 @@ interface KanbanCardProps {
       avatar: string | null;
       currentTitle?: string | null;
       currentCompany?: string | null;
+      fitScores?: { overallScore: number; isPartial: boolean }[];
     };
   };
   isDragging: boolean;
@@ -65,7 +67,8 @@ function hoursAgo(date: Date | string): number {
   return Math.max(0, (Date.now() - d.getTime()) / (1000 * 60 * 60));
 }
 
-function fitBorderColor(score: number): string {
+function fitBorderColor(score: number | null): string {
+  if (score === null) return 'border-[#EDEDED]';
   if (score >= 75) return 'border-green-500';
   if (score >= 50) return 'border-amber-500';
   return 'border-red-500';
@@ -99,18 +102,11 @@ function formatSource(source: string): string {
   return map[source.toLowerCase()] ?? source;
 }
 
-function deriveFitScore(appId: string): number {
-  let hash = 0;
-  for (let i = 0; i < appId.length; i++) {
-    hash = appId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return 40 + Math.abs(hash % 55);
-}
-
 export function KanbanCard({ application: app, isDragging, slaHours, stageId, checklist, onToggleChecklistItem }: KanbanCardProps) {
   const { t } = useI18n();
   const candidate = app.candidate;
-  const fitScore = deriveFitScore(app.id);
+  const fit = getPipelineFit(candidate);
+  const fitScore = fit?.score ?? null;
   const days = daysAgo(app.appliedAt);
   // SLA overdue is time-in-CURRENT-stage, not time since the original
   // application — a card that's been in the pipeline a while but just moved
@@ -146,12 +142,16 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
             <p className="text-[10px] text-[#8B8B8B] truncate">{candidate.currentTitle}</p>
           )}
         </div>
-        <div
-          className={`${fitBadgeBg(fitScore)} text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0`}
-          title={`FIT Score: ${fitScore}`}
-        >
-          {fitScore}
-        </div>
+        {fitScore === null ? (
+          <span className="shrink-0 text-[10px] text-[#8B8B8B]" title={t.pipeline.fitPending}>—</span>
+        ) : (
+          <div
+            className={`${fitBadgeBg(fitScore)} text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0`}
+            title={`${t.pipeline.fitScore}: ${fitScore}${fit?.isPartial ? ` (${t.pipeline.fitPartial})` : ''}`}
+          >
+            {Math.round(fitScore)}{fit?.isPartial ? '*' : ''}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -173,7 +173,7 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
           <p className="text-[10px] text-teal-600 italic">{t.pipeline.iaReviewUrgent}</p>
         </div>
       )}
-      {!isOverdue && fitScore >= 80 && (
+      {!isOverdue && fitScore !== null && !fit?.isPartial && fitScore >= 80 && (
         <div className="mt-1.5 pt-1.5 border-t border-[#F0F0F0]">
           <p className="text-[10px] text-teal-600 italic">{t.pipeline.iaAdvanceHighFit}</p>
         </div>
