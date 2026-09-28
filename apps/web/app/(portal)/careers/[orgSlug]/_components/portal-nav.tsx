@@ -61,14 +61,14 @@ export function PortalNav({ orgName, orgSlug }: PortalNavProps) {
 
           <Link
             href={`/careers/${orgSlug}/login`}
-            className="hidden rounded-lg border border-[#1F114C] px-4 py-2 text-[13px] font-medium text-[#1F114C] transition-colors hover:bg-[#1F114C] hover:text-white sm:block"
+            className="rounded-lg border border-[#1F114C] px-4 py-2 text-[13px] font-medium text-[#1F114C] transition-colors hover:bg-[#1F114C] hover:text-white"
           >
             {t.portal.signInNav}
           </Link>
 
           <Link
             href="#vacantes"
-            className="rounded-lg bg-[#DD0C15] px-4 py-2 text-[13px] font-medium text-white shadow-md transition-colors hover:bg-[#c40a12]"
+            className="hidden rounded-lg bg-[#DD0C15] px-4 py-2 text-[13px] font-medium text-white shadow-md transition-colors hover:bg-[#c40a12] sm:block"
           >
             Vacantes
           </Link>
