@@ -3250,11 +3250,14 @@
     "loadError": "Couldn't load data"
   },
   "portal": {
-    "searchPlaceholder": "Job title, keyword...",
-    "locationPlaceholder": "City or department...",
+    "searchPlaceholder": "Job title...",
+    "searchButton": "Search",
+    "locationPlaceholder": "City or location...",
     "featuredVacancies": "Featured Vacancies",
     "featuredVacanciesSubtitle": "High-demand positions that might interest you",
     "noVacanciesAvailable": "No vacancies available at this time",
+    "noSearchResults": "No jobs match this search. Try another term or location.",
+    "clearSearch": "Clear search",
     "exploreByArea": "Explore by Area",
     "applyModalDuplicateError": "You have already applied to this vacancy",
     "applicationSentTitle": "Application submitted",

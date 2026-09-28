@@ -16,15 +16,6 @@ interface JobBoardProps {
   orgSlug: string;
 }
 
-const CATEGORIES = [
-  { emoji: '\uD83D\uDCBB', label: 'Engineering' },
-  { emoji: '\uD83D\uDCCA', label: 'Product' },
-  { emoji: '\uD83C\uDFA8', label: 'Design' },
-  { emoji: '\uD83D\uDCC8', label: 'Consultoria' },
-  { emoji: '\uD83D\uDC65', label: 'RRHH' },
-  { emoji: '\uD83D\uDCBC', label: 'Comercial' },
-];
-
 export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
   const { t } = useI18n();
   const [search, setSearch] = useState('');
@@ -45,8 +36,8 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
     ...v,
     salary: v.salary as Salary,
   }));
-  const featured = items.slice(0, 3);
   const allItems = items;
+  const isSearching = Boolean(appliedSearch || appliedLocation);
 
   function handleSearch() {
     setAppliedSearch(search);
@@ -76,14 +67,9 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
       <section id="vacantes" className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2 className="text-[22px] font-bold text-[#1F114C]">{t.portal.featuredVacancies}</h2>
-            <p className="mt-1 text-[13px] text-[#585858]">{t.portal.featuredVacanciesSubtitle}</p>
+            <h2 className="text-[22px] font-bold text-[#1F114C]">{isSearching ? t.portal.searchResultsTitle : t.portal.allVacanciesTitle}</h2>
           </div>
-          {allItems.length > 3 && (
-            <a href="#todas" className="text-[13px] font-medium text-[#DD0C15] hover:underline">
-              Ver todas las vacantes &rarr;
-            </a>
-          )}
+          {isSearching && <button type="button" onClick={() => { setSearch(''); setLocation(''); setAppliedSearch(''); setAppliedLocation(''); }} className="text-[13px] font-medium text-[#DD0C15] hover:underline">{t.portal.clearSearch}</button>}
         </div>
 
         {vacancies.isLoading ? (
@@ -101,14 +87,14 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
           <div className="py-16">
             <ErrorState onRetry={() => vacancies.refetch()} />
           </div>
-        ) : featured.length === 0 ? (
+        ) : allItems.length === 0 ? (
           <div className="py-16 text-center">
             <svg className="mx-auto mb-3 h-12 w-12 text-[#EDEDED]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" /></svg>
-            <p className="text-sm text-[#8B8B8B]">{t.portal.noVacanciesAvailable}</p>
+            <p className="text-sm text-[#8B8B8B]">{isSearching ? t.portal.noSearchResults : t.portal.noVacanciesAvailable}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {featured.map((v) => (
+            {allItems.map((v) => (
               <VacancyCard key={v.id} vacancy={v} orgSlug={orgSlug} />
             ))}
           </div>
@@ -119,37 +105,6 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
       <div id="beneficios">
         <WhyWorkSection />
       </div>
-
-      {/* Browse by Area */}
-      <section className="mx-auto max-w-6xl px-6 py-10">
-        <h2 className="mb-6 text-[22px] font-bold text-[#1F114C]">{t.portal.exploreByArea}</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.label}
-              onClick={() => { setSearch(cat.label); setAppliedSearch(cat.label); }}
-              className="group cursor-pointer rounded-xl bg-[#F6F6F6] p-4 text-center transition-all hover:bg-[#1F114C]"
-            >
-              <p className="mb-1 text-[24px]">{cat.emoji}</p>
-              <p className="text-[12px] font-medium text-[#1F114C] group-hover:text-white">{cat.label}</p>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* All Vacancies (if searching or > 3) */}
-      {(appliedSearch || appliedLocation || allItems.length > 3) && allItems.length > 0 && (
-        <section id="todas" className="mx-auto max-w-6xl px-6 pb-10">
-          <h2 className="mb-6 text-[22px] font-bold text-[#1F114C]">
-            {appliedSearch || appliedLocation ? t.portal.searchResultsTitle : t.portal.allVacanciesTitle}
-          </h2>
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {allItems.map((v) => (
-              <VacancyCard key={v.id} vacancy={v} orgSlug={orgSlug} />
-            ))}
-          </div>
-        </section>
-      )}
 
       <PortalFooter orgName={orgName} />
     </div>

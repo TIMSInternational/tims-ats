@@ -3250,11 +3250,14 @@
     "loadError": "No se pudieron cargar los datos"
   },
   "portal": {
-    "searchPlaceholder": "Cargo, palabra clave...",
-    "locationPlaceholder": "Ciudad o departamento...",
+    "searchPlaceholder": "Título de la vacante...",
+    "searchButton": "Buscar",
+    "locationPlaceholder": "Ciudad o ubicación...",
     "featuredVacancies": "Vacantes Destacadas",
     "featuredVacanciesSubtitle": "Posiciones con alta demanda que podrían interesarte",
     "noVacanciesAvailable": "No hay vacantes disponibles en este momento",
+    "noSearchResults": "No encontramos vacantes para esta búsqueda. Prueba con otro término o ubicación.",
+    "clearSearch": "Limpiar búsqueda",
     "exploreByArea": "Explorar por Área",
     "applyModalDuplicateError": "Ya aplicaste a esta vacante anteriormente",
     "applicationSentTitle": "Aplicación enviada",

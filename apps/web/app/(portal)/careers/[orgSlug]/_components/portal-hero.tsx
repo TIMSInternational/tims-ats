@@ -57,11 +57,13 @@ export function PortalHero({
         </p>
 
         {/* Search Bar */}
-        <div className="flex w-full max-w-[640px] items-center overflow-hidden rounded-xl bg-white shadow-lg">
+        <form onSubmit={(event) => { event.preventDefault(); onSearch(); }} role="search" className="flex w-full max-w-[640px] flex-col items-stretch overflow-hidden rounded-xl bg-white shadow-lg sm:flex-row sm:items-center">
           <div className="flex flex-1 items-center gap-2 px-4 py-3">
             <Search className="h-4 w-4 shrink-0 text-[#8B8B8B]" />
             <input
               type="text"
+              aria-label={t.portal.searchPlaceholder}
+              maxLength={100}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t.portal.searchPlaceholder}
@@ -69,12 +71,14 @@ export function PortalHero({
             />
           </div>
 
-          <div className="h-8 w-px bg-[#EDEDED]" />
+          <div className="mx-4 h-px bg-[#EDEDED] sm:mx-0 sm:h-8 sm:w-px" />
 
           <div className="flex flex-1 items-center gap-2 px-4 py-3">
             <MapPin className="h-4 w-4 shrink-0 text-[#8B8B8B]" />
             <input
               type="text"
+              aria-label={t.portal.locationPlaceholder}
+              maxLength={100}
               value={location}
               onChange={(e) => onLocationChange(e.target.value)}
               placeholder={t.portal.locationPlaceholder}
@@ -83,12 +87,12 @@ export function PortalHero({
           </div>
 
           <button
-            onClick={onSearch}
+            type="submit"
             className="m-1.5 shrink-0 rounded-lg bg-[#DD0C15] px-6 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-[#c40a12]"
           >
-            Buscar
+            {t.portal.searchButton}
           </button>
-        </div>
+        </form>
 
         {/* Quick Stats */}
         {stats && (
