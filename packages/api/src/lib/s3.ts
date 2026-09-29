@@ -3,7 +3,12 @@ import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { randomUUID } from 'node:crypto';
 import { CV_ALLOWED_CONTENT_TYPES, type CvContentType } from './cv-extraction';
 
-const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+// CV_UPLOADS_REGION (the bucket's region) wins over AWS_REGION: on Vercel,
+// AWS_REGION is the serverless function's own region and may not be visible to
+// the Edge middleware, which derives the CSP connect-src origin for this bucket
+// from the SAME variables (apps/web/lib/security/csp.ts). Set CV_UPLOADS_REGION
+// so both resolve identically.
+const s3 = new S3Client({ region: process.env.CV_UPLOADS_REGION || process.env.AWS_REGION || 'us-east-1' });
 
 export const CV_MAX_BYTES = 5 * 1024 * 1024;
 
