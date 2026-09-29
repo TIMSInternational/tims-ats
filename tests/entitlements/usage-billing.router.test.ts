@@ -26,10 +26,12 @@ vi.mock('@tims/db', () => ({
   db: {
     auditLog: { create: vi.fn().mockResolvedValue({}) },
   },
-  // Platform-owner requests with no org row of their own skip runWithTenant
-  // entirely (see withTenantContext in trpc.ts); non-owner requests DO call it,
-  // so it must be a passthrough here for the FORBIDDEN test to reach the guard.
+  // Platform-owner requests with no org row of their own run in the explicit
+  // runUnscoped('platform-owner-without-org') scope (see withTenantContext in
+  // trpc.ts); non-owner requests call runWithTenant. Both are passthroughs here so
+  // the FORBIDDEN test reaches the guard.
   runWithTenant: (_orgId: string, fn: () => unknown) => fn(),
+  runUnscoped: (_reason: string, fn: () => unknown) => fn(),
 }));
 
 import {
