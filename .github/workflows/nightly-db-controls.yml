@@ -108,6 +108,9 @@ jobs:
           # The Supabase session pooler chains to this committed project CA, which Node does not
           # trust by default. Keep full TLS verification; never disable certificate checks.
           NODE_EXTRA_CA_CERTS: scripts/parity/supabase-root-ca.pem
+          # Non-secret UUID of a populated test tenant, stored as a repository variable.
+          # A positive-control row is required because ci_readonly itself obeys RLS.
+          RLS_PROBE_ORG_ID: ${{ vars.RLS_PROBE_ORG_ID }}
           # Both names: check 14 prefers DIRECT_URL, check 16's script reads DIRECT_URL, check 17 accepts
           # either. Setting both avoids a check silently falling back to something unintended.
           DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}

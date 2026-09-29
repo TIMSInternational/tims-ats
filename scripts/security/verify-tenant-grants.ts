@@ -189,6 +189,12 @@ async function main(): Promise<void> {
       );
     }
 
+    // information_schema.role_table_grants shows grants visible to the CURRENT role.
+    // ci_readonly is deliberately NOINHERIT, so it sees zero app_tenant grants until it
+    // assumes that existing role. The nightly credential has SET ROLE membership for
+    // check 14 as well; failure here is a did-not-run rather than a false clean result.
+    await db.query('SET ROLE app_tenant');
+
     // (b) Is THIS database our application's, with app_tenant actually provisioned in it?
     //
     //     Table presence alone is not enough, and assuming otherwise was the gap a reviewer found: a

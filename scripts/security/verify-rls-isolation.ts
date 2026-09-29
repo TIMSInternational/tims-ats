@@ -124,6 +124,17 @@ async function main(): Promise<void> {
     );
   }
 
+  // A least-privilege CI reader is subject to RLS, so counting with an unset org GUC
+  // would make every populated table appear empty. A known test tenant is the positive
+  // control: it must see rows before the same table is probed with no tenant selected.
+  const probeOrganizationId = process.env.RLS_PROBE_ORG_ID;
+  if (
+    probeOrganizationId &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(probeOrganizationId)
+  ) {
+    die2('RLS_PROBE_ORG_ID must be a valid organization UUID.');
+  }
+
   const db = new Client({ connectionString: url });
   await db.connect();
   const findings: Finding[] = [];
@@ -230,7 +241,13 @@ async function main(): Promise<void> {
         // internal quotes is the standard escape. Pre-existing, flagged by a reviewer of #124; fixed here
         // because it is one line in a script whose entire job is to be trustworthy.
         const q = `"${relname.replace(/"/g, '""')}"`;
+        if (probeOrganizationId) {
+          await db.query(`SELECT set_config('app.current_org_id', $1, true)`, [probeOrganizationId]);
+        }
         const total = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${q}`);
+        if (probeOrganizationId) {
+          await db.query(`SELECT set_config('app.current_org_id', '', true)`);
+        }
         if (total.rows[0].n === '0') continue; // empty table proves nothing either way
 
         probed++;
