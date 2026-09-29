@@ -3042,6 +3042,7 @@
     "invoiceDueDate": "Due date"
   },
   "assessments": {
+    "assignAssessment": "Assign assessment",
     "title": "Assessment Authoring",
     "subtitle": "Create and manage the questions candidates will answer.",
     "selectType": "Assessment type",
