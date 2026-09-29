@@ -25,9 +25,9 @@ You MUST use `browser_snapshot` with `{boxes: true}` for geometry checks. You ar
 
 1. Dev server: `cd apps/web && PORT=3001 pnpm dev` (background; reuse if already running).
 2. Viewport: resize browser to **390×844**.
-3. Login (org admin `admin@tims.co` / `TimsAts2026!`): fill `input[type=email]` / `input[type=password]` via the native value setter, then `form.requestSubmit()` on the form's OWN submit button — a generic button-find clicks the Google OAuth button instead.
+3. Login (org admin `admin@tims.co` / the local seed password — whatever `SEED_USER_PASSWORD` was when `packages/db/prisma/seed-users.ts` ran; ask Federico, never commit it here): fill `input[type=email]` / `input[type=password]` via the native value setter, then `form.requestSubmit()` on the form's OWN submit button — a generic button-find clicks the Google OAuth button instead.
 4. Public portal (`/careers/...`): logged-in users get redirected off it — clear cookies + storage first (or use a fresh context).
-5. Platform pages: login as `federico@nexadev.ai` / `TimsAts2026!`.
+5. Platform pages: login as `federico@nexadev.ai` / the same local seed password.
 
 ## Overflow scan (per page)
 
