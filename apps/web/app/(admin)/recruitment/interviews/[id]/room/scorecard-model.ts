@@ -47,14 +47,18 @@ const jobProfileCompetencySchema = z.object({
 
 export function resolveCompetencies(jobProfileCompetencies: unknown): ResolvedCompetencies {
   const items: ScorecardCompetency[] = [];
-  const seen = new Set<string>();
+  const seenNames = new Set<string>();
+  const usedKeys = new Set<string>();
   if (Array.isArray(jobProfileCompetencies)) {
     for (const raw of jobProfileCompetencies.slice(0, MAX_COMPETENCIES)) {
       const parsed = jobProfileCompetencySchema.safeParse(raw);
       if (!parsed.success) continue;
-      const key = parsed.data.name.slice(0, RATING_KEY_MAX);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      // Dedupe on the FULL name: two profile names (max 100) can share their first
+      // RATING_KEY_MAX (80) characters and are still different competencies.
+      if (seenNames.has(parsed.data.name)) continue;
+      seenNames.add(parsed.data.name);
+      const key = uniqueRatingKey(parsed.data.name, usedKeys);
+      usedKeys.add(key);
       items.push({ key, label: parsed.data.name, targetLevel: parsed.data.level ?? null });
     }
   }
@@ -65,7 +69,23 @@ export function resolveCompetencies(jobProfileCompetencies: unknown): ResolvedCo
   };
 }
 
-export const storedRatingsSchema = z.record(z.string().max(RATING_KEY_MAX), z.number().int().min(1).max(5));
+/**
+ * A persisted rating key: the name itself when it fits, else a truncation with a
+ * numeric suffix so distinct long names never collapse into one rating field.
+ */
+function uniqueRatingKey(name: string, used: Set<string>): string {
+  const base = name.slice(0, RATING_KEY_MAX);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n += 1) {
+    const suffix = ` #${n}`;
+    const candidate = name.slice(0, RATING_KEY_MAX - suffix.length) + suffix;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
+// Mirrors submitScorecard's input contract exactly (z.number().min(1).max(5), NOT
+// .int()): a stored fractional rating is valid data and must not blank the whole map.
+export const storedRatingsSchema = z.record(z.string().max(RATING_KEY_MAX), z.number().min(1).max(5));
 
 /** Narrows a persisted `ratings` Json value; anything malformed reads as empty. */
 export function parseStoredRatings(value: unknown): Record<string, number> {

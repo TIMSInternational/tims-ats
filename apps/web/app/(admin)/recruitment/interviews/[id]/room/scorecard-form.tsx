@@ -64,7 +64,10 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
   const competencies = useMemo(() => withStoredCompetencies(resolved.items, stored), [resolved.items, stored]);
 
   const submit = trpc.interview.submitScorecard.useMutation({
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // The draft already IS what was just saved: mark it hydrated so the refetch
+      // triggered below cannot overwrite edits the evaluator makes meanwhile.
+      hydratedFor.current = saved.id;
       toast(t.interviewRoom.submitSuccess, { type: 'success' });
       void utils.interview.getScorecard.invalidate({ interviewId: interview.id });
       void utils.interview.getById.invalidate({ id: interview.id });

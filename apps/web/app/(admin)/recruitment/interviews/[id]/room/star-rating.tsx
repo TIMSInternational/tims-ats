@@ -20,7 +20,10 @@ interface StarRatingProps {
 export function StarRating({ label, value, onChange, disabled = false }: StarRatingProps) {
   const { t } = useI18n();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const focusable = value >= 1 && value <= 5 ? value : 1;
+  // A stored rating may be fractional (the API accepts any 1..5 number): the radio
+  // group selects and focuses the nearest whole star.
+  const selected = value >= 1 && value <= 5 ? Math.round(value) : 0;
+  const focusable = selected || 1;
 
   const select = (star: number) => {
     if (disabled) return;
@@ -51,7 +54,7 @@ export function StarRating({ label, value, onChange, disabled = false }: StarRat
             }}
             type="button"
             role="radio"
-            aria-checked={star === value}
+            aria-checked={star === selected}
             aria-label={t.interviewRoom.starLabel.replace('{n}', String(star))}
             tabIndex={star === focusable ? 0 : -1}
             disabled={disabled}

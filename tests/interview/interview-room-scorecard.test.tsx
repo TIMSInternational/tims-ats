@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
   jobProfile: { isLoading: false, isError: false, data: null as unknown },
   existing: { isLoading: false, isError: false, data: null as unknown, refetch: () => undefined },
   mutation: { mutate: (_: unknown) => undefined, isPending: false, isError: false, error: null as unknown },
-  mutationOpts: null as null | { onSuccess: () => void; onError: (err: unknown) => void },
+  mutationOpts: null as null | { onSuccess: (saved: { id: string }) => void; onError: (err: unknown) => void },
   invalidate: {
     getScorecard: (_?: unknown) => undefined,
     getById: (_?: unknown) => undefined,
@@ -42,7 +42,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
     interview: {
       getScorecard: { useQuery: () => h.existing },
       submitScorecard: {
-        useMutation: (opts: { onSuccess: () => void; onError: (err: unknown) => void }) => {
+        useMutation: (opts: { onSuccess: (saved: { id: string }) => void; onError: (err: unknown) => void }) => {
           h.mutationOpts = opts;
           return h.mutation;
         },
@@ -269,6 +269,65 @@ describe('interview room scorecard', () => {
     expect(screen.getByDisplayValue('Draft evidence')).toBeInTheDocument();
   });
 
+  it('keeps two long competency names that share their first 80 characters as separate ratings', () => {
+    const prefix = 'A'.repeat(80);
+    h.jobProfile = {
+      isLoading: false,
+      isError: false,
+      data: { competencies: [{ name: `${prefix} one`, level: 3 }, { name: `${prefix} two`, level: 3 }] },
+    };
+    renderForm();
+    const groups = screen.getAllByRole('radiogroup').filter((g) => g.getAttribute('aria-label')?.startsWith(prefix));
+    expect(groups).toHaveLength(2);
+    for (const g of groups) fireEvent.click(within(g).getByRole('radio', { name: '4 of 5' }));
+    fireEvent.click(screen.getByRole('radio', { name: en.interviewRoom.recYes }));
+    fireEvent.click(submitButton());
+    const payload = mutate.mock.calls[0]?.[0] as { ratings: Record<string, number> };
+    expect(Object.keys(payload.ratings)).toHaveLength(2);
+    for (const k of Object.keys(payload.ratings)) expect(k.length).toBeLessThanOrEqual(80);
+  });
+
+  it('re-opens a stored scorecard with a fractional (API-valid) rating without blanking the others', () => {
+    h.existing = {
+      isLoading: false,
+      isError: false,
+      refetch: () => undefined,
+      data: { id: 'sc1', ratings: { SQL: 4.5, Storytelling: 3 }, recommendation: 'yes', overallNotes: null, submittedAt: new Date() },
+    };
+    renderForm();
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Storytelling' })).getByRole('radio', { name: '3 of 5' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'SQL' })).getByRole('radio', { name: '5 of 5' }),
+    ).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('the reload after a first save does not overwrite edits made while it was in flight', () => {
+    const view = renderForm();
+    for (const name of ['SQL', 'Storytelling']) {
+      fireEvent.click(within(screen.getByRole('radiogroup', { name })).getByRole('radio', { name: '4 of 5' }));
+    }
+    fireEvent.click(screen.getByRole('radio', { name: en.interviewRoom.recYes }));
+    fireEvent.click(submitButton());
+    h.mutationOpts?.onSuccess({ id: 'sc-new' });
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'SQL' })).getByRole('radio', { name: '1 of 5' }));
+    h.existing = {
+      isLoading: false,
+      isError: false,
+      refetch: () => undefined,
+      data: { id: 'sc-new', ratings: { SQL: 4, Storytelling: 4 }, recommendation: 'yes', overallNotes: null, submittedAt: new Date() },
+    };
+    view.rerender(
+      <I18nProvider>
+        <ScorecardForm interview={interview()} currentUserId={ME} />
+      </I18nProvider>,
+    );
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'SQL' })).getByRole('radio', { name: '1 of 5' }),
+    ).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('blocks submission for a viewer who is not an assigned evaluator', () => {
     renderForm({ currentUserId: '99999999-9999-4999-8999-999999999999' });
     expect(screen.getByText(en.interviewRoom.notEvaluator)).toBeInTheDocument();
@@ -284,7 +343,7 @@ describe('interview room scorecard', () => {
 
   it('on success toasts and invalidates the scorecard, interview and pending-scorecard queries', () => {
     renderForm();
-    h.mutationOpts?.onSuccess();
+    h.mutationOpts?.onSuccess({ id: 'sc-new' });
     expect(toastSpy).toHaveBeenCalledWith(en.interviewRoom.submitSuccess, { type: 'success' });
     expect(invScorecard).toHaveBeenCalledWith({ interviewId: INTERVIEW_ID });
     expect(invById).toHaveBeenCalledWith({ id: INTERVIEW_ID });
