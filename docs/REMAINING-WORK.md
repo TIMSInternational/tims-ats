@@ -1,7 +1,5 @@
 # Known Issues & Remaining Work
 
-- **2026-09-28 learning beta refresh (implemented, awaiting deploy):** a tenant with zero courses/enrollments was shown hardcoded growth, gap reduction, learning paths, pre/post-test results, team progress and AI recommendations. The dashboard now displays only API-backed counts and real path/course names, with an honest empty state. Course and path creation are wired to tenant-checked writes, and enrollment validates both course and user organization membership. Learning KPI caches are invalidated on writes. Export, gap analytics, team reporting, and AI recommendations still require real data contracts and implementation before a full Learning beta.
-
 > Single backlog/status reference (rule #1: docs are code — update in the SAME PR as the change).
 > **Truthed-up 2026-07-25 against HEAD `main` (commit `27249b18a3f92460f5a3b0f0841e0eb70c6e183f`, the docs
 > commit immediately after PR #194)** — this truth-up covers PRs #97–#194 (2026-06-30 → 2026-07-25): the
@@ -753,6 +751,10 @@ Honest-hybrid pass: real metric where data exists + cheap; honest `N/D`/`EmptySt
 - **Nine-box** grid is select-only (no drag-to-persist; "Simulador" is a declared backend stub).
 
 ---
+
+## Learning beta implementation — 2026-09-28
+
+- **2026-09-28 learning beta refresh (implemented, awaiting deploy):** a tenant with zero courses/enrollments was shown hardcoded growth, gap reduction, learning paths, pre/post-test results, team progress and AI recommendations. The dashboard now displays only API-backed counts and real path/course names, with an honest empty state. Course and path creation are wired to tenant-checked writes, and enrollment validates both course and user organization membership. Learning KPI caches are invalidated on writes. Export, gap analytics, team reporting, and AI recommendations still require real data contracts and implementation before a full Learning beta.
 
 ## Remaining — blocked on user / product decisions
 
