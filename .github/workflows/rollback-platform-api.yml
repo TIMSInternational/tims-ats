@@ -27,10 +27,16 @@ on:
         description: "Why are you rolling back? (recorded in the job summary)"
         required: true
 
-# SAME group as deploy-platform-api.yml: a roll-back and a roll-forward can never race each other,
-# and neither ever cancels a rollout in flight.
+# Its OWN group, never the deploy's. GitHub keeps one PENDING run per concurrency group and REPLACES
+# it with any newer one, so sharing the deploy group would let a CI-triggered deploy silently cancel a
+# queued emergency rollback. Coordination with deploys is explicit instead:
+#   - this workflow refuses to start unless PLATFORM_API_AUTODEPLOY_PAUSED is already "true", so no
+#     deploy decided after the pause can run;
+#   - deploy-platform-api.yml runs scripts/deploy/apprunner-preflight.sh --deploy right before its
+#     update-service and refuses while any run of THIS workflow is queued or in progress;
+#   - both sides re-check, right before update-service, that the live image is still the one they read.
 concurrency:
-  group: deploy-platform-api
+  group: rollback-platform-api
   cancel-in-progress: false
 
 permissions:
@@ -54,8 +60,16 @@ jobs:
           TAG: ${{ inputs.tag }}
           REASON: ${{ inputs.reason }}
           REF: ${{ github.ref }}
+          AUTODEPLOY_PAUSED: ${{ vars.PLATFORM_API_AUTODEPLOY_PAUSED }}
         run: |
           set -euo pipefail
+          # PAUSE FIRST. Without it, a green CI completion during or after this rollback would pass the
+          # deploy's `decide` and put the bad commit straight back.
+          [ "$AUTODEPLOY_PAUSED" = "true" ] || {
+            echo "::error::Pause deploys first: gh variable set PLATFORM_API_AUTODEPLOY_PAUSED --body true"
+            echo "::error::Then re-run this rollback. See docs/runbooks/production-rollback-and-alerting.md."
+            exit 1
+          }
           # The trust policy only admits refs/heads/main; failing here gives a clear message instead
           # of an opaque AssumeRoleWithWebIdentity denial.
           [ "$REF" = "refs/heads/main" ] || { echo "::error::Run this workflow from main (got $REF)."; exit 1; }
@@ -70,6 +84,17 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::747814092517:role/tims-ats-github-deploy-prod
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Record the running image (optimistic-concurrency baseline)
+        run: |
+          set -euo pipefail
+          ARN="$(aws apprunner list-services --region "$AWS_REGION" \
+                  --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)"
+          test -n "$ARN" || { echo "::error::Service $SERVICE_NAME not found in $AWS_REGION"; exit 1; }
+          IMG="$(aws apprunner describe-service --region "$AWS_REGION" --service-arn "$ARN" \
+                  --query 'Service.SourceConfiguration.ImageRepository.ImageIdentifier' --output text)"
+          echo "running image at start: $IMG"
+          echo "EXPECTED_IMAGE=$IMG" >> "$GITHUB_ENV"
 
       - name: Refuse a tag that does not exist in ECR
         env:
@@ -116,6 +141,10 @@ jobs:
             echo "FROM_IMAGE=$FROM_IMAGE"
           } >> "$GITHUB_ENV"
 
+          # LAST check, immediately before update-service: still RUNNING and still the image this run
+          # recorded at its start. A deploy that landed meanwhile means the operator must re-decide.
+          bash scripts/deploy/apprunner-preflight.sh "$ARN" "$EXPECTED_IMAGE"
+
           aws apprunner update-service --region "$AWS_REGION" \
             --service-arn "$ARN" --source-configuration file://payload.json \
             --query 'OperationId' --output text
@@ -157,9 +186,8 @@ jobs:
             echo "- env vars: $ENV_AFTER (was $ENV_BEFORE)"
             echo "- GET /health: $CODE"
             echo
-            echo "**Next:** pause automatic deploys until main is fixed, or the next green merge rolls the bad"
-            echo "commit straight back out: \`gh variable set PLATFORM_API_AUTODEPLOY_PAUSED --body true\`."
-            echo "Delete the variable once the fix is merged (runbook: docs/runbooks/production-rollback-and-alerting.md)."
+            echo "Deploys stay PAUSED (PLATFORM_API_AUTODEPLOY_PAUSED=true). Keep them paused until the fix is on"
+            echo "main, then delete the variable and deploy (runbook: docs/runbooks/production-rollback-and-alerting.md)."
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "image: $GOT_IMAGE"

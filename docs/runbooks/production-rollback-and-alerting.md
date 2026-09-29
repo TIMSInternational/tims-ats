@@ -16,7 +16,12 @@ to `main` (it runs on `workflow_run`). It deploys the exact commit the tests pas
 - production already runs that commit, or a **newer** one (CI runs can finish out of order);
 - nothing under `services/Tims.Platform` changed since the running image (for example a CI run caused
   only by `packages/db` or `scripts/**`);
-- the repository variable `PLATFORM_API_AUTODEPLOY_PAUSED` is `true` (see 2.3).
+- the repository variable `PLATFORM_API_AUTODEPLOY_PAUSED` is `true` (see 2.1). This blocks manual
+  deploys too.
+
+Right before `update-service`, the deploy also runs `scripts/deploy/apprunner-preflight.sh --deploy`.
+It refuses if any **Roll back platform API** run is queued or in progress, or if the live image
+changed since the deploy decided (for example, a rollback finished while the image was building).
 
 The run's job summary says which rule applied. A manual deploy is still available as
 **Actions → Deploy platform API → Run workflow** (branch `main`, reason required).
@@ -25,7 +30,25 @@ The run's job summary says which rule applied. A manual deploy is still availabl
 
 ## 2. Roll back the API
 
-### 2.1 Pick the tag
+Order matters: **pause → roll back → verify → fix → unpause**. The rollback workflow refuses to
+start until step 2.1 is done.
+
+### 2.1 Pause deploys FIRST
+
+```bash
+gh variable set PLATFORM_API_AUTODEPLOY_PAUSED --repo TIMSInternational/tims-ats --body true
+```
+
+While the variable is `true`, every deploy decides "skip". That includes a CI run that finishes during
+or after the rollback, which would otherwise put the bad commit straight back.
+
+A deploy that had already decided before you paused, and is still building, cannot see the new
+value: GitHub reads repository variables when a job starts. Two checks cover that case. Its preflight
+refuses while any rollback run is queued or running, and it refuses if the live image changed since
+it decided. If a deploy was already mid-rollout when you paused, the rollback refuses until the service
+is `RUNNING`. Re-run the rollback after that.
+
+### 2.2 Pick the tag
 
 Image tags are 7-character short SHAs. Production today runs one of the most recent tags. List the
 last ten images, newest last:
@@ -43,7 +66,7 @@ aws apprunner describe-service --profile tims-ats --region us-west-2 --service-a
 Pick the tag that ran before the bad release. The GitHub **Deploy platform API** run history lists
 each deployed tag in its job summary.
 
-### 2.2 Run the rollback workflow
+### 2.3 Run the rollback workflow
 
 In the GitHub UI: **Actions → Roll back platform API → Run workflow**, branch **`main`**, then enter
 the `tag` and a `reason`.
@@ -56,27 +79,29 @@ gh workflow run 'Roll back platform API' --repo TIMSInternational/tims-ats --ref
 
 The workflow:
 
-1. refuses a tag that is not a SHA, or that does **not exist in ECR** (nothing is changed);
-2. refuses unless the service is `RUNNING`;
-3. builds the payload from the **live** configuration and refuses if it changes anything except the
-   image (`scripts/deploy/apprunner-image-payload.py`, the same guard the deploy uses);
-4. waits for the rollout, then checks that the running image is the tag, the env-var count is unchanged
+1. refuses unless `PLATFORM_API_AUTODEPLOY_PAUSED` is `true`;
+2. refuses a tag that is not a SHA, or that does **not exist in ECR** (nothing is changed);
+3. records the running image, then builds the payload from the **live** configuration and refuses if
+   it changes anything except the image (`scripts/deploy/apprunner-image-payload.py`, the same guard
+   the deploy uses);
+4. right before `update-service`, refuses unless the service is `RUNNING` and still runs the image it
+   recorded (`scripts/deploy/apprunner-preflight.sh`);
+5. waits for the rollout, then checks that the running image is the tag, the env-var count is unchanged
    and `GET /health` returns 200;
-5. writes the outcome to the job summary.
+6. writes the outcome to the job summary.
 
-It shares a concurrency group with the deploy workflow, so a rollback and a deploy never race.
-Nothing is rebuilt, so a rollback does not depend on the build that just failed.
+It has its **own** concurrency group. GitHub replaces a pending run with any newer one in the same
+group, so a shared group would let a CI-triggered deploy cancel a queued rollback. Nothing is rebuilt,
+so a rollback does not depend on the build that just failed.
 
-### 2.3 Stop the bad commit from coming straight back
+### 2.4 Verify
 
-After a rollback, the next green merge to `main` that touches the C# service would deploy `main`
-again, bad commit included. Pause automatic deploys until the fix or revert is merged:
+The job summary shows `from`, `to`, the env-var count and `/health`. Confirm the running tag
+independently with the `describe-service` command in 2.2, and watch the alarms in section 4 return to OK.
 
-```bash
-gh variable set PLATFORM_API_AUTODEPLOY_PAUSED --repo TIMSInternational/tims-ats --body true
-```
+### 2.5 Fix, then unpause
 
-Once the fix is on `main`, resume and deploy:
+Merge the fix or revert to `main` while deploys are still paused. Then resume and deploy:
 
 ```bash
 gh variable delete PLATFORM_API_AUTODEPLOY_PAUSED --repo TIMSInternational/tims-ats
@@ -86,7 +111,7 @@ gh variable delete PLATFORM_API_AUTODEPLOY_PAUSED --repo TIMSInternational/tims-
 gh workflow run 'Deploy platform API' --repo TIMSInternational/tims-ats --ref main -f reason='resume after rollback'
 ```
 
-### 2.4 What a rollback does NOT undo
+### 2.6 What a rollback does NOT undo
 
 - **Database changes.** Rolling back the image leaves any DDL, backfill or data write in place. If the
   bad release changed the schema, check first that the older image can still run against it.

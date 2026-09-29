@@ -29,13 +29,37 @@ describe('Rollback — the platform API rollback workflow', () => {
     expect(Object.keys(doc.jobs)).toEqual(['rollback']);
   });
 
-  it('shares the deploy concurrency group and never cancels a rollout in flight', () => {
+  it('has its OWN concurrency group, so a queued deploy can never replace a pending rollback', () => {
+    // GitHub keeps ONE pending run per group and replaces it with any newer run. Sharing the deploy's
+    // group (the first version of this workflow) let a CI-triggered deploy cancel a queued rollback.
     const s = src();
     const deploy = readFileSync(join(ROOT, '.github/workflows/deploy-platform-api.yml'), 'utf8');
     const group = (w: string) => w.match(/concurrency:\n\s+group:\s*(\S+)/)?.[1];
-    expect(group(s)).toBeDefined();
-    expect(group(s), 'a roll-back and a roll-forward must serialize').toBe(group(deploy));
+    expect(group(s)).toBe('rollback-platform-api');
+    expect(group(deploy)).toBeDefined();
+    expect(group(s), 'must NOT share the deploy group').not.toBe(group(deploy));
     expect(s).toMatch(/cancel-in-progress:\s*false/);
+  });
+
+  it('refuses to start unless deploys are ALREADY paused', () => {
+    const s = src();
+    const validate = s.split('- name: Validate the inputs')[1]?.split('\n      - ')[0] ?? '';
+    expect(validate).toContain('AUTODEPLOY_PAUSED: ${{ vars.PLATFORM_API_AUTODEPLOY_PAUSED }}');
+    expect(validate).toMatch(/\[ "\$AUTODEPLOY_PAUSED" = "true" \] \|\| \{[\s\S]*?exit 1/);
+    // It must be the first step, before credentials or any AWS call.
+    expect(s.indexOf('- name: Validate the inputs')).toBeLessThan(s.indexOf('configure-aws-credentials'));
+  });
+
+  it('re-checks the live image right before update-service (optimistic concurrency)', () => {
+    const s = src();
+    const baseline = s.indexOf('echo "EXPECTED_IMAGE=$IMG" >> "$GITHUB_ENV"');
+    const preflight = s.indexOf('bash scripts/deploy/apprunner-preflight.sh "$ARN" "$EXPECTED_IMAGE"');
+    const update = s.indexOf('aws apprunner update-service');
+    expect(baseline, 'must record the running image at the start').toBeGreaterThan(-1);
+    expect(s.indexOf('aws ecr describe-images')).toBeGreaterThan(baseline);
+    expect(preflight).toBeGreaterThan(baseline);
+    expect(update, 'preflight must run immediately before update-service').toBeGreaterThan(preflight);
+    expect(s.slice(preflight, update)).not.toMatch(/describe-service|python3/);
   });
 
   it('validates the tag shape WITHOUT interpolating the input into the script', () => {

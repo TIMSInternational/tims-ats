@@ -73,6 +73,30 @@ describe('CD — the platform API deploy workflow', () => {
     expect(s, 'the post-rollback pause must be honoured').toContain('vars.PLATFORM_API_AUTODEPLOY_PAUSED');
   });
 
+  it('the pause blocks MANUAL deploys too — it is checked before the dispatch shortcut', () => {
+    const s = src();
+    const pause = s.indexOf('if [ "$AUTODEPLOY_PAUSED" = "true" ]; then');
+    const dispatch = s.indexOf('if [ "$EVENT" = "workflow_dispatch" ]; then\n            verdict true');
+    expect(pause).toBeGreaterThan(-1);
+    expect(dispatch).toBeGreaterThan(-1);
+    expect(pause, 'a paused service must not accept a dispatched deploy either').toBeLessThan(dispatch);
+  });
+
+  it('runs the preflight IMMEDIATELY before update-service: pause, rollback runs, unchanged image', () => {
+    const s = src();
+    const preflight = s.indexOf('bash scripts/deploy/apprunner-preflight.sh "$ARN" "$DECIDED_IMAGE" --deploy');
+    const update = s.indexOf('aws apprunner update-service');
+    expect(preflight, 'the deploy must run the preflight with --deploy').toBeGreaterThan(-1);
+    expect(update).toBeGreaterThan(preflight);
+    expect(s.slice(preflight, update)).not.toMatch(/describe-service|python3 scripts/);
+    // The baseline is the image `decide` compared against, carried across jobs.
+    expect(s).toContain('echo "running_image=$RUNNING_IMAGE" >> "$GITHUB_OUTPUT"');
+    expect(s).toContain('running_image: ${{ steps.decide.outputs.running_image }}');
+    expect(s).toContain('DECIDED_IMAGE: ${{ needs.decide.outputs.running_image }}');
+    expect(s, 'the preflight needs a token that can list workflow runs').toMatch(/^\s+actions: read/m);
+    expect(s).toContain('GH_TOKEN: ${{ github.token }}');
+  });
+
   it('keeps the manual dispatch, with a REQUIRED reason, restricted to main', () => {
     const s = src();
     const dispatch = s.split('workflow_dispatch:\n')[1]?.split('\n\n')[0] ?? '';

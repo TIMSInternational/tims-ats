@@ -49,8 +49,14 @@ on:
 
 # NEVER cancel a deploy in flight. `cancel-in-progress: true` — correct for CI, where a superseded run
 # is wasted work — would here abort a rolling App Runner deployment partway through and leave the
-# service in an operation state that blocks the next run. The rollback workflow shares this group,
-# so a roll-forward and a roll-back can never race each other.
+# service in an operation state that blocks the next run.
+#
+# The rollback workflow deliberately uses its OWN group. GitHub keeps one PENDING run per group and
+# REPLACES it with any newer one, so a shared group would let a CI-triggered deploy silently cancel a
+# queued emergency rollback. Instead the two coordinate explicitly: rollback refuses unless deploys
+# are already paused, and this workflow runs scripts/deploy/apprunner-preflight.sh right before
+# update-service (refuses while paused, while any rollback run is queued or running, or if the live
+# image changed since `decide` read it).
 concurrency:
   group: deploy-platform-api
   cancel-in-progress: false
@@ -58,6 +64,7 @@ concurrency:
 permissions:
   id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
   contents: read
+  actions: read # apprunner-preflight.sh lists rollback-platform-api.yml runs before update-service.
 
 env:
   AWS_REGION: us-west-2 # NOT us-east-1 — that account holds unrelated NexaDev projects.
@@ -80,6 +87,7 @@ jobs:
     outputs:
       deploy: ${{ steps.decide.outputs.deploy }}
       sha: ${{ steps.target.outputs.sha }}
+      running_image: ${{ steps.decide.outputs.running_image }}
 
     steps:
       - name: Resolve the commit to deploy
@@ -130,16 +138,12 @@ jobs:
           git merge-base --is-ancestor "$SHA" origin/main \
             || { echo "::error::$SHA is not on main. Refusing to deploy it."; exit 1; }
 
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            verdict true "manual deploy by $GITHUB_ACTOR — reason: $REASON"
-            exit 0
-          fi
-
-          # Set by the rollback runbook. After a rollback, the NEXT green merge would otherwise diff
-          # the rolled-back image against main, see the bad C# commit, and deploy it straight back.
+          # Set FIRST by the rollback runbook (the rollback workflow refuses to start without it).
+          # While it is set NO deploy runs, automatic or manual, so a green merge cannot put the bad
+          # commit straight back. Unset it once the fix is on main.
           if [ "$AUTODEPLOY_PAUSED" = "true" ]; then
-            echo "::warning::Automatic deploys are paused (repo variable PLATFORM_API_AUTODEPLOY_PAUSED=true)."
-            verdict false "automatic deploys are PAUSED after a rollback — unset PLATFORM_API_AUTODEPLOY_PAUSED to resume"
+            echo "::warning::Deploys are paused (repo variable PLATFORM_API_AUTODEPLOY_PAUSED=true)."
+            verdict false "deploys are PAUSED for a rollback — unset PLATFORM_API_AUTODEPLOY_PAUSED to resume"
             exit 0
           fi
 
@@ -150,6 +154,13 @@ jobs:
                   --query 'Service.SourceConfiguration.ImageRepository.ImageIdentifier' --output text)"
           RUNNING_TAG="${RUNNING_IMAGE##*:}"
           echo "running image: $RUNNING_IMAGE"
+          # The deploy job re-checks, right before update-service, that this is STILL the live image.
+          echo "running_image=$RUNNING_IMAGE" >> "$GITHUB_OUTPUT"
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            verdict true "manual deploy by $GITHUB_ACTOR — reason: $REASON"
+            exit 0
+          fi
 
           RUNNING_SHA=""
           if echo "$RUNNING_TAG" | grep -Eq '^[0-9a-f]{7,40}$'; then
@@ -222,6 +233,11 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           TAG: ${{ steps.sha.outputs.short }}
+          DECIDED_IMAGE: ${{ needs.decide.outputs.running_image }}
+          # A snapshot, NOT a live read: GITHUB_TOKEN cannot read repository variables. The live guards
+          # are the rollback-run query and the unchanged-image check in apprunner-preflight.sh.
+          AUTODEPLOY_PAUSED: ${{ vars.PLATFORM_API_AUTODEPLOY_PAUSED }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -237,6 +253,11 @@ jobs:
           # (CHANGED /ImageRepository/ImageIdentifier) by the shared guard below. The rollback workflow
           # runs the SAME script, so both directions pass through one tested check.
           python3 scripts/deploy/apprunner-image-payload.py live.json "$REGISTRY/$ECR_REPO:$TAG" payload.json
+
+          # LAST check, immediately before update-service: not paused, no rollback run queued or in
+          # progress, and the live image is still the one `decide` compared against (a rollback that
+          # finished during the build would otherwise be silently overwritten).
+          bash scripts/deploy/apprunner-preflight.sh "$ARN" "$DECIDED_IMAGE" --deploy
 
           echo "ENV_BEFORE=$(python3 -c "import json;print(len(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")" >> "$GITHUB_ENV"
           echo "SERVICE_ARN=$ARN" >> "$GITHUB_ENV"
