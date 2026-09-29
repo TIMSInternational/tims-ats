@@ -41,6 +41,14 @@ function exec(cmd: string, args: string[], env: Record<string, string | undefine
   }
 }
 
+function calls(bin: string): string {
+  try {
+    return readFileSync(join(bin, 'calls'), 'utf8');
+  } catch {
+    return '';
+  }
+}
+
 // ── Stub binaries ─────────────────────────────────────────────────────────────────────────────────
 // psql answers the drill's queries from fixture files. The side (source/target) is read from the
 // connection string's user name. It serves both one-shot `-c` queries and the stdin-driven snapshot
@@ -65,6 +73,10 @@ if [ "$side" = src ] && [ -n "$STUB_SRC_DOWN" ]; then
 fi
 answer() {
   case "$1" in
+    *drill_meta.target_marker*)
+      [ -n "$STUB_TGT_NO_MARKER" ] && { echo 'ERROR:  relation "drill_meta.target_marker" does not exist' >&2; exit 1; }
+      echo "$STUB_TGT_MARKER" ;;
+    *TARGET_ROWS*) echo "TARGET_ROWS|$STUB_TGT_ROWS" ;;
     *rolbypassrls*) echo "17|17.6|$STUB_BYPASS|$STUB_SRC_SYSID" ;;
     *"rolsuper::text"*) echo "true|17|0|$STUB_TGT_SYSID|$STUB_TGT_ADDR_OK" ;;
     *"SELECT 'COUNT'"*) cat "$STUB_DIR/$side.counts" ;;
@@ -142,10 +154,11 @@ function makeStubs(name: string, target: { counts?: string; inventory?: string }
 function drill(
   stubs: { bin: string; tmp: string },
   env: Record<string, string | undefined> = {},
+  args: string[] = [],
 ): Run & { summary: string } {
   const summaryFile = join(stubs.bin, 'summary.md');
   writeFileSync(summaryFile, '');
-  const r = exec('bash', [SCRIPT], {
+  const r = exec('bash', [SCRIPT, ...args], {
     DRILL_SOURCE_URL: SRC_URL,
     DRILL_TARGET_URL: TGT_URL,
     DRILL_SOURCE_SSLMODE: 'disable',
@@ -155,6 +168,10 @@ function drill(
     STUB_SRC_SYSID: '7000000000000000001',
     STUB_TGT_SYSID: '7000000000000000002',
     STUB_TGT_ADDR_OK: 'true',
+    STUB_TGT_MARKER: 'run-1',
+    STUB_TGT_ROWS: '0',
+    DRILL_TARGET_MARKER: 'run-1',
+    DRILL_VERIFY_SSLMODE: 'disable',
     TMPDIR: stubs.tmp,
     GITHUB_STEP_SUMMARY: summaryFile,
     ...env,
@@ -236,14 +253,6 @@ describe('run-drill.sh — exit 2 means DID NOT RUN, never a pass', () => {
 });
 
 describe('run-drill.sh — the restore target must provably be the ephemeral local database', () => {
-  const calls = (bin: string): string => {
-    try {
-      return readFileSync(join(bin, 'calls'), 'utf8');
-    } catch {
-      return '';
-    }
-  };
-
   for (const [label, url] of [
     ['?hostaddr= override', `${TGT_URL}?hostaddr=192.0.2.1`],
     ['?host= override', `${TGT_URL}?host=db.example.invalid`],
@@ -288,6 +297,45 @@ describe('run-drill.sh — the restore target must provably be the ephemeral loc
     expect(r.code).toBe(2);
     expect(r.out).toMatch(/not loopback or private/);
     expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it('exits 2 when DRILL_TARGET_MARKER is not set, before connecting to anything', () => {
+    const stubs = makeStubs('no-marker-env');
+    const r = drill(stubs, { DRILL_TARGET_MARKER: undefined });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/DRILL_TARGET_MARKER is not set/);
+    expect(calls(stubs.bin)).toBe('');
+  });
+
+  it('exits 2 when the target has no drill marker table — an empty-looking database is not enough', () => {
+    const stubs = makeStubs('no-marker-table');
+    const r = drill(stubs, { STUB_TGT_NO_MARKER: '1' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/has no drill_meta\.target_marker/);
+    expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it("exits 2 when the target's marker belongs to a different run", () => {
+    const stubs = makeStubs('wrong-marker');
+    const r = drill(stubs, { STUB_TGT_MARKER: 'run-0' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/marker does not match/);
+    expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it('exits 2 when public is empty but another selected schema holds rows (e.g. auth.users), dropping nothing', () => {
+    const stubs = makeStubs('populated-auth');
+    const r = drill(stubs, { STUB_TGT_ROWS: '1' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/already holds 1 row\(s\)/);
+    expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it('exits 2 if drill_meta (the marker schema) is ever selected for dumping and dropping', () => {
+    const stubs = makeStubs('drill-meta-selected');
+    const r = drill(stubs, { DRILL_SCHEMAS: 'public drill_meta' });
+    expect(r.code).toBe(2);
+    expect(calls(stubs.bin)).toBe('');
   });
 
   it('the clean path DOES reach the destructive step (positive control for the assertions above)', () => {
@@ -353,6 +401,74 @@ function stepRun(name: string): string | null {
   return body.join('\n');
 }
 
+describe('run-drill.sh capture/verify — a restored destination is checked against SAVED source evidence', () => {
+  const evidence = (name: string, counts = COUNTS, inventory = INVENTORY): string => {
+    const f = join(sandbox, `${name}.evidence`);
+    writeFileSync(
+      f,
+      '# tims-backup-drill evidence v1\n# captured_at=2026-09-29T00:00:00Z\n# schemas=public auth\n' +
+        counts +
+        inventory,
+    );
+    return f;
+  };
+
+  it('capture writes evidence (metadata only) and a dump at the same snapshot, touching no target', () => {
+    const stubs = makeStubs('capture');
+    const ev = join(stubs.bin, 'out.evidence');
+    const dump = join(stubs.bin, 'out.dump');
+    const r = drill(stubs, { DRILL_TARGET_URL: undefined, DRILL_TARGET_MARKER: undefined }, ['capture', ev, dump]);
+    expect(r.out).toMatch(/CAPTURED/);
+    expect(r.code).toBe(0);
+    const text = readFileSync(ev, 'utf8');
+    expect(text.split('\n')[0]).toBe('# tims-backup-drill evidence v1');
+    expect(text).toMatch(/^# snapshot=00000003-0000001B-1$/m);
+    expect(text).toMatch(/^COUNT\tpublic\.candidates\t250$/m);
+    expect(text).toMatch(/^INV\tPOLICY public\.candidates tenant_isolation/m);
+    expect(readFileSync(dump, 'utf8')).toMatch(/PGDMP/);
+    expect(calls(stubs.bin)).not.toMatch(/connect tgt/);
+
+    // …and that evidence verifies a destination that matches it (round trip).
+    const v = drill(makeStubs('capture-roundtrip'), { DRILL_VERIFY_URL: TGT_URL }, ['verify', ev]);
+    expect(v.code).toBe(0);
+    expect(v.out).toMatch(/DESTINATION MATCHES THE EVIDENCE/);
+  });
+
+  it('verify exits 0 when the destination matches the evidence', () => {
+    const r = drill(makeStubs('verify-ok'), { DRILL_VERIFY_URL: TGT_URL }, ['verify', evidence('ok')]);
+    expect(r.code).toBe(0);
+  });
+
+  it('verify exits 1 when the destination is missing rows', () => {
+    const stubs = makeStubs('verify-missing', { counts: COUNTS.replace('\t250\n', '\t240\n') });
+    const r = drill(stubs, { DRILL_VERIFY_URL: TGT_URL }, ['verify', evidence('missing')]);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/public\.candidates\t250\t240/);
+    expect(r.out).toMatch(/do not cut over/);
+  });
+
+  it('verify exits 1 when the destination inventory differs from the evidence', () => {
+    const stubs = makeStubs('verify-inv', { inventory: INVENTORY.split('\n')[0] + '\n' });
+    const r = drill(stubs, { DRILL_VERIFY_URL: TGT_URL }, ['verify', evidence('inv')]);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/schema inventory differs/);
+  });
+
+  it('verify exits 2 on a file that is not v1 evidence', () => {
+    const bad = join(sandbox, 'bad.evidence');
+    writeFileSync(bad, COUNTS);
+    const r = drill(makeStubs('verify-bad'), { DRILL_VERIFY_URL: TGT_URL }, ['verify', bad]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/not a v1 evidence file/);
+  });
+
+  it('verify exits 2 when the destination role cannot see every row (no BYPASSRLS)', () => {
+    const r = drill(makeStubs('verify-rls'), { DRILL_VERIFY_URL: TGT_URL, STUB_BYPASS: 'false' }, ['verify', evidence('rls')]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/destination role lacks BYPASSRLS/);
+  });
+});
+
 describe('run-drill.sh inventory — definitions, not just names', () => {
   const src = readFileSync(SCRIPT, 'utf8');
   it('compares full function definitions and trigger enabled state', () => {
@@ -362,6 +478,13 @@ describe('run-drill.sh inventory — definitions, not just names', () => {
     expect(src).toMatch(/md5\(CASE WHEN p\.prokind IN \('f', 'p', 'w'\) THEN pg_get_functiondef\(p\.oid\)/);
     expect(src).toMatch(/' secdef=' \|\| p\.prosecdef/);
     expect(src).toMatch(/' enabled=' \|\| tg\.tgenabled::text/);
+  });
+
+  it('compares enum labels in order, domains and composite types', () => {
+    // Behaviourally proven by local-e2e.sh scenario 10 (renamed enum label → exit 1).
+    expect(src).toMatch(/string_agg\(quote_literal\(e\.enumlabel\), ',' ORDER BY e\.enumsortorder\)/);
+    expect(src).toMatch(/'TYPE domain '/);
+    expect(src).toMatch(/'TYPE composite '/);
   });
 });
 

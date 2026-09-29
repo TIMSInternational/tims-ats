@@ -106,10 +106,23 @@ jobs:
           echo "::error title=Backup-restore drill did not run::the restore-target container never accepted connections."
           exit 1
 
+      - name: Mark the restore target as this run's disposable database
+        env:
+          PGPASSWORD: drill-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          # run-drill.sh DROPs every dumped schema on the target, so it refuses any database that does
+          # not carry THIS run's marker. Only this step, inside this job's own service container,
+          # writes it — an empty-looking database elsewhere can never qualify.
+          /usr/lib/postgresql/17/bin/psql -X -v ON_ERROR_STOP=1 -h localhost -U supabase_admin -d postgres \
+            -c 'CREATE SCHEMA drill_meta' \
+            -c 'CREATE TABLE drill_meta.target_marker (run_id text PRIMARY KEY)' \
+            -c "INSERT INTO drill_meta.target_marker VALUES ('${{ github.run_id }}-${{ github.run_attempt }}')"
+
       - name: Run the drill
         env:
           DRILL_SOURCE_URL: ${{ secrets.PROD_BACKUP_DRILL_URL }}
           DRILL_TARGET_URL: postgresql://supabase_admin:drill-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/postgres
+          DRILL_TARGET_MARKER: ${{ github.run_id }}-${{ github.run_attempt }}
           # Full TLS verification against the committed Supabase Root 2021 CA — never downgraded.
           DRILL_SOURCE_SSLMODE: verify-full
           DRILL_SOURCE_SSLROOTCERT: scripts/parity/supabase-root-ca.pem

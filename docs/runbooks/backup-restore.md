@@ -13,7 +13,9 @@
 - is **complete**: the exact `count(*)` of every table in `public` and `auth`, taken inside the dump's
   snapshot, equals the restored count; and the schema inventory of both schemas (tables, columns,
   defaults, indexes, constraints, RLS enabled/forced flags, policies with their roles and
-  expressions, triggers including their enabled state, and full function definitions — body, SECURITY DEFINER, SET clauses, volatility) is identical;
+  expressions, triggers including their enabled state, full function definitions — body, SECURITY
+  DEFINER, SET clauses, volatility — and enum labels in order, domains and composite types) is
+  identical;
 - and it measures the logical-restore RTO floor (dump + restore seconds) and the dump size.
 
 **It does NOT prove:**
@@ -108,10 +110,11 @@ The drill cannot see Supabase's own backups. Once a quarter:
    daily backup is from the last 24 hours, note the retention window, and whether PITR is enabled.
 2. If the plan offers **restore to a new project**, restore the latest backup into a new, temporary
    project. Never test-restore over production.
-3. Point the drill at the restored project to verify it: run `run-drill.sh` locally with
-   `DRILL_SOURCE_URL` set to the temporary project's session-pooler URL for a `backup_drill_reader`
-   created there, and a local `supabase/postgres:17.6.1.178` container as the target. Compare the
-   per-table counts against the latest weekly drill summary.
+3. Check the restored project. There is no exact oracle for a past backup — production has moved on
+   since — so this is a plausibility check, not a proof: capture evidence from it
+   (`run-drill.sh capture`, section 5) and compare its per-table counts and inventory against the
+   latest weekly drill summary; schema must match exactly, counts should differ only by recent
+   writes.
 4. Delete the temporary project. Record the date, the backup timestamp restored and the result in
    the ops log.
 
@@ -131,28 +134,55 @@ Decide first: **is production's database lost/corrupted, or is a subset of data 
    every consumer's connection strings (Vercel env, App Runner env, GitHub secrets) and the Supabase
    URL/anon/service keys. A new project has a new JWT secret: every session is invalidated and users
    must sign in again (password hashes in `auth.users` carry over).
-4. Verify before reopening: run the nightly controls (checks 14, 16, 17) against the restored database
-   and run this drill against it (section 4 step 3).
+4. Verify before reopening: run the nightly controls (checks 14, 16, 17) against the restored database,
+   and `run-drill.sh verify` against evidence if you have any (see the end of path B).
 
-### B. Fallback — logical dump (when a managed backup is unavailable)
+### B. Logical dump, verified against evidence from the SAME snapshot
 
-Only possible while the source database is still readable (e.g. migrating off a degraded project).
-Use a PostgreSQL 17 client:
+Possible whenever the source database is still readable (a degraded project, a migration, or a
+subset of data that must be restored elsewhere). This is the only path with an exact oracle: the
+evidence and the dump come from one `pg_export_snapshot()`, so the destination must match it exactly.
+Use a PostgreSQL 17 client, from the repo root, on an encrypted disk you delete afterwards.
 
-1. Create the new Supabase project (same region, Postgres 17), then recreate the project roles with
+1. **Capture evidence and the dump together, from production, first.** With `DRILL_SOURCE_URL` set to
+   a BYPASSRLS read-only URL (`backup_drill_reader`):
+
+   ```bash
+   bash scripts/backup-drill/run-drill.sh capture evidence.txt prod.dump
+   ```
+
+   `evidence.txt` holds only metadata (table names, exact row counts, schema definitions). `prod.dump`
+   is production data: protect it and delete it at the end.
+
+2. Create the new Supabase project (same region, Postgres 17), then recreate the project roles with
    their real attributes (not the drill's `NOLOGIN` stand-ins).
-2. Dump, exactly as the drill does, but to an encrypted local disk that you delete afterwards:
-   `pg_dump --format=custom --no-owner -n public -n auth`.
-3. Restore `public` as `postgres`: `pg_restore --no-owner -n public -d "$NEW_DB_URL" dump`.
+3. Restore `public` as `postgres`: `pg_restore --no-owner -n public -d "$NEW_DB_URL" prod.dump`.
 4. Restore `auth` **data only** into the new project's GoTrue-managed tables:
-   `pg_restore --data-only -n auth --disable-triggers -d "$NEW_DB_URL" dump`. First confirm both projects
-   run the same GoTrue version (column sets must match); if not, stop and open a Supabase support ticket.
-5. Verify counts and inventory (run the drill against the new project), then cut consumers over as in
-   A.3–A.4.
+   `pg_restore --data-only -n auth --disable-triggers -d "$NEW_DB_URL" prod.dump`. First confirm both
+   projects run the same GoTrue version (column sets must match); if not, stop and open a Supabase
+   support ticket.
+5. **Verify the destination against the evidence before any cutover.** With `DRILL_VERIFY_URL` set to
+   the new project's session-pooler URL for a BYPASSRLS role (e.g. `postgres`):
 
-**Never** run `pg_restore --clean` against the existing production database. The drill's target guard
-(loopback host and empty `public` schema) exists precisely so its destructive preparation cannot be
-pointed at production.
+   ```bash
+   bash scripts/backup-drill/run-drill.sh verify evidence.txt
+   ```
+
+   Exit 0 means every table's exact row count and the full schema inventory match the snapshot the
+   dump was taken at. Exit 1 lists the tables/objects that differ — do not cut over. Exit 2 means it
+   could not verify (not a pass). Note: the `auth` inventory will differ if the new project's GoTrue
+   schema is newer than production's; the row counts must still match.
+6. Cut consumers over as in A.3, run the nightly controls as in A.4, then delete `prod.dump`.
+
+For path A there is no same-snapshot evidence (the original is gone or has moved on). If the original
+database is still readable when you decide to restore, run step 1 (evidence only:
+`run-drill.sh capture evidence.txt`) before touching anything, and verify the restored project
+against it — expecting count differences only for writes after the restore point.
+
+**Never** run `pg_restore --clean` against the existing production database. The drill's destructive
+preparation is guarded (loopback-only URL without overrides, a different system_identifier from the
+source, this run's marker in the target, and every selected schema free of rows) precisely so it can
+never be pointed at a real database.
 
 ## 6. RPO / RTO expectations
 

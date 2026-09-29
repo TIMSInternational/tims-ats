@@ -15,6 +15,11 @@
 #   7. a trigger disabled on the restored copy       → 1   (trigger enabled-state mismatch)
 #   8. target URL redirected with ?hostaddr=         → 2   (refused before any connection)
 #   9. target is the source cluster itself           → 2   (refused before any destructive statement)
+#  10. an enum label renamed on the restored copy    → 1   (enum definition mismatch)
+#  11. target with empty public but a populated
+#      auth.users, even WITH the run marker          → 2   (refused; auth.users row survives)
+#  12. target WITHOUT this run's marker              → 2   (refused; target untouched)
+#  13. capture → restore by hand → verify: matching destination → 0, destination missing a row → 1
 # Plus: no synthetic PII value appears in any drill output, and no dump file is left behind.
 #
 # Exits 0 only if every scenario produced its expected code.
@@ -28,6 +33,7 @@ SRC_NAME="backup-drill-e2e-source"
 TGT_NAME="backup-drill-e2e-target"
 # Throwaway credentials for containers bound to 127.0.0.1 that live for the length of this script.
 ADMIN_PW="e2e-$(date +%s)-$$"
+MARKER="e2e-run-$$"
 DRILL_PW="e2e-drill-reader-password-$(date +%s)-$$-padding"
 
 PSQL=""
@@ -38,10 +44,14 @@ for c in "${DRILL_PG_BIN:+$DRILL_PG_BIN/psql}" /usr/lib/postgresql/17/bin/psql /
 done
 [ -n "$PSQL" ] || { echo "need psql >= 17" >&2; exit 2; }
 
+PG_RESTORE="$(dirname "$(command -v "$PSQL")")/pg_restore"
+
 OUT="$(mktemp -d "${TMPDIR:-/tmp}/backup-drill-e2e.XXXXXX")"
+# Kept apart from $OUT: the capture dump contains the synthetic "PII", which the leak check greps for.
+DUMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/backup-drill-e2e-dump.XXXXXX")"
 cleanup() {
   docker rm -f "$SRC_NAME" "$TGT_NAME" >/dev/null 2>&1
-  rm -rf "$OUT"
+  rm -rf "$OUT" "$DUMPDIR"
 }
 trap cleanup EXIT
 
@@ -62,9 +72,15 @@ as() { # user port [psql args...]
   local u="$1" p="$2"; shift 2
   PGPASSWORD="$ADMIN_PW" "$PSQL" -X -q -At -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$p" -U "$u" -d postgres "$@"
 }
-fresh_target() {
+mark_target() { # what the workflow's "Mark the restore target" step does
+  as supabase_admin "$TGT_PORT" -c 'CREATE SCHEMA drill_meta' \
+    -c 'CREATE TABLE drill_meta.target_marker (run_id text PRIMARY KEY)' \
+    -c "INSERT INTO drill_meta.target_marker VALUES ('$MARKER')" || exit 2
+}
+fresh_target() { # [nomark]
   start "$TGT_NAME" "$TGT_PORT"
   ready "$TGT_PORT"
+  [ "${1:-}" = nomark ] || mark_target
 }
 
 echo "== starting source + target ($IMAGE)"
@@ -72,6 +88,7 @@ start "$SRC_NAME" "$SRC_PORT"
 start "$TGT_NAME" "$TGT_PORT"
 ready "$SRC_PORT"
 ready "$TGT_PORT"
+mark_target
 
 echo "== populating the synthetic source"
 as supabase_admin "$SRC_PORT" -c "INSERT INTO auth.users (instance_id, id, aud, role, email, created_at) VALUES ('00000000-0000-0000-0000-000000000000', '11111111-1111-4111-8111-111111111111', 'authenticated', 'authenticated', 'auth-user@synthetic.example.test', now())" || exit 2
@@ -87,12 +104,14 @@ SRC_URL="postgresql://backup_drill_reader:$DRILL_PW@127.0.0.1:$SRC_PORT/postgres
 TGT_URL="postgresql://supabase_admin:$ADMIN_PW@127.0.0.1:$TGT_PORT/postgres"
 
 FAILED=0
+MODE_ARGS=""   # set to e.g. "capture <evidence> <dump>" or "verify <evidence>" for one scenario
 scenario() { # label expected-exit [env assignments...]
   local label="$1" expected="$2"; shift 2
   local log="$OUT/$(echo "$label" | tr ' ' '-').log"
-  env DRILL_SOURCE_SSLMODE=disable GITHUB_STEP_SUMMARY="$OUT/summary.md" \
-      DRILL_TARGET_URL="$TGT_URL" DRILL_SOURCE_URL="$SRC_URL" "$@" \
-      bash "$REPO_ROOT/scripts/backup-drill/run-drill.sh" >"$log" 2>&1
+  # shellcheck disable=SC2086
+  env DRILL_SOURCE_SSLMODE=disable DRILL_VERIFY_SSLMODE=disable GITHUB_STEP_SUMMARY="$OUT/summary.md" \
+      DRILL_TARGET_URL="$TGT_URL" DRILL_SOURCE_URL="$SRC_URL" DRILL_TARGET_MARKER="$MARKER" "$@" \
+      bash "$REPO_ROOT/scripts/backup-drill/run-drill.sh" $MODE_ARGS >"$log" 2>&1
   local rc=$?
   if [ "$rc" -eq "$expected" ]; then
     echo "  PASS  [$label] exit $rc (expected $expected)"
@@ -138,6 +157,38 @@ echo "== scenario 9: target is the source cluster"
 scenario "target is source" 2 DRILL_TARGET_URL="postgresql://supabase_admin:$ADMIN_PW@127.0.0.1:$SRC_PORT/postgres"
 SRC_ROWS="$(as postgres "$SRC_PORT" -c "SELECT count(*) FROM public.candidates")"
 if [ "$SRC_ROWS" = "250" ]; then echo "  PASS  source untouched (250 candidates)"; else echo "  FAIL  source changed: $SRC_ROWS"; FAILED=1; fi
+
+echo "== scenario 10: restored copy has a renamed enum label"
+fresh_target
+scenario "enum label renamed" 1 DRILL_TEST_POST_RESTORE_SQL="ALTER TYPE public.candidate_stage RENAME VALUE 'offer' TO 'offered'"
+
+echo "== scenario 11: target has an empty public schema but a populated auth.users (marker present)"
+fresh_target
+as supabase_admin "$TGT_PORT" -c "INSERT INTO auth.users (instance_id, id, aud, role, email, created_at) VALUES ('00000000-0000-0000-0000-000000000000', '22222222-2222-4222-8222-222222222222', 'authenticated', 'authenticated', 'someone-real@synthetic.example.test', now())" || exit 2
+scenario "populated auth" 2
+AUTH_ROWS="$(as supabase_admin "$TGT_PORT" -c "SELECT count(*) FROM auth.users")"
+if [ "$AUTH_ROWS" = "1" ]; then echo "  PASS  target auth.users row survived (nothing dropped)"; else echo "  FAIL  target auth.users now has $AUTH_ROWS rows"; FAILED=1; fi
+
+echo "== scenario 12: target without this run's marker"
+fresh_target nomark
+scenario "no marker" 2
+TGT_AUTH="$(as supabase_admin "$TGT_PORT" -c "SELECT count(*) FROM pg_namespace WHERE nspname = 'auth'")"
+if [ "$TGT_AUTH" = "1" ]; then echo "  PASS  unmarked target untouched (auth schema still present)"; else echo "  FAIL  unmarked target was modified"; FAILED=1; fi
+
+echo "== scenario 13: capture evidence + dump, restore by hand, verify the destination"
+MODE_ARGS="capture $OUT/evidence.txt $DUMPDIR/prod.dump"
+scenario "capture" 0
+MODE_ARGS=""
+fresh_target nomark
+as supabase_admin "$TGT_PORT" -c "CREATE ROLE app_tenant NOLOGIN" -c "DROP SCHEMA auth CASCADE" -c "DROP SCHEMA public CASCADE" || exit 2
+PGPASSWORD="$ADMIN_PW" "$PG_RESTORE" -h 127.0.0.1 -p "$TGT_PORT" -U supabase_admin -d postgres --no-owner "$DUMPDIR/prod.dump" \
+  >"$OUT/manual-restore.log" 2>&1 || { echo "  FAIL  manual restore failed"; FAILED=1; }
+DST_URL="postgresql://supabase_admin:$ADMIN_PW@127.0.0.1:$TGT_PORT/postgres"
+MODE_ARGS="verify $OUT/evidence.txt"
+scenario "verify matching destination" 0 DRILL_VERIFY_URL="$DST_URL"
+as supabase_admin "$TGT_PORT" -c "DELETE FROM public.audit_logs WHERE id = (SELECT min(id) FROM public.audit_logs)" || exit 2
+scenario "verify destination missing a row" 1 DRILL_VERIFY_URL="$DST_URL"
+MODE_ARGS=""
 
 echo "== PII and leftover checks"
 if grep -rq 'synthetic.example.test\|Synthetic Person' "$OUT"; then

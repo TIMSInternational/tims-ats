@@ -2,10 +2,15 @@
 -- Every value here is fake. Run as `postgres` (non-superuser, as on Supabase) except where noted.
 -- It deliberately exercises the shapes the drill must survive: RLS with FORCE, policies naming both
 -- Supabase roles (authenticated) and a project role that a fresh Supabase image lacks (app_tenant),
--- an FK into auth.users, a partitioned table, a trigger, a sequence and a unique index.
+-- an FK into auth.users, a partitioned table, a trigger, a sequence, a unique index, and an enum, a
+-- domain and a composite type.
 \set ON_ERROR_STOP on
 
 CREATE ROLE app_tenant NOLOGIN;
+
+CREATE TYPE public.candidate_stage AS ENUM ('applied', 'screening', 'offer', 'hired');
+CREATE DOMAIN public.email_address AS text CHECK (VALUE LIKE '%@%');
+CREATE TYPE public.money_amount AS (amount numeric(12, 2), currency char(3));
 
 CREATE TABLE public.organizations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -17,7 +22,8 @@ CREATE TABLE public.candidates (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
   user_id uuid REFERENCES auth.users (id),
-  email text NOT NULL,
+  email public.email_address NOT NULL,
+  stage public.candidate_stage NOT NULL DEFAULT 'applied',
   full_name text NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
