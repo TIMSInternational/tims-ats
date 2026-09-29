@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useCallback, useState } from 'react';
 import { DailyProvider } from '@daily-co/daily-react';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton } from '../../../../../../components';
@@ -10,6 +10,9 @@ import { VideoArea } from './video-area';
 import { VideoControls } from './video-controls';
 import { ScorecardPanel } from './scorecard-panel';
 import { AutoJoin } from './auto-join';
+import { JoinErrorPanel } from './join-error-panel';
+import { interviewTypeLabel } from './interview-type-label';
+import type { DailyJoinErrorCategory } from './daily-join-error';
 
 function getInitials(name: string): string {
   return name
@@ -34,6 +37,10 @@ export default function InterviewRoomPage({
   // Only fetch video token after interview loads — this also creates the room
   const videoToken = trpc.interview.createVideoRoom.useMutation();
   const [roomData, setRoomData] = useState<{ url: string; token: string } | null>(null);
+  // A failed Daily join used to leave the room on "Conectando..." forever.
+  const [joinError, setJoinError] = useState<DailyJoinErrorCategory | null>(null);
+  const [joinAttempt, setJoinAttempt] = useState(0);
+  const handleJoinError = useCallback((category: DailyJoinErrorCategory) => setJoinError(category), []);
 
   // Join button handler — creates room + gets token
   const handleJoin = async () => {
@@ -43,6 +50,18 @@ export default function InterviewRoomPage({
       setHasJoined(true);
     } catch {
       // Error handled by mutation state
+    }
+  };
+
+  // Retry = fresh token (the old one may be the reason it failed) + a remounted AutoJoin.
+  const handleRetryJoin = async () => {
+    try {
+      const result = await videoToken.mutateAsync({ interviewId: id });
+      setRoomData({ url: result.url, token: result.token });
+      setJoinError(null);
+      setJoinAttempt((n) => n + 1);
+    } catch {
+      setJoinError('network');
     }
   };
 
@@ -80,7 +99,7 @@ export default function InterviewRoomPage({
               <span className="text-white text-3xl font-bold">{candidateInitials}</span>
             </div>
             <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
-            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — {t.interviews.roomTypeLabel} {data.type}</p>
+            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — {t.interviews.roomTypeLabel} {interviewTypeLabel(t, data.type)}</p>
             <button
               onClick={handleJoin}
               disabled={videoToken.isPending}
@@ -112,7 +131,7 @@ export default function InterviewRoomPage({
   // In-call view — DailyProvider only renders with valid url + token
   return (
     <DailyProvider>
-      <AutoJoin url={roomData.url} token={roomData.token} />
+      <AutoJoin key={joinAttempt} url={roomData.url} token={roomData.token} onError={handleJoinError} />
       <div className="h-full flex flex-col overflow-hidden">
         <InterviewTopBar
           candidateName={candidateName}
@@ -121,15 +140,16 @@ export default function InterviewRoomPage({
         />
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           <div className="h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink">
-            <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
-            <VideoControls />
+            {joinError ? (
+              <JoinErrorPanel category={joinError} onRetry={handleRetryJoin} />
+            ) : (
+              <>
+                <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
+                <VideoControls />
+              </>
+            )}
           </div>
-          <ScorecardPanel
-            interviewId={data.id}
-            candidateName={candidateName}
-            candidateInitials={candidateInitials}
-            vacancyTitle={data.vacancy.title}
-          />
+          <ScorecardPanel interview={data} candidateInitials={candidateInitials} />
         </div>
       </div>
     </DailyProvider>
