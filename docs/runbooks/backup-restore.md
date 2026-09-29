@@ -13,7 +13,7 @@
 - is **complete**: the exact `count(*)` of every table in `public` and `auth`, taken inside the dump's
   snapshot, equals the restored count; and the schema inventory of both schemas (tables, columns,
   defaults, indexes, constraints, RLS enabled/forced flags, policies with their roles and
-  expressions, triggers, functions) is identical;
+  expressions, triggers including their enabled state, and full function definitions — body, SECURITY DEFINER, SET clauses, volatility) is identical;
 - and it measures the logical-restore RTO floor (dump + restore seconds) and the dump size.
 
 **It does NOT prove:**
@@ -81,6 +81,10 @@ three ways, each of which is a finding, not a flake:
 - **exit 2, TLS**: the committed CA (`scripts/parity/supabase-root-ca.pem`) was captured from the direct
   host; #292 states the session pooler chains to it too. If `verify-full` fails, fix the CA — never
   lower the sslmode.
+- **exit 2, identity**: the drill proves the restore target is a different cluster by comparing
+  `pg_control_system().system_identifier` on both sides. It is executable by any role on stock
+  Postgres and on the `supabase/postgres` image; if Supabase revokes it on the hosted project, the drill
+  refuses to run rather than skip the check — grant EXECUTE on it to `backup_drill_reader`.
 - **exit 1, restore errors**: production may carry objects the synthetic database did not (e.g. a
   publication membership or a function referencing another schema). Triage each error; if it is
   genuinely harmless, add a narrow pattern to `RESTORE_ALLOW_LIST` in `run-drill.sh` with a comment.
@@ -170,8 +174,8 @@ GitHub-hosted runner:
 - No `actions/upload-artifact` or cache step exists; a test fails if one is added
   (`tests/governance/backup-restore-drill.test.ts`).
 - The log and step summary carry only table names, row **counts**, sizes and timings. Restore error
-  output is filtered: `DETAIL`/`Command was` lines are dropped and quoted values redacted, because
-  Postgres errors can quote row values.
+  message text is never printed, because Postgres errors quote row values and no redaction survives
+  values that contain quotes: only the failing object's TOC entry and a condition name are logged.
 - The source role is read-only (no write grants, read-only default transactions) but can read every
   tenant's rows (BYPASSRLS) — see the trade-off in `scripts/backup-drill/create-drill-role.sql`. Its
   credential exists only in the `PROD_BACKUP_DRILL_URL` secret and is scoped to a schedule/dispatch-only

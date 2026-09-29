@@ -7,7 +7,7 @@
 # That a logical dump of production can be taken, restored into an empty Postgres of the same major
 # version, and that the restored copy is COMPLETE: every table's exact row count matches the source
 # at one consistent snapshot, and the schema inventory (relations, columns, indexes, constraints, RLS
-# flags, policies, triggers, functions) of every dumped schema is identical.
+# flags, policies, triggers + enabled state, function definitions) of every dumped schema is identical.
 #
 # It does NOT prove Supabase's managed daily backups / PITR work — that is a separate, manual,
 # quarterly step. See docs/runbooks/backup-restore.md.
@@ -37,8 +37,8 @@
 #
 # PII: production rows exist only in the dump file inside a private temp dir (umask 077) and in the
 # ephemeral target. Neither is ever printed or uploaded; the temp dir is deleted by an EXIT trap.
-# Only table names, row COUNTS, sizes and timings are reported. Restore error text is redacted
-# before printing because Postgres error DETAIL lines can quote row values.
+# Only table names, row COUNTS, sizes and timings are reported. Restore error MESSAGE TEXT is never
+# printed (it can quote row values); only the failing object's TOC entry and a condition name are.
 #
 # Deliberately NOT `set -e`: every failure below is classified explicitly as exit 1 or exit 2.
 set -uo pipefail
@@ -123,13 +123,22 @@ case "$SOURCE_URL" in
   *) SRC="$SOURCE_URL?$TLS_PARAMS" ;;
 esac
 
-# The target is DESTRUCTIVELY prepared (non-public schemas dropped), so it must be local. This is the
-# first of two guards against ever pointing it at production; the second is the empty-public check.
-TARGET_HOST="$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-z]+://([^@/]*@)?(\[[^]]*\]|[^:/?]*).*#\2#')"
-case "$TARGET_HOST" in
-  localhost|127.0.0.1|'[::1]') ;;
-  *) die2 "DRILL_TARGET_URL host '$TARGET_HOST' is not loopback. The drill only restores into an ephemeral local database." ;;
-esac
+# The target is DESTRUCTIVELY prepared (dumped schemas dropped), so it must be the ephemeral local
+# database and nothing else. Guards, all before the first destructive statement:
+#   1. (here, before any connection) the URL is a plain single loopback host with NO query string.
+#      libpq lets `?hostaddr=`, `?host=`, `?service=` and comma host lists override the host the URL
+#      appears to name, so any of them could send "localhost" somewhere else. None is accepted.
+#   2. (here) libpq environment variables that fill in unspecified parameters are cleared, so
+#      PGHOSTADDR / PGSERVICE cannot redirect a URL that names no hostaddr/service of its own.
+#   3. (after connecting, in the target preflight) superuser, same major, EMPTY public schema, a
+#      system_identifier different from the source's, and a loopback/private server address (a Docker
+#      service container reports its bridge IP, so loopback alone cannot be required there).
+unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGSERVICE PGSERVICEFILE PGSYSCONFDIR PGOPTIONS \
+      PGTARGETSESSIONATTRS PGLOADBALANCEHOSTS
+if ! printf '%s' "$TARGET_URL" \
+  | grep -Eq '^postgres(ql)?://[^@/?#,]+@(localhost|127\.0\.0\.1|\[::1\])(:[0-9]{1,5})?/[A-Za-z0-9_]+$'; then
+  die2 "DRILL_TARGET_URL must be exactly postgresql://user:password@{localhost|127.0.0.1|[::1]}[:port]/dbname with no query parameters (hostaddr/host/service) and no host list. The drill only restores into an ephemeral local database."
+fi
 
 # ── Client binaries: major version must be >= the server's ──────────────────────────────────────
 find_bin() {
@@ -183,6 +192,7 @@ SELECT 'INV' || E'\t' || regexp_replace(line, '\s+', ' ', 'g') FROM (
   UNION ALL
   SELECT 'COLUMN ' || t.tn || '.' || a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
          || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END
+         || ' identity=' || a.attidentity::text || ' generated=' || a.attgenerated::text
          || coalesce(' DEFAULT ' || pg_get_expr(ad.adbin, ad.adrelid), '')
   FROM t JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum > 0 AND NOT a.attisdropped
   LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
@@ -198,20 +208,31 @@ SELECT 'INV' || E'\t' || regexp_replace(line, '\s+', ' ', 'g') FROM (
          || ' check=' || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
   FROM t JOIN pg_policy p ON p.polrelid = t.oid
   UNION ALL
-  SELECT 'TRIGGER ' || t.tn || ' ' || pg_get_triggerdef(tg.oid) FROM t JOIN pg_trigger tg ON tg.tgrelid = t.oid AND NOT tg.tgisinternal
+  -- tgenabled: a trigger restored DISABLED (e.g. an append-only guard) is as broken as a missing one.
+  SELECT 'TRIGGER ' || t.tn || ' ' || pg_get_triggerdef(tg.oid) || ' enabled=' || tg.tgenabled::text
+  FROM t JOIN pg_trigger tg ON tg.tgrelid = t.oid AND NOT tg.tgisinternal
   UNION ALL
+  -- The DEFINITION, not just the signature: a guard function restored with a permissive body must
+  -- not verify. pg_get_functiondef carries body, language, volatility, strictness, SECURITY DEFINER and
+  -- SET clauses, and no owner (ownership is dropped by --no-owner). Aggregates have no functiondef,
+  -- so their prosrc is hashed. The attributes are repeated explicitly so a diff says what changed.
   SELECT 'FUNCTION ' || s.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+         || ' kind=' || p.prokind::text || ' secdef=' || p.prosecdef || ' volatile=' || p.provolatile::text
+         || ' strict=' || p.proisstrict || ' leakproof=' || p.proleakproof || ' parallel=' || p.proparallel::text
+         || ' config=' || coalesce(array_to_string(p.proconfig, ','), '')
+         || ' def_md5=' || md5(CASE WHEN p.prokind IN ('f', 'p', 'w') THEN pg_get_functiondef(p.oid) ELSE coalesce(p.prosrc, '') END)
   FROM pg_proc p JOIN s ON s.oid = p.pronamespace
   WHERE NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
 ) x ORDER BY 1;"
 
 # ── 1. Preflight: can we reach both ends, and will the dump be complete? ───────────────────────────
 log "preflight: source"
-PRE="$(q_src "SELECT current_setting('server_version_num')::int / 10000, current_setting('server_version'), (rolsuper OR rolbypassrls)::text FROM pg_roles WHERE rolname = current_user" 2>"$WORKDIR/pre.err")" \
+PRE="$(q_src "SELECT current_setting('server_version_num')::int / 10000, current_setting('server_version'), (rolsuper OR rolbypassrls)::text, (SELECT system_identifier::text FROM pg_control_system()) FROM pg_roles WHERE rolname = current_user" 2>"$WORKDIR/pre.err")" \
   || die2 "cannot connect to the source database: $(head -c 300 "$WORKDIR/pre.err" | tr '\n' ' ')"
 SERVER_MAJOR="$(printf '%s' "$PRE" | cut -d'|' -f1)"
 SERVER_VERSION="$(printf '%s' "$PRE" | cut -d'|' -f2)"
 BYPASS="$(printf '%s' "$PRE" | cut -d'|' -f3)"
+SOURCE_SYSID="$(printf '%s' "$PRE" | cut -d'|' -f4)"
 [ -n "$SERVER_MAJOR" ] || die2 "source preflight returned nothing."
 [ "$CLIENT_MAJOR" -ge "$SERVER_MAJOR" ] || die2 "pg_dump $CLIENT_MAJOR is older than the source server ($SERVER_VERSION)."
 # RLS is on for every tenant table. pg_read_all_data does NOT bypass it, so a role without BYPASSRLS
@@ -220,10 +241,14 @@ BYPASS="$(printf '%s' "$PRE" | cut -d'|' -f3)"
 [ "$BYPASS" = "true" ] || die2 "the source role lacks BYPASSRLS: RLS would hide rows from the dump. See scripts/backup-drill/create-drill-role.sql."
 
 log "preflight: target"
-TPRE="$(q_tgt "SELECT (SELECT rolsuper::text FROM pg_roles WHERE rolname = current_user), current_setting('server_version_num')::int / 10000, (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S','f'))" 2>"$WORKDIR/tpre.err")" \
+TPRE="$(q_tgt "SELECT (SELECT rolsuper::text FROM pg_roles WHERE rolname = current_user), current_setting('server_version_num')::int / 10000, (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S','f')), (SELECT system_identifier::text FROM pg_control_system()), (inet_server_addr() IS NULL OR inet_server_addr() <<= ANY (ARRAY['127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7']::inet[]))::text" 2>"$WORKDIR/tpre.err")" \
   || die2 "cannot connect to the target database: $(head -c 300 "$WORKDIR/tpre.err" | tr '\n' ' ')"
 [ "$(printf '%s' "$TPRE" | cut -d'|' -f1)" = "true" ] || die2 "the target role must be a superuser (restore recreates auth-owned objects)."
 [ "$(printf '%s' "$TPRE" | cut -d'|' -f2)" = "$SERVER_MAJOR" ] || die2 "target major version $(printf '%s' "$TPRE" | cut -d'|' -f2) != source major $SERVER_MAJOR."
+[ -n "$SOURCE_SYSID" ] || die2 "could not read the source system_identifier (pg_control_system), so the target cannot be proven to be a different cluster."
+[ "$(printf '%s' "$TPRE" | cut -d'|' -f4)" != "$SOURCE_SYSID" ] \
+  || die2 "the target is the SAME Postgres cluster as the source (system_identifier $SOURCE_SYSID) — refusing to restore over it."
+[ "$(printf '%s' "$TPRE" | cut -d'|' -f5)" = "true" ] || die2 "the target server address is not loopback or private — refusing."
 [ "$(printf '%s' "$TPRE" | cut -d'|' -f3)" = "0" ] || die2 "target public schema is not empty — refusing to restore into anything but a fresh drill database."
 
 # ── 2. One REPEATABLE READ session exports a snapshot; counts are taken inside it ─────────────────
@@ -327,20 +352,37 @@ RESTORE_ALLOW_LIST=()
 FINDINGS=0
 REPORT_LINES=()
 
-grep '^pg_restore: error:' "$WORKDIR/restore.err" | grep -v '^pg_restore: error: could not execute query' >"$WORKDIR/restore.fatal"
-UNEXPECTED=0
-# Walk the error blocks: a block starts at "from TOC entry" and carries the ERROR message.
+# NOTHING from a restore error's message text is ever printed. Postgres messages quote row values
+# ("invalid input syntax …: "<value>"", DETAIL: Key (…)=(<value>)) and no sanitiser survives values
+# that themselves contain quotes. What IS printed comes from two safe sources only:
+#   - the TOC entry line: object type, schema-qualified name and owner (schema metadata, never data);
+#   - a condition name picked from a CLOSED set by matching the message's leading phrase. The message
+#     is matched, never echoed. pg_restore does not expose SQLSTATE, so this is the closest equivalent.
+# The raw stderr stays in the private work dir and is deleted with it.
 awk '
   /^pg_restore: from TOC entry/ { toc = $0; next }
-  /^pg_restore: error: could not execute query: ERROR:/ {
-    sub(/^pg_restore: error: could not execute query: /, ""); print (toc == "" ? "(unknown TOC entry)" : toc) "\037" $0; toc = ""
+  /^pg_restore: error:/ {
+    msg = $0; sub(/^pg_restore: error: /, "", msg)
+    print (toc == "" ? "pg_restore: (no TOC entry)" : toc) "\037" msg; toc = ""
   }
 ' "$WORKDIR/restore.err" >"$WORKDIR/restore.errors"
 
-# Postgres error text can quote row values (DETAIL: Key (email)=(…), invalid input syntax: "…").
-# Only DETAIL-free ERROR lines are kept by the awk above; values are additionally redacted here.
-redact() { sed -E -e 's/\([^()]*\)=\([^()]*\)/(…)=(…)/g' -e 's/: "[^"]*"$/: "…"/' -e "s/'[^']*'/'…'/g" | cut -c1-300; }
+condition_of() {
+  case "$1" in
+    *"duplicate key value violates unique constraint"*) echo unique_violation ;;
+    *"violates foreign key constraint"*) echo foreign_key_violation ;;
+    *"violates not-null constraint"*) echo not_null_violation ;;
+    *"violates check constraint"*) echo check_violation ;;
+    *"invalid input syntax"*|*"invalid input value"*) echo invalid_text_representation ;;
+    *"already exists"*) echo duplicate_object ;;
+    *"does not exist"*) echo undefined_object ;;
+    *"permission denied"*|*"must be owner"*|*"must be superuser"*) echo insufficient_privilege ;;
+    *"COPY failed"*) echo copy_failed ;;
+    *) echo unclassified ;;
+  esac
+}
 
+UNEXPECTED=0
 while IFS="$(printf '\037')" read -r toc msg; do
   [ -n "$toc$msg" ] || continue
   allowed=0
@@ -349,16 +391,12 @@ while IFS="$(printf '\037')" read -r toc msg; do
   done
   if [ "$allowed" -eq 0 ]; then
     UNEXPECTED=$((UNEXPECTED + 1))
-    echo "  ✗ restore error: $(printf '%s' "$toc" | sed 's/^pg_restore: //' | cut -c1-200)"
-    echo "      $(printf '%s' "$msg" | redact)"
+    # "from TOC entry 4242; 0 16500 TABLE DATA public candidates owner" → "TOC 4242: TABLE DATA public candidates owner"
+    obj="$(printf '%s' "$toc" | sed -E 's/^pg_restore: from TOC entry ([0-9]+); [0-9]+ [0-9]+ /TOC \1: /; s/^pg_restore: //' | tr -cd '[:alnum:][:space:]_.:()-' | cut -c1-200)"
+    echo "  ✗ restore error [$(condition_of "$msg")] $obj"
   fi
 done <"$WORKDIR/restore.errors"
 
-if [ -s "$WORKDIR/restore.fatal" ]; then
-  echo "  ✗ pg_restore reported a non-query error:"
-  redact <"$WORKDIR/restore.fatal" | sed 's/^/      /'
-  UNEXPECTED=$((UNEXPECTED + 1))
-fi
 if [ "$RESTORE_RC" -ne 0 ] && [ "$UNEXPECTED" -eq 0 ] && [ ! -s "$WORKDIR/restore.errors" ]; then
   # Non-zero exit with nothing we could classify: never assume it was benign.
   echo "  ✗ pg_restore exited $RESTORE_RC without a classifiable error."
@@ -366,7 +404,7 @@ if [ "$RESTORE_RC" -ne 0 ] && [ "$UNEXPECTED" -eq 0 ] && [ ! -s "$WORKDIR/restor
 fi
 if [ "$UNEXPECTED" -gt 0 ]; then
   FINDINGS=$((FINDINGS + 1))
-  REPORT_LINES+=("- ❌ **$UNEXPECTED restore error(s)** outside the allow-list (see job log; values redacted)")
+  REPORT_LINES+=("- ❌ **$UNEXPECTED restore error(s)** outside the allow-list (job log lists object + condition only; message text is never printed)")
 else
   REPORT_LINES+=("- ✅ restore completed with no errors outside the allow-list")
 fi
@@ -414,7 +452,7 @@ if [ -n "$INV_DIFF" ]; then
   printf '%s\n' "$INV_DIFF" | grep '^[<>]' | head -50 | cut -c1-300 | sed 's/^/      /'
   REPORT_LINES+=("- ❌ **schema inventory differs** ($N line(s))")
 else
-  REPORT_LINES+=("- ✅ schema inventory identical ($INV_ITEMS objects: relations, columns, indexes, constraints, RLS flags, policies, triggers, functions)")
+  REPORT_LINES+=("- ✅ schema inventory identical ($INV_ITEMS objects: relations, columns, indexes, constraints, RLS flags, policies, triggers incl. enabled state, full function definitions)")
 fi
 
 # ── 6. Report — aggregate metadata only ───────────────────────────────────────────────────────────

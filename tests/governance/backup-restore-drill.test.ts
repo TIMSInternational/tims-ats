@@ -55,14 +55,18 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# Every connection is logged (side, plus any libpq env var that could redirect it) so tests can
+# assert that a refused target was never contacted, and never sent a destructive statement.
+echo "connect $side PGHOSTADDR=$PGHOSTADDR PGSERVICE=$PGSERVICE" >> "$STUB_DIR/calls"
+case "$queries" in *"DROP SCHEMA"*) echo "DESTRUCTIVE $side" >> "$STUB_DIR/calls" ;; esac
 if [ "$side" = src ] && [ -n "$STUB_SRC_DOWN" ]; then
   echo 'psql: error: connection to server at "127.0.0.1", port 5999 failed: Connection refused' >&2
   exit 2
 fi
 answer() {
   case "$1" in
-    *rolbypassrls*) echo "17|17.6|$STUB_BYPASS" ;;
-    *"rolsuper::text"*) echo "true|17|0" ;;
+    *rolbypassrls*) echo "17|17.6|$STUB_BYPASS|$STUB_SRC_SYSID" ;;
+    *"rolsuper::text"*) echo "true|17|0|$STUB_TGT_SYSID|$STUB_TGT_ADDR_OK" ;;
     *"SELECT 'COUNT'"*) cat "$STUB_DIR/$side.counts" ;;
     *"SELECT 'INV'"*) cat "$STUB_DIR/$side.inventory" ;;
     *"SELECT 'ROLE'"*) printf 'ROLE\tapp_tenant\n' ;;
@@ -98,7 +102,10 @@ pg_restore: error: could not execute query: ERROR:  duplicate key value violates
 DETAIL:  Key (email)=(leaked-person@example.test) already exists.
 Command was: COPY public.candidates (id, email) FROM stdin;
 pg_restore: error: COPY failed for table "candidates": ERROR:  invalid input syntax for type uuid: "leaked-value-123"
-pg_restore: warning: errors ignored on restore: 2
+pg_restore: from TOC entry 4243; 0 16501 TABLE DATA public audit_logs postgres
+pg_restore: error: could not execute query: ERROR:  invalid input syntax for type uuid: "alice@example.test"suffix"
+pg_restore: error: COPY failed for table "audit_logs": ERROR:  invalid input syntax for type uuid: "alice@example.test"suffix"
+pg_restore: warning: errors ignored on restore: 4
 EOF
   exit 1
 fi
@@ -145,6 +152,9 @@ function drill(
     DRILL_PG_BIN: stubs.bin,
     STUB_DIR: stubs.bin,
     STUB_BYPASS: 'true',
+    STUB_SRC_SYSID: '7000000000000000001',
+    STUB_TGT_SYSID: '7000000000000000002',
+    STUB_TGT_ADDR_OK: 'true',
     TMPDIR: stubs.tmp,
     GITHUB_STEP_SUMMARY: summaryFile,
     ...env,
@@ -215,13 +225,75 @@ describe('run-drill.sh — exit 2 means DID NOT RUN, never a pass', () => {
       DRILL_TARGET_URL: 'postgresql://tgt:pw@aws-1-us-west-2.pooler.supabase.com:5432/postgres',
     });
     expect(r.code).toBe(2);
-    expect(r.out).toMatch(/is not loopback/);
+    expect(r.out).toMatch(/must be exactly postgresql:\/\/user:password@\{localhost/);
   });
 
   it('exits 2 when the source exposes fewer tables than DRILL_MIN_TABLES', () => {
     const r = drill(makeStubs('too-few'), { DRILL_MIN_TABLES: '100' });
     expect(r.code).toBe(2);
     expect(r.out).toMatch(/fewer than DRILL_MIN_TABLES=100/);
+  });
+});
+
+describe('run-drill.sh — the restore target must provably be the ephemeral local database', () => {
+  const calls = (bin: string): string => {
+    try {
+      return readFileSync(join(bin, 'calls'), 'utf8');
+    } catch {
+      return '';
+    }
+  };
+
+  for (const [label, url] of [
+    ['?hostaddr= override', `${TGT_URL}?hostaddr=192.0.2.1`],
+    ['?host= override', `${TGT_URL}?host=db.example.invalid`],
+    ['?service= override', `${TGT_URL}?service=prod`],
+    ['a comma host list', 'postgresql://tgt:pw@localhost,db.example.invalid:5998/postgres'],
+    ['a keyword/value connstring', 'host=localhost hostaddr=192.0.2.1 dbname=postgres'],
+  ] as const) {
+    it(`exits 2 on ${label}, before connecting to anything`, () => {
+      const stubs = makeStubs(`target-${label.replace(/\W+/g, '-')}`);
+      const r = drill(stubs, { DRILL_TARGET_URL: url });
+      expect(r.code).toBe(2);
+      expect(r.out).toMatch(/no query parameters/);
+      expect(calls(stubs.bin)).toBe('');
+    });
+  }
+
+  it('clears libpq env vars that could redirect a URL naming no hostaddr/service of its own', () => {
+    const stubs = makeStubs('env-override');
+    const r = drill(stubs, { PGHOSTADDR: '192.0.2.1', PGSERVICE: 'prod' });
+    expect(r.code).toBe(0);
+    expect(calls(stubs.bin)).toMatch(/connect tgt/);
+    expect(calls(stubs.bin)).not.toMatch(/192\.0\.2\.1|=prod/);
+  });
+
+  it('exits 2 when the target is the same cluster as the source, before any destructive statement', () => {
+    const stubs = makeStubs('same-cluster');
+    const r = drill(stubs, { STUB_TGT_SYSID: '7000000000000000001' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/SAME Postgres cluster/);
+    expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it('exits 2 when the source system_identifier cannot be read — identity unproven is not safe', () => {
+    const r = drill(makeStubs('no-sysid'), { STUB_SRC_SYSID: '' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/could not read the source system_identifier/);
+  });
+
+  it('exits 2 when the target server address is neither loopback nor private', () => {
+    const stubs = makeStubs('public-addr');
+    const r = drill(stubs, { STUB_TGT_ADDR_OK: 'false' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/not loopback or private/);
+    expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it('the clean path DOES reach the destructive step (positive control for the assertions above)', () => {
+    const stubs = makeStubs('reaches-drop');
+    expect(drill(stubs).code).toBe(0);
+    expect(calls(stubs.bin)).toMatch(/DESTRUCTIVE tgt/);
   });
 });
 
@@ -246,17 +318,19 @@ describe('run-drill.sh — exit 1 means the drill RAN and the backup is not trus
     expect(r.out).toMatch(/< POLICY public\.candidates tenant_isolation/);
   });
 
-  it('exits 1 on restore errors outside the allow-list, WITHOUT printing row values', () => {
+  it('exits 1 on restore errors outside the allow-list, printing NO message text at all', () => {
     const r = drill(makeStubs('restore-error'), { STUB_RESTORE_ERR: '1' });
     expect(r.code).toBe(1);
-    expect(r.out).toMatch(/2 restore error\(s\)\*\* outside the allow-list/);
-    // The failing object is identified…
-    expect(r.out).toMatch(/TOC entry 4242/);
-    expect(r.out).toMatch(/candidates_email_key/);
-    // …but neither the DETAIL line nor the quoted input value — both are production data.
-    expect(r.out).not.toMatch(/leaked-person/);
-    expect(r.out).not.toMatch(/leaked-value-123/);
-    expect(r.summary).not.toMatch(/leaked/);
+    expect(r.out).toMatch(/4 restore error\(s\)\*\* outside the allow-list/);
+    // The failing objects are identified by TOC entry, with a condition from a closed set…
+    expect(r.out).toMatch(/\[unique_violation\] TOC 4242: TABLE DATA candidates postgres/);
+    expect(r.out).toMatch(/\[invalid_text_representation\] TOC 4243: TABLE DATA public audit_logs postgres/);
+    // …and NOTHING from any message: not the values, not the embedded-quote value that defeated the
+    // old sed redaction (`"alice@example.test"suffix"`), not even the message wording.
+    for (const leaked of ['leaked-person', 'leaked-value-123', 'alice', 'example.test', 'suffix', 'invalid input syntax', 'duplicate key']) {
+      expect(r.out).not.toContain(leaked);
+      expect(r.summary).not.toContain(leaked);
+    }
   });
 });
 
@@ -278,6 +352,18 @@ function stepRun(name: string): string | null {
   }
   return body.join('\n');
 }
+
+describe('run-drill.sh inventory — definitions, not just names', () => {
+  const src = readFileSync(SCRIPT, 'utf8');
+  it('compares full function definitions and trigger enabled state', () => {
+    // Behaviourally proven against real Postgres by local-e2e.sh scenarios 6 (tampered function body)
+    // and 7 (disabled trigger), which both exit 0 without these two terms. Pinned here so a refactor
+    // cannot quietly drop them in a run that has no Docker.
+    expect(src).toMatch(/md5\(CASE WHEN p\.prokind IN \('f', 'p', 'w'\) THEN pg_get_functiondef\(p\.oid\)/);
+    expect(src).toMatch(/' secdef=' \|\| p\.prosecdef/);
+    expect(src).toMatch(/' enabled=' \|\| tg\.tgenabled::text/);
+  });
+});
 
 describe('backup-restore-drill.yml', () => {
   const failFast = stepRun('Fail fast if the credential is absent');

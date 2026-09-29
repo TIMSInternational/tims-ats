@@ -5,7 +5,7 @@
 # Takes a consistent logical dump of production (public + auth) at one exported snapshot, restores it
 # into an EPHEMERAL supabase/postgres service container on this runner, and verifies the restored copy
 # is complete: exact per-table row counts at the snapshot, and an identical schema inventory (tables,
-# columns, indexes, constraints, RLS flags, policies, triggers, functions). Reports RTO and dump size.
+# columns, indexes, constraints, RLS flags, policies, triggers incl. enabled state, full function definitions). Reports RTO and dump size.
 #
 # It does NOT prove Supabase's managed daily backups / PITR — that is a separate quarterly manual
 # step. See docs/runbooks/backup-restore.md, which also has the one-time setup.
@@ -18,7 +18,7 @@
 # PII: production rows (real candidate data) exist only in the dump file on this ephemeral runner and
 # in the service container, both destroyed with the job. The dump is never uploaded as an artifact and
 # is deleted by the script's EXIT trap. The step summary and log carry only names, counts, sizes and
-# timings; restore error text is redacted before printing.
+# timings; restore error message text is never printed (object + condition name only).
 #
 # ⚠️  REQUIRES the `PROD_BACKUP_DRILL_URL` secret: the SESSION-pooler URL (port 5432) of the dedicated
 #     `backup_drill_reader` role created by scripts/backup-drill/create-drill-role.sql. That role has

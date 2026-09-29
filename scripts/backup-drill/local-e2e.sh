@@ -11,6 +11,10 @@
 #   3. a policy dropped from the restored copy       → 1   (inventory mismatch)
 #   4. source host unreachable                       → 2
 #   5. source role WITHOUT BYPASSRLS                 → 2
+#   6. a function body replaced on the restored copy → 1   (function definition mismatch)
+#   7. a trigger disabled on the restored copy       → 1   (trigger enabled-state mismatch)
+#   8. target URL redirected with ?hostaddr=         → 2   (refused before any connection)
+#   9. target is the source cluster itself           → 2   (refused before any destructive statement)
 # Plus: no synthetic PII value appears in any drill output, and no dump file is left behind.
 #
 # Exits 0 only if every scenario produced its expected code.
@@ -115,6 +119,25 @@ scenario "unreachable" 2 DRILL_SOURCE_URL="postgresql://backup_drill_reader:x@12
 
 echo "== scenario 5: source role without BYPASSRLS"
 scenario "no bypassrls" 2 DRILL_SOURCE_URL="postgresql://drill_no_bypass:$DRILL_PW@127.0.0.1:$SRC_PORT/postgres"
+
+echo "== scenario 6: restored copy has a tampered function body (same name + args)"
+fresh_target
+scenario "function tampered" 1 DRILL_TEST_POST_RESTORE_SQL="CREATE OR REPLACE FUNCTION public.touch_updated_at() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RETURN NEW; END \$\$"
+
+echo "== scenario 7: restored copy has a disabled trigger"
+fresh_target
+scenario "trigger disabled" 1 DRILL_TEST_POST_RESTORE_SQL="ALTER TABLE public.candidates DISABLE TRIGGER candidates_touch"
+
+echo "== scenario 8: target URL redirected with ?hostaddr="
+fresh_target
+scenario "hostaddr override" 2 DRILL_TARGET_URL="$TGT_URL?hostaddr=192.0.2.1"
+TGT_AUTH="$(as supabase_admin "$TGT_PORT" -c "SELECT count(*) FROM pg_namespace WHERE nspname = 'auth'")"
+if [ "$TGT_AUTH" = "1" ]; then echo "  PASS  target untouched (image auth schema still present)"; else echo "  FAIL  target was modified"; FAILED=1; fi
+
+echo "== scenario 9: target is the source cluster"
+scenario "target is source" 2 DRILL_TARGET_URL="postgresql://supabase_admin:$ADMIN_PW@127.0.0.1:$SRC_PORT/postgres"
+SRC_ROWS="$(as postgres "$SRC_PORT" -c "SELECT count(*) FROM public.candidates")"
+if [ "$SRC_ROWS" = "250" ]; then echo "  PASS  source untouched (250 candidates)"; else echo "  FAIL  source changed: $SRC_ROWS"; FAILED=1; fi
 
 echo "== PII and leftover checks"
 if grep -rq 'synthetic.example.test\|Synthetic Person' "$OUT"; then
