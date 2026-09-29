@@ -8,4 +8,6 @@ Read-only checks against the live PostgreSQL 17 database found that RLS tenant i
 
 The two migration names were not found in `supabase_migrations.schema_migrations`; their SQL files and the live objects establish the intended schema, but the migration ledger does not establish how they were applied. This recapture does not change production DDL or grants.
 
+All five `services/Tims.Platform/db/flip-ddl/*.sql` bootstrap artifacts were regenerated from the captured baseline. Their generator identity tests pass; they now carry the optional, role-existence-guarded `ci_readonly` SELECT grants as well as the updated source timestamp.
+
 The nightly controls still cannot run in GitHub Actions because the repository has no `PROD_DIRECT_URL` secret. Local read-only checks 14 (RLS) and 17 (least privilege) pass. Check 16 passes against the recaptured baseline, but scheduled verification remains unavailable until the existing `ci_readonly` credential is installed as a GitHub secret and the workflow is rerun.
