@@ -25,7 +25,7 @@ export const offerSigningRouter = router({
           ],
         },
         select: {
-          id: true, status: true, settings: true,
+          id: true, status: true, settings: true, updatedAt: true, expiresAt: true, sentAt: true,
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
         },
@@ -42,37 +42,75 @@ export const offerSigningRouter = router({
         });
       }
 
-      const signingToken = crypto.randomUUID();
-      const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
+      if (!offer.candidate.email) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene correo electrónico' });
+      }
+      if (offer.expiresAt && offer.expiresAt < new Date()) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
+      }
 
-      await db.offer.update({
-        where: { id: input.offerId },
-        data: {
-          status: 'sent',
-          sentAt: new Date(),
-          settings: { ...existingSettings, signingToken },
-        },
-      });
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (!baseUrl) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no está configurada' });
+      }
+      let appUrl: URL;
+      try {
+        appUrl = new URL(baseUrl);
+      } catch {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
+      }
+      if (appUrl.protocol !== 'https:' && appUrl.protocol !== 'http:') {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
+      }
 
-      const signingUrl = `/offers/sign/${signingToken}`;
-
-      // Fire-and-forget: send offer email to candidate
       const org = await db.organization.findFirst({
         where: { id: ctx.user.organizationId },
         select: { name: true },
       });
-      if (offer.candidate.email && org) {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.tims.co';
-        emailService.sendOfferToCandidate({
-          candidateEmail: offer.candidate.email,
-          candidateName: `${offer.candidate.firstName} ${offer.candidate.lastName}`,
-          vacancyTitle: offer.vacancy?.title ?? '',
-          companyName: org.name,
-          signingUrl: `${baseUrl}${signingUrl}`,
-        });
+      if (!org) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Organización no encontrada' });
       }
 
-      return { signingUrl };
+      const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
+      // A retry must reuse the same bearer link so a prior provider-accepted
+      // message cannot point to a newly invalidated token.
+      const existingToken = existingSettings.signingToken;
+      const reusableToken = offer.status === 'sent' && typeof existingToken === 'string' && existingToken.length > 0
+        ? existingToken : null;
+      const signingToken = reusableToken
+        ? reusableToken
+        : crypto.randomUUID();
+
+      if (!reusableToken) {
+        const transition = await db.offer.updateMany({
+          where: {
+            id: offer.id,
+            organizationId: ctx.user.organizationId,
+            status: offer.status,
+            updatedAt: offer.updatedAt,
+          },
+          data: {
+            status: 'sent',
+            sentAt: offer.sentAt ?? new Date(),
+            settings: { ...existingSettings, signingToken },
+          },
+        });
+        if (transition.count !== 1) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta cambió mientras se preparaba el enlace. Vuelve a intentarlo.' });
+        }
+      }
+
+      const signingUrl = `/offers/sign/${signingToken}`;
+      const emailDeliveryAccepted = await emailService.sendOfferToCandidate({
+        candidateEmail: offer.candidate.email,
+        candidateName: `${offer.candidate.firstName} ${offer.candidate.lastName}`,
+        vacancyTitle: offer.vacancy?.title ?? '',
+        companyName: org.name,
+        signingUrl: new URL(signingUrl, appUrl).toString(),
+        expiresAt: offer.expiresAt,
+      });
+
+      return { signingUrl, emailDeliveryAccepted, candidateEmail: offer.candidate.email };
     }),
 
   // PUBLIC: Get offer data by signing token (no auth required)

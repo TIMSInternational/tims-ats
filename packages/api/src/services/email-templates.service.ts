@@ -136,14 +136,16 @@ export const emailTemplates = {
     return { subject: `Cancelación de entrevista — ${p.vacancyTitle}`, html: baseLayout(content, p.companyName) };
   },
 
-  offerSent(p: { candidateName: string; vacancyTitle: string; companyName: string; signingUrl: string; expiresInDays?: number }): { subject: string; html: string } {
-    const days = p.expiresInDays ?? 5;
+  offerSent(p: { candidateName: string; vacancyTitle: string; companyName: string; signingUrl: string; expiresAt?: Date | null }): { subject: string; html: string } {
+    const expiry = p.expiresAt
+      ? paragraph(`<strong>Vigencia:</strong> hasta el ${esc(p.expiresAt.toISOString().slice(0, 16).replace('T', ' '))} UTC.`)
+      : '';
     const content = heading('¡Felicitaciones!') +
       paragraph(`Estimado/a ${esc(p.candidateName)},`) +
       paragraph(`Nos complace extenderle una oferta formal para el cargo de <strong>${esc(p.vacancyTitle)}</strong> en ${esc(p.companyName)}.`) +
       paragraph('Por favor revise los términos de la oferta y, de estar de acuerdo, proceda a firmarla electrónicamente.') +
       ctaButton(p.signingUrl, 'Revisar y Firmar Oferta') +
-      paragraph(`<strong>Importante:</strong> Esta oferta tiene una vigencia de ${days} días calendario a partir de la fecha de envío.`) +
+      expiry +
       paragraph(`Si tiene preguntas sobre los términos, no dude en comunicarse con nosotros.`) +
       paragraph('Cordialmente,<br>Equipo de Talento Humano');
     return { subject: `Oferta laboral — ${p.vacancyTitle} en ${p.companyName}`, html: baseLayout(content, p.companyName) };

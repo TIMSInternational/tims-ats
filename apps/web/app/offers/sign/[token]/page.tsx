@@ -100,7 +100,7 @@ export default function OfferSignPage() {
                   <span className="font-medium text-[#333]">{o.vacancy.title}</span>
                 </div>
                 <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">Salario</span>
+                  <span className="text-[#8B8B8B] block text-xs">{t.offers.annualBaseSalary}</span>
                   <span className="font-medium text-[#333]">{fmtCurrency(o.salary, o.currency)}</span>
                 </div>
                 <div className="text-sm">

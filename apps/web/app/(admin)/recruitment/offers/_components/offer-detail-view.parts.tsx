@@ -1,7 +1,6 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n/index';
-import { toast } from '../../../../../lib/toast';
 import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
 
 /* ── Candidate Header subcomponent ── */
@@ -15,7 +14,13 @@ interface CandidateHeaderProps {
   completedValidations: number;
   totalValidations: number;
   progressPct: number;
-  allComplete: boolean;
+  canAuthorize: boolean;
+  authorizationReason?: string;
+  showHireAction: boolean;
+  isConverted: boolean;
+  isAuthorizing?: boolean;
+  onAuthorize?: () => void;
+  onViewOnboarding?: () => void;
   onViewLetter?: () => void;
   onSendForSigning?: () => void;
   isGeneratingLink?: boolean;
@@ -28,7 +33,13 @@ export function CandidateHeader({
   completedValidations,
   totalValidations,
   progressPct,
-  allComplete,
+  canAuthorize,
+  authorizationReason,
+  showHireAction,
+  isConverted,
+  isAuthorizing,
+  onAuthorize,
+  onViewOnboarding,
   onViewLetter,
   onSendForSigning,
   isGeneratingLink,
@@ -38,18 +49,18 @@ export function CandidateHeader({
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center gap-5">
+      <div className="flex flex-wrap items-center gap-5">
         <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#1F114C] to-[#5C4B99] flex items-center justify-center text-white text-xl font-bold shrink-0">
           {offer.candidate.firstName.charAt(0)}
           {offer.candidate.lastName.charAt(0)}
         </div>
-        <div className="flex-1">
+        <div className="min-w-40 flex-1">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-[18px] font-bold text-[#1F114C]">
               {offer.candidate.firstName} {offer.candidate.lastName}
             </h1>
             <span className="bg-[#5C4B99] text-white text-[10px] font-medium px-2.5 py-0.5 rounded-full">
-              {t.offers.preEmployment}
+              {statusLabel}
             </span>
           </div>
           <p className="text-[13px] text-[#585858]">{offer.vacancy.title}</p>
@@ -77,7 +88,7 @@ export function CandidateHeader({
         </div>
 
         {/* Offer Letter + Signature + Authorize buttons */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#EDEDED] text-[#1F114C] hover:bg-[#F6F6F6] transition"
             onClick={onViewLetter}
@@ -97,20 +108,22 @@ export function CandidateHeader({
             </svg>
             {isGeneratingLink ? t.offers.generating : t.offers.sendForSignature}
           </button>
-          <button
-            className={`px-5 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 ${
-              allComplete
-                ? 'bg-[#DD0C15] text-white hover:bg-red-700 transition'
-                : 'bg-[#EDEDED] text-[#8B8B8B] cursor-not-allowed'
-            }`}
-            disabled={!allComplete}
-            onClick={() => toast(t.offers.authorizeHiringComingSoon, { type: 'info' })}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-            {t.offers.authorizeHiring}
-          </button>
+          {showHireAction && (
+            <button
+              type="button"
+              className={`px-5 py-2.5 rounded-lg text-[13px] font-medium ${canAuthorize && !isAuthorizing ? 'bg-[#DD0C15] text-white hover:bg-red-700' : 'bg-[#EDEDED] text-[#8B8B8B] cursor-not-allowed'}`}
+              disabled={!canAuthorize || isAuthorizing}
+              title={authorizationReason}
+              onClick={onAuthorize}
+            >
+              {t.offers.authorizeHiring}
+            </button>
+          )}
+          {isConverted && onViewOnboarding && (
+            <button type="button" className="px-4 py-2.5 rounded-lg text-[13px] font-medium bg-green-50 text-green-700 hover:bg-green-100" onClick={onViewOnboarding}>
+              {t.offers.viewOnboarding}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -177,7 +190,7 @@ export function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardPr
           </div>
           <div>
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.schedule}</p>
-            <p className="text-[13px] text-[#333]">{terms?.schedule || 'Full-time'}</p>
+            <p className="text-[13px] text-[#333]">{terms?.schedule || '—'}</p>
           </div>
           <div>
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.modality}</p>

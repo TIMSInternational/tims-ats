@@ -9,7 +9,7 @@ const STATUS_MAP: Record<string, { cls: string; label: string }> = {
   draft: { cls: 'bg-gray-100 text-gray-600', label: 'Borrador' },
   pending_approval: { cls: 'bg-amber-50 text-amber-600 border border-amber-200', label: 'Pendiente' },
   approved: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: 'Aprobada' },
-  sent: { cls: 'bg-violet-50 text-violet-600 border border-violet-200', label: 'Enviada' },
+  sent: { cls: 'bg-violet-50 text-violet-600 border border-violet-200', label: 'Enlace activo' },
   accepted: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Aceptada' },
   declined: { cls: 'bg-red-50 text-red-600', label: 'Rechazada' },
   expired: { cls: 'bg-gray-100 text-gray-500', label: 'Expirada' },
