@@ -77,4 +77,16 @@ describe('offer creation application integrity', () => {
       data: expect.objectContaining({ candidateId: CANDIDATE_ID, vacancyId: VACANCY_ID, applicationId: APPLICATION_ID, status: 'draft' }),
     }));
   });
+
+  it('normalizes the currency to a trimmed upper-case ISO code', async () => {
+    await (await caller()).offer.create({ ...input, currency: ' cop ' });
+    expect(offerCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ currency: 'COP' }),
+    }));
+  });
+
+  it.each(['COP$', 'PESOS', 'CO', ''])('rejects a non-ISO currency %j before writing', async (currency) => {
+    await expect((await caller()).offer.create({ ...input, currency })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(offerCreate).not.toHaveBeenCalled();
+  });
 });

@@ -59,6 +59,11 @@ describe('offer salary semantics', () => {
 
   it('formats with the ISO currency code and period, never a bare "$"', () => {
     expect(formatMoneyCode(96_000_000, 'COP')).toBe('COP 96.000.000');
+    expect(formatMoneyCode(96_000_000, ' cop ')).toBe('COP 96.000.000');
+    // A non-ISO legacy value is shown verbatim, never replaced by USD.
+    expect(formatMoneyCode(96_000_000, 'COP$')).toBe('COP$ 96.000.000');
+    expect(formatMoneyCode(96_000_000, 'COP$')).not.toContain('USD');
+    expect(formatMoneyCode(1_500, '')).toBe('1.500');
     const text = formatAnnualOfferSalary(96_000_000, 'COP', labels);
     expect(text).toBe('COP 96.000.000 / año (COP 8.000.000 / mes)');
     expect(text).not.toContain('$');

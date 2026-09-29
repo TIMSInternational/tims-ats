@@ -6,6 +6,10 @@ import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { redactOfferSettings } from './offer-dto';
 
+// ISO-4217-shaped: trimmed and upper-cased so 'cop ' is stored as 'COP'; anything else is rejected
+// instead of being stored and later mis-rendered.
+const currencyCode = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Moneda inválida (código ISO de 3 letras)');
+
 export const offerCrudRouter = router({
   // 9.1 — List offers with filters
   list: permissionProcedure('offer', 'read')
@@ -116,7 +120,7 @@ export const offerCrudRouter = router({
         vacancyId: z.string().uuid(),
         applicationId: z.string().uuid().optional(),
         salary: z.number().positive(),
-        currency: z.string().max(10).default('USD'),
+        currency: currencyCode.default('USD'),
         startDate: z.date(),
         contractType: z.string().max(100),
         benefits: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
@@ -176,7 +180,7 @@ export const offerCrudRouter = router({
       z.object({
         id: z.string().uuid(),
         salary: z.number().positive().optional(),
-        currency: z.string().max(10).optional(),
+        currency: currencyCode.optional(),
         startDate: z.date().optional(),
         contractType: z.string().max(100).optional(),
         benefits: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),

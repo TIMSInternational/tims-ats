@@ -56,9 +56,19 @@ export function vacancyMidpointIn(range: VacancySalaryRange | null, period: Sala
   return Math.round(annualToPeriod(annual, period));
 }
 
-/** "COP 96.000.000" — ISO code + localized digits; never a bare "$". */
+/**
+ * "COP 96.000.000" — ISO code + localized digits; never a bare "$".
+ * A stored value that is not a 3-letter code (legacy rows; the API once accepted any string) is shown
+ * verbatim next to plain digits — never replaced by a guessed currency such as USD.
+ */
 export function formatMoneyCode(amount: number, currency: string, locale = 'es-CO'): string {
-  const code = /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : 'USD';
+  const normalized = currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(normalized)) {
+    const digitsOnly = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(amount);
+    const raw = currency.trim();
+    return raw ? `${raw} ${digitsOnly}` : digitsOnly;
+  }
+  const code = normalized;
   const digits = ZERO_DECIMAL.has(code) || Number.isInteger(amount) ? 0 : 2;
   return new Intl.NumberFormat(locale, {
     style: 'currency',
