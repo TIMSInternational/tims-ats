@@ -86,7 +86,8 @@
  * `tests/security/verify-tenant-grants-failure-paths.test.ts` pins this contract offline. Per #38, a gate
  * whose did-not-run path is untested is not a gate.
  *
- * Read-only: every statement is a SELECT, safe against production.
+ * Read-only: catalog SELECTs plus a session-local SET ROLE to inspect app_tenant's grants.
+ * No database rows or privileges are changed.
  */
 import { readFileSync, writeSync } from 'node:fs';
 import { Client } from 'pg';
