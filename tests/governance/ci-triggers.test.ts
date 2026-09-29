@@ -76,9 +76,9 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     // assertion below while reading nothing at all. `push` is deliberately still pinned
     // to main, so it is the positive control for the same parser.
     for (const w of workflows) {
-      // This production-credential workflow is intentionally schedule/dispatch only.
-      // Its exact exception is independently pinned below, not a general skip.
-      if (w.name === 'nightly-db-controls.yml') continue;
+      // These production-credential workflows are intentionally schedule/dispatch only.
+      // Each exception is independently pinned below, not a general skip.
+      if (w.name === 'nightly-db-controls.yml' || w.name === 'backup-restore-drill.yml') continue;
       const push = triggerBlock(w.src, 'push');
       expect(push, `${w.name}: no on.push block found`).not.toBeNull();
       expect(
@@ -95,6 +95,14 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     expect(triggerBlock(nightly!.src, 'workflow_dispatch')).not.toBeNull();
     // Reject inline maps/arrays too; the narrow block parser only supports empty inline objects.
     expect(nightly!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
+  });
+
+  it('the backup-restore drill remains schedule/dispatch only, never PR-triggered', () => {
+    const drill = workflows.find((w) => w.name === 'backup-restore-drill.yml');
+    expect(drill).toBeDefined();
+    expect(triggerBlock(drill!.src, 'schedule')?.some((line) => /cron:/.test(line))).toBe(true);
+    expect(triggerBlock(drill!.src, 'workflow_dispatch')).not.toBeNull();
+    expect(drill!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
   });
 
   it('no workflow restricts pull_request to a base branch', () => {
