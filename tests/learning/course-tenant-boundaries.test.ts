@@ -10,15 +10,26 @@ const bulkEnroll = vi.fn();
 const createPath = vi.fn();
 const findUser = vi.fn();
 const countUsers = vi.fn();
+const findTeam = vi.fn();
+const findTeamMembers = vi.fn();
+const createCourse = vi.fn();
+const invalidateCache = vi.fn();
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
-    course: { findFirst: findCourse, count: countCourses },
+    course: { findFirst: findCourse, count: countCourses, create: createCourse },
     user: { findFirst: findUser, count: countUsers },
+    team: { findFirst: findTeam },
+    userTeam: { findMany: findTeamMembers },
     enrollment: { create: createEnrollment, createMany: bulkEnroll },
     learningPath: { create: createPath },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
+}));
+vi.mock('../../packages/api/src/lib/cache', () => ({
+  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheSet: vi.fn().mockResolvedValue(undefined),
+  cacheInvalidatePrefix: invalidateCache,
 }));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
@@ -53,6 +64,8 @@ beforeEach(() => {
   countCourses.mockResolvedValue(0);
   findUser.mockResolvedValue({ id: USER_ID });
   countUsers.mockResolvedValue(1);
+  findTeam.mockResolvedValue(null);
+  invalidateCache.mockResolvedValue(undefined);
 });
 
 describe('learning catalog tenant boundaries', () => {
@@ -95,5 +108,20 @@ describe('learning catalog tenant boundaries', () => {
     await expect((await caller()).learning.createPath({ name: 'QA path', courseIds: [COURSE_ID] })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(countCourses).toHaveBeenCalledWith({ where: { id: { in: [COURSE_ID] }, organizationId: ORG_ID, isActive: true } });
     expect(createPath).not.toHaveBeenCalled();
+  });
+
+  it('does not reveal members of a team in another organization', async () => {
+    await expect((await caller()).learning.getTeamProgress({ teamId: COURSE_ID })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(findTeam).toHaveBeenCalledWith({
+      where: { id: COURSE_ID, organizationId: ORG_ID },
+      select: { id: true },
+    });
+    expect(findTeamMembers).not.toHaveBeenCalled();
+  });
+
+  it('invalidates cached learning totals after creating a course', async () => {
+    createCourse.mockResolvedValue({ id: COURSE_ID });
+    await (await caller()).learning.createCourse({ title: 'Beta course', type: 'online', duration: 1 });
+    expect(invalidateCache).toHaveBeenCalledWith(`tims:kpis:learning:${ORG_ID}`);
   });
 });

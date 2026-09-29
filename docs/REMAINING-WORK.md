@@ -1,6 +1,6 @@
 # Known Issues & Remaining Work
 
-- **2026-09-28 learning data integrity (implemented, awaiting deploy):** a tenant with zero courses/enrollments was shown hardcoded growth, gap reduction, learning paths, pre/post-test results, team progress and AI recommendations. The dashboard now displays only API-backed course/enrollment/progress/certificate counts and real learning-path names/course counts, with an honest empty state. Nonfunctional Export controls and hardcoded panels were removed. Course authoring, exports, gap analytics, team reporting and AI recommendations still require real data contracts and implementation before a full Learning beta.
+- **2026-09-28 learning beta refresh (implemented, awaiting deploy):** a tenant with zero courses/enrollments was shown hardcoded growth, gap reduction, learning paths, pre/post-test results, team progress and AI recommendations. The dashboard now displays only API-backed counts and real path/course names, with an honest empty state. Course and path creation are wired to tenant-checked writes, and enrollment validates both course and user organization membership. Learning KPI caches are invalidated on writes. Export, gap analytics, team reporting, and AI recommendations still require real data contracts and implementation before a full Learning beta.
 
 > Single backlog/status reference (rule #1: docs are code — update in the SAME PR as the change).
 > **Truthed-up 2026-07-25 against HEAD `main` (commit `27249b18a3f92460f5a3b0f0841e0eb70c6e183f`, the docs
