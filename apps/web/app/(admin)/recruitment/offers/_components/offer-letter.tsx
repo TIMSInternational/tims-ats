@@ -1,6 +1,7 @@
 'use client';
 
-import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
+import { formatDate } from '../../../../../lib/format-utils';
+import { formatAnnualOfferSalary } from '../../../../../lib/offer-salary';
 import { useI18n } from '../../../../../lib/i18n';
 
 interface OfferLetterProps {
@@ -87,7 +88,7 @@ export function OfferLetter({
             <tr className="border-b border-[#F6F6F6]">
               <td className="py-2 text-[#8B8B8B] w-40 font-sans">{t.offers.annualBaseSalary}</td>
               <td className="py-2 font-semibold text-[#1F114C]">
-                {formatCurrency(offer.salary, offer.currency)}
+                {formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}
               </td>
             </tr>
             <tr className="border-b border-[#F6F6F6]">

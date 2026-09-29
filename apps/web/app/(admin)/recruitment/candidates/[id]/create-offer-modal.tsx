@@ -6,6 +6,9 @@ import { Modal } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import type { CandidateDetail } from '../../../../../lib/trpc-types';
+import { annualToPeriod, formatMoneyCode, parseVacancySalary, toAnnualSalary, vacancyMidpointIn, type SalaryPeriod } from '../../../../../lib/offer-salary';
+import { describeOfferActionError } from '../../../../../lib/offer-action-error';
+import { toast } from '../../../../../lib/toast';
 
 type Application = CandidateDetail['applications'][number];
 
@@ -21,25 +24,41 @@ export function CreateOfferModal({
   const { t } = useI18n();
   const router = useRouter();
   const [applicationId, setApplicationId] = useState(applications[0]?.id ?? '');
+  const initialRange = parseVacancySalary(applications[0]?.vacancy.salary);
   const [salary, setSalary] = useState('');
-  const [currency, setCurrency] = useState('COP');
+  const [period, setPeriod] = useState<SalaryPeriod>(initialRange?.period ?? 'monthly');
+  const [currency, setCurrency] = useState(initialRange?.currency ?? 'COP');
   const [startDate, setStartDate] = useState('');
   const [contractType, setContractType] = useState('');
   const [error, setError] = useState<string | null>(null);
   const create = trpc.offer.create.useMutation();
   const application = applications.find((item) => item.id === applicationId);
+  const vacancyRange = parseVacancySalary(application?.vacancy.salary);
+  const placeholderAmount = vacancyMidpointIn(vacancyRange, period);
   const salaryValue = Number(salary);
-  const isValid = !!application && Number.isFinite(salaryValue) && salaryValue > 0 && !!startDate && !!contractType.trim();
+  const isSalaryValid = salary.trim() !== '' && Number.isFinite(salaryValue) && salaryValue > 0;
+  const annualSalary = isSalaryValid ? toAnnualSalary(salaryValue, period) : null;
+  const isValid = !!application && annualSalary !== null && !!startDate && !!contractType.trim();
+
+  const selectApplication = (id: string) => {
+    setApplicationId(id);
+    const range = parseVacancySalary(applications.find((item) => item.id === id)?.vacancy.salary);
+    if (range) {
+      setPeriod(range.period);
+      if (range.currency) setCurrency(range.currency);
+    }
+  };
 
   const handleCreate = async () => {
-    if (!application || !isValid) return;
+    if (!application || !isValid || annualSalary === null) return;
     setError(null);
     try {
       await create.mutateAsync({
         candidateId,
         vacancyId: application.vacancy.id,
         applicationId,
-        salary: salaryValue,
+        // Offer.salary is an ANNUAL base salary — convert explicitly from the entered period.
+        salary: annualSalary,
         currency,
         startDate: new Date(`${startDate}T12:00:00`),
         contractType: contractType.trim(),
@@ -47,7 +66,9 @@ export function CreateOfferModal({
       onClose();
       router.push('/recruitment/offers');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t.common.error);
+      const message = describeOfferActionError(cause, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction });
+      setError(message);
+      toast(message, { type: 'error' });
     }
   };
 
@@ -56,24 +77,39 @@ export function CreateOfferModal({
       <div className="space-y-4">
         <label className="block text-[12px] font-medium text-[#585858]">
           {t.offers.colVacancy}
-          <select value={applicationId} onChange={(event) => setApplicationId(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px] text-[#333]">
+          <select value={applicationId} onChange={(event) => selectApplication(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px] text-[#333]">
             {applications.map((item) => <option key={item.id} value={item.id}>{item.vacancy.title}</option>)}
           </select>
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <label className="block text-[12px] font-medium text-[#585858]">
-            {t.offers.annualBaseSalary}
-            <input type="number" min="1" step="0.01" value={salary} onChange={(event) => setSalary(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
+            {t.offers.salaryAmount}
+            <input type="number" min="1" step="0.01" value={salary} placeholder={placeholderAmount !== null ? String(placeholderAmount) : undefined} onChange={(event) => setSalary(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
+          </label>
+          <label className="block text-[12px] font-medium text-[#585858]">
+            {t.offers.salaryPeriod}
+            <select value={period} onChange={(event) => setPeriod(event.target.value === 'yearly' ? 'yearly' : 'monthly')} className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]">
+              <option value="monthly">{t.offers.periodMonthly}</option>
+              <option value="yearly">{t.offers.periodYearly}</option>
+            </select>
           </label>
           <label className="block text-[12px] font-medium text-[#585858]">
             {t.offers.currency}
             <select value={currency} onChange={(event) => setCurrency(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]">
-              <option value="COP">COP</option>
-              <option value="USD">USD</option>
-              <option value="MXN">MXN</option>
+              {Array.from(new Set(['COP', 'USD', 'MXN', currency])).map((code) => <option key={code} value={code}>{code}</option>)}
             </select>
           </label>
         </div>
+        {placeholderAmount !== null && (
+          <p className="text-[11px] text-[#8B8B8B]">{t.offers.salaryPlaceholderHint.replace('{amount}', formatMoneyCode(placeholderAmount, currency))}</p>
+        )}
+        {annualSalary !== null && (
+          <p data-testid="offer-salary-equivalents" className="text-[12px] font-medium text-[#1F114C]">
+            {t.offers.salaryEquivalents
+              .replace('{annual}', formatMoneyCode(annualSalary, currency))
+              .replace('{monthly}', formatMoneyCode(annualToPeriod(annualSalary, 'monthly'), currency))}
+          </p>
+        )}
         <label className="block text-[12px] font-medium text-[#585858]">
           {t.offers.startDate}
           <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
