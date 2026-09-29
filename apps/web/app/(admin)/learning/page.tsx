@@ -1,17 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { toast } from '../../../lib/toast';
+import { CreateCourseModal } from './create-course-modal';
+import { CreatePathModal } from './create-path-modal';
 import { LearningKpis } from './learning-kpis';
 import { CourseCatalog } from './course-catalog';
 import { LearningPathsPanel } from './learning-paths-panel';
-import { PrePostTest } from './pre-post-test';
-import { TeamProgressTable } from './team-progress-table';
-import { AiRecommendations } from './ai-recommendations';
 
 export default function LearningPage() {
   const { t } = useI18n();
+  const [showCreateCourse, setShowCreateCourse] = useState(false);
+  const [showCreatePath, setShowCreatePath] = useState(false);
   const kpis = trpc.learning.getDashboardKpis.useQuery();
   const courses = trpc.learning.listCourses.useQuery({ pageSize: 50 });
   const paths = trpc.learning.listPaths.useQuery();
@@ -30,19 +31,9 @@ export default function LearningPage() {
           </svg>
           <span className="text-sm font-medium text-[#1F114C]">{t.learning.title}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => toast(`${t.common.export}: ${t.common.comingSoon}`, { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            {t.learning.export}
-          </button>
-          <button onClick={() => toast(`${t.common.create}: ${t.common.comingSoon}`, { type: 'info' })} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            {t.learning.newCourse}
-          </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setShowCreatePath(true)} disabled={courseItems.length === 0} className="rounded-lg border border-[#1F114C] px-4 py-2 text-[12px] font-medium text-[#1F114C] disabled:opacity-50">{t.learning.createPath}</button>
+          <button type="button" onClick={() => setShowCreateCourse(true)} className="rounded-lg bg-[#DD0C15] px-4 py-2 text-[12px] font-medium text-white">{t.learning.newCourse}</button>
         </div>
       </div>
 
@@ -56,8 +47,7 @@ export default function LearningPage() {
           t={t.learning}
         />
 
-        {/* Middle: 2-column */}
-        <div className="flex flex-col md:flex-row gap-4 mb-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <CourseCatalog
             courses={courseItems}
             loading={courses.isLoading}
@@ -65,7 +55,7 @@ export default function LearningPage() {
             onRetry={() => courses.refetch()}
             t={t.learning}
           />
-          <div className="w-full md:w-[45%] flex flex-col gap-4">
+          <div className="w-full md:w-[45%]">
             <LearningPathsPanel
               paths={pathItems}
               loading={paths.isLoading}
@@ -73,16 +63,11 @@ export default function LearningPage() {
               onRetry={() => paths.refetch()}
               t={t.learning}
             />
-            <PrePostTest t={t.learning} />
           </div>
         </div>
-
-        {/* Bottom Row */}
-        <div className="flex flex-col md:flex-row gap-4">
-          <TeamProgressTable t={t.learning} />
-          <AiRecommendations t={t.learning} />
-        </div>
       </div>
+      {showCreateCourse && <CreateCourseModal onClose={() => setShowCreateCourse(false)} />}
+      {showCreatePath && <CreatePathModal courses={courseItems} onClose={() => setShowCreatePath(false)} />}
     </div>
   );
 }

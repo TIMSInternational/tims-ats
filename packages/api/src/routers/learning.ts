@@ -5,7 +5,10 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
 import { mergeAvgProgress } from './learning-progress';
-import { cacheGet, cacheSet } from '../lib/cache';
+import { cacheGet, cacheSet, cacheInvalidatePrefix } from '../lib/cache';
+
+const invalidateLearningKpis = (organizationId: string) =>
+  cacheInvalidatePrefix(`tims:kpis:learning:${organizationId}`);
 
 // Courses + learning paths are an ORG-LEVEL catalog — deliberately unscoped
 // (people scoping applies to enrollments/certificates, the user-anchored rows).
@@ -73,7 +76,7 @@ export const learningRouter = router({
         include: {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           enrollments: {
-            where: enrollScope as Prisma.EnrollmentWhereInput,
+            where: { AND: [{ organizationId: ctx.user.organizationId }, enrollScope as Prisma.EnrollmentWhereInput] },
             include: {
               user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
             },
@@ -100,7 +103,7 @@ export const learningRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { content, ...rest } = input;
-      return db.course.create({
+      const course = await db.course.create({
         data: {
           ...rest,
           ...(content !== undefined && { content: content as unknown as Prisma.InputJsonObject }),
@@ -108,6 +111,8 @@ export const learningRouter = router({
           createdById: ctx.user.id,
         },
       });
+      await invalidateLearningKpis(ctx.user.organizationId);
+      return course;
     }),
 
   updateCourse: permissionProcedure('learning', 'update')
@@ -126,13 +131,15 @@ export const learningRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, content, ...data } = input;
-      return db.course.update({
+      const course = await db.course.update({
         where: { id, organizationId: ctx.user.organizationId },
         data: {
           ...data,
           ...(content !== undefined && { content: content as unknown as Prisma.InputJsonObject }),
         },
       });
+      await invalidateLearningKpis(ctx.user.organizationId);
+      return course;
     }),
 
   // ── Enrollments ──────────────────────────────────────────────────────
@@ -147,7 +154,20 @@ export const learningRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertSubjectInScope(ctx.access, ctx.user.id, input.userId, 'No puedes inscribir a este usuario');
 
-      return db.enrollment.create({
+      const [course, user] = await Promise.all([
+        db.course.findFirst({
+          where: { id: input.courseId, organizationId: ctx.user.organizationId, isActive: true },
+          select: { id: true },
+        }),
+        db.user.findFirst({
+          where: { id: input.userId, organizationId: ctx.user.organizationId, isActive: true },
+          select: { id: true },
+        }),
+      ]);
+      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario activo no encontrado en esta organizacion' });
+
+      const enrollment = await db.enrollment.create({
         data: {
           organizationId: ctx.user.organizationId,
           userId: input.userId,
@@ -155,6 +175,8 @@ export const learningRouter = router({
           status: 'enrolled',
         },
       });
+      await invalidateLearningKpis(ctx.user.organizationId);
+      return enrollment;
     }),
 
   bulkEnroll: permissionProcedure('learning', 'create')
@@ -167,6 +189,19 @@ export const learningRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Dedupe target ids first to avoid redundant checks.
       const uniqueTargets = [...new Set(input.userIds)];
+
+      const course = await db.course.findFirst({
+        where: { id: input.courseId, organizationId: ctx.user.organizationId, isActive: true },
+        select: { id: true },
+      });
+      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
+
+      const userCount = await db.user.count({
+        where: { id: { in: uniqueTargets }, organizationId: ctx.user.organizationId, isActive: true },
+      });
+      if (userCount !== uniqueTargets.length) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas usuarios activos no pertenecen a esta organizacion' });
+      }
 
       // At narrow scope every target must be within the caller's subject set.
       // Compute the set once (mirrors assertSubjectInScope logic) and set-diff.
@@ -196,10 +231,12 @@ export const learningRouter = router({
         progress: 0,
       }));
 
-      return db.enrollment.createMany({
+      const enrolled = await db.enrollment.createMany({
         data,
         skipDuplicates: true,
       });
+      await invalidateLearningKpis(ctx.user.organizationId);
+      return enrolled;
     }),
 
   updateProgress: permissionProcedure('learning', 'update')
@@ -220,7 +257,7 @@ export const learningRouter = router({
       const status = progress >= 100 ? 'completed' : 'in_progress';
       const completedAt = progress >= 100 ? new Date() : undefined;
 
-      return db.enrollment.update({
+      const enrollment = await db.enrollment.update({
         where: { id: enrollmentId, organizationId: ctx.user.organizationId },
         data: {
           progress,
@@ -229,6 +266,8 @@ export const learningRouter = router({
           ...scores,
         },
       });
+      await invalidateLearningKpis(ctx.user.organizationId);
+      return enrollment;
     }),
 
   // ── Learning Paths ───────────────────────────────────────────────────
@@ -258,13 +297,22 @@ export const learningRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { courseIds, ...pathData } = input;
-      return db.learningPath.create({
+      const uniqueCourseIds = [...new Set(courseIds ?? [])];
+      if (uniqueCourseIds.length > 0) {
+        const courseCount = await db.course.count({
+          where: { id: { in: uniqueCourseIds }, organizationId: ctx.user.organizationId, isActive: true },
+        });
+        if (courseCount !== uniqueCourseIds.length) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas cursos no pertenecen a esta organizacion' });
+        }
+      }
+      const path = await db.learningPath.create({
         data: {
           ...pathData,
           organizationId: ctx.user.organizationId,
-          ...(courseIds && {
+          ...(uniqueCourseIds.length > 0 && {
             courses: {
-              create: courseIds.map((courseId, index) => ({
+              create: uniqueCourseIds.map((courseId, index) => ({
                 courseId,
                 order: index + 1,
               })),
@@ -275,6 +323,8 @@ export const learningRouter = router({
           courses: { include: { course: true }, orderBy: { order: 'asc' } },
         },
       });
+      await invalidateLearningKpis(ctx.user.organizationId);
+      return path;
     }),
 
   // AI-driven gap-based learning paths.
@@ -330,6 +380,13 @@ export const learningRouter = router({
   getTeamProgress: permissionProcedure('learning', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const team = await db.team.findFirst({
+        where: { id: input.teamId, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!team) throw new TRPCError({ code: 'NOT_FOUND', message: 'Equipo no encontrado' });
+      await assertScoped('team', input.teamId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const members = await db.userTeam.findMany({
         where: { teamId: input.teamId },
         select: { userId: true },
@@ -405,7 +462,7 @@ export const learningRouter = router({
         },
       });
 
-      return db.certificate.create({
+      const certificate = await db.certificate.create({
         data: {
           organizationId: ctx.user.organizationId,
           enrollmentId: enrollment.id,
@@ -414,6 +471,8 @@ export const learningRouter = router({
           ...(input.expiresAt && { expiresAt: new Date(input.expiresAt) }),
         },
       });
+      await invalidateLearningKpis(ctx.user.organizationId);
+      return certificate;
     }),
 
   // ── Dashboard KPIs ───────────────────────────────────────────────────
