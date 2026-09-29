@@ -51,10 +51,7 @@ export function hardExitTarget(click: AnchorClick): string | null {
  * every soft navigation through window.history.pushState/replaceState, so
  * intercepting it catches exits that never produce an anchor click.
  */
-export function historyExitTarget(
-  url: string | URL | null | undefined,
-  currentHref: string,
-): string | null {
+export function historyExitTarget(url: string | URL | null | undefined, currentHref: string): string | null {
   if (url === null || url === undefined) return null;
   let next: URL;
   let current: URL;
