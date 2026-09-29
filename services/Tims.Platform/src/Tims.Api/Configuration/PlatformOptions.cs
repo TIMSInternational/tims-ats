@@ -631,6 +631,14 @@ public sealed class PlatformOptions
     public bool PlatformInvitationResendEnabled { get; init; }
 
     /// <summary>
+    /// Default-disabled company-admin team invitations (<c>/tenant-invitations</c>): list grantable roles,
+    /// list/create/resend/revoke invitations for the CALLER'S OWN organization only. Gated by
+    /// <c>user:create</c> at organization scope plus InvitationGrantPolicy (no role above the caller's own).
+    /// Independent of the platform-owner invitation flags.
+    /// </summary>
+    public bool TenantInvitationsEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 slice 23 (issue #81) — the platform-owner DASHBOARD READ surface: the C# port of ALL
     /// THIRTEEN procedures of <c>routers/platform/dashboard*.ts</c>, shipped in four steps.
     ///   • PR 1: <c>getPlanDistribution</c>, <c>getUserGrowth</c>, <c>getRecentActivity</c>.
