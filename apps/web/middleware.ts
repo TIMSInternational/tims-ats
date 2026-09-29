@@ -40,6 +40,13 @@ const CSP_ORIGINS: CspOrigins = {
   ),
 };
 
+// Module scope => logged once per middleware instance, never per request.
+if (process.env.CV_UPLOADS_BUCKET && !CSP_ORIGINS.cvUpload) {
+  console.warn(
+    '[csp] CV_UPLOADS_BUCKET is set but its S3 origin could not be derived (unsupported region/partition or invalid name); CV uploads will be blocked by connect-src.',
+  );
+}
+
 // A path is public when it IS one of PUBLIC_PATHS or is nested under one
 // (segment-aware: '/offers/sign' does not make '/offers/signatures' public).
 function isPublicPathname(pathname: string): boolean {

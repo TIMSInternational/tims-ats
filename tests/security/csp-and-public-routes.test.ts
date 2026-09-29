@@ -1,11 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Via packages/api's copy (the one s3.ts uses) — root tsc cannot resolve the bare specifier.
 import { S3Client } from '../../packages/api/node_modules/@aws-sdk/client-s3';
 import { createPresignedPost } from '../../packages/api/node_modules/@aws-sdk/s3-presigned-post';
 import { NextRequest } from '../../apps/web/node_modules/next/server';
-import { buildCsp, isDailyCallRoute, s3PresignedPostOrigin } from '../../apps/web/lib/security/csp';
+import { hardExitTarget, type AnchorClick } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/hard-exit';
+import { buildCsp, isDailyCallRoute, isSupportedS3Region, s3PresignedPostOrigin } from '../../apps/web/lib/security/csp';
 
 const state = vi.hoisted(() => ({ user: null as null | { id: string } }));
 vi.mock('@tims/auth/middleware', () => ({
@@ -48,9 +49,23 @@ describe('F5 — CV upload S3 origin in connect-src', () => {
     ['tims-cv-uploads', 'us-east-1'],
     ['tims-cv-uploads', 'us-west-2'],
     ['tims.cv.dotted', 'eu-west-1'],
+    ...[
+      'eu-central-1', 'ap-southeast-2', 'ap-northeast-1', 'sa-east-1', 'ca-central-1', 'me-south-1',
+      'af-south-1', 'il-central-1', 'mx-central-1', 'us-gov-west-1', 'ap-southeast-5',
+    ].flatMap((r) => [['tims-cv-uploads', r], ['tims.cv.dotted', r]]),
   ])('matches the SDK presigned-POST origin for bucket %s in %s', async (bucket, region) => {
+    expect(s3PresignedPostOrigin(bucket, region)).not.toBe('');
     expect(s3PresignedPostOrigin(bucket, region)).toBe(await sdkOrigin(bucket, region));
   });
+
+  it.each(['cn-north-1', 'cn-northwest-1', 'us-iso-east-1', 'us-isob-east-1', 'eusc-de-east-1'])(
+    'returns NO origin for non-amazonaws.com partition %s (the SDK uses another DNS suffix there)',
+    async (region) => {
+      expect(isSupportedS3Region(region)).toBe(false);
+      expect(s3PresignedPostOrigin('tims-cv-uploads', region)).toBe('');
+      expect(await sdkOrigin('tims-cv-uploads', region)).not.toMatch(/\.amazonaws\.com$/);
+    },
+  );
 
   it('defaults the region to us-east-1 exactly like packages/api/src/lib/s3.ts', () => {
     expect(s3PresignedPostOrigin('tims-cv', undefined)).toBe('https://tims-cv.s3.us-east-1.amazonaws.com');
@@ -206,5 +221,59 @@ describe('F3 — client wiring the room CSP depends on', () => {
     const src = readFileSync(resolve(ROOM, 'interview-table.tsx'), 'utf8');
     expect(src).toMatch(/<a\s+href=\{`\/recruitment\/interviews\/\$\{iv\.id\}\/room`\}/);
     expect(src).not.toMatch(/<Link\s+href=\{`\/recruitment\/interviews\/\$\{iv\.id\}\/room`\}/);
+  });
+});
+
+describe('F3 — leaving the room never carries its relaxed CSP (full document navigation)', () => {
+  const ROOM_DIR = 'apps/web/app/(admin)/recruitment/interviews/[id]/room';
+  const roomFiles = readdirSync(resolve(ROOM_DIR)).filter((f) => /\.tsx?$/.test(f));
+
+  it.each(roomFiles)('%s has no soft-navigation primitive (router.push / next/link / useRouter)', (file) => {
+    const src = readFileSync(resolve(ROOM_DIR, file), 'utf8');
+    expect(src).not.toMatch(/from ['"]next\/link['"]/);
+    expect(src).not.toMatch(/\buseRouter\b/);
+    expect(src).not.toMatch(/\brouter\.(push|replace|back|forward)\b/);
+  });
+
+  it.each(['interview-top-bar.tsx', 'video-controls.tsx'])('%s exits via hardNavigate', (file) => {
+    const src = readFileSync(resolve(ROOM_DIR, file), 'utf8');
+    expect(src).toMatch(/hardNavigate\(ROOM_EXIT_PATH\)/);
+  });
+
+  it('the room layout mounts the HardExitGuard (covers admin-shell next/link + back/forward)', () => {
+    const src = readFileSync(resolve(ROOM_DIR, 'layout.tsx'), 'utf8');
+    expect(src).toMatch(/<HardExitGuard \/>/);
+    const guard = readFileSync(resolve(ROOM_DIR, 'hard-exit-guard.tsx'), 'utf8');
+    expect(guard).toMatch(/addEventListener\('click', onClick, true\)/);
+    expect(guard).toMatch(/addEventListener\('popstate'/);
+  });
+
+  const base: AnchorClick = {
+    href: '/dashboard',
+    currentHref: 'https://app.tims.com/recruitment/interviews/abc/room',
+    target: null,
+    hasDownload: false,
+    button: 0,
+    hasModifier: false,
+    defaultPrevented: false,
+  };
+
+  it('turns a plain in-app link click into a full navigation', () => {
+    expect(hardExitTarget(base)).toBe('https://app.tims.com/dashboard');
+    expect(hardExitTarget({ ...base, href: 'https://app.tims.com/recruitment/interviews', target: '_self' })).toBe(
+      'https://app.tims.com/recruitment/interviews',
+    );
+  });
+
+  it.each([
+    ['new tab', { target: '_blank' }],
+    ['download', { hasDownload: true }],
+    ['modifier key', { hasModifier: true }],
+    ['middle click', { button: 1 }],
+    ['already handled', { defaultPrevented: true }],
+    ['external origin', { href: 'https://docs.daily.co/x' }],
+    ['same document hash', { href: '#notes' }],
+  ])('leaves %s to the browser', (_label, patch) => {
+    expect(hardExitTarget({ ...base, ...patch })).toBeNull();
   });
 });

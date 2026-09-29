@@ -1,14 +1,13 @@
 'use client';
 
+import { hardNavigate, ROOM_EXIT_PATH } from './hard-exit';
 import { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useDaily, useMeetingState, useDailyEvent } from '@daily-co/daily-react';
 import { useI18n } from '../../../../../../lib/i18n';
 
 export function VideoControls() {
   const { t } = useI18n();
   const daily = useDaily();
-  const router = useRouter();
   const meetingState = useMeetingState();
   const isJoined = meetingState === 'joined-meeting';
 
@@ -49,8 +48,8 @@ export function VideoControls() {
 
   const handleLeave = useCallback(() => {
     if (daily) daily.leave().catch(() => {});
-    router.push('/recruitment/interviews');
-  }, [daily, router]);
+    hardNavigate(ROOM_EXIT_PATH);
+  }, [daily]);
 
   const btnBase = 'w-10 h-10 rounded-full flex items-center justify-center transition-colors relative';
   const btnDisabled = 'bg-white/5 cursor-not-allowed';

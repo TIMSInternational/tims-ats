@@ -18,7 +18,17 @@ export function originOf(url: string | undefined): string {
   }
 }
 
-const AWS_REGION_RE = /^[a-z]{2}(-[a-z]+)+-\d{1,2}$/;
+// Only regions whose S3 endpoints live under `amazonaws.com`: the standard
+// `aws` partition plus `aws-us-gov` (us-gov-*). Other partitions use other
+// DNS suffixes (cn-* -> amazonaws.com.cn, us-iso-* -> c2s.ic.gov, us-isob-* ->
+// sc2s.sgov.gov, eusc-* -> amazonaws.eu), so they are deliberately unsupported
+// and yield no origin rather than a wrong one.
+const AWS_REGION_RE = /^(?:(?:us|eu|ap|sa|ca|me|af|il|mx)-[a-z]+|us-gov-[a-z]+)-\d{1,2}$/;
+
+/** True when `s3PresignedPostOrigin` can derive this region's endpoint. */
+export function isSupportedS3Region(region: string): boolean {
+  return AWS_REGION_RE.test(region);
+}
 // @aws-sdk/s3-presigned-post (via the S3 client's bucket-endpoint logic) uses a
 // virtual-hosted URL only for DNS-compatible bucket names WITHOUT dots over
 // https; anything else is addressed path-style on the regional endpoint.
