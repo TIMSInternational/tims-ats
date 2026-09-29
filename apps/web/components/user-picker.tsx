@@ -34,7 +34,8 @@ interface UserPickerProps {
   /**
    * When set, the list comes from the tenant assignable-people directory for this purpose (C# behind
    * NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP, tRPC user.list otherwise) — so a recruiter without
-   * user:read can still pick evaluators and approvers once the directory is live.
+   * user:read can still pick evaluators and approvers once the directory is live. Eligibility is
+   * permission-based, not scope-aware: the submit mutation re-checks scope and callers must show its error.
    */
   purpose?: AssignablePurpose;
   /** Focus the search box on mount (modals). Inline pickers on a page pass false. Defaults to true. */

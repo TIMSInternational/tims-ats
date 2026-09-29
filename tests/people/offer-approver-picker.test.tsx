@@ -83,4 +83,26 @@ describe('offer approval actions — approver picker', () => {
     await waitFor(() => expect(submitMutateAsync).toHaveBeenCalledWith({ id: OFFER_ID, approverIds: [ZOE.id] }));
     await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
   });
+
+  it('shows the server scope rejection when the picked approver cannot act on this offer', async () => {
+    // Codex #304 round 2: the directory is permission-based, not scope-aware, so an unrelated-team leader
+    // can be listed; submitForApproval rejects them and the panel must say why instead of failing silently.
+    const scopeError = 'Uno o mas aprobadores no tienen esta oferta dentro de su alcance';
+    submitMutateAsync.mockRejectedValue(new Error(scopeError));
+    const { OfferApprovalActions } =
+      await import('../../apps/web/app/(admin)/recruitment/offers/_components/offer-approval-actions');
+    const onUpdated = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <OfferApprovalActions offerId={OFFER_ID} status="draft" approvals={[]} onUpdated={onUpdated} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'zoe' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Zoe Zamora/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Solicitar aprobación|Request approval)$/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(scopeError);
+    expect(onUpdated).not.toHaveBeenCalled();
+  });
 });

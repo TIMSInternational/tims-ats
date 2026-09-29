@@ -12,8 +12,11 @@ public enum AssignablePurpose
 
 /// <summary>
 /// The permission the CALLER must hold to open a picker, plus the permission an assignable person must
-/// hold to be offered at all (null = any active member of the organization). Approver pickers list only
-/// people the server's approve step can accept, so a picker never proposes someone the write will reject.
+/// hold to be offered at all (null = any active member of the organization). Eligibility is PERMISSION-based
+/// only: it is not scope-aware. A scope-limited approver (e.g. a leader holding offer:approve at team scope)
+/// is listed even for a record outside their scope; the submit step re-checks each approver's scope against
+/// the specific record and rejects the submission with a user-visible error instead of storing an approver
+/// who could never act.
 /// </summary>
 public sealed record AssignablePurposeRule(
     string CallerModule,
