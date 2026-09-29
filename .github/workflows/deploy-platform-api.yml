@@ -47,20 +47,38 @@ on:
         description: "Why are you deploying by hand? (recorded in the job summary)"
         required: true
 
-# NEVER cancel a deploy in flight. `cancel-in-progress: true` — correct for CI, where a superseded run
-# is wasted work — would here abort a rolling App Runner deployment partway through and leave the
-# service in an operation state that blocks the next run.
+# ── CONCURRENCY: ONE LOCK FOR EVERY update-service (Codex round 2, 2026-09-29) ─────────────────────
+# There is deliberately NO workflow-level `concurrency`. At workflow level every `workflow_run`
+# completion entered the group — including failed/cancelled CI runs that `decide` then skips — and
+# GitHub's default queue keeps ONE pending run per group, so an ineligible completion could replace (and
+# cancel) a pending, valid deploy. `decide` is read-only and runs unlocked; its `if:` keeps ineligible
+# events from ever reaching `deploy`, and a job skipped by its `if:` never enters a concurrency group.
 #
-# The rollback workflow deliberately uses its OWN group. GitHub keeps one PENDING run per group and
-# REPLACES it with any newer one, so a shared group would let a CI-triggered deploy silently cancel a
-# queued emergency rollback. Instead the two coordinate explicitly: rollback refuses unless deploys
-# are already paused, and this workflow runs scripts/deploy/apprunner-preflight.sh right before
-# update-service (refuses while paused, while any rollback run is queued or running, or if the live
-# image changed since `decide` read it).
-concurrency:
-  group: deploy-platform-api
-  cancel-in-progress: false
-
+# Only the MUTATING `deploy` job takes the lock, and rollback-platform-api.yml's `rollback` job takes
+# the SAME one (`platform-api-mutation`). The two update-service paths are therefore serialized: a
+# rollback can no longer complete between this job's preflight and its update-service — the race that
+# per-workflow groups could not close, because App Runner's UpdateService has no expected-image
+# precondition.
+#
+#   - `cancel-in-progress: false` — NEVER abort a rolling App Runner deployment partway; that leaves
+#     the service in an operation state that blocks the next run.
+#   - `queue: max` — a NON-replacing FIFO queue (up to 100 pending), so a pending rollback is never
+#     displaced by a deploy that arrives after it, and a pending deploy is never displaced by a newer
+#     one. (actionlint <= 1.7.12 predates this documented key and flags it; GitHub accepts it.)
+#
+# What the lock does NOT solve, and what covers it (scripts/deploy/apprunner-preflight.sh --deploy):
+#   (a) FIFO order is by when each job started waiting, which GitHub does not guarantee matches commit
+#       order, so an OLDER green commit can reach the lock after a newer one. The preflight resolves the
+#       live tag: same-or-newer than this commit -> skip (exit 3); older -> deploy over it. Production
+#       never regresses below what is live; /gate check 21 and the next merge catch any residue.
+#   (b) A deploy decided BEFORE the pause can still be queued AHEAD of a rollback. The preflight refuses
+#       if any rollback run was created at or after this deploy run, so it stands down and the rollback
+#       runs next. (If the queue ever overflows 100, GitHub cancels the newest arrival — a rollback run
+#       shown as cancelled must be re-dispatched.)
+#   (c) A rollback dispatched while a deploy holds the lock WAITS and runs after it, so the rollback is
+#       the last writer — the intended outcome. It may wait out the build (see the runbook).
+#   (d) Out-of-band changes (console / CLI update-service) are not serialized by any group. The
+#       preflight's live-image check narrows that window but cannot close it.
 permissions:
   id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
   contents: read
@@ -190,15 +208,22 @@ jobs:
   deploy:
     name: Build, push and deploy
     needs: decide
-    if: needs.decide.outputs.deploy == 'true'
+    # The pause is re-checked here so a paused run never even queues for the lock.
+    if: needs.decide.outputs.deploy == 'true' && vars.PLATFORM_API_AUTODEPLOY_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # The one lock shared with rollback-platform-api.yml's `rollback` job — see the header above.
+    concurrency:
+      group: platform-api-mutation
+      cancel-in-progress: false
+      queue: max
 
     steps:
       - uses: actions/checkout@v5
         with:
           # The exact commit .NET Platform CI passed on — never "whatever main is now".
           ref: ${{ needs.decide.outputs.sha }}
+          fetch-depth: 0 # the preflight resolves the live image's tag against history
 
       - name: Short SHA
         id: sha
@@ -230,12 +255,14 @@ jobs:
           docker push "$REGISTRY/$ECR_REPO:$TAG"
 
       - name: Deploy, preserving the full service configuration
+        id: update
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           TAG: ${{ steps.sha.outputs.short }}
           DECIDED_IMAGE: ${{ needs.decide.outputs.running_image }}
+          TARGET_SHA: ${{ needs.decide.outputs.sha }}
           # A snapshot, NOT a live read: GITHUB_TOKEN cannot read repository variables. The live guards
-          # are the rollback-run query and the unchanged-image check in apprunner-preflight.sh.
+          # are the rollback-run queries and the live-image check in apprunner-preflight.sh.
           AUTODEPLOY_PAUSED: ${{ vars.PLATFORM_API_AUTODEPLOY_PAUSED }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -254,10 +281,21 @@ jobs:
           # runs the SAME script, so both directions pass through one tested check.
           python3 scripts/deploy/apprunner-image-payload.py live.json "$REGISTRY/$ECR_REPO:$TAG" payload.json
 
-          # LAST check, immediately before update-service: not paused, no rollback run queued or in
-          # progress, and the live image is still the one `decide` compared against (a rollback that
-          # finished during the build would otherwise be silently overwritten).
-          bash scripts/deploy/apprunner-preflight.sh "$ARN" "$DECIDED_IMAGE" --deploy
+          # LAST check, immediately before update-service (this job holds platform-api-mutation, so no
+          # pipeline rollback or deploy can run between here and update-service): not paused, no
+          # rollback run queued or running, none requested since this run was created, and the live
+          # image is the one `decide` read — or an OLDER commit another deploy put there while this one
+          # waited. Exit 3 = production already runs this commit or a newer one: a successful no-op.
+          if bash scripts/deploy/apprunner-preflight.sh "$ARN" "$DECIDED_IMAGE" --deploy; then RC=0; else RC=$?; fi
+          case "$RC" in
+            0) ;;
+            3)
+              echo "skipped=true" >> "$GITHUB_OUTPUT"
+              echo "### Deploy skipped: production already runs \`$TARGET_SHA\` or a newer commit" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+            *) exit "$RC" ;;
+          esac
 
           echo "ENV_BEFORE=$(python3 -c "import json;print(len(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")" >> "$GITHUB_ENV"
           echo "SERVICE_ARN=$ARN" >> "$GITHUB_ENV"
@@ -267,6 +305,7 @@ jobs:
             --query 'OperationId' --output text
 
       - name: Wait for the rollout
+        if: steps.update.outputs.skipped != 'true'
         run: |
           set -uo pipefail
           for i in $(seq 1 60); do
@@ -281,6 +320,7 @@ jobs:
           exit 1
 
       - name: Verify the deployment
+        if: steps.update.outputs.skipped != 'true'
         env:
           TAG: ${{ steps.sha.outputs.short }}
         run: |

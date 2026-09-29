@@ -27,17 +27,24 @@ on:
         description: "Why are you rolling back? (recorded in the job summary)"
         required: true
 
-# Its OWN group, never the deploy's. GitHub keeps one PENDING run per concurrency group and REPLACES
-# it with any newer one, so sharing the deploy group would let a CI-triggered deploy silently cancel a
-# queued emergency rollback. Coordination with deploys is explicit instead:
+# No workflow-level `concurrency`: the lock is on the `rollback` job below, and it is the SAME group as
+# deploy-platform-api.yml's mutating `deploy` job (`platform-api-mutation`), so the two update-service
+# paths are serialized. A deploy can no longer land between this job's preflight and its update-service,
+# and a rollback dispatched while a deploy holds the lock waits and then runs LAST — which is the point.
+#
+# `queue: max` makes the group a non-replacing FIFO queue: a pending rollback is never displaced by a
+# deploy that arrives after it (with the default queue, GitHub keeps one pending entry per group and
+# REPLACES it, which is why an earlier version of this workflow used its own group instead).
+# Coordination beyond the lock stays explicit:
 #   - this workflow refuses to start unless PLATFORM_API_AUTODEPLOY_PAUSED is already "true", so no
-#     deploy decided after the pause can run;
-#   - deploy-platform-api.yml runs scripts/deploy/apprunner-preflight.sh --deploy right before its
-#     update-service and refuses while any run of THIS workflow is queued or in progress;
-#   - both sides re-check, right before update-service, that the live image is still the one they read.
-concurrency:
-  group: rollback-platform-api
-  cancel-in-progress: false
+#     deploy decided after the pause runs;
+#   - a deploy decided BEFORE the pause and queued ahead of this rollback refuses in its preflight,
+#     because this rollback run was created after it (scripts/deploy/apprunner-preflight.sh --deploy);
+#   - right before update-service, this job re-checks that the live image is still the one it recorded
+#     at its start. Out-of-band changes (console / CLI) are not serialized by any group; that check
+#     narrows, but cannot close, the window, since UpdateService has no expected-image precondition.
+#   - if the group's queue ever overflows (100 pending), GitHub cancels the newest arrival: a rollback
+#     run shown as cancelled must be re-dispatched.
 
 permissions:
   id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
@@ -53,6 +60,11 @@ jobs:
     name: Roll back to an existing image
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The one lock shared with deploy-platform-api.yml's `deploy` job — see the header above.
+    concurrency:
+      group: platform-api-mutation
+      cancel-in-progress: false
+      queue: max
 
     steps:
       - name: Validate the inputs

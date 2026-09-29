@@ -19,6 +19,22 @@ import { parseYaml } from './helpers/parse-yaml';
 const ROOT = join(__dirname, '..', '..');
 const WORKFLOW = join(ROOT, '.github/workflows/deploy-platform-api.yml');
 
+type Step = {
+  id?: string;
+  name?: string;
+  uses?: string;
+  if?: string;
+  run?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, string>;
+};
+type Job = { if?: string; needs?: string | string[]; concurrency?: unknown; steps?: Step[] };
+const MUTATION_LOCK = { group: 'platform-api-mutation', 'cancel-in-progress': false, queue: 'max' };
+
+function jobsOf(path: string): { concurrency?: unknown; jobs: Record<string, Job> } {
+  return parseYaml(path) as { concurrency?: unknown; jobs: Record<string, Job> };
+}
+
 function src(): string {
   expect(existsSync(WORKFLOW), 'The deploy workflow is GONE. Production stops receiving merged C#.').toBe(true);
   return readFileSync(WORKFLOW, 'utf8');
@@ -58,7 +74,7 @@ describe('CD — the platform API deploy workflow', () => {
     expect(gate).toContain("github.event.workflow_run.head_branch == 'main'");
     expect(gate).toContain('github.event.workflow_run.head_repository.full_name == github.repository');
     expect(s, 'the deploy job must wait for and obey the decision').toMatch(
-      /needs: decide\n\s+if: needs\.decide\.outputs\.deploy == 'true'/,
+      /needs: decide\n(\s+#[^\n]*\n)*\s+if: needs\.decide\.outputs\.deploy == 'true'/,
     );
   });
 
@@ -146,6 +162,74 @@ describe('CD — the platform API deploy workflow', () => {
     // deployment partway and can leave the service in an operation state that blocks the next run.
     expect(s, 'must declare a concurrency group').toMatch(/concurrency:/);
     expect(s, 'cancel-in-progress MUST be false for a deploy').toMatch(/cancel-in-progress:\s*false/);
+  });
+
+  // ── Codex round 2 (2026-09-29) ─────────────────────────────────────────────────────────────────
+  // P2: a workflow-level group let a failed/cancelled CI completion REPLACE a pending valid deploy.
+  // P1: separate deploy / rollback groups let a rollback complete between preflight and update-service.
+  it('takes the mutation lock on the DEPLOY JOB only — never at workflow level, never on decide', () => {
+    const doc = jobsOf(WORKFLOW);
+    expect(doc.concurrency, 'workflow-level concurrency puts ineligible completions in the queue').toBeUndefined();
+    expect(doc.jobs.decide.concurrency, 'decide is read-only and must run unlocked').toBeUndefined();
+    expect(doc.jobs.deploy.concurrency).toEqual(MUTATION_LOCK);
+  });
+
+  it('a successful -> failed/cancelled completion ordering cannot evict the pending deploy', () => {
+    // The failed/cancelled completion must never reach a job that holds a concurrency group: decide
+    // (unlocked) refuses it by `if:`, and every locked job depends on decide's positive verdict, so it
+    // is skipped and never enters platform-api-mutation.
+    const doc = jobsOf(WORKFLOW);
+    const decideIf = String(doc.jobs.decide.if);
+    expect(decideIf).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(decideIf).toContain("github.event.workflow_run.event == 'push'");
+    expect(decideIf).toContain("github.event.workflow_run.head_branch == 'main'");
+    expect(decideIf).toContain('github.event.workflow_run.head_repository.full_name == github.repository');
+    const locked = Object.entries(doc.jobs).filter(([, j]) => j.concurrency !== undefined);
+    expect(locked.map(([n]) => n)).toEqual(['deploy']);
+    for (const [name, job] of locked) {
+      expect([job.needs].flat(), `${name} must depend on decide`).toContain('decide');
+      expect(String(job.if), `${name} must only run on decide's positive verdict`).toMatch(
+        /^needs\.decide\.outputs\.deploy == 'true' && /,
+      );
+      expect(String(job.if), `${name} must not use always()/failure()/cancelled(), which bypass needs`).not.toMatch(
+        /always\(\)|failure\(\)|cancelled\(\)/,
+      );
+    }
+  });
+
+  it('a paused run never even queues for the lock', () => {
+    const doc = jobsOf(WORKFLOW);
+    expect(String(doc.jobs.deploy.if)).toBe(
+      "needs.decide.outputs.deploy == 'true' && vars.PLATFORM_API_AUTODEPLOY_PAUSED != 'true'",
+    );
+  });
+
+  it('deploy and rollback share ONE lock, so their update-service calls are serialized', () => {
+    const deploy = jobsOf(WORKFLOW);
+    const rollback = jobsOf(join(ROOT, '.github/workflows/rollback-platform-api.yml'));
+    expect(rollback.jobs.rollback.concurrency).toEqual(deploy.jobs.deploy.concurrency);
+  });
+
+  it('handles a stale queued deploy: full history for the ancestry check, TARGET_SHA, and exit 3 = skip', () => {
+    const doc = jobsOf(WORKFLOW);
+    const steps = doc.jobs.deploy.steps ?? [];
+    const checkout = steps.find((st) => String(st.uses ?? '').startsWith('actions/checkout'));
+    expect(checkout?.with?.['fetch-depth'], 'the preflight resolves the live tag against history').toBe(0);
+    const update = steps.find((st) => st.id === 'update');
+    expect(update, 'the update-service step must have id: update').toBeDefined();
+    expect(update?.env?.TARGET_SHA).toBe('${{ needs.decide.outputs.sha }}');
+    const body = String(update?.run);
+    expect(body).toContain(
+      'if bash scripts/deploy/apprunner-preflight.sh "$ARN" "$DECIDED_IMAGE" --deploy; then RC=0; else RC=$?; fi',
+    );
+    expect(body).toMatch(/3\)\s*\n\s*echo "skipped=true" >> "\$GITHUB_OUTPUT"[\s\S]*?exit 0/);
+    expect(body, 'any other non-zero preflight result must fail the job').toContain('*) exit "$RC" ;;');
+    // The skip must precede update-service, and every later step must honour it.
+    expect(body.indexOf('skipped=true')).toBeLessThan(body.indexOf('aws apprunner update-service'));
+    const updateAt = steps.findIndex((st) => st.id === 'update');
+    const later = steps.filter((_, i) => i > updateAt);
+    expect(later.length).toBeGreaterThan(0);
+    for (const st of later) expect(st.if, st.name).toBe("steps.update.outputs.skipped != 'true'");
   });
 
   it('refuses to apply a source-configuration that changes more than the image', () => {

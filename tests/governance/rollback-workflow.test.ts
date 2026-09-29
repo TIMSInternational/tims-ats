@@ -29,16 +29,24 @@ describe('Rollback — the platform API rollback workflow', () => {
     expect(Object.keys(doc.jobs)).toEqual(['rollback']);
   });
 
-  it('has its OWN concurrency group, so a queued deploy can never replace a pending rollback', () => {
-    // GitHub keeps ONE pending run per group and replaces it with any newer run. Sharing the deploy's
-    // group (the first version of this workflow) let a CI-triggered deploy cancel a queued rollback.
-    const s = src();
-    const deploy = readFileSync(join(ROOT, '.github/workflows/deploy-platform-api.yml'), 'utf8');
-    const group = (w: string) => w.match(/concurrency:\n\s+group:\s*(\S+)/)?.[1];
-    expect(group(s)).toBe('rollback-platform-api');
-    expect(group(deploy)).toBeDefined();
-    expect(group(s), 'must NOT share the deploy group').not.toBe(group(deploy));
-    expect(s).toMatch(/cancel-in-progress:\s*false/);
+  it('holds the SAME job-level lock as the deploy job — a non-replacing, never-cancelling queue', () => {
+    // Codex round 2 (P1): separate groups let a rollback complete between the deploy's preflight and
+    // its update-service. Sharing the group serializes them; `queue: max` keeps GitHub from REPLACING
+    // a pending rollback with a later deploy (the reason an earlier version used its own group).
+    const doc = parseYaml(WORKFLOW) as {
+      concurrency?: unknown;
+      jobs: Record<string, { concurrency?: unknown }>;
+    };
+    const deploy = parseYaml(join(ROOT, '.github/workflows/deploy-platform-api.yml')) as {
+      jobs: Record<string, { concurrency?: unknown }>;
+    };
+    expect(doc.concurrency, 'the lock belongs on the job, not the workflow').toBeUndefined();
+    expect(doc.jobs.rollback.concurrency).toEqual({
+      group: 'platform-api-mutation',
+      'cancel-in-progress': false,
+      queue: 'max',
+    });
+    expect(doc.jobs.rollback.concurrency).toEqual(deploy.jobs.deploy.concurrency);
   });
 
   it('refuses to start unless deploys are ALREADY paused', () => {

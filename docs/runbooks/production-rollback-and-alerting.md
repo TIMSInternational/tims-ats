@@ -19,9 +19,17 @@ to `main` (it runs on `workflow_run`). It deploys the exact commit the tests pas
 - the repository variable `PLATFORM_API_AUTODEPLOY_PAUSED` is `true` (see 2.1). This blocks manual
   deploys too.
 
+The deploy's build-and-update job and the rollback job share one concurrency lock
+(`platform-api-mutation`, a first-in-first-out queue that never replaces a waiting run). Only one of
+them can run `update-service` at a time. Failed or cancelled CI runs never join that queue, so they
+cannot push out a valid deploy that is waiting.
+
 Right before `update-service`, the deploy also runs `scripts/deploy/apprunner-preflight.sh --deploy`.
-It refuses if any **Roll back platform API** run is queued or in progress, or if the live image
-changed since the deploy decided (for example, a rollback finished while the image was building).
+It refuses if any **Roll back platform API** run is queued or in progress, or if **any** rollback run
+(including a finished or cancelled one) was requested after the deploy run started. If another deploy
+moved production while this one waited in the queue, it deploys only when production runs an **older**
+commit; if production already runs this commit or a newer one, it skips (the summary says so). Any
+other change to the live image makes it refuse.
 
 The run's job summary says which rule applied. A manual deploy is still available as
 **Actions → Deploy platform API → Run workflow** (branch `main`, reason required).
@@ -42,11 +50,21 @@ gh variable set PLATFORM_API_AUTODEPLOY_PAUSED --repo TIMSInternational/tims-ats
 While the variable is `true`, every deploy decides "skip". That includes a CI run that finishes during
 or after the rollback, which would otherwise put the bad commit straight back.
 
-A deploy that had already decided before you paused, and is still building, cannot see the new
-value: GitHub reads repository variables when a job starts. Two checks cover that case. Its preflight
-refuses while any rollback run is queued or running, and it refuses if the live image changed since
-it decided. If a deploy was already mid-rollout when you paused, the rollback refuses until the service
-is `RUNNING`. Re-run the rollback after that.
+A deploy that had already decided before you paused cannot see the new value: GitHub reads
+repository variables when a job starts. The shared lock and the preflight cover that case:
+
+- If the deploy is **building or rolling out**, it holds the lock. Your rollback waits in the queue and
+  runs after it, so the rollback is applied last. To avoid waiting out a build, cancel that **Deploy
+  platform API** run while it is still building. After `update-service` has started, cancelling does
+  not stop App Runner. The rollback then refuses until the service is `RUNNING`, and you re-run it.
+- If the deploy is **still waiting** in the queue, its preflight refuses, because your rollback run was
+  requested after the deploy run started.
+- If a **Roll back platform API** run shows as **cancelled** without anyone cancelling it, re-dispatch
+  it. The queue holds 100 waiting runs, and GitHub cancels new arrivals beyond that.
+
+Changes made outside these workflows (console or CLI `update-service`) take no lock. The preflight
+checks narrow that window but cannot close it, because App Runner's `UpdateService` has no
+expected-image precondition. Do not change the service by hand while a workflow is running.
 
 ### 2.2 Pick the tag
 
@@ -90,9 +108,9 @@ The workflow:
    and `GET /health` returns 200;
 6. writes the outcome to the job summary.
 
-It has its **own** concurrency group. GitHub replaces a pending run with any newer one in the same
-group, so a shared group would let a CI-triggered deploy cancel a queued rollback. Nothing is rebuilt,
-so a rollback does not depend on the build that just failed.
+It shares the `platform-api-mutation` lock with the deploy (see section 1 and 2.1). The lock is a
+queue that never replaces a waiting run, so a deploy that arrives later cannot cancel a waiting
+rollback. Nothing is rebuilt, so a rollback does not depend on the build that just failed.
 
 ### 2.4 Verify
 
