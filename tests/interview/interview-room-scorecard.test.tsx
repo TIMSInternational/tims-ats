@@ -52,8 +52,13 @@ vi.mock('../../apps/web/lib/trpc', () => ({
 }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: (m: string, o?: unknown) => h.toast(m, o) }));
 vi.mock('../../apps/web/components', () => ({ Skeleton: () => <div data-testid="skeleton" /> }));
+vi.mock('../../apps/web/lib/permissions', () => ({ usePermissions: () => ({ userId: '11111111-1111-4111-8111-111111111111' }) }));
+vi.mock('../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-ai-panel', () => ({
+  InterviewAiPanel: () => <div>ai-stub</div>,
+}));
 
 import { ScorecardForm } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-form';
+import { ScorecardPanel } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-panel';
 
 const ME = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -266,5 +271,27 @@ describe('interview room scorecard', () => {
     expect(section).not.toHaveTextContent('2.0');
     expect(section).not.toHaveTextContent('Evaluador 1');
     expect(section).not.toHaveTextContent('4.2');
+  });
+
+  it('the room panel submit button is wired end to end (it used to have no onClick)', () => {
+    localStorage.setItem('tims-locale', 'EN');
+    const props = { interview: interview(), candidateInitials: 'AR', candidateName: 'Ana Ruiz', interviewId: INTERVIEW_ID, vacancyTitle: 'Analista' };
+    render(
+      <I18nProvider>
+        <ScorecardPanel {...props} />
+      </I18nProvider>,
+    );
+    for (const name of ['SQL', 'Storytelling']) {
+      fireEvent.click(within(screen.getByRole('radiogroup', { name })).getByRole('radio', { name: '3 of 5' }));
+    }
+    fireEvent.click(screen.getByRole('radio', { name: en.interviewRoom.recNeutral }));
+    fireEvent.click(screen.getByRole('button', { name: /submit scorecard|enviar scorecard/i }));
+    expect(mutate).toHaveBeenCalledWith({
+      interviewId: INTERVIEW_ID,
+      ratings: { SQL: 3, Storytelling: 3 },
+      recommendation: 'neutral',
+      overallNotes: undefined,
+    });
+    expect(screen.queryByRole('tab', { name: /notas|notes/i })).toBeNull();
   });
 });
