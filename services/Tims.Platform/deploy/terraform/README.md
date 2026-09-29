@@ -72,6 +72,15 @@ Flip the backend flag in `feature_flags` (→ `terraform apply`) AND set the mat
 (`NEXT_PUBLIC_<SURFACE>_VIA_CSHARP=true` + `NEXT_PUBLIC_TIMS_PLATFORM_API_URL=<service_url output>`)
 → canary → verify → delete the TS surface. Rollback = flag back to false + unset the FE flag.
 
+## Alerting (`alarms.tf`, opt-in)
+
+`enable_alarms = true` creates an SNS topic, an email subscription (`alarm_email`, default
+`federico.tafur@altostrats.com`) and five CloudWatch alarms: 5xx count, 5xx rate, p95 latency, CPU and
+memory. Because this module has never been applied, the live alarms are created by
+`scripts/ops/create-alarms.sh` instead, with the same names and thresholds. See
+`docs/runbooks/production-rollback-and-alerting.md` §4, including the **SNS email confirmation click**.
+Until that click, no alarm is delivered.
+
 ## Notes
 
 - **Secrets are never in TF state or code** — only empty containers + an ignored placeholder version.

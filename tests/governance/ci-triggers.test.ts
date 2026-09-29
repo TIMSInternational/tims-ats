@@ -31,7 +31,7 @@ const WORKFLOW_DIR = join(__dirname, '../../.github/workflows');
  */
 function triggerBlock(
   src: string,
-  key: 'push' | 'pull_request' | 'pull_request_target' | 'schedule' | 'workflow_dispatch',
+  key: 'push' | 'pull_request' | 'pull_request_target' | 'schedule' | 'workflow_dispatch' | 'workflow_run',
 ): string[] | null {
   const lines = src.split('\n');
   // `on:` at column 0. (YAML 1.1 folds a bare `on` to boolean true when parsed, which is
@@ -60,6 +60,8 @@ function triggerBlock(
   return body;
 }
 
+const NO_PUSH_BY_DESIGN = new Set(['nightly-db-controls.yml', 'deploy-platform-api.yml', 'rollback-platform-api.yml']);
+
 const workflows = readdirSync(WORKFLOW_DIR)
   .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
   .map((f) => ({ name: f, src: readFileSync(join(WORKFLOW_DIR, f), 'utf8') }));
@@ -76,9 +78,10 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     // assertion below while reading nothing at all. `push` is deliberately still pinned
     // to main, so it is the positive control for the same parser.
     for (const w of workflows) {
-      // This production-credential workflow is intentionally schedule/dispatch only.
-      // Its exact exception is independently pinned below, not a general skip.
-      if (w.name === 'nightly-db-controls.yml') continue;
+      // These production-credential workflows intentionally have no push trigger (schedule/dispatch,
+      // workflow_run after the .NET tests, dispatch-only rollback). Each exact exception is
+      // independently pinned below, not a general skip.
+      if (NO_PUSH_BY_DESIGN.has(w.name)) continue;
       const push = triggerBlock(w.src, 'push');
       expect(push, `${w.name}: no on.push block found`).not.toBeNull();
       expect(
@@ -95,6 +98,31 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     expect(triggerBlock(nightly!.src, 'workflow_dispatch')).not.toBeNull();
     // Reject inline maps/arrays too; the narrow block parser only supports empty inline objects.
     expect(nightly!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
+  });
+
+  it('the API deploy runs only after .NET Platform CI completes on main — never on push (F16)', () => {
+    const deploy = workflows.find((w) => w.name === 'deploy-platform-api.yml');
+    const dotnet = workflows.find((w) => w.name === 'dotnet-platform.yml')!;
+    expect(deploy).toBeDefined();
+    const run = triggerBlock(deploy!.src, 'workflow_run');
+    expect(run, 'deploy-platform-api.yml must trigger on workflow_run').not.toBeNull();
+    const dotnetName = dotnet.src.match(/^name:\s*(.+?)\s*$/m)![1];
+    expect(
+      run!.some((l) => l.includes(`workflows: ["${dotnetName}"]`)),
+      `workflow_run must name the .NET workflow exactly ("${dotnetName}") — a renamed workflow silently stops every deploy`,
+    ).toBe(true);
+    expect(run!.some((l) => /^\s*types:\s*\[completed\]\s*$/.test(l))).toBe(true);
+    expect(run!.some((l) => /^\s*branches:\s*\[main\]\s*$/.test(l))).toBe(true);
+    expect(triggerBlock(deploy!.src, 'workflow_dispatch'), 'the manual escape hatch must remain').not.toBeNull();
+    // A push trigger would reintroduce the race this fixes: deploying while the tests still run.
+    expect(deploy!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
+  });
+
+  it('the API rollback is manual only (workflow_dispatch) and never fires on an event', () => {
+    const rollback = workflows.find((w) => w.name === 'rollback-platform-api.yml');
+    expect(rollback).toBeDefined();
+    expect(triggerBlock(rollback!.src, 'workflow_dispatch')).not.toBeNull();
+    expect(rollback!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target|workflow_run|schedule)\s*:/m);
   });
 
   it('no workflow restricts pull_request to a base branch', () => {

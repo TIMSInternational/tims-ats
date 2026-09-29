@@ -1,0 +1,173 @@
+name: Roll back platform API
+
+# Re-points the App Runner service `tims-platform-api` at a PREVIOUS image that already exists in ECR.
+# Nothing is built: a rollback must not depend on the build that just broke. Runbook:
+# docs/runbooks/production-rollback-and-alerting.md.
+#
+# Guards (the same ones the roll-forward deploy uses, plus rollback-specific ones):
+#   - the tag must look like a commit SHA and must EXIST in the ECR repository — an unknown tag is
+#     refused before anything is touched (App Runner would otherwise accept the update and fail the
+#     pull minutes later, mid-incident);
+#   - the service must be RUNNING (an in-flight operation would reject or race the update);
+#   - the payload is built from the LIVE config by scripts/deploy/apprunner-image-payload.py and must
+#     differ ONLY in /ImageRepository/ImageIdentifier — a partial map would drop env vars and darken
+#     every live Platform__*Enabled surface;
+#   - after the rollout: running image == requested tag, env var count unchanged, GET /health == 200.
+#
+# NOTE: rolling back the image does NOT roll back the database. If the bad release applied DDL or
+# flipped a flag, handle that separately (see the runbook).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing ECR image tag to roll back to (the short commit SHA, e.g. a45c7b5)"
+        required: true
+      reason:
+        description: "Why are you rolling back? (recorded in the job summary)"
+        required: true
+
+# SAME group as deploy-platform-api.yml: a roll-back and a roll-forward can never race each other,
+# and neither ever cancels a rollout in flight.
+concurrency:
+  group: deploy-platform-api
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
+  contents: read
+
+env:
+  AWS_REGION: us-west-2 # NOT us-east-1 — that account holds unrelated NexaDev projects.
+  SERVICE_NAME: tims-platform-api
+  ECR_REPO: tims-platform-api
+
+jobs:
+  rollback:
+    name: Roll back to an existing image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate the inputs
+        env:
+          TAG: ${{ inputs.tag }}
+          REASON: ${{ inputs.reason }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          # The trust policy only admits refs/heads/main; failing here gives a clear message instead
+          # of an opaque AssumeRoleWithWebIdentity denial.
+          [ "$REF" = "refs/heads/main" ] || { echo "::error::Run this workflow from main (got $REF)."; exit 1; }
+          echo "$TAG" | grep -Eq '^[0-9a-f]{7,40}$' \
+            || { echo "::error::'$TAG' is not a commit-SHA image tag. Refusing."; exit 1; }
+          [ -n "$(echo "$REASON" | tr -d '[:space:]')" ] || { echo "::error::A reason is required."; exit 1; }
+
+      - uses: actions/checkout@v5 # for scripts/deploy/apprunner-image-payload.py only — nothing is built
+
+      - name: Assume the deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::747814092517:role/tims-ats-github-deploy-prod
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Refuse a tag that does not exist in ECR
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! FOUND="$(aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPO" \
+                 --image-ids imageTag="$TAG" \
+                 --query 'imageDetails[0].[imageDigest,imagePushedAt]' --output text 2>err.txt)"; then
+            cat err.txt
+            echo "::error::Image tag '$TAG' does not exist in $ECR_REPO. Refusing to roll back to it."
+            echo "Recent tags (newest last):"
+            aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPO" \
+              --query 'sort_by(imageDetails,&imagePushedAt)[-10:].[imageTags[0],imagePushedAt]' --output text || true
+            exit 1
+          fi
+          echo "found: $FOUND"
+
+      - name: Re-point the service, preserving the full configuration
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          ARN="$(aws apprunner list-services --region "$AWS_REGION" \
+                  --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)"
+          test -n "$ARN" || { echo "::error::Service $SERVICE_NAME not found in $AWS_REGION"; exit 1; }
+
+          aws apprunner describe-service --region "$AWS_REGION" --service-arn "$ARN" > live.json
+
+          STATUS="$(python3 -c "import json;print(json.load(open('live.json'))['Service']['Status'])")"
+          [ "$STATUS" = "RUNNING" ] \
+            || { echo "::error::Service is $STATUS, not RUNNING. Wait for the current operation, then retry."; exit 1; }
+
+          FROM_IMAGE="$(python3 -c "import json;print(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageIdentifier'])")"
+          # Same registry/repository as the running image by construction; only the tag changes.
+          TO_IMAGE="${FROM_IMAGE%:*}:$TAG"
+
+          python3 scripts/deploy/apprunner-image-payload.py live.json "$TO_IMAGE" payload.json
+
+          {
+            echo "ENV_BEFORE=$(python3 -c "import json;print(len(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")"
+            echo "SERVICE_ARN=$ARN"
+            echo "FROM_IMAGE=$FROM_IMAGE"
+          } >> "$GITHUB_ENV"
+
+          aws apprunner update-service --region "$AWS_REGION" \
+            --service-arn "$ARN" --source-configuration file://payload.json \
+            --query 'OperationId' --output text
+
+      - name: Wait for the rollout
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 60); do
+            sleep 15
+            S="$(aws apprunner describe-service --region "$AWS_REGION" --service-arn "$SERVICE_ARN" \
+                  --query 'Service.Status' --output text)"
+            echo "[$i] $S"
+            [ "$S" = "RUNNING" ] && exit 0
+            case "$S" in CREATE_FAILED|DELETED) echo "::error::Service entered $S"; exit 1;; esac
+          done
+          echo "::error::Timed out waiting for RUNNING"
+          exit 1
+
+      - name: Verify the rollback
+        env:
+          TAG: ${{ inputs.tag }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          aws apprunner describe-service --region "$AWS_REGION" --service-arn "$SERVICE_ARN" > after.json
+
+          GOT_IMAGE="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageIdentifier'])")"
+          ENV_AFTER="$(python3 -c "import json;print(len(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")"
+          URL="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['ServiceUrl'])")"
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://$URL/health")"
+
+          {
+            echo "### Rollback to \`$TAG\`"
+            echo
+            echo "- by: $GITHUB_ACTOR"
+            echo "- reason: $REASON"
+            echo "- from: \`$FROM_IMAGE\`"
+            echo "- to: \`$GOT_IMAGE\`"
+            echo "- env vars: $ENV_AFTER (was $ENV_BEFORE)"
+            echo "- GET /health: $CODE"
+            echo
+            echo "**Next:** pause automatic deploys until main is fixed, or the next green merge rolls the bad"
+            echo "commit straight back out: \`gh variable set PLATFORM_API_AUTODEPLOY_PAUSED --body true\`."
+            echo "Delete the variable once the fix is merged (runbook: docs/runbooks/production-rollback-and-alerting.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "image: $GOT_IMAGE"
+          echo "env vars: $ENV_AFTER (was $ENV_BEFORE)"
+          echo "GET /health -> $CODE"
+
+          case "$GOT_IMAGE" in *:"$TAG") ;; *) echo "::error::Running image is not $TAG"; exit 1;; esac
+          [ "$ENV_AFTER" = "$ENV_BEFORE" ] || { echo "::error::env var count changed: $ENV_BEFORE -> $ENV_AFTER"; exit 1; }
+          [ "$CODE" = "200" ] || { echo "::error::/health returned $CODE"; exit 1; }
+
+          echo "Rolled back to $TAG."

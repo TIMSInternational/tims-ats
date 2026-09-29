@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { parseYaml } from './helpers/parse-yaml';
 
 // THE CD TRIPWIRE — pins the properties that make continuous deployment actually continuous.
 //
@@ -24,15 +25,70 @@ function src(): string {
 }
 
 describe('CD — the platform API deploy workflow', () => {
-  it('deploys on merges to main that touch the C# service', () => {
+  it('deploys merges to main that touch the C# service — AFTER the .NET tests pass (F16)', () => {
     const s = src();
-    expect(s, 'workflow must trigger on push').toMatch(/^on:\s*$/m);
+    expect(s, 'workflow must declare triggers').toMatch(/^on:\s*$/m);
     expect(s, 'must trigger on the main branch').toMatch(/branches:\s*\[main\]/);
+    expect(s, 'must run after .NET Platform CI, not in parallel with it').toMatch(/workflow_run:/);
+    const dotnet = readFileSync(join(ROOT, '.github/workflows/dotnet-platform.yml'), 'utf8');
+    const dotnetPush = dotnet.split('\n  push:\n')[1]?.split('\n  pull_request:')[0] ?? '';
+    expect(
+      dotnetPush,
+      'the .NET CI push trigger must watch services/Tims.Platform — without it, C# merges deploy ' +
+        'nothing, which is precisely the 2026-08-31 state.',
+    ).toContain('services/Tims.Platform/**');
+    expect(dotnetPush, 'an edit to this deploy workflow must still reach a gated deploy run').toContain(
+      '.github/workflows/deploy-platform-api.yml',
+    );
     expect(
       s,
-      'must watch services/Tims.Platform — without this path, C# merges deploy nothing, which is ' +
-        'precisely the 2026-08-31 state.',
-    ).toContain('services/Tims.Platform/**');
+      'the decision must diff services/Tims.Platform against the running image, so a CI run caused ' +
+        'only by packages/db or scripts/** does not redeploy an unchanged API',
+    ).toMatch(/git diff --quiet "\$RUNNING_SHA" "\$SHA" --\s*\\\s*\n\s*services\/Tims\.Platform/);
+  });
+
+  it('refuses anything but a SUCCESSFUL push-triggered .NET run on main of this repository', () => {
+    const s = src();
+    const gate = s.split('\n  decide:\n')[1]?.split('\n    outputs:')[0] ?? '';
+    expect(gate, 'the decide job must carry a job-level if:').toMatch(/if: >-/);
+    // Each clause closes a distinct hole: a failed/cancelled test run; a pull_request run (whose head
+    // branch can be named `main` in a fork — `branches: [main]` alone matches it); a fork's code.
+    expect(gate).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(gate).toContain("github.event.workflow_run.event == 'push'");
+    expect(gate).toContain("github.event.workflow_run.head_branch == 'main'");
+    expect(gate).toContain('github.event.workflow_run.head_repository.full_name == github.repository');
+    expect(s, 'the deploy job must wait for and obey the decision').toMatch(
+      /needs: decide\n\s+if: needs\.decide\.outputs\.deploy == 'true'/,
+    );
+  });
+
+  it('builds the exact commit the tests passed on, and never deploys an OLDER commit over a newer one', () => {
+    const s = src();
+    expect(s, 'tested SHA must come from the workflow_run payload').toContain('github.event.workflow_run.head_sha');
+    expect(s, 'deploy checkout must pin the decided SHA').toMatch(/ref: \$\{\{ needs\.decide\.outputs\.sha \}\}/);
+    expect(s, 'the SHA must be on main').toContain('git merge-base --is-ancestor "$SHA" origin/main');
+    expect(s, 'out-of-order CI completions must not roll production back').toContain(
+      'git merge-base --is-ancestor "$SHA" "$RUNNING_SHA"',
+    );
+    expect(s, 'the post-rollback pause must be honoured').toContain('vars.PLATFORM_API_AUTODEPLOY_PAUSED');
+  });
+
+  it('keeps the manual dispatch, with a REQUIRED reason, restricted to main', () => {
+    const s = src();
+    const dispatch = s.split('workflow_dispatch:\n')[1]?.split('\n\n')[0] ?? '';
+    expect(dispatch).toMatch(/reason:\s*\n\s+description:[^\n]*\n\s+required: true/);
+    expect(s).toContain('[ "$DISPATCH_REF" = "refs/heads/main" ]');
+  });
+
+  it('parses as YAML with the expected jobs', () => {
+    const doc = parseYaml(WORKFLOW) as {
+      on?: Record<string, unknown>;
+      true?: Record<string, unknown>;
+      jobs: Record<string, unknown>;
+    };
+    const on = doc.on ?? doc.true; // YAML 1.1 folds a bare `on` key to boolean true
+    expect(Object.keys(on ?? {}).sort()).toEqual(['workflow_dispatch', 'workflow_run']);
+    expect(Object.keys(doc.jobs).sort()).toEqual(['decide', 'deploy']);
   });
 
   it('PUSHES the image — the single verb whose absence caused the incident', () => {
@@ -72,15 +128,22 @@ describe('CD — the platform API deploy workflow', () => {
     const s = src();
     // App Runner's update-service takes a FULL map and DROPS every env key omitted from it. On this
     // service that is 26 keys and 22 live flags — a partial map takes ~13 production surfaces dark.
-    // The workflow derives its payload from the live config and asserts a single-field diff.
+    // The workflow derives its payload from the live config and asserts a single-field diff, via the
+    // shared guard whose behaviour is pinned in apprunner-image-payload.test.ts.
     expect(s, 'the payload must be built from the LIVE config (describe-service), not hand-written').toMatch(
-      /describe-service/,
+      /describe-service[^\n]*> live\.json/,
     );
     expect(
       s,
-      'must assert the payload differs only in ImageIdentifier — without it, a refactor here can ' +
+      'must build the payload through the shared single-field guard — without it, a refactor here can ' +
         'silently darken every live surface',
-    ).toContain('CHANGED /ImageRepository/ImageIdentifier');
+    ).toMatch(/python3 scripts\/deploy\/apprunner-image-payload\.py live\.json "[^"]+" payload\.json/);
+    expect(s, 'update-service must send the guarded payload and nothing else').toContain(
+      '--source-configuration file://payload.json',
+    );
+    expect(readFileSync(join(ROOT, 'scripts/deploy/apprunner-image-payload.py'), 'utf8')).toContain(
+      'CHANGED /ImageRepository/ImageIdentifier',
+    );
   });
 
   it('uses OIDC federation, never a long-lived access key', () => {

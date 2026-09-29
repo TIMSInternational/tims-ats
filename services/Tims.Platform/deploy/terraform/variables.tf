@@ -139,3 +139,52 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# --- Alerting (alarms.tf) — opt-in ------------------------------------------------------------------
+
+variable "enable_alarms" {
+  description = "Create the SNS topic, email subscription and CloudWatch alarms in alarms.tf. Off by default because this module has never been applied to the real account; the live alarms are created by scripts/ops/create-alarms.sh instead."
+  type        = bool
+  default     = false
+}
+
+variable "alarm_email" {
+  description = "Email address subscribed to the alarm SNS topic. The subscription delivers nothing until the recipient clicks the AWS confirmation link."
+  type        = string
+  default     = "federico.tafur@altostrats.com"
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alarm_email))
+    error_message = "The alarm_email value must be an email address."
+  }
+}
+
+variable "alarm_5xx_count_threshold" {
+  description = "5xx responses per 5 minutes that page."
+  type        = number
+  default     = 10
+}
+
+variable "alarm_5xx_rate_percent" {
+  description = "5xx share of requests (%) that pages, in 2 of 3 five-minute periods with >= 20 requests."
+  type        = number
+  default     = 5
+}
+
+variable "alarm_latency_p95_ms" {
+  description = "p95 request latency (ms) that pages when sustained for 15 minutes. Observed p95 peaks ~2 s (2026-09-28)."
+  type        = number
+  default     = 3000
+}
+
+variable "alarm_cpu_percent" {
+  description = "Average CPU utilization (%) that pages when sustained for 15 minutes."
+  type        = number
+  default     = 85
+}
+
+variable "alarm_memory_percent" {
+  description = "Average memory utilization (%) that pages when sustained for 15 minutes."
+  type        = number
+  default     = 85
+}

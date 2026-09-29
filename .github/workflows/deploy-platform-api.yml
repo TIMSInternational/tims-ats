@@ -20,22 +20,37 @@ name: Deploy platform API
 # pushes and deploys it. `scripts/deploy/check-deploy-freshness.sh` (/gate check 21) remains the
 # backstop — a control that lives only inside the thing it guards is not a control.
 
+# ── GATED ON THE .NET TESTS (F16, 2026-09-29) ──────────────────────────────────────────────────────
+# This workflow used to fire on `push` to main in PARALLEL with `.NET Platform CI`, so a merge whose
+# C# tests failed was built, pushed and deployed anyway — the tests could only report the damage after
+# production already ran it. It now runs on `workflow_run`: only AFTER `.NET Platform CI` completes,
+# and the `decide` job refuses anything but a SUCCESSFUL, PUSH-triggered run on main of THIS repository
+# (`branches: [main]` alone would also match a fork PR whose head branch happens to be named `main`).
+# The deployed commit is `workflow_run.head_sha` — the exact commit the tests passed on — never "the
+# tip of main at the time the deploy happened to start".
+#
+# Path semantics are preserved in two layers: `.NET Platform CI` is itself path-filtered (so this
+# never fires for web-only merges), and because its filter is BROADER than the C# service
+# (packages/db, scripts/**, ...), `decide` additionally diffs the tested commit against the RUNNING
+# image's commit and skips when nothing under services/Tims.Platform (or this file) changed.
+#
+# `workflow_dispatch` remains the manual escape hatch (reason required, recorded in the job summary).
+# Roll BACK with `rollback-platform-api.yml`, never by dispatching this against an old commit.
 on:
-  push:
+  workflow_run:
+    workflows: [".NET Platform CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - "services/Tims.Platform/**"
-      - ".github/workflows/deploy-platform-api.yml"
   workflow_dispatch:
     inputs:
       reason:
-        description: "Why are you deploying by hand?"
-        required: false
-        default: "manual redeploy"
+        description: "Why are you deploying by hand? (recorded in the job summary)"
+        required: true
 
 # NEVER cancel a deploy in flight. `cancel-in-progress: true` — correct for CI, where a superseded run
 # is wasted work — would here abort a rolling App Runner deployment partway through and leave the
-# service in an operation state that blocks the next run.
+# service in an operation state that blocks the next run. The rollback workflow shares this group,
+# so a roll-forward and a roll-back can never race each other.
 concurrency:
   group: deploy-platform-api
   cancel-in-progress: false
@@ -50,13 +65,129 @@ env:
   ECR_REPO: tims-platform-api
 
 jobs:
+  decide:
+    name: Decide whether to deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Job-level gate: a failed or cancelled test run, a pull_request-triggered run, or a run whose head
+    # came from a fork never reaches a step that holds AWS credentials.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
+      sha: ${{ steps.target.outputs.sha }}
+
+    steps:
+      - name: Resolve the commit to deploy
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            [ "$DISPATCH_REF" = "refs/heads/main" ] \
+              || { echo "::error::Manual deploys run from main only (got $DISPATCH_REF)."; exit 1; }
+            SHA="$DISPATCH_SHA"
+          else
+            SHA="$TESTED_SHA"
+          fi
+          echo "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::Not a commit SHA: '$SHA'"; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0 # the running image's commit must be resolvable for the diff below
+
+      - name: Assume the deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::747814092517:role/tims-ats-github-deploy-prod
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compare the tested commit with the running image
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ steps.target.outputs.sha }}
+          REASON: ${{ inputs.reason }}
+          AUTODEPLOY_PAUSED: ${{ vars.PLATFORM_API_AUTODEPLOY_PAUSED }}
+        run: |
+          set -euo pipefail
+          verdict() {
+            echo "deploy=$1" >> "$GITHUB_OUTPUT"
+            { echo "### Deploy decision: $1"; echo; echo "- commit: \`$SHA\`"; echo "- $2"; } >> "$GITHUB_STEP_SUMMARY"
+            echo "deploy=$1 — $2"
+          }
+
+          git merge-base --is-ancestor "$SHA" origin/main \
+            || { echo "::error::$SHA is not on main. Refusing to deploy it."; exit 1; }
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            verdict true "manual deploy by $GITHUB_ACTOR — reason: $REASON"
+            exit 0
+          fi
+
+          # Set by the rollback runbook. After a rollback, the NEXT green merge would otherwise diff
+          # the rolled-back image against main, see the bad C# commit, and deploy it straight back.
+          if [ "$AUTODEPLOY_PAUSED" = "true" ]; then
+            echo "::warning::Automatic deploys are paused (repo variable PLATFORM_API_AUTODEPLOY_PAUSED=true)."
+            verdict false "automatic deploys are PAUSED after a rollback — unset PLATFORM_API_AUTODEPLOY_PAUSED to resume"
+            exit 0
+          fi
+
+          ARN="$(aws apprunner list-services --region "$AWS_REGION" \
+                  --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)"
+          test -n "$ARN" || { echo "::error::Service $SERVICE_NAME not found in $AWS_REGION"; exit 1; }
+          RUNNING_IMAGE="$(aws apprunner describe-service --region "$AWS_REGION" --service-arn "$ARN" \
+                  --query 'Service.SourceConfiguration.ImageRepository.ImageIdentifier' --output text)"
+          RUNNING_TAG="${RUNNING_IMAGE##*:}"
+          echo "running image: $RUNNING_IMAGE"
+
+          RUNNING_SHA=""
+          if echo "$RUNNING_TAG" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            RUNNING_SHA="$(git rev-parse --verify --quiet "${RUNNING_TAG}^{commit}" || true)"
+          fi
+
+          if [ -z "$RUNNING_SHA" ]; then
+            # Unattributable running image (e.g. a hand-pushed tag). The tested commit is on main and
+            # green, so deploying it RESTORES attributability — skipping would leave the drift in place.
+            echo "::warning::Running tag '$RUNNING_TAG' does not resolve to a commit; deploying."
+            verdict true "running tag \`$RUNNING_TAG\` is unattributable — deploying the tested commit"
+          elif [ "$RUNNING_SHA" = "$SHA" ]; then
+            verdict false "production already runs this commit"
+          elif git merge-base --is-ancestor "$SHA" "$RUNNING_SHA"; then
+            # Test runs can finish out of order. Deploying an older green commit after a newer one
+            # would silently roll production BACK.
+            verdict false "production runs \`$RUNNING_TAG\`, which is NEWER than the tested commit"
+          elif git diff --quiet "$RUNNING_SHA" "$SHA" -- \
+                 services/Tims.Platform \
+                 .github/workflows/deploy-platform-api.yml \
+                 scripts/deploy/apprunner-image-payload.py; then
+            verdict false "no change under services/Tims.Platform since the running \`$RUNNING_TAG\`"
+          else
+            verdict true "C# changed since the running \`$RUNNING_TAG\` and .NET Platform CI passed"
+          fi
+
   deploy:
     name: Build, push and deploy
+    needs: decide
+    if: needs.decide.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The exact commit .NET Platform CI passed on — never "whatever main is now".
+          ref: ${{ needs.decide.outputs.sha }}
 
       - name: Short SHA
         id: sha
@@ -102,41 +233,10 @@ jobs:
 
           # `update-service` takes a FULL source-configuration map. A partial one DROPS every env key
           # it omits — which would darken the 22 live flags and take ~13 production surfaces offline.
-          # So the payload is derived from the live config and asserted to differ in exactly one field.
-          python3 - "$REGISTRY/$ECR_REPO:$TAG" <<'PY'
-          import json, sys, copy
-          new_image = sys.argv[1]
-          svc = json.load(open("live.json"))["Service"]
-          before = svc["SourceConfiguration"]
-          after = copy.deepcopy(before)
-          after["ImageRepository"]["ImageIdentifier"] = new_image
-
-          diffs = []
-          def walk(a, b, path=""):
-              if isinstance(a, dict) and isinstance(b, dict):
-                  for k in set(a) | set(b):
-                      if k not in a: diffs.append(f"ADDED {path}/{k}")
-                      elif k not in b: diffs.append(f"REMOVED {path}/{k}")
-                      else: walk(a[k], b[k], f"{path}/{k}")
-              elif a != b:
-                  diffs.append(f"CHANGED {path}")
-          walk(before, after)
-
-          ic = after["ImageRepository"]["ImageConfiguration"]
-          n_env = len(ic.get("RuntimeEnvironmentVariables", {}))
-          n_sec = len(ic.get("RuntimeEnvironmentSecrets", {}))
-          print(f"payload: {len(diffs)} diff(s), {n_env} env vars, {n_sec} secrets")
-          for d in diffs: print("  " + d)
-
-          if diffs != ["CHANGED /ImageRepository/ImageIdentifier"]:
-              print("::error::Payload changes more than the image identifier. Refusing to deploy.")
-              sys.exit(1)
-          if n_env == 0:
-              print("::error::Payload carries zero env vars — that would darken every live surface.")
-              sys.exit(1)
-
-          json.dump(after, open("payload.json", "w"), indent=2)
-          PY
+          # So the payload is derived from the live config and asserted to differ in exactly one field
+          # (CHANGED /ImageRepository/ImageIdentifier) by the shared guard below. The rollback workflow
+          # runs the SAME script, so both directions pass through one tested check.
+          python3 scripts/deploy/apprunner-image-payload.py live.json "$REGISTRY/$ECR_REPO:$TAG" payload.json
 
           echo "ENV_BEFORE=$(python3 -c "import json;print(len(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")" >> "$GITHUB_ENV"
           echo "SERVICE_ARN=$ARN" >> "$GITHUB_ENV"
@@ -180,3 +280,11 @@ jobs:
           [ "$CODE" = "200" ] || { echo "::error::/health returned $CODE"; exit 1; }
 
           echo "Deployed $TAG. Production is running main."
+          {
+            echo "### Deployed \`$TAG\`"
+            echo
+            echo "- image: \`$GOT_IMAGE\`"
+            echo "- env vars: $ENV_AFTER (was $ENV_BEFORE)"
+            echo "- GET /health: $CODE"
+            echo "- to undo: run **Roll back platform API** with the previous tag (docs/runbooks/production-rollback-and-alerting.md)"
+          } >> "$GITHUB_STEP_SUMMARY"
