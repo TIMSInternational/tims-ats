@@ -39,6 +39,7 @@ import { describeOfferActionError } from '../../apps/web/lib/offer-action-error'
 import { OfferLetter } from '../../apps/web/app/(admin)/recruitment/offers/_components/offer-letter';
 import { CreateOfferModal } from '../../apps/web/app/(admin)/recruitment/candidates/[id]/create-offer-modal';
 import { OfferApprovalActions } from '../../apps/web/app/(admin)/recruitment/offers/_components/offer-approval-actions';
+import { OfferKpis } from '../../apps/web/app/(admin)/recruitment/offers/_components/offer-kpis';
 
 const labels = { perYear: 'año', perMonth: 'mes' };
 
@@ -141,6 +142,87 @@ describe('create offer form', () => {
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
     expect(mutateAsync.mock.calls[0]?.[0]).toMatchObject({ salary: 96_000_000, currency: 'COP' });
+  });
+
+  const twoVacancies = [
+    applications[0],
+    {
+      id: 'app-2',
+      vacancy: {
+        id: 'vac-2',
+        title: 'Ingeniero',
+        status: 'published',
+        salary: { min: 100_000, max: 140_000, currency: 'USD', period: 'yearly' },
+      },
+    },
+  ] as unknown as Parameters<typeof CreateOfferModal>[0]['applications'];
+
+  it('clears the typed amount when a different vacancy is selected instead of reinterpreting it', () => {
+    const { container } = render(
+      createElement(CreateOfferModal, { candidateId: 'cand-1', applications: twoVacancies, onClose: vi.fn() }),
+    );
+    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '8000000' } });
+    expect(amount.value).toBe('8000000');
+
+    const selects = container.querySelectorAll('select');
+    fireEvent.change(selects[0] as HTMLSelectElement, { target: { value: 'app-2' } });
+    expect((selects[1] as HTMLSelectElement).value).toBe('yearly');
+    expect((selects[2] as HTMLSelectElement).value).toBe('USD');
+    expect(amount.value).toBe('');
+    expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
+    expect(amount.placeholder).toBe('120000');
+  });
+
+  it('keeps the vacancy reference in the vacancy currency and drops the placeholder when currencies differ', () => {
+    const { container } = render(
+      createElement(CreateOfferModal, { candidateId: 'cand-1', applications, onClose: vi.fn() }),
+    );
+    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
+    expect(screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent).toContain('COP 8.000.000');
+
+    const selects = container.querySelectorAll('select');
+    fireEvent.change(selects[2] as HTMLSelectElement, { target: { value: 'USD' } });
+    const reference = screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent ?? '';
+    expect(reference).toContain('COP 8.000.000');
+    expect(reference).not.toContain('USD');
+    expect(amount.placeholder).toBe('');
+  });
+});
+
+describe('offer KPI average salary', () => {
+  it('renders the annual average with the ISO code and period, never a bare "$"', () => {
+    const { container } = render(
+      createElement(OfferKpis, {
+        activeCount: 1,
+        acceptanceRate: 100,
+        avgSalary: 120_000,
+        avgSalaryCurrency: 'USD',
+        pendingApprovals: 0,
+        complete: true,
+        loading: false,
+        isError: false,
+      }),
+    );
+    const text = container.textContent ?? '';
+    expect(text).toMatch(/USD\s120\.000 \/ (año|year)/);
+    expect(text).not.toContain('$');
+  });
+
+  it('shows N/D instead of averaging across currencies', () => {
+    const { container } = render(
+      createElement(OfferKpis, {
+        activeCount: 0,
+        acceptanceRate: 0,
+        avgSalary: null,
+        avgSalaryCurrency: null,
+        pendingApprovals: 0,
+        complete: true,
+        loading: false,
+        isError: false,
+      }),
+    );
+    expect(container.textContent).toContain('N/D');
   });
 });
 

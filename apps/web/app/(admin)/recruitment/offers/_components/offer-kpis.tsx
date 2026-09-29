@@ -2,7 +2,7 @@
 
 import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n/index';
-import { formatCurrency } from '../../../../../lib/format-utils';
+import { formatMoneyCode } from '../../../../../lib/offer-salary';
 
 interface OfferKpisProps {
   activeCount: number | null;
@@ -74,10 +74,12 @@ export function OfferKpis({
       />
       <KpiCard
         label={t.offers.kpiAvgSalary}
+        // Offer.salary is stored as an ANNUAL base salary, so the average is annual. computeOfferKpis
+        // returns a null currency when accepted offers mix currencies — never averaged across currencies.
         value={
           avgSalary === null || avgSalaryCurrency === null
             ? t.offers.notAvailable
-            : formatCurrency(avgSalary, avgSalaryCurrency)
+            : `${formatMoneyCode(avgSalary, avgSalaryCurrency)} / ${t.offers.perYear}`
         }
         subtitle={complete ? t.offers.avgOfAccepted : t.offers.kpiIncomplete}
         icon={
