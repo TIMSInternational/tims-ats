@@ -5,7 +5,7 @@ import type { Prisma } from '@tims/db';
 // Explicit select objects
 // ---------------------------------------------------------------------------
 
-const boardApplicationSelect = {
+const boardApplicationSelect = (organizationId: string, vacancyId: string) => ({
   id: true,
   status: true,
   source: true,
@@ -25,9 +25,14 @@ const boardApplicationSelect = {
       avatar: true,
       currentTitle: true,
       currentCompany: true,
+      fitScores: {
+        where: { organizationId, vacancyId },
+        take: 1,
+        select: { overallScore: true, isPartial: true },
+      },
     },
   },
-} satisfies Prisma.ApplicationSelect;
+}) satisfies Prisma.ApplicationSelect;
 
 const stageSelect = {
   id: true,
@@ -88,7 +93,7 @@ export const pipelineRepository = {
         applications: {
           where: applicationWhere,
           orderBy: { appliedAt: 'desc' as const },
-          select: boardApplicationSelect,
+          select: boardApplicationSelect(orgId, vacancyId),
         },
       },
     });
