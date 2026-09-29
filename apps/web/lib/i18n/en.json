@@ -3637,5 +3637,26 @@
     "errorAssessmentNotReady": "This assessment has no available questions yet. Please contact the team that assigned it.",
     "errorGeneric": "Something went wrong. Please try again.",
     "backToDashboard": "Back to dashboard"
+  },
+  "interviewJoin": {
+    "title": "Your video interview",
+    "checking": "Checking your link…",
+    "redirecting": "Opening the video room…",
+    "tooEarlyTitle": "It is still early",
+    "tooEarlyText": "The room opens 15 minutes before the scheduled time.",
+    "scheduledFor": "Scheduled for",
+    "opensAt": "You can join from",
+    "expiredTitle": "This link is no longer active",
+    "expiredText": "The interview has ended or the link expired. Contact the recruiter if you need a new one.",
+    "cancelledTitle": "The interview was cancelled",
+    "cancelledText": "The recruiter cancelled this interview. Check your email in case there is a new date.",
+    "invalidTitle": "Invalid link",
+    "invalidText": "Make sure you opened the full link from the invitation email.",
+    "notVideoTitle": "This interview is not a video call",
+    "notVideoText": "Check your invitation email for the interview location or medium.",
+    "unavailableTitle": "The room is not available right now",
+    "unavailableText": "We could not open the video room. Please try again in a few moments.",
+    "retry": "Try again",
+    "privacy": "Your link is personal. Do not share it."
   }
 }

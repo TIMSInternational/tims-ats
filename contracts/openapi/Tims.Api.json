@@ -1836,6 +1836,42 @@
         }
       }
     },
+    "/interviews/candidate-join": {
+      "post": {
+        "tags": [
+          "CandidateInterviewJoin"
+        ],
+        "operationId": "CandidateInterviewJoin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateJoinResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
     "/platform/invitations/{id}/resend": {
       "post": {
         "tags": [
@@ -8545,6 +8581,37 @@
           }
         }
       },
+      "CandidateJoinResult": {
+        "required": [
+          "outcome"
+        ],
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "joinOpensAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "joinUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CheckoutSessionBody": {
         "required": [
           "plan"
@@ -11494,6 +11561,19 @@
           },
           "createdAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "JoinBody": {
+        "required": [
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
           }
         }
       },
@@ -15751,6 +15831,9 @@
     },
     {
       "name": "InvitationSetup"
+    },
+    {
+      "name": "CandidateInterviewJoin"
     },
     {
       "name": "PlatformDashboard"

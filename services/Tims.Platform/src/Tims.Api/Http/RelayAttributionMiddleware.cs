@@ -22,8 +22,12 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
             await next(context);
             return;
         }
+        // Anonymous capability-token routes relayed by the web app: invitation setup and the candidate
+        // interview join (WP-H). Everything else must carry an authenticated identity.
         var anonymousInvitationSetup = context.User.Identity?.IsAuthenticated != true
-            && context.Request.Path.StartsWithSegments("/invitations/setup")
+            && (context.Request.Path.StartsWithSegments("/invitations/setup")
+                || context.Request.Path.Equals(Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.RoutePath,
+                    StringComparison.OrdinalIgnoreCase))
             && string.IsNullOrEmpty(context.Request.Headers.Authorization);
         if (context.User.Identity?.IsAuthenticated != true && !anonymousInvitationSetup)
         {

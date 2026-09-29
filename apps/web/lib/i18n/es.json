@@ -3637,5 +3637,26 @@
     "errorAssessmentNotReady": "Esta evaluacion aun no tiene preguntas disponibles. Comunicate con el equipo que te la asigno.",
     "errorGeneric": "Algo salio mal. Intenta de nuevo.",
     "backToDashboard": "Volver al panel"
+  },
+  "interviewJoin": {
+    "title": "Tu entrevista en video",
+    "checking": "Verificando tu enlace…",
+    "redirecting": "Abriendo la sala de video…",
+    "tooEarlyTitle": "Aún es temprano",
+    "tooEarlyText": "La sala se abre 15 minutos antes de la hora programada.",
+    "scheduledFor": "Programada para",
+    "opensAt": "Podrás ingresar desde",
+    "expiredTitle": "Este enlace ya no está activo",
+    "expiredText": "La entrevista terminó o el enlace venció. Contacta al reclutador si necesitas uno nuevo.",
+    "cancelledTitle": "La entrevista fue cancelada",
+    "cancelledText": "El reclutador canceló esta entrevista. Revisa tu correo por si hay una nueva fecha.",
+    "invalidTitle": "Enlace no válido",
+    "invalidText": "Revisa que hayas abierto el enlace completo del correo de invitación.",
+    "notVideoTitle": "Esta entrevista no es en video",
+    "notVideoText": "Revisa en tu correo de invitación el lugar o el medio de la entrevista.",
+    "unavailableTitle": "La sala no está disponible ahora",
+    "unavailableText": "No pudimos abrir la sala de video. Intenta de nuevo en unos momentos.",
+    "retry": "Intentar de nuevo",
+    "privacy": "Tu enlace es personal. No lo compartas."
   }
 }

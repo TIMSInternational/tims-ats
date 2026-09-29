@@ -445,8 +445,16 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'unguessable invitation token and are anonymous; completion additionally verifies the Supabase bearer identity ' +
       'against the invited email before the first users/user_roles rows are created. The role-parity harness cannot ' +
       'mint a tenant grant for a principal that deliberately does not exist yet, so these routes require their own ' +
-      'token, identity-provider, HTTP-boundary, and real-Postgres tests rather than a fabricated role fixture.',
-    routes: ['POST /invitations/setup/preview', 'POST /invitations/setup/register', 'POST /invitations/setup/complete'],
+      'token, identity-provider, HTTP-boundary, and real-Postgres tests rather than a fabricated role fixture. ' +
+      'POST /interviews/candidate-join (WP-H) is the same shape: anonymous, authenticated only by the emailed join ' +
+      'token hash, for a candidate who is never a TIMS principal — covered by CandidateInterviewJoin unit, ' +
+      'endpoint and Testcontainers repository tests instead.',
+    routes: [
+      'POST /invitations/setup/preview',
+      'POST /invitations/setup/register',
+      'POST /invitations/setup/complete',
+      'POST /interviews/candidate-join',
+    ],
   },
 ];
 
@@ -510,7 +518,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         178 → 181: invitation account setup added three capability-scoped POSTs. They are documented in
     //         the dedicated allowlist group below because tenant-role parity is structurally inapplicable before
     //         the invited principal has a tenant user row.
-    expect(deployed.size).toBe(181);
+    expect(deployed.size).toBe(182);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -575,7 +583,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   eleven pending a fixture whose shape differs from every prior surface's (per-role ROWS, not
     //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
     // 86 → 89: the three invitation-setup operations are capability scoped before tenant membership.
-    expect(allowlistNormalised.length).toBe(89);
+    // 89 → 90: WP-H's anonymous candidate interview join, the same capability-token shape.
+    expect(allowlistNormalised.length).toBe(90);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

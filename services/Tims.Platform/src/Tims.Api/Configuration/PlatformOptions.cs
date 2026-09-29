@@ -631,6 +631,13 @@ public sealed class PlatformOptions
     public bool PlatformInvitationResendEnabled { get; init; }
 
     /// <summary>
+    /// WP-H: the candidate's anonymous video-interview join (<c>POST /interviews/candidate-join</c>),
+    /// authenticated only by the emailed join token (SHA-256 hash lookup). Default false (dark): the route is
+    /// not mapped. Needs <c>Daily:ApiKey</c> to answer anything but <c>unavailable</c> on a joinable interview.
+    /// </summary>
+    public bool CandidateInterviewJoinEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 slice 23 (issue #81) — the platform-owner DASHBOARD READ surface: the C# port of ALL
     /// THIRTEEN procedures of <c>routers/platform/dashboard*.ts</c>, shipped in four steps.
     ///   • PR 1: <c>getPlanDistribution</c>, <c>getUserGrowth</c>, <c>getRecentActivity</c>.

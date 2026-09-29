@@ -127,6 +127,40 @@ public sealed class RelayAttributionTests
         Assert.True(called);
     }
 
+    [Fact]
+    public async Task SignedAnonymousCandidateInterviewJoinReceivesDistinctTrustedIp()
+    {
+        const string path = "/interviews/candidate-join";
+        var context = Request(Envelope("203.0.113.8", actor: "", method: "POST", path: path));
+        context.User = new ClaimsPrincipal(new ClaimsIdentity());
+        context.Request.Method = "POST";
+        context.Request.Path = path;
+        context.Request.QueryString = QueryString.Empty;
+        context.Request.Headers.Authorization = "";
+        var called = false;
+        await Run(context, new Nonces(), ctx =>
+        {
+            called = true;
+            Assert.Equal("203.0.113.8", ctx.ClientIpFor());
+            return Task.CompletedTask;
+        });
+        Assert.True(called);
+    }
+
+    [Fact]
+    public async Task AnonymousRelayIsStillRefusedOnOtherInterviewRoutes()
+    {
+        const string path = "/interviews/candidate-join-other";
+        var context = Request(Envelope("203.0.113.8", actor: "", method: "POST", path: path));
+        context.User = new ClaimsPrincipal(new ClaimsIdentity());
+        context.Request.Method = "POST";
+        context.Request.Path = path;
+        context.Request.QueryString = QueryString.Empty;
+        context.Request.Headers.Authorization = "";
+        await Run(context, new Nonces(), _ => throw new InvalidOperationException("must not be reached"));
+        Assert.Equal(401, context.Response.StatusCode);
+    }
+
     private sealed class Nonces : IRelayNonceStore
     {
         private readonly HashSet<string> _seen = [];

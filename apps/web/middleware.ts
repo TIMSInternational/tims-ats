@@ -15,6 +15,9 @@ const PUBLIC_PATHS = [
   // in the URL is the bearer credential (verified server-side). Must be public or
   // the candidate gets bounced to /login and never reaches the consent/voice screen.
   '/ai-interview',
+  // Candidate video-interview join link (WP-H): the emailed token is the credential, verified by the
+  // platform API. Candidates have no staff session and must never be bounced to /login.
+  '/interview/join/',
   '/logout',
 ];
 
@@ -76,7 +79,11 @@ export async function middleware(request: NextRequest) {
   // Mirror the CSP onto every response we return (including redirects).
   const applyCsp = <T extends NextResponse>(res: T): T => {
     res.headers.set('content-security-policy', csp);
-    if (request.nextUrl.pathname === '/accept-invitation' || request.nextUrl.pathname === '/reset-password') {
+    if (
+      request.nextUrl.pathname === '/accept-invitation' ||
+      request.nextUrl.pathname === '/reset-password' ||
+      request.nextUrl.pathname.startsWith('/interview/join/')
+    ) {
       res.headers.set('referrer-policy', 'no-referrer');
       res.headers.set('cache-control', 'no-store');
     }

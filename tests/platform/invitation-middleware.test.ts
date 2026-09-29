@@ -35,3 +35,14 @@ it('still redirects anonymous users away from the private dashboard', async () =
   );
   expect(response.headers.get('location')).toContain('/login');
 });
+
+it('lets a candidate open the interview join link without a session, never cached or leaked via Referer', async () => {
+  const response = await middleware(
+    new NextRequest('https://app.tims.com/interview/join/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde', {
+      headers: { host: 'app.tims.com' },
+    }),
+  );
+  expect(response.headers.get('location')).toBeNull();
+  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+  expect(response.headers.get('cache-control')).toBe('no-store');
+});
