@@ -127,7 +127,9 @@ export function buildSubmission(
   const parsed = scorecardSubmissionSchema.safeParse({
     ratings,
     recommendation: draft.recommendation,
-    overallNotes: notes.length > 0 ? notes : undefined,
+    // Always send a string: an empty one is how an evaluator CLEARS saved notes. `undefined`
+    // would be skipped by the upsert's update branch and silently keep the old text.
+    overallNotes: notes,
   });
   return parsed.success ? parsed.data : null;
 }

@@ -228,6 +228,47 @@ describe('interview room scorecard', () => {
     expect(submitButton()).toBeEnabled();
   });
 
+  it('clearing previously saved notes sends an empty string so the stored note is actually removed', () => {
+    h.existing = {
+      isLoading: false,
+      isError: false,
+      refetch: () => undefined,
+      data: {
+        id: 'sc1',
+        ratings: { SQL: 5, Storytelling: 3 },
+        recommendation: 'strong_yes',
+        overallNotes: 'Great',
+        submittedAt: new Date('2026-09-29T10:00:00Z'),
+      },
+    };
+    renderForm();
+    fireEvent.change(screen.getByDisplayValue('Great'), { target: { value: '   ' } });
+    fireEvent.click(submitButton());
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ overallNotes: '' }));
+  });
+
+  it('keeps an unsaved scorecard draft when the evaluator switches to another tab and back', () => {
+    localStorage.setItem('tims-locale', 'EN');
+    const props = { interview: interview(), candidateInitials: 'AR' };
+    render(
+      <I18nProvider>
+        <ScorecardPanel {...props} />
+      </I18nProvider>,
+    );
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'SQL' })).getByRole('radio', { name: '4 of 5' }));
+    fireEvent.change(screen.getByPlaceholderText(en.interviewRoom.overallNotesPlaceholder), {
+      target: { value: 'Draft evidence' },
+    });
+    fireEvent.click(screen.getByRole('tab', { name: en.interviewRoom.tabCandidate }));
+    expect(screen.getByRole('tab', { name: en.interviewRoom.tabCandidate })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: en.interviewRoom.tabScorecard }));
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'SQL' })).getByRole('radio', { name: '4 of 5' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByDisplayValue('Draft evidence')).toBeInTheDocument();
+  });
+
   it('blocks submission for a viewer who is not an assigned evaluator', () => {
     renderForm({ currentUserId: '99999999-9999-4999-8999-999999999999' });
     expect(screen.getByText(en.interviewRoom.notEvaluator)).toBeInTheDocument();
@@ -290,7 +331,7 @@ describe('interview room scorecard', () => {
       interviewId: INTERVIEW_ID,
       ratings: { SQL: 3, Storytelling: 3 },
       recommendation: 'neutral',
-      overallNotes: undefined,
+      overallNotes: '',
     });
     expect(screen.queryByRole('tab', { name: /notas|notes/i })).toBeNull();
   });

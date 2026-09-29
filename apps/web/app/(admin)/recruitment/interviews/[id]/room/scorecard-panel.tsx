@@ -50,24 +50,34 @@ export function ScorecardPanel({ interview, candidateInitials }: ScorecardPanelP
         ))}
       </div>
 
+      {/* The scorecard form owns the unsaved draft (ratings, recommendation, notes), so it
+          stays mounted and is only hidden while another tab is open — unmounting it would
+          silently discard the evaluator's in-progress edits on every tab switch. */}
       <div
         role="tabpanel"
-        id={`room-panel-${activeTab}`}
-        aria-labelledby={`room-tab-${activeTab}`}
-        className="flex-1 min-h-0 flex flex-col"
+        id="room-panel-scorecard"
+        aria-labelledby="room-tab-scorecard"
+        hidden={activeTab !== 'scorecard'}
+        className={`flex-1 min-h-0 flex-col ${activeTab === 'scorecard' ? 'flex' : 'hidden'}`}
       >
-        {activeTab === 'scorecard' && <ScorecardForm interview={interview} currentUserId={userId} />}
-        {activeTab === 'ai' && (
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
-            <InterviewAiPanel interviewId={interview.id} />
-          </div>
-        )}
-        {activeTab === 'candidate' && (
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
-            <CandidateTab interview={interview} candidateInitials={candidateInitials} />
-          </div>
-        )}
+        <ScorecardForm interview={interview} currentUserId={userId} />
       </div>
+      {activeTab !== 'scorecard' && (
+        <div
+          role="tabpanel"
+          id={`room-panel-${activeTab}`}
+          aria-labelledby={`room-tab-${activeTab}`}
+          className="flex-1 min-h-0 flex flex-col"
+        >
+          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+            {activeTab === 'ai' ? (
+              <InterviewAiPanel interviewId={interview.id} />
+            ) : (
+              <CandidateTab interview={interview} candidateInitials={candidateInitials} />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
