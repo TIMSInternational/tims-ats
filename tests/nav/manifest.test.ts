@@ -149,6 +149,39 @@ describe('computeVisibleSections', () => {
   });
 });
 
+describe('/settings/users (Equipo) — gated on user:create, not user:read', () => {
+  const hrefsFor = (role: 'super_admin' | 'hr_admin', can: (m: string, a?: string) => boolean) =>
+    computeVisibleSections(MANIFESTS[role].sections, can, false).flatMap((s) => s.items.map((i) => i.href));
+
+  it('is declared for super_admin and hr_admin only (the roles holding user:create in the access matrix)', () => {
+    for (const role of NAV_ROLES) {
+      const hrefs = MANIFESTS[role].sections.flatMap((s) => s.items.map((i) => i.href));
+      expect(hrefs.includes('/settings/users'), role).toBe(role === 'super_admin' || role === 'hr_admin');
+    }
+  });
+
+  it('is shown when can(user, create) is true', () => {
+    for (const role of ['super_admin', 'hr_admin'] as const)
+      expect(hrefsFor(role, (m, a) => m === 'user' && (a === 'read' || a === 'create'))).toContain('/settings/users');
+  });
+
+  it('is hidden for a viewer with user:read but NOT user:create (business units stays visible)', () => {
+    for (const role of ['super_admin', 'hr_admin'] as const) {
+      const hrefs = hrefsFor(role, (m, a) => m === 'user' && a === 'read');
+      expect(hrefs).not.toContain('/settings/users');
+      expect(hrefs).toContain('/settings/business-units');
+    }
+  });
+
+  it('items without an explicit action are still checked with read', () => {
+    const seen: string[] = [];
+    computeVisibleSections(MANIFESTS.super_admin.sections, (m, a) => { seen.push(`${m}:${a}`); return true; }, false);
+    expect(seen).toContain('pipeline:read');
+    expect(seen).toContain('user:create');
+    expect(seen).not.toContain('pipeline:undefined');
+  });
+});
+
 describe('manifest sub-item type support (non-regression)', () => {
   const sectionWithSub: NavSection = {
     labelKey: 'sidebar.recruitment',

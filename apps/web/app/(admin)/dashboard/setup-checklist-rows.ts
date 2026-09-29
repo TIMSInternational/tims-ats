@@ -27,16 +27,10 @@ export interface SetupChecklistLabels {
 // React render harness; UI wiring itself is verified by live click-through
 // (see setup-checklist.tsx), while logic like this is unit-tested directly.
 //
-// "teamInvited" deliberately gets href: null even while incomplete: there is
-// no self-serve org-admin invite entry point anywhere in this codebase today.
-// The only invite flows that exist (platform/invitations/*, platform/users/
-// invite-wizard.tsx) live under the platform-owner-only console — a regular
-// org super_admin/hr_admin cannot reach those routes at all. Linking this row
-// to a page that doesn't actually invite anyone into THIS org would be a
-// broken/misleading deep link, so it renders as a status-only row instead.
-// Building a real self-serve org-admin invite flow is a substantial feature
-// (email tokens, account provisioning) — out of scope for this widget task;
-// flagged as a product gap for a future sprint.
+// "teamInvited" links to /settings/users (the tenant self-serve "Equipo" page, which invites
+// into the CALLER'S org via the C# /tenant-invitations surface) — but only for viewers holding
+// user:create. Everyone else gets a status-only row: the page would render a no-permission state
+// for them, and a "Go" link to a dead end is the same failure `canManageBranding` guards below.
 //
 // `canManageBranding` (whole-branch review): hr_admin holds organization:read
 // (sees this widget, including this row's DONE/not-done state) but not
@@ -49,10 +43,11 @@ export function deriveSetupChecklistRows(
   items: SetupChecklistItems,
   labels: SetupChecklistLabels,
   canManageBranding: boolean,
+  canInviteTeam = false,
 ): SetupChecklistRow[] {
   return [
     { key: 'companyStructureReady', label: labels.companyStructureReady, done: items.companyStructureReady, href: null },
-    { key: 'teamInvited', label: labels.teamInvited, done: items.teamInvited, href: null },
+    { key: 'teamInvited', label: labels.teamInvited, done: items.teamInvited, href: canInviteTeam ? '/settings/users' : null },
     { key: 'brandingSet', label: labels.brandingSet, done: items.brandingSet, href: canManageBranding ? '/settings/branding' : null },
     { key: 'firstVacancyPosted', label: labels.firstVacancyPosted, done: items.firstVacancyPosted, href: '/recruitment/vacancies' },
     { key: 'firstVacancyPublished', label: labels.firstVacancyPublished, done: items.firstVacancyPublished, href: '/recruitment/vacancies' },

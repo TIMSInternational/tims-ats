@@ -29,6 +29,7 @@ export function SetupChecklist() {
   const utils = trpc.useUtils();
   const can = useCan();
   const canManageBranding = can('organization', 'update');
+  const canInviteTeam = can('user', 'create');
 
   // Optimistic client-side hide the instant "hide for now" is clicked, backed
   // by the real dismissSetupChecklist mutation (per Task 4 brief). Reverted on
@@ -65,6 +66,7 @@ export function SetupChecklist() {
           firstVacancyPublished: sc.firstVacancyPublished,
         },
         canManageBranding,
+        canInviteTeam,
       )
     : [];
 

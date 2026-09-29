@@ -10,6 +10,10 @@ export type NavItem = {
   readonly labelKey: string;
   readonly icon: string;
   readonly module: Module | null;
+  // The action can() must grant on `module` for this item to show. Defaults to 'read' (every
+  // item that omits it). Set only where READING the module is not enough to use the page — e.g.
+  // /settings/users is an invite surface, so it needs user:create, not just user:read.
+  readonly action?: 'read' | 'create';
   readonly sub?: readonly NavSubItem[];
 };
 export type NavSection = { readonly labelKey: string | null; readonly items: readonly NavItem[] };
@@ -86,6 +90,7 @@ const SETTINGS: NavSection = {
   labelKey: null,
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
+    { href: '/settings/users', labelKey: 'sidebar.team', icon: 'users', module: 'user', action: 'create' },
     { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
     { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
@@ -122,7 +127,10 @@ const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_M
 // no billing/integrations — org-config is read-only per the access spec). can() still prunes.
 const HR_ADMIN_SETTINGS: NavSection = {
   labelKey: null,
-  items: [{ href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' }],
+  items: [
+    { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
+    { href: '/settings/users', labelKey: 'sidebar.team', icon: 'users', module: 'user', action: 'create' },
+  ],
 };
 const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS];
 
@@ -236,7 +244,7 @@ export function computeVisibleSections(
       items: s.items.filter((it) => {
         if (it.module === null) return true;
         if (isLoading) return false;
-        return can(it.module, 'read');
+        return can(it.module, it.action ?? 'read');
       }),
     }))
     .filter((s) => s.items.length > 0);

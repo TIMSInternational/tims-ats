@@ -71,11 +71,15 @@ describe('deriveSetupChecklistRows', () => {
     expect(rowsDone.find((r) => r.key === 'companyStructureReady')?.href).toBeNull();
   });
 
-  it('teamInvited NEVER gets a deep link, whether complete or not — there is no self-serve org-admin invite entry point in this codebase (product gap, out of scope for this widget)', () => {
-    const incomplete = deriveSetupChecklistRows(ALL_FALSE, LABELS, true);
-    expect(incomplete.find((r) => r.key === 'teamInvited')?.href).toBeNull();
+  it('teamInvited links to /settings/users only for viewers who can create users (user:create)', () => {
+    const incomplete = deriveSetupChecklistRows(ALL_FALSE, LABELS, true, true);
+    expect(incomplete.find((r) => r.key === 'teamInvited')?.href).toBe('/settings/users');
+    const complete = deriveSetupChecklistRows({ ...ALL_FALSE, teamInvited: true }, LABELS, true, true);
+    expect(complete.find((r) => r.key === 'teamInvited')?.href).toBe('/settings/users');
+  });
 
-    const complete = deriveSetupChecklistRows({ ...ALL_FALSE, teamInvited: true }, LABELS, true);
-    expect(complete.find((r) => r.key === 'teamInvited')?.href).toBeNull();
+  it('teamInvited stays status-only (no dead-end link) when the viewer lacks user:create or the flag is omitted', () => {
+    expect(deriveSetupChecklistRows(ALL_FALSE, LABELS, true, false).find((r) => r.key === 'teamInvited')?.href).toBeNull();
+    expect(deriveSetupChecklistRows(ALL_FALSE, LABELS, true).find((r) => r.key === 'teamInvited')?.href).toBeNull();
   });
 });

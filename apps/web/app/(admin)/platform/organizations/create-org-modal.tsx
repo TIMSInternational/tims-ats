@@ -98,16 +98,25 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">{t.organizations.adminEmailLabel}</label>
+            {/* Persisted only as billing_email — this modal invites nobody. The admin invite lives in
+                "Invitar Organización" (/platform/invitations). Payload key stays `adminEmail`. */}
+            <label htmlFor="create-org-billing-email" className="block text-xs font-medium text-[#585858] mb-1.5">
+              {t.organizations.billingEmailLabel}
+            </label>
             <input
+              id="create-org-billing-email"
               type="email"
               required
               maxLength={254}
               value={formEmail}
               onChange={(e) => setFormEmail(e.target.value)}
-              placeholder="admin@empresa.com"
+              placeholder="facturacion@empresa.com"
+              aria-describedby="create-org-billing-email-hint"
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
             />
+            <p id="create-org-billing-email-hint" className="mt-1.5 text-xs text-[#8B8B8B]">
+              {t.organizations.billingEmailHint}
+            </p>
           </div>
           {createOrg.error && (
             <div className="p-2.5 rounded-lg bg-red-50 text-xs text-[#DD0C15] font-medium">
