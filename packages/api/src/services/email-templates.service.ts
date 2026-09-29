@@ -36,9 +36,10 @@ function formatDate(d: Date): string {
   return new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(d);
 }
 
-function baseLayout(content: string, companyName: string): string {
+function baseLayout(content: string, companyName: string, locale: 'es' | 'en' = 'es'): string {
   const company = esc(companyName);
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+  const en = locale === 'en';
+  return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:${BRAND.surface};${FONT}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.surface};padding:32px 0;">
 <tr><td align="center">
@@ -48,8 +49,8 @@ function baseLayout(content: string, companyName: string): string {
 </td></tr>
 <tr><td style="padding:32px;">${content}</td></tr>
 <tr><td style="padding:16px 32px;background:${BRAND.surface};border-top:1px solid ${BRAND.border};text-align:center;">
-<p style="margin:0;font-size:12px;color:${BRAND.muted};${FONT}">&copy; ${new Date().getFullYear()} ${company}. Todos los derechos reservados.</p>
-<p style="margin:4px 0 0;font-size:11px;color:${BRAND.muted};${FONT}">Este correo es confidencial y dirigido exclusivamente a su destinatario.</p>
+<p style="margin:0;font-size:12px;color:${BRAND.muted};${FONT}">&copy; ${new Date().getFullYear()} ${company}. ${en ? 'All rights reserved.' : 'Todos los derechos reservados.'}</p>
+<p style="margin:4px 0 0;font-size:11px;color:${BRAND.muted};${FONT}">${en ? 'This email is confidential and intended solely for its recipient.' : 'Este correo es confidencial y dirigido exclusivamente a su destinatario.'}</p>
 </td></tr>
 </table></td></tr></table></body></html>`;
 }
@@ -87,6 +88,9 @@ function meetingLinkRow(meetingUrl?: string): string {
   if (!meetingUrl) return '';
   return detailRow('Enlace', `<a href="${safeUrl(meetingUrl)}" style="color:${BRAND.navy};">${esc(meetingUrl)}</a>`);
 }
+
+// Shared building blocks for the localized interview emails (interview-email-templates.ts).
+export const emailLayout = { esc, safeUrl, baseLayout, heading, paragraph, detailRow, detailsTable, ctaButton } as const;
 
 type InterviewParams = { candidateName: string; vacancyTitle: string; companyName: string; interviewType: string; scheduledAt: Date; duration: number; location?: string; meetingUrl?: string; contactEmail: string };
 
@@ -134,6 +138,21 @@ export const emailTemplates = {
       paragraph('Valoramos su interés en nuestra organización y le animamos a estar pendiente de futuras oportunidades.') +
       signOff(p.contactEmail);
     return { subject: `Cancelación de entrevista — ${p.vacancyTitle}`, html: baseLayout(content, p.companyName) };
+  },
+
+  applicationReceived(p: { candidateName: string; vacancyTitle: string; companyName: string; locale: 'es' | 'en' }): { subject: string; html: string } {
+    const en = p.locale === 'en';
+    const content = heading(en ? 'Application received' : 'Hemos recibido su aplicación') +
+      paragraph(en ? `Dear ${esc(p.candidateName)},` : `Estimado/a ${esc(p.candidateName)},`) +
+      paragraph(en
+        ? `Thank you for applying to <strong>${esc(p.vacancyTitle)}</strong> at ${esc(p.companyName)}. We have received your application.`
+        : `Gracias por aplicar al cargo de <strong>${esc(p.vacancyTitle)}</strong> en ${esc(p.companyName)}. Hemos recibido su aplicación correctamente.`) +
+      paragraph(en
+        ? 'Our team will review your profile and contact you by email if it matches the position. No further action is needed right now.'
+        : 'Nuestro equipo revisará su perfil y le contactaremos por correo electrónico si se ajusta al cargo. Por ahora no necesita hacer nada más.') +
+      paragraph(en ? 'Kind regards,<br>Talent Team' : 'Cordialmente,<br>Equipo de Talento Humano');
+    const title = p.vacancyTitle.replace(/[\r\n]+/g, ' ');
+    return { subject: en ? `Application received — ${title}` : `Aplicación recibida — ${title}`, html: baseLayout(content, p.companyName, p.locale) };
   },
 
   offerSent(p: { candidateName: string; vacancyTitle: string; companyName: string; signingUrl: string; expiresAt?: Date | null }): { subject: string; html: string } {

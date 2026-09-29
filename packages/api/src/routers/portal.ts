@@ -6,6 +6,8 @@ import { captchaBypassAllowed } from './portal-helpers';
 import { createCvUploadPresignedPost } from '../lib/s3';
 import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
 import { portalApplicationService } from '../services/portal-application.service';
+import { emailService } from '../services/email.service';
+import { logger } from '@tims/shared';
 
 // Verify a Cloudflare Turnstile token on the public apply form. In production the
 // secret MUST be configured (else every apply is rejected — fail closed). Once the
@@ -182,7 +184,11 @@ export const portalRouter = router({
 
       const vacancy = await db.vacancy.findFirstOrThrow({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
-        include: { stages: { where: { isDefault: true }, take: 1 } },
+        include: {
+          stages: { where: { isDefault: true }, take: 1 },
+          organization: { select: { name: true } },
+          company: { select: { language: true } },
+        },
       });
 
       const orgId = vacancy.organizationId;
@@ -259,6 +265,25 @@ export const portalRouter = router({
             input.cvFileName ?? input.cvFileKey.split('/').pop() ?? 'cv',
           );
         }
+
+        // "Application received" confirmation — only for a NEW, committed application
+        // (duplicate/P2002 paths return earlier or below). Fire-and-forget: a mail
+        // failure (sync or async) must never fail or delay the application.
+        const confirmation = {
+          candidateEmail: candidate.email,
+          candidateName: candidate.firstName,
+          vacancyTitle: vacancy.title,
+          companyName: vacancy.organization?.name ?? '',
+          locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
+        };
+        void Promise.resolve()
+          .then(() => emailService.sendApplicationReceived(confirmation))
+          .catch((error: unknown) => {
+            logger.warn(
+              { component: 'portal', vacancyId: vacancy.id, errName: error instanceof Error ? error.name : 'UnknownError' },
+              'Application confirmation email failed — application unaffected',
+            );
+          });
 
         return { applicationId: application.id, candidateId: candidate.id };
       } catch (err) {

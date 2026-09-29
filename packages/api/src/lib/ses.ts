@@ -1,4 +1,4 @@
-import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/client-ses';
 import { logger } from '@tims/shared';
 import { sesCircuit } from './circuit-breaker';
 
@@ -43,4 +43,39 @@ export async function sendEmail({ to, subject, html, abortSignal }: SendEmailPar
     );
     return false;
   }
+}
+
+export type SendRawEmailResult = { sent: true } | { sent: false; errorName: string };
+
+/**
+ * Sends a pre-built RFC 5322 MIME message (see lib/mime.ts) — used only for mail
+ * with attachments (interview .ics). Requires the `ses:SendRawEmail` IAM action.
+ * Never throws; returns the SDK error NAME (no message — it can echo addresses)
+ * so callers can decide whether to fall back to plain sendEmail.
+ */
+export async function sendRawEmail({ to, raw, abortSignal }: { to: string; raw: string; abortSignal?: AbortSignal }): Promise<SendRawEmailResult> {
+  try {
+    return await sesCircuit.execute<SendRawEmailResult>(async () => {
+      await ses.send(
+        new SendRawEmailCommand({
+          Source: FROM_ADDRESS,
+          Destinations: [to],
+          RawMessage: { Data: new TextEncoder().encode(raw) },
+        }),
+        { abortSignal },
+      );
+      return { sent: true };
+    }, () => {
+      logger.warn({ component: 'ses' }, 'Circuit breaker open — raw email not sent');
+      return { sent: false, errorName: 'CircuitOpen' };
+    });
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : 'UnknownError';
+    logger.error({ component: 'ses', errName: errorName }, 'Failed to send raw email');
+    return { sent: false, errorName };
+  }
+}
+
+export function getEmailFromAddress(): string {
+  return FROM_ADDRESS;
 }

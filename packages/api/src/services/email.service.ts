@@ -15,53 +15,19 @@ export const emailService = {
     return sendEmail({ to: candidateEmail, subject, html, abortSignal: AbortSignal.timeout(4_000) });
   },
 
-  async sendInterviewInvitation(params: {
-    candidateEmail: string;
-    candidateName: string;
-    vacancyTitle: string;
-    companyName: string;
-    interviewType: string;
-    scheduledAt: Date;
-    duration: number;
-    location?: string;
-    meetingUrl?: string;
-    contactEmail: string;
-  }): Promise<boolean> {
-    const { candidateEmail, ...rest } = params;
-    const { subject, html } = emailTemplates.interviewInvitation(rest);
-    return sendEmail({ to: candidateEmail, subject, html });
-  },
+  // Interview invitation / reschedule / cancellation mail now lives in
+  // interview-email.service.ts (join link + .ics for candidate AND evaluators).
 
-  async sendInterviewReschedule(params: {
+  async sendApplicationReceived(params: {
     candidateEmail: string;
     candidateName: string;
     vacancyTitle: string;
     companyName: string;
-    interviewType: string;
-    oldScheduledAt: Date;
-    newScheduledAt: Date;
-    scheduledAt: Date;
-    duration: number;
-    location?: string;
-    meetingUrl?: string;
-    contactEmail: string;
+    locale: 'es' | 'en';
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
-    const { subject, html } = emailTemplates.interviewReschedule(rest);
-    return sendEmail({ to: candidateEmail, subject, html });
-  },
-
-  async sendInterviewCancellation(params: {
-    candidateEmail: string;
-    candidateName: string;
-    vacancyTitle: string;
-    companyName: string;
-    cancelReason: string;
-    contactEmail: string;
-  }): Promise<boolean> {
-    const { candidateEmail, ...rest } = params;
-    const { subject, html } = emailTemplates.interviewCancellation(rest);
-    return sendEmail({ to: candidateEmail, subject, html });
+    const { subject, html } = emailTemplates.applicationReceived(rest);
+    return sendEmail({ to: candidateEmail, subject, html, abortSignal: AbortSignal.timeout(4_000) });
   },
 
   async sendOfferToCandidate(params: {

@@ -20,19 +20,24 @@ vi.mock('../../packages/api/src/services/portal-application.service', () => ({
   portalApplicationService: { processCvUpload: (...a: unknown[]) => processCvUploadMock(...a) },
 }));
 
+const sendApplicationReceivedMock = vi.fn();
+vi.mock('../../packages/api/src/services/email.service', () => ({
+  emailService: { sendApplicationReceived: (...a: unknown[]) => sendApplicationReceivedMock(...a) },
+}));
+
 const createPresignedPostMock = vi.fn();
 vi.mock('../../packages/api/src/lib/s3', () => ({
   createCvUploadPresignedPost: (...a: unknown[]) => createPresignedPostMock(...a),
 }));
 
-async function makeCaller() {
+async function makeCaller(headers: Headers = new Headers()) {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { portalRouter } = await import('../../packages/api/src/routers/portal');
   const testRouter = router({ portal: portalRouter });
   const callerFactory = createCallerFactory(testRouter);
   return callerFactory({
     user: null,
-    headers: new Headers(),
+    headers,
     supabaseAuth: null,
     externalAuth: null,
   } as never) as unknown as {
@@ -59,9 +64,13 @@ beforeEach(() => {
   dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
     id: VACANCY_ID,
     organizationId: ORG_ID,
+    title: 'Analista de Datos',
     stages: [{ id: STAGE_ID, isDefault: true }],
+    organization: { name: 'Acme' },
+    company: { language: 'es' },
   });
-  dbMocks.candidate.upsert.mockResolvedValue({ id: CANDIDATE_ID });
+  dbMocks.candidate.upsert.mockResolvedValue({ id: CANDIDATE_ID, firstName: 'Ana', email: 'ana@example.com' });
+  sendApplicationReceivedMock.mockResolvedValue(true);
   dbMocks.application.findFirst.mockResolvedValue(null);
   dbMocks.application.create.mockResolvedValue({ id: APPLICATION_ID });
 });
@@ -202,5 +211,62 @@ describe('portal.getCvUploadUrl', () => {
       }),
     ).rejects.toThrow();
     expect(createPresignedPostMock).not.toHaveBeenCalled();
+  });
+});
+
+// The public apply endpoint is rate limited per client IP (in-memory in tests);
+// give each confirmation-email test its own bucket.
+let ipCounter = 0;
+const freshIp = () => new Headers({ 'x-forwarded-for': `10.9.0.${++ipCounter}` });
+
+describe('portal.applyToVacancy — application received email', () => {
+  it('emails the candidate a confirmation after a new application is created', async () => {
+    const caller = await makeCaller(freshIp());
+    await caller.portal.applyToVacancy(baseApplyInput);
+
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock).toHaveBeenCalledWith({
+      candidateEmail: 'ana@example.com',
+      candidateName: 'Ana',
+      vacancyTitle: 'Analista de Datos',
+      companyName: 'Acme',
+      locale: 'es',
+    });
+    expect(dbMocks.application.create.mock.invocationCallOrder[0]).toBeLessThan(
+      sendApplicationReceivedMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('still succeeds when the email send throws (sync or async)', async () => {
+    const caller = await makeCaller(freshIp());
+    sendApplicationReceivedMock.mockImplementationOnce(() => {
+      throw new Error('SES exploded');
+    });
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({
+      applicationId: APPLICATION_ID,
+      candidateId: CANDIDATE_ID,
+    });
+    sendApplicationReceivedMock.mockRejectedValueOnce(new Error('SES down'));
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({
+      applicationId: APPLICATION_ID,
+      candidateId: CANDIDATE_ID,
+    });
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('sends no confirmation for a duplicate application', async () => {
+    dbMocks.application.findFirst.mockResolvedValue({ id: APPLICATION_ID });
+    const caller = await makeCaller(freshIp());
+    await caller.portal.applyToVacancy(baseApplyInput);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+  });
+
+  it('sends no confirmation when the application insert fails', async () => {
+    dbMocks.application.create.mockRejectedValue(new Error('insert failed'));
+    const caller = await makeCaller(freshIp());
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
   });
 });
