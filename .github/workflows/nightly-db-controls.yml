@@ -105,6 +105,9 @@ jobs:
       - name: Run checks 14, 16 and 17
         id: checks
         env:
+          # The Supabase session pooler chains to this committed project CA, which Node does not
+          # trust by default. Keep full TLS verification; never disable certificate checks.
+          NODE_EXTRA_CA_CERTS: scripts/parity/supabase-root-ca.pem
           # Both names: check 14 prefers DIRECT_URL, check 16's script reads DIRECT_URL, check 17 accepts
           # either. Setting both avoids a check silently falling back to something unintended.
           DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
