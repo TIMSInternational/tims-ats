@@ -40,3 +40,32 @@ export function hardExitTarget(click: AnchorClick): string | null {
   if (url.pathname === current.pathname) return null;
   return url.href;
 }
+
+/**
+ * The URL a history.pushState/replaceState call must be turned into a full
+ * navigation for, or null when it stays on the room document (same path, e.g.
+ * a query or hash update, or Next's own same-URL state writes).
+ *
+ * This is the backstop for PROGRAMMATIC exits (Next router push / replace
+ * from the navbar search, notifications, redirects): Next's App Router commits
+ * every soft navigation through window.history.pushState/replaceState, so
+ * intercepting it catches exits that never produce an anchor click.
+ */
+export function historyExitTarget(
+  url: string | URL | null | undefined,
+  currentHref: string,
+): string | null {
+  if (url === null || url === undefined) return null;
+  let next: URL;
+  let current: URL;
+  try {
+    current = new URL(currentHref);
+    next = new URL(url, current);
+  } catch {
+    return null;
+  }
+  // A cross-origin URL makes pushState throw anyway; let the browser do that.
+  if (next.origin !== current.origin) return null;
+  if (next.pathname === current.pathname) return null;
+  return next.href;
+}
