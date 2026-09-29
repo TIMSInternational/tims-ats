@@ -65,6 +65,7 @@ export function CreateCourseModal({ onClose }: { onClose: () => void }) {
           <label className="block text-[12px] font-medium text-[#585858]">
             {t.learning.durationHours}
             <input type="number" min="0.25" max="168" step="0.25" value={duration} onChange={(event) => setDuration(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
+            <span className="mt-1 block text-[11px] font-normal text-[#8B8B8B]">{t.learning.durationHint}</span>
           </label>
         </div>
         <label className="block text-[12px] font-medium text-[#585858]">

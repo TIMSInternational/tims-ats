@@ -1428,6 +1428,7 @@
     "courseType": "Formato",
     "courseCategory": "Categoría",
     "durationHours": "Duración (horas)",
+    "durationHint": "Usa incrementos de 0,25 horas (15 minutos).",
     "typeOnline": "En línea",
     "typeInPerson": "Presencial",
     "typeHybrid": "Híbrido",
