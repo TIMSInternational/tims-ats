@@ -9,7 +9,7 @@ import { useI18n } from '../../../../../../lib/i18n';
 import { ApplyModalStep1 } from './apply-modal-step1';
 import { ApplyModalStep2 } from './apply-modal-step2';
 import { useCvUpload } from '../_lib/use-cv-upload';
-import { EXPERIENCE_LEVELS } from '../_lib/experience-levels';
+import { experienceLevelLabel } from '../_lib/experience-levels';
 
 interface ApplyModalProps {
   vacancyId: string;
@@ -43,6 +43,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const applyMutation = trpc.portal.applyToVacancy.useMutation();
+  const utils = trpc.useUtils();
 
   const isStep1Valid = firstName.trim() && lastName.trim() && email.trim() && email.includes('@');
   // When a captcha is configured, a solved token is required to submit.
@@ -71,13 +72,15 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         source: 'portal',
       });
       setSuccess(true);
+      // The detail page shows "N personas aplicaron"; refetch it so the count includes this application.
+      void utils.portal.getVacancy.invalidate({ id: vacancyId });
     } catch (err) {
       if (err instanceof Error && err.message === 'cv_upload_failed') {
         toast(p.cvUploadFailed, { type: 'error' });
         setSubmitting(false);
         return;
       }
-      const msg = err instanceof Error ? err.message : 'Error al enviar la aplicacion';
+      const msg = err instanceof Error ? err.message : p.submitErrorFallback;
       if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
         toast(p.applyModalDuplicateError, { type: 'error' });
       } else {
@@ -114,17 +117,17 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             onClick={onClose}
             className="h-10 rounded-lg bg-[#1F114C] px-6 text-[13px] font-medium text-white transition-colors hover:bg-[#2a1a5c]"
           >
-            Entendido
+            {p.understood}
           </button>
         </div>
       </Modal>
     );
   }
 
-  const stepLabels = ['Datos personales', 'Perfil y motivacion', 'Revisar y enviar'];
+  const stepLabels = [p.stepPersonal, p.stepProfile, p.stepReview];
 
   return (
-    <Modal title={`Aplicar a ${vacancyTitle}`} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={`${p.applyTitlePrefix} ${vacancyTitle}`} onClose={onClose} maxWidth="max-w-2xl">
       {/* Step indicator */}
       <div className="mb-6 flex items-center gap-2">
         {stepLabels.map((label, i) => (
@@ -196,13 +199,13 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             {currentTitle && (
               <SummaryRow
                 label={p.summaryCurrentTitle}
-                value={`${currentTitle}${currentCompany ? ` en ${currentCompany}` : ''}`}
+                value={`${currentTitle}${currentCompany ? ` ${p.currentTitleAt} ${currentCompany}` : ''}`}
               />
             )}
             {yearsExperience && (
               <SummaryRow
                 label={p.summaryExperience}
-                value={EXPERIENCE_LEVELS.find((l) => l.value === yearsExperience)?.label ?? yearsExperience}
+                value={experienceLevelLabel(yearsExperience, p.experienceLevels)}
               />
             )}
             {linkedinUrl && <SummaryRow label="LinkedIn" value={linkedinUrl} />}
@@ -225,8 +228,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
           )}
 
           <p className="text-[11px] text-[#8B8B8B]">
-            Al enviar tu aplicacion, aceptas que {companyName} procese tus datos personales con fines de seleccion de
-            personal.
+            {p.dataProcessingPrefix} {companyName} {p.dataProcessingSuffix}
           </p>
         </div>
       )}
@@ -242,7 +244,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
-              Anterior
+              {p.previousStep}
             </button>
           )}
           {submitting && (
@@ -258,7 +260,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             disabled={submitting}
             className="h-9 rounded-lg border border-[#EDEDED] px-4 text-sm text-[#585858] transition hover:bg-[#F6F6F6] disabled:opacity-50"
           >
-            Cancelar
+            {p.cancel}
           </button>
           {step < 3 ? (
             <button
@@ -266,7 +268,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
               disabled={step === 1 && !isStep1Valid}
               className="flex h-9 items-center gap-1 rounded-lg bg-[#1F114C] px-5 text-sm font-medium text-white transition hover:bg-[#2a1a5c] disabled:opacity-50"
             >
-              Siguiente
+              {p.nextStep}
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
