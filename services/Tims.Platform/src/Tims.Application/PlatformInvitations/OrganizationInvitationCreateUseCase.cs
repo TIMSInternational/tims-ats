@@ -34,7 +34,7 @@ public sealed class OrganizationInvitationCreateUseCase(IOrganizationInvitationC
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
         var outcome = await new InitialInvitationDelivery(deliveryRepository, sender, clock).SendAsync(invitation, pending.ExpiresAt,
             $"Invitacion para administrar {input.OrganizationName} en TIMS ATS",
-            $"<h1>TIMS ATS</h1><p>Has sido invitado a administrar <strong>{WebUtility.HtmlEncode(input.OrganizationName)}</strong>.</p><a href=\"{WebUtility.HtmlEncode(url)}\">Aceptar Invitacion</a><p>Esta invitacion expira en 7 dias.</p>", ct);
+            InvitationEmail.Render(input.OrganizationName, "Administrador", url, pending.ExpiresAt), ct);
         return new(invitation.Id, organizationId, outcome);
     }
 

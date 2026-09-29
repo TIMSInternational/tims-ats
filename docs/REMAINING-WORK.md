@@ -1,6 +1,12 @@
 # Known Issues & Remaining Work
 
-- **2026-09-15 live invitation canary:** the deployed C# individual-invitation flow exposed an authenticated-request 401; no invitation was created or sent. The shared error-state retry button also submitted its enclosing form. Explicit non-submit button semantics and a form-level regression test address the latter. Authentication diagnosis and successful live delivery remain pending.
+- **2026-09-22 onboarding data integrity (implemented, awaiting deploy):** the dashboard displayed preset course completion, IT access requests and a generated learning route for tenants with no onboarding plans, inferred check-in completion from elapsed days, and called pending tasks "documents". The dashboard now displays persisted check-ins and active-plan counts only; fabricated panels and the nonfunctional export control were removed. Real course/access provisioning, generated learning routes, document tracking, check-in scheduling and export still require implementation before those features can be included in beta scope.
+
+- **2026-09-22 public application hardening (implemented, awaiting deploy):** local browser submission created a synthetic candidate/application in the default pipeline stage, and duplicate submission kept one application. The unauthenticated endpoint no longer overwrites an existing candidate profile based only on a claimed email address. Turnstile verification now bounds response time and rejects malformed provider responses; tests cover success/failure. The local browser run used the existing non-production CAPTCHA bypass; Cloudflare's official test secret was verified independently against Siteverify. A full production-domain application with the real widget and recruiter/candidate portal follow-through remains required before beta.
+
+- **2026-09-22 invitation account onboarding (implemented, awaiting deploy):** invitation links now lead to a complete account setup flow: new recipients choose a password, existing recipients sign in/recover/use SSO, and a verified matching Supabase identity atomically creates the tenant user/role, consumes the invitation and writes its audit row. Legacy status-only acceptance is disabled. The C#/.NET 10 capability endpoints are default-dark under `Invitations:SetupEnabled`; activation also requires an HTTPS Supabase origin and service-role secret. The web relay is same-origin, bounded and strips ambient cookies. Email HTML is responsive, ships in Spanish, and has a tested English rendering for future locale-aware sends. Unit, HTTP, provider-adapter, real-Postgres RLS/concurrency and browser component tests cover the flow. Production activation and a fresh real-recipient canary remain open; see [implementation and rollout plan](plans/2026-09-15-invitation-account-onboarding.md).
+- **2026-09-22 beta recruitment smoke (fix implemented, awaiting deploy):** a newly created and published vacancy had no pipeline stages, so recruiter assignment and public application could not enter the pipeline. Vacancy creation now attaches seven starter stages atomically; an idempotent manual SQL repair covers existing non-deleted stage-less vacancies. Local UI proved draft → approval → publication, existing-candidate assignment, stage move, and interview scheduling after repair. Production backfill, merge/deploy, and a fresh public application remain open. Local public application was blocked by Cloudflare Turnstile `110200` because the configured widget does not authorize `localhost`; use separate official test keys for local E2E and retain production hostname restrictions. See [beta readiness smoke](audits/2026-09-22-beta-readiness-smoke.md).
+- **2026-09-15 live invitation canary:** corrected a web/API relay signing-secret mismatch; authenticated C# role lookup and individual invitation creation now return 200. One authorized test invitation exists, pending with no sent timestamp: email provider acceptance is unconfirmed (`provider_failure`), and no resend was attempted. Sender identity verification and IAM simulation pass; the actual delivery failure remains under investigation. This slice adds only fixed error categories/stage diagnostics, without raw provider details. Legacy web SES configuration belongs to a separate AWS account and retains its original region. PR #263's non-submit Retry-button fix is deployed; production login/careers smoke checks return 200. This is historical evidence; the 2026-09-22 onboarding slice supersedes its acceptance behavior but does not itself prove live delivery.
 
 - **2026-09-14 — bulk invitations:** C# batch creation and CSV results are implemented behind default-off flags, with per-row outcomes, bulk-writer duplicate coordination and no automatic retry. Acceptance/revoke, live delivery, cutover and TS retirement remain open. See [contract](architecture/csharp-migration/bulk-invitation-create.md).
 
@@ -25,7 +31,6 @@
 > in the wave/spec docs cited below, and — for the C# migration specifically — in
 > `docs/architecture/csharp-migration/00-master-plan.md`, `phase-5-strangler.md`, and
 > `docs/architecture/table-ownership.md` (the authoritative per-table/per-domain ledger).
-
 
 ### Current implementation wave — 2026-09-14 (unreleased)
 
@@ -852,6 +857,10 @@ Honest-hybrid pass: real metric where data exists + cheap; honest `N/D`/`EmptySt
 - **Nine-box** grid is select-only (no drag-to-persist; "Simulador" is a declared backend stub).
 
 ---
+
+## Learning beta implementation — 2026-09-28
+
+- **2026-09-28 learning beta refresh (implemented, awaiting deploy):** a tenant with zero courses/enrollments was shown hardcoded growth, gap reduction, learning paths, pre/post-test results, team progress and AI recommendations. The dashboard now displays only API-backed counts and real path/course names, with an honest empty state. Course and path creation are wired to tenant-checked writes, and enrollment validates both course and user organization membership. Learning KPI caches are invalidated on writes. Export, gap analytics, team reporting, and AI recommendations still require real data contracts and implementation before a full Learning beta.
 
 ## Remaining — blocked on user / product decisions
 

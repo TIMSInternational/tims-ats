@@ -4,6 +4,7 @@ import type { Prisma } from '@tims/db';
 import { candidateAssessmentRepo } from '../repositories/candidate-assessment.repository';
 import { candidatePortalRepo } from '../repositories/candidate-portal.repository';
 import { resolveOrg } from './candidate-portal.service';
+import { assessmentQuestionService } from './assessment-question.service';
 import type { ScoreBand } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
@@ -115,6 +116,8 @@ export const candidateAssessmentLifecycleService = {
       if (assignment.proctoringRequired) {
         throw new TRPCError({ code: 'CONFLICT', message: 'proctoring_preflight_required' });
       }
+
+      await assessmentQuestionService.assertHasActiveQuestions(org.id, assignment.assessmentTypeId);
 
       // Idempotent: record consent on first start only (upsertConsent no-ops on
       // repeat), then (re)confirm in_progress either way.

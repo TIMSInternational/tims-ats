@@ -21,6 +21,13 @@ function assertCoherent(input: {
 }
 
 export const assessmentQuestionService = {
+  async assertHasActiveQuestions(orgId: string, assessmentTypeId: string) {
+    const count = await assessmentQuestionRepo.countActiveQuestions(orgId, assessmentTypeId);
+    if (count === 0) {
+      throw new TRPCError({ code: 'CONFLICT', message: 'assessment_has_no_questions' });
+    }
+  },
+
   async create(orgId: string, input: CreateQuestionInput) {
     assertCoherent(input);
     const type = await assessmentQuestionRepo.findTypeById(orgId, input.assessmentTypeId);

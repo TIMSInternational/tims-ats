@@ -24,10 +24,14 @@ vi.mock('../../packages/api/src/repositories/candidate-portal.repository', () =>
 vi.mock('@tims/db', () => ({
   runWithTenant: (_o: string, f: () => unknown) => f(),
 }));
+vi.mock('../../packages/api/src/services/assessment-question.service', () => ({
+  assessmentQuestionService: { assertHasActiveQuestions: vi.fn() },
+}));
 
 import { candidateAssessmentLifecycleService } from '../../packages/api/src/services/candidate-assessment-lifecycle.service';
 import { candidateAssessmentRepo } from '../../packages/api/src/repositories/candidate-assessment.repository';
 import { candidatePortalRepo } from '../../packages/api/src/repositories/candidate-portal.repository';
+import { assessmentQuestionService } from '../../packages/api/src/services/assessment-question.service';
 
 const ORG = { id: 'org-1', name: 'TIMS', isActive: true };
 const EMAIL = 'candidate@example.com';
@@ -138,6 +142,27 @@ describe('candidateAssessmentLifecycleService.startAssessment', () => {
     await expect(
       candidateAssessmentLifecycleService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, true, null, null),
     ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_not_startable' });
+  });
+
+  it('does not record consent or start an assignment with no available questions', async () => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'assigned',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(assessmentQuestionService.assertHasActiveQuestions).mockRejectedValueOnce({
+      code: 'CONFLICT',
+      message: 'assessment_has_no_questions',
+    });
+
+    await expect(
+      candidateAssessmentLifecycleService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, true, null, null),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assessment_has_no_questions' });
+    expect(assessmentQuestionService.assertHasActiveQuestions).toHaveBeenCalledWith('org-1', 'type-1');
+    expect(candidateAssessmentRepo.upsertConsent).not.toHaveBeenCalled();
+    expect(candidateAssessmentRepo.markStarted).not.toHaveBeenCalled();
   });
 
   it('records consent then marks in_progress on first start', async () => {

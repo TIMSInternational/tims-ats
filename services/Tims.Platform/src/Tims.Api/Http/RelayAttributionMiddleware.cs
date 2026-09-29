@@ -22,14 +22,19 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
             await next(context);
             return;
         }
-        if (context.User.Identity?.IsAuthenticated != true)
+        var anonymousInvitationSetup = context.User.Identity?.IsAuthenticated != true
+            && context.Request.Path.StartsWithSegments("/invitations/setup")
+            && string.IsNullOrEmpty(context.Request.Headers.Authorization);
+        if (context.User.Identity?.IsAuthenticated != true && !anonymousInvitationSetup)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
         var envelope = values.ToString();
         // Never reflect or log the signed envelope: it contains client attribution.
-        var metadata = values.Count == 1 ? Verify(envelope, context, options.Value.ImpersonationSecret) : null;
+        var metadata = values.Count == 1
+            ? Verify(envelope, context, options.Value.ImpersonationSecret, anonymousInvitationSetup)
+            : null;
         if (metadata is null || !await nonces.TryUseAsync(metadata.Nonce))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -45,7 +50,7 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
         await next(context);
     }
 
-    private static Metadata? Verify(string envelope, HttpContext context, string? secret)
+    private static Metadata? Verify(string envelope, HttpContext context, string? secret, bool allowAnonymous)
     {
         if (string.IsNullOrEmpty(secret) || envelope.Length > 8192) return null;
         var dot = envelope.IndexOf('.');
@@ -63,7 +68,7 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
                 || metadata.Path != RawTarget(context)
                 || metadata.AuthorizationHash != Hash(context.Request.Headers.Authorization.ToString())
                 || metadata.CookieHash != Hash(context.Request.Headers.Cookie.ToString())
-                || string.IsNullOrEmpty(context.Request.Headers.Authorization)
+                || (!allowAnonymous && string.IsNullOrEmpty(context.Request.Headers.Authorization))
                 || metadata.Ua is null || metadata.Ua.Length > 512 || metadata.Ua.Any(char.IsControl)
                 || (metadata.Ip is not null && (metadata.Ip.Length > 45 || !IPAddress.TryParse(metadata.Ip, out _)))) return null;
             return metadata;

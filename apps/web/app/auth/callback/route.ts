@@ -1,8 +1,28 @@
 import { createSupabaseServerClient } from '@tims/auth/server';
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
 import { provisionOrgDefaults, provisionOrgEntitlements } from '@tims/api';
 import { isSafePortalNext } from '../../../lib/portal-auth';
+import { PASSWORD_SETUP_PROOF_COOKIE, PASSWORD_SETUP_PROOF_PATH } from '../../../lib/password-setup-proof';
+
+function recoveryRedirect(origin: string, invitationToken: string | null, userId: string) {
+  const proof = randomUUID();
+  const destination = new URL('/reset-password', origin);
+  destination.searchParams.set('recovery', proof);
+  if (invitationToken) destination.searchParams.set('invitation', invitationToken);
+  const response = NextResponse.redirect(destination);
+  response.headers.set('referrer-policy', 'no-referrer');
+  response.headers.set('cache-control', 'no-store');
+  response.cookies.set(PASSWORD_SETUP_PROOF_COOKIE, `${proof}.${userId}`, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: PASSWORD_SETUP_PROOF_PATH,
+    maxAge: 300,
+  });
+  return response;
+}
 
 async function isPlatformOwnerEmail(email: string): Promise<boolean> {
   const entry = await db.platformOwnerEmail.findUnique({ where: { email } });
@@ -26,11 +46,25 @@ export async function GET(request: Request) {
   }
 
   // Get the authenticated user
-  const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+  const {
+    data: { user: supabaseUser },
+  } = await supabase.auth.getUser();
   if (!supabaseUser?.email) {
     return NextResponse.redirect(`${origin}/login?error=no_email`);
   }
 
+  const invitationToken = searchParams.get('invitation');
+  if (invitationToken && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invitationToken)) {
+    if (searchParams.get('recovery') === '1') return recoveryRedirect(origin, invitationToken, supabaseUser.id);
+    const destination = '/accept-invitation?token=';
+    const response = NextResponse.redirect(`${origin}${destination}${encodeURIComponent(invitationToken)}`);
+    response.headers.set('referrer-policy', 'no-referrer');
+    response.headers.set('cache-control', 'no-store');
+    return response;
+  }
+  if (searchParams.get('recovery') === '1') {
+    return recoveryRedirect(origin, null, supabaseUser.id);
+  }
   // Portal (candidate) login: a safe /careers/ `next` target means this is a
   // candidate magic-link sign-in. Candidates are NOT staff — do NOT provision a
   // `User` row; the portal resolves identity by email against `Candidate` records.
@@ -58,8 +92,14 @@ export async function GET(request: Request) {
       data: {
         supabaseUserId: supabaseUser.id,
         email: supabaseUser.email,
-        firstName: supabaseUser.user_metadata?.full_name?.split(' ')[0] || supabaseUser.user_metadata?.name?.split(' ')[0] || 'Admin',
-        lastName: supabaseUser.user_metadata?.full_name?.split(' ').slice(1).join(' ') || supabaseUser.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
+        firstName:
+          supabaseUser.user_metadata?.full_name?.split(' ')[0] ||
+          supabaseUser.user_metadata?.name?.split(' ')[0] ||
+          'Admin',
+        lastName:
+          supabaseUser.user_metadata?.full_name?.split(' ').slice(1).join(' ') ||
+          supabaseUser.user_metadata?.name?.split(' ').slice(1).join(' ') ||
+          '',
         avatar: supabaseUser.user_metadata?.avatar_url,
         isPlatformOwner: true,
         lastLoginAt: new Date(),
@@ -72,8 +112,12 @@ export async function GET(request: Request) {
   // a query param (OAuth redirect) OR only in user_metadata (email/password signUp),
   // so check both — otherwise a password company signup falls through.
   if (accountType === 'company' || supabaseUser.user_metadata?.account_type === 'company') {
-    const companyName = supabaseUser.user_metadata?.company_name || `${supabaseUser.email.split('@')[1].split('.')[0]} Org`;
-    const slug = companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const companyName =
+      supabaseUser.user_metadata?.company_name || `${supabaseUser.email.split('@')[1].split('.')[0]} Org`;
+    const slug = companyName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
 
     // Create org + user + role in transaction
     await db.$transaction(async (tx) => {

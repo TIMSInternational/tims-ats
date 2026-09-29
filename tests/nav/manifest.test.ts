@@ -12,8 +12,12 @@ describe('nav manifest', () => {
     expect(manifestFor(['recruiter', 'hr_admin'])).toBe(MANIFESTS.hr_admin); // hr_admin outranks recruiter
     expect(manifestFor(['employee'])).toBe(MANIFESTS.employee);
   });
-  it('falls back to a base manifest for unknown/empty roles', () => {
-    expect(manifestFor([]).sections.length).toBeGreaterThan(0);
+  it('shows only the dashboard for unknown/empty staff roles', () => {
+    for (const roles of [[], ['external'], ['some_unmapped_role']]) {
+      const manifest = manifestFor(roles);
+      expect(manifest.shell).toBe('participant');
+      expect(manifest.sections.flatMap((section) => section.items.map((item) => item.href))).toEqual(['/dashboard']);
+    }
   });
   it('recruiter manifest is purpose-built ATS — no people/talent/culture modules', () => {
     const forbidden = new Set(['performance', 'onboarding', 'learning', 'ninebox', 'succession', 'team_intel', 'engagement', 'dei', 'compensation', 'monitoring', 'billing', 'integration', 'user']);
