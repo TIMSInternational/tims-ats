@@ -7,6 +7,7 @@ import { Modal } from '../../../../components';
 import { type Step, stepLabels } from './schedule-modal.helpers';
 import { Step1Fields, Step2Fields, Step3Fields } from './schedule-modal.fields';
 import { useI18n } from '../../../../lib/i18n';
+import { useAssignablePeople } from '../../../../lib/platform-api/assignable-people';
 
 interface ScheduleModalProps {
   onClose: () => void;
@@ -46,10 +47,9 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
     { staleTime: 60_000 },
   );
 
-  const orgUsers = trpc.user.list.useQuery(
-    { limit: 50 },
-    { staleTime: 60_000 },
-  );
+  // Evaluators come from the tenant people directory (interview:create), not user.list (user:read),
+  // which recruiters do not hold.
+  const evaluators = useAssignablePeople({ purpose: 'interview_evaluator', limit: 50 });
 
   const createInterview = trpc.interview.schedule.useMutation();
 
@@ -145,7 +145,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
       {/* Step 3: Evaluators + Notes */}
       {step === 3 && (
         <Step3Fields
-          orgUsers={orgUsers}
+          evaluators={evaluators}
           selectedEvaluatorIds={selectedEvaluatorIds}
           toggleEvaluator={toggleEvaluator}
           notes={notes}

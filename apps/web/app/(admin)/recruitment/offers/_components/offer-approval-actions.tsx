@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { useAssignablePeople } from '../../../../../lib/platform-api/assignable-people';
+import { AssignablePeopleError } from '../../../../../components/assignable-people-error';
 
 export function OfferApprovalActions({
   offerId,
@@ -19,7 +21,7 @@ export function OfferApprovalActions({
   const [approverId, setApproverId] = useState('');
   const [rejectionComment, setRejectionComment] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const users = trpc.user.list.useQuery({ limit: 100, isActive: true }, { enabled: status === 'draft' });
+  const approvers = useAssignablePeople({ purpose: 'offer_approver', enabled: status === 'draft' });
   const me = trpc.user.me.useQuery(undefined, { enabled: status === 'pending_approval' });
   const submit = trpc.offer.submitForApproval.useMutation();
   const approve = trpc.offer.approve.useMutation();
@@ -46,12 +48,26 @@ export function OfferApprovalActions({
         <div className="flex flex-wrap items-end gap-3">
           <label className="min-w-60 flex-1 text-[12px] font-medium text-[#585858]">
             {t.offers.approver}
-            <select value={approverId} onChange={(event) => setApproverId(event.target.value)} disabled={users.isLoading || users.isError} className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]">
-              <option value="">{t.common.select}</option>
-              {(users.data?.users ?? []).map((user) => <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>)}
+            <select
+              value={approverId}
+              onChange={(event) => setApproverId(event.target.value)}
+              disabled={approvers.isLoading || approvers.failure !== null}
+              className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]"
+            >
+              <option value="">{approvers.isLoading ? t.common.loading : t.common.select}</option>
+              {approvers.people.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.firstName} {user.lastName}
+                </option>
+              ))}
             </select>
           </label>
-          <button type="button" disabled={!approverId || isPending} onClick={() => run(() => submit.mutateAsync({ id: offerId, approverIds: [approverId] }))} className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50">
+          <button
+            type="button"
+            disabled={!approverId || isPending}
+            onClick={() => run(() => submit.mutateAsync({ id: offerId, approverIds: [approverId] }))}
+            className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
+          >
             {t.offers.requestApproval}
           </button>
         </div>
@@ -60,16 +76,44 @@ export function OfferApprovalActions({
         <div className="space-y-3">
           <label className="block text-[12px] font-medium text-[#585858]">
             {t.offers.rejectionReason}
-            <textarea value={rejectionComment} maxLength={20000} onChange={(event) => setRejectionComment(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
+            <textarea
+              value={rejectionComment}
+              maxLength={20000}
+              onChange={(event) => setRejectionComment(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]"
+            />
           </label>
           <div className="flex gap-2">
-            <button type="button" disabled={isPending} onClick={() => run(() => approve.mutateAsync({ id: offerId }))} className="rounded-lg bg-green-600 px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50">{t.offers.approve}</button>
-            <button type="button" disabled={isPending || !rejectionComment.trim()} onClick={() => run(() => reject.mutateAsync({ id: offerId, comment: rejectionComment.trim() }))} className="rounded-lg border border-red-300 px-4 py-2 text-[12px] font-medium text-red-700 disabled:opacity-50">{t.offers.reject}</button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => run(() => approve.mutateAsync({ id: offerId }))}
+              className="rounded-lg bg-green-600 px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
+            >
+              {t.offers.approve}
+            </button>
+            <button
+              type="button"
+              disabled={isPending || !rejectionComment.trim()}
+              onClick={() => run(() => reject.mutateAsync({ id: offerId, comment: rejectionComment.trim() }))}
+              className="rounded-lg border border-red-300 px-4 py-2 text-[12px] font-medium text-red-700 disabled:opacity-50"
+            >
+              {t.offers.reject}
+            </button>
           </div>
         </div>
       )}
-      {users.isError && <p role="alert" className="mt-2 text-[12px] text-red-600">{users.error.message}</p>}
-      {error && <p role="alert" className="mt-2 text-[12px] text-red-600">{error}</p>}
+      {status === 'draft' && approvers.failure && (
+        <AssignablePeopleError failure={approvers.failure} onRetry={approvers.refetch} />
+      )}
+      {status === 'draft' && !approvers.isLoading && !approvers.failure && approvers.people.length === 0 && (
+        <p className="mt-2 text-[12px] text-[#8B8B8B]">{t.assignablePeople.noEligibleApprovers}</p>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-[12px] text-red-600">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

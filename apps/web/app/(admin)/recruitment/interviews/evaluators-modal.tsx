@@ -67,7 +67,12 @@ export function EvaluatorsModal({ interviewId, onClose }: EvaluatorsModalProps) 
             <ul className="space-y-1.5 mb-3">
               {evaluators.map((ev) => (
                 <li key={ev.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-[#EDEDED]">
-                  <CandidateAvatar firstName={ev.user.firstName} lastName={ev.user.lastName} avatar={ev.user.avatar} size="sm" />
+                  <CandidateAvatar
+                    firstName={ev.user.firstName}
+                    lastName={ev.user.lastName}
+                    avatar={ev.user.avatar}
+                    size="sm"
+                  />
                   <span className="text-[12px] text-[#333] font-medium flex-1">
                     {ev.user.firstName} {ev.user.lastName}
                   </span>
@@ -85,6 +90,7 @@ export function EvaluatorsModal({ interviewId, onClose }: EvaluatorsModalProps) 
 
           {adding ? (
             <UserPicker
+              purpose="interview_evaluator"
               excludeIds={assignedIds}
               disabled={add.isPending}
               onSelect={(userId) => add.mutate({ interviewId, userId })}
@@ -97,7 +103,9 @@ export function EvaluatorsModal({ interviewId, onClose }: EvaluatorsModalProps) 
               onClick={() => setAdding(true)}
               className="flex items-center gap-1.5 bg-[#1F114C] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#2a1863] transition"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
               {t.committee.addEvaluator}
             </button>
           )}

@@ -2,6 +2,12 @@
 
 import { useState } from 'react';
 import { trpc } from '../lib/trpc';
+import {
+  useAssignablePeople,
+  type AssignablePurpose,
+  type AssignablePeopleFailure,
+} from '../lib/platform-api/assignable-people';
+import { AssignablePeopleError } from './assignable-people-error';
 import { CandidateAvatar } from './candidate-avatar';
 
 /** Minimal user shape the picker hands back alongside the id. */
@@ -25,12 +31,24 @@ interface UserPickerProps {
   searchPlaceholder: string;
   loadingLabel: string;
   emptyLabel: string;
+  /**
+   * When set, the list comes from the tenant assignable-people directory for this purpose (C# behind
+   * NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP, tRPC user.list otherwise) — so a recruiter without
+   * user:read can still pick evaluators and approvers once the directory is live.
+   */
+  purpose?: AssignablePurpose;
+}
+
+interface PickerSource {
+  rows: Array<{ id: string; firstName: string; lastName: string; email: string; avatar: string | null }>;
+  isLoading: boolean;
+  failure: AssignablePeopleFailure | null;
+  refetch: () => void;
 }
 
 /**
- * Searchable org-user picker. Backed by `trpc.user.list` (the only org-member
- * query the admin UI exposes). Returns a userId (and the user object) via
- * onSelect on click.
+ * Searchable org-user picker. Returns a userId (and the user object) via onSelect on click. Without a
+ * `purpose` it is backed by `trpc.user.list` (admin surfaces whose users hold user:read).
  */
 export function UserPicker({
   excludeIds = [],
@@ -39,25 +57,53 @@ export function UserPicker({
   searchPlaceholder,
   loadingLabel,
   emptyLabel,
+  purpose,
 }: UserPickerProps) {
   const [search, setSearch] = useState('');
-  const q = trpc.user.list.useQuery({ limit: 25, search: search || undefined, isActive: true });
+  const legacy = trpc.user.list.useQuery(
+    { limit: 25, search: search || undefined, isActive: true },
+    { enabled: purpose === undefined },
+  );
+  const directory = useAssignablePeople({
+    purpose: purpose ?? 'interview_evaluator',
+    search,
+    limit: 25,
+    enabled: purpose !== undefined,
+  });
+
+  const source: PickerSource =
+    purpose !== undefined
+      ? {
+          rows: directory.people,
+          isLoading: directory.isLoading,
+          failure: directory.failure,
+          refetch: directory.refetch,
+        }
+      : {
+          rows: (legacy.data?.users ?? []).map((u) => ({ ...u, avatar: u.avatar ?? null })),
+          isLoading: legacy.isLoading,
+          failure: legacy.isError ? (legacy.error.data?.code === 'FORBIDDEN' ? 'forbidden' : 'unavailable') : null,
+          refetch: () => void legacy.refetch(),
+        };
 
   const exclude = new Set(excludeIds);
-  const users = (q.data?.users ?? []).filter((u) => !exclude.has(u.id));
+  const users = source.rows.filter((u) => !exclude.has(u.id));
 
   return (
     <div>
       <input
         type="text"
         value={search}
+        maxLength={100}
         onChange={(e) => setSearch(e.target.value)}
         placeholder={searchPlaceholder}
         className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] placeholder:text-[#B8B8B8] focus:outline-none focus:border-[#1F114C]/40"
         autoFocus
       />
       <div className="mt-2 border border-[#EDEDED] rounded-lg max-h-[260px] overflow-y-auto bg-white">
-        {q.isLoading ? (
+        {source.failure ? (
+          <AssignablePeopleError failure={source.failure} onRetry={source.refetch} />
+        ) : source.isLoading ? (
           <p className="px-3 py-3 text-[12px] text-[#8B8B8B]">{loadingLabel}</p>
         ) : users.length === 0 ? (
           <p className="px-3 py-3 text-[12px] text-[#8B8B8B]">{emptyLabel}</p>

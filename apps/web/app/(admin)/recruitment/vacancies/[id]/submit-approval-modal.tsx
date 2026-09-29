@@ -51,6 +51,7 @@ export function SubmitApprovalModal({ onConfirm, onClose, isPending }: SubmitApp
       )}
 
       <UserPicker
+        purpose="vacancy_approver"
         excludeIds={selected.map((u) => u.id)}
         onSelect={addApprover}
         disabled={isPending}

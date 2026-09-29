@@ -4,7 +4,8 @@ import type { AppRouter } from '@tims/api';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { UseTRPCQueryResult } from '@trpc/react-query/shared';
 import type { TRPCClientErrorLike } from '@trpc/client';
-import { CandidateAvatar, ErrorState } from '../../../../components';
+import { AssignablePeopleError, CandidateAvatar, ErrorState } from '../../../../components';
+import type { AssignablePeopleState } from '../../../../lib/platform-api/assignable-people';
 import { INTERVIEW_TYPES, DURATIONS, inputCls, labelCls, textareaCls } from './schedule-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 
@@ -13,7 +14,6 @@ type ClientError = TRPCClientErrorLike<AppRouter>;
 
 type CandidateSearchResult = UseTRPCQueryResult<RouterOutput['candidate']['search'], ClientError>;
 type VacancyListResult = UseTRPCQueryResult<RouterOutput['vacancy']['list'], ClientError>;
-type OrgUsersResult = UseTRPCQueryResult<RouterOutput['user']['list'], ClientError>;
 
 interface Step1FieldsProps {
   candidates: CandidateSearchResult;
@@ -183,7 +183,7 @@ export function Step2Fields({
 }
 
 interface Step3FieldsProps {
-  orgUsers: OrgUsersResult;
+  evaluators: AssignablePeopleState;
   selectedEvaluatorIds: string[];
   toggleEvaluator: (id: string) => void;
   notes: string;
@@ -197,7 +197,7 @@ interface Step3FieldsProps {
 }
 
 export function Step3Fields({
-  orgUsers,
+  evaluators,
   selectedEvaluatorIds,
   toggleEvaluator,
   notes,
@@ -216,10 +216,10 @@ export function Step3Fields({
         <p className="text-[13px] font-medium text-[#1F114C] mb-1">{t.interviews.scheduleFieldEvaluators}</p>
         <p className="text-[10px] text-[#8B8B8B] mb-3">{t.interviews.scheduleFieldSelectEvaluator}</p>
         <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-          {orgUsers.isError ? (
-            <ErrorState onRetry={() => orgUsers.refetch()} />
+          {evaluators.failure ? (
+            <AssignablePeopleError failure={evaluators.failure} onRetry={evaluators.refetch} />
           ) : (
-            (orgUsers.data?.users ?? []).map((u) => {
+            evaluators.people.map((u) => {
               const isSelected = selectedEvaluatorIds.includes(u.id);
               return (
                 <label key={u.id}
@@ -234,14 +234,17 @@ export function Step3Fields({
                     </div>
                     <div>
                       <p className={`text-[12px] ${isSelected ? 'text-[#1F114C] font-medium' : 'text-[#333]'}`}>{u.firstName} {u.lastName}</p>
-                      <p className="text-[10px] text-[#8B8B8B]">{u.jobTitle ?? u.email}</p>
+                      <p className="text-[10px] text-[#8B8B8B]">{u.email}</p>
                     </div>
                   </div>
                 </label>
               );
             })
           )}
-          {orgUsers.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">{t.interviews.scheduleFieldLoadingUsers}</p>}
+          {evaluators.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">{t.interviews.scheduleFieldLoadingUsers}</p>}
+          {!evaluators.isLoading && !evaluators.failure && evaluators.people.length === 0 && (
+            <p className="text-[11px] text-[#8B8B8B] py-2">{t.assignablePeople.noEvaluators}</p>
+          )}
         </div>
       </div>
 

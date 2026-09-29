@@ -3637,5 +3637,11 @@
     "errorAssessmentNotReady": "Esta evaluacion aun no tiene preguntas disponibles. Comunicate con el equipo que te la asigno.",
     "errorGeneric": "Algo salio mal. Intenta de nuevo.",
     "backToDashboard": "Volver al panel"
+  },
+  "assignablePeople": {
+    "loadError": "No pudimos cargar las personas disponibles. Intenta de nuevo.",
+    "forbidden": "No tienes permiso para ver las personas disponibles para esta acción.",
+    "noEligibleApprovers": "Ninguna persona de tu organización tiene permiso para aprobar. Pide a un administrador que asigne ese permiso.",
+    "noEvaluators": "No se encontraron personas en tu organización."
   }
 }

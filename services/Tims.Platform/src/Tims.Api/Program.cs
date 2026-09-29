@@ -28,6 +28,7 @@ using Tims.Api.ExternalVendor;
 using Tims.Api.Engagement;
 using Tims.Api.FitEngine;
 using Tims.Api.Notification;
+using Tims.Api.People;
 using Tims.Api.Dei;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
@@ -51,6 +52,7 @@ using Tims.Application.Engagement;
 using Tims.Application.Dei;
 using Tims.Application.FitEngine;
 using Tims.Application.Notification;
+using Tims.Application.People;
 using Tims.Application.Fx;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
@@ -78,6 +80,7 @@ using Tims.Infrastructure.Engagement;
 using Tims.Infrastructure.Dei;
 using Tims.Infrastructure.FitEngine;
 using Tims.Infrastructure.Notification;
+using Tims.Infrastructure.People;
 using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
@@ -670,6 +673,11 @@ try
     builder.Services.AddDbContext<TenantAuditDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<ITenantAuditRepository, TenantAuditRepository>();
     builder.Services.AddScoped<TenantAuditReadUseCase>();
+    // Tenant assignable-people directory (read-only users/user_roles/roles/role_permissions/permissions,
+    // always under TenantScope). Dark unless TenantPeopleDirectoryEnabled.
+    builder.Services.AddDbContext<AssignablePeopleDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IAssignablePeopleRepository, AssignablePeopleRepository>();
+    builder.Services.AddScoped<AssignablePeopleUseCase>();
 
     // Phase-5 Slice 18 (efcoreReadOnly on users/roles/user_roles/role_permissions/permissions/
     // organizations; access_reviews stays Prisma-owned until Task 9): the access-review report +
@@ -1549,6 +1557,13 @@ try
     if (externalOptions.TenantAuditReadEnabled || isOpenApiDocGeneration)
     {
         app.MapTenantAuditReadEndpoints();
+    }
+
+    // Tenant assignable-people directory for recruiter-facing pickers: GET /tenant/people/assignable.
+    // Caller authorization follows the picker's action (interview/vacancy/offer create), never user:read.
+    if (externalOptions.TenantPeopleDirectoryEnabled || isOpenApiDocGeneration)
+    {
+        app.MapTenantPeopleEndpoints();
     }
 
     if (externalOptions.AuditLogReadEnabled || isOpenApiDocGeneration)

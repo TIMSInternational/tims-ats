@@ -3637,5 +3637,11 @@
     "errorAssessmentNotReady": "This assessment has no available questions yet. Please contact the team that assigned it.",
     "errorGeneric": "Something went wrong. Please try again.",
     "backToDashboard": "Back to dashboard"
+  },
+  "assignablePeople": {
+    "loadError": "We couldn't load the available people. Please try again.",
+    "forbidden": "You don't have permission to see who is available for this action.",
+    "noEligibleApprovers": "Nobody in your organization can approve this yet. Ask an administrator to grant the approval permission.",
+    "noEvaluators": "No people found in your organization."
   }
 }
