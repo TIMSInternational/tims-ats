@@ -194,6 +194,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
                 vacancyId={v.id}
                 vacancyTitle={v.title}
                 companyName={companyName}
+                controllerName={v.organization.name}
                 onClose={() => setShowApply(false)}
               />
             )}

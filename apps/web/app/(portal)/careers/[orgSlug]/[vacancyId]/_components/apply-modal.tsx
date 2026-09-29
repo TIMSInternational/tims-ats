@@ -16,12 +16,16 @@ interface ApplyModalProps {
   vacancyId: string;
   vacancyTitle: string;
   companyName: string;
+  // The data controller named in the consent text: the ORGANIZATION (tenant) that owns the
+  // vacancy and receives the DataConsent row — never the vacancy's client company, which
+  // may differ. Must match the org the linked /careers/[orgSlug]/privacy notice names.
+  controllerName: string;
   onClose: () => void;
 }
 
 type Step = 1 | 2 | 3;
 
-export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: ApplyModalProps) {
+export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerName, onClose }: ApplyModalProps) {
   const { t } = useI18n();
   const p = t.portal;
   const params = useParams<{ orgSlug: string }>();
@@ -92,7 +96,11 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
       setSuccess(true);
     } catch (err) {
       const msg = err instanceof Error && err.message ? err.message : p.applySubmitError;
-      if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
+      // PRECONDITION_FAILED = the stored data-processing authorization for this email was
+      // withdrawn; the server refused to process it. Show the localized explanation.
+      if ((err as { data?: { code?: string } } | null)?.data?.code === 'PRECONDITION_FAILED') {
+        toast(p.applyConsentBlockedError, { type: 'error' });
+      } else if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
         toast(p.applyModalDuplicateError, { type: 'error' });
       } else {
         toast(msg, { type: 'error' });
@@ -217,7 +225,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             coverLetter,
           }}
           vacancyTitle={vacancyTitle}
-          companyName={companyName}
+          controllerName={controllerName}
           privacyHref={privacyHref}
           cvFile={cv.file}
           cvUploadFailed={cvUploadFailed}

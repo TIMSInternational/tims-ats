@@ -37,9 +37,17 @@ import { ApplyModal } from '../../apps/web/app/(portal)/careers/[orgSlug]/[vacan
 const VACANCY_ID = '11111111-1111-4111-8111-111111111111';
 const p = en.portal;
 
+// The vacancy's client company deliberately differs from the organization (tenant): the
+// consent must name the ORGANIZATION, the data controller the privacy notice also names.
 function renderModal() {
   return render(
-    <ApplyModal vacancyId={VACANCY_ID} vacancyTitle="Backend Engineer" companyName="Acme SAS" onClose={vi.fn()} />,
+    <ApplyModal
+      vacancyId={VACANCY_ID}
+      vacancyTitle="Backend Engineer"
+      companyName="Cliente Industrial SA"
+      controllerName="Acme SAS"
+      onClose={vi.fn()}
+    />,
   );
 }
 
@@ -91,6 +99,7 @@ describe('apply modal — explicit consent (F14)', () => {
     expect(submitButton()).toBeDisabled();
     const label = consentBox().closest('label')!;
     expect(label).toHaveTextContent('Acme SAS');
+    expect(label).not.toHaveTextContent('Cliente Industrial SA');
     expect(label).toHaveTextContent(p.consentCheckboxMiddle);
     const link = screen.getByRole('link', { name: p.consentPolicyLink });
     expect(link).toHaveAttribute('href', '/careers/acme/privacy');
@@ -118,6 +127,19 @@ describe('apply modal — explicit consent (F14)', () => {
       consentTextVersion: APPLICATION_CONSENT_TEXT_VERSION,
     });
     expect(await screen.findByText(p.applicationSentTitle)).toBeInTheDocument();
+  });
+
+  it('surfaces a localized error when the server refuses because consent was withdrawn, and stays on the form', async () => {
+    mocks.applyMutateAsync.mockRejectedValue(
+      Object.assign(new Error('server message'), { data: { code: 'PRECONDITION_FAILED' } }),
+    );
+    goToReview();
+    fireEvent.click(consentBox());
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(p.applyConsentBlockedError, { type: 'error' }));
+    expect(screen.queryByText(p.applicationSentTitle)).not.toBeInTheDocument();
+    expect(submitButton()).toBeEnabled();
   });
 });
 

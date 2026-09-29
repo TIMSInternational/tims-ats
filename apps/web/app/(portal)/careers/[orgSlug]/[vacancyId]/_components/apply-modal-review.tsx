@@ -24,7 +24,7 @@ export interface ApplySummary {
 interface ApplyModalReviewProps {
   summary: ApplySummary;
   vacancyTitle: string;
-  companyName: string;
+  controllerName: string;
   privacyHref: string;
   cvFile: File | null;
   cvUploadFailed: boolean;
@@ -40,7 +40,7 @@ interface ApplyModalReviewProps {
 export function ApplyModalReview({
   summary: s,
   vacancyTitle,
-  companyName,
+  controllerName,
   privacyHref,
   cvFile,
   cvUploadFailed,
@@ -97,7 +97,7 @@ export function ApplyModalReview({
       )}
 
       <ApplyConsentCheckbox
-        companyName={companyName}
+        controllerName={controllerName}
         privacyHref={privacyHref}
         checked={consentAccepted}
         onChange={onConsentChange}

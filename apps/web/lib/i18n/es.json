@@ -3399,6 +3399,7 @@
     "consentPolicyLink": "política de tratamiento de datos personales",
     "consentCheckboxSuffix": ". Sé que puedo conocer, actualizar, rectificar o suprimir mis datos y revocar esta autorización en cualquier momento.",
     "consentRequiredHint": "Debes aceptar la autorización de tratamiento de datos para enviar tu aplicación.",
+    "applyConsentBlockedError": "No podemos procesar tu postulación con este correo. Si revocaste la autorización de tratamiento de datos, contacta directamente a la empresa.",
     "cvUploadFailedTitle": "No pudimos subir tu hoja de vida",
     "cvUploadFailedBody": "Tu aplicación aún no se ha enviado. Puedes reintentar la subida o quitar la hoja de vida y enviar la aplicación sin ella.",
     "cvRetryUpload": "Reintentar",

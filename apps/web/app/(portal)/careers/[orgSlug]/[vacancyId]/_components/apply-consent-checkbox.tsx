@@ -3,7 +3,8 @@
 import { useI18n } from '../../../../../../lib/i18n';
 
 interface ApplyConsentCheckboxProps {
-  companyName: string;
+  // The organization (data controller) — see ApplyModal's controllerName.
+  controllerName: string;
   privacyHref: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -15,7 +16,7 @@ interface ApplyConsentCheckboxProps {
 // The wording is versioned by APPLICATION_CONSENT_TEXT_VERSION (@tims/shared) — bump it
 // when these i18n strings change materially.
 export function ApplyConsentCheckbox({
-  companyName,
+  controllerName,
   privacyHref,
   checked,
   onChange,
@@ -36,7 +37,7 @@ export function ApplyConsentCheckbox({
           className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#EDEDED] accent-[#DD0C15]"
         />
         <span className="text-[12px] leading-relaxed text-[#585858]">
-          {p.consentCheckboxPrefix} <span className="font-medium text-[#333]">{companyName}</span>{' '}
+          {p.consentCheckboxPrefix} <span className="font-medium text-[#333]">{controllerName}</span>{' '}
           {p.consentCheckboxMiddle}{' '}
           <a
             href={privacyHref}

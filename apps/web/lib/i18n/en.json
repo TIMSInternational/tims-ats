@@ -3399,6 +3399,7 @@
     "consentPolicyLink": "personal data processing policy",
     "consentCheckboxSuffix": ". I understand I can access, update, correct or delete my data and revoke this authorization at any time.",
     "consentRequiredHint": "You must accept the data processing authorization to submit your application.",
+    "applyConsentBlockedError": "We cannot process your application with this email. If you revoked your data processing authorization, please contact the company directly.",
     "cvUploadFailedTitle": "We could not upload your resume",
     "cvUploadFailedBody": "Your application has not been sent yet. You can retry the upload, or remove the resume and submit your application without it.",
     "cvRetryUpload": "Retry",

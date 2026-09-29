@@ -224,11 +224,11 @@ export const portalRouter = router({
           });
 
           // Record the explicit authorization (subject = candidate id, the same soft
-          // reference ai-interview consent uses). Re-applying refreshes the agreed text
-          // version + timestamp, but an unauthenticated email claim must NEVER clear a
-          // withdrawal — withdrawnAt is deliberately left untouched on update.
-          const agreedAt = new Date();
-          await tx.dataConsent.upsert({
+          // reference ai-interview consent uses). INSERT-IF-ABSENT ONLY: this endpoint is
+          // unauthenticated, so knowing a candidate's email must never let a submitter
+          // rewrite existing consent evidence — not the agreed text version, not agreedAt,
+          // and never a withdrawal. `update: {}` leaves an existing row byte-for-byte intact.
+          const consent = await tx.dataConsent.upsert({
             where: {
               subjectUserId_consentType: { subjectUserId: candidate.id, consentType: APPLICATION_CONSENT_TYPE },
             },
@@ -237,11 +237,24 @@ export const portalRouter = router({
               subjectUserId: candidate.id,
               consentType: APPLICATION_CONSENT_TYPE,
               textVersion: input.consentTextVersion,
-              agreedAt,
+              agreedAt: new Date(),
             },
-            update: { textVersion: input.consentTextVersion, agreedAt },
-            select: { id: true },
+            update: {},
+            select: { withdrawnAt: true },
           });
+
+          // A withdrawn authorization blocks any further processing of this person's data:
+          // no new application and (because this throws before the transaction commits and
+          // before the post-commit CV step) no CV fetch/extraction/AI call. Re-granting
+          // consent needs a channel that verifies the data subject, which this one cannot.
+          // The message deliberately does not confirm that a withdrawal exists.
+          if (consent.withdrawnAt) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message:
+                'No podemos procesar tu postulación con este correo. Si revocaste la autorización de tratamiento de datos, contacta directamente a la empresa.',
+            });
+          }
 
           // Idempotent: a candidate may only have one application per vacancy
           // (DB enforces @@unique([candidateId, vacancyId])). Re-submitting the public

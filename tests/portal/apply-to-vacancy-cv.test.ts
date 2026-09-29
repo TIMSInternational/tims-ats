@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE } from '../../packages/shared/src/constants/application-consent';
+import {
+  APPLICATION_CONSENT_TEXT_VERSION,
+  APPLICATION_CONSENT_TYPE,
+} from '../../packages/shared/src/constants/application-consent';
 
 const VACANCY_ID = '11111111-1111-1111-1111-111111111111';
 const ORG_ID = '22222222-2222-2222-2222-222222222222';
@@ -77,7 +80,7 @@ beforeEach(() => {
     stages: [{ id: STAGE_ID, isDefault: true }],
   });
   dbMocks.candidate.upsert.mockResolvedValue({ id: CANDIDATE_ID });
-  dbMocks.dataConsent.upsert.mockResolvedValue({ id: 'consent-1' });
+  dbMocks.dataConsent.upsert.mockResolvedValue({ id: 'consent-1', withdrawnAt: null });
   dbMocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMocks));
   dbMocks.application.findFirst.mockResolvedValue(null);
   dbMocks.application.create.mockResolvedValue({ id: APPLICATION_ID });
@@ -158,7 +161,7 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
     });
     dbMocks.dataConsent.upsert.mockImplementation(async () => {
       order.push('consent');
-      return { id: 'consent-1' };
+      return { id: 'consent-1', withdrawnAt: null };
     });
     dbMocks.application.create.mockImplementation(async () => {
       order.push('application');
@@ -184,8 +187,75 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
       textVersion: APPLICATION_CONSENT_TEXT_VERSION,
     });
     expect(arg.create.agreedAt).toBeInstanceOf(Date);
-    // An unauthenticated email claim must never un-withdraw someone's consent.
-    expect(arg.update).not.toHaveProperty('withdrawnAt');
+    // Insert-if-absent: an unauthenticated email claim must never rewrite existing evidence.
+    expect(arg.update).toEqual({});
+  });
+
+  // A stateful stand-in for the data_consents unique row, honouring Prisma upsert semantics
+  // (create when absent, apply `update` when present), so the tests observe the STORED row.
+  function seedConsentStore(initial: Record<string, unknown> | null) {
+    const store: { row: Record<string, unknown> | null } = { row: initial && { ...initial } };
+    dbMocks.dataConsent.upsert.mockImplementation(
+      async (arg: { create: Record<string, unknown>; update: Record<string, unknown> }) => {
+        store.row = store.row ? { ...store.row, ...arg.update } : { withdrawnAt: null, ...arg.create };
+        return { id: 'consent-1', withdrawnAt: store.row.withdrawnAt ?? null };
+      },
+    );
+    return store;
+  }
+
+  it('never overwrites an existing consent record (text version + agreedAt) from the unauthenticated form', async () => {
+    const originalAgreedAt = new Date('2025-01-15T10:00:00.000Z');
+    const store = seedConsentStore({
+      organizationId: ORG_ID,
+      subjectUserId: CANDIDATE_ID,
+      consentType: APPLICATION_CONSENT_TYPE,
+      textVersion: 'portal-apply-2025-01-01',
+      agreedAt: originalAgreedAt,
+      withdrawnAt: null,
+    });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy(baseApplyInput);
+
+    expect(store.row).toMatchObject({ textVersion: 'portal-apply-2025-01-01', withdrawnAt: null });
+    expect(store.row!.agreedAt).toBe(originalAgreedAt);
+    expect(dbMocks.application.create).toHaveBeenCalledOnce();
+  });
+
+  it('rejects the application when the candidate withdrew consent — no application, no CV processing', async () => {
+    const withdrawnAt = new Date('2026-05-01T00:00:00.000Z');
+    const store = seedConsentStore({
+      organizationId: ORG_ID,
+      subjectUserId: CANDIDATE_ID,
+      consentType: APPLICATION_CONSENT_TYPE,
+      textVersion: 'portal-apply-2025-01-01',
+      agreedAt: new Date('2025-01-15T10:00:00.000Z'),
+      withdrawnAt,
+    });
+    const caller = await makeCaller();
+
+    const call = caller.portal.applyToVacancy({
+      ...baseApplyInput,
+      cvFileKey: `cv-uploads/${ORG_ID}/x.pdf`,
+      cvFileName: 'resume.pdf',
+    });
+    await expect(call).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    await expect(call).rejects.toThrow('No podemos procesar tu postulación');
+
+    expect(dbMocks.application.create).not.toHaveBeenCalled();
+    expect(processCvUploadMock).not.toHaveBeenCalled();
+    // The withdrawal itself is untouched.
+    expect(store.row!.withdrawnAt).toBe(withdrawnAt);
+  });
+
+  it('rejects a withdrawn candidate even on the idempotent re-submit path (existing application)', async () => {
+    seedConsentStore({ subjectUserId: CANDIDATE_ID, withdrawnAt: new Date('2026-05-01T00:00:00.000Z') });
+    dbMocks.application.findFirst.mockResolvedValue({ id: APPLICATION_ID });
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(processCvUploadMock).not.toHaveBeenCalled();
   });
 
   it('does not create the application when recording consent fails', async () => {
