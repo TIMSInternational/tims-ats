@@ -78,7 +78,7 @@ const submitButton = () => screen.getByRole('button', { name: p.submitApplicatio
 const consentBox = () => screen.getByRole('checkbox');
 
 beforeEach(() => {
-  mocks.applyMutateAsync.mockReset().mockResolvedValue({ applicationId: 'a', candidateId: 'c' });
+  mocks.applyMutateAsync.mockReset().mockResolvedValue({ received: true });
   mocks.presignMutateAsync.mockReset().mockResolvedValue({
     url: 'https://bucket.s3.amazonaws.com',
     fields: { key: 'cv-uploads/org/x.pdf' },
@@ -127,19 +127,6 @@ describe('apply modal — explicit consent (F14)', () => {
       consentTextVersion: APPLICATION_CONSENT_TEXT_VERSION,
     });
     expect(await screen.findByText(p.applicationSentTitle)).toBeInTheDocument();
-  });
-
-  it('surfaces a localized error when the server refuses because consent was withdrawn, and stays on the form', async () => {
-    mocks.applyMutateAsync.mockRejectedValue(
-      Object.assign(new Error('server message'), { data: { code: 'PRECONDITION_FAILED' } }),
-    );
-    goToReview();
-    fireEvent.click(consentBox());
-    fireEvent.click(submitButton());
-
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(p.applyConsentBlockedError, { type: 'error' }));
-    expect(screen.queryByText(p.applicationSentTitle)).not.toBeInTheDocument();
-    expect(submitButton()).toBeEnabled();
   });
 });
 

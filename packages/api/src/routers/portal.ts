@@ -6,7 +6,10 @@ import { captchaBypassAllowed } from './portal-helpers';
 import { createCvUploadPresignedPost } from '../lib/s3';
 import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
 import { portalApplicationService } from '../services/portal-application.service';
-import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE } from '@tims/shared';
+import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE, logger } from '@tims/shared';
+
+// The ONE public response of portal.applyToVacancy, whatever happened server-side.
+const APPLY_ACKNOWLEDGMENT = { received: true } as const;
 
 // Verify a Cloudflare Turnstile token on the public apply form. In production the
 // secret MUST be configured (else every apply is rejected — fail closed). Once the
@@ -196,76 +199,94 @@ export const portalRouter = router({
 
       const orgId = vacancy.organizationId;
 
-      let result: { applicationId: string; candidateId: string; isNew: boolean };
+      // Canonical email identity: new candidates are stored trimmed + lowercased, and
+      // existing ones are matched case-insensitively within this org (legacy and
+      // staff-entered rows may be mixed case). Without this, `Ana@Example.com` would be
+      // a different person from `ana@example.com` and could bypass a withdrawal.
+      const email = input.email.trim().toLowerCase();
+
+      let outcome: { kind: 'new'; candidateId: string } | { kind: 'duplicate' } | { kind: 'withdrawn' };
       try {
         // Candidate, consent evidence and application commit atomically: an application
         // never exists without the authorization that allowed its data to be processed.
-        result = await db.$transaction(async (tx) => {
-          const candidate = await tx.candidate.upsert({
-            where: { organizationId_email: { organizationId: orgId, email: input.email } },
-            create: {
-              organizationId: orgId,
-              firstName: input.firstName,
-              lastName: input.lastName,
-              email: input.email,
-              phone: input.phone,
-              source: input.source,
-              poolType: 'applicant',
-              linkedinUrl: input.linkedinUrl,
-              currentTitle: input.currentTitle,
-              currentCompany: input.currentCompany,
-              yearsExperience: input.yearsExperience,
-              location: input.location,
-            },
-            // This endpoint is unauthenticated. Knowing an email address must not
-            // let a submitter overwrite an existing candidate's profile.
-            update: {},
+        outcome = await db.$transaction(async (tx) => {
+          const variants = await tx.candidate.findMany({
+            where: { organizationId: orgId, email: { equals: email, mode: 'insensitive' } },
+            select: { id: true, email: true },
+            orderBy: { createdAt: 'asc' },
+            take: 20,
+          });
+          const variantIds = variants.map((v) => v.id);
+
+          // A withdrawn application consent on ANY case-variant of this email blocks
+          // further processing: no candidate write, no consent write, no application,
+          // no CV processing.
+          if (variantIds.length > 0) {
+            const withdrawn = await tx.dataConsent.findFirst({
+              where: {
+                organizationId: orgId,
+                consentType: APPLICATION_CONSENT_TYPE,
+                subjectUserId: { in: variantIds },
+                withdrawnAt: { not: null },
+              },
+              select: { id: true },
+            });
+            if (withdrawn) return { kind: 'withdrawn' as const };
+          }
+
+          // This endpoint is unauthenticated: an existing candidate's profile is never
+          // updated from it, only reused.
+          const existingCandidate = variants.find((v) => v.email === email) ?? variants[0];
+          const candidateId =
+            existingCandidate?.id ??
+            (
+              await tx.candidate.create({
+                data: {
+                  organizationId: orgId,
+                  firstName: input.firstName,
+                  lastName: input.lastName,
+                  email,
+                  phone: input.phone,
+                  source: input.source,
+                  poolType: 'applicant',
+                  linkedinUrl: input.linkedinUrl,
+                  currentTitle: input.currentTitle,
+                  currentCompany: input.currentCompany,
+                  yearsExperience: input.yearsExperience,
+                  location: input.location,
+                },
+                select: { id: true },
+              })
+            ).id;
+
+          // Idempotent: one application per candidate per vacancy (DB enforces
+          // @@unique([candidateId, vacancyId])). A duplicate writes NOTHING — in particular
+          // no consent row, so re-submitting an existing candidate's email never
+          // manufactures consent evidence without the new application it authorizes.
+          const existing = await tx.application.findFirst({
+            where: { candidateId: { in: [candidateId, ...variantIds] }, vacancyId: vacancy.id },
             select: { id: true },
           });
+          if (existing) return { kind: 'duplicate' as const };
 
-          // Record the explicit authorization (subject = candidate id, the same soft
-          // reference ai-interview consent uses). INSERT-IF-ABSENT ONLY: this endpoint is
-          // unauthenticated, so knowing a candidate's email must never let a submitter
-          // rewrite existing consent evidence — not the agreed text version, not agreedAt,
-          // and never a withdrawal. `update: {}` leaves an existing row byte-for-byte intact.
-          const consent = await tx.dataConsent.upsert({
+          // Record the explicit authorization together with the NEW application it covers
+          // (subject = candidate id, the soft reference ai-interview consent uses).
+          // INSERT-IF-ABSENT ONLY: `update: {}` leaves existing evidence (textVersion,
+          // agreedAt, withdrawnAt) intact — an unauthenticated email claim never rewrites it.
+          await tx.dataConsent.upsert({
             where: {
-              subjectUserId_consentType: { subjectUserId: candidate.id, consentType: APPLICATION_CONSENT_TYPE },
+              subjectUserId_consentType: { subjectUserId: candidateId, consentType: APPLICATION_CONSENT_TYPE },
             },
             create: {
               organizationId: orgId,
-              subjectUserId: candidate.id,
+              subjectUserId: candidateId,
               consentType: APPLICATION_CONSENT_TYPE,
               textVersion: input.consentTextVersion,
               agreedAt: new Date(),
             },
             update: {},
-            select: { withdrawnAt: true },
-          });
-
-          // A withdrawn authorization blocks any further processing of this person's data:
-          // no new application and (because this throws before the transaction commits and
-          // before the post-commit CV step) no CV fetch/extraction/AI call. Re-granting
-          // consent needs a channel that verifies the data subject, which this one cannot.
-          // The message deliberately does not confirm that a withdrawal exists.
-          if (consent.withdrawnAt) {
-            throw new TRPCError({
-              code: 'PRECONDITION_FAILED',
-              message:
-                'No podemos procesar tu postulación con este correo. Si revocaste la autorización de tratamiento de datos, contacta directamente a la empresa.',
-            });
-          }
-
-          // Idempotent: a candidate may only have one application per vacancy
-          // (DB enforces @@unique([candidateId, vacancyId])). Re-submitting the public
-          // form returns the existing application instead of throwing a 500.
-          const existing = await tx.application.findFirst({
-            where: { candidateId: candidate.id, vacancyId: vacancy.id },
             select: { id: true },
           });
-          if (existing) {
-            return { applicationId: existing.id, candidateId: candidate.id, isNew: false };
-          }
 
           const defaultStage = vacancy.stages[0];
           const stageId =
@@ -278,10 +299,10 @@ export const portalRouter = router({
               })
             ).id;
 
-          const application = await tx.application.create({
+          await tx.application.create({
             data: {
               organizationId: orgId,
-              candidateId: candidate.id,
+              candidateId,
               vacancyId: vacancy.id,
               currentStageId: stageId,
               source: input.source,
@@ -289,40 +310,54 @@ export const portalRouter = router({
             },
             select: { id: true },
           });
-          return { applicationId: application.id, candidateId: candidate.id, isNew: true };
+          return { kind: 'new' as const, candidateId };
         });
       } catch (err) {
         // Unique-constraint race on concurrent double-submit — resolve idempotently.
-        // (The losing transaction rolled back; the winner committed its own consent row.)
+        // (The losing transaction rolled back; the winner committed its own rows.)
         if ((err as { code?: string }).code === 'P2002') {
           const app = await db.application.findFirst({
-            where: { vacancyId: vacancy.id, candidate: { organizationId: orgId, email: input.email } },
-            select: { id: true, candidateId: true },
+            where: {
+              vacancyId: vacancy.id,
+              candidate: { organizationId: orgId, email: { equals: email, mode: 'insensitive' } },
+            },
+            select: { id: true },
           });
-          if (app) return { applicationId: app.id, candidateId: app.candidateId };
+          if (app) return APPLY_ACKNOWLEDGMENT;
         }
         throw err;
       }
 
-      // Only NEW applications get CV processing — the idempotent-duplicate
-      // early-return and the P2002 race-catch above intentionally skip it, so a
-      // resubmit never re-runs S3 fetch + extraction + an AI call. It runs AFTER the
-      // transaction commits so a slow S3/AI call never holds a DB transaction open.
+      if (outcome.kind === 'withdrawn') {
+        // Refused privately. No PII (no email, no candidate id) in the log line.
+        logger.info(
+          { component: 'portal', organizationId: orgId, vacancyId: vacancy.id },
+          'Public application refused: application consent withdrawn',
+        );
+      }
+
+      // Only NEW applications get CV processing — duplicates, the P2002 race-catch and
+      // withdrawn refusals intentionally skip it, so a resubmit never re-runs S3 fetch +
+      // extraction + an AI call. It runs AFTER the transaction commits so a slow S3/AI
+      // call never holds a DB transaction open.
       // The key must belong to THIS org's upload prefix — cvFileKey is client-supplied
       // and otherwise unvalidated, so without this check a candidate could pass an
       // arbitrary key and have the server fetch+process another org's S3 object into
       // their own CandidateDocument row (a cross-tenant leak once a future "download
       // the CV" feature generates a signed GET from fileUrl). Silently skipped, same
       // non-fatal posture as every other CV failure.
-      if (result.isNew && input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`)) {
+      if (outcome.kind === 'new' && input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`)) {
         await portalApplicationService.processCvUpload(
           orgId,
-          result.candidateId,
+          outcome.candidateId,
           input.cvFileKey,
           input.cvFileName ?? input.cvFileKey.split('/').pop() ?? 'cv',
         );
       }
 
-      return { applicationId: result.applicationId, candidateId: result.candidateId };
+      // New, duplicate and withdrawn-refused submissions all get the SAME public
+      // acknowledgment, so the response never reveals whether an email belongs to an
+      // existing candidate, already applied, or withdrew consent.
+      return APPLY_ACKNOWLEDGMENT;
     }),
 });

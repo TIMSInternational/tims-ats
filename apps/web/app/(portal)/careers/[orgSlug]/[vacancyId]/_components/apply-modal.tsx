@@ -96,11 +96,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
       setSuccess(true);
     } catch (err) {
       const msg = err instanceof Error && err.message ? err.message : p.applySubmitError;
-      // PRECONDITION_FAILED = the stored data-processing authorization for this email was
-      // withdrawn; the server refused to process it. Show the localized explanation.
-      if ((err as { data?: { code?: string } } | null)?.data?.code === 'PRECONDITION_FAILED') {
-        toast(p.applyConsentBlockedError, { type: 'error' });
-      } else if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
+      if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
         toast(p.applyModalDuplicateError, { type: 'error' });
       } else {
         toast(msg, { type: 'error' });
