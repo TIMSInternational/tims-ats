@@ -1,0 +1,2 @@
+# Preserve the upstream-generated MediaPipe loaders byte for byte.
+apps/web/public/proctoring/wasm/*.js -whitespace

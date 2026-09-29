@@ -32,6 +32,11 @@
          a vetted SDK should own the signature crypto + Stripe API request/response shapes (never hand-rolled).
          Pinned exact; the committed packages.lock.json fails a locked restore on any drift/typosquat. -->
     <PackageReference Include="Stripe.net" Version="52.1.1" />
+    <!-- Official AWS SDK v4 for consented proctoring evidence. Keep the exact
+         version and committed lockfiles aligned across API and tests. -->
+    <PackageReference Include="AWSSDK.S3" Version="4.0.103.4" />
+    <!-- MIT-licensed bounded JPEG/WebP decoding before evidence is sealed. -->
+    <PackageReference Include="SkiaSharp" Version="4.152.1" />
   </ItemGroup>
 
   <ItemGroup>

@@ -78,6 +78,7 @@ model User {
 
   // Assessment
   assessmentAssignments    AssessmentAssignment[] @relation("AssessmentAssigner")
+  proctoringAlertDeliveries ProctoringAlertDelivery[]
 
   // Compensation
   employeeCompensations        EmployeeCompensation[]  @relation("EmployeeCompensationUser")
@@ -136,6 +137,7 @@ model User {
   hirePredictions      HirePrediction[] @relation("HirePredictionSubject")
   hirePredictionsHired HirePrediction[] @relation("HirePredictionHiredBy")
   @@unique([organizationId, email])
+  @@unique([id, organizationId])
   @@index([organizationId])
   @@index([supabaseUserId])
   @@index([companyId])

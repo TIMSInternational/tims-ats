@@ -80,7 +80,7 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *      file — exactly the trigger this guard needs.
  *
  * CAVEAT, stated rather than implied: `/health` and `/ready` (Program.cs:892, :899) are ABSENT from
- * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 157 domain
+ * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 187 domain
  * OPERATIONS, never "every routable path".
  */
 
@@ -285,6 +285,36 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'GET /billing/config',
       'GET /billing/invoices',
       'GET /billing/invoices/{id}',
+    ],
+  },
+  {
+    reason:
+      'NEW .NET-ONLY PROCTORING BETA, deployed dark behind Platform__ProctoringEnabled and the separate ' +
+      'media/cloud flags. The existing TS/C# parity harness has no proctoring fixture, candidate JWT, ' +
+      'consented 1–30 minute assignment, staff role-scope matrix, or private S3 evidence fixture. ' +
+      'Registering these as ordinary assessment routes would produce empty-vs-empty or unauthenticated ' +
+      'false passes. Their local authorization/RLS/media tests are separate; add a dedicated live ' +
+      'candidate-and-staff proctoring surface after the staging fixture and AWS path exist.',
+    routes: [
+      'GET /proctoring/capabilities',
+      'POST /proctoring/types/{typeId}/policy',
+      'GET /proctoring/reviews',
+      'GET /proctoring/assignments/{assignmentId}/events',
+      'GET /proctoring/assignments/{assignmentId}/explanation',
+      'POST /proctoring/assignments/{assignmentId}/review',
+      'POST /proctoring/assignments/{assignmentId}/accommodation',
+      'GET /proctoring/assignments/{assignmentId}/media',
+      'GET /proctoring/assignments/{assignmentId}/media/{evidenceId}/view',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/start',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/events',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/heartbeat',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/complete',
+      'GET /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/explanation',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/explanation',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/media-consent',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/media-stop',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/media-intents',
+      'POST /candidate/{orgSlug}/assessments/{assignmentId}/proctoring/media-confirm',
     ],
   },
   {
@@ -510,7 +540,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         178 → 181: invitation account setup added three capability-scoped POSTs. They are documented in
     //         the dedicated allowlist group below because tenant-role parity is structurally inapplicable before
     //         the invited principal has a tenant user row.
-    expect(deployed.size).toBe(181);
+    //         181 → 200: 19 proctoring beta operations, including candidate/staff explanation.
+    expect(deployed.size).toBe(200);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -575,7 +606,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   eleven pending a fixture whose shape differs from every prior surface's (per-role ROWS, not
     //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
     // 86 → 89: the three invitation-setup operations are capability scoped before tenant membership.
-    expect(allowlistNormalised.length).toBe(89);
+    // 89 → 108: proctoring's 19 dark routes require a dedicated live fixture.
+    expect(allowlistNormalised.length).toBe(108);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -592,6 +624,6 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // identity-authorized rather than grant-authorized, so the registry's by-role comparison needs
     // per-role rows instead of a grant fixture. Folding it into the fit-engine group would state the
     // wrong prerequisite for both.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the twelve documented gap categories').toBe(12);
+    expect(UNREGISTERED_ALLOWLIST.length, 'the thirteen documented gap categories').toBe(13);
   });
 });

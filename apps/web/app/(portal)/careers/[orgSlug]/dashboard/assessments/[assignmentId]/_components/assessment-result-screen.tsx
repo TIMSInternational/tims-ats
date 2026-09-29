@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../../../../lib/i18n';
+import { CandidateProctoringExplanation } from './candidate-proctoring-explanation';
 
 type ScoreBand = 'below_average' | 'average' | 'above_average' | 'excellent';
 
@@ -10,6 +11,7 @@ interface AssessmentResultScreenProps {
   band: ScoreBand | null;
   percentile: number | null;
   normSampleSize: number | null;
+  proctoringExplanation?: { orgSlug: string; assignmentId: string };
 }
 
 export function AssessmentResultScreen({
@@ -18,6 +20,7 @@ export function AssessmentResultScreen({
   band,
   percentile,
   normSampleSize,
+  proctoringExplanation,
 }: AssessmentResultScreenProps) {
   const { t } = useI18n();
   const roundedScore = normalizedScore !== null ? Math.round(normalizedScore) : null;
@@ -47,6 +50,7 @@ export function AssessmentResultScreen({
           </p>
         )}
         <p className="text-[13px] text-[#585858]">{t.assessmentPlayer.resultSummary}</p>
+        {proctoringExplanation ? <CandidateProctoringExplanation {...proctoringExplanation} /> : null}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ namespace Tims.Domain.Audit;
 /// drives the audit/consent decision — NOT the full per-field <c>fieldsVisibleTo</c> role lists (that is
 /// select-for's concern, out of scope here).
 ///
-/// Only the five sensitive entities that resolve above <c>internal</c> are registered; the lookup is
+/// Sensitive entities that resolve above <c>internal</c> are registered; the lookup is
 /// case-sensitive (ordinal), matching the TS object-key access. An UNKNOWN entity defaults to
 /// <see cref="DataClass.Internal"/> — deliberately NOT <see cref="DataClass.Public"/>: unknown != safe.
 /// </summary>
@@ -19,6 +19,9 @@ public static class DataClassification
             ["employeeCompensation"] = DataClass.Restricted,
             ["salaryAdjustment"] = DataClass.Restricted,
             ["assessmentResult"] = DataClass.Restricted,
+            // C#-owned assessment integrity observations and human decisions are restricted.
+            // This key is C#-only because the TypeScript API has no proctoring evidence reader.
+            ["proctoringSession"] = DataClass.Restricted,
             // DEI demographics + individual engagement responses = confidential.
             ["employeeDemographics"] = DataClass.Confidential,
             ["surveyResponse"] = DataClass.Confidential,

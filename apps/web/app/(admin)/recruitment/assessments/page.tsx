@@ -1,8 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import Link from 'next/link';
 import type { QuestionType, QuestionOption } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
+import { useSetProctoringPolicy } from '../../../../lib/platform-api/proctoring-staff';
+import { useProctoringCapability } from '../../../../lib/platform-api/proctoring';
+import { useProctoringStaffAccess } from '../../../../lib/proctoring/staff-access';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { EmptyState, ErrorState, Skeleton } from '../../../../components';
@@ -15,15 +19,23 @@ export default function AssessmentAuthoringPage() {
   const [showModal, setShowModal] = useState(false);
 
   const types = trpc.assessment.listTypes.useQuery();
-
-  useEffect(() => {
-    if (!typeId && types.data && types.data.length > 0) setTypeId(types.data[0].id);
-  }, [typeId, types.data]);
+  const selectedTypeId = typeId || types.data?.[0]?.id || '';
 
   const questions = trpc.assessment.listQuestions.useQuery(
-    { assessmentTypeId: typeId, includeInactive: true },
-    { enabled: !!typeId },
+    { assessmentTypeId: selectedTypeId, includeInactive: true },
+    { enabled: !!selectedTypeId },
   );
+
+  const selectedType = types.data?.find((item) => item.id === selectedTypeId);
+  const selectedConfig = selectedType?.config;
+  const proctoringEnabled =
+    selectedConfig !== null &&
+    typeof selectedConfig === 'object' &&
+    !Array.isArray(selectedConfig) &&
+    selectedConfig.proctoringEnabled === true;
+  const policyMutation = useSetProctoringPolicy(() => { void types.refetch(); });
+  const proctoringCapability = useProctoringCapability();
+  const proctoringAccess = useProctoringStaffAccess();
 
   const utils = trpc.useUtils();
   const refresh = () => utils.assessment.listQuestions.invalidate();
@@ -34,12 +46,9 @@ export default function AssessmentAuthoringPage() {
       refresh();
     },
     onError: (err) =>
-      toast(
-        err.message === 'question_has_responses'
-          ? t.assessments.cannotDeleteWithResponses
-          : err.message,
-        { type: 'error' },
-      ),
+      toast(err.message === 'question_has_responses' ? t.assessments.cannotDeleteWithResponses : err.message, {
+        type: 'error',
+      }),
   });
 
   const openCreate = () => {
@@ -81,8 +90,13 @@ export default function AssessmentAuthoringPage() {
         <div>
           <h1 className="text-lg font-semibold text-[#1F114C]">{t.assessments.title}</h1>
           <p className="text-sm text-[#8B8B8B] mt-0.5">{t.assessments.subtitle}</p>
+          {proctoringAccess.canRead && proctoringCapability.data?.enabled ? (
+            <Link href="/recruitment/assessments/proctoring" className="mt-2 inline-block text-xs font-medium text-[#493478] underline">
+              {t.proctoring.queue.title}
+            </Link>
+          ) : null}
         </div>
-        {typeId && (
+        {selectedTypeId && (
           <button
             onClick={openCreate}
             className="h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition"
@@ -101,7 +115,7 @@ export default function AssessmentAuthoringPage() {
           <ErrorState onRetry={() => types.refetch()} />
         ) : types.data && types.data.length > 0 ? (
           <select
-            value={typeId}
+            value={selectedTypeId}
             onChange={(e) => setTypeId(e.target.value)}
             className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
           >
@@ -116,9 +130,36 @@ export default function AssessmentAuthoringPage() {
         )}
       </div>
 
+      {selectedType && proctoringAccess.canWrite && proctoringCapability.data?.enabled ? (
+        <div className="mb-5 max-w-md rounded-xl border border-[#EDEDED] bg-white p-4">
+          <p className="text-sm font-semibold text-[#1F114C]">{t.proctoring.policy.label}</p>
+          <p className="mt-1 text-xs text-[#585858]">{t.proctoring.policy.description}</p>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="text-xs text-[#585858]">
+              {proctoringEnabled ? t.proctoring.policy.enabled : t.proctoring.policy.disabled}
+            </span>
+            <button
+              type="button"
+              disabled={policyMutation.isPending}
+              onClick={() => policyMutation.mutate({ assessmentTypeId: selectedType.id, enabled: !proctoringEnabled })}
+              className="rounded-lg border border-[#1F114C] px-3 py-2 text-xs font-medium text-[#1F114C] disabled:opacity-50"
+            >
+              {proctoringEnabled ? t.proctoring.policy.disable : t.proctoring.policy.enable}
+            </button>
+          </div>
+          {policyMutation.isError ? (
+            <p role="alert" className="mt-2 text-xs text-[#B42318]">
+              {t.proctoring.policy.saveError}
+            </p>
+          ) : null}
+        </div>
+      ) : selectedType && proctoringAccess.canWrite && !proctoringCapability.isLoading ? (
+        <p className="mb-5 text-xs text-[#585858]" role="status">{t.proctoring.policy.serviceUnavailable}</p>
+      ) : null}
+
       {/* Question list */}
       <div className="flex-1 overflow-auto">
-        {!typeId ? null : questions.isLoading ? (
+        {!selectedTypeId ? null : questions.isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-16 w-full" />
@@ -179,9 +220,9 @@ export default function AssessmentAuthoringPage() {
         )}
       </div>
 
-      {showModal && typeId && (
+      {showModal && selectedTypeId && (
         <QuestionModal
-          assessmentTypeId={typeId}
+          assessmentTypeId={selectedTypeId}
           question={editing}
           onClose={() => {
             setShowModal(false);

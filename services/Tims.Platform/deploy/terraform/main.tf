@@ -100,6 +100,17 @@ locals {
     # when it shipped. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one
     # stack and served by the other is the hole #173 closes.
     Platform__MfaEnforced = var.mfa_enforced
+    # Cloud evidence is a separate, explicit activation from the existing local
+    # proctoring path. These stay false until .NET routes/consent and model gates exist.
+    Platform__ProctoringEnabled                  = tostring(var.feature_flags.proctoring)
+    Platform__MediaEvidenceEnabled               = tostring(var.feature_flags.proctoring_media_evidence)
+    Platform__CloudInferenceEnabled              = tostring(var.feature_flags.proctoring_cloud_inference)
+    Platform__ProctoringEvidenceBucketName       = try(aws_s3_bucket.proctoring_evidence[0].bucket, "")
+    Platform__ProctoringEvidenceKmsKeyArn        = try(aws_kms_key.proctoring_evidence[0].arn, "")
+    Platform__ProctoringEvidenceRegion           = var.aws_region
+    Platform__ProctoringInferenceRequestQueueUrl = try(aws_sqs_queue.proctoring_request[0].url, "")
+    Platform__ProctoringInferenceResultQueueUrl  = try(aws_sqs_queue.proctoring_result[0].url, "")
+    Platform__ProctoringModelRevision            = var.proctoring_model_revision
   }
   env = merge(local.base_env, var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
 }
@@ -212,6 +223,28 @@ resource "aws_apprunner_auto_scaling_configuration_version" "this" {
 # --- The App Runner service -------------------------------------------------------------------------
 resource "aws_apprunner_service" "api" {
   service_name = var.service_name
+
+  lifecycle {
+    precondition {
+      condition = !var.feature_flags.proctoring_media_evidence || (
+        var.feature_flags.proctoring && var.proctoring_infrastructure_enabled
+      )
+      error_message = "Media evidence requires the proctoring app flag and reconciled AWS foundation."
+    }
+    precondition {
+      condition = !var.feature_flags.proctoring_cloud_inference || (
+        var.feature_flags.proctoring_media_evidence && var.proctoring_infrastructure_enabled &&
+        var.proctoring_worker_image_uri != "" && var.proctoring_model_revision != ""
+      )
+      error_message = "Cloud inference requires media evidence, a pinned worker image, and a model revision."
+    }
+    precondition {
+      condition = !var.proctoring_hf_detector_enabled || (
+        var.feature_flags.proctoring_cloud_inference && var.proctoring_worker_image_uri != ""
+      )
+      error_message = "The HF detector requires cloud inference and a pinned Dockerfile.hf worker image."
+    }
+  }
 
   source_configuration {
     auto_deployments_enabled = false # deploy by explicit tag change (reviewable), not on ECR push

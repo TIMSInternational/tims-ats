@@ -12,8 +12,11 @@ describe('assessment module scope wiring', () => {
     expect(src()).toMatch(/AND:\s*\[/);
   });
 
-  it('by-id endpoints are scope-probed (≥3 assertScoped on assignments)', () => {
-    expect((src().match(/assertScoped\(\s*'assessmentAssignment'/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  it('remaining TypeScript by-id endpoints are scope-probed (≥2)', () => {
+    // The proctoring evidence/flag endpoints were removed from this router and
+    // moved to the .NET 10 staff API. Its vacancy-anchored scope has dedicated
+    // StaffProctoringScopeTests; only the two TS by-id probes remain here.
+    expect((src().match(/assertScoped\(\s*'assessmentAssignment'/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   it('assign/bulkAssign probe the parent vacancy', () => {

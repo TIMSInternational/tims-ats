@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { logger } from '@tims/shared';
 import { router } from '../../trpc';
 import { clientIpFrom } from '../../lib/client-ip';
-import { db } from '@tims/db';
+import { db, Prisma } from '@tims/db';
 import { dataClassOf } from '../../access';
 import { platformProcedure } from './_common';
 
@@ -12,10 +12,60 @@ import { platformProcedure } from './_common';
 //
 // exportSubjectData = the "right to access": bundle everything we hold about a
 // person (matched by email across both the User/employee and Candidate sides)
-// into a downloadable JSON. Single-subject, so no unbounded-result concern.
+// into a downloadable JSON. Proctoring metadata has explicit per-table caps
+// because one assessment can produce many browser signals; a truncation marker
+// makes any incomplete automated export visible for manual DSAR fulfillment.
 // Platform-owner only. Deletion requests are handled manually for now (they
 // carry legal-retention nuance + cascade risk) — a separate future capability.
 // ---------------------------------------------------------------------------
+
+const PROCTORING_CONSENT_LIMIT = 1_000;
+const PROCTORING_SESSION_LIMIT = 1_000;
+const PROCTORING_EVENT_LIMIT = 10_000;
+const PROCTORING_EVIDENCE_LIMIT = 1_000;
+const PROCTORING_FINDING_LIMIT = 10_000;
+const PROCTORING_EXPLANATION_LIMIT = 1_000;
+
+/** Fetch one extra row to distinguish a complete page from a capped export. */
+function boundedRows<T>(rows: ReadonlyArray<T>, limit: number): { data: T[]; truncated: boolean } {
+  return { data: rows.slice(0, limit), truncated: rows.length > limit };
+}
+
+const RESTRICTED_AUDIT_BATCH_SIZE = 500;
+
+// Compensation and the newly exported proctoring records are fail-CLOSED. A
+// single transaction keeps the audit all-or-nothing even when the bounded event
+// export needs multiple INSERT batches. Otherwise a late audit failure could
+// leave append-only records claiming that a failed DSAR export had succeeded.
+async function auditRestrictedExportReads(
+  actor: { actorId: string; ipAddress: string | null; userAgent: string | null },
+  records: ReadonlyArray<{ dataType: string; id: string; organizationId: string }>,
+): Promise<void> {
+  if (records.length === 0) return;
+  try {
+    await db.$transaction(async (tx) => {
+      for (let offset = 0; offset < records.length; offset += RESTRICTED_AUDIT_BATCH_SIZE) {
+        await tx.dataAccessLog.createMany({
+          data: records.slice(offset, offset + RESTRICTED_AUDIT_BATCH_SIZE).map((record) => ({
+            organizationId: record.organizationId,
+            actorId: actor.actorId,
+            dataType: record.dataType,
+            recordId: record.id,
+            action: 'export',
+            ipAddress: actor.ipAddress,
+            userAgent: actor.userAgent,
+          })),
+        });
+      }
+    }, { timeout: 30_000 });
+  } catch (err) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'No se pudo registrar el acceso a datos restringidos; acceso abortado',
+      cause: err,
+    });
+  }
+}
 
 // §21 sensitive-read audit (data_access_logs) for this cross-org surface.
 //
@@ -154,6 +204,11 @@ export const dataRequestsRouter = router({
               where: { candidateId: { in: candidateIds } },
               select: {
                 id: true,
+                // Used only to pair each assignment with its matched candidate's
+                // organization before any privileged proctoring read. Stripped
+                // from the legacy recruitment JSON shape below.
+                candidateId: true,
+                organizationId: true,
                 status: true,
                 assignedAt: true,
                 completedAt: true,
@@ -200,13 +255,202 @@ export const dataRequestsRouter = router({
           : [],
       ]);
 
+      const candidateOrgById = new Map(candidates.map((candidate) => [candidate.id, candidate.organizationId]));
+      const assignmentIdsByOrg = new Map<string, string[]>();
+      for (const assignment of assessments) {
+        if (candidateOrgById.get(assignment.candidateId) !== assignment.organizationId) continue;
+        const orgAssignments = assignmentIdsByOrg.get(assignment.organizationId) ?? [];
+        orgAssignments.push(assignment.id);
+        assignmentIdsByOrg.set(assignment.organizationId, orgAssignments);
+      }
+      const assignmentScopes = [...assignmentIdsByOrg].map(([organizationId, assignmentIds]) => ({
+        organizationId,
+        assignmentIds,
+        candidateIds: candidates.filter((candidate) => candidate.organizationId === organizationId).map((candidate) => candidate.id),
+      }));
+
+      // This router intentionally uses the privileged client for cross-org
+      // right-of-access exports. Every new proctoring query still requires BOTH
+      // the matched subject's assignment ID and its organization ID. The database
+      // limits are per export, not per assignment, and each query reads at most
+      // one row beyond its documented cap so truncation cannot be silent.
+      const [consentRows, sessionRows, eventRows, evidenceRows, findingRows, explanationRows] =
+        assignmentScopes.length === 0
+          ? [[], [], [], [], [], []] as const
+          : await Promise.all([
+              db.assessmentConsent.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds, candidateIds: scopedCandidateIds }) => ({
+                    organizationId,
+                    assignmentId: { in: assignmentIds },
+                    candidateId: { in: scopedCandidateIds },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_CONSENT_LIMIT + 1,
+                select: {
+                  id: true, organizationId: true, assignmentId: true, candidateId: true,
+                  consentType: true, textVersion: true, agreedAt: true,
+                  ipAddress: true, userAgent: true, createdAt: true, updatedAt: true,
+                },
+              }),
+              db.proctoringSession.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds }) => ({
+                    organizationId,
+                    assignmentId: { in: assignmentIds },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_SESSION_LIMIT + 1,
+                select: {
+                  id: true, organizationId: true, assignmentId: true,
+                  startedAt: true, endedAt: true, flagCount: true, severity: true,
+                  consentedAt: true, consentVersion: true, lastHeartbeatAt: true,
+                  reviewStatus: true, reviewNotes: true, reviewedAt: true,
+                  reviewedById: true, createdAt: true, updatedAt: true,
+                  // The legacy `events` JSON is deliberately not selected. Old
+                  // staff-written descriptions are unbounded free text; a
+                  // parameterized boolean probe below flags manual DSAR access.
+                },
+              }),
+              db.proctoringEvent.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds }) => ({
+                    organizationId,
+                    session: { is: { organizationId, assignmentId: { in: assignmentIds } } },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_EVENT_LIMIT + 1,
+                select: {
+                  id: true, organizationId: true, sessionId: true, clientEventId: true,
+                  type: true, source: true, severity: true, clientAt: true, occurredAt: true,
+                },
+              }),
+              db.proctoringEvidence.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds }) => ({
+                    organizationId,
+                    assignmentId: { in: assignmentIds },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_EVIDENCE_LIMIT + 1,
+                // Only subject-facing metadata. Storage keys, hashes, ETags,
+                // upload grants, and image bytes must not enter this JSON export.
+                select: {
+                  id: true, organizationId: true, assignmentId: true, sessionId: true,
+                  mediaType: true, captureReason: true, captureSlot: true,
+                  status: true, byteSize: true, modelRevision: true,
+                  confirmedAt: true, expiresAt: true, processedAt: true,
+                  deletedAt: true, createdAt: true,
+                },
+              }),
+              db.proctoringFinding.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds }) => ({
+                    organizationId,
+                    evidence: { is: { organizationId, assignmentId: { in: assignmentIds } } },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_FINDING_LIMIT + 1,
+                select: {
+                  id: true, organizationId: true, evidenceId: true,
+                  detector: true, modelRevision: true, label: true,
+                  resultKind: true, confidence: true, detectedCount: true,
+                  failureCode: true, inferredAt: true, createdAt: true,
+                },
+              }),
+              db.proctoringCandidateExplanation.findMany({
+                where: {
+                  OR: assignmentScopes.map(({ organizationId, assignmentIds, candidateIds: scopedCandidateIds }) => ({
+                    organizationId,
+                    assignmentId: { in: assignmentIds },
+                    candidateId: { in: scopedCandidateIds },
+                  })),
+                },
+                orderBy: { id: 'asc' },
+                take: PROCTORING_EXPLANATION_LIMIT + 1,
+                select: {
+                  id: true, organizationId: true, assignmentId: true,
+                  sessionId: true, candidateId: true, text: true,
+                  submittedAt: true, expiresAt: true,
+                },
+              }),
+            ]);
+      const consents = boundedRows(consentRows, PROCTORING_CONSENT_LIMIT);
+      const sessions = boundedRows(sessionRows, PROCTORING_SESSION_LIMIT);
+      const events = boundedRows(eventRows, PROCTORING_EVENT_LIMIT);
+      const evidence = boundedRows(evidenceRows, PROCTORING_EVIDENCE_LIMIT);
+      const findings = boundedRows(findingRows, PROCTORING_FINDING_LIMIT);
+      const explanations = boundedRows(explanationRows, PROCTORING_EXPLANATION_LIMIT);
+
+      // Reading only a boolean avoids fetching a potentially huge legacy JSON
+      // blob into the automated metadata export. Every checked session was
+      // already selected using the candidate-assignment + organization scope.
+      const legacyEventPresence = new Map<string, boolean>();
+      for (const [organizationId, assignmentIds] of assignmentIdsByOrg) {
+        const orgSessions = sessions.data.filter((session) =>
+          session.organizationId === organizationId && assignmentIds.includes(session.assignmentId));
+        if (orgSessions.length === 0) continue;
+        const rows = await db.$queryRaw<Array<{ id: string; has_legacy_events: boolean }>>(Prisma.sql`
+          SELECT id, events IS NOT NULL AND events <> '[]'::jsonb AS has_legacy_events
+          FROM proctoring_sessions
+          WHERE organization_id = ${organizationId}::uuid
+            AND id IN (${Prisma.join(orgSessions.map((session) => Prisma.sql`${session.id}::uuid`))})
+        `);
+        for (const row of rows) legacyEventPresence.set(row.id, row.has_legacy_events);
+      }
+      // A missing probe result is an integrity error. It must never silently
+      // imply that legacy content does not need manual review.
+      if (sessions.data.some((session) => !legacyEventPresence.has(session.id))) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'No se pudo verificar el historial de proctoring' });
+      }
+      const proctoringSessions = sessions.data.map((session) => ({
+        id: session.id,
+        organizationId: session.organizationId,
+        assignmentId: session.assignmentId,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        flagCount: session.flagCount,
+        severity: session.severity,
+        consentedAt: session.consentedAt,
+        consentVersion: session.consentVersion,
+        lastHeartbeatAt: session.lastHeartbeatAt,
+        reviewStatus: session.reviewStatus,
+        reviewNotes: session.reviewNotes,
+        reviewedAt: session.reviewedAt,
+        reviewedById: session.reviewedById,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        legacyEventsManualAccessRequired: legacyEventPresence.get(session.id) === true,
+      }));
+      const proctoringTruncated = {
+        assessmentConsents: consents.truncated,
+        sessions: sessions.truncated,
+        events: events.truncated,
+        evidence: evidence.truncated,
+        findings: findings.truncated,
+        explanations: explanations.truncated,
+      };
+      const physicalMediaManualAccessRequired = evidence.data.length > 0 || findings.data.length > 0;
+      const proctoringManualAccessRequired =
+        Object.values(proctoringTruncated).some(Boolean)
+        || proctoringSessions.some((session) => session.legacyEventsManualAccessRequired)
+        // Physical media, if still retained, needs a controlled disclosure or
+        // erasure decision; the JSON file cannot fulfill that obligation.
+        || physicalMediaManualAccessRequired;
+      const exportedAssessments = assessments.map(({ candidateId: _candidateId, organizationId: _organizationId, ...assessment }) => assessment);
+
       // §21 +AUDIT: one data_access_logs row per sensitive record actually exposed
       // by this bundle, keyed to that record's OWN organizationId, written BEFORE
       // the data is returned so a fail-closed audit failure aborts the export.
-      // These three are exactly the CLASSIFICATION entities this surface reads at
-      // confidential-or-above; `offer.salary` and `candidate` are unregistered
-      // (dataClassOf → 'internal') and are covered by the data_subject_export
-      // audit_logs row below.
+      // Compensation and proctoring metadata are audited fail-closed. Demographics
+      // and assessment scores retain their existing fail-soft policies. `offer.salary`
+      // and `candidate` are unregistered (dataClassOf → 'internal') and remain
+      // covered by the data_subject_export audit_logs row below.
       const auditActor = {
         actorId: ctx.user.impersonatorId ?? ctx.user.id,
         // clientIpFrom, not the raw left-most x-forwarded-for: this is the one
@@ -217,14 +461,17 @@ export const dataRequestsRouter = router({
       };
       const exposedResults = assessments.map((a) => a.result).filter((r): r is NonNullable<typeof r> => r !== null);
 
-      // Compensation FIRST and on its own, deliberately not inside the Promise.all
-      // below. It is the only fail-CLOSED entity, and data_access_logs is append-only
-      // (a BEFORE DELETE OR UPDATE trigger, baseline:5547). If it ran concurrently
-      // and failed, the two fail-soft writes would already have COMMITTED — leaving
-      // permanent, uncorrectable rows asserting that this operator exported that
-      // subject's demographics, for an export that threw and returned nothing.
-      // Sequencing it first means a fail-closed abort leaves no residue at all.
-      await auditSensitiveRead(auditActor, 'employeeCompensation', compensation);
+      // All fail-CLOSED records go first, in one transaction. The fail-soft
+      // writes below run only after that transaction commits successfully.
+      await auditRestrictedExportReads(auditActor, [
+        ...compensation.map((row) => ({ dataType: 'employeeCompensation', id: row.id, organizationId: row.organizationId })),
+        ...consents.data.map((row) => ({ dataType: 'assessmentConsent', id: row.id, organizationId: row.organizationId })),
+        ...proctoringSessions.map((row) => ({ dataType: 'proctoringSession', id: row.id, organizationId: row.organizationId })),
+        ...events.data.map((row) => ({ dataType: 'proctoringEvent', id: row.id, organizationId: row.organizationId })),
+        ...evidence.data.map((row) => ({ dataType: 'proctoringEvidence', id: row.id, organizationId: row.organizationId })),
+        ...findings.data.map((row) => ({ dataType: 'proctoringFinding', id: row.id, organizationId: row.organizationId })),
+        ...explanations.data.map((row) => ({ dataType: 'proctoringCandidateExplanation', id: row.id, organizationId: row.organizationId })),
+      ]);
       await Promise.all([
         // confidential → fail-SOFT.
         auditSensitiveRead(auditActor, 'employeeDemographics', demographics),
@@ -238,8 +485,37 @@ export const dataRequestsRouter = router({
         subject: email,
         generatedAt: new Date().toISOString(),
         identity: { users, candidates },
-        recruitment: { applications, interviews, offers, assessments },
+        recruitment: { applications, interviews, offers, assessments: exportedAssessments },
         hr: { demographics, compensation },
+        proctoring: {
+          assessmentConsents: consents.data,
+          sessions: proctoringSessions,
+          events: events.data,
+          evidence: evidence.data,
+          findings: findings.data,
+          explanations: explanations.data,
+          truncated: proctoringTruncated,
+          limits: {
+            assessmentConsents: PROCTORING_CONSENT_LIMIT,
+            sessions: PROCTORING_SESSION_LIMIT,
+            events: PROCTORING_EVENT_LIMIT,
+            evidence: PROCTORING_EVIDENCE_LIMIT,
+            findings: PROCTORING_FINDING_LIMIT,
+            explanations: PROCTORING_EXPLANATION_LIMIT,
+          },
+          manualAccessRequired: proctoringManualAccessRequired,
+          manualAccessNotice: physicalMediaManualAccessRequired
+            ? 'La exportación automática no incluye imágenes de proctoring. Verifique su divulgación o eliminación y revise cualquier registro truncado o evento heredado antes de cerrar esta solicitud.'
+            : proctoringManualAccessRequired
+              ? 'La exportación automática está incompleta. Revise manualmente los registros truncados y los eventos heredados antes de cerrar esta solicitud de acceso.'
+              : null,
+          physicalMediaIncluded: false,
+          physicalMediaManualAccessRequired,
+          // True legacy free-text event JSON is intentionally excluded from the
+          // automated bundle. A marked session requires manual access review to
+          // fulfill the request completely; it must not be treated as complete.
+          legacyEventsJsonIncluded: false,
+        },
       };
 
       // Audit the PII access: this is a cross-org, PII-bearing export (salary, DOB,
@@ -314,6 +590,12 @@ export const dataRequestsRouter = router({
           assessments: assessments.length,
           demographics: demographics.length,
           compensation: compensation.length,
+          proctoringConsents: consents.data.length,
+          proctoringSessions: proctoringSessions.length,
+          proctoringEvents: events.data.length,
+          proctoringEvidence: evidence.data.length,
+          proctoringFindings: findings.data.length,
+          proctoringExplanations: explanations.data.length,
         },
       };
     }),

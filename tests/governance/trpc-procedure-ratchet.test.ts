@@ -39,10 +39,12 @@ import { appRouter } from '@tims/api';
 // is the correct way for a tripwire to end.
 
 /**
- * Measured 2026-08-31 at `7d1e6a94` + PR #249, exactly, from the router.
+ * Measured 2026-09-24 after removing the two legacy TS proctoring procedures
+ * (`assessment.getProctoringEvents` and `assessment.flagProctoring`) for the
+ * direct .NET 10 proctoring API, exactly, from the router.
  * MAY ONLY EVER DECREASE.
  */
-const PROCEDURE_CEILING = 355;
+const PROCEDURE_CEILING = 353;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.

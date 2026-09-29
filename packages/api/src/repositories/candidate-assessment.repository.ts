@@ -21,7 +21,9 @@ const assignmentSummarySelect = {
   startedAt: true,
   completedAt: true,
   expiresAt: true,
+  proctoringRequired: true,
   assessmentType: { select: { id: true, name: true, duration: true } },
+  session: { select: { id: true, startedAt: true, endedAt: true } },
   // breakdown is selected ONLY so candidateAssessmentService.getMyAssessments can derive
   // hasPending (Wave 1.5a slice 3) — it is stripped before the DTO leaves the service,
   // never returned to the client as raw JSON.
@@ -44,7 +46,12 @@ export const candidateAssessmentRepo = {
   findOwnedAssignment(organizationId: string, candidateId: string, assignmentId: string) {
     return tenantDb.assessmentAssignment.findFirst({
       where: { id: assignmentId, organizationId, candidateId },
-      select: { id: true, status: true, expiresAt: true, assessmentTypeId: true },
+      select: {
+        id: true, status: true, startedAt: true, expiresAt: true, assessmentTypeId: true,
+        assessmentType: { select: { duration: true } },
+        proctoringRequired: true,
+        session: { select: { id: true, startedAt: true, endedAt: true } },
+      },
     });
   },
 
@@ -118,7 +125,12 @@ export const candidateAssessmentWriteRepo = {
   findAssignmentInTx(tx: Prisma.TransactionClient, organizationId: string, candidateId: string, assignmentId: string) {
     return tx.assessmentAssignment.findFirst({
       where: { id: assignmentId, organizationId, candidateId },
-      select: { id: true, status: true, expiresAt: true, assessmentTypeId: true },
+      select: {
+        id: true, status: true, startedAt: true, expiresAt: true, assessmentTypeId: true,
+        assessmentType: { select: { duration: true } },
+        proctoringRequired: true,
+        session: { select: { id: true, startedAt: true, endedAt: true } },
+      },
     });
   },
 

@@ -23,6 +23,7 @@
     <!-- WP3.3: the HRIS sync use case (Application) is unit-tested here over fakes for the Application
          ports + a fake IHrisConnector. Application refs Domain only, so this stays infra-free. -->
     <ProjectReference Include="..\..\src\Tims.Application\Tims.Application.csproj" />
+    <ProjectReference Include="..\..\src\Tims.Api\Tims.Api.csproj" />
   </ItemGroup>
 
   <!-- The SAME golden fixtures the TS suite asserts (contracts/access-fixtures at the

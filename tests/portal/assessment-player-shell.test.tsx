@@ -24,6 +24,14 @@ vi.mock(
   '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-question-wizard',
   () => ({ AssessmentQuestionWizard: () => <div>wizard-stub</div> }),
 );
+vi.mock(
+  '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/proctored-assessment-flow',
+  () => ({ ProctoredAssessmentFlow: () => <div>proctored-preflight-stub</div> }),
+);
+vi.mock(
+  '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/candidate-proctoring-explanation',
+  () => ({ CandidateProctoringExplanation: () => <div>candidate-statement-stub</div> }),
+);
 
 import { AssessmentPlayerShell } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-player-shell';
 
@@ -52,6 +60,14 @@ describe('AssessmentPlayerShell', () => {
     expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
   });
 
+  it('offers the statement on the completed result only for a proctored assignment', () => {
+    assessmentsQueryData = [
+      { id: 'a1', status: 'completed', proctoringRequired: true, result: null },
+    ];
+    renderShell();
+    expect(screen.getByText('candidate-statement-stub')).toBeInTheDocument();
+  });
+
   it('renders the consent gate for status=assigned', () => {
     assessmentsQueryData = [{ id: 'a1', status: 'assigned', result: null }];
     renderShell();
@@ -75,6 +91,24 @@ describe('AssessmentPlayerShell', () => {
     expect(screen.queryByText(en.assessmentPlayer.backToDashboard)).not.toBeInTheDocument();
   });
 
+  it('routes required assignments through proctoring preflight before the question wizard', () => {
+    assessmentsQueryData = [
+      {
+        id: 'a1',
+        status: 'assigned',
+        proctoringRequired: true,
+        startedAt: null,
+        expiresAt: null,
+        assessmentType: { duration: 30 },
+        result: null,
+      },
+    ];
+    renderShell();
+    expect(screen.getByText('proctored-preflight-stub')).toBeInTheDocument();
+    expect(screen.queryByText(en.assessmentPlayer.consentTitle)).not.toBeInTheDocument();
+    expect(screen.queryByText('wizard-stub')).not.toBeInTheDocument();
+  });
+
   it('renders the result screen for status=completed, using the list item result directly (no extra fetch)', () => {
     assessmentsQueryData = [
       { id: 'a1', status: 'completed', result: { normalizedScore: 90, percentile: 80, hasPending: false } },
@@ -82,6 +116,7 @@ describe('AssessmentPlayerShell', () => {
     renderShell();
     expect(screen.getByText(/90%/)).toBeInTheDocument();
     expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
+    expect(screen.queryByText('candidate-statement-stub')).not.toBeInTheDocument();
   });
 
   it('renders a plain cancelled message for status=cancelled', () => {
