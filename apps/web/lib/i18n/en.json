@@ -2511,6 +2511,7 @@
     "offerEmailUnconfirmed": "Email sending was not confirmed",
     "offerEmailAcceptedDetail": "The provider accepted the message. Confirm receipt with the candidate; this does not yet guarantee inbox delivery.",
     "offerEmailUnconfirmedDetail": "The provider did not confirm sending. Share the link through a secure channel or close and retry; the same link will be kept.",
+    "offerEmailUnconfirmedNoLinkDetail": "The provider did not confirm sending. Close and retry, or ask an HR administrator to share the signing link.",
     "shareWithCandidate": "Share this link with the candidate",
     "signingLinkLabel": "Signing link",
     "emailSendComingSoon": "Email send: coming soon",

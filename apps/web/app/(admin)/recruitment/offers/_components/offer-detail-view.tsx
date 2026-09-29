@@ -51,7 +51,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
 
   const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
     onSuccess: (data) => {
-      setSigningUrl(window.location.origin + data.signingUrl);
+      setSigningUrl(data.signingUrl ? window.location.origin + data.signingUrl : '');
       setEmailDeliveryAccepted(data.emailDeliveryAccepted);
       setRecipientEmail(data.candidateEmail);
       setShowSigningModal(true);

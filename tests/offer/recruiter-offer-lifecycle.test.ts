@@ -110,12 +110,22 @@ function teamIdLists(node: unknown): string[][] {
 
 // The offer's vacancy sits on OFFER_TEAM_ID and is assigned to nobody under test, so a team-scoped
 // where matches it only when the leader's led teams include OFFER_TEAM_ID.
-function useOffer(status: string) {
+function useOffer(status: string, settings: Record<string, unknown> = {}) {
   mockDb.offer.findFirst.mockImplementation(async ({ where }: { where: unknown }) => {
     const lists = teamIdLists(where);
     if (lists.length > 0 && !lists.some((ids) => ids.includes(OFFER_TEAM_ID))) return null;
-    return offerWithStatus(status);
+    return { ...offerWithStatus(status), settings };
   });
+}
+
+const SIGN_URL = /^https:\/\/app\.tims\.test\/offers\/sign\/([0-9a-f-]{36})$/;
+
+/** The bearer token the candidate email carried (the only place a recruiter's send may put it). */
+function emailedToken(): string {
+  const { signingUrl } = sendOfferToCandidateMock.mock.calls[0]![0] as { signingUrl: string };
+  const match = SIGN_URL.exec(signingUrl);
+  expect(match).not.toBeNull();
+  return match![1]!;
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string | null> {
@@ -166,7 +176,9 @@ describe('offer.generateSigningLink — recruiter can send an APPROVED offer', (
 
     expect(result.emailDeliveryAccepted).toBe(true);
     expect(result.candidateEmail).toBe('ana@candidate.test');
-    expect(result.signingUrl).toMatch(/^\/offers\/sign\/[0-9a-f-]{36}$/);
+    // Codex #304 round 2: the URL is the candidate's bearer token — a recruiter never gets it back.
+    expect(result.signingUrl).toBeNull();
+    expect(JSON.stringify(result)).not.toContain(emailedToken());
     // The optimistic approved -> sent transition, guarded on the status it read.
     expect(mockDb.offer.updateMany).toHaveBeenCalledTimes(1);
     const transition = mockDb.offer.updateMany.mock.calls[0]![0];
@@ -177,9 +189,30 @@ describe('offer.generateSigningLink — recruiter can send an APPROVED offer', (
       expect.objectContaining({
         candidateEmail: 'ana@candidate.test',
         companyName: 'Acme',
-        signingUrl: `https://app.tims.test${result.signingUrl}`,
+        signingUrl: expect.stringMatching(SIGN_URL),
       }),
     );
+  });
+
+  it('re-sending an already-sent offer as a recruiter re-emails the SAME link but never returns the token', async () => {
+    const existing = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    useOffer('sent', { signingToken: existing });
+    const caller = await makeCaller(['recruiter']);
+    const result = await caller.signing.generateSigningLink({ offerId: OFFER_ID });
+
+    expect(result.signingUrl).toBeNull();
+    expect(JSON.stringify(result)).not.toContain(existing);
+    expect(mockDb.offer.updateMany).not.toHaveBeenCalled();
+    expect(sendOfferToCandidateMock).toHaveBeenCalledTimes(1);
+    expect(emailedToken()).toBe(existing);
+  });
+
+  it('still returns the signing link to an HR admin (offer:update), as before the widening', async () => {
+    const existing = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    useOffer('sent', { signingToken: existing });
+    const caller = await makeCaller(['hr_admin']);
+    const result = await caller.signing.generateSigningLink({ offerId: OFFER_ID });
+    expect(result.signingUrl).toBe(`/offers/sign/${existing}`);
   });
 
   it('still refuses a recruiter a DRAFT offer — the narrow grant covers only the send step', async () => {

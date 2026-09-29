@@ -5,7 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
-import { scopeWhereFor } from '../../access';
+import { scopeWhereFor, buildAccessForUser } from '../../access';
 
 export const offerSigningRouter = router({
   // Generate a unique signing link for an offer. offer:create (recruiters) suffices because the body only
@@ -111,7 +111,16 @@ export const offerSigningRouter = router({
         expiresAt: offer.expiresAt,
       });
 
-      return { signingUrl, emailDeliveryAccepted, candidateEmail: offer.candidate.email };
+      // The URL IS the candidate's bearer token (anyone holding it can accept/decline — offer-dto.ts).
+      // Only callers who could already generate links before the offer:create widening (offer:update)
+      // get it back; a recruiter authorized via offer:create alone triggers the email but never sees
+      // the token — including the reused token of an already-sent offer.
+      const canSeeSigningUrl = (await buildAccessForUser(ctx.user, 'offer', 'update')).allowed;
+      return {
+        signingUrl: canSeeSigningUrl ? signingUrl : null,
+        emailDeliveryAccepted,
+        candidateEmail: offer.candidate.email,
+      };
     }),
 
   // PUBLIC: Get offer data by signing token (no auth required)
