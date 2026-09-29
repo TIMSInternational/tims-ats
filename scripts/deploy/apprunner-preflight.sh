@@ -34,7 +34,9 @@
 #   - if the live image changed since `decide` read it, resolve its tag to a commit: the same commit or
 #     a descendant of TARGET_SHA -> exit 3 (skip); a strict ancestor -> proceed (another pipeline deploy
 #     moved production forward while this one waited; rollbacks are excluded by the checks above);
-#     anything else (unresolvable, diverged) -> refuse.
+#     anything else (unresolvable, diverged) -> refuse. A FORCED manual deploy ($FORCE_OLDER=true,
+#     approved by `decide` against the image it read) refuses on ANY change instead: the operator
+#     forced a regression over a specific image, not over whatever is live now.
 #   Every GitHub query that fails or returns something unexpected is a refusal: an unverifiable
 #   "no rollback" is not a pass.
 #
@@ -95,6 +97,8 @@ fi
 
 CHANGED="live image changed since it was read: expected $EXPECT, found $IMAGE"
 [[ "$MODE" == "--deploy" ]] || refuse "$CHANGED. Another deploy or rollback ran; refusing."
+[[ "${FORCE_OLDER:-}" != "true" ]] \
+  || refuse "$CHANGED, and this is a force_older deploy approved against the old image. Re-dispatch to re-decide."
 
 LIVE_TAG="${IMAGE##*:}"
 LIVE_SHA=""

@@ -46,6 +46,11 @@ on:
       reason:
         description: "Why are you deploying by hand? (recorded in the job summary)"
         required: true
+      force_older:
+        description: "Deploy even though production runs a NEWER or diverged commit (a regression; logged in the summary). Prefer the rollback workflow."
+        type: boolean
+        required: false
+        default: false
 
 # ── CONCURRENCY: ONE LOCK FOR EVERY update-service (Codex round 2, 2026-09-29) ─────────────────────
 # There is deliberately NO workflow-level `concurrency`. At workflow level every `workflow_run`
@@ -79,6 +84,16 @@ on:
 #       the last writer — the intended outcome. It may wait out the build (see the runbook).
 #   (d) Out-of-band changes (console / CLI update-service) are not serialized by any group. The
 #       preflight's live-image check narrows that window but cannot close it.
+#   (e) RE-RUNNING an OLD rollback run is not detected. The created-after check dates a run by its
+#       creation, not by its latest attempt, so a re-run of a rollback created BEFORE a waiting deploy
+#       (one decided before the pause) is invisible to it once that re-run completes, and the deploy
+#       could then roll forward over it. Mitigation is procedural (runbook 2.3): never re-run a
+#       rollback run; always dispatch a NEW one, after setting the pause.
+#
+# MANUAL deploys pass the same no-regression rule: `decide` refuses a dispatch whose commit is OLDER
+# than, or diverged from, the running commit unless the dispatch sets `force_older: true`, which is
+# recorded in the job summary. If the live image then changes while the forced deploy waits, the
+# preflight refuses instead of skipping, so the operator re-decides against the new state.
 permissions:
   id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
   contents: read
@@ -144,6 +159,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           SHA: ${{ steps.target.outputs.sha }}
           REASON: ${{ inputs.reason }}
+          FORCE_OLDER: ${{ inputs.force_older }}
           AUTODEPLOY_PAUSED: ${{ vars.PLATFORM_API_AUTODEPLOY_PAUSED }}
         run: |
           set -euo pipefail
@@ -175,14 +191,30 @@ jobs:
           # The deploy job re-checks, right before update-service, that this is STILL the live image.
           echo "running_image=$RUNNING_IMAGE" >> "$GITHUB_OUTPUT"
 
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            verdict true "manual deploy by $GITHUB_ACTOR — reason: $REASON"
-            exit 0
-          fi
-
           RUNNING_SHA=""
           if echo "$RUNNING_TAG" | grep -Eq '^[0-9a-f]{7,40}$'; then
             RUNNING_SHA="$(git rev-parse --verify --quiet "${RUNNING_TAG}^{commit}" || true)"
+          fi
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # The same no-regression rule as the automatic path. A manual deploy of an OLDER (or
+            # diverged) commit over the running one is a rollback in disguise and needs force_older.
+            if [ -n "$RUNNING_SHA" ] && [ "$RUNNING_SHA" = "$SHA" ]; then
+              verdict false "production already runs this commit (manual deploy by $GITHUB_ACTOR)"
+              exit 0
+            fi
+            if [ -n "$RUNNING_SHA" ] && ! git merge-base --is-ancestor "$RUNNING_SHA" "$SHA"; then
+              if [ "$FORCE_OLDER" != "true" ]; then
+                echo "::error::Production runs \`$RUNNING_TAG\`, which is NEWER than or diverged from $SHA. Refusing a manual regression; use the rollback workflow, or re-dispatch with force_older=true."
+                verdict false "REFUSED manual deploy by $GITHUB_ACTOR: production runs NEWER or diverged \`$RUNNING_TAG\`"
+                exit 1
+              fi
+              echo "::warning::force_older=true: deploying $SHA over NEWER or diverged \`$RUNNING_TAG\`."
+              verdict true "FORCED (force_older=true) manual deploy by $GITHUB_ACTOR over NEWER or diverged \`$RUNNING_TAG\` — reason: $REASON"
+              exit 0
+            fi
+            verdict true "manual deploy by $GITHUB_ACTOR — reason: $REASON"
+            exit 0
           fi
 
           if [ -z "$RUNNING_SHA" ]; then
@@ -261,6 +293,7 @@ jobs:
           TAG: ${{ steps.sha.outputs.short }}
           DECIDED_IMAGE: ${{ needs.decide.outputs.running_image }}
           TARGET_SHA: ${{ needs.decide.outputs.sha }}
+          FORCE_OLDER: ${{ inputs.force_older }}
           # A snapshot, NOT a live read: GITHUB_TOKEN cannot read repository variables. The live guards
           # are the rollback-run queries and the live-image check in apprunner-preflight.sh.
           AUTODEPLOY_PAUSED: ${{ vars.PLATFORM_API_AUTODEPLOY_PAUSED }}
@@ -274,14 +307,7 @@ jobs:
 
           aws apprunner describe-service --region "$AWS_REGION" --service-arn "$ARN" > live.json
 
-          # `update-service` takes a FULL source-configuration map. A partial one DROPS every env key
-          # it omits — which would darken the 22 live flags and take ~13 production surfaces offline.
-          # So the payload is derived from the live config and asserted to differ in exactly one field
-          # (CHANGED /ImageRepository/ImageIdentifier) by the shared guard below. The rollback workflow
-          # runs the SAME script, so both directions pass through one tested check.
-          python3 scripts/deploy/apprunner-image-payload.py live.json "$REGISTRY/$ECR_REPO:$TAG" payload.json
-
-          # LAST check, immediately before update-service (this job holds platform-api-mutation, so no
+          # LAST AWS read before update-service (this job holds platform-api-mutation, so no
           # pipeline rollback or deploy can run between here and update-service): not paused, no
           # rollback run queued or running, none requested since this run was created, and the live
           # image is the one `decide` read — or an OLDER commit another deploy put there while this one
@@ -296,6 +322,15 @@ jobs:
               ;;
             *) exit "$RC" ;;
           esac
+
+          # `update-service` takes a FULL source-configuration map. A partial one DROPS every env key
+          # it omits — which would darken the 22 live flags and take ~13 production surfaces offline.
+          # So the payload is derived from the live config and asserted to differ in exactly one field
+          # (CHANGED /ImageRepository/ImageIdentifier) by the shared guard below. It runs AFTER
+          # the preflight: when production already runs this image it refuses (nothing to change), and
+          # that case must reach the preflight's exit-3 skip first. The rollback workflow
+          # runs the SAME script, so both directions pass through one tested check.
+          python3 scripts/deploy/apprunner-image-payload.py live.json "$REGISTRY/$ECR_REPO:$TAG" payload.json
 
           echo "ENV_BEFORE=$(python3 -c "import json;print(len(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")" >> "$GITHUB_ENV"
           echo "SERVICE_ARN=$ARN" >> "$GITHUB_ENV"

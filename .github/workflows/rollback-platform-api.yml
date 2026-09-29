@@ -45,6 +45,9 @@ on:
 #     narrows, but cannot close, the window, since UpdateService has no expected-image precondition.
 #   - if the group's queue ever overflows (100 pending), GitHub cancels the newest arrival: a rollback
 #     run shown as cancelled must be re-dispatched.
+#   - NEVER use "Re-run" on a rollback run; always dispatch a new one. The deploy's created-after check
+#     dates a run by its creation, not its latest attempt, so a completed re-run of an old rollback is
+#     invisible to a deploy that was already waiting, which could then roll forward over it.
 
 permissions:
   id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
@@ -79,7 +82,7 @@ jobs:
           # deploy's `decide` and put the bad commit straight back.
           [ "$AUTODEPLOY_PAUSED" = "true" ] || {
             echo "::error::Pause deploys first: gh variable set PLATFORM_API_AUTODEPLOY_PAUSED --body true"
-            echo "::error::Then re-run this rollback. See docs/runbooks/production-rollback-and-alerting.md."
+            echo "::error::Then dispatch a NEW rollback run (never Re-run this one). See docs/runbooks/production-rollback-and-alerting.md."
             exit 1
           }
           # The trust policy only admits refs/heads/main; failing here gives a clear message instead

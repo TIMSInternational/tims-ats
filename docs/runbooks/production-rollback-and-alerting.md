@@ -32,7 +32,10 @@ commit; if production already runs this commit or a newer one, it skips (the sum
 other change to the live image makes it refuse.
 
 The run's job summary says which rule applied. A manual deploy is still available as
-**Actions → Deploy platform API → Run workflow** (branch `main`, reason required).
+**Actions → Deploy platform API → Run workflow** (branch `main`, reason required). It follows the same
+rule as the automatic deploy. If production runs the same commit, it skips. If production runs a
+**newer** or diverged commit, it refuses, unless you tick `force_older`. The summary records a
+forced deploy. To go back to an older image, use the rollback workflow (section 2), not `force_older`.
 
 ---
 
@@ -56,7 +59,7 @@ repository variables when a job starts. The shared lock and the preflight cover 
 - If the deploy is **building or rolling out**, it holds the lock. Your rollback waits in the queue and
   runs after it, so the rollback is applied last. To avoid waiting out a build, cancel that **Deploy
   platform API** run while it is still building. After `update-service` has started, cancelling does
-  not stop App Runner. The rollback then refuses until the service is `RUNNING`, and you re-run it.
+  not stop App Runner. The rollback then refuses until the service is `RUNNING`; then dispatch a new rollback run (see 2.3).
 - If the deploy is **still waiting** in the queue, its preflight refuses, because your rollback run was
   requested after the deploy run started.
 - If a **Roll back platform API** run shows as **cancelled** without anyone cancelling it, re-dispatch
@@ -94,6 +97,12 @@ From the CLI, replacing `a45c7b5` and the reason:
 ```bash
 gh workflow run 'Roll back platform API' --repo TIMSInternational/tims-ats --ref main -f tag=a45c7b5 -f reason='5xx spike after release'
 ```
+
+**Always dispatch a new rollback run. Never use "Re-run" on an old rollback run.** A deploy waiting
+in the queue checks for rollback runs requested after it started, by the run's creation time. A re-run
+keeps the old run's creation time, so once it finishes that check cannot see it, and the waiting
+deploy could roll forward over it. The pause in 2.1 must be set before every rollback, including a
+repeated one.
 
 The workflow:
 

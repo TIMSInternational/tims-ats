@@ -92,7 +92,7 @@ describe('CD — the platform API deploy workflow', () => {
   it('the pause blocks MANUAL deploys too — it is checked before the dispatch shortcut', () => {
     const s = src();
     const pause = s.indexOf('if [ "$AUTODEPLOY_PAUSED" = "true" ]; then');
-    const dispatch = s.indexOf('if [ "$EVENT" = "workflow_dispatch" ]; then\n            verdict true');
+    const dispatch = s.indexOf('verdict true "manual deploy by $GITHUB_ACTOR');
     expect(pause).toBeGreaterThan(-1);
     expect(dispatch).toBeGreaterThan(-1);
     expect(pause, 'a paused service must not accept a dispatched deploy either').toBeLessThan(dispatch);
@@ -104,7 +104,13 @@ describe('CD — the platform API deploy workflow', () => {
     const update = s.indexOf('aws apprunner update-service');
     expect(preflight, 'the deploy must run the preflight with --deploy').toBeGreaterThan(-1);
     expect(update).toBeGreaterThan(preflight);
-    expect(s.slice(preflight, update)).not.toMatch(/describe-service|python3 scripts/);
+    expect(s.slice(preflight, update), 'no AWS read may sit between the preflight and the update').not.toMatch(
+      /describe-service/,
+    );
+    // The payload guard refuses an unchanged image, so it must run AFTER the preflight's exit-3 skip.
+    const payload = s.indexOf('python3 scripts/deploy/apprunner-image-payload.py live.json');
+    expect(payload).toBeGreaterThan(preflight);
+    expect(payload).toBeLessThan(update);
     // The baseline is the image `decide` compared against, carried across jobs.
     expect(s).toContain('echo "running_image=$RUNNING_IMAGE" >> "$GITHUB_OUTPUT"');
     expect(s).toContain('running_image: ${{ steps.decide.outputs.running_image }}');
@@ -117,6 +123,9 @@ describe('CD — the platform API deploy workflow', () => {
     const s = src();
     const dispatch = s.split('workflow_dispatch:\n')[1]?.split('\n\n')[0] ?? '';
     expect(dispatch).toMatch(/reason:\s*\n\s+description:[^\n]*\n\s+required: true/);
+    expect(dispatch, 'the regression override must be an explicit, default-false boolean').toMatch(
+      /force_older:\s*\n\s+description:[^\n]*\n\s+type: boolean\n\s+required: false\n\s+default: false/,
+    );
     expect(s).toContain('[ "$DISPATCH_REF" = "refs/heads/main" ]');
   });
 
