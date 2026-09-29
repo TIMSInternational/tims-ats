@@ -18,7 +18,7 @@ const buildAccessForUserMock = vi.hoisted(() =>
 );
 
 const mockDb = vi.hoisted(() => ({
-  offer: { findFirst: vi.fn(), update: vi.fn() },
+  offer: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   organization: { findFirst: vi.fn() },
   user: { findMany: vi.fn() },
   offerApproval: { createMany: vi.fn() },
@@ -32,21 +32,36 @@ vi.mock('@tims/db', () => ({
   runTenantTransaction: runTenantTransactionMock,
 }));
 
-vi.mock('../../packages/api/src/access', () => ({
+// Teams each user LEADS. The offer under test hangs off a vacancy on OFFER_TEAM_ID, so only a leader of
+// that team holds it in (team-scoped) offer:approve scope.
+const OFFER_TEAM_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const OTHER_TEAM_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const LED_TEAMS = vi.hoisted(() => new Map<string, string[]>());
+
+// The REAL assertScoped + scopeWhereFor run (so the approver probe really builds the leader's team
+// fragment); only the anchor loader and the grant lookup are stubbed.
+vi.mock('../../packages/api/src/access', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   buildAccessForUser: buildAccessForUserMock,
-  createAnchorLoader: vi.fn(() => null),
-  assertScoped: vi.fn(),
-  scopeWhereFor: vi.fn().mockResolvedValue({}),
+  createAnchorLoader: vi.fn((_orgId: string, userId: string) => ({
+    ledTeamIds: async () => LED_TEAMS.get(userId) ?? [],
+    unitIds: async () => [],
+    teamMemberIds: async () => [userId],
+    unitMemberIds: async () => [],
+  })),
 }));
 
+const sendOfferToCandidateMock = vi.hoisted(() => vi.fn());
 vi.mock('../../packages/api/src/services/email.service', () => ({
-  emailService: { sendOfferToCandidate: vi.fn().mockResolvedValue(undefined) },
+  emailService: { sendOfferToCandidate: sendOfferToCandidateMock },
 }));
 
 const ORG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 const OFFER_ID = '99999999-9999-4999-8999-999999999999';
 const HR_ADMIN_ID = '11111111-1111-4111-8111-111111111111';
 const RECRUITER_ID = '22222222-2222-4222-8222-222222222222';
+const LEADER_IN_SCOPE_ID = '44444444-4444-4444-8444-444444444444';
+const LEADER_OTHER_TEAM_ID = '55555555-5555-4555-8555-555555555555';
 
 async function makeCaller(roles: string[]) {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
@@ -82,6 +97,27 @@ function offerWithStatus(status: string) {
   };
 }
 
+// Every `teamId: { in: [...] }` list inside a Prisma where (the team-scope vacancy anchor).
+function teamIdLists(node: unknown): string[][] {
+  if (Array.isArray(node)) return node.flatMap(teamIdLists);
+  if (!node || typeof node !== 'object') return [];
+  return Object.entries(node).flatMap(([key, value]) => {
+    const inList = (value as { in?: unknown } | null)?.in;
+    if (key === 'teamId' && Array.isArray(inList)) return [inList as string[]];
+    return teamIdLists(value);
+  });
+}
+
+// The offer's vacancy sits on OFFER_TEAM_ID and is assigned to nobody under test, so a team-scoped
+// where matches it only when the leader's led teams include OFFER_TEAM_ID.
+function useOffer(status: string) {
+  mockDb.offer.findFirst.mockImplementation(async ({ where }: { where: unknown }) => {
+    const lists = teamIdLists(where);
+    if (lists.length > 0 && !lists.some((ids) => ids.includes(OFFER_TEAM_ID))) return null;
+    return offerWithStatus(status);
+  });
+}
+
 async function codeOf(promise: Promise<unknown>): Promise<string | null> {
   try {
     await promise;
@@ -94,7 +130,12 @@ async function codeOf(promise: Promise<unknown>): Promise<string | null> {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = 'https://app.tims.test';
-  mockDb.offer.update.mockResolvedValue({ id: OFFER_ID, status: 'sent', approvals: [], settings: {} });
+  mockDb.offer.update.mockResolvedValue({ id: OFFER_ID, status: 'pending_approval', approvals: [], settings: {} });
+  mockDb.offer.updateMany.mockResolvedValue({ count: 1 });
+  sendOfferToCandidateMock.mockResolvedValue(true);
+  LED_TEAMS.clear();
+  LED_TEAMS.set(LEADER_IN_SCOPE_ID, [OFFER_TEAM_ID]);
+  LED_TEAMS.set(LEADER_OTHER_TEAM_ID, [OTHER_TEAM_ID]);
   mockDb.organization.findFirst.mockResolvedValue({ name: 'Acme' });
   mockDb.offerApproval.createMany.mockResolvedValue({ count: 1 });
   runTenantTransactionMock.mockImplementation(async (_org: string, fn: (tx: unknown) => Promise<unknown>) =>
@@ -104,6 +145,8 @@ beforeEach(() => {
     [
       { id: HR_ADMIN_ID, userRoles: [{ role: { slug: 'hr_admin' } }] },
       { id: RECRUITER_ID, userRoles: [{ role: { slug: 'recruiter' } }] },
+      { id: LEADER_IN_SCOPE_ID, userRoles: [{ role: { slug: 'leader' } }] },
+      { id: LEADER_OTHER_TEAM_ID, userRoles: [{ role: { slug: 'leader' } }] },
     ].filter((user) => where.id.in.includes(user.id)),
   );
 });
@@ -116,22 +159,39 @@ describe('the canonical matrix itself is unchanged (least privilege)', () => {
 });
 
 describe('offer.generateSigningLink — recruiter can send an APPROVED offer', () => {
-  it('lets a recruiter (offer:create) past the permission gate for an approved offer', async () => {
-    mockDb.offer.findFirst.mockResolvedValue(offerWithStatus('approved'));
+  it('lets a recruiter (offer:create) send an approved offer: status flips to sent and the email goes out', async () => {
+    useOffer('approved');
     const caller = await makeCaller(['recruiter']);
-    expect(await codeOf(caller.signing.generateSigningLink({ offerId: OFFER_ID }))).not.toBe('FORBIDDEN');
-    expect(mockDb.offer.findFirst).toHaveBeenCalledTimes(1);
+    const result = await caller.signing.generateSigningLink({ offerId: OFFER_ID });
+
+    expect(result.emailDeliveryAccepted).toBe(true);
+    expect(result.candidateEmail).toBe('ana@candidate.test');
+    expect(result.signingUrl).toMatch(/^\/offers\/sign\/[0-9a-f-]{36}$/);
+    // The optimistic approved -> sent transition, guarded on the status it read.
+    expect(mockDb.offer.updateMany).toHaveBeenCalledTimes(1);
+    const transition = mockDb.offer.updateMany.mock.calls[0]![0];
+    expect(transition.where).toMatchObject({ id: OFFER_ID, organizationId: ORG_ID, status: 'approved' });
+    expect(transition.data).toMatchObject({ status: 'sent' });
+    expect(sendOfferToCandidateMock).toHaveBeenCalledTimes(1);
+    expect(sendOfferToCandidateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidateEmail: 'ana@candidate.test',
+        companyName: 'Acme',
+        signingUrl: `https://app.tims.test${result.signingUrl}`,
+      }),
+    );
   });
 
   it('still refuses a recruiter a DRAFT offer — the narrow grant covers only the send step', async () => {
-    mockDb.offer.findFirst.mockResolvedValue(offerWithStatus('draft'));
+    useOffer('draft');
     const caller = await makeCaller(['recruiter']);
     expect(await codeOf(caller.signing.generateSigningLink({ offerId: OFFER_ID }))).toBe('BAD_REQUEST');
-    expect(mockDb.offer.update).not.toHaveBeenCalled();
+    expect(mockDb.offer.updateMany).not.toHaveBeenCalled();
+    expect(sendOfferToCandidateMock).not.toHaveBeenCalled();
   });
 
   it('keeps roles with neither offer:update nor offer:create out (hrbp, employee)', async () => {
-    mockDb.offer.findFirst.mockResolvedValue(offerWithStatus('approved'));
+    useOffer('approved');
     for (const role of ['hrbp', 'employee', 'leader']) {
       const caller = await makeCaller([role]);
       expect(await codeOf(caller.signing.generateSigningLink({ offerId: OFFER_ID }))).toBe('FORBIDDEN');
@@ -142,14 +202,40 @@ describe('offer.generateSigningLink — recruiter can send an APPROVED offer', (
 
 describe('offer.submitForApproval — recruiter can request approval with a valid approver', () => {
   it('submits a draft to an HR admin who holds offer:approve', async () => {
-    mockDb.offer.findFirst.mockResolvedValue(offerWithStatus('draft'));
+    useOffer('draft');
     const caller = await makeCaller(['recruiter']);
     expect(await codeOf(caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [HR_ADMIN_ID] }))).toBeNull();
     expect(mockDb.offerApproval.createMany).toHaveBeenCalledTimes(1);
   });
 
+  it('accepts a leader whose team owns the offer (team-scoped offer:approve covers it)', async () => {
+    useOffer('draft');
+    const caller = await makeCaller(['recruiter']);
+    expect(
+      await codeOf(caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [LEADER_IN_SCOPE_ID] })),
+    ).toBeNull();
+    expect(mockDb.offerApproval.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a leader from an unrelated team: approve() would 404 them, so the offer would be stuck', async () => {
+    useOffer('draft');
+    const caller = await makeCaller(['recruiter']);
+    let error: unknown = null;
+    try {
+      await caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [HR_ADMIN_ID, LEADER_OTHER_TEAM_ID] });
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toMatchObject({
+      code: 'BAD_REQUEST',
+      message: 'Uno o mas aprobadores no tienen esta oferta dentro de su alcance',
+    });
+    expect(mockDb.offerApproval.createMany).not.toHaveBeenCalled();
+    expect(mockDb.offer.update).not.toHaveBeenCalled();
+  });
+
   it('rejects an approver who cannot approve offers instead of leaving the offer stuck', async () => {
-    mockDb.offer.findFirst.mockResolvedValue(offerWithStatus('draft'));
+    useOffer('draft');
     const caller = await makeCaller(['recruiter']);
     expect(await codeOf(caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [RECRUITER_ID] }))).toBe(
       'BAD_REQUEST',
@@ -158,7 +244,7 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
   });
 
   it('rejects an approver outside the organization / inactive (absent from the scoped lookup)', async () => {
-    mockDb.offer.findFirst.mockResolvedValue(offerWithStatus('draft'));
+    useOffer('draft');
     const caller = await makeCaller(['recruiter']);
     const stranger = '33333333-3333-4333-8333-333333333333';
     expect(await codeOf(caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [stranger] }))).toBe(
@@ -169,7 +255,7 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
   });
 
   it('still refuses roles with neither offer:update nor offer:create', async () => {
-    mockDb.offer.findFirst.mockResolvedValue(offerWithStatus('draft'));
+    useOffer('draft');
     const caller = await makeCaller(['hrbp']);
     expect(await codeOf(caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [HR_ADMIN_ID] }))).toBe(
       'FORBIDDEN',
