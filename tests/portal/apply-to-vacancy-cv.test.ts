@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE } from '../../packages/shared/src/constants/application-consent';
+
 const VACANCY_ID = '11111111-1111-1111-1111-111111111111';
 const ORG_ID = '22222222-2222-2222-2222-222222222222';
 const CANDIDATE_ID = '33333333-3333-3333-3333-333333333333';
@@ -9,11 +11,22 @@ const APPLICATION_ID = '55555555-5555-5555-5555-555555555555';
 const dbMocks = {
   vacancy: { findFirstOrThrow: vi.fn() },
   candidate: { upsert: vi.fn() },
+  dataConsent: { upsert: vi.fn() },
   application: { findFirst: vi.fn(), create: vi.fn() },
   pipelineStage: { findFirstOrThrow: vi.fn() },
+  // Interactive transaction: the callback receives the same mocked client, so every
+  // write made through `tx` is observable on dbMocks.
+  $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMocks)),
 };
 
 vi.mock('@tims/db', () => ({ db: dbMocks }));
+
+// The public apply endpoint sits in the per-IP `ai` rate-limit tier; this file makes more
+// calls than that tier allows in one window, which is not what these tests are about.
+vi.mock('../../packages/api/src/middleware/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue(undefined),
+  getRateLimitCategory: vi.fn().mockReturnValue('ai'),
+}));
 
 const processCvUploadMock = vi.fn();
 vi.mock('../../packages/api/src/services/portal-application.service', () => ({
@@ -52,6 +65,8 @@ const baseApplyInput = {
   firstName: 'Ana',
   lastName: 'Gomez',
   email: 'ana@example.com',
+  consentAccepted: true,
+  consentTextVersion: APPLICATION_CONSENT_TEXT_VERSION,
 };
 
 beforeEach(() => {
@@ -62,6 +77,8 @@ beforeEach(() => {
     stages: [{ id: STAGE_ID, isDefault: true }],
   });
   dbMocks.candidate.upsert.mockResolvedValue({ id: CANDIDATE_ID });
+  dbMocks.dataConsent.upsert.mockResolvedValue({ id: 'consent-1' });
+  dbMocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMocks));
   dbMocks.application.findFirst.mockResolvedValue(null);
   dbMocks.application.create.mockResolvedValue({ id: APPLICATION_ID });
 });
@@ -99,6 +116,84 @@ describe('portal.applyToVacancy — CAPTCHA verification', () => {
 
     await expect(caller.portal.applyToVacancy({ ...baseApplyInput, captchaToken: 'test-token' })).rejects.toThrow();
     expect(dbMocks.candidate.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('portal.applyToVacancy — explicit data-processing consent (F14)', () => {
+  it('rejects a submission without consent before writing any candidate data', async () => {
+    const caller = await makeCaller();
+    const { consentAccepted: _omit, ...withoutConsent } = baseApplyInput;
+
+    await expect(caller.portal.applyToVacancy(withoutConsent)).rejects.toThrow();
+    expect(dbMocks.vacancy.findFirstOrThrow).not.toHaveBeenCalled();
+    expect(dbMocks.candidate.upsert).not.toHaveBeenCalled();
+    expect(dbMocks.application.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects consentAccepted: false', async () => {
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy({ ...baseApplyInput, consentAccepted: false })).rejects.toThrow(
+      'Debes autorizar el tratamiento',
+    );
+    expect(dbMocks.candidate.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a superseded or missing consent text version', async () => {
+    const caller = await makeCaller();
+    const { consentTextVersion: _omit, ...withoutVersion } = baseApplyInput;
+
+    await expect(caller.portal.applyToVacancy({ ...baseApplyInput, consentTextVersion: 'old' })).rejects.toThrow();
+    await expect(caller.portal.applyToVacancy(withoutVersion)).rejects.toThrow();
+    expect(dbMocks.candidate.upsert).not.toHaveBeenCalled();
+  });
+
+  it('records the consent (org, candidate, purpose, text version, timestamp) inside the application transaction', async () => {
+    const order: string[] = [];
+    dbMocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      order.push('tx:start');
+      const r = await fn(dbMocks);
+      order.push('tx:end');
+      return r;
+    });
+    dbMocks.dataConsent.upsert.mockImplementation(async () => {
+      order.push('consent');
+      return { id: 'consent-1' };
+    });
+    dbMocks.application.create.mockImplementation(async () => {
+      order.push('application');
+      return { id: APPLICATION_ID };
+    });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy(baseApplyInput);
+
+    expect(order).toEqual(['tx:start', 'consent', 'application', 'tx:end']);
+    const arg = dbMocks.dataConsent.upsert.mock.calls[0]![0] as {
+      where: unknown;
+      create: Record<string, unknown>;
+      update: Record<string, unknown>;
+    };
+    expect(arg.where).toEqual({
+      subjectUserId_consentType: { subjectUserId: CANDIDATE_ID, consentType: APPLICATION_CONSENT_TYPE },
+    });
+    expect(arg.create).toMatchObject({
+      organizationId: ORG_ID,
+      subjectUserId: CANDIDATE_ID,
+      consentType: APPLICATION_CONSENT_TYPE,
+      textVersion: APPLICATION_CONSENT_TEXT_VERSION,
+    });
+    expect(arg.create.agreedAt).toBeInstanceOf(Date);
+    // An unauthenticated email claim must never un-withdraw someone's consent.
+    expect(arg.update).not.toHaveProperty('withdrawnAt');
+  });
+
+  it('does not create the application when recording consent fails', async () => {
+    dbMocks.dataConsent.upsert.mockRejectedValue(new Error('db down'));
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow('db down');
+    expect(dbMocks.application.create).not.toHaveBeenCalled();
   });
 });
 

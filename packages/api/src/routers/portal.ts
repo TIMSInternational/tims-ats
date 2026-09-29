@@ -6,6 +6,7 @@ import { captchaBypassAllowed } from './portal-helpers';
 import { createCvUploadPresignedPost } from '../lib/s3';
 import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
 import { portalApplicationService } from '../services/portal-application.service';
+import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE } from '@tims/shared';
 
 // Verify a Cloudflare Turnstile token on the public apply form. In production the
 // secret MUST be configured (else every apply is rejected — fail closed). Once the
@@ -170,6 +171,14 @@ export const portalRouter = router({
         cvFileKey: z.string().max(500).optional(),
         cvFileName: z.string().min(1).max(255).optional(),
         captchaToken: z.string().max(4096).optional(),
+        // Explicit, prior data-processing authorization (Ley 1581). Required: a submission
+        // without it — or against a superseded consent text — is rejected before any write.
+        consentAccepted: z.literal(true, {
+          errorMap: () => ({ message: 'Debes autorizar el tratamiento de tus datos personales para aplicar.' }),
+        }),
+        consentTextVersion: z.literal(APPLICATION_CONSENT_TEXT_VERSION, {
+          errorMap: () => ({ message: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.' }),
+        }),
       }),
     )
     .mutation(async ({ input }) => {
@@ -187,90 +196,120 @@ export const portalRouter = router({
 
       const orgId = vacancy.organizationId;
 
-      const candidate = await db.candidate.upsert({
-        where: { organizationId_email: { organizationId: orgId, email: input.email } },
-        create: {
-          organizationId: orgId,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          email: input.email,
-          phone: input.phone,
-          source: input.source,
-          poolType: 'applicant',
-          linkedinUrl: input.linkedinUrl,
-          currentTitle: input.currentTitle,
-          currentCompany: input.currentCompany,
-          yearsExperience: input.yearsExperience,
-          location: input.location,
-        },
-        // This endpoint is unauthenticated. Knowing an email address must not
-        // let a submitter overwrite an existing candidate's profile.
-        update: {},
-      });
-
-      // Idempotent: a candidate may only have one application per vacancy
-      // (DB enforces @@unique([candidateId, vacancyId])). Re-submitting the public
-      // form returns the existing application instead of throwing a 500.
-      const existing = await db.application.findFirst({
-        where: { candidateId: candidate.id, vacancyId: vacancy.id },
-        select: { id: true },
-      });
-      if (existing) {
-        return { applicationId: existing.id, candidateId: candidate.id };
-      }
-
-      const defaultStage = vacancy.stages[0];
-      const stageId =
-        defaultStage?.id ??
-        (
-          await db.pipelineStage.findFirstOrThrow({
-            where: { vacancyId: vacancy.id },
-            orderBy: { order: 'asc' },
-            select: { id: true },
-          })
-        ).id;
-
+      let result: { applicationId: string; candidateId: string; isNew: boolean };
       try {
-        const application = await db.application.create({
-          data: {
-            organizationId: orgId,
-            candidateId: candidate.id,
-            vacancyId: vacancy.id,
-            currentStageId: stageId,
-            source: input.source,
-            coverLetter: input.coverLetter,
-          },
-        });
+        // Candidate, consent evidence and application commit atomically: an application
+        // never exists without the authorization that allowed its data to be processed.
+        result = await db.$transaction(async (tx) => {
+          const candidate = await tx.candidate.upsert({
+            where: { organizationId_email: { organizationId: orgId, email: input.email } },
+            create: {
+              organizationId: orgId,
+              firstName: input.firstName,
+              lastName: input.lastName,
+              email: input.email,
+              phone: input.phone,
+              source: input.source,
+              poolType: 'applicant',
+              linkedinUrl: input.linkedinUrl,
+              currentTitle: input.currentTitle,
+              currentCompany: input.currentCompany,
+              yearsExperience: input.yearsExperience,
+              location: input.location,
+            },
+            // This endpoint is unauthenticated. Knowing an email address must not
+            // let a submitter overwrite an existing candidate's profile.
+            update: {},
+            select: { id: true },
+          });
 
-        // Only NEW applications get CV processing — the idempotent-duplicate
-        // early-return above and the P2002 race-catch below intentionally
-        // skip it, so a resubmit never re-runs S3 fetch + extraction + an AI call.
-        // The key must belong to THIS org's upload prefix — cvFileKey is client-supplied
-        // and otherwise unvalidated, so without this check a candidate could pass an
-        // arbitrary key and have the server fetch+process another org's S3 object into
-        // their own CandidateDocument row (a cross-tenant leak once a future "download
-        // the CV" feature generates a signed GET from fileUrl). Silently skipped, same
-        // non-fatal posture as every other CV failure.
-        if (input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`)) {
-          await portalApplicationService.processCvUpload(
-            orgId,
-            candidate.id,
-            input.cvFileKey,
-            input.cvFileName ?? input.cvFileKey.split('/').pop() ?? 'cv',
-          );
-        }
+          // Record the explicit authorization (subject = candidate id, the same soft
+          // reference ai-interview consent uses). Re-applying refreshes the agreed text
+          // version + timestamp, but an unauthenticated email claim must NEVER clear a
+          // withdrawal — withdrawnAt is deliberately left untouched on update.
+          const agreedAt = new Date();
+          await tx.dataConsent.upsert({
+            where: {
+              subjectUserId_consentType: { subjectUserId: candidate.id, consentType: APPLICATION_CONSENT_TYPE },
+            },
+            create: {
+              organizationId: orgId,
+              subjectUserId: candidate.id,
+              consentType: APPLICATION_CONSENT_TYPE,
+              textVersion: input.consentTextVersion,
+              agreedAt,
+            },
+            update: { textVersion: input.consentTextVersion, agreedAt },
+            select: { id: true },
+          });
 
-        return { applicationId: application.id, candidateId: candidate.id };
-      } catch (err) {
-        // Unique-constraint race on concurrent double-submit — resolve idempotently
-        if ((err as { code?: string }).code === 'P2002') {
-          const app = await db.application.findFirst({
+          // Idempotent: a candidate may only have one application per vacancy
+          // (DB enforces @@unique([candidateId, vacancyId])). Re-submitting the public
+          // form returns the existing application instead of throwing a 500.
+          const existing = await tx.application.findFirst({
             where: { candidateId: candidate.id, vacancyId: vacancy.id },
             select: { id: true },
           });
-          if (app) return { applicationId: app.id, candidateId: candidate.id };
+          if (existing) {
+            return { applicationId: existing.id, candidateId: candidate.id, isNew: false };
+          }
+
+          const defaultStage = vacancy.stages[0];
+          const stageId =
+            defaultStage?.id ??
+            (
+              await tx.pipelineStage.findFirstOrThrow({
+                where: { vacancyId: vacancy.id },
+                orderBy: { order: 'asc' },
+                select: { id: true },
+              })
+            ).id;
+
+          const application = await tx.application.create({
+            data: {
+              organizationId: orgId,
+              candidateId: candidate.id,
+              vacancyId: vacancy.id,
+              currentStageId: stageId,
+              source: input.source,
+              coverLetter: input.coverLetter,
+            },
+            select: { id: true },
+          });
+          return { applicationId: application.id, candidateId: candidate.id, isNew: true };
+        });
+      } catch (err) {
+        // Unique-constraint race on concurrent double-submit — resolve idempotently.
+        // (The losing transaction rolled back; the winner committed its own consent row.)
+        if ((err as { code?: string }).code === 'P2002') {
+          const app = await db.application.findFirst({
+            where: { vacancyId: vacancy.id, candidate: { organizationId: orgId, email: input.email } },
+            select: { id: true, candidateId: true },
+          });
+          if (app) return { applicationId: app.id, candidateId: app.candidateId };
         }
         throw err;
       }
+
+      // Only NEW applications get CV processing — the idempotent-duplicate
+      // early-return and the P2002 race-catch above intentionally skip it, so a
+      // resubmit never re-runs S3 fetch + extraction + an AI call. It runs AFTER the
+      // transaction commits so a slow S3/AI call never holds a DB transaction open.
+      // The key must belong to THIS org's upload prefix — cvFileKey is client-supplied
+      // and otherwise unvalidated, so without this check a candidate could pass an
+      // arbitrary key and have the server fetch+process another org's S3 object into
+      // their own CandidateDocument row (a cross-tenant leak once a future "download
+      // the CV" feature generates a signed GET from fileUrl). Silently skipped, same
+      // non-fatal posture as every other CV failure.
+      if (result.isNew && input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`)) {
+        await portalApplicationService.processCvUpload(
+          orgId,
+          result.candidateId,
+          input.cvFileKey,
+          input.cvFileName ?? input.cvFileKey.split('/').pop() ?? 'cv',
+        );
+      }
+
+      return { applicationId: result.applicationId, candidateId: result.candidateId };
     }),
 });
