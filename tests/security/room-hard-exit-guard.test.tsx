@@ -60,16 +60,24 @@ describe('HardExitGuard — programmatic (router.push / router.replace) exits', 
     expect(window.location.hash).toBe('#chat');
   });
 
-  it('restores the original history methods on unmount', () => {
-    const originalPush = window.history.pushState;
-    const originalReplace = window.history.replaceState;
+  it('keeps the protection after the room unmounts without navigating (error boundary above the room)', () => {
+    // (admin)/error.tsx sits above the room layout: a room render error
+    // unmounts the guard but keeps the admin shell AND the document's relaxed
+    // CSP, so navbar/sidebar exits from the error fallback must stay hard.
     const { unmount } = render(<HardExitGuard />);
-    expect(window.history.pushState).not.toBe(originalPush);
     unmount();
-    expect(window.history.pushState).toBe(originalPush);
-    expect(window.history.replaceState).toBe(originalReplace);
-    window.history.pushState(null, '', '/elsewhere');
-    expect(hardNavigate).not.toHaveBeenCalled();
-    expect(window.location.pathname).toBe('/elsewhere');
+    window.history.pushState({ __NA: true }, '', '/recruitment/candidates');
+    expect(hardNavigate).toHaveBeenCalledWith(`${window.location.origin}/recruitment/candidates`);
+    expect(window.location.pathname).toBe(ROOM);
+  });
+
+  it('does not double-wrap history on remount (StrictMode / re-entry)', () => {
+    render(<HardExitGuard />);
+    const wrappedPush = window.history.pushState;
+    cleanup();
+    render(<HardExitGuard />);
+    expect(window.history.pushState).toBe(wrappedPush);
+    window.history.pushState({ __NA: true }, '', '/dashboard');
+    expect(hardNavigate).toHaveBeenCalledTimes(1);
   });
 });
