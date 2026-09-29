@@ -12,6 +12,8 @@ export const PATH_MODULE: Record<string, string | null> = {
   '/recruitment/talent-pools': 'candidate',
   '/recruitment/analytics': 'vacancy',
   '/people/onboarding': 'onboarding',
+  // Own-scoped personal onboarding view (onboarding read@own for employees).
+  '/my-onboarding': 'onboarding',
   '/people/performance': 'performance',
   '/learning': 'learning',
   '/talent/nine-box': 'ninebox',

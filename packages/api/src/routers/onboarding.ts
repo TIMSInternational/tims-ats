@@ -7,7 +7,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
-import { scheduledOnboardingCheckIns } from '../services/onboarding-defaults';
+import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../services/onboarding-defaults';
 
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
@@ -141,6 +141,16 @@ export const onboardingRouter = router({
         'No puedes crear onboarding para este usuario',
       );
 
+      // One active plan per hire: a double-submit (or HR re-creating a plan the
+      // hire handoff already seeded) must not duplicate the default checklist.
+      const activePlan = await db.onboardingPlan.findFirst({
+        where: { organizationId: ctx.user.organizationId, userId: input.userId, status: 'active' },
+        select: { id: true },
+      });
+      if (activePlan) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Este usuario ya tiene un plan de onboarding activo' });
+      }
+
       return db.onboardingPlan.create({
         data: {
           ...input,
@@ -148,6 +158,11 @@ export const onboardingRouter = router({
           createdById: ctx.user.id,
           checkIns: {
             create: scheduledOnboardingCheckIns(input.startDate, ctx.user.organizationId),
+          },
+          // Default checklist (F12): a new plan never starts empty. A single nested
+          // write, so plan + tasks + check-ins commit atomically.
+          tasks: {
+            create: defaultOnboardingTasks(input.startDate, ctx.user.organizationId),
           },
         },
         include: {
