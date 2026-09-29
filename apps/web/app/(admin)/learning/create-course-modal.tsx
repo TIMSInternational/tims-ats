@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Modal } from '../../../components';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { courseHoursToMinutes } from './course-duration';
 
 export function CreateCourseModal({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
@@ -16,8 +17,11 @@ export function CreateCourseModal({ onClose }: { onClose: () => void }) {
   const [isRequired, setIsRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const create = trpc.learning.createCourse.useMutation();
-  const durationValue = Number(duration);
-  const isValid = title.trim().length > 0 && title.length <= 255 && Number.isInteger(durationValue) && durationValue > 0;
+  const durationHours = Number(duration);
+  const isValid = title.trim().length > 0 && title.length <= 255
+    && duration !== '' && Number.isFinite(durationHours)
+    && durationHours >= 0.25 && durationHours <= 168
+    && Number.isInteger(durationHours * 4);
 
   const onSubmit = async () => {
     if (!isValid) return;
@@ -28,7 +32,7 @@ export function CreateCourseModal({ onClose }: { onClose: () => void }) {
         description: description.trim() || undefined,
         type,
         category: category.trim() || undefined,
-        duration: durationValue,
+        duration: courseHoursToMinutes(durationHours),
         isRequired,
       });
       await Promise.all([utils.learning.listCourses.invalidate(), utils.learning.getDashboardKpis.invalidate()]);
@@ -60,7 +64,7 @@ export function CreateCourseModal({ onClose }: { onClose: () => void }) {
           </label>
           <label className="block text-[12px] font-medium text-[#585858]">
             {t.learning.durationHours}
-            <input type="number" min="1" step="1" value={duration} onChange={(event) => setDuration(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
+            <input type="number" min="0.25" max="168" step="0.25" value={duration} onChange={(event) => setDuration(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
           </label>
         </div>
         <label className="block text-[12px] font-medium text-[#585858]">

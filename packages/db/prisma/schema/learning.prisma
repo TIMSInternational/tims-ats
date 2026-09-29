@@ -5,7 +5,7 @@ model Course {
   description    String?
   type           String
   category       String?
-  duration       Int
+  duration       Int      // Minutes, including seeded courses and authoring inputs.
   content        Json?
   isRequired     Boolean  @default(false) @map("is_required")
   isActive       Boolean  @default(true) @map("is_active")
