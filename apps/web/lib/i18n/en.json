@@ -544,7 +544,7 @@
     "userEmail": "User Email",
     "organization": "Organization",
     "role": "Role",
-    "selectRole": "Select role...",
+    "selectRole": "Employee (default)",
     "sendInvitation": "Send Invitation",
     "cancel": "Cancel",
     "acceptanceRate": "acceptance rate",

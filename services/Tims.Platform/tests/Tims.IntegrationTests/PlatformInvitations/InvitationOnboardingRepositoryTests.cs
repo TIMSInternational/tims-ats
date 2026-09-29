@@ -43,6 +43,33 @@ public sealed class InvitationOnboardingRepositoryTests(InvitationOnboardingRepo
     }
 
     [Fact]
+    public async Task Legacy_roleless_invitation_grants_employee_access()
+    {
+        var seeded = await _fixture.SeedAsync("default@example.test", "user", null);
+        var repository = _fixture.Repository();
+        Assert.Equal("employee", (await repository.PreviewAsync(seeded.Token, default))?.RoleSlug);
+        var identity = new SetupIdentity(Guid.NewGuid().ToString(), "default@example.test");
+        Assert.True(await repository.CompleteAsync(seeded.Token, identity, new("Default", "Employee"), default));
+        Assert.True(await repository.CompleteAsync(seeded.Token, identity, new("Default", "Employee"), default));
+        Assert.Equal("employee", await _fixture.AssignedRoleAsync(seeded.InvitationId));
+        var state = await _fixture.StateAsync(seeded.InvitationId);
+        Assert.Equal((1, 1, 1), (state.Users, state.Grants, state.Audits));
+    }
+
+    [Fact]
+    public async Task Roleless_invitation_cannot_complete_when_employee_role_is_inactive()
+    {
+        var seeded = await _fixture.SeedAsync("no-employee@example.test", "user", null);
+        await _fixture.SetRoleActiveAsync(seeded.OrganizationId, "employee", false);
+        var repository = _fixture.Repository();
+        Assert.Null(await repository.PreviewAsync(seeded.Token, default));
+        Assert.False(await repository.CompleteAsync(seeded.Token,
+            new(Guid.NewGuid().ToString(), "no-employee@example.test"), new("No", "Role"), default));
+        var state = await _fixture.StateAsync(seeded.InvitationId);
+        Assert.Equal((0, 0, 0), (state.Users, state.Grants, state.Audits));
+    }
+
+    [Fact]
     public async Task Wrong_email_and_cross_org_existing_user_fail_without_partial_writes()
     {
         var seeded = await _fixture.SeedAsync("conflict@example.test", "user", "recruiter");
@@ -221,6 +248,7 @@ public sealed class InvitationOnboardingRepositoryFixture : IAsyncLifetime
             INSERT INTO roles(id,organization_id,slug,is_active) VALUES
               (@recruiter,@org,'recruiter',true),(@admin,@org,'super_admin',true),
               (@candidate,@org,'candidate',true),(@external,@org,'external',true),
+              (@employee,@org,'employee',true),
               (@inactive,@org,'inactive_role',false);
             INSERT INTO platform_invitations(id,email,type,organization_id,role_slug,token,status,expires_at,updated_at)
             VALUES(@invitation,@email,@type::"InvitationType",@org,@role,@token,'sent',now()+interval '1 day',now());
@@ -228,6 +256,7 @@ public sealed class InvitationOnboardingRepositoryFixture : IAsyncLifetime
         command.Parameters.AddWithValue("org", org); command.Parameters.AddWithValue("name", "Test " + org);
         command.Parameters.AddWithValue("recruiter", Guid.NewGuid()); command.Parameters.AddWithValue("admin", Guid.NewGuid());
         command.Parameters.AddWithValue("candidate", Guid.NewGuid()); command.Parameters.AddWithValue("external", Guid.NewGuid());
+        command.Parameters.AddWithValue("employee", Guid.NewGuid());
         command.Parameters.AddWithValue("inactive", Guid.NewGuid()); command.Parameters.AddWithValue("invitation", invitation);
         command.Parameters.AddWithValue("email", email); command.Parameters.AddWithValue("type", type);
         command.Parameters.AddWithValue("role", (object?)role ?? DBNull.Value); command.Parameters.AddWithValue("token", token);
@@ -246,6 +275,17 @@ public sealed class InvitationOnboardingRepositoryFixture : IAsyncLifetime
             """;
         command.Parameters.AddWithValue("org", organizationId); command.Parameters.AddWithValue("id", Guid.NewGuid());
         command.Parameters.AddWithValue("identity", identity); command.Parameters.AddWithValue("email", email);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task SetRoleActiveAsync(Guid organizationId, string slug, bool active)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE roles SET is_active=@active WHERE organization_id=@org AND slug=@slug";
+        command.Parameters.AddWithValue("active", active);
+        command.Parameters.AddWithValue("org", organizationId);
+        command.Parameters.AddWithValue("slug", slug);
         await command.ExecuteNonQueryAsync();
     }
 

@@ -24,23 +24,35 @@ vi.mock('../../apps/web/components', () => ({
 function wrapper({ children }: { children: React.ReactNode }) { return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>; }
 beforeEach(() => {
   mocks.get.mockReset(); mocks.post.mockReset(); mocks.legacy.mockReset(); mocks.toast.mockReset(); mocks.enabled = true;
-  mocks.get.mockResolvedValue({ roles: [{ slug: 'tenant_role', name: 'Tenant role' }] });
+  mocks.get.mockResolvedValue({ roles: [{ slug: 'recruiter', name: 'Recruiter' }] });
 });
 
-it.each(['accepted', 'unconfirmed', 'changed', 'state_unconfirmed'])('modal sends tenant role and reports %s', async (delivery) => {
+it.each(['accepted', 'unconfirmed', 'changed', 'state_unconfirmed'])('modal sends staff role and reports %s', async (delivery) => {
   mocks.post.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', organizationId: org, delivery });
   const { InviteUserModal } = await import('../../apps/web/app/(admin)/platform/invitations/invite-user-modal');
   const refresh = vi.fn(); const view = render(<InviteUserModal onClose={vi.fn()} onSuccess={refresh} preselectedOrgId={org} preselectedOrgName="Target" />, { wrapper });
-  await view.findByRole('option', { name: 'Tenant role' });
+  await view.findByRole('option', { name: 'Recruiter' });
   expect(view.queryByRole('option', { name: 'Super Administrador' })).toBeNull();
   fireEvent.change(view.getByPlaceholderText('usuario@empresa.com'), { target: { value: 'invitee@example.test' } });
-  fireEvent.change(view.getByRole('combobox'), { target: { value: 'tenant_role' } });
+  fireEvent.change(view.getByRole('combobox'), { target: { value: 'recruiter' } });
   fireEvent.click(view.getByRole('button', { name: en.invitations.sendInvitation }));
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
   expect(mocks.get).toHaveBeenCalledExactlyOnceWith('/platform/invitations/organizations/{id}/roles', undefined, { id: org });
-  expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/platform/invitations/users', { email: 'invitee@example.test', organizationId: org, roleSlug: 'tenant_role' });
+  expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/platform/invitations/users', { email: 'invitee@example.test', organizationId: org, roleSlug: 'recruiter' });
   expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(delivery === 'accepted' ? en.invitations.userInvitationSent : en.invitations.userInviteDeliveryUnconfirmed, { type: delivery === 'accepted' ? 'success' : 'warning' });
   expect(mocks.legacy).not.toHaveBeenCalled(); view.unmount();
+});
+
+it('labels the omitted role as employee and lets .NET apply that default', async () => {
+  mocks.post.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', organizationId: org, delivery: 'accepted' });
+  const { InviteUserModal } = await import('../../apps/web/app/(admin)/platform/invitations/invite-user-modal');
+  const view = render(<InviteUserModal onClose={vi.fn()} onSuccess={vi.fn()} preselectedOrgId={org} preselectedOrgName="Target" />, { wrapper });
+  expect(view.getByRole('option', { name: en.invitations.selectRole })).toHaveProperty('value', '');
+  fireEvent.change(view.getByPlaceholderText('usuario@empresa.com'), { target: { value: 'invitee@example.test' } });
+  fireEvent.click(view.getByRole('button', { name: en.invitations.sendInvitation }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/platform/invitations/users',
+    { email: 'invitee@example.test', organizationId: org, roleSlug: undefined }));
+  view.unmount();
 });
 
 it('wizard single mode uses the C# writer and warns on uncertain delivery', async () => {
@@ -49,9 +61,9 @@ it('wizard single mode uses the C# writer and warns on uncertain delivery', asyn
   const refresh = vi.fn(); const view = render(<InviteWizard onClose={vi.fn()} onSuccess={refresh} />, { wrapper });
   fireEvent.change(view.getByPlaceholderText(en.invitations.searchOrganization), { target: { value: 'Target' } });
   fireEvent.click(view.getByRole('button', { name: /Target/ }));
-  await view.findByRole('option', { name: 'Tenant role' });
+  await view.findByRole('option', { name: 'Recruiter' });
   fireEvent.change(view.getByPlaceholderText('usuario@empresa.com'), { target: { value: 'invitee@example.test' } });
-  fireEvent.change(view.getByRole('combobox'), { target: { value: 'tenant_role' } });
+  fireEvent.change(view.getByRole('combobox'), { target: { value: 'recruiter' } });
   fireEvent.submit(view.getByPlaceholderText('usuario@empresa.com').closest('form')!);
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
   expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(en.invitations.userInviteDeliveryUnconfirmed, { type: 'warning' });
@@ -87,11 +99,11 @@ it.each(['modal', 'wizard'])('%s clears its selected role when an organization i
     fireEvent.change(search, { target: { value: 'Target' } });
     fireEvent.click(view.getByRole('button', { name: /Target/ }));
   }
-  await view.findByRole('option', { name: 'Tenant role' });
-  fireEvent.change(view.getByRole('combobox'), { target: { value: 'tenant_role' } });
+  await view.findByRole('option', { name: 'Recruiter' });
+  fireEvent.change(view.getByRole('combobox'), { target: { value: 'recruiter' } });
   fireEvent.change(search, { target: { value: 'Target again' } });
   fireEvent.click(view.getByRole('button', { name: /Target/ }));
-  await view.findByRole('option', { name: 'Tenant role' });
+  await view.findByRole('option', { name: 'Recruiter' });
   expect((view.getByRole('combobox') as HTMLSelectElement).value).toBe('');
   expect(mocks.post).not.toHaveBeenCalled(); view.unmount();
 });

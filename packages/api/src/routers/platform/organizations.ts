@@ -4,7 +4,7 @@ import { db, SubscriptionStatus, OrgPlan, InvitationStatus, InvoiceStatus } from
 import { TRPCError } from '@trpc/server';
 import { notify } from '../../lib/notify';
 import { platformProcedure } from './_common';
-import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
+import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '../../services/org-provisioning';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REFORMATTED 2026-08-11. This file did not satisfy `prettier --check` before that date, so the #207
@@ -201,9 +201,7 @@ export const organizationsRouter = router({
         await provisionOrgDefaults(tx, org.id, input.name);
         await provisionOrgEntitlements(tx, org.id);
 
-        const role = await tx.role.create({
-          data: { organizationId: org.id, name: 'Super Administrador', slug: 'super_admin', isSystem: true },
-        });
+        await provisionOrgRoles(tx, org.id);
 
         await tx.subscription.create({
           data: {
