@@ -229,14 +229,20 @@ export function Step3Compensation({
               <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.requireApprovalDesc}</p>
             </div>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)}
+          <label className={`flex items-center gap-3 ${requireApproval ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+            <input type="checkbox" checked={autoPublish && !requireApproval} disabled={requireApproval}
+              onChange={(e) => setAutoPublish(e.target.checked)}
               className="w-4 h-4 rounded border-[#EDEDED] text-[#1F114C] focus:ring-[#1F114C]/20" />
             <div>
               <span className="text-[13px] text-[#333]">{t.vacancies.autoPublishLabel}</span>
               <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.autoPublishDesc}</p>
             </div>
           </label>
+          {requireApproval && (
+            <p className="text-[11px] text-[#92400e] bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {t.vacancies.autoPublishNeedsNoApproval}
+            </p>
+          )}
         </div>
       </div>
 

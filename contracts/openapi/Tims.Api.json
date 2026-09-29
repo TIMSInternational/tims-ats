@@ -6921,6 +6921,13 @@
               ],
               "format": "int32"
             }
+          },
+          {
+            "name": "vacancyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6942,6 +6949,730 @@
           },
           "403": {
             "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/tenant/org-structure": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureRead",
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/options": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureOptions",
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureOptions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/business-units": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureCreateBusinessUnit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBusinessUnitBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessUnitRow"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/business-units/{id}": {
+      "patch": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureUpdateBusinessUnit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBusinessUnitBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessUnitRow"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/teams": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureCreateTeam",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTeamBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamRow"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/teams/{id}": {
+      "patch": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureUpdateTeam",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTeamBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamRow"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/teams/{id}/members/{userId}": {
+      "put": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructurePutTeamMember",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutTeamMemberBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMembershipRow"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureDeleteTeamMember",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/business-units/{id}/assignees/{userId}": {
+      "put": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructurePutUnitAssignee",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitAssignmentRow"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureDeleteUnitAssignee",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/tenant/org-structure/users/{userId}/business-unit": {
+      "put": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantOrgStructureSetUserBusinessUnit",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserBusinessUnitBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserBusinessUnitRow"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgStructureError"
+                }
+              }
+            }
           }
         }
       }
@@ -8628,6 +9359,38 @@
           }
         }
       },
+      "BusinessUnitRow": {
+        "required": [
+          "id",
+          "name",
+          "code",
+          "companyId",
+          "isActive"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
       "CalibrationCreator": {
         "required": [
           "id",
@@ -9658,6 +10421,30 @@
           }
         }
       },
+      "CreateBusinessUnitBody": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "CreateCalibrationBody": {
         "required": [
           "period"
@@ -9819,6 +10606,29 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "CreateTeamBody": {
+        "required": [
+          "businessUnitId",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "businessUnitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "leaderUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -12920,6 +13730,257 @@
           }
         }
       },
+      "OrgBusinessUnitOption": {
+        "required": [
+          "id",
+          "name",
+          "teams"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "teams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgTeamOption"
+            }
+          }
+        }
+      },
+      "OrgBusinessUnitView": {
+        "required": [
+          "id",
+          "name",
+          "code",
+          "companyId",
+          "isActive",
+          "teamCount",
+          "unitAssignees",
+          "teams"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "teamCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "unitAssignees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgPerson"
+            }
+          },
+          "teams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgTeamView"
+            }
+          }
+        }
+      },
+      "OrgCompany": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "OrgPerson": {
+        "required": [
+          "userId",
+          "fullName",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      },
+      "OrgStructureError": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "OrgStructureOptions": {
+        "required": [
+          "businessUnits"
+        ],
+        "type": "object",
+        "properties": {
+          "businessUnits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgBusinessUnitOption"
+            }
+          }
+        }
+      },
+      "OrgStructureView": {
+        "required": [
+          "businessUnits",
+          "companies"
+        ],
+        "type": "object",
+        "properties": {
+          "businessUnits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgBusinessUnitView"
+            }
+          },
+          "companies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgCompany"
+            }
+          }
+        }
+      },
+      "OrgTeamMember": {
+        "required": [
+          "userId",
+          "fullName",
+          "email",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "OrgTeamOption": {
+        "required": [
+          "id",
+          "name",
+          "hasLeader"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "hasLeader": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OrgTeamView": {
+        "required": [
+          "id",
+          "name",
+          "businessUnitId",
+          "isActive",
+          "leader",
+          "members"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "businessUnitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "leader": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OrgPerson"
+              }
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgTeamMember"
+            }
+          }
+        }
+      },
       "PayEquityGroup": {
         "required": [
           "group",
@@ -13128,6 +14189,17 @@
           },
           "suppressed": {
             "type": "boolean"
+          }
+        }
+      },
+      "PutTeamMemberBody": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -13738,6 +14810,21 @@
         "properties": {
           "outcome": {
             "type": "string"
+          }
+        }
+      },
+      "SetUserBusinessUnitBody": {
+        "required": [
+          "businessUnitId"
+        ],
+        "type": "object",
+        "properties": {
+          "businessUnitId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -14961,6 +16048,27 @@
           }
         }
       },
+      "TeamMembershipRow": {
+        "required": [
+          "teamId",
+          "userId",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
       "TeamMemberUserView": {
         "required": [
           "id",
@@ -15180,6 +16288,39 @@
           },
           "_count": {
             "$ref": "#/components/schemas/TeamCountView"
+          }
+        }
+      },
+      "TeamRow": {
+        "required": [
+          "id",
+          "name",
+          "businessUnitId",
+          "isActive",
+          "leaderUserId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "businessUnitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "leaderUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -15921,6 +17062,23 @@
           }
         }
       },
+      "UnitAssignmentRow": {
+        "required": [
+          "businessUnitId",
+          "userId"
+        ],
+        "type": "object",
+        "properties": {
+          "businessUnitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "UnreadCountResult": {
         "required": [
           "count"
@@ -15996,6 +17154,29 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "UpdateBusinessUnitBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isActive": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -16114,6 +17295,30 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "UpdateTeamBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isActive": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "leaderUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -16297,6 +17502,26 @@
           },
           "periodEnd": {
             "format": "date-time"
+          }
+        }
+      },
+      "UserBusinessUnitRow": {
+        "required": [
+          "userId",
+          "businessUnitId"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "businessUnitId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },

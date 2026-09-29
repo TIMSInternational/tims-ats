@@ -12,6 +12,11 @@ export interface VacancyFormData {
   remotePolicy?: 'onsite' | 'remote' | 'hybrid';
   salary?: { min?: number; max?: number; currency: string; period: 'monthly' | 'yearly' };
   settings?: { slaTargetDays?: number; autoPublish?: boolean; requireApproval?: boolean };
+  // Org placement: what leader (team) / unit-scoped approvals are anchored on server-side.
+  businessUnitId?: string;
+  teamId?: string;
+  /** The vacancy's assignee (shown as "Hiring manager"); counts as in-scope for its approvals. */
+  assignedTo?: string;
 }
 
 export type Step = 1 | 2 | 3;

@@ -10,6 +10,11 @@ import { isPlatformApiEnabled, platformGet, PlatformApiError } from './client';
 const VIA_CSHARP = process.env.NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP === 'true';
 
 export const ASSIGNABLE_PEOPLE_MAX_LIMIT = 50;
+
+/** True when pickers read the C# directory (and so can be scoped to a vacancy's eligible approvers). */
+export function isAssignablePeopleViaCSharp(): boolean {
+  return VIA_CSHARP;
+}
 const MAX_SEARCH_LENGTH = 100;
 
 export type AssignablePurpose = 'interview_evaluator' | 'vacancy_approver' | 'offer_approver';
@@ -42,6 +47,12 @@ interface Options {
   search?: string;
   limit?: number;
   enabled?: boolean;
+  /**
+   * vacancy_approver only: restrict the C# directory to approvers whose vacancy:approve scope covers
+   * THIS vacancy (team leader / unit assignee / assignee / org-wide), so the picker never offers someone
+   * the server would reject. Ignored by the legacy tRPC fallback, which cannot filter by scope.
+   */
+  vacancyId?: string;
 }
 
 export interface AssignablePeopleState {
@@ -71,18 +82,25 @@ export function useAssignablePeople({
   search,
   limit = ASSIGNABLE_PEOPLE_MAX_LIMIT,
   enabled = true,
+  vacancyId,
 }: Options): AssignablePeopleState {
   const term = search?.trim().slice(0, MAX_SEARCH_LENGTH) || undefined;
   const boundedLimit = Math.min(Math.max(1, Math.trunc(limit)), ASSIGNABLE_PEOPLE_MAX_LIMIT);
+  const scopedVacancyId = purpose === 'vacancy_approver' ? vacancyId : undefined;
 
   const csharp = useQuery({
-    queryKey: ['assignable-people', purpose, term ?? '', boundedLimit],
+    queryKey: ['assignable-people', purpose, term ?? '', boundedLimit, scopedVacancyId ?? ''],
     enabled: VIA_CSHARP && enabled,
     retry: false,
     staleTime: 30_000,
     queryFn: async (): Promise<AssignablePerson[]> => {
       if (!isPlatformApiEnabled()) throw new Error('Platform API is not configured');
-      const raw = await platformGet('/tenant/people/assignable', { purpose, search: term, limit: boundedLimit });
+      const raw = await platformGet('/tenant/people/assignable', {
+        purpose,
+        search: term,
+        limit: boundedLimit,
+        vacancyId: scopedVacancyId,
+      });
       return responseSchema.parse(raw).people.map((person) => ({
         id: person.id,
         firstName: person.firstName,

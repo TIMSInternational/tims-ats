@@ -266,6 +266,28 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'TENANT ORG STRUCTURE LANDED DARK 2026-09-29 (TenantOrgStructureEnabled). C#-only management surface for business ' +
+      'units, teams, leaders, members and unit assignees (the anchors leader/unit-scoped approvals read), plus the ' +
+      'vacancy-picker options read. The tRPC organization router has only partial, differently-authorized twins ' +
+      '(create-only, user:create for assignments), so a by-role diff would compare different contracts. Covered by ' +
+      'real-PostgreSQL integration tests under production-shaped RLS (cross-tenant 404s, permission denial, 409s, audit). ' +
+      'Register fixture-first before enabling the flag in production.',
+    routes: [
+      'GET /tenant/org-structure',
+      'GET /tenant/org-structure/options',
+      'POST /tenant/org-structure/business-units',
+      'PATCH /tenant/org-structure/business-units/{id}',
+      'POST /tenant/org-structure/teams',
+      'PATCH /tenant/org-structure/teams/{id}',
+      'PUT /tenant/org-structure/teams/{id}/members/{userId}',
+      'DELETE /tenant/org-structure/teams/{id}/members/{userId}',
+      'PUT /tenant/org-structure/business-units/{id}/assignees/{userId}',
+      'DELETE /tenant/org-structure/business-units/{id}/assignees/{userId}',
+      'PUT /tenant/org-structure/users/{userId}/business-unit',
+    ],
+  },
+  {
+    reason:
       'INFRA / DIAGNOSTIC, not a domain surface. `/` and the two whoami routes are liveness and identity echoes; ' +
       '/require-permission and /require-org-scope (Program.cs:1225, :1265) are the permission-kernel probes the C# ' +
       'auth integration tests drive. None reads tenant data, so none carries a parity, RLS or RBAC obligation.',
@@ -543,7 +565,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         allowlist is unchanged.
     //         189 → 190 (PR #304): the dark tenant people directory (GET /tenant/people/assignable),
     //         allowlisted above.
-    expect(deployed.size).toBe(190);
+    //         190 → 201 (PR #310, rebased onto main after #304): the dark tenant org structure — eleven
+    //         routes, all allowlisted in the org-structure group above (+11 here, +11 allowlist, +1 category).
+    expect(deployed.size).toBe(201);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -612,7 +636,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 86 → 89: the three invitation-setup operations are capability scoped before tenant membership.
     // 89 → 93: tenant invitations' four unregistrable routes (roles catalogue + three emailing/mutating POSTs).
     // 93 → 94 (PR #304): the dark tenant people directory, pending a remote grant/approver fixture.
-    expect(allowlistNormalised.length).toBe(94);
+    // 94 → 105 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
+    expect(allowlistNormalised.length).toBe(105);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -631,6 +656,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // wrong prerequisite for both.
     // 12 → 13 on 2026-09-29: tenant invitations' group (a Mode-B-inexpressible catalogue + email-sending writes).
     // 13 → 14 (PR #304): the tenant people directory is a C#-only picker read with no tRPC twin.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the fourteen documented gap categories').toBe(14);
+    // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the fifteen documented gap categories').toBe(15);
   });
 });

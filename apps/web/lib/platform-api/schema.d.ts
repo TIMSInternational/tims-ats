@@ -2740,6 +2740,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/org-structure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TenantOrgStructureRead"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/org-structure/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TenantOrgStructureOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/org-structure/business-units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TenantOrgStructureCreateBusinessUnit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/org-structure/business-units/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["TenantOrgStructureUpdateBusinessUnit"];
+        trace?: never;
+    };
+    "/tenant/org-structure/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TenantOrgStructureCreateTeam"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/org-structure/teams/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["TenantOrgStructureUpdateTeam"];
+        trace?: never;
+    };
+    "/tenant/org-structure/teams/{id}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["TenantOrgStructurePutTeamMember"];
+        post?: never;
+        delete: operations["TenantOrgStructureDeleteTeamMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/org-structure/business-units/{id}/assignees/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["TenantOrgStructurePutUnitAssignee"];
+        post?: never;
+        delete: operations["TenantOrgStructureDeleteUnitAssignee"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/org-structure/users/{userId}/business-unit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["TenantOrgStructureSetUserBusinessUnit"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit/logs": {
         parameters: {
             query?: never;
@@ -3183,6 +3327,15 @@ export interface components {
             firstName?: string;
             lastName?: string;
         };
+        BusinessUnitRow: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            code: null | string;
+            /** Format: uuid */
+            companyId: string;
+            isActive: boolean;
+        };
         CalibrationCreator: {
             id: string;
             firstName: string;
@@ -3445,6 +3598,12 @@ export interface components {
             /** Format: int32 */
             duration?: null | number | string;
         };
+        CreateBusinessUnitBody: {
+            name: string;
+            code?: null | string;
+            /** Format: uuid */
+            companyId?: null | string;
+        };
         CreateCalibrationBody: {
             period: string;
             scheduledAt?: null | string;
@@ -3484,6 +3643,13 @@ export interface components {
             targetGroups?: unknown;
             startsAt?: null | string;
             endsAt?: null | string;
+        };
+        CreateTeamBody: {
+            /** Format: uuid */
+            businessUnitId: string;
+            name: string;
+            /** Format: uuid */
+            leaderUserId?: null | string;
         };
         CriticalRoleBandResult: {
             id: string;
@@ -4214,6 +4380,70 @@ export interface components {
             organizationId: string;
             delivery: string;
         };
+        OrgBusinessUnitOption: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            teams: components["schemas"]["OrgTeamOption"][];
+        };
+        OrgBusinessUnitView: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            code: null | string;
+            /** Format: uuid */
+            companyId: string;
+            isActive: boolean;
+            /** Format: int32 */
+            teamCount: number | string;
+            unitAssignees: components["schemas"]["OrgPerson"][];
+            teams: components["schemas"]["OrgTeamView"][];
+        };
+        OrgCompany: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        OrgPerson: {
+            /** Format: uuid */
+            userId: string;
+            fullName: string;
+            email: string;
+        };
+        OrgStructureError: {
+            code: string;
+            message: string;
+        };
+        OrgStructureOptions: {
+            businessUnits: components["schemas"]["OrgBusinessUnitOption"][];
+        };
+        OrgStructureView: {
+            businessUnits: components["schemas"]["OrgBusinessUnitView"][];
+            companies: components["schemas"]["OrgCompany"][];
+        };
+        OrgTeamMember: {
+            /** Format: uuid */
+            userId: string;
+            fullName: string;
+            email: string;
+            role: string;
+        };
+        OrgTeamOption: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            hasLeader: boolean;
+        };
+        OrgTeamView: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            businessUnitId: string;
+            isActive: boolean;
+            leader: null | components["schemas"]["OrgPerson"];
+            members: components["schemas"]["OrgTeamMember"][];
+        };
         PayEquityGroup: {
             group: string;
             /** Format: int32 */
@@ -4263,6 +4493,9 @@ export interface components {
             /** Format: int32 */
             totalPromotions: null | number | string;
             suppressed: boolean;
+        };
+        PutTeamMemberBody: {
+            role?: null | string;
         };
         QuadrantMovement: {
             userId: string;
@@ -4403,6 +4636,10 @@ export interface components {
         };
         SetupResult: {
             outcome: string;
+        };
+        SetUserBusinessUnitBody: {
+            /** Format: uuid */
+            businessUnitId: null | string;
         };
         SimulateAdjustmentWithCompaView: {
             /** Format: double */
@@ -4706,6 +4943,13 @@ export interface components {
             jobTitle: null | string;
             email: string;
         };
+        TeamMembershipRow: {
+            /** Format: uuid */
+            teamId: string;
+            /** Format: uuid */
+            userId: string;
+            role: string;
+        };
         TeamMemberUserView: {
             id: string;
             firstName: string;
@@ -4757,6 +5001,16 @@ export interface components {
             businessUnit: null | components["schemas"]["TeamBusinessUnitView"];
             members: components["schemas"]["TeamProfileMember"][];
             _count: components["schemas"]["TeamCountView"];
+        };
+        TeamRow: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            businessUnitId: string;
+            isActive: boolean;
+            /** Format: uuid */
+            leaderUserId: null | string;
         };
         TenantAccessCount: {
             /** Format: int32 */
@@ -4929,6 +5183,12 @@ export interface components {
             value: null | number | string;
             suppressed: boolean;
         };
+        UnitAssignmentRow: {
+            /** Format: uuid */
+            businessUnitId: string;
+            /** Format: uuid */
+            userId: string;
+        };
         UnreadCountResult: {
             /** Format: int32 */
             count: number | string;
@@ -4945,6 +5205,11 @@ export interface components {
             description?: null | string;
             /** Format: int32 */
             duration?: null | number | string;
+        };
+        UpdateBusinessUnitBody: {
+            name?: null | string;
+            code?: null | string;
+            isActive?: null | boolean;
         };
         UpdateCriticalRoleBandBody: {
             targetBandLevel: null | string;
@@ -4979,6 +5244,12 @@ export interface components {
         UpdateSuccessorReadinessBody: {
             readiness: string;
             developmentPlan?: null | string;
+        };
+        UpdateTeamBody: {
+            name?: null | string;
+            isActive?: null | boolean;
+            /** Format: uuid */
+            leaderUserId?: null | string;
         };
         UpsertWeightProfileBody: {
             name: string;
@@ -5024,6 +5295,12 @@ export interface components {
             periodStart: unknown;
             /** Format: date-time */
             periodEnd: unknown;
+        };
+        UserBusinessUnitRow: {
+            /** Format: uuid */
+            userId: string;
+            /** Format: uuid */
+            businessUnitId: null | string;
         };
         UserInvitationBody: {
             email: string;
@@ -12566,6 +12843,7 @@ export interface operations {
                 purpose?: string;
                 search?: string;
                 limit?: number | string;
+                vacancyId?: string;
             };
             header?: never;
             path?: never;
@@ -12602,6 +12880,677 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TenantOrgStructureRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureOptions"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureCreateBusinessUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBusinessUnitBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessUnitRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureUpdateBusinessUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBusinessUnitBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessUnitRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureCreateTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTeamBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureUpdateTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTeamBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructurePutTeamMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutTeamMemberBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMembershipRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureDeleteTeamMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructurePutUnitAssignee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitAssignmentRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureDeleteUnitAssignee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+        };
+    };
+    TenantOrgStructureSetUserBusinessUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUserBusinessUnitBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserBusinessUnitRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStructureError"];
+                };
             };
         };
     };

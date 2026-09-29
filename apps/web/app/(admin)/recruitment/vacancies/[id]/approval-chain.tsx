@@ -73,7 +73,10 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.vacancies.approvalChain}</h3>
         {showSubmitButton && (
           <button
-            onClick={() => setShowSubmit(true)}
+            onClick={() => {
+              submitForApproval.reset();
+              setShowSubmit(true);
+            }}
             className="text-[12px] text-[#DD0C15] font-medium"
           >
             {t.vacancies.submitForApproval}
@@ -146,6 +149,8 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
 
       {showSubmit && (
         <SubmitApprovalModal
+          vacancyId={vacancyId}
+          errorMessage={submitForApproval.error?.message ?? null}
           onConfirm={(approverIds) => submitForApproval.mutate({ id: vacancyId, approverIds })}
           onClose={() => setShowSubmit(false)}
           isPending={submitForApproval.isPending}

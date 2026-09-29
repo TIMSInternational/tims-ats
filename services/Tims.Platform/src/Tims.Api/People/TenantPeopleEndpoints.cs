@@ -21,7 +21,7 @@ public static class TenantPeopleEndpoints
     public static void MapTenantPeopleEndpoints(this WebApplication app)
     {
         app.MapGet("/tenant/people/assignable", async (
-            string? purpose, string? search, int? limit,
+            string? purpose, string? search, int? limit, string? vacancyId,
             ClaimsPrincipal user, HttpContext httpContext,
             PrincipalResolver principalResolver, PermissionService permissionService,
             IOptions<PlatformOptions> options, AssignablePeopleUseCase useCase,
@@ -33,6 +33,16 @@ public static class TenantPeopleEndpoints
                 || limit is < 1 or > AssignablePurposes.MaxLimit)
             {
                 return Results.BadRequest(new { error = "invalid_input" });
+            }
+
+            // ?vacancyId narrows the vacancy approver picker to approvers whose scope covers that vacancy. It is
+            // meaningless for the other purposes, so it is rejected there rather than silently ignored.
+            Guid? parsedVacancyId = null;
+            if (vacancyId is not null)
+            {
+                if (parsedPurpose != AssignablePurpose.VacancyApprover || !Guid.TryParseExact(vacancyId, "D", out var id))
+                    return Results.BadRequest(new { error = "invalid_input" });
+                parsedVacancyId = id;
             }
 
             var rule = AssignablePurposes.RuleFor(parsedPurpose);
@@ -55,14 +65,17 @@ public static class TenantPeopleEndpoints
             if (!Guid.TryParse(context.OrganizationId, out var organizationId))
                 return Results.BadRequest(new { error = "organization_required" });
 
-            return Results.Ok(await useCase.ListAsync(organizationId, parsedPurpose, search,
-                limit ?? AssignablePurposes.DefaultLimit, cancellationToken));
+            var result = await useCase.ListAsync(organizationId, parsedPurpose, search,
+                limit ?? AssignablePurposes.DefaultLimit, parsedVacancyId, cancellationToken);
+            // Unknown, soft-deleted and other-tenant vacancies are indistinguishable.
+            return result is null ? Results.NotFound(new { error = "vacancy_not_found" }) : Results.Ok(result);
         })
         .RequireAuthorization()
         .Produces<AssignablePeopleResult>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound)
         .WithName("TenantPeopleListAssignable");
     }
 

@@ -72,6 +72,27 @@ public sealed class AssignablePeopleTests
         Assert.Null(repository.LastSearch);
     }
 
+    [Theory]
+    [InlineData(AssignablePurpose.InterviewEvaluator)]
+    [InlineData(AssignablePurpose.OfferApprover)]
+    public async Task UseCase_RejectsVacancyIdForNonVacancyPurposesBeforeQuerying(AssignablePurpose purpose)
+    {
+        var repository = new RecordingRepository();
+        await Assert.ThrowsAsync<ArgumentException>(() => new AssignablePeopleUseCase(repository)
+            .ListAsync(Guid.NewGuid(), purpose, null, 10, Guid.NewGuid(), CancellationToken.None));
+        Assert.Equal(0, repository.Calls);
+    }
+
+    [Fact]
+    public async Task UseCase_ForwardsVacancyIdForTheVacancyApproverPurpose()
+    {
+        var repository = new RecordingRepository();
+        var vacancyId = Guid.NewGuid();
+        await new AssignablePeopleUseCase(repository)
+            .ListAsync(Guid.NewGuid(), AssignablePurpose.VacancyApprover, null, 10, vacancyId, CancellationToken.None);
+        Assert.Equal(vacancyId, repository.LastVacancyId);
+    }
+
     private sealed class RecordingRepository : IAssignablePeopleRepository
     {
         public int Calls { get; private set; }
@@ -79,13 +100,16 @@ public sealed class AssignablePeopleTests
         public AssignablePurposeRule? LastRule { get; private set; }
         public IReadOnlyList<AssignablePerson> Result { get; init; } = [];
 
-        public Task<IReadOnlyList<AssignablePerson>> ListAsync(Guid organizationId, AssignablePurposeRule rule,
-            string? search, int limit, CancellationToken cancellationToken)
+        public Guid? LastVacancyId { get; private set; }
+
+        public Task<IReadOnlyList<AssignablePerson>?> ListAsync(Guid organizationId, AssignablePurposeRule rule,
+            string? search, int limit, Guid? vacancyId, CancellationToken cancellationToken)
         {
             Calls++;
             LastSearch = search;
             LastRule = rule;
-            return Task.FromResult(Result);
+            LastVacancyId = vacancyId;
+            return Task.FromResult<IReadOnlyList<AssignablePerson>?>(Result);
         }
     }
 }
