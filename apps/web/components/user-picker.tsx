@@ -37,6 +37,8 @@ interface UserPickerProps {
    * user:read can still pick evaluators and approvers once the directory is live.
    */
   purpose?: AssignablePurpose;
+  /** Focus the search box on mount (modals). Inline pickers on a page pass false. Defaults to true. */
+  autoFocus?: boolean;
 }
 
 interface PickerSource {
@@ -58,6 +60,7 @@ export function UserPicker({
   loadingLabel,
   emptyLabel,
   purpose,
+  autoFocus = true,
 }: UserPickerProps) {
   const [search, setSearch] = useState('');
   const legacy = trpc.user.list.useQuery(
@@ -98,7 +101,7 @@ export function UserPicker({
         onChange={(e) => setSearch(e.target.value)}
         placeholder={searchPlaceholder}
         className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] placeholder:text-[#B8B8B8] focus:outline-none focus:border-[#1F114C]/40"
-        autoFocus
+        autoFocus={autoFocus}
       />
       <div className="mt-2 border border-[#EDEDED] rounded-lg max-h-[260px] overflow-y-auto bg-white">
         {source.failure ? (

@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { useAssignablePeople } from '../../../../../lib/platform-api/assignable-people';
-import { AssignablePeopleError } from '../../../../../components/assignable-people-error';
+import { UserPicker, type PickedUser } from '../../../../../components/user-picker';
 
 export function OfferApprovalActions({
   offerId,
@@ -18,10 +17,9 @@ export function OfferApprovalActions({
   onUpdated: () => void;
 }) {
   const { t } = useI18n();
-  const [approverId, setApproverId] = useState('');
+  const [approver, setApprover] = useState<PickedUser | null>(null);
   const [rejectionComment, setRejectionComment] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const approvers = useAssignablePeople({ purpose: 'offer_approver', enabled: status === 'draft' });
   const me = trpc.user.me.useQuery(undefined, { enabled: status === 'pending_approval' });
   const submit = trpc.offer.submitForApproval.useMutation();
   const approve = trpc.offer.approve.useMutation();
@@ -45,27 +43,38 @@ export function OfferApprovalActions({
     <div className="rounded-xl border border-[#EDEDED] bg-white p-4">
       <h3 className="mb-3 text-[14px] font-semibold text-[#1F114C]">{t.offers.approvalChain}</h3>
       {status === 'draft' && (
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="min-w-60 flex-1 text-[12px] font-medium text-[#585858]">
-            {t.offers.approver}
-            <select
-              value={approverId}
-              onChange={(event) => setApproverId(event.target.value)}
-              disabled={approvers.isLoading || approvers.failure !== null}
-              className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]"
-            >
-              <option value="">{approvers.isLoading ? t.common.loading : t.common.select}</option>
-              {approvers.people.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.firstName} {user.lastName}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="space-y-3">
+          <p className="text-[12px] font-medium text-[#585858]">{t.offers.approver}</p>
+          {/* Server-side search (not a fixed first page) so every eligible approver stays reachable. */}
+          {approver ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#EDEDED] px-3 py-2">
+              <span className="truncate text-[13px] text-[#333]">
+                {approver.firstName} {approver.lastName}
+              </span>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => setApprover(null)}
+                className="text-[12px] font-medium text-[#1F114C] disabled:opacity-50"
+              >
+                {t.common.change}
+              </button>
+            </div>
+          ) : (
+            <UserPicker
+              purpose="offer_approver"
+              onSelect={(_id, user) => setApprover(user)}
+              disabled={isPending}
+              autoFocus={false}
+              searchPlaceholder={t.common.search}
+              loadingLabel={t.common.loading}
+              emptyLabel={t.assignablePeople.noEligibleApprovers}
+            />
+          )}
           <button
             type="button"
-            disabled={!approverId || isPending}
-            onClick={() => run(() => submit.mutateAsync({ id: offerId, approverIds: [approverId] }))}
+            disabled={!approver || isPending}
+            onClick={() => approver && run(() => submit.mutateAsync({ id: offerId, approverIds: [approver.id] }))}
             className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
           >
             {t.offers.requestApproval}
@@ -102,12 +111,6 @@ export function OfferApprovalActions({
             </button>
           </div>
         </div>
-      )}
-      {status === 'draft' && approvers.failure && (
-        <AssignablePeopleError failure={approvers.failure} onRetry={approvers.refetch} />
-      )}
-      {status === 'draft' && !approvers.isLoading && !approvers.failure && approvers.people.length === 0 && (
-        <p className="mt-2 text-[12px] text-[#8B8B8B]">{t.assignablePeople.noEligibleApprovers}</p>
       )}
       {error && (
         <p role="alert" className="mt-2 text-[12px] text-red-600">
