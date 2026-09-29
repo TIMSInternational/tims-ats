@@ -46,18 +46,25 @@ const h = vi.hoisted(() => {
             new Proxy(
               {},
               {
-                get: (_t2, op: string) => (args: unknown) =>
-                  ext.query.$allOperations({
-                    model: pascal(modelKey),
-                    operation: op,
-                    args,
-                    // Deferred like a PrismaPromise: runs when the extension awaits it.
-                    query: (a: unknown) =>
-                      ({
-                        then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
-                          run(pascal(modelKey), op, a).then(res, rej),
-                      }) as unknown as Promise<unknown>,
-                  }),
+                // LAZY like a real PrismaPromise: calling the model method does NOTHING; the
+                // extension ($allOperations — where the tenant context is read) runs only when
+                // .then is called. An eager mock hid Codex's P1 (un-awaited queries returned
+                // from sync runWithTenant callbacks execute after the scope exits).
+                get: (_t2, op: string) => (args: unknown) => ({
+                  then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+                    ext.query
+                      .$allOperations({
+                        model: pascal(modelKey),
+                        operation: op,
+                        args,
+                        query: (a: unknown) =>
+                          ({
+                            then: (r2: (v: unknown) => unknown, j2: (e: unknown) => unknown) =>
+                              run(pascal(modelKey), op, a).then(r2, j2),
+                          }) as unknown as Promise<unknown>,
+                      })
+                      .then(res, rej),
+                }),
               },
             ),
         },
@@ -242,5 +249,32 @@ describe('tRPC + tenantDb — fail closed unless scoped or explicitly opted in',
     vi.doUnmock('../../packages/api/src/lib/elevenlabs');
     vi.doUnmock('../../packages/api/src/integrations/elevenlabs');
     vi.doUnmock('../../packages/api/src/services/ai-interview-access.service');
+  });
+
+  it('candidate dashboard: getDisplayCandidate (sync runWithTenant callback) runs scoped, not after the scope', async () => {
+    h.results.set('Candidate.findFirst', { firstName: 'Ana' });
+    const { candidatePortalService } = await import('../../packages/api/src/services/candidate-portal.service');
+
+    await expect(candidatePortalService.getDisplayCandidate(ORG_ID, 'ana@example.test')).resolves.toEqual({
+      firstName: 'Ana',
+    });
+    expect(h.calls).toEqual([expect.objectContaining({ model: 'Candidate', operation: 'findFirst', scoped: true })]);
+  });
+
+  it('assessment submission: candidate + pre-check reads run scoped (reach NOT_FOUND, not a tenant error)', async () => {
+    h.results.set('Organization.findUnique', { id: ORG_ID, name: 'Org', isActive: true });
+    h.results.set('Candidate.findFirst', { id: 'cand-1' });
+    h.results.set('AssessmentAssignment.findFirst', null);
+    const { candidateAssessmentService } = await import('../../packages/api/src/services/candidate-assessment.service');
+
+    await expect(
+      candidateAssessmentService.submitAssessment('ana@example.test', 'org', '44444444-4444-4444-4444-444444444444', []),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    const tenantReads = h.calls.filter((c) => c.model !== 'Organization');
+    expect(tenantReads.map((c) => `${c.model}.${c.operation}`)).toEqual([
+      'Candidate.findFirst',
+      'AssessmentAssignment.findFirst',
+    ]);
+    expect(tenantReads.every((c) => c.scoped)).toBe(true);
   });
 });

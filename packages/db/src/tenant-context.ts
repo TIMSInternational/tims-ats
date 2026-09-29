@@ -20,8 +20,35 @@ interface TenantStore {
 
 const storage = new AsyncLocalStorage<TenantStore>();
 
+// Prisma queries are LAZY: a PrismaPromise does nothing until .then is called, and the
+// tenantDb extension reads the tenant context at THAT moment. A callback that returns a
+// query without awaiting it — `runWithTenant(org, () => tenantDb.x.findFirst(...))` —
+// would otherwise execute after storage.run() has exited, i.e. with no tenant in scope
+// (fail-closed throw today; silently UNSCOPED before the guard). So if the callback
+// returns a thenable, subscribe to it HERE, inside the scope: calling .then inside
+// storage.run() starts the query with this store active. Real Promises are unaffected
+// (already running); the wrapper only adds a tick. The cast is sound for every caller
+// that awaits the result, which is the only way a thenable result is consumed.
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
+function runInStore<T>(store: TenantStore, fn: () => T): T {
+  return storage.run(store, () => {
+    const result = fn();
+    if (!isThenable(result)) return result;
+    return new Promise<unknown>((resolve, reject) => {
+      result.then(resolve, reject);
+    }) as T;
+  });
+}
+
 export function runWithTenant<T>(orgId: string | null, fn: () => T): T {
-  return storage.run({ orgId, unscopedReason: null }, fn);
+  return runInStore({ orgId, unscopedReason: null }, fn);
 }
 
 /**
@@ -37,7 +64,7 @@ export function runUnscoped<T>(reason: string, fn: () => T): T {
   if (!trimmed) {
     throw new Error('runUnscoped requires a non-empty reason');
   }
-  return storage.run({ orgId: null, unscopedReason: trimmed }, fn);
+  return runInStore({ orgId: null, unscopedReason: trimmed }, fn);
 }
 
 export function getTenantOrgId(): string | null {
