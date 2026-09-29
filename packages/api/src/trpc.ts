@@ -149,6 +149,28 @@ function requirePermission(module: string, action: string) {
   });
 }
 
+// Like requirePermission, but the FIRST allowed action (in order) supplies ctx.access. Used where a
+// narrower grant legitimately covers one lifecycle step — the procedure body must enforce that step.
+function requireAnyPermission(module: string, actions: readonly [string, ...string[]]) {
+  return t.middleware(async ({ ctx, next }) => {
+    if (!ctx.user) {
+      throw new TRPCError({ code: 'UNAUTHORIZED' });
+    }
+    for (const action of actions) {
+      const access = await buildAccessForUser(ctx.user, module, action);
+      if (access.allowed) {
+        const anchors = ctx.user.organizationId ? createAnchorLoader(ctx.user.organizationId, ctx.user.id) : null;
+        const accessContext: AccessContext = { ...access, anchors };
+        return next({ ctx: { user: ctx.user, access: accessContext } });
+      }
+    }
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: `No tienes permiso para ${actions[0]} en ${module}`,
+    });
+  });
+}
+
 // Audit middleware — logs access to sensitive data
 const withAudit = t.middleware(async ({ ctx, next, path }) => {
   const result = await next();
@@ -327,4 +349,9 @@ export function externalPermissionProcedure(
 // Helper to create permission-gated procedures
 export function permissionProcedure(module: Module, action: Action) {
   return protectedProcedure.use(requirePermission(module, action));
+}
+
+/** Gate on any ONE of `actions` (checked in order); the procedure must enforce the narrower case itself. */
+export function anyPermissionProcedure(module: Module, actions: readonly [Action, ...Action[]]) {
+  return protectedProcedure.use(requireAnyPermission(module, actions));
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, publicProcedure, permissionProcedure } from '../../trpc';
+import { router, publicProcedure, anyPermissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
@@ -8,8 +8,9 @@ import { emailService } from '../../services/email.service';
 import { scopeWhereFor } from '../../access';
 
 export const offerSigningRouter = router({
-  // Generate a unique signing link for an offer
-  generateSigningLink: permissionProcedure('offer', 'update')
+  // Generate a unique signing link for an offer. offer:create (recruiters) suffices because the body only
+  // ever sends an APPROVED (or already sent) offer — it never edits terms, which stays offer:update.
+  generateSigningLink: anyPermissionProcedure('offer', ['update', 'create'])
     .input(z.object({ offerId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
