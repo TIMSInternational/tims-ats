@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../../../lib/i18n';
 import { usePermissions } from '../../../../../../lib/permissions';
 import type { InterviewDetail } from '../../../../../../lib/trpc-types';
@@ -16,12 +16,20 @@ type Tab = (typeof TABS)[number];
 interface ScorecardPanelProps {
   interview: InterviewDetail;
   candidateInitials: string;
+  /** Bumped by the room on every mode switch: moves focus to this panel's heading. */
+  focusRequest?: number;
 }
 
-export function ScorecardPanel({ interview, candidateInitials }: ScorecardPanelProps) {
+export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 }: ScorecardPanelProps) {
   const { t } = useI18n();
   const { userId } = usePermissions();
   const [activeTab, setActiveTab] = useState<Tab>('scorecard');
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    // Focus only: the evaluator may be reading another tab; do not switch it.
+    headingRef.current?.focus();
+  }, [focusRequest]);
   // Mirrors the server's blind-evaluation rule for UI affordances only (the server enforces it).
   const isViewerBlinded =
     userId !== null &&
@@ -36,6 +44,9 @@ export function ScorecardPanel({ interview, candidateInitials }: ScorecardPanelP
 
   return (
     <div className="flex-1 md:flex-[40] flex flex-col bg-white border-t md:border-t-0 md:border-l border-[#EDEDED] min-h-0">
+      <h2 ref={headingRef} tabIndex={-1} className="sr-only">
+        {t.interviewRoom.panelHeading}
+      </h2>
       <div role="tablist" aria-label={t.interviewRoom.tabsLabel} className="flex border-b border-[#EDEDED] shrink-0">
         {TABS.map((tab) => (
           <button

@@ -5,6 +5,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
 import { DataTable, EmptyState, ErrorState, StatusBadge, CandidateAvatar, UpsellNotice } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
+import { isVideoInterview, ROOM_STATUSES } from './[id]/room/interview-mode';
 
 interface InterviewTableProps {
   interviews: InterviewListItem[];
@@ -181,18 +182,31 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
                   {t.interviews.cancelInterview}
                 </button>
               )}
-              {iv.status === 'scheduled' && (
+              {ROOM_STATUSES.has(iv.status) && (
                 // Plain <a>, not next/link: the room needs a FULL document load so the
                 // browser receives the room route's CSP (Daily call object). A soft
                 // navigation would keep this page's stricter CSP and the call fails.
+                // Labelled "Join" only for a video interview not yet completed; every other
+                // room opens on the scoring stage, so it is labelled "Score".
                 <a
                   href={`/recruitment/interviews/${iv.id}/room`}
                   className="h-7 px-2.5 rounded-md text-[11px] text-white bg-[#1F114C] hover:bg-[#2a1863] transition inline-flex items-center gap-1"
                 >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                    <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
-                  {t.interviews.joinMeeting}
+                  {isVideoInterview(iv) && iv.status !== 'completed' ? (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                      {t.interviews.joinMeeting}
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+                      </svg>
+                      {t.interviews.scoreInterview}
+                    </>
+                  )}
                 </a>
               )}
             </div>

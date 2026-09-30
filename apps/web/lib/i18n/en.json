@@ -2353,6 +2353,7 @@
     "noInterviewsDesc": "Interviews appear when scheduled from the pipeline",
     "cancelInterview": "Cancel",
     "joinMeeting": "Join",
+    "scoreInterview": "Score",
     "viewDetails": "View details",
     "cancelled": "Interview cancelled",
     "upcoming": "Upcoming Interviews",
@@ -3960,6 +3961,17 @@
     "joinErrorUnavailable": "The video room is not available.",
     "joinErrorNetwork": "Could not reach the video service. Check your connection.",
     "joinErrorUnknown": "An unexpected error occurred while joining the call.",
-    "joinRetry": "Retry connection"
+    "joinRetry": "Retry connection",
+    "scoreWithoutVideo": "Score without video",
+    "scoreWithoutVideoHint": "Open the scorecard without connecting to the video call.",
+    "scoringInPersonNotice": "This interview does not use the platform's video call. Record your evaluation in the scorecard.",
+    "scoringWithoutVideoNotice": "You are scoring without video. You can join the video call at any time.",
+    "joinVideoCall": "Join the video call",
+    "locationValue": "Location or link: {location}",
+    "panelHeading": "Interview evaluation",
+    "cancelledNotice": "This interview was cancelled. It can no longer be joined or scored.",
+    "closedNotice": "This interview is no longer open. It can no longer be joined or scored.",
+    "topBarLabel": "Interview:",
+    "endCall": "End"
   }
 }

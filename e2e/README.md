@@ -76,11 +76,6 @@ Deviations from the production shape, each deliberate:
   `/api/platform` rejects requests whose `Origin` differs from the origin Next derives from its own
   listen address; and Supabase is proxied same-origin so the production CSP (`connect-src` allows
   only `*.supabase.co`) stays fully enforced without patching the app.
-- The scorecard step answers `interview.createVideoRoom` in the browser with a stub `*.daily.co` room
-  (`page.route`, candidate spec only). The interview room renders the scorecard only after a
-  successful video join — even for an in-person interview — and that procedure needs a Daily API
-  key the stack deliberately lacks. The Daily join then fails (Daily is blocked), the room shows its
-  join-error panel, and the scorecard submits through the real `interview.submitScorecard`.
 - The public apply form uses Cloudflare Turnstile's documented always-pass **test keys**; the widget
   and the server-side verification still call `challenges.cloudflare.com`.
 
