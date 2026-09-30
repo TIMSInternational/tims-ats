@@ -1,4 +1,5 @@
 import { db, InvitationStatus, InvitationType } from '@tims/db';
+import { ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
 import type { Prisma } from '@tims/db';
 
 // Short DB work units leave time for the HTTP response; provider calls never run
@@ -12,7 +13,9 @@ function bounded<T>(run: (tx: Prisma.TransactionClient) => Promise<T>) {
 
 export const bulkInvitationRepository = {
   findOrganization(organizationId: string) {
-    return bounded(tx => tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }));
+    return bounded(tx => tx.organization.findFirst({
+      where: { id: organizationId, isActive: true, deletedAt: null }, select: { name: true },
+    }));
   },
   createPending(input: {
     email: string; organizationId: string; organizationName: string; roleSlug?: string;
@@ -27,8 +30,14 @@ export const bulkInvitationRepository = {
         select: { id: true },
       });
       if (existing) return null;
+      const roleSlug = input.roleSlug ?? 'employee';
+      if (!ASSIGNABLE_STAFF_ROLES.some(role => role === roleSlug)) throw new Error('Role unavailable');
+      const role = await tx.role.findFirst({
+        where: { organizationId: input.organizationId, slug: roleSlug, isActive: true }, select: { id: true },
+      });
+      if (!role) throw new Error('Role unavailable');
       return tx.platformInvitation.create({
-        data: { ...input, type: InvitationType.user, status: InvitationStatus.pending }, select: { id: true },
+        data: { ...input, roleSlug, type: InvitationType.user, status: InvitationStatus.pending }, select: { id: true },
       });
     });
   },

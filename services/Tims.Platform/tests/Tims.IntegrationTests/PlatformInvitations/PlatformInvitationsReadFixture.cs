@@ -228,6 +228,12 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
             user_agent text NULL,
             created_at timestamp NOT NULL DEFAULT now()
         );
+        GRANT SELECT, INSERT ON audit_logs TO app_tenant;
+        ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON audit_logs
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
+            WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         """;
 
     private const string IdentitySeedSql =

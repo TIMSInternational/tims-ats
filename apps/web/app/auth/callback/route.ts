@@ -2,7 +2,7 @@ import { createSupabaseServerClient } from '@tims/auth/server';
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
-import { provisionOrgDefaults, provisionOrgEntitlements } from '@tims/api';
+import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '@tims/api';
 import { isSafePortalNext } from '../../../lib/portal-auth';
 import { PASSWORD_SETUP_PROOF_COOKIE, PASSWORD_SETUP_PROOF_PATH } from '../../../lib/password-setup-proof';
 
@@ -136,14 +136,10 @@ export async function GET(request: Request) {
       await provisionOrgDefaults(tx, org.id, companyName);
       await provisionOrgEntitlements(tx, org.id);
 
-      // Create default super_admin role for the org
-      const role = await tx.role.create({
-        data: {
-          organizationId: org.id,
-          name: 'Super Administrador',
-          slug: 'super_admin',
-          isSystem: true,
-        },
+      await provisionOrgRoles(tx, org.id);
+      const role = await tx.role.findUniqueOrThrow({
+        where: { organizationId_slug: { organizationId: org.id, slug: 'super_admin' } },
+        select: { id: true },
       });
 
       const user = await tx.user.create({

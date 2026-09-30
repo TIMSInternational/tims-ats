@@ -55,7 +55,7 @@ export default function InterviewRoomPage({
       <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-center">
           <p className="text-white text-[14px] mb-2">{t.interviews.couldNotLoadInterview}</p>
-          <p className="text-white/50 text-[12px]">{interview.error?.message ?? 'Entrevista no encontrada'}</p>
+          <p className="text-white/50 text-[12px]">{interview.error?.message ?? t.interviews.roomInterviewNotFound}</p>
         </div>
       </div>
     );
@@ -72,8 +72,7 @@ export default function InterviewRoomPage({
         <InterviewTopBar
           candidateName={candidateName}
           vacancyTitle={data.vacancy.title}
-          fitScore={87}
-          isRecording={false}
+          isInCall={false}
         />
         <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
           <div className="text-center">
@@ -81,7 +80,7 @@ export default function InterviewRoomPage({
               <span className="text-white text-3xl font-bold">{candidateInitials}</span>
             </div>
             <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
-            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — Entrevista {data.type}</p>
+            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — {t.interviews.roomTypeLabel} {data.type}</p>
             <button
               onClick={handleJoin}
               disabled={videoToken.isPending}
@@ -90,14 +89,14 @@ export default function InterviewRoomPage({
               {videoToken.isPending ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Conectando...
+                  {t.interviews.roomConnecting}
                 </>
               ) : (
                 <>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                     <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  Unirse a la entrevista
+                  {t.interviews.roomJoin}
                 </>
               )}
             </button>
@@ -118,8 +117,7 @@ export default function InterviewRoomPage({
         <InterviewTopBar
           candidateName={candidateName}
           vacancyTitle={data.vacancy.title}
-          fitScore={87}
-          isRecording
+          isInCall
         />
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           <div className="h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink">
@@ -131,7 +129,6 @@ export default function InterviewRoomPage({
             candidateName={candidateName}
             candidateInitials={candidateInitials}
             vacancyTitle={data.vacancy.title}
-            fitScore={87}
           />
         </div>
       </div>

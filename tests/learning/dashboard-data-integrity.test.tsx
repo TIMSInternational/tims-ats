@@ -5,6 +5,7 @@ import { I18nProvider } from '../../apps/web/lib/i18n';
 import { LearningKpis } from '../../apps/web/app/(admin)/learning/learning-kpis';
 import { LearningPathsPanel } from '../../apps/web/app/(admin)/learning/learning-paths-panel';
 import { CourseCatalog } from '../../apps/web/app/(admin)/learning/course-catalog';
+import { courseHoursToMinutes } from '../../apps/web/app/(admin)/learning/course-duration';
 
 describe('Learning dashboard data integrity', () => {
   it('shows only measured KPI values for an empty organization', () => {
@@ -85,5 +86,26 @@ describe('Learning dashboard data integrity', () => {
     fireEvent.click(screen.getByRole('button', { name: en.learning.filterRequired }));
     expect(screen.getByText(en.learning.noResults)).toBeInTheDocument();
     expect(screen.queryByText(en.learning.noCourses)).not.toBeInTheDocument();
+  });
+
+  it('converts authoring hours to stored minutes and displays seeded minutes as hours', () => {
+    expect(courseHoursToMinutes(0.25)).toBe(15);
+    expect(courseHoursToMinutes(1)).toBe(60);
+
+    render(
+      <I18nProvider>
+        <CourseCatalog
+          courses={[
+            { id: 'course-1', title: 'Cloud training', category: null, type: 'online', duration: 900, isRequired: false, avgProgress: 0, _count: { enrollments: 0 } },
+            { id: 'course-2', title: 'Introduction', category: null, type: 'online', duration: 90, isRequired: false, avgProgress: 0, _count: { enrollments: 0 } },
+          ]}
+          loading={false}
+          t={en.learning}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByText('15h')).toBeInTheDocument();
+    expect(screen.getByText('1h 30m')).toBeInTheDocument();
+    expect(screen.queryByText('900h')).not.toBeInTheDocument();
   });
 });

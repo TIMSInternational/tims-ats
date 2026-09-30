@@ -1,19 +1,10 @@
 import { PrismaClient, OrgPlan, SubscriptionStatus, InvoiceStatus, InvitationType, InvitationStatus, Gender, Ethnicity, DisabilityStatus } from '@prisma/client';
 import { seedEntitlementCatalog, provisionInvu } from './seed-entitlements';
+import { SYSTEM_ROLE_CATALOG } from './seed-access-matrix';
 
 const db = new PrismaClient();
 
-const SYSTEM_ROLES = [
-  { slug: 'super_admin', name: 'Super Administrador', description: 'Full access to all modules', isSystem: true },
-  { slug: 'hr_admin', name: 'Administrador RRHH', description: 'Full access to all HR modules', isSystem: true },
-  { slug: 'hrbp', name: 'HR Business Partner', description: 'Access to assigned business units', isSystem: true },
-  { slug: 'recruiter', name: 'Reclutador', description: 'ATS modules only', isSystem: true },
-  { slug: 'leader', name: 'Lider', description: 'Own team and assigned vacancies', isSystem: true },
-  { slug: 'committee', name: 'Miembro de Comite', description: 'Review panels only', isSystem: true },
-  { slug: 'employee', name: 'Colaborador', description: 'Self-service access', isSystem: true },
-  { slug: 'candidate', name: 'Candidato', description: 'Portal access only', isSystem: true },
-  { slug: 'external', name: 'API Externa', description: 'API access for integrations', isSystem: true },
-];
+const SYSTEM_ROLES = SYSTEM_ROLE_CATALOG.map((role) => ({ ...role, isSystem: true }));
 
 // Helper: date N days ago
 function daysAgo(n: number): Date {

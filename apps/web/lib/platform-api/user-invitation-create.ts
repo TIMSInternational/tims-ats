@@ -2,6 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
+import { ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
 import { trpc } from '../trpc';
 import { useI18n } from '../i18n';
 import { isPlatformApiEnabled, platformPost } from './client';
@@ -9,7 +10,7 @@ import { isPlatformApiEnabled, platformPost } from './client';
 const inputSchema = z.object({
   email: z.string().email().max(254),
   organizationId: z.string().uuid().refine(id => id !== '00000000-0000-0000-0000-000000000000'),
-  roleSlug: z.string().min(1).max(50).regex(/^[^\u0000-\u001f\u007f-\u009f]*$/).optional(),
+  roleSlug: z.string().min(1).max(50).pipe(z.enum(ASSIGNABLE_STAFF_ROLES)).optional(),
 }).strict();
 const responseSchema = z.object({
   id: z.string().uuid(),
