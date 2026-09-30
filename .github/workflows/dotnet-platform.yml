@@ -21,6 +21,10 @@ on:
       - "packages/shared/src/csv.ts"
       - "scripts/**"
       - ".github/workflows/dotnet-platform.yml"
+      # deploy-platform-api.yml runs on `workflow_run` of THIS workflow (F16): it only deploys what
+      # these tests passed on. Listing it here keeps "an edit to the deploy workflow proves itself on
+      # the next merge" true now that it no longer has its own push trigger.
+      - ".github/workflows/deploy-platform-api.yml"
   # NO `branches:` filter, deliberately. Restricting to [main] meant a PR whose BASE IS A
   # BRANCH — every stacked PR — ran NO checks at all: no type check, no vitest, no security
   # audit, no verification-gate. Only Vercel reported, so the PR looked green while nothing

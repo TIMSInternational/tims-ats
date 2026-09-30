@@ -27,10 +27,11 @@ import {
   isAiInterviewEnabled,
   AI_INTERVIEW_DEFAULT_MAX_MINUTES,
 } from '../services/ai-interview-access.service';
-// tenantDb is used by staff-path queries (budget check reads) that run inside a
-// tenant-scoped request context. systemDb (aliased as candidateDb here) is used for
-// all candidate token-path writes — the public candidate flow sets no org RLS GUC.
-import { db as candidateDb, tenantDb as db, AiInterviewStatus } from '@tims/db';
+// tenantDb is used for the budget-check reads: under the staff request's tenant
+// context, or — on the public `start` path, which has none — inside an explicit
+// runWithTenant(session.organizationId). systemDb (aliased as candidateDb here) is
+// used for all candidate token-path writes — the public candidate flow sets no org GUC.
+import { db as candidateDb, tenantDb as db, runWithTenant, AiInterviewStatus } from '@tims/db';
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from '../trpc';
 import { assertScoped, scopeWhereFor } from '../access';
 import { aiInterviewService } from '../services/ai-interview.service';
@@ -243,21 +244,26 @@ export const aiInterviewRouter = router({
     // they are not directly comparable. Precise minute-based entitlement metering
     // and invoice line-item generation from this signal is Slice 2.
     const now = new Date();
-    const config = await db.aiAgentOrgConfig.findFirst({
-      where: { organizationId: session.organizationId, agent: { slug: 'ai-voice-interview' } },
-      select: { monthlyBudget: true },
-    });
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // PUBLIC path: no tenant is in scope (tenantDb fails closed without one). The org
+    // is known from the token-resolved session, so scope these tenant reads to it
+    // under RLS rather than running them unscoped on the privileged login role.
+    const { config, usageAgg } = await runWithTenant(session.organizationId, async () => ({
+      config: await db.aiAgentOrgConfig.findFirst({
+        where: { organizationId: session.organizationId, agent: { slug: 'ai-voice-interview' } },
+        select: { monthlyBudget: true },
+      }),
+      usageAgg: await db.aiAgentUsageLog.aggregate({
+        where: {
+          organizationId: session.organizationId,
+          agent: { slug: 'ai-voice-interview' },
+          createdAt: { gte: startOfMonth },
+        },
+        _sum: { costUsd: true },
+      }),
+    }));
 
     const effectiveCap = config?.monthlyBudget ?? DEFAULT_VOICE_BUDGET_USD;
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const usageAgg = await db.aiAgentUsageLog.aggregate({
-      where: {
-        organizationId: session.organizationId,
-        agent: { slug: 'ai-voice-interview' },
-        createdAt: { gte: startOfMonth },
-      },
-      _sum: { costUsd: true },
-    });
     const totalSpend = usageAgg._sum.costUsd ?? 0;
     if (totalSpend >= effectiveCap) {
       logger.warn(

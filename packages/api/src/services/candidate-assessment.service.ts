@@ -24,7 +24,8 @@ import {
 export const candidateAssessmentService = {
   async submitAssessment(email: string, orgSlug: string, assignmentId: string, answers: AnswerInput[]) {
     const org = await resolveOrg(orgSlug);
-    const candidate = await runWithTenant(org.id, () => candidatePortalRepo.findActiveCandidate(org.id, email));
+    // async + await INSIDE the scope: Prisma queries are lazy (they run on .then).
+    const candidate = await runWithTenant(org.id, async () => await candidatePortalRepo.findActiveCandidate(org.id, email));
     if (!candidate) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
     }
@@ -32,8 +33,8 @@ export const candidateAssessmentService = {
     // a write transaction. The SAME check is repeated inside the transaction
     // below (findAssignmentInTx) to close the double-submit race — two
     // concurrent submits must not both pass this pre-check and both write.
-    const preCheck = await runWithTenant(org.id, () =>
-      candidateAssessmentRepo.findOwnedAssignment(org.id, candidate.id, assignmentId),
+    const preCheck = await runWithTenant(org.id, async () =>
+      await candidateAssessmentRepo.findOwnedAssignment(org.id, candidate.id, assignmentId),
     );
     if (!preCheck) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
@@ -150,7 +151,7 @@ export const candidateAssessmentService = {
       let percentile: number | null = null;
       let band: ScoreBand | null = null;
       let normSampleSize: number | null = null;
-      if (!hasPending) {
+      if (!hasPending && normalizedScore !== null) {
         const { countBelow, countEqual, sampleSize } = await candidateAssessmentWriteRepo.getNormCountsInTx(
           tx,
           org.id,

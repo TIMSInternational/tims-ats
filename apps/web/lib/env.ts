@@ -6,7 +6,7 @@ import { z } from 'zod';
 const optionalSecret = () => z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).optional());
 const optionalUrl = () => z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
 
-const envSchema = z.object({
+const baseEnvSchema = z.object({
   // Supabase
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
@@ -80,9 +80,19 @@ const envSchema = z.object({
   // rate-limit exempt and the secret's own entropy is the only brute-force control.
   ALERT_METRICS_CRON_SECRET: z.string().min(32).optional(),
 
+  // CV uploads (careers apply form -> S3 presigned POST, packages/api/src/lib/s3.ts).
+  // CV_UPLOADS_REGION must be the bucket's OWN region and is needed whenever the
+  // bucket is set (validateEnv warns if missing): s3.ts signs against it and the Edge middleware derives the CSP
+  // connect-src origin from it (apps/web/lib/security/csp.ts). There is deliberately
+  // no AWS_REGION fallback — on Vercel that is the function's region, not the bucket's.
+  CV_UPLOADS_BUCKET: optionalSecret(),
+  CV_UPLOADS_REGION: optionalSecret(),
+
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
+
+const envSchema = baseEnvSchema;
 
 export type Env = z.infer<typeof envSchema>;
 
@@ -97,6 +107,14 @@ function validateEnv(): Env {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('Invalid environment variables');
     }
+  }
+
+  // Deliberately a warning, not a validation failure: a CV-upload misconfiguration must not take down
+  // every admin page. Uploads still fail loudly (s3.ts throws) and the Edge CSP warns and omits the origin.
+  if (parsed.success && parsed.data.CV_UPLOADS_BUCKET && !parsed.data.CV_UPLOADS_REGION) {
+    console.warn(
+      "[env] CV_UPLOADS_BUCKET is set without CV_UPLOADS_REGION (the bucket's own region): CV uploads will fail",
+    );
   }
 
   return parsed.data ?? (process.env as unknown as Env);
