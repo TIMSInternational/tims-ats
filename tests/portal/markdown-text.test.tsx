@@ -63,3 +63,37 @@ describe('markdownToPlainText', () => {
     );
   });
 });
+
+describe('parseMarkdownLite heading performance (ReDoS guard)', () => {
+  const heading = (level: 1 | 2 | 3, text: string) => ({ type: 'heading', level, content: [{ type: 'text', text }] });
+
+  it('strips a closing # sequence exactly as before', () => {
+    expect(parseMarkdownLite('## Beneficios ##')).toEqual([heading(2, 'Beneficios')]);
+    expect(parseMarkdownLite('# Title #   ')).toEqual([heading(1, 'Title')]);
+    expect(parseMarkdownLite('### a # b')).toEqual([heading(3, 'a # b')]);
+    expect(parseMarkdownLite('# ##')).toEqual([heading(1, '#')]);
+    expect(parseMarkdownLite('#### four')).toEqual([{ type: 'paragraph', lines: [[{ type: 'text', text: '#### four' }]] }]);
+  });
+
+  // Descriptions are capped at 5000 chars; each shape below took seconds to minutes with the
+  // old `(.+?)\s*#*\s*$` heading pattern (measured: shape 1 at 5000 chars took ~90 s).
+  const LENGTH = 5000;
+  const shapes: Record<string, string> = {
+    'spaces then a letter': `# a${' '.repeat(LENGTH - 4)}b`,
+    'tabs then a letter': `## a${'\t'.repeat(LENGTH - 5)}b`,
+    'mixed space/tab runs': `# a${' \t'.repeat((LENGTH - 4) / 2)}b`,
+    'spaces then hashes then a letter': `### a${' '.repeat(LENGTH / 2)}${'#'.repeat(LENGTH / 2 - 6)}b`,
+    'alternating nbsp and spaces': `# a${'  '.repeat((LENGTH - 4) / 2)}b`,
+  };
+
+  it.each(Object.entries(shapes))('parses a 5000-char adversarial heading (%s) in under 50 ms', (_name, line) => {
+    expect(line.length).toBeGreaterThanOrEqual(LENGTH - 2);
+    const started = performance.now();
+    const blocks = parseMarkdownLite(line);
+    markdownToPlainText(line);
+    const elapsed = performance.now() - started;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.type).toBe('heading');
+    expect(elapsed).toBeLessThan(50);
+  });
+});

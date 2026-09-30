@@ -22,11 +22,29 @@ export type MdBlock =
 /** Bound on parsed input: descriptions are capped server-side, this is defence in depth. */
 export const MARKDOWN_LITE_MAX_LENGTH = 20_000;
 
-const HEADING = /^(#{1,3})\s+(.+?)\s*#*\s*$/;
+// Every pattern here must match in linear time: a description is up to 5000 chars of
+// user-authored text and runs on every public job card. The previous heading pattern
+// (`(.+?)\s*#*\s*$`) backtracked quadratically-to-cubically on long whitespace runs
+// (a 5000-char heading line took ~90 s), so the closing `#` sequence is now stripped
+// by `stripClosingHashes` instead of by the regex.
+const HEADING = /^(#{1,3})\s+(.*)$/;
 const BULLET = /^\s*[-*•]\s+(.*)$/;
 const ORDERED = /^\s*\d{1,3}[.)]\s+(.*)$/;
 const BOLD = /(\*\*[^*\n]+?\*\*|__[^_\n]+?__)/;
 const ITALIC = /(\*[^*\n]+?\*)/;
+
+const isWhitespace = (char: string) => char.trim() === '';
+
+/**
+ * Drops a trailing `#` run and the whitespace before it ("Title ##" -> "Title"), keeping at
+ * least one character — exactly what the old `(.+?)\s*#*\s*$` capture produced, in one pass.
+ */
+function stripClosingHashes(text: string): string {
+  let end = text.length;
+  while (end > 1 && text[end - 1] === '#') end -= 1;
+  while (end > 1 && isWhitespace(text[end - 1] ?? '')) end -= 1;
+  return text.slice(0, end);
+}
 
 function parseItalic(text: string): MdInline[] {
   return text
@@ -76,7 +94,7 @@ export function parseMarkdownLite(source: string): MdBlock[] {
     const heading = HEADING.exec(line.trim());
     if (heading) {
       flush();
-      blocks.push({ type: 'heading', level: heading[1].length as 1 | 2 | 3, content: parseInline(heading[2]) });
+      blocks.push({ type: 'heading', level: heading[1].length as 1 | 2 | 3, content: parseInline(stripClosingHashes(heading[2] ?? '')) });
       continue;
     }
     const bullet = BULLET.exec(line);
