@@ -84,6 +84,62 @@ async function dailyFetch<T>(
   return res.json() as Promise<T>;
 }
 
+const ROOM_NAME = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * Room name for a NEW interview room: 'tims-' + the FULL interview id without dashes. Must stay identical to
+ * the C# CandidateInterviewJoin.RoomNameFor, so staff (here) and the candidate (C# join) land in the same
+ * room. The old 8-hex prefix (32 bits) could collide across interviews and tenants, and the "already
+ * exists" 400 below would then hand one interview another's room.
+ */
+export function roomNameFor(interviewId: string): string {
+  return `tims-${interviewId.replace(/-/g, '').toLowerCase()}`;
+}
+
+/** Pre-2026-09 naming ('tims-' + first 8 chars). Honoured only when it is the row's own stored meeting URL. */
+export function legacyRoomNameFor(interviewId: string): string {
+  return `tims-${interviewId.slice(0, 8).toLowerCase()}`;
+}
+
+/**
+ * The Daily room name of an https `*.daily.co/<room>` URL (no credentials, port, query or fragment), else null.
+ * Mirrors C# CandidateInterviewJoin.TryDailyRoom.
+ */
+export function dailyRoomName(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    parsed.search ||
+    parsed.hash ||
+    !host.endsWith('.daily.co') ||
+    host.length <= '.daily.co'.length
+  ) {
+    return null;
+  }
+  const name = parsed.pathname.replace(/^\/+/, '');
+  return ROOM_NAME.test(name) ? name : null;
+}
+
+/**
+ * The room name of `meetingUrl` when it is THIS interview's own Daily room (full-id or legacy name), else null.
+ * A stored URL naming any other room is never used to mint a Daily token: that room is not bound to this
+ * interview, so a token for it could admit someone to another interview's (or tenant's) call.
+ */
+export function ownDailyRoomName(meetingUrl: string | null | undefined, interviewId: string): string | null {
+  const name = dailyRoomName(meetingUrl);
+  return name && (name === roomNameFor(interviewId) || name === legacyRoomNameFor(interviewId)) ? name : null;
+}
+
 export const videoService = {
   isConfigured(): boolean {
     return dailyApiKey() !== null;
@@ -94,7 +150,7 @@ export const videoService = {
    * If room already exists, fetches it. Room expires 2 hours from creation.
    */
   async createRoom(interviewId: string): Promise<{ url: string; roomName: string }> {
-    const roomName = `tims-${interviewId.slice(0, 8)}`;
+    const roomName = roomNameFor(interviewId);
     const { apiBase, apiKey } = assertConfigured();
 
     // Try to create the room
@@ -120,7 +176,8 @@ export const videoService = {
       return { url: data.url, roomName: data.name };
     }
 
-    // Room already exists — fetch it instead
+    // Room already exists — fetch it instead. Safe only because the name is derived from the whole
+    // interview id: no other interview can have created a room with this name.
     if (createRes.status === 400) {
       const getRes = await fetch(`${apiBase}/rooms/${roomName}`, {
         method: 'GET',

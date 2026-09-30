@@ -1,6 +1,7 @@
 // Browser Sentry init (Next.js runs this client-instrumentation file natively).
 // No-ops unless NEXT_PUBLIC_SENTRY_DSN is set.
 import * as Sentry from '@sentry/nextjs';
+import { redactSentryEvent } from './lib/sentry-redact';
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
@@ -17,6 +18,9 @@ Sentry.init({
   // `integrations` and raise `replaysOnErrorSampleRate`.
   replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 0,
+  // The candidate interview-join URL carries a bearer token in its path: scrub it from every event.
+  beforeSend: (event) => redactSentryEvent(event),
+  beforeSendTransaction: (event) => redactSentryEvent(event),
 });
 
 // App Router navigation instrumentation.

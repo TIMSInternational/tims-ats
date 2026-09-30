@@ -68,6 +68,47 @@ public sealed class RateLimitMiddlewareTests
         Assert.Contains("segundos.", body);
     }
 
+    [Fact]
+    public async Task Candidate_interview_join_uses_the_strict_auth_budget_per_ip()
+    {
+        var guard = InMemoryGuard();
+        var nextCalls = 0;
+        var middleware = new RateLimitMiddleware(_ =>
+        {
+            nextCalls++;
+            return Task.CompletedTask;
+        });
+        void Ip(HttpContext ctx) => ctx.Request.Headers["x-real-ip"] = "198.51.100.23";
+
+        // Auth tier = 10 per window; the default mutation tier would allow far more.
+        for (var i = 0; i < 10; i++)
+        {
+            var ctx = Request(HttpMethods.Post, "/interviews/candidate-join", Ip);
+            await middleware.InvokeAsync(ctx, guard);
+            Assert.NotEqual(StatusCodes.Status429TooManyRequests, ctx.Response.StatusCode);
+        }
+        var blocked = Request(HttpMethods.Post, "/interviews/candidate-join", Ip);
+        await middleware.InvokeAsync(blocked, guard);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, blocked.Response.StatusCode);
+        Assert.Equal(10, nextCalls);
+    }
+
+    [Theory]
+    [InlineData("/interviews/candidate-join/")]
+    [InlineData("/Interviews/Candidate-Join")]
+    [InlineData("/interviews/candidate-join//")]
+    public async Task Candidate_interview_join_budget_cannot_be_sidestepped_by_path_spelling(string variant)
+    {
+        var guard = InMemoryGuard();
+        var middleware = new RateLimitMiddleware(_ => Task.CompletedTask);
+        void Ip(HttpContext ctx) => ctx.Request.Headers["x-real-ip"] = "198.51.100.24";
+        for (var i = 0; i < 10; i++)
+            await middleware.InvokeAsync(Request(HttpMethods.Post, i % 2 == 0 ? variant : "/interviews/candidate-join", Ip), guard);
+        var blocked = Request(HttpMethods.Post, variant, Ip);
+        await middleware.InvokeAsync(blocked, guard);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, blocked.Response.StatusCode);
+    }
+
     [Theory]
     [InlineData("/health")]
     [InlineData("/ready")]

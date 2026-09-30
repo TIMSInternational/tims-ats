@@ -3,8 +3,15 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import { videoService } from '../../services/video.service';
+import { ownDailyRoomName, videoService } from '../../services/video.service';
 import { assertScoped, scopeWhereFor } from '../../access';
+
+function externalMeetingLink(): TRPCError {
+  return new TRPCError({
+    code: 'BAD_REQUEST',
+    message: 'Esta entrevista usa un enlace de reunion externo; abralo directamente.',
+  });
+}
 
 export const interviewMediaRouter = router({
   // 8.12a — Create or reuse a Daily.co video room for an interview
@@ -36,14 +43,14 @@ export const interviewMediaRouter = router({
       });
       const userName = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || 'Evaluator';
 
-      // If room already exists, reuse it — just generate a fresh token
+      // If room already exists, reuse it — just generate a fresh token. Only THIS interview's own Daily
+      // room (named from its id): a meetingUrl pointing anywhere else (an external link, or another
+      // interview's room) never gets an owner token.
       if (interview.meetingUrl) {
-        const urlParts = interview.meetingUrl.split('/');
-        const existingRoomName = urlParts[urlParts.length - 1] ?? '';
-        if (existingRoomName) {
-          const token = await videoService.createMeetingToken(existingRoomName, userName, true);
-          return { url: interview.meetingUrl, token, roomName: existingRoomName };
-        }
+        const existingRoomName = ownDailyRoomName(interview.meetingUrl, interview.id);
+        if (!existingRoomName) throw externalMeetingLink();
+        const token = await videoService.createMeetingToken(existingRoomName, userName, true);
+        return { url: interview.meetingUrl, token, roomName: existingRoomName };
       }
 
       // First time — create room, store URL, generate token
@@ -87,16 +94,9 @@ export const interviewMediaRouter = router({
         });
       }
 
-      // Extract room name from Daily URL: https://DOMAIN.daily.co/ROOM_NAME
-      const urlParts = interview.meetingUrl.split('/');
-      const roomName = urlParts[urlParts.length - 1];
-
-      if (!roomName) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'No se pudo extraer el nombre de la sala del URL de la reunión',
-        });
-      }
+      // Only this interview's own Daily room (https://DOMAIN.daily.co/tims-<id>) gets a token.
+      const roomName = ownDailyRoomName(interview.meetingUrl, interview.id);
+      if (!roomName) throw externalMeetingLink();
 
       const currentUser = await db.user.findUnique({
         where: { id: ctx.user.id },
@@ -124,6 +124,7 @@ export const interviewMediaRouter = router({
 
       return db.interview.update({
         where: { id: input.interviewId },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         data: {
           transcriptUrl: input.transcriptUrl,
           ...(input.recordingUrl && { recordingUrl: input.recordingUrl }),
@@ -139,6 +140,7 @@ export const interviewMediaRouter = router({
     const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
 
     return db.interview.findMany({
+      omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
       where: {
         AND: [
           {

@@ -15,6 +15,10 @@ model Interview {
   notes           String?
   cancelledAt     DateTime? @map("cancelled_at")
   cancelReason    String?   @map("cancel_reason")
+  /// SHA-256 (lowercase hex) of the candidate's video join token. The plaintext token only ever lives
+  /// in the invitation email; it is regenerated on reschedule and cleared on cancel (revocation).
+  candidateJoinTokenHash      String?   @unique @map("candidate_join_token_hash") @db.VarChar(64)
+  candidateJoinTokenExpiresAt DateTime? @map("candidate_join_token_expires_at")
   createdById     String    @map("created_by_id") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")

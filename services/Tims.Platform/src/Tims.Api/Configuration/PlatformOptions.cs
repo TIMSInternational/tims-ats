@@ -646,6 +646,13 @@ public sealed class PlatformOptions
     public bool PlatformInvitationResendEnabled { get; init; }
 
     /// <summary>
+    /// WP-H: the candidate's anonymous video-interview join (<c>POST /interviews/candidate-join</c>),
+    /// authenticated only by the emailed join token (SHA-256 hash lookup). Default false (dark): the route is
+    /// not mapped. Needs <c>Daily:ApiKey</c> to answer anything but <c>unavailable</c> on a joinable interview.
+    /// </summary>
+    public bool CandidateInterviewJoinEnabled { get; init; }
+
+    /// <summary>
     /// Default-disabled company-admin team invitations (<c>/tenant-invitations</c>): list grantable roles,
     /// list/create/resend/revoke invitations for the CALLER'S OWN organization only. Gated by
     /// <c>user:create</c> at organization scope plus InvitationGrantPolicy (no role above the caller's own).

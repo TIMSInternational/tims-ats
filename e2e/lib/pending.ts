@@ -49,7 +49,7 @@ export const PENDING = {
   candidateEmails: {
     ref: '#308',
     why: 'no "application received" email is sent to candidates on main',
-    merged: false,
+    merged: true,
   },
   onboardingDefaults: {
     ref: '#309',

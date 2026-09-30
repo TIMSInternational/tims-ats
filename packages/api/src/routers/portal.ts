@@ -7,11 +7,13 @@ import { createCvUploadPresignedPost } from '../lib/s3';
 import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
 import { portalApplicationService } from '../services/portal-application.service';
 import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE, logger } from '@tims/shared';
+import { emailService } from '../services/email.service';
+import { consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
 // The ONE public response of portal.applyToVacancy, whatever happened server-side.
 const APPLY_ACKNOWLEDGMENT = { received: true } as const;
 
-type CandidateMatch = { id: string; email: string; deletedAt: Date | null };
+type CandidateMatch = { id: string; email: string; firstName: string; deletedAt: Date | null };
 type PortalDbClient = Pick<typeof db, 'candidate'>;
 
 // Prisma compiles `{ equals, mode: 'insensitive' }` to an UNESCAPED `ILIKE` (measured on
@@ -31,7 +33,7 @@ async function findCandidatesByExactEmail(
 ): Promise<CandidateMatch[]> {
   const rows = await client.candidate.findMany({
     where: { organizationId: orgId, email: { equals: escapeLikePattern(email), mode: 'insensitive' } },
-    select: { id: true, email: true, deletedAt: true },
+    select: { id: true, email: true, firstName: true, deletedAt: true },
     orderBy: { createdAt: 'asc' },
     take: 20,
   });
@@ -225,7 +227,11 @@ export const portalRouter = router({
 
       const vacancy = await db.vacancy.findFirstOrThrow({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
-        include: { stages: { where: { isDefault: true }, take: 1 } },
+        include: {
+          stages: { where: { isDefault: true }, take: 1 },
+          organization: { select: { name: true } },
+          company: { select: { language: true } },
+        },
       });
 
       const orgId = vacancy.organizationId;
@@ -237,7 +243,11 @@ export const portalRouter = router({
       const email = input.email.trim().toLowerCase();
 
       type ApplyOutcome =
-        | { kind: 'new'; candidateId: string }
+        // `recipient` = who the application-received email goes to: for a REUSED candidate the
+        // stored row's email + first name; for a NEW candidate the form's (validated, trimmed,
+        // lowercased) email + first name — the email is capped per recipient and the name is
+        // greeting-sanitized by the template.
+        | { kind: 'new'; candidateId: string; recipient: { email: string; firstName: string } }
         | { kind: 'duplicate' }
         | { kind: 'withdrawn' }
         | { kind: 'deleted' };
@@ -276,6 +286,9 @@ export const portalRouter = router({
           // This endpoint is unauthenticated: an existing candidate's profile is never
           // updated from it, only reused. Every candidate here is an exact case variant.
           const existingCandidate = active.find((v) => v.email === email) ?? active[0];
+          const recipient = existingCandidate
+            ? { email: existingCandidate.email, firstName: existingCandidate.firstName }
+            : { email, firstName: input.firstName };
           const candidateId =
             existingCandidate?.id ??
             (
@@ -349,7 +362,7 @@ export const portalRouter = router({
             },
             select: { id: true },
           });
-          return { kind: 'new' as const, candidateId };
+          return { kind: 'new' as const, candidateId, recipient };
         });
 
       let outcome: ApplyOutcome;
@@ -383,6 +396,48 @@ export const portalRouter = router({
             ? 'Public application refused: application consent withdrawn'
             : 'Public application refused: candidate record is soft-deleted',
         );
+      }
+
+      // "Application received" confirmation — only for a NEW, committed application
+      // (duplicate / withdrawn / deleted outcomes and the P2002 idempotent path never
+      // send). Fire-and-forget: a mail failure (sync or async) must never fail or delay
+      // the application, and — being detached — adds no response-timing signal. It is
+      // dispatched before CV processing so a CV failure can never suppress it. The log
+      // line carries no PII (no email, no name, no candidate id, no error message).
+      // Per-recipient cap: the form chooses the address, so at most one such email per
+      // address per 24h platform-wide; a capped or unavailable limiter skips the email
+      // (never the application).
+      if (outcome.kind === 'new') {
+        const confirmation = {
+          candidateEmail: outcome.recipient.email,
+          candidateName: outcome.recipient.firstName,
+          vacancyTitle: vacancy.title,
+          companyName: vacancy.organization?.name ?? '',
+          locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
+        };
+        void Promise.resolve()
+          .then(async () => {
+            let allowed = false;
+            try {
+              allowed = await consumeApplicationEmailQuota(confirmation.candidateEmail);
+            } catch {
+              allowed = false;
+            }
+            if (!allowed) {
+              logger.info(
+                { component: 'portal', vacancyId: vacancy.id },
+                'Application confirmation email skipped: per-recipient cap reached or limiter unavailable',
+              );
+              return;
+            }
+            await emailService.sendApplicationReceived(confirmation);
+          })
+          .catch((error: unknown) => {
+            logger.warn(
+              { component: 'portal', vacancyId: vacancy.id, errName: error instanceof Error ? error.name : 'UnknownError' },
+              'Application confirmation email failed — application unaffected',
+            );
+          });
       }
 
       // Only NEW applications get CV processing — duplicates, the P2002 race-catch and

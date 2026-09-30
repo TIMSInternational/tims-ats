@@ -119,6 +119,9 @@ surface, flipped per §6):
 | `Platform__<Surface>Enabled` ×21             | —                                  | set `false`                            | The full read+write set listed above (§2). All default false; set explicit for auditability. |
 | `Platform__TenantPeopleDirectoryEnabled`     | —                                  | set `false`                            | #304 picker directory: flip before the web flag; parity-register first (§2).                 |
 | `Stripe__SecretKey`, `Stripe__WebhookSecret` | Stripe                             | only before billing-write cutover      | leave unset while billing writes are dark.                                                   |
+| `Platform__CandidateInterviewJoinEnabled`    | —                                  | default `false`                        | WP-H candidate video join (`POST /interviews/candidate-join`). Flip only with `Daily__ApiKey` set, and BEFORE the web deploy that emails join links — see `candidate-interview-join.md`. |
+| `Daily__ApiKey`                              | Daily.co dashboard (Secrets Manager) | ✅ when the join flag is on           | Runtime-environment SECRET. Blank or terraform's `REPLACE_ME_OUT_OF_BAND` = not configured: every join answers `unavailable` and startup logs a WARNING. |
+| `Daily__ApiUrl`                              | —                                  | default `https://api.daily.co/v1`      | Validated at startup (https, no credentials/query/fragment).                                 |
 | `ASPNETCORE_URLS`                            | —                                  | preset in Dockerfile (`http://+:8080`) | do not override.                                                                             |
 
 ### 🔴 DB-ROLE requirement (the #1 first-deploy risk — verify before §5 sign-off)
