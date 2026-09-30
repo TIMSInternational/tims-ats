@@ -57,8 +57,6 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
   ],
   "efcoreReadOnly": [
     "api_keys",
-    "role_permissions",
-    "permissions",
     "user_teams",
     "user_business_units",
     "interview_evaluators",
@@ -103,6 +101,8 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "business_units",
     "teams",
     "roles",
+    "role_permissions",
+    "permissions",
     "org_entitlements",
     "salary_adjustments",
     "employee_compensations",
@@ -249,3 +249,13 @@ the C# route is mapped only while `Invitations:SetupEnabled=true`. The invitatio
 tenant; a verified matching Supabase identity is required before the write. `users`, `user_roles` and
 `platform_invitations` are strangler writes for this operation, while `audit_logs` remains append-only.
 See [the account-onboarding plan](../plans/2026-09-15-invitation-account-onboarding.md).
+
+## 2026-09-28 tenant role provisioning coexistence
+
+New-organization creation in .NET 10 now inserts the approved role/permission matrix into existing
+Prisma-owned `roles`, `permissions`, and `role_permissions` tables inside the organization transaction.
+The TypeScript creation paths do the same. This is a scoped application write, not a DDL ownership
+transfer. `permissions` and `role_permissions` move from read-only to strangler-write classification;
+Prisma remains their schema owner. The .NET writer uses parameterized SQL rather than an EF `ToTable`
+mapping, so the current machine checker cannot infer this relationship from code; the integration
+tests verify tenant scope and grant content. See [provisioning runbook](tenant-role-provisioning.md).

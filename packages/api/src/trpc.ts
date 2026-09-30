@@ -8,6 +8,7 @@ import { buildAccessForUser, createAnchorLoader, type AccessContext } from './ac
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
 import { externalScopeSatisfied } from './access/external-scope';
 import { touchApiKeyLastUsed } from './repositories/external-auth.repository';
+import { runUnscopedLogged } from './lib/unscoped';
 import { observeDenial, observeExternalDenial, logSecurityEvent } from './access/security-audit';
 import { isMfaEnforced, isMfaPrivileged, isMfaGateBlocking, MFA_REQUIRED } from '@tims/shared';
 import type { Module, Action } from '@tims/shared';
@@ -92,14 +93,17 @@ const isCandidate = t.middleware(({ ctx, next }) => {
 // their queries are scoped to this org. Platform owners WITH an org row of their own
 // flow through the SAME runWithTenant path as staff: platform routers use the
 // privileged `db` (so setting the GUC costs nothing there), and on tenant routers
-// this restores the RLS backstop — an empty ALS would make tenantDb short-circuit
-// before SET LOCAL ROLE and run UNSCOPED on the BYPASSRLS login role. Only org-less
-// owners skip tenant context entirely.
+// this restores the RLS backstop. tenantDb now FAILS CLOSED with no tenant in scope,
+// so org-less owners — the one caller that legitimately has no org — enter an
+// explicit, logged runUnscoped scope instead (same unscoped behavior as before the
+// guard, but named and greppable rather than the silent default for every caller).
 const withTenantContext = t.middleware(({ ctx, next }) => {
   let orgId: string | null | undefined;
   if (ctx.user?.isPlatformOwner) {
     const ownOrg = ctx.user.organizationId;
-    if (!ownOrg) return next(); // platform routers use the privileged db; no tenant ctx needed
+    // platform routers use the privileged db; tenant routers an org-less owner reaches
+    // (e.g. notification.*) run in the explicit unscoped scope.
+    if (!ownOrg) return runUnscopedLogged('platform-owner-without-org', () => next());
     // fallthrough to the same UUID validation + runWithTenant below
     orgId = ownOrg;
   } else {

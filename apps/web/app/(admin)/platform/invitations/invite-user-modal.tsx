@@ -7,6 +7,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { ErrorState } from '../../../../components';
+import { ROLES } from '../users/invite-wizard.helpers';
 
 export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselectedOrgName }: { onClose: () => void; onSuccess: () => void; preselectedOrgId?: string; preselectedOrgName?: string }) {
   const { t } = useI18n();
@@ -24,14 +25,6 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
     },
     onError: (err) => { toast(err.message || t.invitations.creationFailed, { type: 'error' }); },
   });
-
-  const ROLES = [
-    { slug: 'super_admin', label: 'Super Administrador' },
-    { slug: 'hr_admin', label: 'Admin RRHH' },
-    { slug: 'recruiter', label: 'Reclutador' },
-    { slug: 'hiring_manager', label: 'Hiring Manager' },
-    { slug: 'viewer', label: 'Solo Lectura' },
-  ];
 
   const invitationRoles = useUserInvitationRoles(orgId, ROLES);
 

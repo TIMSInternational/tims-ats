@@ -160,8 +160,13 @@ const AI_PATH_KEYWORDS = [
 ];
 
 export function getRateLimitCategory(path: string, type: 'query' | 'mutation'): RateLimitCategory {
-  // Auth endpoints
-  if (path.startsWith('auth.')) return 'auth';
+  // Auth endpoints. Only auth MUTATIONS (credential-like attempts) take the strict `auth`
+  // tier (10 / 5 min). Auth QUERIES are authenticated session reads — `auth.getSessionInfo`
+  // and `auth.getImpersonationStatus` fire on EVERY staff page load, so putting them in the
+  // credential tier throttled normal users with 429s after ~4-5 page views. They belong
+  // to the ordinary `query` tier. Checked before the AI/export keywords so an auth read can
+  // never be recategorized by a keyword substring.
+  if (path.startsWith('auth.')) return type === 'mutation' ? 'auth' : 'query';
   const p = path.toLowerCase();
   // portal.applyToVacancy now synchronously invokes the AI cv-parser agent when a CV is
   // attached — the ai tier despite being an unauthenticated public mutation. Matched by

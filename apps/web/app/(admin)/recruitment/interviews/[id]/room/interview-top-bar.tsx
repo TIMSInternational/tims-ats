@@ -2,29 +2,32 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useDaily } from '@daily-co/daily-react';
+import { useDaily, useMeetingState } from '@daily-co/daily-react';
 
 interface InterviewTopBarProps {
   candidateName: string;
   vacancyTitle: string;
   fitScore?: number;
-  isRecording?: boolean;
+  isInCall: boolean;
 }
 
 export function InterviewTopBar({
   candidateName,
   vacancyTitle,
   fitScore,
-  isRecording = false,
+  isInCall,
 }: InterviewTopBarProps) {
   const router = useRouter();
   const daily = useDaily();
+  const meetingState = useMeetingState();
+  const callActive = isInCall && meetingState === 'joined-meeting';
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
+    if (!callActive) return;
     const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [callActive]);
 
   const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const seconds = String(elapsed % 60).padStart(2, '0');
@@ -50,20 +53,14 @@ export function InterviewTopBar({
 
       <div className="flex items-center gap-4">
         {/* Timer */}
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="text-[14px] text-white font-mono font-medium">
-            {minutes}:{seconds}
-          </span>
-        </div>
-
-        {/* Recording indicator */}
-        {isRecording && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-[#DD0C15] animate-pulse" />
-            <span className="text-[11px] text-white/60">Grabando</span>
+        {callActive && (
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-[14px] text-white font-mono font-medium">
+              {minutes}:{seconds}
+            </span>
           </div>
         )}
 

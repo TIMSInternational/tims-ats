@@ -96,10 +96,16 @@ export const portalRouter = router({
     }),
 
   // Get single vacancy detail for portal
-  getVacancy: publicProcedure.input(z.object({ id: z.string().uuid() })).query(async ({ input }) => {
-    const [vacancy, applicantCount] = await Promise.all([
-      db.vacancy.findFirstOrThrow({
-        where: { id: input.id, status: 'published', deletedAt: null },
+  getVacancy: publicProcedure
+    .input(z.object({ id: z.string().uuid(), orgSlug: z.string().trim().min(1).max(200) }))
+    .query(async ({ input }) => {
+      const vacancy = await db.vacancy.findFirst({
+        where: {
+          id: input.id,
+          status: 'published',
+          deletedAt: null,
+          organization: { is: { slug: input.orgSlug } },
+        },
         select: {
           id: true,
           organizationId: true,
@@ -120,13 +126,11 @@ export const portalRouter = router({
             select: { competencies: true, requirements: true },
           },
         },
-      }),
-      db.application.count({
-        where: { vacancyId: input.id },
-      }),
-    ]);
-    return { ...vacancy, applicantCount };
-  }),
+      });
+      if (!vacancy) return null;
+      const applicantCount = await db.application.count({ where: { vacancyId: vacancy.id } });
+      return { ...vacancy, applicantCount };
+    }),
 
   // Get a presigned S3 POST for the candidate to upload a CV directly, before
   // applying. Server-enforced size cap + content-type via the POST policy's

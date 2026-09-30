@@ -1,7 +1,25 @@
 {
-  "description": "getRateLimitCategory(path, type) — packages/api/src/middleware/rate-limit.ts. Selects the rate-limit tier from a tRPC path + procedure type. Order: (1) `auth.` prefix wins; (2) exact path `portal.applytovacancy` -> ai; (3) any AI_PATH_KEYWORDS substring (case-insensitive) -> ai; (4) `export` substring -> export; (5) default query/mutation. Ported to Tims.Domain.RateLimiting.RateLimitPolicy.CategoryFor. Asserted by the REAL TS function (tests/ratelimit/ratelimit-fixtures.test.ts) AND Tims.UnitTests.",
+  "description": "getRateLimitCategory(path, type) — packages/api/src/middleware/rate-limit.ts. Selects the rate-limit tier from a tRPC path + procedure type. Order: (1) `auth.` prefix wins -- mutation -> auth, query -> query (session reads like auth.getSessionInfo fire on every page and must not consume the credential tier); (2) exact path `portal.applytovacancy` -> ai; (3) any AI_PATH_KEYWORDS substring (case-insensitive) -> ai; (4) `export` substring -> export; (5) default query/mutation. Ported to Tims.Domain.RateLimiting.RateLimitPolicy.CategoryFor. Asserted by the REAL TS function (tests/ratelimit/ratelimit-fixtures.test.ts) AND Tims.UnitTests.",
   "cases": [
     { "name": "auth prefix wins", "path": "auth.login", "type": "mutation", "expected": "auth" },
+    {
+      "name": "auth session read (every page) takes the query tier, not auth",
+      "path": "auth.getSessionInfo",
+      "type": "query",
+      "expected": "query"
+    },
+    {
+      "name": "auth impersonation-status read takes the query tier, not auth",
+      "path": "auth.getImpersonationStatus",
+      "type": "query",
+      "expected": "query"
+    },
+    {
+      "name": "auth query beats ai keyword (never recategorized by a substring)",
+      "path": "auth.generateSessionView",
+      "type": "query",
+      "expected": "query"
+    },
     {
       "name": "portal.applyToVacancy pinned to ai (synchronous CV parse)",
       "path": "portal.applyToVacancy",
