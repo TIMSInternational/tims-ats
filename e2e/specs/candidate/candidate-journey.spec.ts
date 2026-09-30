@@ -332,6 +332,8 @@ test('the onboarding plan starts with the default task template', async () => {
     .getByRole('row', { name: new RegExp(fullName()) })
     .getByRole('button', { name: 'Ver tareas' })
     .click();
-  await expect(page.getByText('Firmar contrato y documentos de ingreso')).toBeVisible();
-  await expect(page.getByText('Revisión de objetivos de 90 días y cierre del onboarding')).toBeVisible();
+  // The first task also appears in the row's "next task" summary, so assert on the expanded list items.
+  const task = (title: string) => page.getByRole('paragraph').filter({ hasText: title });
+  await expect(task('Firmar contrato y documentos de ingreso')).toBeVisible();
+  await expect(task('Revisión de objetivos de 90 días y cierre del onboarding')).toBeVisible();
 });
