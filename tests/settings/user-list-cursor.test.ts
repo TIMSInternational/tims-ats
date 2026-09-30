@@ -99,6 +99,23 @@ beforeEach(() => {
   state.calls = [];
 });
 
+describe('user.list active filter', () => {
+  it('isActive:true also excludes soft-deleted rows (deletedAt: null)', async () => {
+    state.members = [member(0)];
+    const caller = await makeCaller();
+    await caller.user.list({ limit: 10, isActive: true });
+    expect(state.calls[0]).toMatchObject({ where: { organizationId: ORG_ID, isActive: true, deletedAt: null } });
+  });
+
+  it('no isActive / isActive:false leave deletedAt unconstrained (the audit-log actor filter lists everyone)', async () => {
+    state.members = [member(0)];
+    const caller = await makeCaller();
+    await caller.user.list({ limit: 10 });
+    await caller.user.list({ limit: 10, isActive: false });
+    for (const call of state.calls) expect((call as { where: object }).where).not.toHaveProperty('deletedAt');
+  });
+});
+
 describe('user.list cursor pagination', () => {
   it('shows all 51 members across two pages of 50 (the second page is not empty)', async () => {
     state.members = Array.from({ length: 51 }, (_, i) => member(i));

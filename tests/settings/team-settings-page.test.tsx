@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   invitationsFilter: [] as string[],
   hasNextInvitations: false,
   fetchNextInvitations: vi.fn(),
+  memberListInputs: [] as unknown[],
 }));
 
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -32,7 +33,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     user: {
       list: {
-        useInfiniteQuery: () => ({
+        useInfiniteQuery: (input: unknown) => (mocks.memberListInputs.push(input), {
           isLoading: false,
           isError: false,
           hasNextPage: false,
@@ -113,6 +114,13 @@ describe('/settings/users (Equipo)', () => {
     expect(screen.queryByRole('button', { name: m.inviteSubmit })).toBeNull();
     expect(screen.queryByText(m.pendingTitle)).toBeNull();
     expect(screen.getByText('ana@x.test')).toBeTruthy(); // members list still renders
+  });
+
+  it('asks user.list for ACTIVE members only (hides deactivated / soft-deleted users)', () => {
+    mocks.memberListInputs.length = 0;
+    render(<TeamSettingsPage />);
+    expect(mocks.memberListInputs.length).toBeGreaterThan(0);
+    for (const input of mocks.memberListInputs) expect(input).toEqual({ limit: 50, isActive: true });
   });
 
   it('shows the no-permission state for a viewer without user:create', () => {

@@ -90,6 +90,10 @@ export const userRouter = router({
       const where = {
         organizationId: ctx.user.organizationId,
         ...(isActive !== undefined ? { isActive } : {}),
+        // "Active" also means not soft-deleted: `deactivate` sets both flags, but a row can carry a deletedAt
+        // with isActive still true (drift, or a delete path that only stamps deletedAt). Only narrows the
+        // isActive:true case, so callers that list everyone (the audit-log actor filter) are unchanged.
+        ...(isActive === true ? { deletedAt: null } : {}),
         ...(search
           ? {
               OR: [

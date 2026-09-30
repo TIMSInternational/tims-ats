@@ -5,12 +5,13 @@ import { useI18n } from '../../../../lib/i18n';
 import { DataTable, EmptyState, ErrorState } from '../../../../components';
 
 // Data source: the existing tenant-scoped `user.list` tRPC read (user:read, org from ctx). The C#
-// people directory (#304) is not merged yet; swap this read for its client once it is.
+// people directory (#304) is not merged yet; swap this read for its client once it is. `isActive: true`
+// hides deactivated and soft-deleted members (user.list pairs it with deletedAt: null).
 export function MembersTable() {
   const { t } = useI18n();
   const m = t.teamSettings;
   const members = trpc.user.list.useInfiniteQuery(
-    { limit: 50 },
+    { limit: 50, isActive: true },
     { getNextPageParam: (last) => last.nextCursor, retry: false },
   );
 
