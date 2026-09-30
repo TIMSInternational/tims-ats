@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   resend: vi.fn(),
   toast: vi.fn(),
   invitationRole: 'employee' as string | null,
+  invitationsFilter: [] as string[],
+  hasNextInvitations: false,
+  fetchNextInvitations: vi.fn(),
 }));
 
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -51,21 +54,34 @@ vi.mock('../../apps/web/lib/platform-api/tenant-invitations', async (importOrigi
       isError: false,
       data: [{ slug: 'employee', name: 'Empleado' }],
     }),
-    useTenantInvitations: () => ({
-      isLoading: false,
-      isError: false,
-      data: [
-        {
-          id: '11111111-1111-4111-8111-111111111111',
-          email: 'pending@x.test',
-          roleSlug: mocks.invitationRole,
-          status: 'sent',
-          createdAt: '2026-09-20T10:00:00Z',
-          expiresAt: '2026-09-27T10:00:00Z',
-          sentAt: '2026-09-20T10:00:00Z',
+    useTenantInvitations: (_enabled: boolean, status: string) => {
+      mocks.invitationsFilter.push(status);
+      return {
+        isLoading: false,
+        isError: false,
+        hasNextPage: mocks.hasNextInvitations,
+        isFetchingNextPage: false,
+        fetchNextPage: mocks.fetchNextInvitations,
+        data: {
+          pages: [
+            {
+              nextCursor: null,
+              invitations: [
+                {
+                  id: '11111111-1111-4111-8111-111111111111',
+                  email: 'pending@x.test',
+                  roleSlug: mocks.invitationRole,
+                  status: 'sent',
+                  createdAt: '2026-09-20T10:00:00Z',
+                  expiresAt: '2026-09-27T10:00:00Z',
+                  sentAt: '2026-09-20T10:00:00Z',
+                },
+              ],
+            },
+          ],
         },
-      ],
-    }),
+      };
+    },
     useCreateTenantInvitation: (cb: typeof mocks.createCallbacks) => {
       mocks.createCallbacks = cb;
       return { mutate: mocks.create, isPending: false };
@@ -84,7 +100,9 @@ beforeEach(() => {
   mocks.canCreate = true;
   mocks.permsLoading = false;
   mocks.invitationRole = 'employee';
-  for (const fn of [mocks.create, mocks.revoke, mocks.resend, mocks.toast]) fn.mockReset();
+  mocks.invitationsFilter = [];
+  mocks.hasNextInvitations = false;
+  for (const fn of [mocks.create, mocks.revoke, mocks.resend, mocks.toast, mocks.fetchNextInvitations]) fn.mockReset();
 });
 
 describe('/settings/users (Equipo)', () => {
@@ -149,6 +167,24 @@ describe('/settings/users (Equipo)', () => {
     expect(mocks.resend).not.toHaveBeenCalled();
     // Revoke only removes a pending grant, so it stays available.
     expect((screen.getByRole('button', { name: m.revoke }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('lists pending (active) invitations by default and switches the filter on demand', () => {
+    render(<TeamSettingsPage />);
+    expect(mocks.invitationsFilter.at(-1)).toBe('active');
+    fireEvent.change(screen.getByLabelText(m.filterLabel), { target: { value: 'expired' } });
+    expect(mocks.invitationsFilter.at(-1)).toBe('expired');
+  });
+
+  it('offers "load more" only when the API reports another page', () => {
+    const { unmount } = render(<TeamSettingsPage />);
+    // The members table has its own (absent) load-more; count only the invitations one.
+    expect(screen.queryAllByRole('button', { name: m.loadMore })).toHaveLength(0);
+    unmount();
+    mocks.hasNextInvitations = true;
+    render(<TeamSettingsPage />);
+    fireEvent.click(screen.getByRole('button', { name: m.loadMore }));
+    expect(mocks.fetchNextInvitations).toHaveBeenCalledOnce();
   });
 
   it('treats a NULL role as employee for the resend check', () => {

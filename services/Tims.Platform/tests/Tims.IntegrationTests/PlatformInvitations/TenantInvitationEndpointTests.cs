@@ -25,6 +25,9 @@ public sealed class TenantInvitationFixture : IAsyncLifetime
     public static readonly Guid ExpiredSuperAdminInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000b");
     public static readonly Guid PendingRecruiterInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000c");
     public static readonly Guid GuardedSuperAdminInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000d");
+    /// <summary>Seeded paging rows in Beta: more than one max page, pairs tied on created_at, mixed effective states.</summary>
+    public const int PagingRows = 130;
+    public const int PagingActiveRows = 43; // n % 3 == 2 for n in 0..129
     public OrganizationInvitationFixture Inner { get; } = new();
     public string ConnectionString => Inner.ConnectionString;
 
@@ -64,6 +67,17 @@ public sealed class TenantInvitationFixture : IAsyncLifetime
                 'recruiter','f8-pending-rec-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '1 day',now()-interval '6 days'),
               ('f8000000-0000-0000-0000-00000000000d','guarded-sa@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
                 'super_admin','f8-guarded-sa-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '1 day',now()-interval '6 days');
+            -- Paging rows (all older than anything a test creates): n%3=0 stored expired, n%3=1 stored pending but
+            -- past expires_at (EFFECTIVELY expired), n%3=2 sent and live. created_at repeats in pairs so the id
+            -- tie-break is exercised on every page boundary.
+            INSERT INTO platform_invitations(id,email,type,organization_id,organization_name,role_slug,token,status,invited_by_id,expires_at,created_at,updated_at)
+              SELECT gen_random_uuid(), 'page-' || n || '@beta.test', 'user', '22222222-2222-2222-2222-222222222222', 'Beta', 'employee',
+                     'f8-page-token-' || n,
+                     (CASE n % 3 WHEN 0 THEN 'expired' WHEN 1 THEN 'pending' ELSE 'sent' END)::"InvitationStatus",
+                     'f8000000-0000-0000-0000-0000000000c1',
+                     CASE n % 3 WHEN 2 THEN now() + interval '5 days' ELSE now() - interval '1 day' END,
+                     timestamp '2026-01-01 00:00:00' + (n / 2) * interval '1 second', now()
+              FROM generate_series(0, 129) AS n;
             """;
         await command.ExecuteNonQueryAsync();
     }
@@ -235,6 +249,123 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         Assert.Equal("pending", await Status(id));
         Assert.True(await repository.ForOrganization(org, saGrantable).MarkSentAsync(snapshot!, now, now.AddDays(7), default));
         Assert.Equal("sent", await Status(id));
+    }
+
+    [Fact]
+    public async Task List_pages_through_every_row_beyond_the_max_page_without_gaps_or_repeats()
+    {
+        using var factory = Factory(new FakeSender());
+        var client = factory.CreateClient();
+        var ids = new List<Guid>(); var emails = new List<string>(); var pages = 0;
+        string? cursor = null;
+        (DateTime CreatedAt, Guid Id)? previous = null;
+        do
+        {
+            var path = "/tenant-invitations?status=all&limit=100" + (cursor is null ? "" : "&cursor=" + cursor);
+            var response = await Send(client, HttpMethod.Get, path, TenantInvitationFixture.HrAdminSub);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var rows = json.RootElement.GetProperty("invitations").EnumerateArray().ToList();
+            Assert.InRange(rows.Count, 1, 100);
+            foreach (var row in rows)
+            {
+                var key = (row.GetProperty("createdAt").GetDateTime(), row.GetProperty("id").GetGuid());
+                // Strictly descending on (createdAt, id) across page boundaries too. Guid order here is only
+                // checked for ties, via Postgres's own uuid ordering reflected in the sequence.
+                if (previous is { } p) Assert.True(key.Item1 <= p.CreatedAt);
+                previous = key;
+                ids.Add(key.Item2); emails.Add(row.GetProperty("email").GetString()!);
+            }
+            var next = json.RootElement.GetProperty("nextCursor");
+            cursor = next.ValueKind == JsonValueKind.Null ? null : next.GetString();
+            if (cursor is not null) Assert.Equal(rows[^1].GetProperty("id").GetGuid(), Guid.Parse(cursor));
+            pages++;
+        }
+        while (cursor is not null && pages < 10);
+
+        Assert.Null(cursor);
+        Assert.True(pages >= 2);
+        Assert.Equal(ids.Count, ids.Distinct().Count()); // no row served twice
+        Assert.Equal(TenantInvitationFixture.PagingRows, emails.Count(e => e.StartsWith("page-", StringComparison.Ordinal)));
+        Assert.Equal(await OpenRowCount(), (long)ids.Count); // and none skipped
+    }
+
+    [Fact]
+    public async Task Status_filter_uses_effective_expiry()
+    {
+        using var factory = Factory(new FakeSender());
+        var client = factory.CreateClient();
+        var active = await ListAll(client, "active");
+        var expired = await ListAll(client, "expired");
+        Assert.All(active, row => Assert.Contains(row.Status, new[] { "pending", "sent" }));
+        Assert.All(active, row => Assert.True(row.ExpiresAt > DateTime.UtcNow));
+        Assert.All(expired, row => Assert.Equal("expired", row.Status)); // stored pending past expiry reports expired
+        Assert.Equal(TenantInvitationFixture.PagingActiveRows, active.Count(r => r.Email.StartsWith("page-", StringComparison.Ordinal)));
+        Assert.Equal(TenantInvitationFixture.PagingRows - TenantInvitationFixture.PagingActiveRows,
+            expired.Count(r => r.Email.StartsWith("page-", StringComparison.Ordinal)));
+        Assert.Empty(active.Select(r => r.Id).Intersect(expired.Select(r => r.Id)));
+    }
+
+    [Fact]
+    public async Task Foreign_or_unknown_cursor_yields_an_empty_page_not_another_orgs_rows()
+    {
+        using var factory = Factory(new FakeSender());
+        var client = factory.CreateClient();
+        foreach (var cursor in new[] { TenantInvitationFixture.AcmeInvitation, Guid.NewGuid() })
+        {
+            var response = await Send(client, HttpMethod.Get, $"/tenant-invitations?cursor={cursor}", TenantInvitationFixture.HrAdminSub);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Equal("{\"invitations\":[],\"nextCursor\":null}", body);
+        }
+    }
+
+    [Theory]
+    [InlineData("?limit=0")]
+    [InlineData("?limit=101")]
+    [InlineData("?limit=abc")]
+    [InlineData("?status=pending")]
+    [InlineData("?cursor=not-a-guid")]
+    public async Task Invalid_list_query_is_400_for_a_granted_caller_but_403_for_an_ungranted_one(string query)
+    {
+        using var factory = Factory(new FakeSender());
+        var client = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.BadRequest, (await Send(client, HttpMethod.Get, "/tenant-invitations" + query, TenantInvitationFixture.HrAdminSub)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(client, HttpMethod.Get, "/tenant-invitations" + query, TenantInvitationFixture.RecruiterSub)).StatusCode);
+    }
+
+    private sealed record ListedRow(Guid Id, string Email, string Status, DateTime ExpiresAt);
+
+    private static async Task<List<ListedRow>> ListAll(HttpClient client, string status)
+    {
+        var all = new List<ListedRow>();
+        string? cursor = null;
+        for (var pages = 0; pages < 10; pages++)
+        {
+            var response = await Send(client, HttpMethod.Get,
+                $"/tenant-invitations?status={status}&limit=40" + (cursor is null ? "" : "&cursor=" + cursor), TenantInvitationFixture.HrAdminSub);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            all.AddRange(json.RootElement.GetProperty("invitations").EnumerateArray().Select(row => new ListedRow(
+                row.GetProperty("id").GetGuid(), row.GetProperty("email").GetString()!, row.GetProperty("status").GetString()!,
+                row.GetProperty("expiresAt").GetDateTime().ToUniversalTime())));
+            var next = json.RootElement.GetProperty("nextCursor");
+            if (next.ValueKind == JsonValueKind.Null) return all;
+            cursor = next.GetString();
+        }
+        throw new InvalidOperationException("pagination did not terminate");
+    }
+
+    private async Task<long> OpenRowCount()
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT count(*) FROM platform_invitations
+            WHERE organization_id='22222222-2222-2222-2222-222222222222' AND type::text='user'
+              AND status::text IN ('pending','sent','expired')
+            """, connection);
+        return (long)(await command.ExecuteScalarAsync())!;
     }
 
     [Fact]

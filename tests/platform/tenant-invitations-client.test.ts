@@ -86,10 +86,37 @@ describe('GET /tenant-invitations', () => {
   it('parses open invitations (Z and offset timestamps, null sentAt/roleSlug)', async () => {
     mocks.get.mockResolvedValue({
       invitations: [invitation, { ...invitation, roleSlug: null, sentAt: null, status: 'pending' }],
+      nextCursor: null,
     });
     const result = await fetchTenantInvitations();
-    expect(result).toHaveLength(2);
-    expect(mocks.get).toHaveBeenCalledExactlyOnceWith('/tenant-invitations');
+    expect(result.invitations).toHaveLength(2);
+    expect(result.nextCursor).toBeNull();
+    // Defaults: pending (active) invitations, one bounded page, no cursor.
+    expect(mocks.get).toHaveBeenCalledExactlyOnceWith('/tenant-invitations', {
+      status: 'active',
+      limit: 50,
+      cursor: undefined,
+    });
+  });
+  it('passes the status filter and the previous page cursor, and returns the next cursor', async () => {
+    mocks.get.mockResolvedValue({ invitations: [invitation], nextCursor: ID });
+    const result = await fetchTenantInvitations('expired', ORG);
+    expect(result.nextCursor).toBe(ID);
+    expect(mocks.get).toHaveBeenCalledExactlyOnceWith('/tenant-invitations', {
+      status: 'expired',
+      limit: 50,
+      cursor: ORG,
+    });
+  });
+  it('refuses a non-uuid cursor before any request', async () => {
+    await expect(fetchTenantInvitations('all', 'not-a-uuid')).rejects.toThrow();
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+  it('rejects a page without nextCursor or with a non-uuid one', async () => {
+    mocks.get.mockResolvedValue({ invitations: [invitation] });
+    await expect(fetchTenantInvitations()).rejects.toThrow();
+    mocks.get.mockResolvedValue({ invitations: [invitation], nextCursor: 'next' });
+    await expect(fetchTenantInvitations()).rejects.toThrow();
   });
   it.each([
     { ...invitation, status: 'accepted' },
@@ -97,11 +124,11 @@ describe('GET /tenant-invitations', () => {
     { ...invitation, expiresAt: 'tomorrow' },
     { ...invitation, id: 'not-a-uuid' },
   ])('rejects an off-contract invitation', async (bad) => {
-    mocks.get.mockResolvedValue({ invitations: [bad] });
+    mocks.get.mockResolvedValue({ invitations: [bad], nextCursor: null });
     await expect(fetchTenantInvitations()).rejects.toThrow();
   });
   it('rejects more than 100 rows', async () => {
-    mocks.get.mockResolvedValue({ invitations: Array.from({ length: 101 }, () => invitation) });
+    mocks.get.mockResolvedValue({ invitations: Array.from({ length: 101 }, () => invitation), nextCursor: null });
     await expect(fetchTenantInvitations()).rejects.toThrow();
   });
 });

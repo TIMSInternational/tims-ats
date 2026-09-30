@@ -1922,6 +1922,29 @@
           "TenantInvitations"
         ],
         "operationId": "ListTenantInvitations",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -15444,7 +15467,8 @@
       },
       "TenantInvitationsResponse": {
         "required": [
-          "invitations"
+          "invitations",
+          "nextCursor"
         ],
         "type": "object",
         "properties": {
@@ -15453,6 +15477,13 @@
             "items": {
               "$ref": "#/components/schemas/TenantInvitationRow"
             }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },

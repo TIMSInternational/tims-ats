@@ -119,6 +119,59 @@ public sealed class TenantInvitationsUseCaseTests
         Assert.Equal(InvitationGrantPolicy.GrantableRoles([caller]), tenant.BoundGrantableRoles);
     }
 
+    [Theory]
+    [InlineData(null, null, null, TenantInvitationListFilter.All, 50)]
+    [InlineData("all", "1", null, TenantInvitationListFilter.All, 1)]
+    [InlineData("active", "100", null, TenantInvitationListFilter.Active, 100)]
+    [InlineData("expired", "007", "3f2504e0-4f89-41d3-9a0c-0305e82c3301", TenantInvitationListFilter.Expired, 7)]
+    public void List_query_parses_valid_input(string? status, string? limit, string? cursor, TenantInvitationListFilter filter, int take)
+    {
+        var query = TenantInvitationListQuery.Parse(status, limit, cursor);
+        Assert.NotNull(query);
+        Assert.Equal(filter, query!.Filter); Assert.Equal(take, query.Take);
+        Assert.Equal(cursor is null ? null : Guid.Parse(cursor), query.Cursor);
+    }
+
+    [Theory]
+    [InlineData("pending", null, null)] // stored status names are not filters; only all|active|expired
+    [InlineData("ACTIVE", null, null)]
+    [InlineData("", null, null)]
+    [InlineData(null, "0", null)]
+    [InlineData(null, "101", null)] // rejected, never clamped
+    [InlineData(null, "-1", null)]
+    [InlineData(null, "1e2", null)]
+    [InlineData(null, "", null)]
+    [InlineData(null, "99999999999", null)]
+    [InlineData(null, null, "not-a-guid")]
+    [InlineData(null, null, "{3f2504e0-4f89-41d3-9a0c-0305e82c3301}")]
+    public void List_query_rejects_invalid_input(string? status, string? limit, string? cursor)
+    {
+        Assert.Null(TenantInvitationListQuery.Parse(status, limit, cursor));
+    }
+
+    [Fact]
+    public async Task List_asks_for_one_extra_row_and_returns_the_last_displayed_id_as_cursor()
+    {
+        var rows = Enumerable.Range(0, 4).Select(i => Row(i)).ToList();
+        var tenant = new TenantRepo { Rows = rows };
+        var cursor = Guid.NewGuid();
+        var page = await Case(new CreateRepo(), tenant, new Sender()).ListAsync(Org, new(TenantInvitationListFilter.Active, 3, cursor), default);
+        Assert.Equal((TenantInvitationListFilter.Active, 4, (Guid?)cursor), tenant.LastList);
+        Assert.Equal(rows.Take(3).Select(r => r.Id), page.Invitations.Select(r => r.Id));
+        Assert.Equal(rows[2].Id, page.NextCursor); // the last DISPLAYED row, never the look-ahead row
+    }
+
+    [Fact]
+    public async Task List_final_page_has_no_cursor()
+    {
+        var tenant = new TenantRepo { Rows = Enumerable.Range(0, 3).Select(i => Row(i)).ToList() };
+        var page = await Case(new CreateRepo(), tenant, new Sender()).ListAsync(Org, new(TenantInvitationListFilter.All, 3, null), default);
+        Assert.Equal(3, page.Invitations.Count); Assert.Null(page.NextCursor);
+    }
+
+    private static TenantInvitationRow Row(int i) =>
+        new(Guid.NewGuid(), $"u{i}@example.test", "employee", "pending", DateTime.UtcNow.AddMinutes(-i), DateTime.UtcNow.AddDays(1), null);
+
     [Fact]
     public void Effective_invited_role_matches_acceptance_coalesce()
     {
@@ -156,8 +209,14 @@ public sealed class TenantInvitationsUseCaseTests
         public int MarkSentCalls { get; private set; }
         public Task<TenantInvitationTarget?> FindTargetAsync(Guid organizationId, Guid id, CancellationToken ct)
         { LookedUpOrganizations.Add(organizationId); return Task.FromResult(Target); }
-        public Task<IReadOnlyList<TenantInvitationRow>> ListOpenAsync(Guid organizationId, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<TenantInvitationRow>>([]);
+        public List<TenantInvitationRow> Rows { get; init; } = [];
+        public (TenantInvitationListFilter Filter, int Take, Guid? Cursor)? LastList { get; private set; }
+        public Task<IReadOnlyList<TenantInvitationRow>> ListOpenAsync(Guid organizationId, TenantInvitationListFilter filter,
+            int take, Guid? cursor, DateTime now, CancellationToken ct)
+        {
+            LastList = (filter, take, cursor);
+            return Task.FromResult<IReadOnlyList<TenantInvitationRow>>(Rows.Take(take).ToList());
+        }
         public Task<TenantInvitationRevokeOutcome> RevokeAsync(Guid organizationId, Guid id, Guid actor, DateTime now, CancellationToken ct) =>
             Task.FromResult(TenantInvitationRevokeOutcome.NotFound);
         public IInvitationResendRepository ForOrganization(Guid organizationId, IReadOnlyList<string> grantableRoles)

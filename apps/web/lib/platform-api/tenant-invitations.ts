@@ -10,7 +10,7 @@
 // schemas below are the source of truth for the wire contract, so this module compiles whether or
 // not schema.d.ts has been regenerated with the new endpoints yet.
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { isPlatformApiEnabled, platformGetRaw, platformPostRaw } from './client';
 
@@ -35,7 +35,19 @@ export const tenantInvitationSchema = z
   })
   .strict();
 
-export const tenantInvitationListSchema = z.object({ invitations: z.array(tenantInvitationSchema).max(100) }).strict();
+/** Page size the UI requests; the API accepts 1..100 and rejects (never clamps) anything else. */
+export const TENANT_INVITATION_PAGE_SIZE = 50;
+
+export const tenantInvitationListSchema = z
+  .object({ invitations: z.array(tenantInvitationSchema).max(100), nextCursor: uuid.nullable() })
+  .strict();
+
+/**
+ * `active` = pending/sent and not yet past expiry; `expired` = stored expired OR past expiry (the API reports
+ * those with status `expired`); `all` = both.
+ */
+export const TENANT_INVITATION_STATUS_FILTERS = ['active', 'expired', 'all'] as const;
+export type TenantInvitationStatusFilter = (typeof TENANT_INVITATION_STATUS_FILTERS)[number];
 
 export const tenantInvitationCreateInputSchema = z
   .object({ email: z.string().trim().email().max(254), roleSlug: z.string().min(1).max(50) })
@@ -57,6 +69,7 @@ export const tenantInvitationRevokeResponseSchema = z.object({ id: uuid, status:
 
 export type TenantInvitationRole = z.infer<typeof tenantInvitationRolesSchema>['roles'][number];
 export type TenantInvitation = z.infer<typeof tenantInvitationSchema>;
+export type TenantInvitationPage = z.infer<typeof tenantInvitationListSchema>;
 export type TenantInvitationCreateInput = z.input<typeof tenantInvitationCreateInputSchema>;
 export type TenantInvitationDelivery = z.infer<typeof tenantInvitationCreateResponseSchema>['delivery'];
 
@@ -82,9 +95,19 @@ export async function fetchTenantInvitationRoles(): Promise<TenantInvitationRole
   return tenantInvitationRolesSchema.parse(await platformGetRaw('/tenant-invitations/roles')).roles;
 }
 
-export async function fetchTenantInvitations(): Promise<TenantInvitation[]> {
+export async function fetchTenantInvitations(
+  status: TenantInvitationStatusFilter = 'active',
+  cursor?: string,
+): Promise<TenantInvitationPage> {
+  const parsedCursor = cursor === undefined ? undefined : uuid.parse(cursor);
   assertEnabled();
-  return tenantInvitationListSchema.parse(await platformGetRaw('/tenant-invitations')).invitations;
+  return tenantInvitationListSchema.parse(
+    await platformGetRaw('/tenant-invitations', {
+      status,
+      limit: TENANT_INVITATION_PAGE_SIZE,
+      cursor: parsedCursor,
+    }),
+  );
 }
 
 export async function createTenantInvitation(input: TenantInvitationCreateInput): Promise<TenantInvitationDelivery> {
@@ -128,10 +151,13 @@ export function useTenantInvitationRoles(enabled: boolean) {
   });
 }
 
-export function useTenantInvitations(enabled: boolean) {
-  return useQuery({
-    queryKey: LIST_KEY,
-    queryFn: fetchTenantInvitations,
+/** Keyset-paged: `fetchNextPage()` passes the previous page's `nextCursor` (the last row it showed). */
+export function useTenantInvitations(enabled: boolean, status: TenantInvitationStatusFilter) {
+  return useInfiniteQuery({
+    queryKey: [...LIST_KEY, status],
+    queryFn: ({ pageParam }) => fetchTenantInvitations(status, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: enabled && isTenantInvitationsEnabled(),
     retry: false,
   });

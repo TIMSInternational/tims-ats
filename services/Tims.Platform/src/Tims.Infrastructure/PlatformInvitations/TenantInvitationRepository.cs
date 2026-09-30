@@ -19,18 +19,45 @@ namespace Tims.Infrastructure.PlatformInvitations;
 /// </summary>
 public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbContext db) : ITenantInvitationRepository
 {
-    private const int MaxRows = 100;
+    // Hard ceiling on one statement, independent of the use case's own validation (MaxTake + 1 look-ahead).
+    private const int MaxRows = TenantInvitationListQuery.MaxTake + 1;
 
-    public async Task<IReadOnlyList<TenantInvitationRow>> ListOpenAsync(Guid organizationId, CancellationToken ct)
+    public async Task<IReadOnlyList<TenantInvitationRow>> ListOpenAsync(Guid organizationId, TenantInvitationListFilter filter,
+        int take, Guid? cursor, DateTime now, CancellationToken ct)
     {
+        var limit = Math.Clamp(take, 1, MaxRows);
+        var filterName = filter switch
+        {
+            TenantInvitationListFilter.Active => "active",
+            TenantInvitationListFilter.Expired => "expired",
+            _ => "all",
+        };
+        // Typed parameters, each bound ONCE in the args CTE: a bare DateTime hole would bind as timestamptz
+        // against the naive column (TRAP 10), and a null Guid needs an explicit uuid type.
+        var nowParameter = new NpgsqlParameter("now", NpgsqlDbType.Timestamp) { Value = DateTime.SpecifyKind(now, DateTimeKind.Unspecified) };
+        var cursorParameter = new NpgsqlParameter("cursor", NpgsqlDbType.Uuid) { Value = cursor is { } c ? c : DBNull.Value };
         await using var scope = await TenantScope.BeginAsync(db, organizationId, ct);
+        // Keyset pagination on (created_at DESC, id DESC). The anchor is resolved inside this organization only,
+        // so an unknown or foreign cursor compares against NULL and yields an empty page (never another org's).
+        // Effective status: a pending/sent row past expires_at IS expired, whether or not a job flipped it.
         var rows = await db.Database.SqlQuery<TenantInvitationRow>($"""
-            SELECT id AS "Id", email AS "Email", role_slug AS "RoleSlug", status::text AS "Status",
-                   created_at AS "CreatedAt", expires_at AS "ExpiresAt", sent_at AS "SentAt"
-            FROM platform_invitations
-            WHERE organization_id = {organizationId} AND type::text = 'user'
-              AND status::text IN ('pending', 'sent', 'expired')
-            ORDER BY created_at DESC, id LIMIT {MaxRows}
+            WITH args AS (SELECT {nowParameter} AS now, {cursorParameter} AS cursor),
+            anchor AS (
+                SELECT i.created_at, i.id FROM platform_invitations i, args
+                WHERE i.id = args.cursor AND i.organization_id = {organizationId} AND i.type::text = 'user')
+            SELECT i.id AS "Id", i.email AS "Email", i.role_slug AS "RoleSlug",
+                   CASE WHEN i.status::text IN ('pending', 'sent') AND i.expires_at <= args.now
+                        THEN 'expired' ELSE i.status::text END AS "Status",
+                   i.created_at AS "CreatedAt", i.expires_at AS "ExpiresAt", i.sent_at AS "SentAt"
+            FROM platform_invitations i, args
+            WHERE i.organization_id = {organizationId} AND i.type::text = 'user'
+              AND i.status::text IN ('pending', 'sent', 'expired')
+              AND ({filterName} = 'all'
+                   OR ({filterName} = 'active' AND i.status::text IN ('pending', 'sent') AND i.expires_at > args.now)
+                   OR ({filterName} = 'expired' AND (i.status::text = 'expired' OR i.expires_at <= args.now)))
+              AND (args.cursor IS NULL OR (i.created_at, i.id) < (SELECT anchor.created_at, anchor.id FROM anchor))
+            ORDER BY i.created_at DESC, i.id DESC
+            LIMIT {limit}
             """).ToListAsync(ct);
         await scope.CommitAsync(ct);
         return rows.Select(row => row with

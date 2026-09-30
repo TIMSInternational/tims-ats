@@ -4808,6 +4808,8 @@ export interface components {
         };
         TenantInvitationsResponse: {
             invitations: components["schemas"]["TenantInvitationRow"][];
+            /** Format: uuid */
+            nextCursor: null | string;
         };
         TotalCompBreakdownView: {
             /** Format: double */
@@ -7096,7 +7098,11 @@ export interface operations {
     };
     ListTenantInvitations: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: string;
+                limit?: string;
+                cursor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

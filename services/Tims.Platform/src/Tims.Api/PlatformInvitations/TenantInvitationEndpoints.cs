@@ -33,12 +33,18 @@ public static class TenantInvitationEndpoints
         }).RequireAuthorization().Produces<InvitationRolesResponse>().Produces(400).Produces(401).Produces(403).Produces(404)
             .WithName("ListTenantInvitationRoles").WithTags("TenantInvitations");
 
-        app.MapGet("/tenant-invitations", async (ClaimsPrincipal user, HttpContext http, PrincipalResolver resolver,
-            PermissionService permissions, IOptions<PlatformOptions> platform, TenantInvitationsUseCase useCase, CancellationToken ct) =>
+        // Keyset-paginated: ?status=all|active|expired (default all) &limit=1..100 (default 50) &cursor=<nextCursor>.
+        // All three bind as strings and are parsed AFTER the gate, so garbage input can never pre-empt (and
+        // thereby suppress the audit of) a 401/403.
+        app.MapGet("/tenant-invitations", async (string? status, string? limit, string? cursor, ClaimsPrincipal user,
+            HttpContext http, PrincipalResolver resolver, PermissionService permissions, IOptions<PlatformOptions> platform,
+            TenantInvitationsUseCase useCase, CancellationToken ct) =>
         {
             var gate = await TenantInvitationGate.AuthorizeAsync(user, http, resolver, permissions, platform.Value, false, ct);
             if (gate.Failure is not null) return gate.Failure;
-            return Results.Ok(new TenantInvitationsResponse(await useCase.ListAsync(gate.OrganizationId, ct)));
+            var query = TenantInvitationListQuery.Parse(status, limit, cursor);
+            if (query is null) return Results.BadRequest(new { message = "Invalid invitation list query" });
+            return Results.Ok(await useCase.ListAsync(gate.OrganizationId, query, ct));
         }).RequireAuthorization().Produces<TenantInvitationsResponse>().Produces(400).Produces(401).Produces(403)
             .WithName("ListTenantInvitations").WithTags("TenantInvitations");
 
