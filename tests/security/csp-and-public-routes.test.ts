@@ -212,7 +212,7 @@ describe('F5 — CV upload S3 origin in connect-src', () => {
   });
 });
 
-describe('env schema — CV_UPLOADS_REGION required with CV_UPLOADS_BUCKET', () => {
+describe('env schema — CV_UPLOADS_REGION with CV_UPLOADS_BUCKET', () => {
   function stubRequiredEnv() {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://x.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon');
@@ -220,16 +220,18 @@ describe('env schema — CV_UPLOADS_REGION required with CV_UPLOADS_BUCKET', () 
     vi.stubEnv('NODE_ENV', 'production');
   }
 
-  it('fails production env validation when the bucket is set without a region', async () => {
+  it('warns (without failing validation, so admin pages stay up) when the bucket is set without a region', async () => {
     stubRequiredEnv();
     vi.stubEnv('CV_UPLOADS_BUCKET', 'tims-cv-uploads');
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('CV_UPLOADS_REGION', '');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       vi.resetModules();
-      await expect(import('../../apps/web/lib/env')).rejects.toThrow('Invalid environment variables');
-      expect(err).toHaveBeenCalledWith(expect.stringContaining('CV_UPLOADS_REGION'));
+      const { env } = await import('../../apps/web/lib/env');
+      expect(env.CV_UPLOADS_BUCKET).toBe('tims-cv-uploads');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('CV_UPLOADS_REGION'));
     } finally {
-      err.mockRestore();
+      warn.mockRestore();
     }
   });
 
