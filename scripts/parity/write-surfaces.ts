@@ -46,6 +46,11 @@ import {
   WRITE_ENGAGEMENT_PLAN_MARKER,
   WRITE_NINEBOX,
   WRITE_NINEBOX_CAL_MARKER,
+  ensureAssessmentTypeWritePreconditions,
+  resolveAssessmentTypeWriteResources,
+  WRITE_ASSESSMENT_TYPES,
+  WRITE_ASSESSMENT_TYPE_MARKER,
+  WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
 } from './seed';
 
 // Re-export the write-verify fixtures (defined in seed.ts to keep the seed→registry import
@@ -62,6 +67,9 @@ export {
   WRITE_NINEBOX_CAL_MARKER,
   WRITE_ORG_CREATE_SLUG,
   WRITE_ORG_CREATE_NAME,
+  WRITE_ASSESSMENT_TYPES,
+  WRITE_ASSESSMENT_TYPE_MARKER,
+  WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
 };
 
 /** A deterministic Z-anchored effective date for create bodies (the C# validator
@@ -1795,6 +1803,158 @@ const platformOrganizationsCreateSurface: WriteSurface<PlatformOrganizationsCrea
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// assessment-types (F13, PR #309) — Platform__AssessmentTypeWriteEnabled
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids resolved for the assessment-type authoring surface (seed.ts resolveAssessmentTypeWriteResources). */
+export interface AssessmentTypeWriteResolved extends WriteResolvedBase {
+  orgAId: string;
+  userIdByRole: Record<string, string>;
+}
+
+/** The description update-type writes (distinct from the seeded one, so a no-op cannot pass). */
+export const WRITE_ASSESSMENT_TYPE_UPDATED_DESCRIPTION = 'parity updated';
+
+const typeStateReadback = (id: string, expectDescription: string, expectActive: boolean, what: string): WriteReadback => ({
+  sql: `SELECT description, is_active FROM assessment_types WHERE id = $1`,
+  params: [id],
+  expect: (rows) => {
+    if (rows.length !== 1) return `fixture type ${id} missing`;
+    if (rows[0].description !== expectDescription)
+      return `${what}: description ${JSON.stringify(rows[0].description)} != ${JSON.stringify(expectDescription)}`;
+    if (rows[0].is_active !== expectActive) return `${what}: is_active ${rows[0].is_active} != ${expectActive}`;
+    return null;
+  },
+});
+
+const expectTypeRow = (b: unknown, check: (o: Record<string, unknown>) => string | null): string | null => {
+  const o = asObj(b);
+  if (!o) return 'response is not an object';
+  if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
+  return check(o);
+};
+
+// Greenfield C# (no TS writer ever existed — tests/governance/assessment-types-no-ts-writers.test.ts), so
+// no endpoint carries a tsProcedure and light-parity is a C# side-effect assertion via raw SQL readbacks.
+// The PROBE is hr_admin, deliberately (see the seed.ts section header): super_admin is privileged in
+// PermissionService and never reads role_permissions, so only an hr_admin 200 proves the grant fixture.
+// hrbp holds assessment:read@unit only → the DENIED role, a grant-level 403 on every endpoint.
+// ORDERING DEPENDENCY (create-type): cmdVerifyWrite runs idor → extraProbes → rbac → parity per endpoint
+// (cli.ts), so hrbp's denied create runs BEFORE the probe's create and "0 marker rows" is the correct
+// no-mutation proof — the same dependency organization-create documents.
+const assessmentTypesSurface: WriteSurface<AssessmentTypeWriteResolved> = {
+  key: 'assessment-types',
+  flag: 'Platform__AssessmentTypeWriteEnabled',
+  probeRole: 'hr_admin',
+  roles: ['hr_admin', 'hrbp'],
+  ensurePreconditions: ensureAssessmentTypeWritePreconditions,
+  resolveResources: resolveAssessmentTypeWriteResources,
+  endpoints: [
+    {
+      name: 'create-type',
+      method: 'POST',
+      buildParity: () => ({
+        path: '/assessments/types',
+        body: { name: WRITE_ASSESSMENT_TYPE_MARKER, description: 'parity create', duration: 30 },
+      }),
+      // no buildIdor: the org is the caller's resolved org, never input (an organizationId key is a 400).
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) =>
+        expectTypeRow(b, (o) => {
+          if (o.name !== WRITE_ASSESSMENT_TYPE_MARKER) return `expected the marker name, got ${JSON.stringify(o.name)}`;
+          if (o.code !== 'parity_write_assessment_type') return `expected the derived code, got ${JSON.stringify(o.code)}`;
+          if (o.isActive !== true) return `expected isActive true, got ${JSON.stringify(o.isActive)}`;
+          return null;
+        }),
+      // Self-locate the created row by (org A, marker) and require its create-audit row, written in the
+      // same transaction (the repository is fail-closed on audit).
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT t.id, t.is_active,
+                       (SELECT count(*)::int FROM audit_logs a
+                         WHERE a.entity = 'assessment_type' AND a.entity_id = t.id::text
+                           AND a.action = 'assessment_type_created' AND a.actor_id = $3) AS audits
+                FROM assessment_types t WHERE t.organization_id = $1 AND t.name = $2`,
+          params: [r.orgAId, WRITE_ASSESSMENT_TYPE_MARKER, r.userIdByRole.hr_admin],
+          expect: (rows) => {
+            if (rows.length !== 1) return `expected exactly 1 marker type in org A, found ${rows.length}`;
+            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created row ${rows[0].id}`;
+            if (rows[0].is_active !== true) return 'created type is not active';
+            if (Number(rows[0].audits) !== 1) return `expected 1 create audit by the probe, found ${rows[0].audits}`;
+            return null;
+          },
+        };
+      },
+      readbackNoMutation: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM assessment_types WHERE organization_id = $1 AND name = $2`,
+        params: [r.orgAId, WRITE_ASSESSMENT_TYPE_MARKER],
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden create still produced ${rows[0]?.n} marker type row(s)`,
+      }),
+    },
+    {
+      name: 'update-type',
+      method: 'PATCH',
+      buildParity: () => ({
+        path: `/assessments/types/${WRITE_ASSESSMENT_TYPES.updateA}`,
+        body: { description: WRITE_ASSESSMENT_TYPE_UPDATED_DESCRIPTION },
+      }),
+      buildIdor: () => ({
+        path: `/assessments/types/${WRITE_ASSESSMENT_TYPES.updateB}`,
+        body: { description: WRITE_ASSESSMENT_TYPE_UPDATED_DESCRIPTION },
+      }),
+      idorDeniedStatuses: [404], // org-B id: invisible under TenantScope + explicit org filter → 404
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) =>
+        expectTypeRow(b, (o) =>
+          o.id !== WRITE_ASSESSMENT_TYPES.updateA
+            ? `expected id ${WRITE_ASSESSMENT_TYPES.updateA}, got ${JSON.stringify(o.id)}`
+            : o.description !== WRITE_ASSESSMENT_TYPE_UPDATED_DESCRIPTION
+              ? `expected the updated description, got ${JSON.stringify(o.description)}`
+              : null,
+        ),
+      readbackMutated: () =>
+        typeStateReadback(WRITE_ASSESSMENT_TYPES.updateA, WRITE_ASSESSMENT_TYPE_UPDATED_DESCRIPTION, true, 'update did not apply'),
+      readbackNoMutation: (_r, target) =>
+        typeStateReadback(
+          target === 'b' ? WRITE_ASSESSMENT_TYPES.updateB : WRITE_ASSESSMENT_TYPES.updateA,
+          WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
+          true,
+          'a forbidden update mutated the type',
+        ),
+    },
+    {
+      name: 'deactivate-type',
+      method: 'POST',
+      buildParity: () => ({ path: `/assessments/types/${WRITE_ASSESSMENT_TYPES.deactivateA}/deactivate`, body: {} }),
+      buildIdor: () => ({ path: `/assessments/types/${WRITE_ASSESSMENT_TYPES.deactivateB}/deactivate`, body: {} }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) =>
+        expectTypeRow(b, (o) =>
+          o.id !== WRITE_ASSESSMENT_TYPES.deactivateA
+            ? `expected id ${WRITE_ASSESSMENT_TYPES.deactivateA}, got ${JSON.stringify(o.id)}`
+            : o.isActive !== false
+              ? `expected isActive false, got ${JSON.stringify(o.isActive)}`
+              : null,
+        ),
+      readbackMutated: () =>
+        typeStateReadback(WRITE_ASSESSMENT_TYPES.deactivateA, WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION, false, 'deactivate did not apply'),
+      readbackNoMutation: (_r, target) =>
+        typeStateReadback(
+          target === 'b' ? WRITE_ASSESSMENT_TYPES.deactivateB : WRITE_ASSESSMENT_TYPES.deactivateA,
+          WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
+          true,
+          'a forbidden deactivate mutated the type',
+        ),
+    },
+  ],
+};
+
 export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   compensation: defineWriteSurface(compensationSurface),
   evaluation360: defineWriteSurface(evaluation360Surface),
@@ -1804,4 +1964,5 @@ export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   'access-review': defineWriteSurface(accessReviewSurface),
   organization: defineWriteSurface(platformOrganizationsSurface),
   'organization-create': defineWriteSurface(platformOrganizationsCreateSurface),
+  'assessment-types': defineWriteSurface(assessmentTypesSurface),
 };

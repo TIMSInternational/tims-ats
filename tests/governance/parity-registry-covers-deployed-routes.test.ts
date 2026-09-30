@@ -527,10 +527,12 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         the dedicated allowlist group below because tenant-role parity is structurally inapplicable before
     //         the invited principal has a tenant user row.
     //         181 → 186: F8 tenant invitations (PR #307) deployed five routes DARK; one is registered
-    //         (GET /tenant-invitations) and four are allowlisted under their own group. PR #307's head
-    //         shipped the routes WITHOUT moving this pin or the allowlist — this guard was red on that
-    //         head; fixed in the same PR by the tier-3 panel follow-up.
-    expect(deployed.size).toBe(186);
+    //         (GET /tenant-invitations) and four are allowlisted under their own group.
+    //         186 → 189 (F13 / PR #309): the three assessment-type authoring writes
+    //         (POST /assessments/types, PATCH /assessments/types/{id}, POST …/{id}/deactivate) — landed
+    //         dark AND registered in the same change (write-surfaces.ts `assessment-types`), so the
+    //         allowlist is unchanged.
+    expect(deployed.size).toBe(189);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -541,15 +543,16 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //        36 → 39 was slice 23 PR 3; 30 → 36 was PR 2; 27 → 30 was PR 1, which created that
     //        surface; 24 → 27 was slice 22's `invitation` surface, 2026-08-12; 26 → 27 on the write
     //        side was 2026-08-11: `organization-create` registered POST /platform/organizations, #208.)
-    //   92 → 93, 2026-09-29: + tenant-invitations/list (15 read surfaces, 66 read endpoints).
-    expect(registryEndpointCount).toBe(93);
+    //   92 → 93, 2026-09-29: + tenant-invitations/list (PR #307).
+    //   93 → 96 (PR #309): write side 27 → 30, the `assessment-types` surface's three endpoints.
+    expect(registryEndpointCount).toBe(96);
     //   ...resolving to 92 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
     //   (This pin is WHY the deleted reporting registration's second kpis probe at period=90D was not
     //   restored: it normalises onto `GET /reporting/kpis` and would collide here.)
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(93);
-    //   27 write paths resolved through the Proxy stub, none degenerate.
-    expect(writePaths.length).toBe(27);
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(96);
+    //   30 write paths resolved through the Proxy stub, none degenerate (27 → 30: assessment-types).
+    expect(writePaths.length).toBe(30);
   });
 
   it('every registry entry points at a route that is actually deployed', () => {

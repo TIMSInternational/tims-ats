@@ -1844,6 +1844,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assessments/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentTypeCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assessments/types/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["AssessmentTypeUpdate"];
+        trace?: never;
+    };
+    "/assessments/types/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentTypeDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagement/surveys": {
         parameters: {
             query?: never;
@@ -2969,6 +3017,18 @@ export interface components {
             responses: null | number | string;
             suppressed: boolean;
         };
+        AssessmentTypeRow: {
+            id: string;
+            organizationId: string;
+            name: string;
+            code: string;
+            description: null | string;
+            /** Format: int32 */
+            duration: null | number | string;
+            isActive: boolean;
+            createdAt: string;
+            updatedAt: string;
+        };
         AssignRatersBody: {
             assignments: components["schemas"]["RaterAssignmentBody"][];
         };
@@ -3351,6 +3411,12 @@ export interface components {
             effectiveDate: string;
             currency?: null | string;
             reason?: null | string;
+        };
+        CreateAssessmentTypeBody: {
+            name: string;
+            description?: null | string;
+            /** Format: int32 */
+            duration?: null | number | string;
         };
         CreateCalibrationBody: {
             period: string;
@@ -4846,6 +4912,12 @@ export interface components {
             status?: null | string;
             responsibleId?: null | string;
             dueDate?: null | string;
+        };
+        UpdateAssessmentTypeBody: {
+            name?: string;
+            description?: null | string;
+            /** Format: int32 */
+            duration?: null | number | string;
         };
         UpdateCriticalRoleBandBody: {
             targetBandLevel: null | string;
@@ -10002,6 +10074,162 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalibrationSessionRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentTypeCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAssessmentTypeBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentTypeRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentTypeUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAssessmentTypeBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentTypeRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentTypeDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentTypeRow"];
                 };
             };
             /** @description Unauthorized */

@@ -197,7 +197,8 @@ const EMPLOYEE_HOME: NavSection[] = [
     items: [
       { href: '/people/performance', labelKey: 'sidebar.myPerformance', icon: 'target', module: 'performance' },
       { href: '/learning', labelKey: 'sidebar.myLearning', icon: 'book', module: 'learning' },
-      { href: '/people/onboarding', labelKey: 'sidebar.myOnboarding', icon: 'rocket', module: 'onboarding' },
+      // Personal view (F12) — /people/onboarding is the HR dashboard (HR actions, org KPIs).
+      { href: '/my-onboarding', labelKey: 'sidebar.myOnboarding', icon: 'rocket', module: 'onboarding' },
       { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
     ],
   },

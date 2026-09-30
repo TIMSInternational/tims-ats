@@ -7,7 +7,9 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
-import { scheduledOnboardingCheckIns } from '../services/onboarding-defaults';
+import { ownScopeTaskUpdateDecision, sentKeys } from '../services/onboarding-self-service';
+import { onboardingPlanRepository } from '../repositories/onboarding-plan.repository';
+import type { AccessContext } from '../access/types';
 
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
@@ -23,6 +25,13 @@ async function assertUsersInOrg(orgId: string, userIds: (string | null | undefin
   }
 }
 
+// Own-scoped callers (the `employee` role: onboarding read+update @own) may
+// reach a plan as its hire OR its buddy, but must not manage it — see
+// services/onboarding-self-service.ts for the full rule.
+function forbidOwnScope(access: AccessContext, message: string): void {
+  if (access.scope === 'own') throw new TRPCError({ code: 'FORBIDDEN', message });
+}
+
 export const onboardingRouter = router({
   // 10.1 — List onboarding plans for the organization
   list: permissionProcedure('onboarding', 'read')
@@ -33,10 +42,13 @@ export const onboardingRouter = router({
         status: z.enum(['active', 'completed', 'cancelled']).optional(),
         phase: z.string().max(100).optional(),
         search: z.string().max(200).optional(),
+        // Self-service ("Mi Onboarding"): only plans where the caller IS the hire.
+        // Applied on top of the scope fragment, so it can only narrow.
+        mine: z.boolean().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { cursor, limit, status, phase, search } = input;
+      const { cursor, limit, status, phase, search, mine } = input;
       const scopeWhere = (await scopeWhereFor('onboardingPlan', ctx.access, ctx.user.id)) as Prisma.OnboardingPlanWhereInput;
 
       const where: Prisma.OnboardingPlanWhereInput = {
@@ -44,6 +56,7 @@ export const onboardingRouter = router({
           { organizationId: ctx.user.organizationId },
           scopeWhere,
           {
+            ...(mine ? { userId: ctx.user.id } : {}),
             ...(status ? { status } : {}),
             ...(phase ? { phase } : {}),
             ...(search
@@ -141,20 +154,19 @@ export const onboardingRouter = router({
         'No puedes crear onboarding para este usuario',
       );
 
-      return db.onboardingPlan.create({
-        data: {
-          ...input,
-          organizationId: ctx.user.organizationId,
-          createdById: ctx.user.id,
-          checkIns: {
-            create: scheduledOnboardingCheckIns(input.startDate, ctx.user.organizationId),
-          },
-        },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true } },
-          buddy: { select: { id: true, firstName: true, lastName: true } },
-        },
+      // One active plan per hire: a double-submit (or HR re-creating a plan the
+      // hire handoff already seeded) must not duplicate the default checklist.
+      // Checked and written under a per-(org, hire) advisory lock, so two
+      // concurrent submits cannot both pass the check (onboarding-plan.repository.ts).
+      const plan = await onboardingPlanRepository.createWithDefaultsIfNoActive({
+        ...input,
+        organizationId: ctx.user.organizationId,
+        createdById: ctx.user.id,
       });
+      if (!plan) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Este usuario ya tiene un plan de onboarding activo' });
+      }
+      return plan;
     }),
 
   // 10.4 — Update onboarding plan (phase, status, buddy, risk)
@@ -172,20 +184,34 @@ export const onboardingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
 
+      // The hire / buddy can see the plan but never manage it.
+      forbidOwnScope(ctx.access, 'No puedes modificar este plan de onboarding');
+
       // Scope + IDOR probe: a narrow scope must not reach an out-of-scope plan by id.
       await assertScoped('onboardingPlan', id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       if (data.buddyId) await assertUsersInOrg(ctx.user.organizationId, [data.buddyId]);
 
-      return db.onboardingPlan.update({
-        where: { id },
-        data: {
-          ...data,
-          ...(data.status === 'completed' && !data.completedAt
-            ? { completedAt: new Date() }
-            : {}),
-        },
-      });
+      const update = {
+        ...data,
+        ...(data.status === 'completed' && !data.completedAt
+          ? { completedAt: new Date() }
+          : {}),
+      };
+
+      // Re-activating must not produce a second active plan for the same hire.
+      if (data.status === 'active') {
+        const result = await onboardingPlanRepository.reactivateIfNoOtherActive(ctx.user.organizationId, id, update);
+        if (result.outcome === 'not_found') {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Plan de onboarding no encontrado' });
+        }
+        if (result.outcome === 'conflict') {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Este usuario ya tiene un plan de onboarding activo' });
+        }
+        return result.plan;
+      }
+
+      return db.onboardingPlan.update({ where: { id }, data: update });
     }),
 
   // 10.5 — List tasks for a plan
@@ -264,10 +290,26 @@ export const onboardingRouter = router({
       // plan's tasks by task id.
       const task = await db.onboardingTask.findFirst({
         where: { id, organizationId: ctx.user.organizationId },
-        select: { id: true, planId: true },
+        select: { id: true, planId: true, responsible: true, plan: { select: { userId: true, buddyId: true } } },
       });
       if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarea de onboarding no encontrada' });
       await assertScoped('onboardingPlan', task.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
+      // assertScoped only proves the caller may REACH the plan. An own-scoped
+      // caller (hire or buddy) may toggle `completed` on the tasks they own and
+      // nothing else (services/onboarding-self-service.ts).
+      if (ctx.access.scope === 'own') {
+        const decision = ownScopeTaskUpdateDecision({
+          callerId: ctx.user.id,
+          plan: task.plan,
+          task: { responsible: task.responsible },
+          completed,
+          otherFieldsSent: sentKeys(rest, []),
+        });
+        if (!decision.allowed) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Solo puedes completar tus propias tareas de onboarding' });
+        }
+      }
 
       return db.onboardingTask.update({
         where: { id },
@@ -373,6 +415,9 @@ export const onboardingRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+
+      // Check-ins are run by HR / the manager, not by the hire or buddy.
+      forbidOwnScope(ctx.access, 'No puedes completar check-ins de onboarding');
 
       // Child table: fetch the (org-scoped) check-in to find its parent plan,
       // then probe the parent so narrow scopes can't reach an out-of-scope

@@ -64,7 +64,6 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "candidates",
     "assessment_results",
     "assessment_assignments",
-    "assessment_types",
     "invoices",
     "vacancies",
     "applications",
@@ -112,7 +111,8 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "fit_scores",
     "role_family_weight_profiles",
     "notifications",
-    "notification_preferences"
+    "notification_preferences",
+    "assessment_types"
   ],
   "quartzInfra": [
     "qrtz_job_details",
@@ -128,6 +128,7 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "qrtz_locks"
   ],
   "notes": {
+    "assessment_type_authoring_f13": "F13 tenant assessment-type authoring (greenfield C#; TS only had the read-only assessment.listTypes). `assessment_types` MOVES from efcoreReadOnly[] to efcoreStranglerWrite[]: AssessmentTypeWriteDbContext INSERTs (create) and UPDATEs name/description/duration/is_active/updated_at (update, soft deactivate) under TenantScope as app_tenant, with an explicit organization_id filter; `code` is derived from the name on insert and never updated; `config` is not mapped. It never DELETEs. `audit_logs` stays efcoreAppendOnly[] (one INSERT per mutation, same transaction). ExternalAssessmentDbContext still maps assessment_types read-only. Prisma keeps the DDL. Dark behind Platform:AssessmentTypeWriteEnabled (default false).",
     "user_invitation_create_20260914": "Default-disabled individual-user creation and role lookup reuse the provisioning context under target TenantScope. Pending invitation and creation audit are atomic; post-commit initial delivery is shared with organization invitations. Active organization and selected tenant role are checked before insertion. No schema/ownership flip or live cutover; existing TS writers remain. See csharp-migration/user-invitation-create.md.",
     "organization_invitation_create_20260914": "Default-disabled C# org invitation creation uses OrganizationBundleWriter for the seven-table setup and inserts platform_invitations plus creation audit atomically under TenantScope. Initial email is post-commit; provider acceptance gates the guarded sent update. Reuses PlatformOrganizationsCreateDbContext. No table ownership or schema changes; TS writers remain until controlled per-operation cutover. See csharp-migration/organization-invitation-create.md.",
     "invitation_resend_20260914": "C# now maps the token privately and conditionally updates platform_invitations for resend only, behind Platform:PlatformInvitationResendEnabled (default false). The table moves from efcoreReadOnly to efcoreStranglerWrite; Prisma retains DDL and all existing TS writers. This is not a table-ownership flip. PlatformOwnerGate is the cross-org authorization boundary. Before activation retire/disable the TS resend path for the selected operation; creation, acceptance, revoke, bulk invites and auth-callback writers still block whole-table retirement. See csharp-migration/invitation-resend.md.",

@@ -216,7 +216,7 @@ describe('writeProbeRoleDenials (pure) — the #205 defect class on the write si
     expect(writeProbeRoleDenials(s)).toEqual(['create=undeclared']);
   });
 
-  it('every REGISTERED write surface passes it today — 8 surfaces, 27 endpoints', () => {
+  it('every REGISTERED write surface passes it today — 9 surfaces, 30 endpoints', () => {
     // The registry-level invariant, the write-side analogue of surfaces.test.ts's
     // "every surface probes with a role it actually grants 200". Non-vacuity: the counts are pinned,
     // so an empty registry cannot make this loop iterate zero times and still read as enforced.
@@ -226,8 +226,9 @@ describe('writeProbeRoleDenials (pure) — the #205 defect class on the write si
       expect(writeProbeRoleDenials(s), `${key}: probeRole "${s.probeRole}" is not 'allow' everywhere`).toEqual([]);
     }
     // 8 / 27 since 2026-08-11: `organization-create` registered (#208).
-    expect(Object.keys(WRITE_SURFACES).length).toBe(8);
-    expect(endpoints).toBe(27);
+    // 9 / 30 since 2026-09-29: `assessment-types` registered (F13, PR #309 — create/update/deactivate).
+    expect(Object.keys(WRITE_SURFACES).length).toBe(9);
+    expect(endpoints).toBe(30);
   });
 });
 
