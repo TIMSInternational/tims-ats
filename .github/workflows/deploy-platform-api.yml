@@ -47,7 +47,7 @@ on:
         description: "Why are you deploying by hand? (recorded in the job summary)"
         required: true
       force_older:
-        description: "Deploy even though production runs a NEWER or diverged commit (a regression; logged in the summary). Prefer the rollback workflow."
+        description: "Deploy even though production runs a NEWER commit (a regression; logged in the summary). Prefer the rollback workflow."
         type: boolean
         required: false
         default: false
@@ -90,10 +90,17 @@ on:
 #       could then roll forward over it. Mitigation is procedural (runbook 2.3): never re-run a
 #       rollback run; always dispatch a NEW one, after setting the pause.
 #
-# MANUAL deploys pass the same no-regression rule: `decide` refuses a dispatch whose commit is OLDER
-# than, or diverged from, the running commit unless the dispatch sets `force_older: true`, which is
-# recorded in the job summary. If the live image then changes while the forced deploy waits, the
-# preflight refuses instead of skipping, so the operator re-decides against the new state.
+# ONE DECISION RULE for automatic and manual deploys (Codex round 4, 2026-09-29) — see `decide`:
+# same commit -> skip; production runs a NEWER commit -> skip (automatic) or refuse unless
+# `force_older: true` (manual; recorded in the job summary); production runs an OLDER or a DIVERGED
+# commit -> deploy. Both paths only ever deploy a commit on main, so replacing a diverged image restores
+# main rather than regressing it. Besides that NEWER case, the only asymmetry: the automatic path also skips when nothing under
+# services/Tims.Platform changed; a manual dispatch deploys regardless. If the live image changes while
+# a FORCED deploy waits, the preflight refuses instead of skipping, so the operator re-decides.
+# The preflight also refuses when the live image moved WHILE WAITING to a diverged or unresolvable
+# commit: pipeline deploys only install main commits and rollbacks are excluded, so that is an
+# out-of-band change, and a human should look before it is overwritten. That is a change-while-waiting
+# guard, not a second decision rule.
 permissions:
   id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
   contents: read
@@ -196,45 +203,58 @@ jobs:
             RUNNING_SHA="$(git rev-parse --verify --quiet "${RUNNING_TAG}^{commit}" || true)"
           fi
 
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            # The same no-regression rule as the automatic path. A manual deploy of an OLDER (or
-            # diverged) commit over the running one is a rollback in disguise and needs force_older.
-            if [ -n "$RUNNING_SHA" ] && [ "$RUNNING_SHA" = "$SHA" ]; then
-              verdict false "production already runs this commit (manual deploy by $GITHUB_ACTOR)"
-              exit 0
-            fi
-            if [ -n "$RUNNING_SHA" ] && ! git merge-base --is-ancestor "$RUNNING_SHA" "$SHA"; then
-              if [ "$FORCE_OLDER" != "true" ]; then
-                echo "::error::Production runs \`$RUNNING_TAG\`, which is NEWER than or diverged from $SHA. Refusing a manual regression; use the rollback workflow, or re-dispatch with force_older=true."
-                verdict false "REFUSED manual deploy by $GITHUB_ACTOR: production runs NEWER or diverged \`$RUNNING_TAG\`"
-                exit 1
-              fi
-              echo "::warning::force_older=true: deploying $SHA over NEWER or diverged \`$RUNNING_TAG\`."
-              verdict true "FORCED (force_older=true) manual deploy by $GITHUB_ACTOR over NEWER or diverged \`$RUNNING_TAG\` — reason: $REASON"
-              exit 0
-            fi
-            verdict true "manual deploy by $GITHUB_ACTOR — reason: $REASON"
+          # ONE rule for both paths (automatic and manual), in this order:
+          #   unattributable running tag -> deploy (restores attributability);
+          #   same commit                -> skip;
+          #   running is NEWER (this commit is its ancestor) -> automatic: skip; manual: refuse unless
+          #                                 force_older=true (a rollback in disguise; recorded);
+          #   running is OLDER or DIVERGED -> deploy. Both paths deploy a commit on main (checked above;
+          #                                 a dispatch runs from main only), so deploying over a running
+          #                                 commit that is not on main's line RESTORES main — it does not
+          #                                 regress it. The warning names the replaced commit.
+          # Besides the NEWER case, the only difference: the automatic path also skips when nothing under
+          # services/Tims.Platform changed, because its trigger (.NET Platform CI) is path-filtered more broadly. A manual
+          # dispatch is an explicit request to deploy, so it does not.
+          if [ -z "$RUNNING_SHA" ]; then
+            echo "::warning::Running tag '$RUNNING_TAG' does not resolve to a commit; deploying."
+            verdict true "running tag \`$RUNNING_TAG\` is unattributable — deploying $SHA ($EVENT by $GITHUB_ACTOR)"
             exit 0
           fi
+          if [ "$RUNNING_SHA" = "$SHA" ]; then
+            verdict false "production already runs this commit ($EVENT by $GITHUB_ACTOR)"
+            exit 0
+          fi
+          if git merge-base --is-ancestor "$SHA" "$RUNNING_SHA"; then
+            if [ "$EVENT" != "workflow_dispatch" ]; then
+              # Test runs can finish out of order. Deploying an older green commit after a newer one
+              # would silently roll production BACK.
+              verdict false "production runs \`$RUNNING_TAG\`, which is NEWER than the tested commit"
+              exit 0
+            fi
+            if [ "$FORCE_OLDER" != "true" ]; then
+              echo "::error::Production runs \`$RUNNING_TAG\`, which is NEWER than $SHA. Refusing a manual regression; use the rollback workflow, or re-dispatch with force_older=true."
+              verdict false "REFUSED manual deploy by $GITHUB_ACTOR: production runs NEWER \`$RUNNING_TAG\`"
+              exit 1
+            fi
+            echo "::warning::force_older=true: deploying $SHA over NEWER \`$RUNNING_TAG\`."
+            verdict true "FORCED (force_older=true) manual deploy by $GITHUB_ACTOR over NEWER \`$RUNNING_TAG\` — reason: $REASON"
+            exit 0
+          fi
+          DIVERGED=""
+          if ! git merge-base --is-ancestor "$RUNNING_SHA" "$SHA"; then
+            DIVERGED=" (DIVERGED: not on main's history — deploying main replaces it)"
+            echo "::warning::Production runs \`$RUNNING_TAG\`, which has diverged from main; deploying $SHA restores main."
+          fi
 
-          if [ -z "$RUNNING_SHA" ]; then
-            # Unattributable running image (e.g. a hand-pushed tag). The tested commit is on main and
-            # green, so deploying it RESTORES attributability — skipping would leave the drift in place.
-            echo "::warning::Running tag '$RUNNING_TAG' does not resolve to a commit; deploying."
-            verdict true "running tag \`$RUNNING_TAG\` is unattributable — deploying the tested commit"
-          elif [ "$RUNNING_SHA" = "$SHA" ]; then
-            verdict false "production already runs this commit"
-          elif git merge-base --is-ancestor "$SHA" "$RUNNING_SHA"; then
-            # Test runs can finish out of order. Deploying an older green commit after a newer one
-            # would silently roll production BACK.
-            verdict false "production runs \`$RUNNING_TAG\`, which is NEWER than the tested commit"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            verdict true "manual deploy by $GITHUB_ACTOR over \`$RUNNING_TAG\`$DIVERGED — reason: $REASON"
           elif git diff --quiet "$RUNNING_SHA" "$SHA" -- \
                  services/Tims.Platform \
                  .github/workflows/deploy-platform-api.yml \
                  scripts/deploy/apprunner-image-payload.py; then
-            verdict false "no change under services/Tims.Platform since the running \`$RUNNING_TAG\`"
+            verdict false "no change under services/Tims.Platform since the running \`$RUNNING_TAG\`$DIVERGED"
           else
-            verdict true "C# changed since the running \`$RUNNING_TAG\` and .NET Platform CI passed"
+            verdict true "C# changed since the running \`$RUNNING_TAG\`$DIVERGED and .NET Platform CI passed"
           fi
 
   deploy:
@@ -271,7 +291,38 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # The repository is IMMUTABLE (services/Tims.Platform/deploy/terraform/main.tf,
+      # image_tag_mutability), so pushing a tag that already exists FAILS. That happens whenever two
+      # runs approve the same commit (e.g. a manual dispatch racing the automatic run): the second
+      # would die at the push, before its preflight could take the "already live -> skip" exit. So an
+      # existing tag is reused, not rebuilt. Only ImageNotFoundException means "absent"; any other
+      # error (auth, throttling, network) fails the job — an unreadable registry is not an empty one.
+      # This runs inside the platform-api-mutation lock, so no other PIPELINE run can push the tag
+      # between this check and the push below; only an out-of-band push can, and that push-time
+      # failure is then the correct, loud outcome.
+      - name: Check whether the image is already in ECR
+        id: image
+        env:
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          set -euo pipefail
+          if DIGEST="$(aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPO" \
+                 --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text 2>ecr-err.txt)"; then
+            echo "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$' \
+              || { echo "::error::Unexpected describe-images result for $TAG: '$DIGEST'"; exit 1; }
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image $ECR_REPO:$TAG already exists ($DIGEST); reusing it instead of rebuilding."
+          elif grep -q 'ImageNotFoundException' ecr-err.txt; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Image $ECR_REPO:$TAG is not in ECR yet; building it."
+          else
+            cat ecr-err.txt >&2
+            echo "::error::Cannot tell whether $ECR_REPO:$TAG exists; refusing to build or deploy blind."
+            exit 1
+          fi
+
       - name: Build and push the API image
+        if: steps.image.outputs.exists == 'false'
         working-directory: services/Tims.Platform
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}

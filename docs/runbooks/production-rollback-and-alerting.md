@@ -33,9 +33,19 @@ other change to the live image makes it refuse.
 
 The run's job summary says which rule applied. A manual deploy is still available as
 **Actions → Deploy platform API → Run workflow** (branch `main`, reason required). It follows the same
-rule as the automatic deploy. If production runs the same commit, it skips. If production runs a
-**newer** or diverged commit, it refuses, unless you tick `force_older`. The summary records a
-forced deploy. To go back to an older image, use the rollback workflow (section 2), not `force_older`.
+decision rule as the automatic deploy. If production runs the same commit, it skips. If production
+runs an **older** commit, or a **diverged** one (not on main's history), it deploys: both paths only
+ever deploy a commit on main, so replacing a diverged image restores main, and the summary names the
+image it replaced. If production runs a **newer** commit, the automatic deploy skips and a manual one
+refuses, unless you tick `force_older`; the summary records a forced deploy. Besides that newer case, the one difference: the
+automatic deploy also skips when nothing under `services/Tims.Platform` changed, while a manual
+dispatch deploys regardless. To go back to an older image, use the rollback workflow (section 2), not
+`force_older`.
+
+If the image for the commit is already in ECR (for example, a manual dispatch and the automatic run
+both approved the same commit), the deploy reuses it instead of rebuilding; the repository's tags are
+immutable, so a second push of the same tag would fail. If the registry cannot be read, the deploy
+fails rather than guessing.
 
 ---
 
