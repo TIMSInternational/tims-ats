@@ -6,11 +6,20 @@ import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
+import { runUnscopedLogged } from '../../lib/unscoped';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
   return email.trim().toLowerCase();
 }
+
+// Public signing-token procedures run with NO tenant in scope (the candidate has no
+// session and the org is unknown until the token resolves an offer), and `db` here is
+// tenantDb, which fails closed without one. The token lookup is cross-tenant by nature,
+// so these procedures opt in explicitly — same unscoped behavior as before the guard.
+const signingTokenProcedure = publicProcedure.use(({ next }) =>
+  runUnscopedLogged('offer-signing-token', () => next()),
+);
 
 export const offerSigningRouter = router({
   // Generate a unique signing link for an offer. offer:create (recruiters) suffices to send an APPROVED
@@ -167,7 +176,7 @@ export const offerSigningRouter = router({
     }),
 
   // PUBLIC: Get offer data by signing token (no auth required)
-  getBySigningToken: publicProcedure
+  getBySigningToken: signingTokenProcedure
     .input(z.object({ token: z.string().min(1).max(100) }))
     .query(async ({ input }) => {
       const offers = await db.offer.findMany({
@@ -217,7 +226,7 @@ export const offerSigningRouter = router({
     }),
 
   // PUBLIC: Accept offer by signing token (no auth required)
-  acceptByToken: publicProcedure
+  acceptByToken: signingTokenProcedure
     .input(
       z.object({
         token: z.string().min(1).max(100),
@@ -320,7 +329,7 @@ export const offerSigningRouter = router({
     }),
 
   // PUBLIC: Decline offer by signing token (no auth required)
-  declineByToken: publicProcedure
+  declineByToken: signingTokenProcedure
     .input(z.object({ token: z.string().min(1).max(100) }))
     .mutation(async ({ input }) => {
       const offers = await db.offer.findMany({
