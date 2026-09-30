@@ -25,6 +25,7 @@ using Tims.Api.Compensation;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Api.Http;
+using Tims.Api.InterviewJoin;
 using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
@@ -52,6 +53,7 @@ using Tims.Application.Compensation;
 using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
+using Tims.Application.InterviewJoin;
 using Tims.Application.Engagement;
 using Tims.Application.Dei;
 using Tims.Application.FitEngine;
@@ -90,6 +92,7 @@ using Tims.Infrastructure.OrgStructure;
 using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
+using Tims.Infrastructure.InterviewJoin;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
@@ -358,6 +361,14 @@ try
             client.MaxResponseContentBufferSize = 65536;
         })
         .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    // WP-H: candidate video-interview join (anonymous, capability-token). Pre-tenant hash lookup, then
+    // tenant-filtered meeting_url claim + audit under app_tenant. Its own lazily-built data source, so a
+    // dark-flag boot never opens it. Daily key is optional at startup (missing ⇒ outcome "unavailable").
+    builder.Services.AddSingleton(_ => new CandidateInterviewJoinDataSourceHolder(
+        Npgsql.NpgsqlDataSource.Create(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddScoped<ICandidateInterviewJoinRepository, CandidateInterviewJoinRepository>();
+    builder.Services.AddScoped<CandidateInterviewJoin>();
+    builder.Services.AddDailyVideo(builder.Configuration);
     builder.Services.AddSingleton<IBulkInvitationWorker, BulkInvitationWorker>();
     builder.Services.AddScoped<BulkInvitationUseCase>();
     builder.Services.TryAddSingleton(TimeProvider.System);
@@ -1336,6 +1347,16 @@ try
     if (app.Configuration.GetValue<bool>("Invitations:SetupEnabled") || isOpenApiDocGeneration)
     {
         app.MapInvitationOnboardingEndpoints();
+    }
+    if (externalOptions.CandidateInterviewJoinEnabled || isOpenApiDocGeneration)
+    {
+        app.MapCandidateInterviewJoinEndpoints();
+    }
+    if (!isOpenApiDocGeneration)
+    {
+        CandidateInterviewJoinEndpoints.WarnIfVideoUnconfigured(app.Logger,
+            externalOptions.CandidateInterviewJoinEnabled,
+            app.Services.GetRequiredService<IOptions<DailyOptions>>().Value);
     }
     if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
     {

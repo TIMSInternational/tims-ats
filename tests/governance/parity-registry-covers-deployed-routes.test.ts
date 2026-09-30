@@ -478,8 +478,16 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'unguessable invitation token and are anonymous; completion additionally verifies the Supabase bearer identity ' +
       'against the invited email before the first users/user_roles rows are created. The role-parity harness cannot ' +
       'mint a tenant grant for a principal that deliberately does not exist yet, so these routes require their own ' +
-      'token, identity-provider, HTTP-boundary, and real-Postgres tests rather than a fabricated role fixture.',
-    routes: ['POST /invitations/setup/preview', 'POST /invitations/setup/register', 'POST /invitations/setup/complete'],
+      'token, identity-provider, HTTP-boundary, and real-Postgres tests rather than a fabricated role fixture. ' +
+      'POST /interviews/candidate-join (WP-H) is the same shape: anonymous, authenticated only by the emailed join ' +
+      'token hash, for a candidate who is never a TIMS principal — covered by CandidateInterviewJoin unit, ' +
+      'endpoint and Testcontainers repository tests instead.',
+    routes: [
+      'POST /invitations/setup/preview',
+      'POST /invitations/setup/register',
+      'POST /invitations/setup/complete',
+      'POST /interviews/candidate-join',
+    ],
   },
   {
     reason:
@@ -567,9 +575,12 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         allowlist is unchanged.
     //         189 → 190 (PR #304): the dark tenant people directory (GET /tenant/people/assignable),
     //         allowlisted above.
-    //         190 → 201 (PR #310, rebased onto main after #304): the dark tenant org structure — eleven
-    //         routes, all allowlisted in the org-structure group above (+11 here, +11 allowlist, +1 category).
-    expect(deployed.size).toBe(201);
+    //         190 → 191 (WP-H / PR #308): POST /interviews/candidate-join, deployed DARK behind
+    //         Platform:CandidateInterviewJoinEnabled and allowlisted with the invitation-setup group
+    //         (anonymous, capability-token). #308 measured 181 → 182 on its own base; +1 over main's 190.
+    //         191 → 202 (PR #310): the dark tenant org structure — eleven routes, all allowlisted in the
+    //         org-structure group above. Main 191 (after #308) + #310's +11 = 202.
+    expect(deployed.size).toBe(202);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -638,8 +649,12 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 86 → 89: the three invitation-setup operations are capability scoped before tenant membership.
     // 89 → 93: tenant invitations' four unregistrable routes (roles catalogue + three emailing/mutating POSTs).
     // 93 → 94 (PR #304): the dark tenant people directory, pending a remote grant/approver fixture.
-    // 94 → 105 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
-    expect(allowlistNormalised.length).toBe(105);
+    // 94 → 95: WP-H's anonymous candidate interview join (PR #308), the same capability-token shape as
+    //   invitation setup (#308 measured 89 → 90 on its own base; +1 over main's 94). It joins an
+    //   EXISTING group, so the group/category count is unchanged.
+    // 95 → 106 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
+    //   Main 95 (after #308) + #310's +11 = 106.
+    expect(allowlistNormalised.length).toBe(106);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

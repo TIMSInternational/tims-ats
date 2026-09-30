@@ -3,7 +3,8 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import { emailService } from '../../services/email.service';
+import { interviewEmailService } from '../../services/interview-email.service';
+import { clearedJoinTokenColumns, issueJoinToken } from '../../services/interview-join-token';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { isBlindedViewer, visibleScorecard } from '../../services/scorecard-visibility.service';
 
@@ -50,6 +51,7 @@ export const interviewCrudRouter = router({
       const [items, total] = await Promise.all([
         db.interview.findMany({
           where,
+          omit: { candidateJoinTokenHash: true },
           include: {
             candidate: {
               select: { id: true, firstName: true, lastName: true, email: true, avatar: true },
@@ -83,6 +85,7 @@ export const interviewCrudRouter = router({
 
       const interview = await db.interview.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
+        omit: { candidateJoinTokenHash: true },
         include: {
           candidate: {
             select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatar: true },
@@ -197,9 +200,13 @@ export const interviewCrudRouter = router({
         }
       }
 
+      // Video: mint the candidate join token; only its SHA-256 is persisted (same write).
+      // An external meetingUrl (Zoom/Meet/…) is kept as the link and gets no token; see candidateJoinApplies.
+      const joinToken = issueJoinToken(data.type, data.scheduledAt, data.duration, { meetingUrl: data.meetingUrl });
       const interview = await db.interview.create({
         data: {
           ...data,
+          ...joinToken.columns,
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
           status: 'scheduled',
@@ -211,6 +218,7 @@ export const interviewCrudRouter = router({
             })),
           },
         },
+        omit: { candidateJoinTokenHash: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
@@ -222,25 +230,13 @@ export const interviewCrudRouter = router({
         },
       });
 
-      // Fire-and-forget: send interview invitation email
-      const org = await db.organization.findFirst({
-        where: { id: ctx.user.organizationId },
-        select: { name: true, billingEmail: true },
+      // Fire-and-forget: candidate (join link) + each evaluator (staff room link), with .ics.
+      void interviewEmailService.notify({
+        orgId,
+        interviewId: interview.id,
+        kind: 'invite',
+        candidateJoinToken: joinToken.token,
       });
-      if (interview.candidate?.email && org) {
-        emailService.sendInterviewInvitation({
-          candidateEmail: interview.candidate.email,
-          candidateName: `${interview.candidate.firstName} ${interview.candidate.lastName}`,
-          vacancyTitle: interview.vacancy?.title ?? '',
-          companyName: org.name,
-          interviewType: data.type,
-          scheduledAt: data.scheduledAt,
-          duration: data.duration,
-          location: data.location ?? undefined,
-          meetingUrl: data.meetingUrl ?? undefined,
-          contactEmail: org.billingEmail ?? 'rrhh@timsinternational.com',
-        });
-      }
 
       return interview;
     }),
@@ -268,6 +264,8 @@ export const interviewCrudRouter = router({
         where: {
           AND: [{ id, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.InterviewWhereInput],
         },
+        // Only what the guard, the new join link and the update email need — never the join-token hash.
+        select: { id: true, status: true, type: true, duration: true, meetingUrl: true, scheduledAt: true },
       });
 
       if (!existing) {
@@ -281,39 +279,33 @@ export const interviewCrudRouter = router({
         });
       }
 
+      // New link on every reschedule: overwriting the hash revokes the old one.
+      const joinToken = issueJoinToken(existing.type, data.scheduledAt, data.duration ?? existing.duration, {
+        meetingUrl: data.meetingUrl ?? existing.meetingUrl,
+        interviewId: existing.id,
+      });
       const updated = await db.interview.update({
         where: { id },
         data: {
           ...data,
+          ...joinToken.columns,
           status: 'rescheduled',
         },
+        omit: { candidateJoinTokenHash: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
         },
       });
 
-      // Fire-and-forget: send reschedule notification
-      const org = await db.organization.findFirst({
-        where: { id: ctx.user.organizationId },
-        select: { name: true, billingEmail: true },
+      // Fire-and-forget: updated invitation (.ics REQUEST, higher SEQUENCE, same UID).
+      void interviewEmailService.notify({
+        orgId: ctx.user.organizationId,
+        interviewId: id,
+        kind: 'update',
+        candidateJoinToken: joinToken.token,
+        oldScheduledAt: existing.scheduledAt,
       });
-      if (updated.candidate?.email && org) {
-        emailService.sendInterviewReschedule({
-          candidateEmail: updated.candidate.email,
-          candidateName: `${updated.candidate.firstName} ${updated.candidate.lastName}`,
-          vacancyTitle: updated.vacancy?.title ?? '',
-          companyName: org.name,
-          interviewType: existing.type,
-          oldScheduledAt: existing.scheduledAt,
-          newScheduledAt: data.scheduledAt,
-          scheduledAt: data.scheduledAt,
-          duration: data.duration ?? existing.duration,
-          location: data.location ?? existing.location ?? undefined,
-          meetingUrl: data.meetingUrl ?? existing.meetingUrl ?? undefined,
-          contactEmail: org.billingEmail ?? 'rrhh@timsinternational.com',
-        });
-      }
 
       return updated;
     }),
@@ -396,28 +388,18 @@ export const interviewCrudRouter = router({
           status: 'cancelled',
           cancelledAt: new Date(),
           cancelReason: input.cancelReason,
+          // Revoke the candidate join link.
+          ...clearedJoinTokenColumns(),
         },
+        omit: { candidateJoinTokenHash: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
         },
       });
 
-      // Fire-and-forget: send cancellation notification
-      const org = await db.organization.findFirst({
-        where: { id: ctx.user.organizationId },
-        select: { name: true, billingEmail: true },
-      });
-      if (cancelled.candidate?.email && org) {
-        emailService.sendInterviewCancellation({
-          candidateEmail: cancelled.candidate.email,
-          candidateName: `${cancelled.candidate.firstName} ${cancelled.candidate.lastName}`,
-          vacancyTitle: cancelled.vacancy?.title ?? '',
-          companyName: org.name,
-          cancelReason: input.cancelReason,
-          contactEmail: org.billingEmail ?? 'rrhh@timsinternational.com',
-        });
-      }
+      // Fire-and-forget: cancellation (.ics METHOD:CANCEL) to candidate + evaluators.
+      void interviewEmailService.notify({ orgId: ctx.user.organizationId, interviewId: input.id, kind: 'cancel' });
 
       return cancelled;
     }),

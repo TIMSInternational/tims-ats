@@ -1,6 +1,7 @@
 // Sentry init for the Node.js server runtime. No-ops unless SENTRY_DSN is set,
 // so local dev and CI (empty DSN) are unaffected. Loaded from instrumentation.ts.
 import * as Sentry from '@sentry/nextjs';
+import { redactSentryEvent } from './lib/sentry-redact';
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -14,4 +15,7 @@ Sentry.init({
   // medical data. (Both differ from the Sentry skill defaults, by design.)
   sendDefaultPii: false,
   includeLocalVariables: false,
+  // The candidate interview-join URL carries a bearer token in its path: scrub it from every event.
+  beforeSend: (event) => redactSentryEvent(event),
+  beforeSendTransaction: (event) => redactSentryEvent(event),
 });

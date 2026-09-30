@@ -69,3 +69,11 @@ export const sesCircuit = new CircuitBreaker({
   threshold: 3,
   resetTimeoutMs: 60_000, // 60 seconds
 });
+
+// Raw (MIME, .ics) sends get their OWN failure budget: a raw-only problem must never open the shared SES
+// breaker and suppress every other email (offers, application-received, …) plus the plain fallback.
+export const sesRawCircuit = new CircuitBreaker({
+  name: 'AWS SES (raw)',
+  threshold: 3,
+  resetTimeoutMs: 60_000,
+});

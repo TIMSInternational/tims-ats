@@ -16,6 +16,10 @@ const PUBLIC_PATHS = [
   // in the URL is the bearer credential (verified server-side). Must be public or
   // the candidate gets bounced to /login and never reaches the consent/voice screen.
   '/ai-interview',
+  // Candidate video-interview join link (/interview/join/[token], WP-H): the emailed token is the
+  // credential, verified by the platform API. Candidates have no staff session and must never be
+  // bounced to /login. No trailing slash: matching is segment-aware (see isPublicPathname).
+  '/interview/join',
   // Candidate offer e-signature link (/offers/sign/[token]): the signing token is
   // the bearer credential (offer.getBySigningToken / acceptByToken /
   // declineByToken are public procedures). A candidate has no staff session, so
@@ -43,7 +47,12 @@ const CSP_ORIGINS: CspOrigins = {
 // Pages whose URL carries a bearer credential (?token= or a path token): never
 // leak it via Referer, never let a shared cache store the page.
 function isBearerLinkPathname(pathname: string): boolean {
-  return pathname === '/accept-invitation' || pathname === '/reset-password' || pathname.startsWith('/offers/sign/');
+  return (
+    pathname === '/accept-invitation' ||
+    pathname === '/reset-password' ||
+    pathname.startsWith('/offers/sign/') ||
+    pathname.startsWith('/interview/join/')
+  );
 }
 
 // A path is public when it IS one of PUBLIC_PATHS or is nested under one

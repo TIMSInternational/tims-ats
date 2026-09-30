@@ -26,9 +26,13 @@ vi.mock('@tims/db', () => ({ db: dbMocks }));
 
 // The public apply endpoint sits in the per-IP `ai` rate-limit tier; this file makes more
 // calls than that tier allows in one window, which is not what these tests are about.
+// The per-recipient application-email cap is a pass-through by default here; its own
+// tests below swap in the REAL in-memory limiter or a failing one.
+const consumeApplicationEmailQuotaMock = vi.fn();
 vi.mock('../../packages/api/src/middleware/rate-limit', () => ({
   checkRateLimit: vi.fn().mockResolvedValue(undefined),
   getRateLimitCategory: vi.fn().mockReturnValue('ai'),
+  consumeApplicationEmailQuota: (...a: unknown[]) => consumeApplicationEmailQuotaMock(...a),
 }));
 
 const processCvUploadMock = vi.fn();
@@ -36,19 +40,24 @@ vi.mock('../../packages/api/src/services/portal-application.service', () => ({
   portalApplicationService: { processCvUpload: (...a: unknown[]) => processCvUploadMock(...a) },
 }));
 
+const sendApplicationReceivedMock = vi.fn();
+vi.mock('../../packages/api/src/services/email.service', () => ({
+  emailService: { sendApplicationReceived: (...a: unknown[]) => sendApplicationReceivedMock(...a) },
+}));
+
 const createPresignedPostMock = vi.fn();
 vi.mock('../../packages/api/src/lib/s3', () => ({
   createCvUploadPresignedPost: (...a: unknown[]) => createPresignedPostMock(...a),
 }));
 
-async function makeCaller() {
+async function makeCaller(headers: Headers = new Headers()) {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { portalRouter } = await import('../../packages/api/src/routers/portal');
   const testRouter = router({ portal: portalRouter });
   const callerFactory = createCallerFactory(testRouter);
   return callerFactory({
     user: null,
-    headers: new Headers(),
+    headers,
     supabaseAuth: null,
     externalAuth: null,
   } as never) as unknown as {
@@ -77,13 +86,18 @@ beforeEach(() => {
   dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
     id: VACANCY_ID,
     organizationId: ORG_ID,
+    title: 'Analista de Datos',
     stages: [{ id: STAGE_ID, isDefault: true }],
+    organization: { name: 'Acme' },
+    company: { language: 'es' },
   });
   dbMocks.candidate.findMany.mockResolvedValue([]);
   dbMocks.candidate.create.mockResolvedValue({ id: CANDIDATE_ID });
   dbMocks.dataConsent.findFirst.mockResolvedValue(null);
   dbMocks.dataConsent.upsert.mockResolvedValue({ id: 'consent-1', withdrawnAt: null });
   dbMocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMocks));
+  sendApplicationReceivedMock.mockResolvedValue(true);
+  consumeApplicationEmailQuotaMock.mockResolvedValue(true);
   dbMocks.application.findFirst.mockResolvedValue(null);
   dbMocks.application.create.mockResolvedValue({ id: APPLICATION_ID });
 });
@@ -695,5 +709,176 @@ describe('portal.getCvUploadUrl', () => {
       }),
     ).rejects.toThrow();
     expect(createPresignedPostMock).not.toHaveBeenCalled();
+  });
+});
+
+// Application-received confirmation (#308), on top of main's consent / identity / P2002
+// semantics: the public response is always the same acknowledgment, and ONLY a new,
+// committed application sends — never a duplicate, withdrawn/deleted refusal or the
+// P2002 idempotent path.
+describe('portal.applyToVacancy — application received email', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 10));
+
+  it('emails the candidate a confirmation after a new application is created', async () => {
+    const caller = await makeCaller();
+    await expect(caller.portal.applyToVacancy({ ...baseApplyInput, email: 'Ana@Example.com' })).resolves.toEqual({
+      received: true,
+    });
+
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock).toHaveBeenCalledWith({
+      candidateEmail: 'ana@example.com',
+      candidateName: 'Ana',
+      vacancyTitle: 'Analista de Datos',
+      companyName: 'Acme',
+      locale: 'es',
+    });
+    expect(dbMocks.application.create.mock.invocationCallOrder[0]).toBeLessThan(
+      sendApplicationReceivedMock.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('uses the English template for an English-language company', async () => {
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Data Analyst',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization: { name: 'Acme' },
+      company: { language: 'en-US' },
+    });
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy(baseApplyInput);
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ locale: 'en', vacancyTitle: 'Data Analyst' });
+  });
+
+  it('a reused candidate is addressed by its STORED email + name, never the unauthenticated form values', async () => {
+    dbMocks.candidate.findMany.mockResolvedValue([
+      { id: CANDIDATE_ID, email: 'ANA@example.com', firstName: 'Ana María', deletedAt: null },
+    ]);
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy({ ...baseApplyInput, firstName: 'Impersonator' });
+
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({
+      candidateEmail: 'ANA@example.com',
+      candidateName: 'Ana María',
+    });
+    expect(dbMocks.candidate.create).not.toHaveBeenCalled();
+  });
+
+  it('still acknowledges when the email send throws (sync or async), logging no PII', async () => {
+    const { logger } = await import('@tims/shared');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as never);
+    const caller = await makeCaller();
+    sendApplicationReceivedMock.mockImplementationOnce(() => {
+      throw new Error('SES exploded for ana@example.com');
+    });
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+    sendApplicationReceivedMock.mockRejectedValueOnce(new Error('SES down for ana@example.com'));
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(2));
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).not.toContain('ana@example.com');
+    expect(logged).not.toContain('Ana');
+    expect(logged).not.toContain(CANDIDATE_ID);
+  });
+
+  it('sends no confirmation for a duplicate application', async () => {
+    dbMocks.application.findFirst.mockResolvedValue({ id: APPLICATION_ID });
+    const caller = await makeCaller();
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+    await settle();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+  });
+
+  it('sends no confirmation when consent was withdrawn or the candidate is soft-deleted', async () => {
+    const caller = await makeCaller();
+    dbMocks.candidate.findMany.mockResolvedValue([
+      { id: CANDIDATE_ID, email: 'ana@example.com', firstName: 'Ana', deletedAt: null },
+    ]);
+    dbMocks.dataConsent.findFirst.mockResolvedValue({ id: 'consent-withdrawn' });
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+
+    dbMocks.dataConsent.findFirst.mockResolvedValue(null);
+    dbMocks.candidate.findMany.mockResolvedValue([
+      { id: CANDIDATE_ID, email: 'ana@example.com', firstName: 'Ana', deletedAt: new Date('2026-01-01T00:00:00Z') },
+    ]);
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+
+    await settle();
+    expect(dbMocks.application.create).not.toHaveBeenCalled();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+  });
+
+  it('sends no confirmation on the P2002 idempotent path (the winner already applied)', async () => {
+    dbMocks.$transaction.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+    });
+    dbMocks.candidate.findMany.mockResolvedValue([
+      { id: CANDIDATE_ID, email: 'ana@example.com', firstName: 'Ana', deletedAt: null },
+    ]);
+    dbMocks.application.findFirst.mockResolvedValue({ id: APPLICATION_ID });
+    const caller = await makeCaller();
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+    await settle();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+  });
+
+  // #308 security fix: the form chooses the recipient, so at most one confirmation per
+  // address per 24h. Uses the REAL limiter (no UPSTASH_* env in tests → the in-memory
+  // fallback) with an address unique to this test so the module-level store is isolated.
+  it('caps the confirmation per recipient: a second application from the same address sends nothing but still succeeds', async () => {
+    const actual = await vi.importActual<typeof import('../../packages/api/src/middleware/rate-limit')>(
+      '../../packages/api/src/middleware/rate-limit',
+    );
+    consumeApplicationEmailQuotaMock.mockImplementation((addr: string) => actual.consumeApplicationEmailQuota(addr));
+    const address = `cap-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy({ ...baseApplyInput, email: address })).resolves.toEqual({ received: true });
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+
+    // Same address, different case, to another vacancy (a fresh application) — no second send.
+    await expect(
+      caller.portal.applyToVacancy({ ...baseApplyInput, email: address.toUpperCase() }),
+    ).resolves.toEqual({ received: true });
+    expect(dbMocks.application.create).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(consumeApplicationEmailQuotaMock).toHaveBeenCalledTimes(2));
+    await settle();
+    expect(sendApplicationReceivedMock).toHaveBeenCalledOnce();
+    // The limiter key is a hash — the raw address is never what the limiter is keyed on
+    // beyond this call boundary (asserted in tests/ratelimit/application-email-cap.test.ts).
+  });
+
+  it('skips the confirmation (no PII logged) when the limiter is unavailable, and the application still succeeds', async () => {
+    const { logger } = await import('@tims/shared');
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined as never);
+    consumeApplicationEmailQuotaMock.mockRejectedValue(new Error('Upstash unreachable for ana@example.com'));
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+    expect(dbMocks.application.create).toHaveBeenCalledOnce();
+    await vi.waitFor(() =>
+      expect(info).toHaveBeenCalledWith(
+        expect.objectContaining({ component: 'portal' }),
+        expect.stringContaining('per-recipient cap reached or limiter unavailable'),
+      ),
+    );
+    await settle();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).not.toContain('ana@example.com');
+    expect(logged).not.toContain('Ana');
+  });
+
+  it('sends no confirmation when the application insert fails', async () => {
+    dbMocks.application.create.mockRejectedValue(new Error('insert failed'));
+    const caller = await makeCaller();
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow();
+    await settle();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
   });
 });

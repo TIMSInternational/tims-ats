@@ -249,7 +249,7 @@ describe('env schema — CV_UPLOADS_REGION with CV_UPLOADS_BUCKET', () => {
 });
 
 describe('bearer-link pages never leak their token (Referer / shared cache)', () => {
-  it.each(['/offers/sign/tok_abc', '/accept-invitation', '/reset-password'])(
+  it.each(['/offers/sign/tok_abc', '/interview/join/tok_abc', '/accept-invitation', '/reset-password'])(
     '%s gets referrer-policy no-referrer + cache-control no-store',
     async (path) => {
       const middleware = await loadMiddleware();
@@ -261,7 +261,7 @@ describe('bearer-link pages never leak their token (Referer / shared cache)', ()
     },
   );
 
-  it.each(['/careers/acme/v1', '/offers/signatures'])('%s is not treated as a bearer-link page', async (path) => {
+  it.each(['/careers/acme/v1', '/offers/signatures', '/interview/joiner'])('%s is not treated as a bearer-link page', async (path) => {
     const middleware = await loadMiddleware();
     const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));
     expect(res.headers.get('referrer-policy')).toBeNull();
@@ -278,6 +278,7 @@ describe('F3 — Daily call-object CSP scoped to the interview room', () => {
     expect(isDailyCallRoute('/recruitment/interviews/a/b/room')).toBe(false);
     expect(isDailyCallRoute('/recruitment/interviews/abc/room/../../../dashboard')).toBe(false);
     expect(isDailyCallRoute('/dashboard')).toBe(false);
+    expect(isDailyCallRoute('/interview/join/tok')).toBe(false);
   });
 
   it('production room CSP allows the Daily bundle hosts in script-src WITHOUT unsafe-eval', () => {
@@ -292,7 +293,16 @@ describe('F3 — Daily call-object CSP scoped to the interview room', () => {
     expect(connectSrc).toContain('https://*.dailywebrtc.net');
   });
 
-  it.each(['/dashboard', '/careers/acme', '/recruitment/interviews/abc', '/offers/sign/tok', '/ai-interview/tok'])(
+  it.each([
+    '/dashboard',
+    '/careers/acme',
+    '/recruitment/interviews/abc',
+    '/offers/sign/tok',
+    '/ai-interview/tok',
+    // The candidate join page hands off to Daily's HOSTED room by top-level navigation
+    // (window.location.assign) — it never creates a call object, so it gets the normal CSP.
+    '/interview/join/tok',
+  ])(
     'production CSP for %s keeps today’s script-src (no Daily hosts)',
     (pathname) => {
       const csp = buildCsp('n0nce', pathname, NO_ORIGINS, true);
@@ -322,6 +332,7 @@ describe('F6 — candidate token routes are public on every host', () => {
   const TOKEN_ROUTES = [
     '/offers/sign/tok_abc',
     '/ai-interview/tok_abc',
+    '/interview/join/tok_abc',
     '/accept-invitation?token=t',
     '/careers/acme/v1',
   ];
@@ -347,7 +358,7 @@ describe('F6 — candidate token routes are public on every host', () => {
 
   it('public-path matching is segment-aware (a prefix look-alike is NOT public)', async () => {
     const middleware = await loadMiddleware();
-    for (const path of ['/offers/signatures', '/careersadmin', '/ai-interviewer']) {
+    for (const path of ['/offers/signatures', '/careersadmin', '/ai-interviewer', '/interview/joiner', '/interview']) {
       const res = await middleware(
         new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }),
       );

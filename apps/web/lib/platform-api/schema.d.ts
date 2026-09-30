@@ -772,6 +772,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/interviews/candidate-join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CandidateInterviewJoin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/platform/invitations/{id}/resend": {
         parameters: {
             query?: never;
@@ -3460,6 +3476,14 @@ export interface components {
             firstName: string;
             lastName: string;
         };
+        CandidateJoinResult: {
+            outcome: string;
+            /** Format: date-time */
+            scheduledAt?: null | string;
+            /** Format: date-time */
+            joinOpensAt?: null | string;
+            joinUrl?: null | string;
+        };
         CheckoutSessionBody: {
             plan: string;
         };
@@ -4170,6 +4194,9 @@ export interface components {
             periodEnd: unknown;
             /** Format: date-time */
             createdAt: unknown;
+        };
+        JoinBody: {
+            token: string;
         };
         JsonNode: unknown;
         JsonObject: Record<string, never>;
@@ -7346,6 +7373,44 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CandidateInterviewJoin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateJoinResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
