@@ -1,7 +1,7 @@
 'use client';
 
+import { hardNavigate, ROOM_EXIT_PATH } from './hard-exit';
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { useDaily, useMeetingState } from '@daily-co/daily-react';
 
 interface InterviewTopBarProps {
@@ -17,7 +17,6 @@ export function InterviewTopBar({
   fitScore,
   isInCall,
 }: InterviewTopBarProps) {
-  const router = useRouter();
   const daily = useDaily();
   const meetingState = useMeetingState();
   const callActive = isInCall && meetingState === 'joined-meeting';
@@ -34,8 +33,8 @@ export function InterviewTopBar({
 
   const handleEnd = useCallback(() => {
     daily?.leave();
-    router.push('/recruitment/interviews');
-  }, [daily, router]);
+    hardNavigate(ROOM_EXIT_PATH);
+  }, [daily]);
 
   return (
     <div className="flex items-center justify-between px-6 h-[50px] bg-[#1F114C] shrink-0">
