@@ -22,6 +22,9 @@ import {
   type EngagementWriteResolved,
   type NineBoxWriteResolved,
   type AccessReviewWriteResolved,
+  WRITE_ASSESSMENT_TYPES,
+  WRITE_ASSESSMENT_TYPE_MARKER,
+  WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
 } from './write-surfaces';
 
 const res: WriteResolved = {
@@ -530,6 +533,8 @@ describe('WRITE_SURFACES registry', () => {
         // #208, resolved 2026-08-11: REGISTERED with a documented prior-run cleanup, not omitted.
         'organization-create',
         'succession',
+        // F13 / PR #309: greenfield C# authoring, registered at landing rather than allowlisted.
+        'assessment-types',
       ].sort(),
     );
   });
@@ -840,5 +845,79 @@ describe('organization-create cleanup wiring (seed.ts source-order check)', () =
     expect(orgs).toBeGreaterThan(-1);
     expect(reviews).toBeLessThan(users);
     expect(users).toBeLessThan(orgs);
+  });
+});
+
+describe('WRITE_SURFACES assessment-types (F13, PR #309)', () => {
+  const s = WRITE_SURFACES['assessment-types'];
+  const r = { base: 'http://c', orgAId: 'ORG_A', userIdByRole: { hr_admin: 'H', hrbp: 'B' } };
+  const ep = (name: string) => s.endpoints.find((e) => e.name === name)!;
+
+  it('registers the 3 authoring writes under the single write flag, probing with the GRANTED role', () => {
+    expect(s.flag).toBe('Platform__AssessmentTypeWriteEnabled');
+    expect(s.endpoints.map((e) => e.name)).toEqual(['create-type', 'update-type', 'deactivate-type']);
+    // hr_admin, NOT super_admin: super_admin is privileged in PermissionService and never reads
+    // role_permissions, so its 200 would not prove the seeded grant fixture. hr_admin is the positive control.
+    expect(s.probeRole).toBe('hr_admin');
+    expect(s.roles).toEqual(['hr_admin', 'hrbp']);
+  });
+
+  it('hrbp is the DENIED role on every endpoint (grant-level 403)', () => {
+    for (const e of s.endpoints) {
+      expect(e.expectedByRole, e.name).toEqual({ hr_admin: 'allow', hrbp: 'deny' });
+      expect(e.rbacDenyStatus, e.name).toBe(403);
+    }
+  });
+
+  it('pins every path exactly (the csharpPath drift a substring match cannot see)', () => {
+    expect(ep('create-type').buildParity(r as never).path).toBe('/assessments/types');
+    expect(ep('update-type').buildParity(r as never).path).toBe(`/assessments/types/${WRITE_ASSESSMENT_TYPES.updateA}`);
+    expect(ep('update-type').buildIdor!(r as never).path).toBe(`/assessments/types/${WRITE_ASSESSMENT_TYPES.updateB}`);
+    expect(ep('deactivate-type').buildParity(r as never).path).toBe(
+      `/assessments/types/${WRITE_ASSESSMENT_TYPES.deactivateA}/deactivate`,
+    );
+    expect(ep('deactivate-type').buildIdor!(r as never).path).toBe(
+      `/assessments/types/${WRITE_ASSESSMENT_TYPES.deactivateB}/deactivate`,
+    );
+  });
+
+  it('create has no IDOR target (org comes from the JWT) and cannot carry an organizationId', () => {
+    const create = ep('create-type');
+    expect(create.buildIdor).toBeUndefined();
+    expect(Object.keys(create.buildParity(r as never).body as object).sort()).toEqual(['description', 'duration', 'name']);
+    expect((create.buildParity(r as never).body as { name: string }).name).toBe(WRITE_ASSESSMENT_TYPE_MARKER);
+  });
+
+  it('by-id writes deny a cross-org id with 404 and read back the untouched org-B row', () => {
+    for (const name of ['update-type', 'deactivate-type']) {
+      const e = ep(name);
+      expect(e.idorDeniedStatuses, name).toEqual([404]);
+      const orgB = name === 'update-type' ? WRITE_ASSESSMENT_TYPES.updateB : WRITE_ASSESSMENT_TYPES.deactivateB;
+      expect(e.readbackNoMutation(r as never, 'b').params, name).toEqual([orgB]);
+      expect(
+        e.readbackNoMutation(r as never, 'b').expect([{ description: WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION, is_active: true }]),
+      ).toBeNull();
+    }
+  });
+
+  it('readbacks FAIL on the mutation they guard against (not vacuous)', () => {
+    const update = ep('update-type');
+    expect(update.readbackNoMutation(r as never, 'a', 'hrbp').expect([{ description: 'parity updated', is_active: true }])).toContain(
+      'forbidden update',
+    );
+    const deactivate = ep('deactivate-type');
+    expect(
+      deactivate.readbackNoMutation(r as never, 'a', 'hrbp').expect([{ description: WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION, is_active: false }]),
+    ).toContain('forbidden deactivate');
+    expect(
+      deactivate.readbackMutated(r as never, {}).expect([{ description: WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION, is_active: true }]),
+    ).toContain('deactivate did not apply');
+    const create = ep('create-type');
+    expect(create.readbackNoMutation(r as never, 'a', 'hrbp').expect([{ n: 1 }])).toContain('forbidden create');
+    const created = create.readbackMutated(r as never, { id: 'X' });
+    expect(created.params).toEqual(['ORG_A', WRITE_ASSESSMENT_TYPE_MARKER, 'H']);
+    expect(created.expect([{ id: 'X', is_active: true, audits: 1 }])).toBeNull();
+    expect(created.expect([{ id: 'X', is_active: true, audits: 0 }])).toContain('audit');
+    expect(created.expect([{ id: 'OTHER', is_active: true, audits: 1 }])).toContain('response id');
   });
 });

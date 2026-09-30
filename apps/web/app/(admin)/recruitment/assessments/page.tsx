@@ -7,6 +7,8 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { QuestionModal, type EditableQuestion } from './question-modal';
+import { AssessmentTypeToolbar } from './assessment-type-toolbar';
+import type { AssessmentTypeRow } from '../../../../lib/platform-api/assessment-types';
 
 export default function AssessmentAuthoringPage() {
   const { t } = useI18n();
@@ -27,6 +29,13 @@ export default function AssessmentAuthoringPage() {
 
   const utils = trpc.useUtils();
   const refresh = () => utils.assessment.listQuestions.invalidate();
+
+  const selectedType = types.data?.find((tp) => tp.id === typeId) ?? null;
+  const onTypeChanged = (row: AssessmentTypeRow) => {
+    // A new/edited type becomes the selection; a deactivated one drops out of the active list.
+    setTypeId(row.isActive ? row.id : '');
+    void utils.assessment.listTypes.invalidate();
+  };
 
   const deleteM = trpc.assessment.deleteQuestion.useMutation({
     onSuccess: () => {
@@ -112,8 +121,26 @@ export default function AssessmentAuthoringPage() {
             ))}
           </select>
         ) : (
-          <p className="text-sm text-[#8B8B8B]">{t.assessments.noTypes}</p>
+          <div>
+            <p className="text-sm text-[#1A1A1A]">{t.assessments.noTypes}</p>
+            <p className="text-xs text-[#8B8B8B] mt-0.5">{t.assessments.typeAuthoring.emptyCta}</p>
+          </div>
         )}
+        <div className="mt-3">
+          <AssessmentTypeToolbar
+            selected={
+              selectedType
+                ? {
+                    id: selectedType.id,
+                    name: selectedType.name,
+                    description: selectedType.description,
+                    duration: selectedType.duration,
+                  }
+                : null
+            }
+            onChanged={onTypeChanged}
+          />
+        </div>
       </div>
 
       {/* Question list */}

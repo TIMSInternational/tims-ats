@@ -1684,6 +1684,52 @@ export const SURFACES: Record<string, Surface> = {
   // The dei router's ONLY surviving TS procedure — `generateReport` — is a MUTATION that was never
   // ported to C#, so it has no C# counterpart to diff against and belongs in neither this
   // read-parity registry nor write-surfaces.ts (which diffs PORTED writes).
+  // ── tenant-invitations (READ, C#-only) ───────────────────────────────────────────────────────
+  // NEW 2026-09-29 (F8 / PR #307) — the company-admin self-serve invitation surface, registered in the same
+  // PR that deployed it DARK behind Platform__TenantInvitationsEnabled. There is no TS twin at all (the
+  // surface is greenfield C#), so `tsProcedure` is omitted: parity reports [WEAK] by design while RBAC and
+  // RLS still assert against the live C# route.
+  //
+  // ONE of the five routes is registered. Why the other four are on the coverage allowlist instead
+  // (tests/governance/parity-registry-covers-deployed-routes.test.ts), stated so it is not read as an oversight:
+  //   • GET /tenant-invitations/roles returns the caller's GRANTABLE ROLE CATALOGUE as `{slug, name}` pairs with
+  //     no ids. Both parity orgs are provisioned with the same role catalogue, so org A and org B receive
+  //     byte-identical non-empty payloads BY CONSTRUCTION — which Mode B (checks/rls.ts) reads as "possible
+  //     global leak" and FAILS. `globalScope` would silence it but is false (the rows ARE per-org) and is
+  //     reserved for pure kernels. Its isolation is pinned by TenantInvitationEndpointTests instead.
+  //   • POST create / {id}/resend / {id}/revoke MUTATE, and create + resend SEND REAL EMAIL through the
+  //     configured provider. A verify-write surface would email whatever address its fixture names from the
+  //     machine running it; that needs a delivery-suppressed fixture design first.
+  //
+  // RBAC — the grant is seeded by seed.ts's seedTenantInvitationGrants, copied from seed-access-matrix.ts
+  // rather than invented: hr_admin holds user:create@organization (the MATRIX `user` module, all four
+  // actions). super_admin needs no grant row (it bypasses the permission kernel). hrbp holds NO `user`
+  // grant in MATRIX, so its 403 is a GRANT-level denial from PermissionService — the stronger assertion.
+  // The gate additionally refuses narrow (unit/team/own) user:create scopes; that path has no MATRIX role
+  // to exercise it here and is pinned by the C# integration test Unit_scoped_user_create_grant_is_refused….
+  //
+  // probeRole hr_admin: a role with a REAL org-wide grant (probing with super_admin would never exercise one).
+  //
+  // ⚠️ CAVEAT FOR WHOEVER RUNS `verify tenant-invitations`: RLS Mode B is INCONCLUSIVE ([WEAK]) on a fresh
+  // seed, because neither parity org has any tenant user invitation — both lists come back
+  // `{"invitations":[],"nextCursor":null}` and nothing cross-tenant is compared. It becomes a real
+  // comparison only once each org holds a DIFFERENT invitation (e.g. invite one address per org through the
+  // UI with the flag on at canary, then re-run). The route must also be MAPPED: the flag is dark by default.
+  'tenant-invitations': {
+    key: 'tenant-invitations',
+    flag: 'Platform__TenantInvitationsEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'hr_admin',
+    endpoints: [
+      {
+        name: 'list',
+        csharpPath: '/tenant-invitations',
+        // tsProcedure omitted: greenfield C# surface, no TS procedure has ever existed.
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+    ],
+  },
   dei: {
     key: 'dei',
     flag: 'Platform__DeiReadEnabled',

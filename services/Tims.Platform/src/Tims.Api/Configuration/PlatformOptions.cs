@@ -395,6 +395,15 @@ public sealed class PlatformOptions
     public bool NineBoxWriteEnabled { get; init; }
 
     /// <summary>
+    /// F13: when true, the tenant assessment-type authoring surface is mapped — POST /assessments/types,
+    /// PATCH /assessments/types/{id}, POST /assessments/types/{id}/deactivate (assessment:create|update + org scope,
+    /// TenantScope, audited in-transaction). Greenfield C# (TS only has the read-only assessment.listTypes); C# is the
+    /// ONLY writer of assessment_types rows created by tenants. DEFAULT false (dark) — enable with
+    /// <c>Platform__AssessmentTypeWriteEnabled=true</c>.
+    /// </summary>
+    public bool AssessmentTypeWriteEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 16 (efcoreStranglerWrite): when true, the C# engagement WRITE surface is mapped and live — the
     /// 5 writes <c>POST /engagement/surveys</c> (createSurvey), <c>POST /engagement/surveys/{id}/activate</c>
     /// (activateSurvey), <c>POST /engagement/surveys/{id}/responses</c> (submitSurveyResponse), <c>POST
@@ -629,6 +638,14 @@ public sealed class PlatformOptions
 
     /// <summary>Default-disabled resend write only; does not enable creation, acceptance or bulk invitations.</summary>
     public bool PlatformInvitationResendEnabled { get; init; }
+
+    /// <summary>
+    /// Default-disabled company-admin team invitations (<c>/tenant-invitations</c>): list grantable roles,
+    /// list/create/resend/revoke invitations for the CALLER'S OWN organization only. Gated by
+    /// <c>user:create</c> at organization scope plus InvitationGrantPolicy (no role above the caller's own).
+    /// Independent of the platform-owner invitation flags.
+    /// </summary>
+    public bool TenantInvitationsEnabled { get; init; }
 
     /// <summary>
     /// Phase-5 slice 23 (issue #81) — the platform-owner DASHBOARD READ surface: the C# port of ALL

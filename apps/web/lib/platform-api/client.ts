@@ -34,11 +34,20 @@ export function isPlatformApiEnabled(): boolean {
  */
 export class PlatformApiError extends Error {
   readonly status: number;
+  /**
+   * True when the C# HANDLER produced the error (its `{ message }` JSON body). False for an error the
+   * framework produced before any handler ran — notably a 404 for a route that is not mapped because
+   * its dark flag is off, which has no body. Lets a caller tell "this row is gone" from "this surface is
+   * not deployed".
+   */
+  readonly hasHandlerMessage: boolean;
 
   constructor(status: number, statusText: string, body?: unknown) {
-    super(extractErrorMessage(body) ?? `Platform API request failed: ${status} ${statusText}`);
+    const handlerMessage = extractErrorMessage(body);
+    super(handlerMessage ?? `Platform API request failed: ${status} ${statusText}`);
     this.name = 'PlatformApiError';
     this.status = status;
+    this.hasHandlerMessage = handlerMessage !== undefined;
   }
 }
 

@@ -319,6 +319,9 @@ test('the onboarding plan starts with the default task template', async () => {
     .getByRole('row', { name: new RegExp(fullName()) })
     .getByRole('button', { name: 'Ver tareas' })
     .click();
-  await expect(page.getByText('Firmar contrato y documentos de ingreso')).toBeVisible();
-  await expect(page.getByText('Revisión de objetivos de 90 días y cierre del onboarding')).toBeVisible();
+  // The first task also appears in the row's "next task" summary; the expanded list renders each task as a
+  // labelled checkbox, so assert on those.
+  const task = (title: string) => page.getByRole('checkbox', { name: title, exact: true });
+  await expect(task('Firmar contrato y documentos de ingreso')).toBeVisible();
+  await expect(task('Revisión de objetivos de 90 días y cierre del onboarding')).toBeVisible();
 });

@@ -12,6 +12,8 @@ export const PATH_MODULE: Record<string, string | null> = {
   '/recruitment/talent-pools': 'candidate',
   '/recruitment/analytics': 'vacancy',
   '/people/onboarding': 'onboarding',
+  // Own-scoped personal onboarding view (onboarding read@own for employees).
+  '/my-onboarding': 'onboarding',
   '/people/performance': 'performance',
   '/learning': 'learning',
   '/talent/nine-box': 'ninebox',
@@ -30,6 +32,7 @@ export const PATH_MODULE: Record<string, string | null> = {
   '/settings/billing': 'billing',
   '/settings/integrations': 'integration',
   '/settings/business-units': 'user',
+  '/settings/users': 'user',
   '/settings/branding': 'organization',
   '/settings/fit-weights': 'fit_engine',
   '/settings/audit-log': 'audit',

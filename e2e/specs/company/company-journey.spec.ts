@@ -76,7 +76,8 @@ test('platform owner creates the company', async () => {
   await form.getByPlaceholder(/constructora bol[ií]var/i).fill(j.orgName);
   await form.getByPlaceholder('constructora-bolivar').fill(j.orgSlug);
   await form.locator('select').selectOption('professional');
-  await form.getByPlaceholder('admin@empresa.com').fill(j.admin.email);
+  // #307: this field is the billing email only; the admin is invited separately (next test).
+  await form.getByLabel('Email de Facturación').fill(j.admin.email);
   await form.getByRole('button', { name: 'Crear', exact: true }).click();
   await expect(form).toBeHidden();
 
