@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { RELAY_HEADER, signRelayAttribution } from '../../../lib/platform-api/relay-attribution';
-import { interviewJoinResultSchema, isValidInterviewJoinToken } from '../../../lib/interview-join';
+import {
+  INTERVIEW_JOIN_RELAY_ERRORS,
+  interviewJoinResultSchema,
+  isValidInterviewJoinToken,
+  type InterviewJoinRelayError,
+} from '../../../lib/interview-join';
 
 const MAX_BODY_BYTES = 1024;
 const UPSTREAM_PATH = '/interviews/candidate-join';
@@ -12,7 +17,8 @@ const UPSTREAM_PATH = '/interviews/candidate-join';
  */
 export async function POST(request: Request) {
   const noStore = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' };
-  const fail = (status: number) => NextResponse.json({ error: 'join_unavailable' }, { status, headers: noStore });
+  const fail = (status: number, error: InterviewJoinRelayError = INTERVIEW_JOIN_RELAY_ERRORS.unavailable, extra = {}) =>
+    NextResponse.json({ error }, { status, headers: { ...noStore, ...extra } });
   const requestUrl = new URL(request.url);
   if (request.headers.get('origin') !== requestUrl.origin || request.headers.get('sec-fetch-site') === 'cross-site')
     return fail(403);
@@ -67,8 +73,15 @@ export async function POST(request: Request) {
       redirect: 'error',
       signal: AbortSignal.timeout(20_000),
     });
-    if (response.status === 429) return fail(429);
-    if (!response.ok) return fail(response.status === 404 ? 503 : 502);
+    // Distinct answers the join page can act on. 404 = the C# route is not mapped (flag dark): retrying will
+    // not help, the candidate must contact the recruiter. 429 = the per-IP auth-tier budget: wait.
+    if (response.status === 429) {
+      const retryAfter = Number.parseInt(response.headers.get('retry-after') ?? '', 10);
+      const seconds = Number.isFinite(retryAfter) ? Math.min(Math.max(retryAfter, 1), 900) : 60;
+      return fail(429, INTERVIEW_JOIN_RELAY_ERRORS.rateLimited, { 'retry-after': String(seconds) });
+    }
+    if (response.status === 404) return fail(503, INTERVIEW_JOIN_RELAY_ERRORS.notEnabled);
+    if (!response.ok) return fail(502);
     const result = interviewJoinResultSchema.safeParse(await response.json());
     if (!result.success) return fail(502);
     return NextResponse.json(result.data, { status: 200, headers: noStore });

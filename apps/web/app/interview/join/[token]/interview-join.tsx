@@ -1,17 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import {
+  INTERVIEW_JOIN_RELAY_ERRORS,
+  JOIN_RETRY_COOLDOWN_SECONDS,
+  JOIN_RETRY_MAX_WAIT_SECONDS,
   interviewJoinResultSchema,
   isSafeDailyJoinUrl,
   isValidInterviewJoinToken,
-  type InterviewJoinResult,
+  type InterviewJoinViewResult,
 } from '../../../../lib/interview-join';
 
-type ViewState = { kind: 'checking' } | { kind: 'redirecting' } | { kind: 'result'; result: InterviewJoinResult };
+type ViewState = { kind: 'checking' } | { kind: 'redirecting' } | { kind: 'result'; result: InterviewJoinViewResult };
 
-async function requestJoin(token: string): Promise<InterviewJoinResult> {
+async function requestJoin(token: string): Promise<InterviewJoinViewResult> {
   const response = await fetch('/api/interview-join', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -19,9 +22,24 @@ async function requestJoin(token: string): Promise<InterviewJoinResult> {
     cache: 'no-store',
     credentials: 'omit',
   });
-  if (!response.ok) return { outcome: 'unavailable' };
-  const parsed = interviewJoinResultSchema.safeParse(await response.json().catch(() => null));
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = body && typeof body === 'object' ? (body as { error?: unknown }).error : undefined;
+    if (response.status === 429 || error === INTERVIEW_JOIN_RELAY_ERRORS.rateLimited) {
+      const retryAfter = Number.parseInt(response.headers.get('retry-after') ?? '', 10);
+      return { outcome: 'rate_limited', retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : 60 };
+    }
+    if (error === INTERVIEW_JOIN_RELAY_ERRORS.notEnabled) return { outcome: 'not_enabled' };
+    return { outcome: 'unavailable' };
+  }
+  const parsed = interviewJoinResultSchema.safeParse(body);
   return parsed.success ? parsed.data : { outcome: 'unavailable' };
+}
+
+/** Seconds the Retry button stays disabled after an answer: a floor for every retry, Retry-After for a 429. */
+function cooldownFor(result: InterviewJoinViewResult): number {
+  const wait = result.outcome === 'rate_limited' ? result.retryAfterSeconds : JOIN_RETRY_COOLDOWN_SECONDS;
+  return Math.min(Math.max(wait, JOIN_RETRY_COOLDOWN_SECONDS), JOIN_RETRY_MAX_WAIT_SECONDS);
 }
 
 /** Candidate-facing join screen: resolves the emailed link, then hands off to the Daily hosted room. */
@@ -29,14 +47,29 @@ export function InterviewJoin({ token }: { token: string }) {
   const { t, locale } = useI18n();
   const copy = t.interviewJoin;
   const [state, setState] = useState<ViewState>({ kind: 'checking' });
+  const [cooldown, setCooldown] = useState(0);
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = setTimeout(() => setCooldown((seconds) => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const check = useCallback(async () => {
     if (!isValidInterviewJoinToken(token)) {
       setState({ kind: 'result', result: { outcome: 'invalid' } });
       return;
     }
+    if (inFlight.current) return;
+    inFlight.current = true;
     setState({ kind: 'checking' });
-    const result = await requestJoin(token).catch((): InterviewJoinResult => ({ outcome: 'unavailable' }));
+    const result = await requestJoin(token)
+      .catch((): InterviewJoinViewResult => ({ outcome: 'unavailable' }))
+      .finally(() => {
+        inFlight.current = false;
+      });
+    setCooldown(cooldownFor(result));
     if (result.outcome === 'ready') {
       if (isSafeDailyJoinUrl(result.joinUrl)) {
         setState({ kind: 'redirecting' });
@@ -78,9 +111,11 @@ export function InterviewJoin({ token }: { token: string }) {
       not_video: [copy.notVideoTitle, copy.notVideoText],
       unavailable: [copy.unavailableTitle, copy.unavailableText],
       ready: [copy.unavailableTitle, copy.unavailableText],
+      not_enabled: [copy.notEnabledTitle, copy.notEnabledText],
+      rate_limited: [copy.rateLimitedTitle, copy.rateLimitedText],
     } as const;
     [title, text] = messages[result.outcome];
-    canRetry = result.outcome === 'too_early' || result.outcome === 'unavailable';
+    canRetry = ['too_early', 'unavailable', 'rate_limited', 'not_enabled'].includes(result.outcome);
     if (result.outcome === 'too_early') {
       details = [
         { label: copy.scheduledFor, value: format(result.scheduledAt) },
@@ -109,9 +144,10 @@ export function InterviewJoin({ token }: { token: string }) {
           <button
             type="button"
             onClick={() => void check()}
-            className="mt-6 w-full rounded-xl bg-[#1F114C] px-4 py-3 text-sm font-semibold text-white hover:bg-violet-900 focus:outline-none focus:ring-2 focus:ring-violet-300"
+            disabled={cooldown > 0}
+            className="mt-6 w-full rounded-xl bg-[#1F114C] px-4 py-3 text-sm font-semibold text-white hover:bg-violet-900 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {copy.retry}
+            {cooldown > 0 ? copy.retryIn.replace('{seconds}', String(cooldown)) : copy.retry}
           </button>
         )}
         <p className="mt-6 text-xs text-slate-400">{copy.privacy}</p>

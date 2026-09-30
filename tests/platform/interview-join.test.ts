@@ -85,6 +85,38 @@ describe('candidate interview join relay', () => {
   });
 });
 
+describe('relay error mapping', () => {
+  it('maps a dark C# route (404) to a distinct "not enabled" answer', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
+    const response = await POST(input());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'join_not_enabled' });
+  });
+
+  it('maps 429 to a distinct rate-limited answer and passes a bounded Retry-After', async () => {
+    fetchMock.mockResolvedValue(new Response('{}', { status: 429, headers: { 'retry-after': '37' } }));
+    let response = await POST(input());
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('37');
+    expect(await response.json()).toEqual({ error: 'rate_limited' });
+
+    fetchMock.mockResolvedValue(new Response('{}', { status: 429, headers: { 'retry-after': '999999' } }));
+    response = await POST(input());
+    expect(response.headers.get('retry-after')).toBe('900');
+    fetchMock.mockResolvedValue(new Response('{}', { status: 429 }));
+    expect((await POST(input())).headers.get('retry-after')).toBe('60');
+  });
+
+  it.each([500, 502, 503])('maps upstream %i to a generic 502 without the upstream body', async (status) => {
+    fetchMock.mockResolvedValue(new Response('Npgsql stack trace', { status }));
+    const response = await POST(input());
+    expect(response.status).toBe(502);
+    const text = await response.text();
+    expect(JSON.parse(text)).toEqual({ error: 'join_unavailable' });
+    expect(text).not.toContain('Npgsql');
+  });
+});
+
 describe('join helpers', () => {
   it('accepts only 43-character base64url tokens', () => {
     expect(isValidInterviewJoinToken(TOKEN)).toBe(true);

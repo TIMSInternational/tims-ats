@@ -215,6 +215,23 @@ describe('interview.schedule — join token + invitation emails', () => {
     }
   });
 
+  it('without a fresh token, the own private Daily room URL is still never emailed', async () => {
+    // A notify() without a plaintext token (e.g. an update that did not re-mint) must not fall back to the
+    // raw Daily room URL: it is a dead link for the candidate and needless exposure of the room.
+    const { buildInterviewEmails } = await import('../../packages/api/src/services/interview-email.service');
+    const own = `https://tims.daily.co/tims-${INTERVIEW_ID.replace(/-/g, '')}`;
+    const { messages, skipped } = buildInterviewEmails(
+      notificationData({ type: 'video', meetingUrl: own }) as never,
+      { orgId: ORG_ID, interviewId: INTERVIEW_ID, kind: 'update', candidateJoinToken: null },
+      APP,
+    );
+    expect(skipped).toBe(0);
+    expect(messages).toHaveLength(2);
+    for (const message of messages) {
+      expect(`${message.html}${message.text}${message.ics}`).not.toContain('daily.co');
+    }
+  });
+
   it('still returns the interview when every email send fails', async () => {
     m.findForNotification.mockRejectedValue(new Error('db down'));
     await expect((await caller()).interview.schedule(scheduleInput)).resolves.toMatchObject({ id: INTERVIEW_ID });

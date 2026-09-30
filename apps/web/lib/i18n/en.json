@@ -2927,6 +2927,7 @@
     "intError": "We couldn't load your interviews.",
     "intEmpty": "You have no scheduled interviews.",
     "intJoin": "Join",
+    "intJoinViaEmail": "Join with the personal link in your invitation email (it opens 15 minutes before the start).",
     "intMinutes": "min",
     "intLocation": "Location",
     "intStatusScheduled": "Scheduled",
@@ -3657,6 +3658,11 @@
     "unavailableTitle": "The room is not available right now",
     "unavailableText": "We could not open the video room. Please try again in a few moments.",
     "retry": "Try again",
+    "notEnabledTitle": "Online joining is not available yet",
+    "notEnabledText": "Joining through this link is not enabled yet. Contact the recruiter to receive the interview link.",
+    "rateLimitedTitle": "Too many attempts",
+    "rateLimitedText": "Please wait a moment before trying again.",
+    "retryIn": "Try again in {seconds} s",
     "privacy": "Your link is personal. Do not share it."
   }
 }

@@ -23,6 +23,24 @@ export const interviewJoinResultSchema = z
   .strict();
 
 export type InterviewJoinResult = z.infer<typeof interviewJoinResultSchema>;
+
+/** The relay's error bodies (`{ error }`), so the join page can tell "not enabled" and "wait" from a failure. */
+export const INTERVIEW_JOIN_RELAY_ERRORS = {
+  unavailable: 'join_unavailable',
+  notEnabled: 'join_not_enabled',
+  rateLimited: 'rate_limited',
+} as const;
+export type InterviewJoinRelayError = (typeof INTERVIEW_JOIN_RELAY_ERRORS)[keyof typeof INTERVIEW_JOIN_RELAY_ERRORS];
+
+/** Page-only outcomes derived from the relay's error answers (never sent by the platform API). */
+export type InterviewJoinViewResult =
+  | InterviewJoinResult
+  | { outcome: 'not_enabled' }
+  | { outcome: 'rate_limited'; retryAfterSeconds: number };
+
+/** Minimum wait between join attempts from the page; a 429 waits at least its Retry-After. */
+export const JOIN_RETRY_COOLDOWN_SECONDS = 10;
+export const JOIN_RETRY_MAX_WAIT_SECONDS = 120;
 export type InterviewJoinOutcome = (typeof INTERVIEW_JOIN_OUTCOMES)[number];
 
 export function isValidInterviewJoinToken(token: unknown): token is string {

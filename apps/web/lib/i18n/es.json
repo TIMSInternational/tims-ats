@@ -2927,6 +2927,7 @@
     "intError": "No se pudieron cargar tus entrevistas.",
     "intEmpty": "No tienes entrevistas programadas.",
     "intJoin": "Unirse",
+    "intJoinViaEmail": "Ingresa con el enlace personal de tu correo de invitación (se habilita 15 minutos antes del inicio).",
     "intMinutes": "min",
     "intLocation": "Ubicación",
     "intStatusScheduled": "Programada",
@@ -3657,6 +3658,11 @@
     "unavailableTitle": "La sala no está disponible ahora",
     "unavailableText": "No pudimos abrir la sala de video. Intenta de nuevo en unos momentos.",
     "retry": "Intentar de nuevo",
+    "notEnabledTitle": "El ingreso en línea aún no está disponible",
+    "notEnabledText": "El ingreso con este enlace todavía no está habilitado. Contacta al reclutador para recibir el enlace de la entrevista.",
+    "rateLimitedTitle": "Demasiados intentos",
+    "rateLimitedText": "Espera un momento antes de volver a intentarlo.",
+    "retryIn": "Intentar de nuevo en {seconds} s",
     "privacy": "Tu enlace es personal. No lo compartas."
   }
 }

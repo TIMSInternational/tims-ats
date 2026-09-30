@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { isSafeDailyJoinUrl } from '../../../../../lib/interview-join';
 
 // "My Interviews" section of the candidate dashboard (Wave 1 Slice 3). Lists the
 // signed-in candidate's UPCOMING interviews (scheduled/confirmed) with a join link
@@ -11,6 +12,15 @@ import { useI18n } from '../../../../../lib/i18n';
 // Only treat a meeting URL as a clickable link when it is an absolute https URL.
 // The URL is staff-set, but this is a cheap defense against a javascript:/data:
 // scheme ever reaching an href.
+//
+// A video interview on our own Daily room is PRIVATE: its raw URL is a dead end without the meeting token
+// the candidate's emailed /interview/join/<token> link mints (the portal never has that token). So for
+// those the raw URL is never linked; the candidate is pointed at the email instead. An external link
+// (Zoom, Meet, Teams…) keeps its Join button.
+function usesEmailJoinLink(type: string, url: string | null): boolean {
+  return type === 'video' && (!url || isSafeDailyJoinUrl(url));
+}
+
 function safeMeetingUrl(url: string | null): string | null {
   if (!url) return null;
   try {
@@ -68,7 +78,8 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
       ) : (
         <ul className="space-y-3">
           {interviews.map((iv) => {
-            const joinUrl = safeMeetingUrl(iv.meetingUrl);
+            const viaEmail = usesEmailJoinLink(iv.type, iv.meetingUrl);
+            const joinUrl = viaEmail ? null : safeMeetingUrl(iv.meetingUrl);
             return (
               <li key={iv.id} className="rounded-xl border border-[#EDEDED] p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -90,6 +101,7 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
                   </span>
                 </div>
 
+                {viaEmail && <p className="mt-3 text-[12px] text-[#585858]">{t.portalDashboard.intJoinViaEmail}</p>}
                 {joinUrl && (
                   <a
                     href={joinUrl}
