@@ -1,28 +1,38 @@
 'use client';
 
 import { useState } from 'react';
+import { useParams } from 'next/navigation';
+import { APPLICATION_CONSENT_TEXT_VERSION } from '@tims/shared';
 import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
 import { Modal } from '../../../../../../components';
-import { TurnstileWidget } from '../../../../../../components/turnstile-widget';
 import { useI18n } from '../../../../../../lib/i18n';
 import { ApplyModalStep1 } from './apply-modal-step1';
 import { ApplyModalStep2 } from './apply-modal-step2';
+import { ApplyModalReview } from './apply-modal-review';
 import { useCvUpload } from '../_lib/use-cv-upload';
-import { experienceLevelLabel } from '../_lib/experience-levels';
+import { applyErrorMessage } from '../_lib/apply-error-message';
 
 interface ApplyModalProps {
   vacancyId: string;
   vacancyTitle: string;
   companyName: string;
+  // The data controller named in the consent text: the ORGANIZATION (tenant) that owns the
+  // vacancy and receives the DataConsent row — never the vacancy's client company, which
+  // may differ. Must match the org the linked /careers/[orgSlug]/privacy notice names.
+  controllerName: string;
   onClose: () => void;
 }
 
 type Step = 1 | 2 | 3;
 
-export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: ApplyModalProps) {
+export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerName, onClose }: ApplyModalProps) {
   const { t } = useI18n();
   const p = t.portal;
+  const params = useParams<{ orgSlug: string }>();
+  // Platform-default candidate privacy notice for this org. A per-organization policy URL
+  // setting does not exist yet (follow-up); this route names the org as controller.
+  const privacyHref = `/careers/${encodeURIComponent(params?.orgSlug ?? '')}/privacy`;
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -39,6 +49,8 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [coverLetter, setCoverLetter] = useState('');
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // Explicit consent: never pre-checked, required to submit.
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const cv = useCvUpload(vacancyId);
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -48,12 +60,23 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
   const isStep1Valid = firstName.trim() && lastName.trim() && email.trim() && email.includes('@');
   // When a captcha is configured, a solved token is required to submit.
   const captchaSatisfied = !turnstileSiteKey || !!captchaToken;
+  const cvUploadFailed = cv.error === 'upload_failed';
 
-  const handleSubmit = async () => {
-    if (!isStep1Valid) return;
+  const submit = async ({ skipCv }: { skipCv: boolean }) => {
+    if (!isStep1Valid || !consentAccepted) return;
     setSubmitting(true);
+    let cvFields: { cvFileKey?: string; cvFileName?: string } = {};
+    if (!skipCv) {
+      try {
+        cvFields = await cv.uploadCvIfNeeded();
+      } catch {
+        // The hook set error='upload_failed'; the review step now shows an inline
+        // alert with "retry" and "remove CV and continue". Nothing was submitted.
+        setSubmitting(false);
+        return;
+      }
+    }
     try {
-      const { cvFileKey, cvFileName } = await cv.uploadCvIfNeeded();
       await applyMutation.mutateAsync({
         vacancyId,
         firstName: firstName.trim(),
@@ -66,28 +89,26 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         yearsExperience: yearsExperience ? parseInt(yearsExperience) : undefined,
         linkedinUrl: linkedinUrl.trim() || undefined,
         coverLetter: coverLetter.trim() || undefined,
-        cvFileKey,
-        cvFileName,
+        ...cvFields,
         captchaToken: captchaToken ?? undefined,
         source: 'portal',
+        consentAccepted: true,
+        consentTextVersion: APPLICATION_CONSENT_TEXT_VERSION,
       });
       setSuccess(true);
       // The detail page shows "N personas aplicaron"; refetch it so the count includes this application.
       void utils.portal.getVacancy.invalidate({ id: vacancyId });
     } catch (err) {
-      if (err instanceof Error && err.message === 'cv_upload_failed') {
-        toast(p.cvUploadFailed, { type: 'error' });
-        setSubmitting(false);
-        return;
-      }
-      const msg = err instanceof Error ? err.message : p.submitErrorFallback;
-      if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
-        toast(p.applyModalDuplicateError, { type: 'error' });
-      } else {
-        toast(msg, { type: 'error' });
-      }
+      // Duplicates are acknowledged server-side like any new application, so there is no
+      // "already applied" error to map.
+      toast(applyErrorMessage(err, p), { type: 'error' });
       setSubmitting(false);
     }
+  };
+
+  const removeCvAndContinue = () => {
+    cv.removeFile();
+    void submit({ skipCv: true });
   };
 
   if (success) {
@@ -151,7 +172,6 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         ))}
       </div>
 
-      {/* Step 1: Personal Info */}
       {step === 1 && (
         <ApplyModalStep1
           firstName={firstName}
@@ -167,7 +187,6 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         />
       )}
 
-      {/* Step 2: Professional + Cover Letter */}
       {step === 2 && (
         <ApplyModalStep2
           currentTitle={currentTitle}
@@ -188,49 +207,33 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         />
       )}
 
-      {/* Step 3: Review & Submit */}
       {step === 3 && (
-        <div className="space-y-5">
-          <div className="rounded-lg bg-[#F6F6F6] p-4 space-y-2">
-            <SummaryRow label={p.summaryName} value={`${firstName} ${lastName}`} />
-            <SummaryRow label={p.summaryEmail} value={email} />
-            {phone && <SummaryRow label={p.summaryPhone} value={phone} />}
-            {location && <SummaryRow label={p.summaryLocation} value={location} />}
-            {currentTitle && (
-              <SummaryRow
-                label={p.summaryCurrentTitle}
-                value={`${currentTitle}${currentCompany ? ` ${p.currentTitleAt} ${currentCompany}` : ''}`}
-              />
-            )}
-            {yearsExperience && (
-              <SummaryRow
-                label={p.summaryExperience}
-                value={experienceLevelLabel(yearsExperience, p.experienceLevels)}
-              />
-            )}
-            {linkedinUrl && <SummaryRow label="LinkedIn" value={linkedinUrl} />}
-            <SummaryRow label={p.summaryVacancy} value={vacancyTitle} />
-          </div>
-
-          {coverLetter.trim() && (
-            <div>
-              <p className="mb-2 text-[12px] font-medium text-[#585858]">{p.yourMessage}</p>
-              <div className="rounded-lg border border-[#EDEDED] bg-white p-3 text-[13px] leading-relaxed text-[#585858] whitespace-pre-wrap max-h-32 overflow-y-auto">
-                {coverLetter}
-              </div>
-            </div>
-          )}
-
-          {turnstileSiteKey && (
-            <div className="pt-1">
-              <TurnstileWidget siteKey={turnstileSiteKey} onToken={setCaptchaToken} />
-            </div>
-          )}
-
-          <p className="text-[11px] text-[#8B8B8B]">
-            {p.dataProcessingPrefix} {companyName} {p.dataProcessingSuffix}
-          </p>
-        </div>
+        <ApplyModalReview
+          summary={{
+            firstName,
+            lastName,
+            email,
+            phone,
+            location,
+            currentTitle,
+            currentCompany,
+            yearsExperience,
+            linkedinUrl,
+            coverLetter,
+          }}
+          vacancyTitle={vacancyTitle}
+          controllerName={controllerName}
+          privacyHref={privacyHref}
+          cvFile={cv.file}
+          cvUploadFailed={cvUploadFailed}
+          submitting={submitting}
+          consentAccepted={consentAccepted}
+          onConsentChange={setConsentAccepted}
+          onRetryCv={() => void submit({ skipCv: false })}
+          onRemoveCvAndContinue={removeCvAndContinue}
+          turnstileSiteKey={turnstileSiteKey}
+          onCaptchaToken={setCaptchaToken}
+        />
       )}
 
       {/* Navigation */}
@@ -275,8 +278,8 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             </button>
           ) : (
             <button
-              onClick={handleSubmit}
-              disabled={!isStep1Valid || submitting || !captchaSatisfied}
+              onClick={() => void submit({ skipCv: false })}
+              disabled={!isStep1Valid || submitting || !captchaSatisfied || !consentAccepted || cvUploadFailed}
               className="flex h-9 items-center gap-2 rounded-lg bg-[#DD0C15] px-5 text-sm font-medium text-white transition hover:bg-[#c00b13] disabled:opacity-50"
             >
               {submitting ? p.sendingShort : p.submitApplication}
@@ -285,14 +288,5 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         </div>
       </div>
     </Modal>
-  );
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between">
-      <span className="text-[12px] text-[#585858]">{label}:</span>
-      <span className="max-w-[60%] truncate text-right text-[12px] font-medium text-[#333]">{value}</span>
-    </div>
   );
 }

@@ -43,6 +43,7 @@ export function useCvUpload(vacancyId: string): UseCvUploadResult {
   const uploadCvIfNeeded = useCallback(async (): Promise<{ cvFileKey?: string; cvFileName?: string }> => {
     if (!file) return {};
     setUploading(true);
+    setError(null);
     try {
       const { url, fields, key } = await getUploadUrlMutation.mutateAsync({
         vacancyId,
@@ -58,6 +59,9 @@ export function useCvUpload(vacancyId: string): UseCvUploadResult {
       if (!uploadRes.ok) throw new Error('S3 upload failed');
       return { cvFileKey: key, cvFileName: file.name };
     } catch {
+      // Covers both a presign error and an S3 POST that fails or is blocked (network/CSP
+      // errors reject the fetch). The file is KEPT so the review step can offer
+      // "retry" or "remove CV and continue" instead of silently doing nothing.
       setError('upload_failed');
       throw new Error('cv_upload_failed');
     } finally {

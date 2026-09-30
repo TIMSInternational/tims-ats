@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: en, locale: 'EN' }) }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: vi.fn() }));
+vi.mock('next/navigation', () => ({ useParams: () => ({ orgSlug: 'acme' }) }));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     useUtils: () => ({ portal: { getVacancy: { invalidate: mocks.invalidate } } }),
@@ -57,10 +58,20 @@ const VACANCY_ID = '11111111-1111-4111-8111-111111111111';
 
 describe('apply modal', () => {
   it('refetches the vacancy after a successful application so the applicant count is current', async () => {
-    render(<ApplyModal vacancyId={VACANCY_ID} vacancyTitle="Analyst" companyName="Acme" onClose={vi.fn()} />);
+    render(
+      <ApplyModal
+        vacancyId={VACANCY_ID}
+        vacancyTitle="Analyst"
+        companyName="Acme"
+        controllerName="Acme"
+        onClose={vi.fn()}
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'fill' }));
     fireEvent.click(screen.getByRole('button', { name: en.portal.nextStep }));
     fireEvent.click(screen.getByRole('button', { name: en.portal.nextStep }));
+    // Explicit data-processing consent is required before the application can be submitted.
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: en.portal.submitApplication }));
 
     await waitFor(() => expect(screen.getByText(en.portal.applicationSentTitle)).toBeInTheDocument());
