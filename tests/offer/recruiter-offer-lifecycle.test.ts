@@ -21,7 +21,7 @@ const mockDb = vi.hoisted(() => ({
   offer: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   organization: { findFirst: vi.fn() },
   user: { findMany: vi.fn() },
-  offerApproval: { createMany: vi.fn() },
+  offerApproval: { createMany: vi.fn(), findFirst: vi.fn() },
 }));
 const runTenantTransactionMock = vi.hoisted(() => vi.fn());
 
@@ -49,6 +49,13 @@ vi.mock('../../packages/api/src/access', async (importOriginal) => ({
     teamMemberIds: async () => [userId],
     unitMemberIds: async () => [],
   })),
+}));
+
+// `generateSigningLink` matches the AI rate-limit tier ("generate"), which is keyed per ORGANIZATION at
+// 10/min — this file sends more than that from one org, so the limiter is neutralised here.
+vi.mock('../../packages/api/src/middleware/rate-limit', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  checkRateLimit: vi.fn(async () => undefined),
 }));
 
 const sendOfferToCandidateMock = vi.hoisted(() => vi.fn());
@@ -84,6 +91,11 @@ async function makeCaller(roles: string[]) {
   } as never);
 }
 
+// The candidate row was last edited BEFORE the offer entered the approval chain (the normal case).
+const CANDIDATE_EDITED_AT = new Date('2026-09-01T10:00:00.000Z');
+const SUBMITTED_AT = new Date('2026-09-02T10:00:00.000Z');
+const CANDIDATE = vi.hoisted(() => ({ email: 'ana@candidate.test', updatedAt: new Date(0) }));
+
 function offerWithStatus(status: string) {
   return {
     id: OFFER_ID,
@@ -92,7 +104,7 @@ function offerWithStatus(status: string) {
     updatedAt: new Date(),
     expiresAt: null,
     sentAt: null,
-    candidate: { firstName: 'Ana', lastName: 'Lopez', email: 'ana@candidate.test' },
+    candidate: { firstName: 'Ana', lastName: 'Lopez', email: CANDIDATE.email, updatedAt: CANDIDATE.updatedAt },
     vacancy: { title: 'Analyst' },
   };
 }
@@ -148,6 +160,9 @@ beforeEach(() => {
   LED_TEAMS.set(LEADER_OTHER_TEAM_ID, [OTHER_TEAM_ID]);
   mockDb.organization.findFirst.mockResolvedValue({ name: 'Acme' });
   mockDb.offerApproval.createMany.mockResolvedValue({ count: 1 });
+  CANDIDATE.email = 'ana@candidate.test';
+  CANDIDATE.updatedAt = CANDIDATE_EDITED_AT;
+  mockDb.offerApproval.findFirst.mockResolvedValue({ createdAt: SUBMITTED_AT });
   runTenantTransactionMock.mockImplementation(async (_org: string, fn: (tx: unknown) => Promise<unknown>) =>
     fn({ offer: mockDb.offer, offerApproval: mockDb.offerApproval }),
   );
@@ -194,17 +209,60 @@ describe('offer.generateSigningLink — recruiter can send an APPROVED offer', (
     );
   });
 
-  it('re-sending an already-sent offer as a recruiter re-emails the SAME link but never returns the token', async () => {
+  it('refuses a recruiter (offer:create only) re-sending an already-SENT offer: that re-emails the LIVE token', async () => {
     const existing = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     useOffer('sent', { signingToken: existing });
     const caller = await makeCaller(['recruiter']);
-    const result = await caller.signing.generateSigningLink({ offerId: OFFER_ID });
-
-    expect(result.signingUrl).toBeNull();
-    expect(JSON.stringify(result)).not.toContain(existing);
+    expect(await codeOf(caller.signing.generateSigningLink({ offerId: OFFER_ID }))).toBe('FORBIDDEN');
     expect(mockDb.offer.updateMany).not.toHaveBeenCalled();
+    expect(sendOfferToCandidateMock).not.toHaveBeenCalled();
+  });
+
+  // #304 panel (HIGH): recruiters hold candidate:update org-wide (candidate/crud.ts update), so they can point
+  // candidate.email at an address they control. The send path must not deliver the bearer link there.
+  it('email-redirect: a recruiter who edits the candidate email after an offer was SENT cannot re-send the live token to it', async () => {
+    const existing = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    CANDIDATE.email = 'attacker@recruiter.test';
+    CANDIDATE.updatedAt = new Date('2026-09-03T10:00:00.000Z');
+    useOffer('sent', { signingToken: existing });
+    const caller = await makeCaller(['recruiter']);
+    expect(await codeOf(caller.signing.generateSigningLink({ offerId: OFFER_ID }))).toBe('FORBIDDEN');
+    expect(sendOfferToCandidateMock).not.toHaveBeenCalled();
+  });
+
+  it('email-redirect: a recruiter cannot send an APPROVED offer after the candidate row changed post-submission', async () => {
+    CANDIDATE.email = 'attacker@recruiter.test';
+    CANDIDATE.updatedAt = new Date('2026-09-03T10:00:00.000Z'); // after SUBMITTED_AT
+    useOffer('approved');
+    const caller = await makeCaller(['recruiter']);
+    expect(await codeOf(caller.signing.generateSigningLink({ offerId: OFFER_ID }))).toBe('FORBIDDEN');
+    expect(mockDb.offer.updateMany).not.toHaveBeenCalled();
+    expect(sendOfferToCandidateMock).not.toHaveBeenCalled();
+    // The anchor is the LATEST submission of THIS offer in THIS organization.
+    expect(mockDb.offerApproval.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { offerId: OFFER_ID, organizationId: ORG_ID },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  });
+
+  it('refuses a recruiter an approved offer with no approval chain to anchor the address on (fail closed)', async () => {
+    mockDb.offerApproval.findFirst.mockResolvedValue(null);
+    useOffer('approved');
+    const caller = await makeCaller(['recruiter']);
+    expect(await codeOf(caller.signing.generateSigningLink({ offerId: OFFER_ID }))).toBe('FORBIDDEN');
+    expect(sendOfferToCandidateMock).not.toHaveBeenCalled();
+  });
+
+  it('an HR admin (offer:update) can still send after a candidate edit — the guard binds only the offer:create widening', async () => {
+    CANDIDATE.updatedAt = new Date('2026-09-03T10:00:00.000Z');
+    useOffer('approved');
+    const caller = await makeCaller(['hr_admin']);
+    const result = await caller.signing.generateSigningLink({ offerId: OFFER_ID });
+    expect(result.signingUrl).toMatch(/^\/offers\/sign\//);
     expect(sendOfferToCandidateMock).toHaveBeenCalledTimes(1);
-    expect(emailedToken()).toBe(existing);
+    expect(mockDb.offerApproval.findFirst).not.toHaveBeenCalled();
   });
 
   it('still returns the signing link to an HR admin (offer:update), as before the widening', async () => {

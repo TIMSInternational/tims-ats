@@ -8,8 +8,9 @@ import { emailService } from '../../services/email.service';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 
 export const offerSigningRouter = router({
-  // Generate a unique signing link for an offer. offer:create (recruiters) suffices because the body only
-  // ever sends an APPROVED (or already sent) offer — it never edits terms, which stays offer:update.
+  // Generate a unique signing link for an offer. offer:create (recruiters) suffices to send an APPROVED
+  // offer — the body never edits terms, which stays offer:update. Re-sending an already-SENT offer (which
+  // re-emails the live bearer token) stays offer:update only; see the create-only guard below.
   generateSigningLink: anyPermissionProcedure('offer', ['update', 'create'])
     .input(z.object({ offerId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
@@ -27,7 +28,7 @@ export const offerSigningRouter = router({
         },
         select: {
           id: true, status: true, settings: true, updatedAt: true, expiresAt: true, sentAt: true,
-          candidate: { select: { firstName: true, lastName: true, email: true } },
+          candidate: { select: { firstName: true, lastName: true, email: true, updatedAt: true } },
           vacancy: { select: { title: true } },
         },
       });
@@ -48,6 +49,37 @@ export const offerSigningRouter = router({
       }
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
+      }
+
+      // The emailed URL IS the candidate's bearer token (anyone holding it can accept/decline — offer-dto.ts),
+      // and the recipient is whatever candidate.email says NOW — which candidate:update (recruiters hold it
+      // org-wide) can rewrite. So a caller authorized only through the offer:create widening may send an
+      // offer exactly once, to the address it had when it entered the approval chain:
+      //  - never re-send a SENT offer: that re-emails the LIVE token, so an edited email would hand a copy of
+      //    a working link to someone other than the candidate (#304 panel, HIGH);
+      //  - never send if the candidate row changed after the latest submission for approval (or if there is
+      //    no approval chain to anchor on): the approvers approved an offer to the address it had then.
+      // Both refusals are fail-closed; an offer:update holder (HR admin) can still send or re-send.
+      const holdsOfferUpdate = (await buildAccessForUser(ctx.user, 'offer', 'update')).allowed;
+      if (!holdsOfferUpdate) {
+        if (offer.status === 'sent') {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Solo un usuario con permiso para editar ofertas puede reenviar una oferta ya enviada',
+          });
+        }
+        const latestSubmission = await db.offerApproval.findFirst({
+          where: { offerId: offer.id, organizationId: ctx.user.organizationId },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        });
+        if (!latestSubmission || offer.candidate.updatedAt > latestSubmission.createdAt) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message:
+              'Los datos del candidato cambiaron después de solicitar la aprobación; un usuario con permiso para editar ofertas debe enviarla',
+          });
+        }
       }
 
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -111,13 +143,11 @@ export const offerSigningRouter = router({
         expiresAt: offer.expiresAt,
       });
 
-      // The URL IS the candidate's bearer token (anyone holding it can accept/decline — offer-dto.ts).
       // Only callers who could already generate links before the offer:create widening (offer:update)
-      // get it back; a recruiter authorized via offer:create alone triggers the email but never sees
-      // the token — including the reused token of an already-sent offer.
-      const canSeeSigningUrl = (await buildAccessForUser(ctx.user, 'offer', 'update')).allowed;
+      // get the bearer link back; a recruiter authorized via offer:create alone triggers the email but
+      // never sees the token.
       return {
-        signingUrl: canSeeSigningUrl ? signingUrl : null,
+        signingUrl: holdsOfferUpdate ? signingUrl : null,
         emailDeliveryAccepted,
         candidateEmail: offer.candidate.email,
       };

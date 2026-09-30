@@ -122,7 +122,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         onViewLetter={() => setShowLetterModal(true)}
         onSendForSigning={() => generateSigningLink.mutate({ offerId })}
         isGeneratingLink={generateSigningLink.isPending}
-        canSendForSigning={o.status === 'approved' || o.status === 'sent'}
+        // Re-sending a SENT offer re-emails the live bearer link, which the server allows only to offer:update.
+        canSendForSigning={o.status === 'approved' || (o.status === 'sent' && can('offer', 'update'))}
       />
 
       {/* Two columns */}
