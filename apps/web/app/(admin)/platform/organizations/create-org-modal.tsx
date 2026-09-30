@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { sanitizeSlugInput, slugify } from '../../../../lib/slugify';
 
 export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
@@ -62,12 +63,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
               value={formName}
               onChange={(e) => {
                 setFormName(e.target.value);
-                setFormSlug(
-                  e.target.value
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, '-')
-                    .replace(/(^-|-$)/g, ''),
-                );
+                setFormSlug(slugify(e.target.value));
               }}
               placeholder={t.organizations.orgNamePlaceholder}
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
@@ -79,7 +75,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
               type="text"
               required
               value={formSlug}
-              onChange={(e) => setFormSlug(e.target.value)}
+              onChange={(e) => setFormSlug(sanitizeSlugInput(e.target.value))}
               placeholder="constructora-bolivar"
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono focus:outline-none focus:border-[#1F114C]"
             />

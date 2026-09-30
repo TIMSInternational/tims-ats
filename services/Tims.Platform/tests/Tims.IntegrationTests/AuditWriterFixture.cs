@@ -46,12 +46,20 @@ public sealed class AuditWriterFixture : IAsyncLifetime
     /// <summary>A second DB on the same server WITHOUT the table — writes here fail deterministically.</summary>
     public string MissingTableConnectionString { get; private set; } = string.Empty;
 
+    /// <summary>A login without BYPASSRLS that can SET ROLE app_tenant, matching the tenant writer path.</summary>
+    public string RestrictedAuditConnectionString { get; private set; } = string.Empty;
+
     public async Task InitializeAsync()
     {
         await _container.StartAsync();
         ConnectionString = _container.GetConnectionString();
         MissingTableConnectionString =
             new NpgsqlConnectionStringBuilder(ConnectionString) { Database = MissingTableDatabase }.ConnectionString;
+        RestrictedAuditConnectionString = new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            Username = "audit_app",
+            Password = "audit_app_test_password",
+        }.ConnectionString;
 
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
@@ -63,6 +71,8 @@ public sealed class AuditWriterFixture : IAsyncLifetime
                 """
                 CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS;
                 GRANT app_tenant TO postgres;
+                CREATE ROLE audit_app LOGIN NOBYPASSRLS PASSWORD 'audit_app_test_password';
+                GRANT app_tenant TO audit_app;
                 """;
             await role.ExecuteNonQueryAsync();
         }

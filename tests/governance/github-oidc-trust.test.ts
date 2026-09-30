@@ -42,6 +42,30 @@ describe('TIMS GitHub deploy trust', () => {
     });
   });
 
+  it('grants every AWS API the deploy and rollback workflows call (and the preflight they run)', () => {
+    // A call the role cannot make fails only in production, mid-deploy or mid-rollback. Derive the
+    // required actions from the scripts themselves, so a new `aws apprunner|ecr <verb>` cannot land
+    // without its IAM grant.
+    const bootstrap = readFileSync(resolve(__dirname, '../../scripts/deploy/bootstrap-github-oidc-role.sh'), 'utf8');
+    const policy = JSON.parse(bootstrap.match(/PERMS="\$\(cat <<JSON\n([\s\S]*?)\nJSON/)![1]) as {
+      Statement: { Action: string | string[] }[];
+    };
+    const granted = new Set(policy.Statement.flatMap((s) => (Array.isArray(s.Action) ? s.Action : [s.Action])));
+    const sources = [
+      '../../.github/workflows/deploy-platform-api.yml',
+      '../../.github/workflows/rollback-platform-api.yml',
+      '../../scripts/deploy/apprunner-preflight.sh',
+    ].map((p) => readFileSync(resolve(__dirname, p), 'utf8'));
+    const pascal = (verb: string) => verb.replace(/(^|-)([a-z])/g, (_m, _d, c: string) => c.toUpperCase());
+    const needed = new Set<string>();
+    for (const src of sources)
+      for (const m of src.matchAll(/\baws (apprunner|ecr) ([a-z-]+)/g)) needed.add(`${m[1]}:${pascal(m[2])}`);
+    expect([...needed].sort()).toEqual(
+      expect.arrayContaining(['apprunner:ListOperations', 'apprunner:UpdateService', 'ecr:DescribeImages']),
+    );
+    for (const action of needed) expect(granted, `deploy role lacks ${action}`).toContain(action);
+  });
+
   it.each([
     JSON.stringify({ ...valid, use_immutable_subject: false }),
     JSON.stringify({ ...valid, use_default: false }),

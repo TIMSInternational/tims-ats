@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useI18n } from '../../../../../lib/i18n';
+import { markdownToPlainText } from '../../../../../lib/markdown-lite';
+import { enumLabel, formatSalaryAmount, parsePortalSalary, salaryPeriodLabel } from '../_lib/vacancy-display';
 
 interface VacancyCardProps {
   vacancy: {
@@ -11,7 +13,7 @@ interface VacancyCardProps {
     location: string | null;
     remotePolicy: string | null;
     contractType: string | null;
-    salary: { min?: number; max?: number; currency?: string } | null;
+    salary: unknown;
     priority: string;
     createdAt: Date | string;
     company: { name: string } | null;
@@ -26,16 +28,18 @@ function isNew(createdAt: Date | string) {
   return now.getTime() - created.getTime() < 7 * 24 * 60 * 60 * 1000;
 }
 
-function formatSalary(n: number) {
-  return n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : n.toString();
-}
-
 export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const p = t.portal;
   const initial = vacancy.company?.name?.charAt(0).toUpperCase() ?? 'T';
-  const tags = [vacancy.contractType, vacancy.remotePolicy, vacancy.unit?.name].filter(Boolean);
-  const currency = vacancy.salary?.currency ?? 'USD';
-  const hasSalary = vacancy.salary && (vacancy.salary.min || vacancy.salary.max);
+  const tags = [
+    enumLabel(vacancy.contractType, p.contractTypes),
+    enumLabel(vacancy.remotePolicy, p.remotePolicies),
+    vacancy.unit?.name,
+  ].filter((tag): tag is string => Boolean(tag));
+  const salary = parsePortalSalary(vacancy.salary);
+  const period = salary ? salaryPeriodLabel(salary.period, p) : null;
+  const preview = vacancy.description ? markdownToPlainText(vacancy.description) : '';
 
   return (
     <Link href={`/careers/${orgSlug}/${vacancy.id}`} className="group block">
@@ -47,28 +51,34 @@ export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
               <span className="text-[11px] font-bold text-white">{initial}</span>
             </div>
             <div>
-              <p className="text-[12px] font-medium text-[#333]">{vacancy.company?.name ?? 'Empresa'}</p>
+              <p className="text-[12px] font-medium text-[#333]">{vacancy.company?.name ?? p.companyFallback}</p>
               {vacancy.location && <p className="text-[11px] text-[#8B8B8B]">{vacancy.location}</p>}
             </div>
           </div>
           {vacancy.priority === 'urgent' ? (
-            <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-semibold text-amber-600">Urgente</span>
+            <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-semibold text-amber-600">
+              {p.urgentBadge}
+            </span>
           ) : isNew(vacancy.createdAt) ? (
-            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-600">Nueva</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+              {p.newBadge}
+            </span>
           ) : null}
         </div>
 
         {/* Title & description */}
-        <h3 className="text-[15px] font-semibold text-[#1F114C] transition-colors group-hover:text-[#DD0C15]">{vacancy.title}</h3>
-        {vacancy.description && (
-          <p className="mt-1 line-clamp-2 text-[12px] text-[#585858]">{vacancy.description}</p>
-        )}
+        <h3 className="text-[15px] font-semibold text-[#1F114C] transition-colors group-hover:text-[#DD0C15]">
+          {vacancy.title}
+        </h3>
+        {preview && <p className="mt-1 line-clamp-2 text-[12px] text-[#585858]">{preview}</p>}
 
         {/* Tags */}
         {tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {tags.map((tag) => (
-              <span key={tag} className="rounded-full bg-[#F6F6F6] px-2 py-0.5 text-[10px] text-[#585858]">{tag}</span>
+              <span key={tag} className="rounded-full bg-[#F6F6F6] px-2 py-0.5 text-[10px] text-[#585858]">
+                {tag}
+              </span>
             ))}
           </div>
         )}
@@ -76,23 +86,17 @@ export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
         {/* Bottom */}
         <div className="mt-4 flex items-center justify-between border-t border-[#EDEDED] pt-4">
           <div>
-            {hasSalary ? (
+            {salary ? (
               <>
-                <p className="text-[13px] font-semibold text-[#1F114C]">
-                  {vacancy.salary!.min && vacancy.salary!.max
-                    ? `${formatSalary(vacancy.salary!.min)} - ${formatSalary(vacancy.salary!.max)}`
-                    : vacancy.salary!.min
-                      ? `${formatSalary(vacancy.salary!.min)}+`
-                      : `Hasta ${formatSalary(vacancy.salary!.max!)}`}
-                </p>
-                <p className="text-[10px] text-[#8B8B8B]">{currency} / ano</p>
+                <p className="text-[13px] font-semibold text-[#1F114C]">{formatSalaryAmount(salary, locale, p)}</p>
+                {period && <p className="text-[10px] text-[#8B8B8B]">{period}</p>}
               </>
             ) : (
-              <p className="text-[12px] text-[#8B8B8B]">{t.portal.salaryNegotiable}</p>
+              <p className="text-[12px] text-[#8B8B8B]">{p.salaryNegotiable}</p>
             )}
           </div>
           <span className="rounded-lg bg-[#1F114C] px-4 py-1.5 text-[12px] font-medium text-white transition-colors group-hover:bg-[#DD0C15]">
-            Aplicar
+            {p.applyCta}
           </span>
         </div>
       </div>

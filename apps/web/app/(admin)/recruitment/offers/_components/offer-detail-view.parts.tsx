@@ -1,7 +1,8 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n/index';
-import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
+import { formatDate } from '../../../../../lib/format-utils';
+import { formatAnnualOfferSalary } from '../../../../../lib/offer-salary';
 
 /* ── Candidate Header subcomponent ── */
 
@@ -171,7 +172,7 @@ export function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardPr
           <div>
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.baseSalary}</p>
             <p className="text-[15px] font-bold text-[#1F114C]">
-              {formatCurrency(offer.salary, offer.currency)} / {t.vacancies.yearly.toLowerCase()}
+              {formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}
             </p>
           </div>
           <div>
