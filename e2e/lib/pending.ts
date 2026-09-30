@@ -39,7 +39,7 @@ export const PENDING = {
   tenantInvitations: {
     ref: '#307',
     why: 'a company admin has no UI to invite their own team on main (only the platform owner can)',
-    merged: false,
+    merged: true,
   },
   orgStructure: {
     ref: '#310',
