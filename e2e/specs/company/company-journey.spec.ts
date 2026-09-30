@@ -143,26 +143,32 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   // vacancies and offers (leader grants are team-scoped), so this is what makes the leader an approver.
   const { page } = admin;
   await page.goto('/settings/business-units');
-  await page.getByRole('button', { name: 'Nueva unidad' }).click();
+  // Scope to the page's main region (the app header/sidebar carry their own buttons and the signed-in
+  // user's name). On a company with no units yet, 'Nueva unidad' renders twice inside main — the top-bar
+  // action and the empty state's call to action — so take the first.
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Nueva unidad' }).first().click();
   const unit = page.getByRole('dialog', { name: 'Nueva unidad' });
   await unit.getByLabel('Nombre', { exact: true }).fill(UNIT);
   await unit.getByRole('button', { name: 'Guardar' }).click();
   await expect(unit).toBeHidden();
 
-  await page.getByRole('button', { name: 'Nuevo equipo' }).first().click();
+  await main.getByRole('button', { name: 'Nuevo equipo' }).first().click();
   const team = page.getByRole('dialog', { name: 'Nuevo equipo' });
   await team.getByLabel('Nombre', { exact: true }).fill(TEAM);
   await team.getByRole('button', { name: 'Guardar' }).click();
   await expect(team).toBeHidden();
 
-  await page.getByRole('button', { name: 'Asignar líder' }).first().click();
-  const picker = page.getByRole('dialog');
+  await main.getByRole('button', { name: 'Asignar líder' }).first().click();
+  const picker = page.getByRole('dialog', { name: 'Asignar líder' });
   await picker.getByPlaceholder('Buscar por nombre o email...').fill(j.leader.firstName);
   await picker
     .getByRole('button', { name: new RegExp(`${j.leader.firstName} ${j.leader.lastName}`) })
     .first()
     .click();
-  await expect(page.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first()).toBeVisible();
+  await expect(picker).toBeHidden();
+  // The team row now reads "Líder: <name>".
+  await expect(main.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first()).toBeVisible();
 });
 
 test('recruiter creates a vacancy with the wizard (no AI)', async () => {

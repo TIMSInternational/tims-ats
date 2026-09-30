@@ -44,7 +44,7 @@ export const PENDING = {
   orgStructure: {
     ref: '#310',
     why: 'a new company has no teams/team leaders, so a leader is never in scope to approve',
-    merged: false,
+    merged: true,
   },
   candidateEmails: {
     ref: '#308',
