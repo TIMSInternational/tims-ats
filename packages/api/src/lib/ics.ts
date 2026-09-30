@@ -26,6 +26,7 @@ export type IcsEvent = {
 };
 
 const CRLF = '\r\n';
+const DQUOTE = '"';
 const MAX_LINE_OCTETS = 75;
 const SEQUENCE_EPOCH_MS = Date.UTC(2026, 0, 1);
 // Conservative mailbox check: no whitespace, quotes, angle brackets, control chars.
@@ -34,17 +35,18 @@ const EMAIL_RE =
 
 /** RFC 5545 §3.3.11 TEXT escaping: backslash, semicolon, comma, newline. */
 export function escapeIcsText(value: string): string {
+  // One pass over the three TEXT specials, so an escape's own backslash is never re-escaped.
   return value
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
+    .replace(/[\\;,]/g, (ch) => `\\${ch}`)
     .replace(/\r\n|\r|\n/g, '\\n')
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 }
 
 /** §3.2 param-value: quoted-string may not contain DQUOTE or control characters. */
 function quoteParam(value: string): string {
-  return `"${value.replace(/["\x00-\x1f\x7f]/g, '').trim()}"`;
+  // A DQUOTE cannot be escaped inside a §3.2 quoted-string, so it is removed, not doubled.
+  const inner = value.replace(/["\x00-\x1f\x7f]/g, '').trim();
+  return DQUOTE + inner + DQUOTE;
 }
 
 function mailto(email: string): string {
