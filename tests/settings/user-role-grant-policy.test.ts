@@ -11,6 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AssignableStaffRole } from '@tims/shared';
 
 const h = vi.hoisted(() => ({
   roleFindFirst: vi.fn(),
@@ -74,7 +75,7 @@ async function makeCaller(roles: string[]) {
   return createCallerFactory(router({ user: userRouter }))(ctx as never);
 }
 
-const newUser = (roleSlug: string) => ({ email: 'new@example.test', firstName: 'New', lastName: 'Hire', roleSlug });
+const newUser = (roleSlug: AssignableStaffRole) => ({ email: 'new@example.test', firstName: 'New', lastName: 'Hire', roleSlug });
 
 // observeDenial is fire-and-forget; give its promise chain a turn to reach db.auditLog.create.
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
