@@ -194,6 +194,9 @@ test('hiring leader submits a scorecard from the interview room', async () => {
   // interview.createVideoRoom (which needs a Daily API key this stack deliberately lacks), and no
   // Daily call object. Fully unstubbed: the scorecard submits through the real interview.submitScorecard.
   await page.goto(`/recruitment/interviews/${interviewId}/room`);
+  await expect(
+    page.getByText('Esta entrevista no usa la videollamada de la plataforma. Registra tu evaluación en el scorecard.'),
+  ).toBeVisible();
 
   const panel = page.getByRole('tabpanel', { name: 'Scorecard' });
   const submit = panel.getByRole('button', { name: 'Enviar scorecard' });

@@ -66,7 +66,9 @@ export function RoomLobby({
           <button
             type="button"
             onClick={onScoreWithoutVideo}
-            className="text-white/80 border border-white/20 px-5 py-2 rounded-lg text-[13px] font-medium hover:bg-white/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            // Disabled while a join is in flight, so a late token cannot race this switch.
+            disabled={isJoining}
+            className="text-white/80 border border-white/20 px-5 py-2 rounded-lg text-[13px] font-medium hover:bg-white/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t.interviewRoom.scoreWithoutVideo}
           </button>

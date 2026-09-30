@@ -2,39 +2,39 @@
 
 import { hardNavigate, ROOM_EXIT_PATH } from './hard-exit';
 import { useState, useEffect, useCallback } from 'react';
-import { useDaily, useMeetingState } from '@daily-co/daily-react';
 
 interface InterviewTopBarProps {
   candidateName: string;
   vacancyTitle: string;
   fitScore?: number;
-  isInCall: boolean;
+  /** True only while the Daily call is joined (reported by CallStateBridge). */
+  isCallActive: boolean;
+  /** Leaves the Daily call, if one exists, before the hard exit. */
+  onLeaveCall?: () => void;
 }
 
 export function InterviewTopBar({
   candidateName,
   vacancyTitle,
   fitScore,
-  isInCall,
+  isCallActive,
+  onLeaveCall,
 }: InterviewTopBarProps) {
-  const daily = useDaily();
-  const meetingState = useMeetingState();
-  const callActive = isInCall && meetingState === 'joined-meeting';
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    if (!callActive) return;
+    if (!isCallActive) return;
     const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(interval);
-  }, [callActive]);
+  }, [isCallActive]);
 
   const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const seconds = String(elapsed % 60).padStart(2, '0');
 
   const handleEnd = useCallback(() => {
-    daily?.leave();
+    onLeaveCall?.();
     hardNavigate(ROOM_EXIT_PATH);
-  }, [daily]);
+  }, [onLeaveCall]);
 
   return (
     <div className="flex items-center justify-between px-6 h-[50px] bg-[#1F114C] shrink-0">
@@ -52,7 +52,7 @@ export function InterviewTopBar({
 
       <div className="flex items-center gap-4">
         {/* Timer */}
-        {callActive && (
+        {isCallActive && (
           <div className="flex items-center gap-2">
             <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />

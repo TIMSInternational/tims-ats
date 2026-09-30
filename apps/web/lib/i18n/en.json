@@ -3835,9 +3835,11 @@
     "joinRetry": "Retry connection",
     "scoreWithoutVideo": "Score without video",
     "scoreWithoutVideoHint": "Open the scorecard without connecting to the video call.",
-    "scoringInPersonNotice": "This interview has no video call. Record your evaluation in the scorecard.",
+    "scoringInPersonNotice": "This interview does not use the platform's video call. Record your evaluation in the scorecard.",
     "scoringWithoutVideoNotice": "You are scoring without video. You can join the video call at any time.",
     "joinVideoCall": "Join the video call",
-    "locationValue": "Location: {location}"
+    "locationValue": "Location or link: {location}",
+    "panelHeading": "Interview evaluation",
+    "cancelledNotice": "This interview was cancelled. It can no longer be joined or scored."
   }
 }

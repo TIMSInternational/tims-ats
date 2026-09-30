@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useState } from 'react';
+import { use, useCallback, useRef, useState, type ReactNode } from 'react';
 import { DailyProvider } from '@daily-co/daily-react';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton } from '../../../../../../components';
@@ -15,6 +15,8 @@ import { interviewTypeLabel } from './interview-type-label';
 import { isVideoInterviewType } from './interview-mode';
 import { RoomLobby } from './room-lobby';
 import { ScoringStage } from './scoring-stage';
+import { CancelledStage } from './cancelled-stage';
+import { CallStateBridge } from './call-state-bridge';
 import type { DailyJoinErrorCategory } from './daily-join-error';
 
 function getInitials(name: string): string {
@@ -26,6 +28,8 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+type Stage = 'lobby' | 'scoring' | 'call';
+
 export default function InterviewRoomPage({
   params,
 }: {
@@ -33,54 +37,75 @@ export default function InterviewRoomPage({
 }) {
   const { t } = useI18n();
   const { id } = use(params);
-  const [hasJoined, setHasJoined] = useState(false);
-  // Scoring never requires video (#325): an evaluator of a video interview can open the
-  // scorecard from the lobby or a failed join, without creating a Daily room.
-  const [isScoringWithoutVideo, setIsScoringWithoutVideo] = useState(false);
 
   const interview = trpc.interview.getById.useQuery({ id });
+
+  // Scoring never requires video (#325). null = the default stage for this interview
+  // (see below); set once the evaluator switches between lobby, scoring and the call.
+  const [chosenStage, setChosenStage] = useState<Stage | null>(null);
+  // Bumped on every switch so the scorecard panel takes focus (a11y).
+  const [focusRequest, setFocusRequest] = useState(0);
 
   // Only called on an explicit join — this also creates the room (needs DAILY_API_KEY).
   const videoToken = trpc.interview.createVideoRoom.useMutation();
   const [roomData, setRoomData] = useState<{ url: string; token: string } | null>(null);
+  const [joinRequestError, setJoinRequestError] = useState<string | null>(null);
+  // Every join/leave bumps this; a createVideoRoom result from a superseded request is ignored,
+  // so a late response can never pull the evaluator back into a call they left.
+  const joinSeq = useRef(0);
   // A failed Daily join used to leave the room on "Conectando..." forever.
   const [joinError, setJoinError] = useState<DailyJoinErrorCategory | null>(null);
   const [joinAttempt, setJoinAttempt] = useState(0);
   const handleJoinError = useCallback((category: DailyJoinErrorCategory) => setJoinError(category), []);
+  // The top bar sits outside DailyProvider; CallStateBridge reports the call into these.
+  const [isCallActive, setIsCallActive] = useState(false);
+  const leaveRef = useRef<(() => void) | null>(null);
+  const handleLeaveCall = useCallback(() => leaveRef.current?.(), []);
 
-  // Join button handler — creates room + gets token
+  // Join — creates the room + a token. The current stage stays (and the scorecard stays
+  // visible) until the token arrives; a failure is shown on that same stage.
   const handleJoin = async () => {
+    const seq = ++joinSeq.current;
+    setJoinRequestError(null);
     try {
       const result = await videoToken.mutateAsync({ interviewId: id });
+      if (seq !== joinSeq.current) return;
       setRoomData({ url: result.url, token: result.token });
-      setHasJoined(true);
-    } catch {
-      // Error handled by mutation state
+      setJoinError(null);
+      setChosenStage('call');
+      setFocusRequest((n) => n + 1);
+    } catch (err) {
+      if (seq !== joinSeq.current) return;
+      setJoinRequestError(err instanceof Error ? err.message : t.interviewRoom.joinErrorUnknown);
     }
   };
 
   // Retry = fresh token (the old one may be the reason it failed) + a remounted AutoJoin.
   const handleRetryJoin = async () => {
+    const seq = ++joinSeq.current;
     try {
       const result = await videoToken.mutateAsync({ interviewId: id });
+      if (seq !== joinSeq.current) return;
       setRoomData({ url: result.url, token: result.token });
       setJoinError(null);
       setJoinAttempt((n) => n + 1);
     } catch {
-      setJoinError('network');
+      if (seq === joinSeq.current) setJoinError('network');
     }
   };
 
-  // Leaves (or never enters) the call: unmounts DailyProvider and keeps only the scorecard.
+  // Leaves (or never enters) the call: DailyProvider unmounts, the scorecard stays mounted.
   const handleScoreWithoutVideo = () => {
-    setIsScoringWithoutVideo(true);
-    setHasJoined(false);
+    joinSeq.current += 1;
+    setChosenStage('scoring');
     setRoomData(null);
     setJoinError(null);
+    setJoinRequestError(null);
+    setFocusRequest((n) => n + 1);
   };
 
   const handleJoinVideoFromScoring = () => {
-    setIsScoringWithoutVideo(false);
+    setRoomData(null);
     void handleJoin();
   };
 
@@ -104,75 +129,87 @@ export default function InterviewRoomPage({
   const candidateInitials = getInitials(candidateName);
   const subtitle = `${data.vacancy.title} — ${t.interviews.roomTypeLabel} ${interviewTypeLabel(t, data.type)}`;
   const isVideo = isVideoInterviewType(data.type);
+  const isCancelled = data.status === 'cancelled';
+  // Non-video interviews always score directly; a completed video interview starts in
+  // scoring too (joining would create a Daily room for a call that is over).
+  const stage: Stage = !isVideo
+    ? 'scoring'
+    : chosenStage === 'call' && !roomData
+      ? 'scoring'
+      : (chosenStage ?? (data.status === 'completed' ? 'scoring' : 'lobby'));
 
-  // In-person / phone interviews, or a video interview scored without joining: the
-  // scorecard renders directly — no createVideoRoom call and no DailyProvider.
-  if (!isVideo || isScoringWithoutVideo) {
-    return (
-      <div className="h-full flex flex-col overflow-hidden">
-        <InterviewTopBar candidateName={candidateName} vacancyTitle={data.vacancy.title} isInCall={false} />
-        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-          <div className="md:flex-[60] flex flex-col bg-[#0a0a0a] min-w-0 shrink-0 md:shrink">
-            <ScoringStage
-              candidateName={candidateName}
-              candidateInitials={candidateInitials}
-              subtitle={subtitle}
-              location={data.location}
-              onJoinVideo={isVideo ? handleJoinVideoFromScoring : undefined}
-            />
-          </div>
-          <ScorecardPanel interview={data} candidateInitials={candidateInitials} />
-        </div>
-      </div>
+  let stageNode: ReactNode;
+  let stageClass = 'flex-1 flex flex-col bg-[#0a0a0a] min-w-0';
+  if (isCancelled) {
+    stageNode = <CancelledStage candidateName={candidateName} subtitle={subtitle} />;
+  } else if (stage === 'call' && roomData) {
+    stageClass =
+      'h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink';
+    // DailyProvider wraps ONLY the video stage, so joining/leaving never remounts the
+    // scorecard (its unsaved draft). avoidEval: load Daily's call-machine bundle via a
+    // script tag, which the room route's CSP in lib/security/csp.ts allows, instead of
+    // fetch + Function(), which would require 'unsafe-eval' in script-src.
+    stageNode = (
+      <DailyProvider dailyConfig={{ avoidEval: true }}>
+        <AutoJoin key={joinAttempt} url={roomData.url} token={roomData.token} onError={handleJoinError} />
+        <CallStateBridge onCallActiveChange={setIsCallActive} leaveRef={leaveRef} />
+        {joinError ? (
+          <JoinErrorPanel category={joinError} onRetry={handleRetryJoin} onScoreWithoutVideo={handleScoreWithoutVideo} />
+        ) : (
+          <>
+            <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
+            <VideoControls />
+          </>
+        )}
+      </DailyProvider>
+    );
+  } else if (stage === 'scoring') {
+    stageClass = 'md:flex-[60] flex flex-col bg-[#0a0a0a] min-w-0 shrink-0 md:shrink';
+    stageNode = (
+      <ScoringStage
+        candidateName={candidateName}
+        candidateInitials={candidateInitials}
+        subtitle={subtitle}
+        location={data.location}
+        onJoinVideo={isVideo ? handleJoinVideoFromScoring : undefined}
+        isJoining={videoToken.isPending}
+        joinErrorMessage={joinRequestError}
+      />
+    );
+  } else {
+    stageNode = (
+      <RoomLobby
+        candidateName={candidateName}
+        candidateInitials={candidateInitials}
+        subtitle={subtitle}
+        isJoining={videoToken.isPending}
+        joinErrorMessage={joinRequestError}
+        onJoin={handleJoin}
+        onScoreWithoutVideo={handleScoreWithoutVideo}
+      />
     );
   }
 
-  // Pre-join lobby of a video interview
-  if (!hasJoined || !roomData) {
-    return (
-      <div className="h-full flex flex-col overflow-hidden">
-        <InterviewTopBar candidateName={candidateName} vacancyTitle={data.vacancy.title} isInCall={false} />
-        <RoomLobby
-          candidateName={candidateName}
-          candidateInitials={candidateInitials}
-          subtitle={subtitle}
-          isJoining={videoToken.isPending}
-          joinErrorMessage={videoToken.error?.message ?? null}
-          onJoin={handleJoin}
-          onScoreWithoutVideo={handleScoreWithoutVideo}
-        />
-      </div>
-    );
-  }
-
-  // In-call view — DailyProvider only renders with valid url + token
-  // avoidEval: load Daily's call-machine bundle via a script tag, which the room
-  // route's CSP in lib/security/csp.ts allows, instead of fetch + Function(),
-  // which would require 'unsafe-eval' in script-src.
+  // ONE stable tree: only the stage above changes between lobby, scoring and call. The
+  // scorecard panel keeps its position (hidden, not unmounted, in the lobby).
+  const isScorecardVisible = stage !== 'lobby';
   return (
-    <DailyProvider dailyConfig={{ avoidEval: true }}>
-      <AutoJoin key={joinAttempt} url={roomData.url} token={roomData.token} onError={handleJoinError} />
-      <div className="h-full flex flex-col overflow-hidden">
-        <InterviewTopBar
-          candidateName={candidateName}
-          vacancyTitle={data.vacancy.title}
-          isInCall
-        />
-        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-          <div className="h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink">
-            {joinError ? (
-              <JoinErrorPanel category={joinError} onRetry={handleRetryJoin} onScoreWithoutVideo={handleScoreWithoutVideo} />
-            ) : (
-              <>
-                <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
-                <VideoControls />
-              </>
-            )}
+    <div className="h-full flex flex-col overflow-hidden">
+      <InterviewTopBar
+        candidateName={candidateName}
+        vacancyTitle={data.vacancy.title}
+        isCallActive={stage === 'call' && isCallActive}
+        onLeaveCall={handleLeaveCall}
+      />
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        <div className={stageClass}>{stageNode}</div>
+        {!isCancelled && (
+          <div className={isScorecardVisible ? 'contents' : 'hidden'} hidden={!isScorecardVisible}>
+            <ScorecardPanel interview={data} candidateInitials={candidateInitials} focusRequest={focusRequest} />
           </div>
-          <ScorecardPanel interview={data} candidateInitials={candidateInitials} />
-        </div>
+        )}
       </div>
-    </DailyProvider>
+    </div>
   );
 }
 

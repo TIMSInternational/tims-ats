@@ -5,7 +5,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
 import { DataTable, EmptyState, ErrorState, StatusBadge, CandidateAvatar, UpsellNotice } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
-import { isVideoInterviewType } from './[id]/room/interview-mode';
+import { isVideoInterviewType, ROOM_STATUSES } from './[id]/room/interview-mode';
 
 interface InterviewTableProps {
   interviews: InterviewListItem[];
@@ -28,9 +28,6 @@ const STATUS_MAP: Record<string, { cls: string; label: string }> = {
   no_show: { cls: 'bg-red-50 text-red-600 border border-red-200', label: 'No show' },
   rescheduled: { cls: 'bg-violet-50 text-violet-600 border border-violet-200', label: 'Reprogramada' },
 };
-
-// Statuses whose room is still useful: to hold the interview or to score it afterwards.
-const ROOM_STATUSES: ReadonlySet<string> = new Set(['scheduled', 'in_progress', 'completed']);
 
 const TYPE_LABELS: Record<string, string> = {
   phone: 'Telefonica',
@@ -189,7 +186,8 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
                 // Plain <a>, not next/link: the room needs a FULL document load so the
                 // browser receives the room route's CSP (Daily call object). A soft
                 // navigation would keep this page's stricter CSP and the call fails.
-                // In-person/phone interviews (and finished ones) open straight to scoring.
+                // Labelled "Join" only for a video interview not yet completed; every other
+                // room opens on the scoring stage, so it is labelled "Score".
                 <a
                   href={`/recruitment/interviews/${iv.id}/room`}
                   className="h-7 px-2.5 rounded-md text-[11px] text-white bg-[#1F114C] hover:bg-[#2a1863] transition inline-flex items-center gap-1"

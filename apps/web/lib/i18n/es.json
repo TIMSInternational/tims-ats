@@ -3835,9 +3835,11 @@
     "joinRetry": "Reintentar conexión",
     "scoreWithoutVideo": "Calificar sin video",
     "scoreWithoutVideoHint": "Abre el scorecard sin conectarte a la videollamada.",
-    "scoringInPersonNotice": "Esta entrevista no usa videollamada. Registra tu evaluación en el scorecard.",
+    "scoringInPersonNotice": "Esta entrevista no usa la videollamada de la plataforma. Registra tu evaluación en el scorecard.",
     "scoringWithoutVideoNotice": "Estás calificando sin video. Puedes unirte a la videollamada cuando quieras.",
     "joinVideoCall": "Unirse a la videollamada",
-    "locationValue": "Lugar: {location}"
+    "locationValue": "Lugar o enlace: {location}",
+    "panelHeading": "Evaluación de la entrevista",
+    "cancelledNotice": "Esta entrevista fue cancelada. No se puede unir ni calificar."
   }
 }
