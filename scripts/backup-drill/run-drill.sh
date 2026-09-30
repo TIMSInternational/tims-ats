@@ -44,6 +44,19 @@
 #   DRILL_SCHEMAS          drill/capture. Default "public auth". verify reads them from the evidence.
 #   DRILL_MIN_TABLES       default 1. The source must expose at least this many tables, so a drill
 #                          pointed at an empty or wrong database cannot pass vacuously.
+#   DRILL_MIN_ROWS         default 1. The source's TOTAL row count must reach this floor. Without it a
+#                          source with every table present but empty (or a role that sees no rows)
+#                          would restore "exactly" and verify green.
+#   DRILL_NONEMPTY_TABLES  default "auth.users public.organizations". Each of these (when its schema is
+#                          selected) must exist and hold at least one row. Applied to the evidence in
+#                          verify mode, like the two floors above. Unmet → exit 2.
+#   DRILL_EXPECTED_SOURCE_SYSID  optional. When set, the source's pg_control_system().system_identifier
+#                          must equal it (exit 2 otherwise): the only check here that tells production
+#                          apart from a DIFFERENT populated database. Not a secret (a repo variable).
+#   DRILL_EXCLUDE_TABLE_DATA  drill only. Space-separated schema.table list whose DATA is left out of the
+#                          dump (pg_dump --exclude-table-data): the table's schema is still dumped,
+#                          restored and inventoried, and it must restore EMPTY. For live bearer-token
+#                          tables, which a restore test does not need. Ignored by capture.
 #   DRILL_PG_BIN           optional directory holding pg_dump/pg_restore/psql (major >= 17).
 #   DRILL_TEST_POST_RESTORE_SQL  TEST ONLY. SQL run against the TARGET after restore, to prove that a
 #                          damaged restore is detected (exit 1). The workflow never sets it.
@@ -74,6 +87,9 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'echo "interrupted" >&2; exit 2' INT TERM
+# A write to the snapshot session after psql died must fail (and be classified as exit 2 by send()),
+# not kill this script with SIGPIPE (exit 141, no summary).
+trap '' PIPE
 
 log() { echo "[drill] $*"; }
 
@@ -116,9 +132,18 @@ TARGET_URL="${DRILL_TARGET_URL:-}"
 VERIFY_URL="${DRILL_VERIFY_URL:-}"
 SSLROOTCERT="${DRILL_SOURCE_SSLROOTCERT:-$REPO_ROOT/scripts/parity/supabase-root-ca.pem}"
 MIN_TABLES="${DRILL_MIN_TABLES:-1}"
+MIN_ROWS="${DRILL_MIN_ROWS:-1}"
+NONEMPTY_TABLES="${DRILL_NONEMPTY_TABLES-auth.users public.organizations}"
+EXPECTED_SYSID="${DRILL_EXPECTED_SOURCE_SYSID:-}"
+EXCLUDE_DATA="${DRILL_EXCLUDE_TABLE_DATA:-}"
 TARGET_MARKER="${DRILL_TARGET_MARKER:-}"
 
 case "$MIN_TABLES" in ''|*[!0-9]*) die2 "DRILL_MIN_TABLES must be a non-negative integer." ;; esac
+case "$MIN_ROWS" in ''|*[!0-9]*) die2 "DRILL_MIN_ROWS must be a non-negative integer." ;; esac
+case "$EXPECTED_SYSID" in *[!0-9]*) die2 "DRILL_EXPECTED_SOURCE_SYSID must be the numeric system_identifier." ;; esac
+for t in $NONEMPTY_TABLES $EXCLUDE_DATA; do
+  printf '%s' "$t" | grep -Eq '^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$' || die2 "invalid schema.table name: $t"
+done
 
 # URL + TLS parameters. The URL must not carry its own sslmode: TLS is set by the mode variable, so a
 # secret's contents can never downgrade verification.
@@ -260,7 +285,7 @@ SELECT 'INV' || E'\t' || regexp_replace(line, '\s+', ' ', 'g') FROM (
   FROM t JOIN pg_constraint co ON co.conrelid = t.oid
   UNION ALL
   SELECT 'POLICY ' || t.tn || ' ' || p.polname || ' cmd=' || p.polcmd::text || ' permissive=' || p.polpermissive
-         || ' roles=' || (SELECT string_agg(CASE WHEN r = 0 THEN 'public' ELSE pg_get_userbyid(r)::text END, ',' ORDER BY 1) FROM unnest(p.polroles) r)
+         || ' roles=' || (SELECT string_agg(rn, ',' ORDER BY rn) FROM (SELECT CASE WHEN r = 0 THEN 'public' ELSE pg_get_userbyid(r)::text END AS rn FROM unnest(p.polroles) r) pr)
          || ' using=' || coalesce(pg_get_expr(p.polqual, p.polrelid), '')
          || ' check=' || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
   FROM t JOIN pg_policy p ON p.polrelid = t.oid
@@ -330,7 +355,7 @@ compare() { # expected-prefix actual-prefix actual-label
     printf '%s\n' "$diffc" | sed 's/^/      /'
     REPORT_LINES+=("- ❌ **row-count mismatch on $n table(s)**")
   else
-    REPORT_LINES+=("- ✅ exact row counts match on all $tables tables ($total rows at the snapshot)")
+    REPORT_LINES+=("- ✅ exact row counts match on all $tables tables ($total rows expected)")
   fi
 
   invd="$(diff "$1.inventory" "$2.inventory")"
@@ -346,6 +371,25 @@ compare() { # expected-prefix actual-prefix actual-label
   fi
 }
 
+# The source must look like production, not merely exist: enough tables, enough rows in total, and
+# rows in the tables production cannot be without. A counts file of all zeros restores "exactly" —
+# these floors are what stop that from verifying green. Exit 2: nothing meaningful was verified.
+floors() { # counts-file label
+  local tables rows t c
+  tables="$(wc -l <"$1" | tr -d ' ')"
+  rows="$(awk -F'\t' '{ s += $2 } END { print s + 0 }' "$1")"
+  [ "$tables" -ge 1 ] && [ "$tables" -ge "$MIN_TABLES" ] \
+    || die2 "the $2 has $tables tables in [$SCHEMAS], fewer than DRILL_MIN_TABLES=$MIN_TABLES — wrong database or missing grants."
+  [ "$rows" -ge 1 ] && [ "$rows" -ge "$MIN_ROWS" ] \
+    || die2 "the $2 holds $rows rows in total across [$SCHEMAS], fewer than DRILL_MIN_ROWS=$MIN_ROWS — an empty or wrong database, or a role that sees no rows. A restore of it would prove nothing."
+  for t in $NONEMPTY_TABLES; do
+    case " $SCHEMAS " in *" ${t%%.*} "*) ;; *) continue ;; esac
+    c="$(awk -F'\t' -v t="$t" '$1 == t { print $2 }' "$1")"
+    [ -n "$c" ] && [ "$c" -gt 0 ] 2>/dev/null \
+      || die2 "$t is $([ -n "$c" ] && echo empty || echo absent) in the $2 (DRILL_NONEMPTY_TABLES) — production always has rows there."
+  done
+}
+
 # ══ verify: a restored destination against saved evidence ══════════════════════════════════════════
 if [ "$MODE" = verify ]; then
   log "verify: destination against $EVIDENCE_IN"
@@ -356,6 +400,7 @@ if [ "$MODE" = verify ]; then
   grep '^COUNT' "$EVIDENCE_IN" | cut -f2- | sort >"$WORKDIR/exp.counts"
   grep '^INV' "$EVIDENCE_IN" | cut -f2- | sort >"$WORKDIR/exp.inventory"
   [ -s "$WORKDIR/exp.counts" ] || die2 "evidence file lists no tables."
+  floors "$WORKDIR/exp.counts" evidence
   measure "$DST" "$WORKDIR/dst" destination
   compare "$WORKDIR/exp" "$WORKDIR/dst" destination
   echo
@@ -383,6 +428,13 @@ SOURCE_SYSID="$(field "$PRE" 4)"
 # would either make pg_dump abort or — worse, with row_security on — dump a filtered subset that then
 # "verifies" against counts filtered the same way. Refuse up front.
 [ "$(field "$PRE" 3)" = "true" ] || die2 "the source role lacks BYPASSRLS: RLS would hide rows from the dump. See scripts/backup-drill/create-drill-role.sql."
+if [ -n "$EXPECTED_SYSID" ]; then
+  [ "$SOURCE_SYSID" = "$EXPECTED_SYSID" ] \
+    || die2 "the source is not the pinned cluster: system_identifier ${SOURCE_SYSID:-<unreadable>} != DRILL_EXPECTED_SOURCE_SYSID $EXPECTED_SYSID. Wrong database — or production was restored/moved, in which case update the repo variable deliberately."
+  SOURCE_IDENTITY="pinned (system_identifier matches)"
+else
+  SOURCE_IDENTITY="NOT pinned (DRILL_EXPECTED_SOURCE_SYSID unset) — a different populated database would not be detected"
+fi
 
 if [ "$MODE" = drill ]; then
   log "preflight: target"
@@ -449,15 +501,29 @@ grep '^COUNT' "$WORKDIR/session.out" | cut -f2- | sort >"$WORKDIR/src.counts"
 grep '^INV' "$WORKDIR/session.out" | cut -f2- | sort >"$WORKDIR/src.inventory"
 grep '^ROLE' "$WORKDIR/session.out" | cut -f2 >"$WORKDIR/src.roles"
 TABLES="$(wc -l <"$WORKDIR/src.counts" | tr -d ' ')"
-[ "$TABLES" -ge 1 ] && [ "$TABLES" -ge "$MIN_TABLES" ] \
-  || die2 "the source exposes $TABLES tables in [$SCHEMAS], fewer than DRILL_MIN_TABLES=$MIN_TABLES — wrong database or missing grants."
+floors "$WORKDIR/src.counts" source
+
+# Token tables whose data is deliberately NOT dumped (drill only) must restore present and EMPTY, so the
+# expected count for each is 0. Every other table is still compared against its exact source count.
+EXCLUDE_FLAGS=()
+cp "$WORKDIR/src.counts" "$WORKDIR/exp.counts"
+cp "$WORKDIR/src.inventory" "$WORKDIR/exp.inventory"
+if [ "$MODE" = drill ] && [ -n "$EXCLUDE_DATA" ]; then
+  for t in $EXCLUDE_DATA; do
+    case " $SCHEMAS " in *" ${t%%.*} "*) ;; *) die2 "DRILL_EXCLUDE_TABLE_DATA names $t, outside the dumped schemas [$SCHEMAS]." ;; esac
+    EXCLUDE_FLAGS+=("--exclude-table-data=$t")
+  done
+  awk -F'\t' -v ex=" $EXCLUDE_DATA " 'index(ex, " " $1 " ") { $2 = 0 } { printf "%s\t%s\n", $1, $2 }' \
+    "$WORKDIR/src.counts" >"$WORKDIR/exp.counts"
+  REPORT_LINES+=("- ℹ️ data deliberately NOT dumped (bearer-token tables; schema still verified, must restore empty): $EXCLUDE_DATA")
+fi
 
 # ── 3. Dump at the exported snapshot (capture: only if a dump-out was requested) ─────────────────
 [ "$MODE" = capture ] && [ -n "$DUMP_OUT" ] && DUMP="$DUMP_OUT"
 if [ "$MODE" = drill ] || [ -n "$DUMP_OUT" ]; then
   log "dumping [$SCHEMAS] with $("$PG_DUMP" --version)"
   "$PG_DUMP" -d "$SRC" --snapshot="$SNAPSHOT" --format=custom --no-owner --lock-wait-timeout=60s \
-    "${SCHEMA_FLAGS[@]}" --file="$DUMP" 2>"$WORKDIR/dump.err"
+    "${SCHEMA_FLAGS[@]}" ${EXCLUDE_FLAGS[@]+"${EXCLUDE_FLAGS[@]}"} --file="$DUMP" 2>"$WORKDIR/dump.err"
   DUMP_RC=$?
 else
   DUMP_RC=0
@@ -597,7 +663,7 @@ fi
 # ── 5. Verify ─────────────────────────────────────────────────────────────────────────────────────
 log "verifying row counts and inventory on the restored copy"
 measure "$TARGET_URL" "$WORKDIR/tgt" target
-compare "$WORKDIR/src" "$WORKDIR/tgt" restored
+compare "$WORKDIR/exp" "$WORKDIR/tgt" restored
 
 # ── 6. Report — aggregate metadata only ───────────────────────────────────────────────────────────
 TOTAL_ROWS="$(awk -F'\t' '{ s += $2 } END { print s + 0 }' "$WORKDIR/src.counts")"
@@ -609,6 +675,7 @@ if [ "$FINDINGS" -eq 0 ]; then HEADLINE="### ✅ Backup-restore drill VERIFIED";
 summary "$HEADLINE" "" \
   "| | |" "|---|---|" \
   "| Source server | PostgreSQL $SERVER_VERSION |" \
+  "| Source identity | $SOURCE_IDENTITY |" \
   "| Client | $("$PG_DUMP" --version) |" \
   "| Schemas | $SCHEMAS |" \
   "| Tables / rows | $TABLES / $TOTAL_ROWS |" \

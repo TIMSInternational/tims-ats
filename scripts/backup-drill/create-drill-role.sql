@@ -9,19 +9,39 @@
 --
 -- Idempotent: re-running it rotates the password and re-asserts every attribute below.
 --
--- WHY BYPASSRLS — THE ONE DECISION IN THIS FILE THAT NEEDS A HUMAN TO AGREE WITH IT
--- ---------------------------------------------------------------------------------
--- `pg_read_all_data` grants SELECT on every table, but it does NOT bypass row-level security: RLS
--- policies still apply to a member of that role. Every tenant table in `public` has RLS enabled (most
+-- WHAT IT CAN READ — SCOPED TO THE TWO DUMPED SCHEMAS, WHEN SUPABASE ALLOWS IT
+-- ------------------------------------------------------------------------------
+-- The drill dumps `public` and `auth` only, so the role is granted SELECT on the tables and sequences
+-- of those two schemas and nothing else — not vault, cron, net, storage, realtime… (an earlier version
+-- granted `pg_read_all_data`, which covers every schema; re-running this file revokes it).
+--   - public: `postgres` owns these tables, so it grants SELECT on all of them, plus DEFAULT
+--     PRIVILEGES so tables `postgres` creates later (Prisma / flip DDL) are readable too. A table some
+--     OTHER role creates in public is not covered: the drill then fails LOUDLY with exit 2
+--     (permission denied while counting), and re-running this file fixes it.
+--   - auth: tables are owned by supabase_auth_admin, and `postgres` can grant SELECT on them only if
+--     it holds the grant option. In supabase/postgres:17.6.1.178 it does NOT (GRANT merely warns "no
+--     privileges were granted"), and hosted projects are expected to match. Then this file STOPS,
+--     unless you re-run it with `-v allow_read_all_data=1`, which falls back to `pg_read_all_data` —
+--     SELECT on EVERY schema, including vault. That broader grant is a human decision, so it is an
+--     explicit opt-in and it is recorded in the access register (#40), never a silent fallback. The
+--     alternative that keeps the scoping is to ask Supabase support to grant SELECT on auth.* to this
+--     role (or the grant option to postgres), then re-run WITHOUT the flag.
+-- Dropping the role later needs `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE
+-- SELECT ON TABLES, SEQUENCES FROM backup_drill_reader` (or DROP OWNED BY) first.
+--
+-- WHY BYPASSRLS — THE DECISION IN THIS FILE THAT NEEDS A HUMAN TO AGREE WITH IT
+-- ---------------------------------------------------------------------------
+-- A SELECT grant (scoped or `pg_read_all_data`) does NOT bypass row-level security: RLS policies still
+-- apply to the grantee. Every tenant table in `public` has RLS enabled (most
 -- with FORCE), and the policies return zero rows when `app.current_org_id` is unset. So a role with
--- only pg_read_all_data would make pg_dump abort ("query would be affected by row-level security
+-- only SELECT grants would make pg_dump abort ("query would be affected by row-level security
 -- policy"), or, with row_security on, silently dump an EMPTY backup that still "verifies" against
 -- counts filtered the same way. A backup must contain every row, so the role needs BYPASSRLS.
 --
 -- That makes this role able to READ every tenant's data, including candidate PII. The trade-off is
 -- contained by what it CANNOT do, and every one of these is asserted at the bottom of this file:
---   - no INSERT/UPDATE/DELETE/TRUNCATE on any table (pg_read_all_data is SELECT-only; nothing else
---     is granted), and default_transaction_read_only = on as a second layer;
+--   - no INSERT/UPDATE/DELETE/TRUNCATE on any table (only SELECT is granted), and
+--     default_transaction_read_only = on as a second layer;
 --   - not a superuser; cannot create roles or databases; no replication;
 --   - CONNECTION LIMIT 2 (the snapshot session + pg_dump — the drill never needs more);
 --   - statement and idle-in-transaction timeouts, so a hung drill cannot hold a snapshot open.
@@ -34,6 +54,10 @@
 -- or rotating it must not be entangled with a Supabase dashboard feature.
 
 \set ON_ERROR_STOP on
+\if :{?allow_read_all_data}
+\else
+  \set allow_read_all_data 0
+\endif
 
 \if :{?password}
 \else
@@ -61,8 +85,41 @@ ALTER ROLE backup_drill_reader WITH
   CONNECTION LIMIT 2
   PASSWORD :'password';
 
--- INHERIT (above) is required: pg_dump uses the privileges of pg_read_all_data without SET ROLE.
-GRANT pg_read_all_data TO backup_drill_reader;
+-- Clean slate for the read grants: an earlier version of this file granted pg_read_all_data.
+SELECT 'REVOKE pg_read_all_data FROM backup_drill_reader'
+WHERE EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = 'backup_drill_reader'::regrole
+                AND m.roleid = 'pg_read_all_data'::regrole)
+\gexec
+
+-- public: USAGE comes from PUBLIC on a Supabase project (asserted below); SELECT is granted here.
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO backup_drill_reader;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO backup_drill_reader;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO backup_drill_reader;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON SEQUENCES TO backup_drill_reader;
+
+-- auth: only if postgres can actually grant it (see the header). GRANT does not fail when it cannot —
+-- it only warns — so this is checked up front, and the assertions below re-check the outcome.
+SELECT has_schema_privilege('auth', 'USAGE WITH GRANT OPTION')
+   AND NOT EXISTS (
+     SELECT 1 FROM pg_class c
+     WHERE c.relnamespace = 'auth'::regnamespace AND c.relkind IN ('r', 'p', 'S')
+       AND NOT has_table_privilege(c.oid, 'SELECT WITH GRANT OPTION')
+   ) AS auth_grantable \gset
+\if :auth_grantable
+  GRANT USAGE ON SCHEMA auth TO backup_drill_reader;
+  GRANT SELECT ON ALL TABLES IN SCHEMA auth TO backup_drill_reader;
+  GRANT SELECT ON ALL SEQUENCES IN SCHEMA auth TO backup_drill_reader;
+\elif :allow_read_all_data
+  \echo 'NOTICE: postgres cannot grant SELECT on auth.*. Falling back to pg_read_all_data (SELECT on EVERY schema) because -v allow_read_all_data=1 was passed. Record this in the access register (#40).'
+  -- INHERIT (above) is required: pg_dump uses the role's privileges without SET ROLE.
+  GRANT pg_read_all_data TO backup_drill_reader;
+\else
+  \echo 'ERROR: postgres cannot grant SELECT on the auth schema (no grant option), so the drill could not read auth.'
+  \echo '       Either ask Supabase support to grant SELECT on auth.* to backup_drill_reader, or accept the broader'
+  \echo '       pg_read_all_data grant by re-running with -v allow_read_all_data=1. Nothing was committed.'
+  SELECT 1 / 0 AS auth_not_grantable;
+\endif
+SELECT set_config('backup_drill.read_all_expected', (NOT :'auth_grantable'::boolean)::text, true) AS read_all_expected;
 
 SELECT format('GRANT CONNECT ON DATABASE %I TO backup_drill_reader', current_database())
 \gexec
@@ -76,6 +133,7 @@ DO $$
 DECLARE
   r pg_roles%ROWTYPE;
   writable int;
+  unreadable int;
   memberships text;
 BEGIN
   SELECT * INTO r FROM pg_roles WHERE rolname = 'backup_drill_reader';
@@ -84,11 +142,25 @@ BEGIN
     RAISE EXCEPTION 'backup_drill_reader has unexpected attributes';
   END IF;
 
+  -- No role memberships at all — except pg_read_all_data, and only on the explicit fallback path.
   SELECT string_agg(g.rolname, ',' ORDER BY g.rolname) INTO memberships
   FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid
   WHERE m.member = r.oid;
-  IF memberships IS DISTINCT FROM 'pg_read_all_data' THEN
-    RAISE EXCEPTION 'backup_drill_reader must be a member of pg_read_all_data only, found: %', memberships;
+  -- (Parenthesised: PL/pgSQL would otherwise end the IF condition at the CASE's own THEN.)
+  IF memberships IS DISTINCT FROM
+     (CASE WHEN current_setting('backup_drill.read_all_expected') = 'true' THEN 'pg_read_all_data' END) THEN
+    RAISE EXCEPTION 'backup_drill_reader has unexpected role memberships: %', coalesce(memberships, '(none)');
+  END IF;
+
+  -- It must be able to read EVERY table and sequence pg_dump will dump (extension-owned objects are
+  -- not dumped). A gap here is the silent-WARNING GRANT case above, caught before the drill hits it.
+  SELECT count(*) INTO unreadable
+  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname IN ('public', 'auth') AND c.relkind IN ('r', 'p', 'S')
+    AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
+    AND NOT (has_schema_privilege(r.oid, n.oid, 'USAGE') AND has_table_privilege(r.oid, c.oid, 'SELECT'));
+  IF unreadable > 0 THEN
+    RAISE EXCEPTION 'backup_drill_reader cannot read % table(s)/sequence(s) in public/auth — the drill would fail', unreadable;
   END IF;
 
   SELECT count(*) INTO writable

@@ -5,7 +5,8 @@
 # Takes a consistent logical dump of production (public + auth) at one exported snapshot, restores it
 # into an EPHEMERAL supabase/postgres service container on this runner, and verifies the restored copy
 # is complete: exact per-table row counts at the snapshot, and an identical schema inventory (tables,
-# columns, indexes, constraints, RLS flags, policies, triggers incl. enabled state, full function definitions). Reports RTO and dump size.
+# columns, indexes, constraints, RLS flags, policies, triggers incl. enabled state, full function
+# definitions, enum/domain/composite types). Reports RTO and dump size.
 #
 # It does NOT prove Supabase's managed daily backups / PITR — that is a separate quarterly manual
 # step. See docs/runbooks/backup-restore.md, which also has the one-time setup.
@@ -26,8 +27,15 @@
 #     access-register entry (#40). Do not reuse PROD_DIRECT_URL / ci_readonly: it obeys RLS and would
 #     dump an incomplete backup (the script refuses such a role with exit 2).
 #
-# Schedule/dispatch only — never on pull_request, so production credentials are unreachable from a
-# fork PR (pinned by tests/governance/ci-triggers.test.ts).
+# WHO CAN READ THAT SECRET — the scoping is only real if the owner set it up as the runbook says:
+#   - The secret must live in the GitHub ENVIRONMENT `prod-backup-drill` (deployment branches: main
+#     only), NOT as a repository secret. A repository secret is readable by ANY workflow in this repo,
+#     including a same-repo pull_request workflow or a workflow_dispatch of an edited branch — the
+#     triggers below do not stop that. The environment's branch policy is what does.
+#   - The "Refuse to run outside main" step is defence in depth only: a branch that edits this file
+#     can delete it. It cannot bypass the environment's branch policy.
+#   - Never on pull_request (pinned by tests/governance/ci-triggers.test.ts); the environment and the
+#     guard are pinned by tests/governance/backup-restore-drill.test.ts.
 
 name: Backup-Restore Drill
 
@@ -49,24 +57,37 @@ jobs:
     name: Restore production into an ephemeral Postgres and verify it
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # PROD_BACKUP_DRILL_URL lives in this environment, whose deployment-branch policy is `main` only.
+    environment: prod-backup-drill
     services:
       restore-target:
-        # Pinned by exact tag: Supabase Postgres 17.6 (production runs 17.6), multi-arch. Bump
-        # deliberately, alongside DRILL_IMAGE in scripts/backup-drill/local-e2e.sh.
-        image: supabase/postgres:17.6.1.178
+        # Pinned by DIGEST (the multi-arch index of tag 17.6.1.178): Supabase Postgres 17.6, which
+        # production runs. Bump deliberately, alongside DRILL_IMAGE in scripts/backup-drill/local-e2e.sh.
+        image: supabase/postgres:17.6.1.178@sha256:c282d393ae56fd165b7ada2ddbac55e582a601b86f3840aa2bbc112e43d3a570
         env:
-          # Not a credential of anything persistent: this container lives only for this job, on this
-          # runner. Derived per run rather than a literal so no password string sits in the repo.
+          # BOOTSTRAP password only, derived per run so no password string sits in the repo. It is
+          # guessable from the run id, so the first step after start-up replaces it (and every other
+          # login role's) with a random, masked one before any production row arrives.
           POSTGRES_PASSWORD: drill-${{ github.run_id }}-${{ github.run_attempt }}
         ports:
-          - 5432:5432
+          # Loopback only: the restored production copy is never reachable from off the runner.
+          - 127.0.0.1:5432:5432
         options: >-
           --health-cmd "pg_isready -h localhost -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 40
     steps:
-      - uses: actions/checkout@v5
+      - name: Refuse to run outside main
+        env:
+          DRILL_REF: ${{ github.ref }}
+        run: |
+          if [ "$DRILL_REF" != "refs/heads/main" ]; then
+            echo "::error title=Backup-restore drill refused::runs only from refs/heads/main (got $DRILL_REF). It reads production with an all-tenant credential."
+            exit 1
+          fi
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Fail fast if the credential is absent
         env:
@@ -97,7 +118,7 @@ jobs:
         run: |
           # The health check can pass before the image's init scripts finish; wait for the superuser
           # the restore actually uses.
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if /usr/lib/postgresql/17/bin/psql -X -At -h localhost -U supabase_admin -d postgres -c 'select 1' >/dev/null 2>&1; then
               echo "restore target ready"; exit 0
             fi
@@ -106,9 +127,21 @@ jobs:
           echo "::error title=Backup-restore drill did not run::the restore-target container never accepted connections."
           exit 1
 
-      - name: Mark the restore target as this run's disposable database
+      - name: Replace the restore target's bootstrap password with a random one
         env:
           PGPASSWORD: drill-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          pw="$(openssl rand -hex 32)"
+          echo "::add-mask::$pw"
+          # Every login role in the image shares the bootstrap password; rotate them all.
+          /usr/lib/postgresql/17/bin/psql -X -q -v ON_ERROR_STOP=1 -h localhost -U supabase_admin -d postgres -v pw="$pw" <<'SQL'
+          SELECT format('ALTER ROLE %I PASSWORD %L', rolname, :'pw') FROM pg_roles WHERE rolcanlogin \gexec
+          SQL
+          echo "DRILL_TARGET_PW=$pw" >> "$GITHUB_ENV"
+
+      - name: Mark the restore target as this run's disposable database
+        env:
+          PGPASSWORD: ${{ env.DRILL_TARGET_PW }}
         run: |
           # run-drill.sh DROPs every dumped schema on the target, so it refuses any database that does
           # not carry THIS run's marker. Only this step, inside this job's own service container,
@@ -121,7 +154,7 @@ jobs:
       - name: Run the drill
         env:
           DRILL_SOURCE_URL: ${{ secrets.PROD_BACKUP_DRILL_URL }}
-          DRILL_TARGET_URL: postgresql://supabase_admin:drill-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/postgres
+          DRILL_TARGET_URL: postgresql://supabase_admin:${{ env.DRILL_TARGET_PW }}@localhost:5432/postgres
           DRILL_TARGET_MARKER: ${{ github.run_id }}-${{ github.run_attempt }}
           # Full TLS verification against the committed Supabase Root 2021 CA — never downgraded.
           DRILL_SOURCE_SSLMODE: verify-full
@@ -130,6 +163,18 @@ jobs:
           # Production has 119 public tables plus auth's. A drill that sees fewer is looking at the
           # wrong database or lost its grants — exit 2, not a vacuous pass.
           DRILL_MIN_TABLES: '100'
+          # Tables alone are not enough: an all-empty source restores "exactly". A conservative floor
+          # well under production's volume (~23 MB dump) — raise it to about half the total the first
+          # run reports. auth.users and public.organizations must also be non-empty (script default).
+          DRILL_MIN_ROWS: '1000'
+          # Optional identity pin (a repo VARIABLE, not a secret): production's
+          # pg_control_system().system_identifier. Unset = not pinned, which the summary says.
+          DRILL_EXPECTED_SOURCE_SYSID: ${{ vars.PROD_DB_SYSTEM_IDENTIFIER }}
+          # Live bearer-token tables: their DATA is not dumped (the tables are still dumped, restored,
+          # inventoried and must come back empty). A restore to a new project invalidates every session
+          # anyway. auth.users password hashes and auth.mfa_factors secrets ARE in the dump — a real
+          # restore must carry them, so the drill must prove they restore.
+          DRILL_EXCLUDE_TABLE_DATA: auth.refresh_tokens auth.sessions auth.mfa_amr_claims auth.one_time_tokens auth.flow_state auth.saml_relay_states
           DRILL_PG_BIN: /usr/lib/postgresql/17/bin
         run: |
           # NOT `set -e`: the exit code is classified explicitly below.

@@ -20,13 +20,17 @@
 #      auth.users, even WITH the run marker          → 2   (refused; auth.users row survives)
 #  12. target WITHOUT this run's marker              → 2   (refused; target untouched)
 #  13. capture → restore by hand → verify: matching destination → 0, destination missing a row → 1
-# Plus: no synthetic PII value appears in any drill output, and no dump file is left behind.
+#  14. source total rows below DRILL_MIN_ROWS           → 2   (a populated-enough source is required)
+# Plus: create-drill-role.sql refuses (commits nothing) when postgres cannot grant auth and the
+# pg_read_all_data fallback was not opted into; every drill scenario runs with the workflow's
+# DRILL_EXCLUDE_TABLE_DATA shape (auth.refresh_tokens holds a row at the source and must restore
+# empty); no synthetic PII value appears in any drill output, and no dump file is left behind.
 #
 # Exits 0 only if every scenario produced its expected code.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE="${DRILL_IMAGE:-supabase/postgres:17.6.1.178}"   # keep in sync with backup-restore-drill.yml
+IMAGE="${DRILL_IMAGE:-supabase/postgres:17.6.1.178@sha256:c282d393ae56fd165b7ada2ddbac55e582a601b86f3840aa2bbc112e43d3a570}"   # keep in sync with backup-restore-drill.yml
 SRC_PORT="${E2E_SRC_PORT:-55432}"
 TGT_PORT="${E2E_TGT_PORT:-55433}"
 SRC_NAME="backup-drill-e2e-source"
@@ -94,23 +98,35 @@ echo "== populating the synthetic source"
 as supabase_admin "$SRC_PORT" -c "INSERT INTO auth.users (instance_id, id, aud, role, email, created_at) VALUES ('00000000-0000-0000-0000-000000000000', '11111111-1111-4111-8111-111111111111', 'authenticated', 'authenticated', 'auth-user@synthetic.example.test', now())" || exit 2
 as postgres "$SRC_PORT" -f "$REPO_ROOT/scripts/backup-drill/fixtures/synthetic-source.sql" || exit 2
 as postgres "$SRC_PORT" -c "UPDATE public.candidates SET user_id = '11111111-1111-4111-8111-111111111111' WHERE ctid = (SELECT ctid FROM public.candidates LIMIT 1)" || exit 2
+# A live-looking bearer token: the drill must leave its DATA out of the dump (DRILL_EXCLUDE_TABLE_DATA).
+as supabase_admin "$SRC_PORT" -c "INSERT INTO auth.refresh_tokens (instance_id, token, user_id, revoked, created_at, updated_at) VALUES ('00000000-0000-0000-0000-000000000000', 'synthetic-refresh-token-e2e', '11111111-1111-4111-8111-111111111111', false, now(), now())" || exit 2
 
 echo "== creating backup_drill_reader with create-drill-role.sql (as postgres, like production)"
-as postgres "$SRC_PORT" -v password="$DRILL_PW" -f "$REPO_ROOT/scripts/backup-drill/create-drill-role.sql" || exit 2
-# A negative-control role: same grants, NO BYPASSRLS.
+# In this image postgres has no grant option on auth.*, so the scoped path must REFUSE and commit nothing…
+FAILED=0
+if as postgres "$SRC_PORT" -v password="$DRILL_PW" -f "$REPO_ROOT/scripts/backup-drill/create-drill-role.sql" >"$OUT/role-refuse.log" 2>&1; then
+  echo "  FAIL  create-drill-role.sql succeeded although auth is not grantable"; FAILED=1
+elif [ "$(as postgres "$SRC_PORT" -c "SELECT count(*) FROM pg_roles WHERE rolname = 'backup_drill_reader'")" != "0" ]; then
+  echo "  FAIL  create-drill-role.sql refused but left the role behind"; FAILED=1
+else
+  echo "  PASS  create-drill-role.sql refused without the explicit pg_read_all_data opt-in, nothing committed"
+fi
+# …and succeed with the explicit opt-in (the path production is expected to need).
+as postgres "$SRC_PORT" -v password="$DRILL_PW" -v allow_read_all_data=1 -f "$REPO_ROOT/scripts/backup-drill/create-drill-role.sql" || exit 2
+# A negative-control role: can read everything, but NO BYPASSRLS.
 as postgres "$SRC_PORT" -c "CREATE ROLE drill_no_bypass LOGIN PASSWORD '$DRILL_PW' IN ROLE pg_read_all_data" || exit 2
 
 SRC_URL="postgresql://backup_drill_reader:$DRILL_PW@127.0.0.1:$SRC_PORT/postgres"
 TGT_URL="postgresql://supabase_admin:$ADMIN_PW@127.0.0.1:$TGT_PORT/postgres"
 
-FAILED=0
 MODE_ARGS=""   # set to e.g. "capture <evidence> <dump>" or "verify <evidence>" for one scenario
 scenario() { # label expected-exit [env assignments...]
   local label="$1" expected="$2"; shift 2
   local log="$OUT/$(echo "$label" | tr ' ' '-').log"
   # shellcheck disable=SC2086
   env DRILL_SOURCE_SSLMODE=disable DRILL_VERIFY_SSLMODE=disable GITHUB_STEP_SUMMARY="$OUT/summary.md" \
-      DRILL_TARGET_URL="$TGT_URL" DRILL_SOURCE_URL="$SRC_URL" DRILL_TARGET_MARKER="$MARKER" "$@" \
+      DRILL_TARGET_URL="$TGT_URL" DRILL_SOURCE_URL="$SRC_URL" DRILL_TARGET_MARKER="$MARKER" \
+      DRILL_EXCLUDE_TABLE_DATA="auth.refresh_tokens" "$@" \
       bash "$REPO_ROOT/scripts/backup-drill/run-drill.sh" $MODE_ARGS >"$log" 2>&1
   local rc=$?
   if [ "$rc" -eq "$expected" ]; then
@@ -138,6 +154,9 @@ scenario "unreachable" 2 DRILL_SOURCE_URL="postgresql://backup_drill_reader:x@12
 
 echo "== scenario 5: source role without BYPASSRLS"
 scenario "no bypassrls" 2 DRILL_SOURCE_URL="postgresql://drill_no_bypass:$DRILL_PW@127.0.0.1:$SRC_PORT/postgres"
+
+echo "== scenario 14: source holds fewer rows than DRILL_MIN_ROWS"
+scenario "below min rows" 2 DRILL_MIN_ROWS=1000000
 
 echo "== scenario 6: restored copy has a tampered function body (same name + args)"
 fresh_target
@@ -191,7 +210,7 @@ scenario "verify destination missing a row" 1 DRILL_VERIFY_URL="$DST_URL"
 MODE_ARGS=""
 
 echo "== PII and leftover checks"
-if grep -rq 'synthetic.example.test\|Synthetic Person' "$OUT"; then
+if grep -rq 'synthetic.example.test\|Synthetic Person\|synthetic-refresh-token' "$OUT"; then
   echo "  FAIL  a synthetic row value appeared in drill output or the step summary"; FAILED=1
 else
   echo "  PASS  no row values in any drill output or step summary"

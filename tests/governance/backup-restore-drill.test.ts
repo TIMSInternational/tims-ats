@@ -71,6 +71,7 @@ if [ "$side" = src ] && [ -n "$STUB_SRC_DOWN" ]; then
   echo 'psql: error: connection to server at "127.0.0.1", port 5999 failed: Connection refused' >&2
   exit 2
 fi
+tgt_public="$STUB_TGT_PUBLIC"; [ -n "$tgt_public" ] || tgt_public=0
 answer() {
   case "$1" in
     *drill_meta.target_marker*)
@@ -78,7 +79,7 @@ answer() {
       echo "$STUB_TGT_MARKER" ;;
     *TARGET_ROWS*) echo "TARGET_ROWS|$STUB_TGT_ROWS" ;;
     *rolbypassrls*) echo "17|17.6|$STUB_BYPASS|$STUB_SRC_SYSID" ;;
-    *"rolsuper::text"*) echo "true|17|0|$STUB_TGT_SYSID|$STUB_TGT_ADDR_OK" ;;
+    *"rolsuper::text"*) echo "true|17|$tgt_public|$STUB_TGT_SYSID|$STUB_TGT_ADDR_OK" ;;
     *"SELECT 'COUNT'"*) cat "$STUB_DIR/$side.counts" ;;
     *"SELECT 'INV'"*) cat "$STUB_DIR/$side.inventory" ;;
     *"SELECT 'ROLE'"*) printf 'ROLE\tapp_tenant\n' ;;
@@ -90,7 +91,10 @@ answer() {
 while IFS= read -r line; do
   case "$line" in
     '\q') exit 0 ;;
-    '\echo '*) printf '%s\n' "$line" | cut -c7- ;;
+    '\echo '*) printf '%s\n' "$line" | cut -c7-
+      # Simulates the snapshot session dying right after exporting: the drill's next write to it
+      # hits a closed pipe.
+      [ -n "$STUB_SESSION_DIES" ] && [ "$line" = '\echo __SNAPSHOT_DONE__' ] && exit 3 ;;
     *) answer "$line" ;;
   esac
 done
@@ -100,12 +104,15 @@ exit 0
 const PG_DUMP_STUB = String.raw`#!/bin/sh
 [ "$1" = "--version" ] && { echo "pg_dump (PostgreSQL) 17.6"; exit 0; }
 [ -n "$STUB_DUMP_FAIL" ] && { echo "pg_dump: error: query would be affected by row-level security policy for table \"candidates\"" >&2; exit 1; }
+printf '%s\n' "$@" > "$STUB_DIR/dump-args"
 for a in "$@"; do case "$a" in --file=*) f=$(printf '%s' "$a" | cut -c8-); printf 'PGDMP stub dump\n' > "$f"; echo "$f" > "$STUB_DIR/dump-path" ;; esac; done
 exit 0
 `;
 
 const PG_RESTORE_STUB = String.raw`#!/bin/sh
 [ "$1" = "--version" ] && { echo "pg_restore (PostgreSQL) 17.6"; exit 0; }
+# Non-zero exit with no error lines at all: must never be read as benign.
+[ -n "$STUB_RESTORE_RC_ONLY" ] && exit 1
 if [ -n "$STUB_RESTORE_ERR" ]; then
   cat >&2 <<'EOF'
 pg_restore: processing data for table "public.candidates"
@@ -129,7 +136,11 @@ const INVENTORY =
   'INV\tRELATION public.candidates kind=r rls=true force_rls=true\n' +
   'INV\tPOLICY public.candidates tenant_isolation cmd=* permissive=true roles=app_tenant using=(x) check=(x)\n';
 
-function makeStubs(name: string, target: { counts?: string; inventory?: string } = {}): {
+function makeStubs(
+  name: string,
+  target: { counts?: string; inventory?: string } = {},
+  source: { counts?: string } = {},
+): {
   bin: string;
   tmp: string;
 } {
@@ -144,7 +155,7 @@ function makeStubs(name: string, target: { counts?: string; inventory?: string }
     writeFileSync(join(bin, file), body);
     chmodSync(join(bin, file), 0o755);
   }
-  writeFileSync(join(bin, 'src.counts'), COUNTS);
+  writeFileSync(join(bin, 'src.counts'), source.counts ?? COUNTS);
   writeFileSync(join(bin, 'src.inventory'), INVENTORY);
   writeFileSync(join(bin, 'tgt.counts'), target.counts ?? COUNTS);
   writeFileSync(join(bin, 'tgt.inventory'), target.inventory ?? INVENTORY);
@@ -382,6 +393,116 @@ describe('run-drill.sh — exit 1 means the drill RAN and the backup is not trus
   });
 });
 
+describe('run-drill.sh — an empty or wrong source can never verify green', () => {
+  const ZERO = 'COUNT\tpublic.candidates\t0\nCOUNT\tpublic.organizations\t0\nCOUNT\tauth.users\t0\n';
+
+  it('exits 2 when every table is empty — even though the restore would match "exactly"', () => {
+    // Source and target both all-zero: before the row floor this exited 0 (mutation-checked).
+    const stubs = makeStubs('all-zero', { counts: ZERO }, { counts: ZERO });
+    const r = drill(stubs);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/holds 0 rows in total .* fewer than DRILL_MIN_ROWS=1/);
+    expect(r.summary).toMatch(/DID NOT RUN/);
+    expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it('exits 2 when the total is below DRILL_MIN_ROWS', () => {
+    const r = drill(makeStubs('min-rows'), { DRILL_MIN_ROWS: '1000' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/holds 254 rows in total .* fewer than DRILL_MIN_ROWS=1000/);
+  });
+
+  it('exits 2 when a sentinel table is empty (public.organizations) though other tables have rows', () => {
+    const counts = COUNTS.replace('public.organizations\t3', 'public.organizations\t0');
+    const r = drill(makeStubs('sentinel-empty', { counts }, { counts }));
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/public\.organizations is empty in the source/);
+  });
+
+  it('exits 2 when a sentinel table is absent (auth.users)', () => {
+    const counts = COUNTS.replace('COUNT\tauth.users\t1\n', '');
+    const r = drill(makeStubs('sentinel-absent', { counts }, { counts }));
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/auth\.users is absent in the source/);
+  });
+
+  it('skips a sentinel whose schema is not selected (DRILL_SCHEMAS=public)', () => {
+    const counts = COUNTS.replace('COUNT\tauth.users\t1\n', '');
+    const r = drill(makeStubs('sentinel-unselected', { counts }, { counts }), { DRILL_SCHEMAS: 'public' });
+    expect(r.code).toBe(0);
+  });
+
+  it('exits 2 when the source is not the pinned cluster, and reports the pin when it matches', () => {
+    const wrong = drill(makeStubs('sysid-wrong'), { DRILL_EXPECTED_SOURCE_SYSID: '7000000000000000009' });
+    expect(wrong.code).toBe(2);
+    expect(wrong.out).toMatch(/not the pinned cluster/);
+    const ok = drill(makeStubs('sysid-ok'), { DRILL_EXPECTED_SOURCE_SYSID: '7000000000000000001' });
+    expect(ok.code).toBe(0);
+    expect(ok.summary).toMatch(/Source identity \| pinned/);
+    // …and an unpinned run says so rather than implying identity was checked.
+    expect(drill(makeStubs('sysid-unset')).summary).toMatch(/Source identity \| NOT pinned/);
+  });
+});
+
+describe('run-drill.sh — remaining did-not-run and found-a-problem paths', () => {
+  it('exits 2 when the target public schema already has relations, dropping nothing', () => {
+    const stubs = makeStubs('public-not-empty');
+    const r = drill(stubs, { STUB_TGT_PUBLIC: '3' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/target public schema is not empty/);
+    expect(calls(stubs.bin)).not.toMatch(/DESTRUCTIVE/);
+  });
+
+  it('exits 1 when pg_restore exits non-zero without a single classifiable error line', () => {
+    const r = drill(makeStubs('restore-rc-only'), { STUB_RESTORE_RC_ONLY: '1' });
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/pg_restore exited 1 without a classifiable error/);
+  });
+
+  it('exits 2 with a summary (not 141 from SIGPIPE) when the snapshot session dies', () => {
+    const r = drill(makeStubs('session-dies'), { STUB_SESSION_DIES: '1' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/snapshot session/);
+    expect(r.summary).toMatch(/DID NOT RUN/);
+  });
+});
+
+describe('run-drill.sh — bearer-token table data is excluded from the drill dump', () => {
+  it('passes --exclude-table-data and expects the table to restore EMPTY', () => {
+    const tgt = COUNTS.replace('public.candidates\t250', 'public.candidates\t0');
+    const stubs = makeStubs('exclude-ok', { counts: tgt });
+    const r = drill(stubs, { DRILL_EXCLUDE_TABLE_DATA: 'public.candidates' });
+    expect(r.code).toBe(0);
+    expect(readFileSync(join(stubs.bin, 'dump-args'), 'utf8')).toMatch(/^--exclude-table-data=public\.candidates$/m);
+    expect(r.out).toMatch(/NOT dumped .*public\.candidates/);
+  });
+
+  it('exits 1 if an excluded table restores WITH rows (its data leaked into the dump)', () => {
+    const r = drill(makeStubs('exclude-leak'), { DRILL_EXCLUDE_TABLE_DATA: 'public.candidates' });
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/public\.candidates\t0\t250/);
+  });
+
+  it('exits 2 on an excluded table outside the dumped schemas', () => {
+    const r = drill(makeStubs('exclude-outside'), { DRILL_EXCLUDE_TABLE_DATA: 'vault.secrets' });
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/outside the dumped schemas/);
+  });
+
+  it('capture ignores the exclusion — evidence and dump for a real restore stay complete', () => {
+    const stubs = makeStubs('exclude-capture');
+    const ev = join(stubs.bin, 'ex.evidence');
+    const r = drill(
+      stubs,
+      { DRILL_TARGET_URL: undefined, DRILL_TARGET_MARKER: undefined, DRILL_EXCLUDE_TABLE_DATA: 'public.candidates' },
+      ['capture', ev, join(stubs.bin, 'ex.dump')],
+    );
+    expect(r.code).toBe(0);
+    expect(readFileSync(join(stubs.bin, 'dump-args'), 'utf8')).not.toMatch(/exclude-table-data/);
+    expect(readFileSync(ev, 'utf8')).toMatch(/^COUNT\tpublic\.candidates\t250$/m);
+  });
+});
+
 // ── The workflow ──────────────────────────────────────────────────────────────────────────────────
 
 /** The `run: |` body of the step with this exact name, de-indented. Null when absent. */
@@ -462,6 +583,14 @@ describe('run-drill.sh capture/verify — a restored destination is checked agai
     expect(r.out).toMatch(/not a v1 evidence file/);
   });
 
+  it('verify exits 2 on evidence whose counts are all zero (floors apply to evidence too)', () => {
+    const zero = COUNTS.replace(/\t\d+\n/g, '\t0\n');
+    const stubs = makeStubs('verify-zero', { counts: zero });
+    const r = drill(stubs, { DRILL_VERIFY_URL: TGT_URL }, ['verify', evidence('zero', zero)]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/evidence holds 0 rows in total/);
+  });
+
   it('verify exits 2 when the destination role cannot see every row (no BYPASSRLS)', () => {
     const r = drill(makeStubs('verify-rls'), { DRILL_VERIFY_URL: TGT_URL, STUB_BYPASS: 'false' }, ['verify', evidence('rls')]);
     expect(r.code).toBe(2);
@@ -540,10 +669,56 @@ describe('backup-restore-drill.yml', () => {
     );
   });
 
-  it('pins the restore target to an exact supabase/postgres 17.6 tag, the same one the local e2e uses', () => {
-    const tag = WORKFLOW.match(/image: supabase\/postgres:(\S+)/)?.[1];
-    expect(tag).toMatch(/^17\.6\.\d+\.\d+$/);
+  it('pins the restore target by 17.6 tag AND digest, the same reference the local e2e uses', () => {
+    const ref = WORKFLOW.match(/image: supabase\/postgres:(\S+)/)?.[1];
+    expect(ref).toMatch(/^17\.6\.\d+\.\d+@sha256:[0-9a-f]{64}$/);
     const e2e = readFileSync(join(REPO_ROOT, 'scripts/backup-drill/local-e2e.sh'), 'utf8');
-    expect(e2e).toContain(`supabase/postgres:${tag}`);
+    expect(e2e).toContain(`supabase/postgres:${ref}`);
+  });
+
+  it('pins every action by full commit SHA', () => {
+    const uses = [...WORKFLOW.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)].map((m) => m[1]);
+    expect(uses.length).toBeGreaterThan(0);
+    for (const u of uses) expect(u).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
+  });
+
+  it('binds the restore target to loopback and rotates its bootstrap password to a random masked one', () => {
+    expect(WORKFLOW).toMatch(/^\s+- 127\.0\.0\.1:5432:5432$/m);
+    const rotate = stepRun('Replace the restore target\'s bootstrap password with a random one');
+    expect(rotate).toMatch(/openssl rand/);
+    expect(rotate).toMatch(/::add-mask::\$pw/);
+    expect(WORKFLOW).toMatch(/DRILL_TARGET_URL: postgresql:\/\/supabase_admin:\$\{\{ env\.DRILL_TARGET_PW \}\}@localhost/);
+  });
+
+  it('sets a total-row floor so an empty source cannot verify', () => {
+    const floor = Number(WORKFLOW.match(/DRILL_MIN_ROWS: '(\d+)'/)?.[1]);
+    expect(floor).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('backup-restore-drill.yml — the all-tenant credential is scoped to main', () => {
+  it('runs the job in the prod-backup-drill environment (where the secret must live)', () => {
+    // Job-level key, not a comment: 4-space indent under `drill:`.
+    expect(WORKFLOW).toMatch(/^    environment: prod-backup-drill$/m);
+  });
+
+  const guard = stepRun('Refuse to run outside main');
+
+  it('has the main-only guard as the FIRST step, before checkout or any secret is referenced', () => {
+    expect(guard).not.toBeNull();
+    const firstStep = WORKFLOW.split(/^    steps:$/m)[1].match(/^\s+- (?:name|uses): (.*)$/m)?.[1];
+    expect(firstStep).toBe('Refuse to run outside main');
+  });
+
+  it('the guard fails on any ref other than refs/heads/main', () => {
+    for (const ref of ['refs/heads/feature/x', 'refs/pull/42/merge', 'refs/tags/v1', '']) {
+      const r = exec('bash', ['-c', guard!], { DRILL_REF: ref });
+      expect(r.code, ref).not.toBe(0);
+      expect(r.out).toMatch(/::error title=Backup-restore drill refused::/);
+    }
+  });
+
+  it('the guard passes on refs/heads/main (positive control)', () => {
+    expect(exec('bash', ['-c', guard!], { DRILL_REF: 'refs/heads/main' }).code).toBe(0);
   });
 });
