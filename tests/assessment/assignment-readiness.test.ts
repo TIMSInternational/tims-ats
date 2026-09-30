@@ -26,6 +26,7 @@ vi.mock('@tims/db', () => ({
     assessmentQuestion: { count: vi.fn() },
     organization: { findFirst: vi.fn() },
     candidate: { findFirst: vi.fn(), count: vi.fn() },
+    application: { findFirst: vi.fn(), count: vi.fn() },
     assessmentAssignment: { create: vi.fn(), createMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
   },
   runWithTenant: (_orgId: string, fn: () => unknown) => fn(),
@@ -64,6 +65,8 @@ beforeEach(() => {
   vi.mocked(tenantDb.assessmentType.findFirst).mockResolvedValue({ id: TYPE_ID } as never);
   vi.mocked(tenantDb.candidate.findFirst).mockResolvedValue({ id: CANDIDATE_ID } as never);
   vi.mocked(tenantDb.candidate.count).mockResolvedValue(1);
+  vi.mocked(tenantDb.application.findFirst).mockResolvedValue({ id: 'application-1' } as never);
+  vi.mocked(tenantDb.application.count).mockResolvedValue(1);
   vi.mocked(tenantDb.assessmentQuestion.count).mockResolvedValue(0);
   vi.mocked(tenantDb.organization.findFirst).mockResolvedValue({ slug: 'tims', name: 'TIMS International' } as never);
   vi.mocked(tenantDb.assessmentAssignment.findFirst).mockResolvedValue({

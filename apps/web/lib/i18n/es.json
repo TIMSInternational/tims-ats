@@ -3042,6 +3042,7 @@
     "invoiceDueDate": "Fecha de vencimiento"
   },
   "assessments": {
+    "assignAssessment": "Asignar evaluación",
     "title": "Autoria de Evaluaciones",
     "subtitle": "Crea y administra las preguntas que responderan los candidatos.",
     "selectType": "Tipo de evaluacion",
