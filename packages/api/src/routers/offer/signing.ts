@@ -1,12 +1,17 @@
 import { z } from 'zod';
-import { router, publicProcedure, permissionProcedure } from '../../trpc';
+import { router, publicProcedure, anyPermissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
-import { scopeWhereFor } from '../../access';
+import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
+
+// The address a signing token was issued to, compared on re-send (see generateSigningLink).
+function normaliseRecipient(email: string): string {
+  return email.trim().toLowerCase();
+}
 
 // Public signing-token procedures run with NO tenant in scope (the candidate has no
 // session and the org is unknown until the token resolves an offer), and `db` here is
@@ -17,8 +22,10 @@ const signingTokenProcedure = publicProcedure.use(({ next }) =>
 );
 
 export const offerSigningRouter = router({
-  // Generate a unique signing link for an offer
-  generateSigningLink: permissionProcedure('offer', 'update')
+  // Generate a unique signing link for an offer. offer:create (recruiters) suffices to send an APPROVED
+  // offer — the body never edits terms, which stays offer:update. Re-sending an already-SENT offer (which
+  // re-emails the live bearer token) stays offer:update only; see the create-only guard below.
+  generateSigningLink: anyPermissionProcedure('offer', ['update', 'create'])
     .input(z.object({ offerId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
@@ -35,7 +42,7 @@ export const offerSigningRouter = router({
         },
         select: {
           id: true, status: true, settings: true, updatedAt: true, expiresAt: true, sentAt: true,
-          candidate: { select: { firstName: true, lastName: true, email: true } },
+          candidate: { select: { firstName: true, lastName: true, email: true, updatedAt: true } },
           vacancy: { select: { title: true } },
         },
       });
@@ -56,6 +63,37 @@ export const offerSigningRouter = router({
       }
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
+      }
+
+      // The emailed URL IS the candidate's bearer token (anyone holding it can accept/decline — offer-dto.ts),
+      // and the recipient is whatever candidate.email says NOW — which candidate:update (recruiters hold it
+      // org-wide) can rewrite. So a caller authorized only through the offer:create widening may send an
+      // offer exactly once, to the address it had when it entered the approval chain:
+      //  - never re-send a SENT offer: that re-emails the LIVE token, so an edited email would hand a copy of
+      //    a working link to someone other than the candidate (#304 panel, HIGH);
+      //  - never send if the candidate row changed after the latest submission for approval (or if there is
+      //    no approval chain to anchor on): the approvers approved an offer to the address it had then.
+      // Both refusals are fail-closed; an offer:update holder (HR admin) can still send or re-send.
+      const holdsOfferUpdate = (await buildAccessForUser(ctx.user, 'offer', 'update')).allowed;
+      if (!holdsOfferUpdate) {
+        if (offer.status === 'sent') {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Solo un usuario con permiso para editar ofertas puede reenviar una oferta ya enviada',
+          });
+        }
+        const latestSubmission = await db.offerApproval.findFirst({
+          where: { offerId: offer.id, organizationId: ctx.user.organizationId },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        });
+        if (!latestSubmission || offer.candidate.updatedAt > latestSubmission.createdAt) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message:
+              'Los datos del candidato cambiaron después de solicitar la aprobación; un usuario con permiso para editar ofertas debe enviarla',
+          });
+        }
       }
 
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -81,10 +119,18 @@ export const offerSigningRouter = router({
       }
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
-      // A retry must reuse the same bearer link so a prior provider-accepted
-      // message cannot point to a newly invalidated token.
+      // A retry to the SAME recipient must reuse the same bearer link so a prior provider-accepted
+      // message cannot point to a newly invalidated token. But the recipient is whatever candidate.email
+      // says now: if it changed since the token was minted (e.g. a typo'd address was corrected), the
+      // copy already delivered to the old address is a working bearer link to salary/terms and to
+      // accept/decline. So reuse only when the token was issued to this exact (normalised) address;
+      // otherwise — including legacy rows that never recorded a recipient — rotate, which kills the old
+      // link. Rotation goes through the same compare-and-set as the first send.
+      const recipient = normaliseRecipient(offer.candidate.email);
       const existingToken = existingSettings.signingToken;
-      const reusableToken = offer.status === 'sent' && typeof existingToken === 'string' && existingToken.length > 0
+      const reusableToken = offer.status === 'sent'
+        && typeof existingToken === 'string' && existingToken.length > 0
+        && existingSettings.signingTokenRecipient === recipient
         ? existingToken : null;
       const signingToken = reusableToken
         ? reusableToken
@@ -101,7 +147,7 @@ export const offerSigningRouter = router({
           data: {
             status: 'sent',
             sentAt: offer.sentAt ?? new Date(),
-            settings: { ...existingSettings, signingToken },
+            settings: { ...existingSettings, signingToken, signingTokenRecipient: recipient },
           },
         });
         if (transition.count !== 1) {
@@ -119,7 +165,14 @@ export const offerSigningRouter = router({
         expiresAt: offer.expiresAt,
       });
 
-      return { signingUrl, emailDeliveryAccepted, candidateEmail: offer.candidate.email };
+      // Only callers who could already generate links before the offer:create widening (offer:update)
+      // get the bearer link back; a recruiter authorized via offer:create alone triggers the email but
+      // never sees the token.
+      return {
+        signingUrl: holdsOfferUpdate ? signingUrl : null,
+        emailDeliveryAccepted,
+        candidateEmail: offer.candidate.email,
+      };
     }),
 
   // PUBLIC: Get offer data by signing token (no auth required)
@@ -226,7 +279,9 @@ export const offerSigningRouter = router({
       // 'sent' wins. `updateMany` matches 0 rows for a concurrent second accept
       // (status already flipped), so two clicks can't both be accepted (TOCTOU).
       const transition = await db.offer.updateMany({
-        where: { id: offer.id, status: 'sent' },
+        // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
+        // between (recipient changed) must leave the superseded link unable to accept/decline.
+        where: { id: offer.id, status: 'sent', settings: { path: ['signingToken'], equals: input.token } },
         data: {
           status: 'accepted',
           respondedAt: now,
@@ -321,7 +376,9 @@ export const offerSigningRouter = router({
       // Atomic conditional transition (see acceptByToken): guards against a
       // concurrent accept/decline race — only the request still seeing 'sent' wins.
       const transition = await db.offer.updateMany({
-        where: { id: offer.id, status: 'sent' },
+        // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
+        // between (recipient changed) must leave the superseded link unable to accept/decline.
+        where: { id: offer.id, status: 'sent', settings: { path: ['signingToken'], equals: input.token } },
         data: {
           status: 'declined',
           respondedAt: now,

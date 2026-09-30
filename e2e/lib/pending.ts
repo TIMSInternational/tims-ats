@@ -34,7 +34,7 @@ export const PENDING = {
   peopleDirectory: {
     ref: '#304',
     why: 'recruiters get 403 from the approver/evaluator pickers (user.list needs user.read) on main',
-    merged: false,
+    merged: true,
   },
   tenantInvitations: {
     ref: '#307',

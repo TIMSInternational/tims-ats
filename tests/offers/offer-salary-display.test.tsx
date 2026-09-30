@@ -10,6 +10,19 @@ const portalOffers = vi.fn();
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useParams: () => ({ token: 'tok-1' }) }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: (...args: unknown[]) => toastMock(...args) }));
+// PR #304 replaced the approver <select> with the directory-backed UserPicker; stub it with a single pick
+// so this suite keeps testing the error surfacing, not the picker (covered in tests/people/).
+vi.mock('../../apps/web/components/user-picker', () => ({
+  UserPicker: ({ onSelect }: { onSelect: (id: string, user: unknown) => void }) =>
+    createElement(
+      'button',
+      {
+        type: 'button',
+        onClick: () => onSelect('u1', { id: 'u1', firstName: 'Ana', lastName: 'Leader', email: 'ana@x.test', avatarUrl: null }),
+      },
+      'pick-ana',
+    ),
+}));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     offer: {
@@ -273,11 +286,9 @@ describe('offer approval actions surface errors', () => {
 
   it('shows an inline alert and a toast with the FORBIDDEN message', async () => {
     mutateAsync.mockRejectedValue(Object.assign(new Error('raw'), { data: { code: 'FORBIDDEN' } }));
-    const { container } = render(
-      createElement(OfferApprovalActions, { offerId: 'o1', status: 'draft', approvals: [], onUpdated: vi.fn() }),
-    );
-    fireEvent.change(container.querySelector('select') as HTMLSelectElement, { target: { value: 'u1' } });
-    fireEvent.click(screen.getByRole('button'));
+    render(createElement(OfferApprovalActions, { offerId: 'o1', status: 'draft', approvals: [], onUpdated: vi.fn() }));
+    fireEvent.click(screen.getByRole('button', { name: 'pick-ana' }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Solicitar aprobación|Request approval)$/ }));
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/No tienes permiso/);

@@ -99,6 +99,13 @@ surface, flipped per §6):
   `AssessmentTypeWriteEnabled` — F13 tenant assessment-type authoring (PR #309), greenfield C# with no TS writer.
   Set it `true` and run `verify-write assessment-types` BEFORE building Vercel with
   `NEXT_PUBLIC_ASSESSMENT_TYPES_VIA_CSHARP=true`. See `assessment-type-authoring.md`.
+- **Tenant people directory (added 2026-09-29, PR #304 — not part of the 21 above):**
+  `Platform__TenantPeopleDirectoryEnabled` (C#, default false) serves `GET /tenant/people/assignable`; the web
+  consumer is the build-time Vercel flag `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP` (unset = pickers stay on
+  tRPC `user.list`). **Flip order: C# first, verify, then the web flag** (redeploy) — the web hook never falls back
+  to tRPC, so web-on/C#-off leaves every picker "unavailable". **Parity registration is required before the prod
+  flip** (it is on the `UNREGISTERED_ALLOWLIST` pending a recruiter/grant fixture). Detail:
+  `tenant-people-directory.md`.
 
 | Env var                                      | Source                             | Required                               | Notes                                                                                        |
 | -------------------------------------------- | ---------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -110,6 +117,7 @@ surface, flipped per §6):
 | `Platform__ImpersonationSecret`              | = the TS HMAC impersonation secret | ✅ (for impersonation)                 | **must byte-match** the TS value (shared signed cookie) or owner impersonation breaks.       |
 | `Platform__OtlpEndpoint`                     | observability backend              | optional                               | OTel traces/metrics export.                                                                  |
 | `Platform__<Surface>Enabled` ×21             | —                                  | set `false`                            | The full read+write set listed above (§2). All default false; set explicit for auditability. |
+| `Platform__TenantPeopleDirectoryEnabled`     | —                                  | set `false`                            | #304 picker directory: flip before the web flag; parity-register first (§2).                 |
 | `Stripe__SecretKey`, `Stripe__WebhookSecret` | Stripe                             | only before billing-write cutover      | leave unset while billing writes are dark.                                                   |
 | `Platform__CandidateInterviewJoinEnabled`    | —                                  | default `false`                        | WP-H candidate video join (`POST /interviews/candidate-join`). Flip only with `Daily__ApiKey` set, and BEFORE the web deploy that emails join links — see `candidate-interview-join.md`. |
 | `Daily__ApiKey`                              | Daily.co dashboard (Secrets Manager) | ✅ when the join flag is on           | Runtime-environment SECRET. Blank or terraform's `REPLACE_ME_OUT_OF_BAND` = not configured: every join answers `unavailable` and startup logs a WARNING. |

@@ -95,6 +95,17 @@
 
 ---
 
+## Tenant people directory for pickers — 2026-09-29 (PR #304, not deployed)
+
+Recruiter pickers (interview evaluators, vacancy/offer approvers) read tRPC `user.list`, which recruiters cannot
+call (no `user:read`). PR #304 adds a DARK C# `GET /tenant/people/assignable` authorized on each picker's mutation
+permission (the whole-directory evaluator purpose additionally needs org-wide scope), plus the offer-flow fixes
+(recruiters may request approval and send an APPROVED offer once; re-sending a sent offer and sending after a
+post-submission candidate edit stay `offer:update`-only). Remaining before any prod flip: parity registration
+(recruiter + grant fixture), C# flag `Platform__TenantPeopleDirectoryEnabled` then web flag
+`NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP`, the 12 other `UserPicker` call sites still on `user.list`, and
+the `roles.is_active` kernel gap. See `architecture/csharp-migration/tenant-people-directory.md`.
+
 ## Tenant audit migration update — 2026-09-14 (PR #257, not deployed)
 
 All five tenant audit operations are implemented in C#/.NET 10: list, detail, entity history,
