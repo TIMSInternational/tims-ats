@@ -70,6 +70,7 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     signingUrl: string;
+    expiresAt: Date | null;
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.offerSent(rest);

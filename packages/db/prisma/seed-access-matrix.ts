@@ -15,6 +15,18 @@ export type Scope = 'own' | 'team' | 'unit' | 'company' | 'organization';
 export type Entry = { module: string; actions: string[]; scope: Scope };
 export type Triple = { module: string; action: string; scope: Scope };
 
+export const SYSTEM_ROLE_CATALOG = [
+  { slug: 'super_admin', name: 'Super Administrador', description: 'Full access to all modules' },
+  { slug: 'hr_admin', name: 'Administrador RRHH', description: 'Full access to all HR modules' },
+  { slug: 'hrbp', name: 'HR Business Partner', description: 'Access to assigned business units' },
+  { slug: 'recruiter', name: 'Reclutador', description: 'ATS modules only' },
+  { slug: 'leader', name: 'Lider', description: 'Own team and assigned vacancies' },
+  { slug: 'committee', name: 'Miembro de Comite', description: 'Review panels only' },
+  { slug: 'employee', name: 'Colaborador', description: 'Self-service access' },
+  { slug: 'external', name: 'API Externa', description: 'API access for integrations' },
+  { slug: 'candidate', name: 'Candidato', description: 'Portal access only' },
+] as const;
+
 // ---------------------------------------------------------------------------
 // MATRIX — single source of truth for every role's grants in this system.
 //

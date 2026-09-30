@@ -10,6 +10,9 @@ const OFFER_ID = '22222222-2222-2222-2222-222222222222';
 const mockOffer = {
   id: OFFER_ID,
   status: 'accepted',
+  startDate: new Date('2026-10-01T00:00:00.000Z'),
+  validations: [],
+  legalChecks: [],
   candidate: { email: 'candidate@example.com', firstName: 'Ana', lastName: 'Lopez', phone: null, avatar: null },
   vacancy: { companyId: 'co-1', businessUnitId: 'bu-1', teamId: 'team-1' },
 };
@@ -18,6 +21,8 @@ vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },
     user: { findFirst: vi.fn().mockResolvedValue(null) },
+    role: { findFirst: vi.fn().mockResolvedValue({ id: 'employee-role-1' }) },
+    hirePrediction: { findFirst: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn(async (arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => Promise<unknown>)(mockTx)
@@ -32,8 +37,9 @@ vi.mock('@tims/db', () => ({
 
 const mockTx = {
   user: { create: vi.fn().mockResolvedValue({ id: 'user-new-1', email: 'candidate@example.com' }) },
+  userRole: { create: vi.fn() },
   userTeam: { create: vi.fn() },
-  offer: { update: vi.fn() },
+  offer: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   onboardingPlan: { create: vi.fn().mockResolvedValue({ id: 'plan-1' }) },
 };
 
@@ -95,9 +101,81 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     expect(arg.data.userId).toBe('user-new-1');
     expect(arg.data.organizationId).toBe(ORG_ID);
     expect(arg.data.phase).toBe('day1_30');
+    expect(arg.data.startDate).toEqual(mockOffer.startDate);
     expect(arg.data.tasks.create.length).toBeGreaterThanOrEqual(8);
     expect(arg.data.tasks.create.every((t: { organizationId: string }) => t.organizationId === ORG_ID)).toBe(true);
     expect(arg.data.checkIns.create.map((checkIn: { type: string }) => checkIn.type)).toEqual(['day1', 'day30', 'day60']);
     expect(arg.data.checkIns.create.every((checkIn: { organizationId: string }) => checkIn.organizationId === ORG_ID)).toBe(true);
+    expect(mockTx.userRole.create).toHaveBeenCalledWith({
+      data: { userId: 'user-new-1', roleId: 'employee-role-1', assignedBy: 'hr-1' },
+    });
+    expect(mockTx.offer.updateMany).toHaveBeenCalledWith({
+      where: { id: OFFER_ID, organizationId: ORG_ID, status: 'accepted' },
+      data: { status: 'converted' },
+    });
+  });
+
+  it('rejects an unpassed blocking validation before provisioning an identity', async () => {
+    const { tenantDb: db, runTenantTransaction } = await import('@tims/db');
+    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    vi.mocked(db.offer.findFirst).mockResolvedValueOnce({
+      ...mockOffer,
+      validations: [{ status: 'pending', isBlocking: true }],
+    } as never);
+    const caller = await makeCaller();
+
+    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
+      .rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(runTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incomplete legal check before creating an employee', async () => {
+    const { tenantDb: db } = await import('@tims/db');
+    vi.mocked(db.offer.findFirst).mockResolvedValueOnce({
+      ...mockOffer,
+      legalChecks: [{ completed: false }],
+    } as never);
+    const caller = await makeCaller();
+
+    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
+      .rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(mockTx.user.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses to create a roleless employee when the system role is missing', async () => {
+    const { tenantDb: db } = await import('@tims/db');
+    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    vi.mocked(db.role.findFirst).mockResolvedValueOnce(null);
+    const caller = await makeCaller();
+
+    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
+      .rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+  });
+
+  it('does not create a duplicate employee when another request claims the offer first', async () => {
+    mockTx.offer.updateMany.mockResolvedValueOnce({ count: 0 });
+    const caller = await makeCaller();
+
+    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
+      .rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(mockTx.user.create).not.toHaveBeenCalled();
+    expect(mockTx.onboardingPlan.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the existing hire on a safe retry without creating another employee', async () => {
+    const { tenantDb: db, runTenantTransaction } = await import('@tims/db');
+    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    vi.mocked(db.offer.findFirst).mockResolvedValueOnce({ ...mockOffer, status: 'converted' } as never);
+    vi.mocked(db.hirePrediction.findFirst).mockResolvedValueOnce({ userId: 'user-existing-1' } as never);
+    vi.mocked(db.user.findFirst).mockResolvedValueOnce({ id: 'user-existing-1', email: 'candidate@example.com' } as never);
+    const caller = await makeCaller();
+
+    const result = await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });
+
+    expect(result.id).toBe('user-existing-1');
+    expect(runTenantTransaction).not.toHaveBeenCalled();
+    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
   });
 });

@@ -73,6 +73,7 @@ export const offerCrudRouter = router({
       const offer = await db.offer.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
         include: {
+          organization: { select: { name: true } },
           candidate: {
             select: {
               id: true, firstName: true, lastName: true, email: true, phone: true, avatar: true,

@@ -20,7 +20,7 @@ public static class RateLimitPolicy
 
     /// <summary>
     /// Selects the rate-limit category for a tRPC path + procedure type. Order matters and mirrors
-    /// TS exactly: (1) <c>auth.</c> prefix wins outright; (2) exact path
+    /// TS exactly: (1) <c>auth.</c> prefix wins outright (mutation → auth, query → query); (2) exact path
     /// <c>portal.applytovacancy</c> → ai; (3) any AI keyword substring → ai; (4) <c>export</c>
     /// substring → export; (5) otherwise the query/mutation default.
     /// </summary>
@@ -29,9 +29,11 @@ public static class RateLimitPolicy
         ArgumentNullException.ThrowIfNull(path);
 
         // Auth endpoints — checked BEFORE lowercasing/AI so `auth.generateToken` stays auth.
+        // Only auth MUTATIONS (credential-like attempts) take the strict Auth tier; auth QUERIES
+        // (session reads such as auth.getSessionInfo, fired on every page) take the Query tier.
         if (path.StartsWith("auth.", StringComparison.Ordinal))
         {
-            return RateLimitCategory.Auth;
+            return type == RateLimitRequestType.Mutation ? RateLimitCategory.Auth : RateLimitCategory.Query;
         }
 
         var p = path.ToLowerInvariant();

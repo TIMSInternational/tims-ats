@@ -28,7 +28,7 @@ public sealed partial class OrganizationInvitationEndpointTests
         var id = result.GetProperty("id").GetGuid();
         Assert.Equal("accepted", result.GetProperty("delivery").GetString());
         var counts = await fixture.Organizations.CountAllProvisionedRowsAsync(org);
-        Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 1, 1, 7), counts);
+        Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 9, 1, 7), counts);
         var company = Assert.Single(await fixture.Organizations.ReadCompaniesAsync(org));
         var unit = Assert.Single(await fixture.Organizations.ReadBusinessUnitsAsync(org));
         var team = Assert.Single(await fixture.Organizations.ReadTeamsAsync(org));
@@ -37,8 +37,10 @@ public sealed partial class OrganizationInvitationEndpointTests
         Assert.Equal(plan, subscription.Plan);
         Assert.Equal(plan == "trial" ? "trialing" : "active", subscription.Status);
         Assert.Equal(plan == "trial", subscription.TrialEndsAt.HasValue);
-        var role = Assert.Single(await fixture.Organizations.ReadRolesAsync(org));
+        var role = Assert.Single(await fixture.Organizations.ReadRolesAsync(org), r => r.Slug == "super_admin");
         Assert.Equal("super_admin", role.Slug); Assert.True(role.IsSystem);
+        Assert.Contains(await fixture.Organizations.ReadRoleGrantsAsync(org),
+            g => g == ("employee", "onboarding", "read", "own"));
         var entitlements = await fixture.Organizations.ReadEntitlementsAsync(org);
         Assert.Equal(5000, Assert.Single(entitlements, e => e.ModuleCode == "ai_screening").Limit);
         var invitation = await ReadInvitation(id);
@@ -83,7 +85,7 @@ public sealed partial class OrganizationInvitationEndpointTests
         Assert.NotNull(observed);
         Assert.Equal("pending", observed.Status);
         Assert.Null(observed.SentAt);
-        Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 1, 1, 7), observedCounts);
+        Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 9, 1, 7), observedCounts);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("unconfirmed", await response.Content.ReadAsStringAsync());
         var stored = await ReadInvitation(await FindBySlug(slug));

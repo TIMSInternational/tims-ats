@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { CandidateAvatar, StatusBadge } from '../../../../components';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
+import { useI18n } from '../../../../lib/i18n';
+import { getPipelineFit } from '../../../../lib/pipeline-fit';
 
 interface PipelineListViewProps {
   stages: PipelineStageWithApps[];
@@ -33,12 +35,6 @@ function hoursAgo(date: Date | string): number {
   return Math.max(0, (Date.now() - d.getTime()) / 3600000);
 }
 
-function deriveFitScore(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  return 40 + Math.abs(hash % 55);
-}
-
 function fitColor(score: number) {
   if (score >= 75) return 'text-green-600 bg-green-50';
   if (score >= 50) return 'text-amber-600 bg-amber-50';
@@ -58,6 +54,7 @@ const STATUS_MAP: Record<string, { cls: string; label: string }> = {
 };
 
 export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4 overflow-y-auto h-full pb-4">
       {stages.map((stage, stageIdx) => {
@@ -82,7 +79,7 @@ export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
               {stage.applications.map((app) => {
                 const c = app.candidate as { id: string; firstName: string; lastName: string; avatar: string | null; currentTitle?: string | null; email: string };
                 const days = daysAgo(app.appliedAt);
-                const fit = deriveFitScore(app.id);
+                const fit = getPipelineFit(app.candidate);
                 // SLA overdue is time-in-CURRENT-stage, not time since the original
                 // application, and uses precise hours so sub-24h SLAs can trigger same-day.
                 const isOverdue = stage.slaHours != null && hoursAgo(app.enteredStageAt) > stage.slaHours;
@@ -101,9 +98,15 @@ export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
                       </div>
                     </div>
 
-                    {/* FIT Score */}
+                    {/* Only persisted FIT results may be presented as scores. */}
                     <div className="w-[60px] shrink-0">
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${fitColor(fit)}`}>{fit}</span>
+                      {fit ? (
+                        <span title={`${t.pipeline.fitScore}: ${fit.score}${fit.isPartial ? ` (${t.pipeline.fitPartial})` : ''}`} className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${fitColor(fit.score)}`}>
+                          {Math.round(fit.score)}{fit.isPartial ? '*' : ''}
+                        </span>
+                      ) : (
+                        <span title={t.pipeline.fitPending} className="text-[11px] text-[#8B8B8B]">—</span>
+                      )}
                     </div>
 
                     {/* Source */}
@@ -130,11 +133,11 @@ export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
                           onClick={() => onMove(app.id, nextStage.id)}
                           className="text-[10px] text-[#1F114C] bg-[#F0EEF5] hover:bg-[#E8E5F0] px-2.5 py-1 rounded-lg font-medium transition"
                         >
-                          Avanzar →
+                          {t.pipeline.advance}
                         </button>
                       )}
                       <Link href={`/recruitment/candidates/${c.id}`} className="text-[10px] text-[#585858] hover:text-[#1F114C] transition">
-                        Ver perfil
+                        {t.pipeline.viewProfile}
                       </Link>
                     </div>
                   </div>

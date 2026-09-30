@@ -74,30 +74,6 @@ public sealed class TeamWriteEntity
 }
 
 /// <summary>
-/// The single <c>roles</c> row created by <c>createOrganization</c> itself
-/// (<c>organizations.ts:204-206</c>) — NOT by the shared helper. It lives in this file because the EF map
-/// is shared: #75's invitation flow creates the same row.
-///
-/// <para><b>The role gets no permissions and no members</b> — zero <c>role_permissions</c>, zero
-/// <c>user_roles</c>. A "Super Administrador" that grants nothing to nobody is what the TS creates, and it
-/// is reproduced verbatim.</para>
-/// </summary>
-public sealed class RoleWriteEntity
-{
-    public Guid Id { get; set; }
-
-    public Guid OrganizationId { get; set; }
-
-    public string Name { get; set; } = string.Empty;
-
-    public string Slug { get; set; } = string.Empty;
-
-    public bool IsSystem { get; set; }
-
-    public DateTime UpdatedAt { get; set; }
-}
-
-/// <summary>
 /// One <c>org_entitlements</c> row (<c>org-provisioning.ts:56-65</c>).
 ///
 /// <para><c>unit_price</c> is deliberately absent: the TS <c>create</c> never copies

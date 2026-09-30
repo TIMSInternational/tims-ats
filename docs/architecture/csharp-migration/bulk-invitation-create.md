@@ -4,7 +4,7 @@ Implemented, default disabled. Stacked on individual invitations (#261). No prod
 
 ## Contract
 
-`POST /platform/invitations/bulk` authorizes the platform owner before parsing at most 128 KiB. It accepts a nonempty organization UUID and 1–200 recipients, each with email (ASCII, <=254), optional roleSlug (1–50, no controls), and optional firstName/lastName (<=100). Names are validated but not persisted, matching the existing CSV writer. Explicit null fields and duplicate JSON keys are rejected. Missing/inactive/deleted organization returns 404. Each recipient revalidates the target organization and active tenant-owned role before creation.
+`POST /platform/invitations/bulk` authorizes the platform owner before parsing at most 128 KiB. It accepts a nonempty organization UUID and 1–200 recipients, each with email (ASCII, <=254), optional roleSlug (1–50, no controls), and optional firstName/lastName (<=100). An omitted role now resolves to the active `employee` staff role before each invitation is persisted or emailed. Names are validated but not persisted, matching the existing CSV writer. Explicit null fields and duplicate JSON keys are rejected. Missing/inactive/deleted organization returns 404. Each recipient revalidates the target organization and active tenant-owned role before creation.
 
 Each worker owns its own DI scope and EF context. At most four workers run per request, not globally. The 18-second batch and 6-second item budgets request cooperative cancellation. New work stops when less than six seconds remain. These are not hard HTTP latency guarantees; dependencies and the post-batch audit can extend elapsed time. Provisioning commands have a two-second timeout; the separate delivery-state context retains its own defaults.
 
