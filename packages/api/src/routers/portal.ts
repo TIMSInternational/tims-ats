@@ -8,6 +8,7 @@ import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
 import { portalApplicationService } from '../services/portal-application.service';
 import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE, logger } from '@tims/shared';
 import { emailService } from '../services/email.service';
+import { consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
 // The ONE public response of portal.applyToVacancy, whatever happened server-side.
 const APPLY_ACKNOWLEDGMENT = { received: true } as const;
@@ -242,8 +243,10 @@ export const portalRouter = router({
       const email = input.email.trim().toLowerCase();
 
       type ApplyOutcome =
-        // `recipient` = the candidate row's own email + first name (a reused candidate's stored
-        // values, never the unauthenticated form's), for the application-received email.
+        // `recipient` = who the application-received email goes to: for a REUSED candidate the
+        // stored row's email + first name; for a NEW candidate the form's (validated, trimmed,
+        // lowercased) email + first name — the email is capped per recipient and the name is
+        // greeting-sanitized by the template.
         | { kind: 'new'; candidateId: string; recipient: { email: string; firstName: string } }
         | { kind: 'duplicate' }
         | { kind: 'withdrawn' }
@@ -401,6 +404,9 @@ export const portalRouter = router({
       // the application, and — being detached — adds no response-timing signal. It is
       // dispatched before CV processing so a CV failure can never suppress it. The log
       // line carries no PII (no email, no name, no candidate id, no error message).
+      // Per-recipient cap: the form chooses the address, so at most one such email per
+      // address per 24h platform-wide; a capped or unavailable limiter skips the email
+      // (never the application).
       if (outcome.kind === 'new') {
         const confirmation = {
           candidateEmail: outcome.recipient.email,
@@ -410,7 +416,22 @@ export const portalRouter = router({
           locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
         };
         void Promise.resolve()
-          .then(() => emailService.sendApplicationReceived(confirmation))
+          .then(async () => {
+            let allowed = false;
+            try {
+              allowed = await consumeApplicationEmailQuota(confirmation.candidateEmail);
+            } catch {
+              allowed = false;
+            }
+            if (!allowed) {
+              logger.info(
+                { component: 'portal', vacancyId: vacancy.id },
+                'Application confirmation email skipped: per-recipient cap reached or limiter unavailable',
+              );
+              return;
+            }
+            await emailService.sendApplicationReceived(confirmation);
+          })
           .catch((error: unknown) => {
             logger.warn(
               { component: 'portal', vacancyId: vacancy.id, errName: error instanceof Error ? error.name : 'UnknownError' },

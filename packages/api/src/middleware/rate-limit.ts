@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { TRPCError } from '@trpc/server';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
@@ -133,6 +135,45 @@ export async function checkRateLimit(identifier: string, category: RateLimitCate
 
   // Fallback: in-memory (local dev)
   checkMemoryRateLimit(identifier, category);
+}
+
+// ---------------------------------------------------------------------------
+// Per-RECIPIENT cap for the unauthenticated "application received" email (#308).
+// The public apply form chooses the recipient address, so without a cap it could make
+// the platform mail any inbox repeatedly via our SES identity. At most ONE such email per
+// address per 24h, platform-wide. The key is sha256(lowercased address) — the raw
+// address never reaches Redis or memory keys.
+// Returns true only when a send is allowed. An Upstash timeout (the library then reports
+// success with reason 'timeout') is treated as NOT allowed; an Upstash error propagates
+// and the caller must treat it as NOT allowed too (fail closed — skip the email).
+// ---------------------------------------------------------------------------
+const APPLICATION_EMAIL_WINDOW_MS = 86_400_000;
+
+const applicationEmailLimiter = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.fixedWindow(1, '24 h'),
+      prefix: 'tims:ratelimit:application-email',
+    })
+  : null;
+
+const applicationEmailMemory = new Map<string, number>();
+
+export async function consumeApplicationEmailQuota(recipientEmail: string): Promise<boolean> {
+  const key = createHash('sha256').update(recipientEmail.trim().toLowerCase()).digest('hex');
+  if (applicationEmailLimiter) {
+    const { success, reason } = await applicationEmailLimiter.limit(key);
+    return success && reason !== 'timeout';
+  }
+  // Fallback: in-memory (local dev / tests) — per-process, same 1-per-24h semantics.
+  const now = Date.now();
+  const until = applicationEmailMemory.get(key);
+  if (until !== undefined && until > now) return false;
+  if (applicationEmailMemory.size > 10_000) {
+    for (const [k, v] of applicationEmailMemory) if (v <= now) applicationEmailMemory.delete(k);
+  }
+  applicationEmailMemory.set(key, now + APPLICATION_EMAIL_WINDOW_MS);
+  return true;
 }
 
 // AI-backed endpoints (cost-controlled, capped per-org). Keep in sync with the

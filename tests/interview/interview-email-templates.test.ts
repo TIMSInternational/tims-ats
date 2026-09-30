@@ -58,7 +58,9 @@ describe('interview email templates', () => {
       companyName: 'Acme',
       locale: 'es',
     });
-    expect(es.html).toContain('&lt;b&gt;Ana&lt;/b&gt;');
+    // Markup is not a plain name → generic greeting; the value never reaches the HTML at all.
+    expect(es.html).toContain('Estimado/a candidato/a,');
+    expect(es.html).not.toContain('Ana');
     expect(es.subject).not.toMatch(/[\r\n]/);
     expect(es.subject.startsWith('Aplicación recibida')).toBe(true);
     const en = emailTemplates.applicationReceived({
@@ -69,5 +71,36 @@ describe('interview email templates', () => {
     });
     expect(en.subject).toBe('Application received — Dev');
     expect(en.html).toContain('lang="en"');
+  });
+
+  // #308 security fix: the apply form is unauthenticated and chooses the recipient, so the
+  // greeting only ever carries a plain personal name — never a URL, domain, digits or markup.
+  it('application-received greeting keeps real (accented) names and drops hostile ones', () => {
+    const greet = (candidateName: string, locale: 'es' | 'en' = 'es') =>
+      emailTemplates.applicationReceived({ candidateName, vacancyTitle: 'Dev', companyName: 'Acme', locale }).html;
+
+    for (const real of ['José', 'María-José', "O'Brien", 'Ana María', 'J. Pérez', 'Zoë', 'Nguyễn']) {
+      expect(greet(real)).toContain(`Estimado/a ${real.replace(/'/g, '&#39;')},`);
+    }
+    expect(greet('Ana', 'en')).toContain('Dear Ana,');
+
+    const hostile = [
+      'Visit https://evil.example to claim',
+      'evil.com',
+      'Call 555 0100',
+      'Ana<script>',
+      'Win $1000',
+      'Ana/verify',
+      ' ',
+      '',
+      'A'.repeat(51),
+      'Ana\nBcc: x',
+    ];
+    for (const bad of hostile) {
+      const html = greet(bad);
+      expect(html).toContain('Estimado/a candidato/a,');
+      if (bad.trim()) expect(html).not.toContain(bad.trim().slice(0, 12));
+    }
+    expect(greet('evil.com', 'en')).toContain('Dear candidate,');
   });
 });

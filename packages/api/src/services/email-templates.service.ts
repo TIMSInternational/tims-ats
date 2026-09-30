@@ -10,6 +10,12 @@
 const BRAND = { navy: '#1F114C', red: '#DD0C15', text: '#333333', secondary: '#585858', muted: '#8B8B8B', surface: '#F6F6F6', border: '#EDEDED', white: '#FFFFFF' } as const;
 const FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;";
 
+// A conservative personal-name shape: starts with a letter, then letters, combining marks,
+// spaces, apostrophes, periods and hyphens only; 1–50 chars. No digits, slashes or colons,
+// and a period may never be followed by a letter ("J. Pérez" ok, "evil.com" not), so no
+// URL or domain can ride in a greeting.
+const SAFE_GREETING_NAME = /^(?!.*\.\p{L})[\p{L}][\p{L}\p{M}' .-]{0,49}$/u;
+
 // Escape HTML special chars so user/data values cannot inject markup or scripts.
 function esc(value: string): string {
   return String(value)
@@ -142,8 +148,15 @@ export const emailTemplates = {
 
   applicationReceived(p: { candidateName: string; vacancyTitle: string; companyName: string; locale: 'es' | 'en' }): { subject: string; html: string } {
     const en = p.locale === 'en';
+    // The name comes from the UNAUTHENTICATED apply form and this email goes to an address
+    // that form chose: only a plain personal name may reach the greeting (no URLs, digits
+    // or markup-ish text a phisher could use); anything else gets the generic greeting.
+    const name = p.candidateName.trim();
+    const greeting = SAFE_GREETING_NAME.test(name)
+      ? (en ? `Dear ${esc(name)},` : `Estimado/a ${esc(name)},`)
+      : (en ? 'Dear candidate,' : 'Estimado/a candidato/a,');
     const content = heading(en ? 'Application received' : 'Hemos recibido su aplicación') +
-      paragraph(en ? `Dear ${esc(p.candidateName)},` : `Estimado/a ${esc(p.candidateName)},`) +
+      paragraph(greeting) +
       paragraph(en
         ? `Thank you for applying to <strong>${esc(p.vacancyTitle)}</strong> at ${esc(p.companyName)}. We have received your application.`
         : `Gracias por aplicar al cargo de <strong>${esc(p.vacancyTitle)}</strong> en ${esc(p.companyName)}. Hemos recibido su aplicación correctamente.`) +

@@ -23,6 +23,19 @@ public sealed class CandidateInterviewJoinRepositoryTests(CandidateInterviewJoin
     }
 
     [Fact]
+    public async Task A_soft_deleted_or_other_org_candidate_resolves_to_nothing()
+    {
+        var deleted = await fixture.SeedAsync();
+        Assert.NotNull(await fixture.Repository().FindByTokenHashAsync(deleted.Hash, default));
+        await fixture.ExecuteAsync($"UPDATE candidates SET deleted_at=now() WHERE id=(SELECT candidate_id FROM interviews WHERE id='{deleted.InterviewId}')");
+        Assert.Null(await fixture.Repository().FindByTokenHashAsync(deleted.Hash, default));
+
+        var foreign = await fixture.SeedAsync();
+        await fixture.ExecuteAsync($"UPDATE candidates SET organization_id='{Guid.NewGuid()}' WHERE id=(SELECT candidate_id FROM interviews WHERE id='{foreign.InterviewId}')");
+        Assert.Null(await fixture.Repository().FindByTokenHashAsync(foreign.Hash, default));
+    }
+
+    [Fact]
     public async Task Meeting_url_claim_is_tenant_filtered_and_first_writer_wins()
     {
         var seeded = await fixture.SeedAsync();
@@ -156,7 +169,7 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
 
     private const string Schema = """
         CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; GRANT app_tenant TO postgres;
-        CREATE TABLE candidates(id uuid PRIMARY KEY,organization_id uuid NOT NULL,first_name text NOT NULL,last_name text NOT NULL);
+        CREATE TABLE candidates(id uuid PRIMARY KEY,organization_id uuid NOT NULL,first_name text NOT NULL,last_name text NOT NULL,deleted_at timestamp(3));
         CREATE TABLE interviews(id uuid PRIMARY KEY,organization_id uuid NOT NULL,candidate_id uuid NOT NULL REFERENCES candidates(id),
           type text NOT NULL,status text NOT NULL DEFAULT 'scheduled',scheduled_at timestamp(3) NOT NULL,duration int NOT NULL,
           meeting_url text,cancelled_at timestamp(3),candidate_join_token_hash varchar(64) UNIQUE,

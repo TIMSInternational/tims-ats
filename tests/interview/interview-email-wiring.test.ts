@@ -265,6 +265,16 @@ describe('interview.reschedule / cancel', () => {
       notificationData({ type: 'video', updatedAt: new Date('2026-09-29T11:00:00Z') }),
     );
     await c.interview.reschedule({ id: INTERVIEW_ID, scheduledAt: new Date('2026-10-02T15:00:00Z'), duration: 30 });
+    // The pre-update read selects only the fields it uses — never the stored join-token hash.
+    const read = m.findInterview.mock.calls.at(-1)![0];
+    expect(read.select).toEqual({
+      id: true,
+      status: true,
+      type: true,
+      duration: true,
+      meetingUrl: true,
+      scheduledAt: true,
+    });
     const data = m.update.mock.calls[0][0].data;
     expect(data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(data.candidateJoinTokenHash).not.toBe(firstHash);

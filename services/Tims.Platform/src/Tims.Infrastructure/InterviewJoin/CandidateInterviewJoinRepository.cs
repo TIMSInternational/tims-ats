@@ -24,6 +24,11 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
 {
     public const string AuditAction = "candidate_interview_join";
 
+    /// <remarks>
+    /// INNER join on a LIVE candidate of the same organization: a link whose candidate was soft-deleted (or is
+    /// missing / in another org) resolves to nothing, i.e. <c>invalid</c> — a removed candidate's emailed link
+    /// never mints a room token.
+    /// </remarks>
     public async Task<CandidateJoinInterview?> FindByTokenHashAsync(string tokenHash, CancellationToken ct)
     {
         await using var connection = await source.DataSource.OpenConnectionAsync(ct);
@@ -31,7 +36,8 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
             SELECT i.id,i.organization_id,i.type,i.status,i.scheduled_at,i.duration,i.cancelled_at,
               i.candidate_join_token_expires_at,i.meeting_url,c.first_name,c.last_name
             FROM interviews i
-            LEFT JOIN candidates c ON c.id=i.candidate_id AND c.organization_id=i.organization_id
+            JOIN candidates c ON c.id=i.candidate_id AND c.organization_id=i.organization_id
+              AND c.deleted_at IS NULL
             WHERE i.candidate_join_token_hash=@hash
             """, connection);
         command.Parameters.Add(new NpgsqlParameter("hash", NpgsqlDbType.Varchar) { Value = tokenHash });

@@ -264,6 +264,8 @@ export const interviewCrudRouter = router({
         where: {
           AND: [{ id, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.InterviewWhereInput],
         },
+        // Only what the guard, the new join link and the update email need — never the join-token hash.
+        select: { id: true, status: true, type: true, duration: true, meetingUrl: true, scheduledAt: true },
       });
 
       if (!existing) {
