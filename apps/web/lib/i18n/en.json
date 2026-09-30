@@ -1715,6 +1715,7 @@
     "profileHeader": "Candidate Profile",
     "applications": "Applications",
     "assessmentResults": "Assessment Results",
+    "assessmentScorePending": "Score pending manual review",
     "activityTimeline": "Activity Timeline",
     "documents": "Documents",
     "tags": "Tags",

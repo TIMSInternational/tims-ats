@@ -147,22 +147,22 @@ export interface GradedAnswer {
 }
 
 export interface ComputeResultOutput {
-  rawScore: number;
-  normalizedScore: number;
+  rawScore: number | null;
+  normalizedScore: number | null;
   hasPending: boolean;
 }
 
 /**
  * Aggregates a submitted attempt's per-question grades into a result summary.
  * normalizedScore is raw/maxAutoPoints*100 over the AUTO-SCORABLE subset only
- * (free_text questions are excluded from the denominator, not scored 0) — an
- * all-essay assessment must not show 0% just because nothing was auto-graded.
+ * (free_text questions are excluded from the denominator, not scored 0). If
+ * nothing is auto-gradable, both scores are null rather than a fabricated 0.
  */
 export function computeResult(graded: GradedAnswer[]): ComputeResultOutput {
   const autoScored = graded.filter((g) => g.pointsAwarded !== null);
-  const rawScore = autoScored.reduce((sum, g) => sum + g.pointsAwarded!, 0);
+  const rawScore = autoScored.length > 0 ? autoScored.reduce((sum, g) => sum + g.pointsAwarded!, 0) : null;
   const maxAutoPoints = autoScored.reduce((sum, g) => sum + g.points, 0);
-  const normalizedScore = maxAutoPoints > 0 ? (rawScore / maxAutoPoints) * 100 : 0;
+  const normalizedScore = maxAutoPoints > 0 && rawScore !== null ? (rawScore / maxAutoPoints) * 100 : null;
   const hasPending = graded.some((g) => g.isCorrect === null);
   return { rawScore, normalizedScore, hasPending };
 }
