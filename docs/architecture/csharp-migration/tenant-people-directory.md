@@ -18,6 +18,7 @@ So those pickers 403 for the role that uses them most. This endpoint authorizes 
 | `interview_evaluator` | `interview:create` (`schedule`)        | organization / company | every active, non-deleted member of the org                          |
 | `vacancy_approver`    | `vacancy:update` (`submitForApproval`) | any granted scope      | staff holding `vacancy:approve` via an ACTIVE role, or `super_admin` |
 | `offer_approver`      | `offer:create` (`submitForApproval`)   | any granted scope      | staff holding `offer:approve` via an ACTIVE role, or `super_admin`   |
+| `vacancy_assignee`    | `vacancy:create` (`vacancy.create`)    | organization / company | every active, non-deleted member of the org (PR #310)                |
 
 - **Whole-directory scope rule.** `interview_evaluator` has no eligibility filter, so it IS the staff directory.
   A team/unit-scoped `interview:create` holder (leader, committee, hrbp) is refused (403) rather than shown people
@@ -33,6 +34,17 @@ So those pickers 403 for the role that uses them most. This endpoint authorizes 
 - **Eligibility is permission-based, not scope-aware.** A leader with team-scoped `offer:approve` is listed for any
   offer; `submitForApproval` re-checks each approver's scope against the specific record and rejects with a
   user-visible error (PR #310 adds a `vacancyId` filter for vacancy approvers).
+- **`vacancy_assignee` (PR #310)** feeds the vacancy wizard's "hiring manager" (`vacancy.create` `assignedTo`),
+  which accepts any active member — so it has no eligibility filter and, like `interview_evaluator`, needs org-wide
+  scope. It replaced `vacancy_approver` there: a hiring manager need not hold `vacancy:approve`, and that purpose is
+  gated on `vacancy:update`, which a leader creating a vacancy lacks. A team-scoped leader is refused this picker,
+  exactly as the legacy `user.list` refuses them.
+- **`?vacancyId=` (PR #310, `vacancy_approver` only)** keeps only approvers whose resolved `vacancy:approve` scope
+  covers that vacancy (`VacancyApproverScope`, a port of `assertScoped`). The CALLER's own `vacancy:update` scope
+  must cover the vacancy first — as `submitForApproval` requires — otherwise 404, identical to an unknown or foreign
+  id (no in-tenant existence oracle). Deactivated roles, teams and units anchor nobody. A unit's assignees are read
+  up to 1000 (ordered by user id); past that a warning is logged and the overflow is omitted — it can only hide a
+  unit-scoped approver, never add one.
 - **`roles.is_active`:** the directory ignores deactivated roles. The authorization kernels do NOT (TS
   `buildAccessForUser` and the route's role list, C# `IdentityRepository`/`PermissionService` never read
   `roles.is_active`), so the directory is stricter than submit/approve — it can only hide a person. Kernel fix is

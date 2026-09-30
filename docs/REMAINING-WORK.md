@@ -95,6 +95,16 @@
 
 ---
 
+## Tenant org structure + vacancy-scoped approvers — 2026-09-29 (PR #310, not deployed)
+
+Leader/unit-scoped vacancy approvals anchor on teams, leaders and unit assignees that no UI could create. PR #310
+adds a DARK C# `/tenant/org-structure` (flag `Platform__TenantOrgStructureEnabled`, web flag
+`NEXT_PUBLIC_TENANT_ORG_STRUCTURE_VIA_CSHARP`) gated like today's tRPC (structure = super_admin; people assignment =
+hr_admin's `user:*`), `?vacancyId=` scoping on the vacancy-approver picker, a `vacancy_assignee` picker purpose, and
+UNGATED wizard org fields + tRPC placement checks. Remaining before any prod flip: parity registration
+(fixture-first), then C# flag → web flag; backfilling teams/leaders/unit assignees for existing companies (issue
+drafted in #310); the `roles.is_active` kernel gap. See `architecture/csharp-migration/tenant-org-structure.md`.
+
 ## Tenant people directory for pickers — 2026-09-29 (PR #304, not deployed)
 
 Recruiter pickers (interview evaluators, vacancy/offer approvers) read tRPC `user.list`, which recruiters cannot

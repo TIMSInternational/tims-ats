@@ -106,6 +106,13 @@ surface, flipped per §6):
   to tRPC, so web-on/C#-off leaves every picker "unavailable". **Parity registration is required before the prod
   flip** (it is on the `UNREGISTERED_ALLOWLIST` pending a recruiter/grant fixture). Detail:
   `tenant-people-directory.md`.
+- **Tenant org structure (added 2026-09-29, PR #310 — not part of the 21 above):**
+  `Platform__TenantOrgStructureEnabled` (C#, default false) serves the 11 `/tenant/org-structure` routes; the web
+  consumer is the build-time Vercel flag `NEXT_PUBLIC_TENANT_ORG_STRUCTURE_VIA_CSHARP` (unset = legacy business units
+  viewer and tRPC wizard options). Same flip order (C# first). **Parity registration is required before the prod
+  flip** (allowlisted in `UNREGISTERED_ALLOWLIST`; until registered, prod verification is unrunnable). Existing
+  companies have no teams/leaders/unit assignees, so leader/unit-scoped approvals stay inert until an admin builds
+  the structure. Detail: `tenant-org-structure.md`.
 
 | Env var                                      | Source                             | Required                               | Notes                                                                                        |
 | -------------------------------------------- | ---------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -118,6 +125,7 @@ surface, flipped per §6):
 | `Platform__OtlpEndpoint`                     | observability backend              | optional                               | OTel traces/metrics export.                                                                  |
 | `Platform__<Surface>Enabled` ×21             | —                                  | set `false`                            | The full read+write set listed above (§2). All default false; set explicit for auditability. |
 | `Platform__TenantPeopleDirectoryEnabled`     | —                                  | set `false`                            | #304 picker directory: flip before the web flag; parity-register first (§2).                 |
+| `Platform__TenantOrgStructureEnabled`        | —                                  | set `false`                            | #310 org structure: flip before the web flag; parity-register first (§2).                    |
 | `Stripe__SecretKey`, `Stripe__WebhookSecret` | Stripe                             | only before billing-write cutover      | leave unset while billing writes are dark.                                                   |
 | `ASPNETCORE_URLS`                            | —                                  | preset in Dockerfile (`http://+:8080`) | do not override.                                                                             |
 
