@@ -422,16 +422,75 @@ describe('interview room scorecard', () => {
   });
 
   it("hides other evaluators' scores until the viewer has submitted, and never shows invented evaluators", () => {
+    // What the server actually sends a blinded evaluator: a status stub (isWithheld).
     const scorecards = [
-      { id: 'x', evaluatorId: OTHER, ratings: { SQL: 2 }, recommendation: 'no', submittedAt: new Date() },
+      { id: 'x', evaluatorId: OTHER, ratings: {}, recommendation: '', submittedAt: new Date(), isWithheld: true },
     ];
     renderForm({ interview: interview({ scorecards } as unknown as Partial<InterviewDetail>) });
     const section = screen.getByRole('region', { name: en.interviews.evaluatorComparison });
     expect(section).toHaveTextContent('Otra Persona');
     expect(section).toHaveTextContent(en.interviewRoom.comparisonSubmitted);
-    expect(section).not.toHaveTextContent('2.0');
+    expect(section).toHaveTextContent(en.interviewRoom.comparisonHidden);
     expect(section).not.toHaveTextContent('Evaluador 1');
     expect(section).not.toHaveTextContent('4.2');
+  });
+
+  it('positive control: a card the server did not withhold renders its average and recommendation', () => {
+    const scorecards = [
+      { id: 'x', evaluatorId: OTHER, ratings: { SQL: 2, Storytelling: 3 }, recommendation: 'no', submittedAt: new Date(), isWithheld: false },
+    ];
+    h.existing = {
+      isLoading: false,
+      isError: false,
+      refetch: () => undefined,
+      data: { id: 'sc1', ratings: { SQL: 4, Storytelling: 4 }, recommendation: 'yes', overallNotes: null, submittedAt: new Date() },
+    };
+    renderForm({ interview: interview({ scorecards } as unknown as Partial<InterviewDetail>) });
+    const section = screen.getByRole('region', { name: en.interviews.evaluatorComparison });
+    expect(section).toHaveTextContent(`2.5 · ${en.interviewRoom.recNo}`);
+    expect(section).not.toHaveTextContent(en.interviewRoom.comparisonHidden);
+  });
+
+  it('after submitting, the refetched real card replaces the stub and its score appears', () => {
+    const stub = { id: 'x', evaluatorId: OTHER, ratings: {}, recommendation: '', submittedAt: new Date(), isWithheld: true };
+    const view = renderForm({ interview: interview({ scorecards: [stub] } as unknown as Partial<InterviewDetail>) });
+    const section = () => screen.getByRole('region', { name: en.interviews.evaluatorComparison });
+    expect(section()).not.toHaveTextContent('2.0');
+    const real = { ...stub, ratings: { SQL: 2 }, recommendation: 'strong_no', isWithheld: false };
+    h.existing = {
+      isLoading: false,
+      isError: false,
+      refetch: () => undefined,
+      data: { id: 'sc1', ratings: { SQL: 4, Storytelling: 4 }, recommendation: 'yes', overallNotes: null, submittedAt: new Date() },
+    };
+    view.rerender(
+      <I18nProvider>
+        <ScorecardForm interview={interview({ scorecards: [real] } as unknown as Partial<InterviewDetail>)} currentUserId={ME} />
+      </I18nProvider>,
+    );
+    expect(section()).toHaveTextContent(`2.0 · ${en.interviewRoom.recStrongNo}`);
+    expect(section()).not.toHaveTextContent(en.interviewRoom.comparisonHidden);
+  });
+
+  it('non-panel staff (recruiter / HR with interview:read) see every submitted score, with no blind hint', () => {
+    const scorecards = [
+      { id: 'x', evaluatorId: OTHER, ratings: { SQL: 5 }, recommendation: 'strong_yes', submittedAt: new Date(), isWithheld: false },
+      { id: 'y', evaluatorId: ME, ratings: { SQL: 3 }, recommendation: 'neutral', submittedAt: new Date(), isWithheld: false },
+    ];
+    renderForm({
+      interview: interview({ scorecards } as unknown as Partial<InterviewDetail>),
+      currentUserId: '99999999-9999-4999-8999-999999999999',
+    });
+    const section = screen.getByRole('region', { name: en.interviews.evaluatorComparison });
+    expect(section).toHaveTextContent(`5.0 · ${en.interviewRoom.recStrongYes}`);
+    expect(section).toHaveTextContent(`3.0 · ${en.interviewRoom.recNeutral}`);
+    expect(section).not.toHaveTextContent(en.interviewRoom.comparisonHidden);
+  });
+
+  it('maps a BAD_REQUEST (server completeness check) to its own message', () => {
+    renderForm();
+    h.mutationOpts?.onError({ data: { code: 'BAD_REQUEST' } });
+    expect(toastSpy).toHaveBeenCalledWith(en.interviewRoom.submitIncomplete, { type: 'error' });
   });
 
   it('the room panel submit button is wired end to end (it used to have no onClick)', () => {

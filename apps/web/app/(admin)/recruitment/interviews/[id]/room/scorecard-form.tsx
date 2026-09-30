@@ -63,6 +63,15 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
   );
   const competencies = useMemo(() => withStoredCompetencies(resolved.items, stored), [resolved.items, stored]);
 
+  // BAD_REQUEST = the server's completeness check refused the card (e.g. the job profile
+  // changed while the room was open); FORBIDDEN = not an assigned evaluator.
+  const submitErrorMessage = (code: string | undefined) =>
+    code === 'FORBIDDEN'
+      ? t.interviewRoom.submitForbidden
+      : code === 'BAD_REQUEST'
+        ? t.interviewRoom.submitIncomplete
+        : t.interviewRoom.submitError;
+
   const submit = trpc.interview.submitScorecard.useMutation({
     onSuccess: (saved) => {
       // The draft already IS what was just saved: mark it hydrated so the refetch
@@ -74,9 +83,7 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
       void utils.interview.getPendingScorecards.invalidate();
     },
     onError: (err) => {
-      toast(err.data?.code === 'FORBIDDEN' ? t.interviewRoom.submitForbidden : t.interviewRoom.submitError, {
-        type: 'error',
-      });
+      toast(submitErrorMessage(err.data?.code), { type: 'error' });
     },
   });
 
@@ -191,7 +198,7 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
           evaluators={interview.evaluators}
           scorecards={interview.scorecards}
           currentUserId={currentUserId}
-          revealScores={submittedAt !== null}
+          isViewerBlinded={isEvaluator && submittedAt === null}
         />
       </div>
 
@@ -222,7 +229,7 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
         )}
         {submit.isError && (
           <p className="text-[11px] text-red-600 mb-2" role="alert">
-            {submit.error.data?.code === 'FORBIDDEN' ? t.interviewRoom.submitForbidden : t.interviewRoom.submitError}
+            {submitErrorMessage(submit.error.data?.code)}
           </p>
         )}
         {hint && <p className="text-[11px] text-[#8B8B8B] mb-2">{hint}</p>}

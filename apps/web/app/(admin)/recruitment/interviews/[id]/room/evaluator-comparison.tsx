@@ -10,14 +10,14 @@ interface EvaluatorComparisonProps {
   scorecards: InterviewDetail['scorecards'];
   currentUserId: string | null;
   /**
-   * Other evaluators' scores stay hidden until the viewer has submitted (avoids anchoring).
-   * Enforced server-side too: interview.getById sends only status stubs to a blinded viewer.
+   * The viewer is a panel evaluator who has not submitted yet. Drives ONLY the explanatory
+   * hint: whether a score renders is decided per card by the server's `isWithheld`.
    */
-  revealScores: boolean;
+  isViewerBlinded: boolean;
 }
 
 /** Real per-evaluator status from the interview's persisted scorecards. */
-export function EvaluatorComparison({ evaluators, scorecards, currentUserId, revealScores }: EvaluatorComparisonProps) {
+export function EvaluatorComparison({ evaluators, scorecards, currentUserId, isViewerBlinded }: EvaluatorComparisonProps) {
   const { t } = useI18n();
 
   return (
@@ -34,9 +34,12 @@ export function EvaluatorComparison({ evaluators, scorecards, currentUserId, rev
             const card = scorecards.find((s) => s.evaluatorId === ev.userId && s.submittedAt !== null);
             const avg = card ? averageRating(parseStoredRatings(card.ratings)) : null;
             const rec = card ? parseRecommendation(card.recommendation) : null;
-            // The server withholds others' content while the viewer is blinded (isWithheld);
-            // never render a stub as a score, even if revealScores flips before the refetch lands.
-            const showScore = card !== undefined && !card.isWithheld && (isYou || revealScores);
+            // Blind evaluation is decided by the SERVER (services/scorecard-visibility.service.ts):
+            // it sends a blinded panel evaluator status stubs (isWithheld) and everyone else the
+            // real cards. So: show every card that was not withheld — that is what lets non-panel
+            // staff (recruiter / HR with interview:read) see the debrief — and never render a stub
+            // as a score, e.g. in the window between submitting and the getById refetch.
+            const showScore = card !== undefined && !card.isWithheld;
             return (
               <li key={ev.id} className="flex items-center gap-2 text-[10px]">
                 <span className="text-[#585858] truncate">
@@ -54,7 +57,7 @@ export function EvaluatorComparison({ evaluators, scorecards, currentUserId, rev
           })}
         </ul>
       )}
-      {!revealScores && evaluators.length > 1 && (
+      {isViewerBlinded && evaluators.length > 1 && (
         <p className="text-[10px] text-[#8B8B8B] mt-2">{t.interviewRoom.comparisonHidden}</p>
       )}
     </section>

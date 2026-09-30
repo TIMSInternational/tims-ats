@@ -22,6 +22,11 @@ export function ScorecardPanel({ interview, candidateInitials }: ScorecardPanelP
   const { t } = useI18n();
   const { userId } = usePermissions();
   const [activeTab, setActiveTab] = useState<Tab>('scorecard');
+  // Mirrors the server's blind-evaluation rule for UI affordances only (the server enforces it).
+  const isViewerBlinded =
+    userId !== null &&
+    interview.evaluators.some((e) => e.userId === userId) &&
+    !interview.scorecards.some((s) => s.evaluatorId === userId && s.submittedAt !== null);
 
   const tabLabel: Record<Tab, string> = {
     scorecard: t.interviewRoom.tabScorecard,
@@ -71,7 +76,7 @@ export function ScorecardPanel({ interview, candidateInitials }: ScorecardPanelP
         >
           <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
             {activeTab === 'ai' ? (
-              <InterviewAiPanel interviewId={interview.id} />
+              <InterviewAiPanel interviewId={interview.id} isViewerBlinded={isViewerBlinded} />
             ) : (
               <CandidateTab interview={interview} candidateInitials={candidateInitials} />
             )}
