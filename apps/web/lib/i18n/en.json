@@ -1429,6 +1429,7 @@
     "courseType": "Format",
     "courseCategory": "Category",
     "durationHours": "Duration (hours)",
+    "durationHint": "Use 0.25-hour steps (15 minutes).",
     "typeOnline": "Online",
     "typeInPerson": "In person",
     "typeHybrid": "Hybrid",
