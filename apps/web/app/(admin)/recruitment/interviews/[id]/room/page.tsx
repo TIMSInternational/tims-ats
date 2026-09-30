@@ -12,6 +12,9 @@ import { ScorecardPanel } from './scorecard-panel';
 import { AutoJoin } from './auto-join';
 import { JoinErrorPanel } from './join-error-panel';
 import { interviewTypeLabel } from './interview-type-label';
+import { isVideoInterviewType } from './interview-mode';
+import { RoomLobby } from './room-lobby';
+import { ScoringStage } from './scoring-stage';
 import type { DailyJoinErrorCategory } from './daily-join-error';
 
 function getInitials(name: string): string {
@@ -31,10 +34,13 @@ export default function InterviewRoomPage({
   const { t } = useI18n();
   const { id } = use(params);
   const [hasJoined, setHasJoined] = useState(false);
+  // Scoring never requires video (#325): an evaluator of a video interview can open the
+  // scorecard from the lobby or a failed join, without creating a Daily room.
+  const [isScoringWithoutVideo, setIsScoringWithoutVideo] = useState(false);
 
   const interview = trpc.interview.getById.useQuery({ id });
 
-  // Only fetch video token after interview loads — this also creates the room
+  // Only called on an explicit join — this also creates the room (needs DAILY_API_KEY).
   const videoToken = trpc.interview.createVideoRoom.useMutation();
   const [roomData, setRoomData] = useState<{ url: string; token: string } | null>(null);
   // A failed Daily join used to leave the room on "Conectando..." forever.
@@ -65,6 +71,19 @@ export default function InterviewRoomPage({
     }
   };
 
+  // Leaves (or never enters) the call: unmounts DailyProvider and keeps only the scorecard.
+  const handleScoreWithoutVideo = () => {
+    setIsScoringWithoutVideo(true);
+    setHasJoined(false);
+    setRoomData(null);
+    setJoinError(null);
+  };
+
+  const handleJoinVideoFromScoring = () => {
+    setIsScoringWithoutVideo(false);
+    void handleJoin();
+  };
+
   if (interview.isLoading) {
     return <InterviewRoomSkeleton />;
   }
@@ -83,47 +102,45 @@ export default function InterviewRoomPage({
   const data = interview.data;
   const candidateName = `${data.candidate.firstName} ${data.candidate.lastName}`;
   const candidateInitials = getInitials(candidateName);
+  const subtitle = `${data.vacancy.title} — ${t.interviews.roomTypeLabel} ${interviewTypeLabel(t, data.type)}`;
+  const isVideo = isVideoInterviewType(data.type);
 
-  // Pre-join lobby — show "Join" button before connecting to Daily
+  // In-person / phone interviews, or a video interview scored without joining: the
+  // scorecard renders directly — no createVideoRoom call and no DailyProvider.
+  if (!isVideo || isScoringWithoutVideo) {
+    return (
+      <div className="h-full flex flex-col overflow-hidden">
+        <InterviewTopBar candidateName={candidateName} vacancyTitle={data.vacancy.title} isInCall={false} />
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+          <div className="md:flex-[60] flex flex-col bg-[#0a0a0a] min-w-0 shrink-0 md:shrink">
+            <ScoringStage
+              candidateName={candidateName}
+              candidateInitials={candidateInitials}
+              subtitle={subtitle}
+              location={data.location}
+              onJoinVideo={isVideo ? handleJoinVideoFromScoring : undefined}
+            />
+          </div>
+          <ScorecardPanel interview={data} candidateInitials={candidateInitials} />
+        </div>
+      </div>
+    );
+  }
+
+  // Pre-join lobby of a video interview
   if (!hasJoined || !roomData) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <InterviewTopBar
+        <InterviewTopBar candidateName={candidateName} vacancyTitle={data.vacancy.title} isInCall={false} />
+        <RoomLobby
           candidateName={candidateName}
-          vacancyTitle={data.vacancy.title}
-          isInCall={false}
+          candidateInitials={candidateInitials}
+          subtitle={subtitle}
+          isJoining={videoToken.isPending}
+          joinErrorMessage={videoToken.error?.message ?? null}
+          onJoin={handleJoin}
+          onScoreWithoutVideo={handleScoreWithoutVideo}
         />
-        <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
-          <div className="text-center">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#1F114C] to-[#5C4B99] flex items-center justify-center mx-auto mb-6">
-              <span className="text-white text-3xl font-bold">{candidateInitials}</span>
-            </div>
-            <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
-            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — {t.interviews.roomTypeLabel} {interviewTypeLabel(t, data.type)}</p>
-            <button
-              onClick={handleJoin}
-              disabled={videoToken.isPending}
-              className="bg-[#DD0C15] text-white px-8 py-3 rounded-xl text-[14px] font-medium shadow-[0_4px_16px_rgba(221,12,21,0.3)] hover:bg-[#c00b13] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
-            >
-              {videoToken.isPending ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  {t.interviews.roomConnecting}
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                    <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
-                  {t.interviews.roomJoin}
-                </>
-              )}
-            </button>
-            {videoToken.error && (
-              <p className="text-red-400 text-[12px] mt-3">{videoToken.error.message}</p>
-            )}
-          </div>
-        </div>
       </div>
     );
   }
@@ -144,7 +161,7 @@ export default function InterviewRoomPage({
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           <div className="h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink">
             {joinError ? (
-              <JoinErrorPanel category={joinError} onRetry={handleRetryJoin} />
+              <JoinErrorPanel category={joinError} onRetry={handleRetryJoin} onScoreWithoutVideo={handleScoreWithoutVideo} />
             ) : (
               <>
                 <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
