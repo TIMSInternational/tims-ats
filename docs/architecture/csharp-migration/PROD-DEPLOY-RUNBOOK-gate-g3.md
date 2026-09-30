@@ -89,6 +89,13 @@ surface, flipped per §6):
   `Evaluation360WriteEnabled`, `SuccessionWriteEnabled`, `NineBoxWriteEnabled`, `EngagementWriteEnabled`,
   `BillingWebhookWriteEnabled`, `BillingSelfServeEnabled`.
   (The exact CLR property names are in `services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs`.)
+- **Tenant people directory (added 2026-09-29, PR #304 — not part of the 21 above):**
+  `Platform__TenantPeopleDirectoryEnabled` (C#, default false) serves `GET /tenant/people/assignable`; the web
+  consumer is the build-time Vercel flag `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP` (unset = pickers stay on
+  tRPC `user.list`). **Flip order: C# first, verify, then the web flag** (redeploy) — the web hook never falls back
+  to tRPC, so web-on/C#-off leaves every picker "unavailable". **Parity registration is required before the prod
+  flip** (it is on the `UNREGISTERED_ALLOWLIST` pending a recruiter/grant fixture). Detail:
+  `tenant-people-directory.md`.
 
 | Env var                                      | Source                             | Required                               | Notes                                                                                        |
 | -------------------------------------------- | ---------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -100,6 +107,7 @@ surface, flipped per §6):
 | `Platform__ImpersonationSecret`              | = the TS HMAC impersonation secret | ✅ (for impersonation)                 | **must byte-match** the TS value (shared signed cookie) or owner impersonation breaks.       |
 | `Platform__OtlpEndpoint`                     | observability backend              | optional                               | OTel traces/metrics export.                                                                  |
 | `Platform__<Surface>Enabled` ×21             | —                                  | set `false`                            | The full read+write set listed above (§2). All default false; set explicit for auditability. |
+| `Platform__TenantPeopleDirectoryEnabled`     | —                                  | set `false`                            | #304 picker directory: flip before the web flag; parity-register first (§2).                 |
 | `Stripe__SecretKey`, `Stripe__WebhookSecret` | Stripe                             | only before billing-write cutover      | leave unset while billing writes are dark.                                                   |
 | `ASPNETCORE_URLS`                            | —                                  | preset in Dockerfile (`http://+:8080`) | do not override.                                                                             |
 
