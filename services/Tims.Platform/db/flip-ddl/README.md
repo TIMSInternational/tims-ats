@@ -39,7 +39,9 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/Tims.Platform/db/flip-ddl/<n
 cd packages/db && npx tsx prisma/seed.ts && npx tsx prisma/seed-users.ts && npx tsx prisma/seed-demo.ts
 ```
 
-(That seed order is required — `seed-demo.ts` bails out without the org and users the first two create.)
+(That seed order is required — `seed-demo.ts` bails out without the org and users the first two create.
+`seed-users.ts` also requires `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and
+`SEED_USER_PASSWORD` (12+ chars) — it has no defaults and exits 1 if any is missing.)
 
 Raised by the tier-2 cross-model reviewer against #131 as a claimed prod/CI risk. The CI half was wrong —
 nothing runs `prisma migrate deploy`, and `pnpm migrate` is the guarded local-only wrapper — but the

@@ -4,16 +4,7 @@ import { useState } from 'react';
 import { useOrganizationInvitationCreate } from '../../../../lib/platform-api/organization-invitation-create';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 50);
-}
+import { sanitizeSlugInput, slugify } from '../../../../lib/slugify';
 
 export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
@@ -65,7 +56,7 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
-            <input type="text" minLength={2} maxLength={63} value={orgSlug} onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="mi-empresa" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required pattern="^[a-z0-9-]+$" />
+            <input type="text" minLength={2} maxLength={63} value={orgSlug} onChange={(e) => setOrgSlug(sanitizeSlugInput(e.target.value))} placeholder="mi-empresa" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required pattern="^[a-z0-9-]+$" />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>

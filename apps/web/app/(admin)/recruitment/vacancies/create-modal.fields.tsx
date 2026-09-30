@@ -43,7 +43,7 @@ export function Step1BasicInfo({
             {(['onsite', 'hybrid', 'remote'] as const).map((opt) => (
               <button key={opt} type="button" onClick={() => setRemotePolicy(opt)}
                 className={`flex-1 text-[12px] font-medium transition ${remotePolicy === opt ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}>
-                {opt === 'onsite' ? 'Presencial' : opt === 'hybrid' ? 'Hibrido' : 'Remoto'}
+                {opt === 'onsite' ? t.vacancies.onsite : opt === 'hybrid' ? t.vacancies.hybrid : t.vacancies.remote}
               </button>
             ))}
           </div>
@@ -207,7 +207,7 @@ export function Step3Compensation({
         </div>
         {salaryMin && salaryMax && (
           <p className="text-[11px] text-[#8B8B8B] mt-2">
-            {currency} {parseInt(salaryMin).toLocaleString()} — {parseInt(salaryMax).toLocaleString()} / {salaryPeriod === 'monthly' ? 'mes' : 'ano'}
+            {currency} {parseInt(salaryMin).toLocaleString()} — {parseInt(salaryMax).toLocaleString()} / {salaryPeriod === 'monthly' ? t.vacancies.salaryPerMonth : t.vacancies.salaryPerYear}
           </p>
         )}
       </div>
@@ -249,12 +249,12 @@ export function Step3Compensation({
             <span className="text-[12px] text-[#333] font-medium">{title}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Ubicacion:</span>
-            <span className="text-[12px] text-[#333]">{location || '—'} ({remotePolicy === 'onsite' ? 'Presencial' : remotePolicy === 'hybrid' ? 'Hibrido' : 'Remoto'})</span>
+            <span className="text-[12px] text-[#585858]">{t.vacancies.summaryLocationLabel}</span>
+            <span className="text-[12px] text-[#333]">{location || '—'} ({remotePolicy === 'onsite' ? t.vacancies.onsite : remotePolicy === 'hybrid' ? t.vacancies.hybrid : t.vacancies.remote})</span>
           </div>
           <div className="flex justify-between">
             <span className="text-[12px] text-[#585858]">Contrato:</span>
-            <span className="text-[12px] text-[#333]">{CONTRACT_TYPES.find((c) => c.value === contractType)?.label} · {positions} posicion(es)</span>
+            <span className="text-[12px] text-[#333]">{CONTRACT_TYPES.find((c) => c.value === contractType)?.label} · {positions} posición(es)</span>
           </div>
           {(salaryMin || salaryMax) && (
             <div className="flex justify-between">

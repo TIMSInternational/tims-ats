@@ -6,6 +6,9 @@ import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton, ErrorState } from '../../../../../../components';
 import { ApplyModal } from './apply-modal';
 import { JobDescription } from './job-description';
+import { JobSidebarItem } from './job-sidebar-item';
+import { DetailItem } from './detail-item';
+import { enumLabel, formatPortalSalary, formatTimeAgo, parsePortalSalary } from '../../_lib/vacancy-display';
 import { useI18n } from '../../../../../../lib/i18n';
 
 interface JobDetailViewProps {
@@ -13,37 +16,8 @@ interface JobDetailViewProps {
   vacancyId: string;
 }
 
-type Salary = { min?: number; max?: number; currency?: string } | null;
-
-function timeAgo(date: Date | string): string {
-  const d = new Date(date);
-  const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
-  if (diff === 0) return 'Hoy';
-  if (diff === 1) return 'Ayer';
-  if (diff < 7) return `Hace ${diff} dias`;
-  if (diff < 30) return `Hace ${Math.floor(diff / 7)} semanas`;
-  return `Hace ${Math.floor(diff / 30)} meses`;
-}
-
-function fmtSalary(s: Salary) {
-  if (!s) return null;
-  const cur = s.currency ?? 'COP';
-  const fmt = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
-  if (s.min && s.max) return `${cur} ${fmt(s.min)} - ${fmt(s.max)}`;
-  if (s.min) return `Desde ${cur} ${fmt(s.min)}`;
-  if (s.max) return `Hasta ${cur} ${fmt(s.max)}`;
-  return null;
-}
-
-function remoteLabel(p: string | null) {
-  if (!p) return null;
-  if (p === 'remote') return 'Remoto';
-  if (p === 'hybrid') return 'Hibrido';
-  return 'Presencial';
-}
-
 export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const p = t.portal;
   const [search, setSearch] = useState('');
   const [showApply, setShowApply] = useState(false);
@@ -93,12 +67,14 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   }
 
   const v = vacancy.data;
-  const salary = v.salary as Salary;
+  const salary = parsePortalSalary(v.salary);
+  const salaryText = salary ? formatPortalSalary(salary, locale, p) : null;
+  const contract = enumLabel(v.contractType, p.contractTypes);
   const requirements = v.jobProfile?.requirements as string[] | null;
   const competencies = v.jobProfile?.competencies as string[] | null;
-  const companyName = v.company?.name ?? v.organization?.name ?? 'Empresa';
+  const companyName = v.company?.name ?? v.organization?.name ?? p.companyFallback;
   const companyInitial = companyName.charAt(0).toUpperCase();
-  const remote = remoteLabel(v.remotePolicy);
+  const remote = enumLabel(v.remotePolicy, p.remotePolicies);
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -131,30 +107,9 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
                 <ErrorState onRetry={() => vacancies.refetch()} />
               </div>
             ) : (
-              filtered.map((item) => {
-                const isActive = item.id === vacancyId;
-                const iSalary = item.salary as Salary;
-                return (
-                  <Link key={item.id} href={`/careers/${orgSlug}/${item.id}`}
-                    className={`block border-b border-[#EDEDED] px-4 py-3 transition-colors ${isActive ? 'border-l-2 border-l-[#DD0C15] bg-white' : 'border-l-2 border-l-transparent hover:bg-white'}`}>
-                    <div className="flex gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1F114C] text-[10px] font-bold text-white">
-                        {(item.company?.name ?? 'E').charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className={`truncate text-[13px] font-semibold ${isActive ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>{item.title}</p>
-                        <p className="truncate text-[11px] text-[#8B8B8B]">{item.company?.name}</p>
-                        {item.location && <p className="text-[11px] text-[#8B8B8B]">{item.location}{item.remotePolicy === 'remote' ? ' (Remoto)' : ''}</p>}
-                        {fmtSalary(iSalary) && <p className="mt-0.5 text-[11px] font-medium text-[#333]">{fmtSalary(iSalary)}</p>}
-                        <div className="mt-1 flex items-center gap-2">
-                          {item.contractType && <span className="rounded bg-[#F6F6F6] px-1.5 py-0.5 text-[10px] text-[#585858]">{item.contractType}</span>}
-                          <span className="ml-auto text-[10px] text-[#8B8B8B]">{timeAgo(item.createdAt)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })
+              filtered.map((item) => (
+                <JobSidebarItem key={item.id} orgSlug={orgSlug} isActive={item.id === vacancyId} item={item} />
+              ))
             )}
           </div>
         </aside>
@@ -177,14 +132,14 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
                   {v.location}{remote ? ` (${remote})` : ''}
                 </span>
               )}
-              <span>Publicada {timeAgo(v.createdAt)}</span>
+              <span>{p.postedLabel} {formatTimeAgo(v.createdAt, p)}</span>
               <span>{v.applicantCount} {v.applicantCount === 1 ? p.oneApplicant : p.manyApplicants}</span>
             </div>
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {remote && <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[12px] font-medium text-blue-700">{remote}</span>}
-              {v.contractType && <span className="rounded-md bg-green-50 px-2.5 py-1 text-[12px] font-medium text-green-700">{v.contractType}</span>}
-              {v.priority === 'urgent' && <span className="rounded-md bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700">Urgente</span>}
-              {salary && fmtSalary(salary) && <span className="rounded-md bg-[#F6F6F6] px-2.5 py-1 text-[12px] font-semibold text-[#1F114C]">{fmtSalary(salary)} / ano</span>}
+              {contract && <span className="rounded-md bg-green-50 px-2.5 py-1 text-[12px] font-medium text-green-700">{contract}</span>}
+              {v.priority === 'urgent' && <span className="rounded-md bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700">{p.urgentBadge}</span>}
+              {salaryText && <span className="rounded-md bg-[#F6F6F6] px-2.5 py-1 text-[12px] font-semibold text-[#1F114C]">{salaryText}</span>}
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setShowApply(true)} className="h-11 rounded-lg bg-[#DD0C15] px-8 text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">{p.applyNow}</button>
@@ -210,7 +165,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
 
             {requirements && requirements.length > 0 && (
               <section>
-                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">Requisitos</h2>
+                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.requirementsTitle}</h2>
                 <ul className="space-y-2">
                   {requirements.map((req, i) => (
                     <li key={i} className="flex items-start gap-2 text-[14px] text-[#585858]">
@@ -223,7 +178,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
 
             {competencies && competencies.length > 0 && (
               <section>
-                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">Competencias</h2>
+                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.competenciesTitle}</h2>
                 <div className="flex flex-wrap gap-2">
                   {competencies.map((c, i) => (
                     <span key={i} className="rounded-full border border-[#EDEDED] bg-[#F6F6F6] px-3 py-1.5 text-[12px] font-medium text-[#1F114C]">{String(c)}</span>
@@ -233,14 +188,14 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
             )}
 
             <section>
-              <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">Detalles</h2>
+              <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.detailsTitle}</h2>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <DetailItem label="Posiciones" value={String(v.positions)} />
-                {v.contractType && <DetailItem label="Tipo de contrato" value={v.contractType} />}
-                {remote && <DetailItem label="Modalidad" value={remote} />}
-                {v.location && <DetailItem label="Ubicacion" value={v.location} />}
-                {fmtSalary(salary) && <DetailItem label="Salario" value={`${fmtSalary(salary)} / ano`} />}
-                {v.unit?.name && <DetailItem label="Departamento" value={v.unit.name} />}
+                <DetailItem label={p.positionsLabel} value={String(v.positions)} />
+                {contract && <DetailItem label={p.contractTypeLabel} value={contract} />}
+                {remote && <DetailItem label={p.workModeLabel} value={remote} />}
+                {v.location && <DetailItem label={p.locationLabel} value={v.location} />}
+                {salaryText && <DetailItem label={p.salaryLabel} value={salaryText} />}
+                {v.unit?.name && <DetailItem label={p.departmentLabel} value={v.unit.name} />}
               </div>
             </section>
 
@@ -262,15 +217,6 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
           </div>
         </main>
       </div>
-    </div>
-  );
-}
-
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-[#F6F6F6] p-3">
-      <p className="text-[11px] text-[#8B8B8B]">{label}</p>
-      <p className="mt-0.5 text-[13px] font-medium text-[#333]">{value}</p>
     </div>
   );
 }

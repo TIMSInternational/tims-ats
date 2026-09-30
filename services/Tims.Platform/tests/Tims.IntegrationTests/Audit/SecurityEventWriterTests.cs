@@ -1,5 +1,7 @@
 using System.Linq;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Tims.Application.Audit;
 using Tims.Infrastructure.Audit;
 using Xunit;
@@ -8,9 +10,9 @@ namespace Tims.IntegrationTests.Audit;
 
 /// <summary>
 /// Phase-5 Slice-18 Testcontainers proof of <see cref="SecurityEventWriter"/> — the NEW, generic,
-/// privileged writer into <c>audit_logs</c> (sibling to <see cref="BillingAuditWriter"/>, NOT a
-/// replacement: this one never wraps writes in <see cref="TenantScope"/>, since the caller is always a
-/// resolved platform owner acting cross-org, never a tenant context). Reuses the shared
+/// security-event writer into <c>audit_logs</c> (sibling to <see cref="BillingAuditWriter"/>, NOT a
+/// replacement). It uses <see cref="TenantScope"/> even for platform-owner cross-org events, so
+/// the forced-RLS INSERT does not rely on the connection login's BYPASSRLS attribute. Reuses the shared
 /// <see cref="AuditWriterFixture"/> (same container as <c>DataAccessAuditWriterTests</c>), so the
 /// happy-path write targets the fixture's seeded <see cref="AuditWriterFixture.OrgA"/> /
 /// <see cref="AuditWriterFixture.RealOwner"/> rows to satisfy the <c>audit_logs</c> FK constraints
@@ -23,6 +25,53 @@ namespace Tims.IntegrationTests.Audit;
 public sealed class SecurityEventWriterTests(AuditWriterFixture fixture)
 {
     private readonly AuditWriterFixture _fixture = fixture;
+
+    [Fact]
+    public async Task RestrictedLogin_CannotInsertAnUnscopedAuditEvent()
+    {
+        // Pin the negative control: if the fixture login or RLS policy is accidentally relaxed,
+        // the positive writer test below would stop proving the scope is necessary.
+        await using var connection = new NpgsqlConnection(_fixture.RestrictedAuditConnectionString);
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using var role = connection.CreateCommand();
+        role.Transaction = transaction;
+        role.CommandText = "SET LOCAL ROLE app_tenant";
+        await role.ExecuteNonQueryAsync();
+
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            "INSERT INTO audit_logs (id, organization_id, action, entity) VALUES (@id, @org, 'authz_denied', 'test')";
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("org", AuditWriterFixture.OrgA);
+
+        var error = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, error.SqlState);
+        Assert.Contains("row-level security policy", error.MessageText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WriteAsync_PersistsWithForcedRlsAndNonBypassLogin()
+    {
+        // Regression for #181: the old writer did an unscoped INSERT. That silently failed under
+        // forced RLS with a non-BYPASSRLS application login because the writer is fail-soft.
+        // Using a restricted login makes the test go red if TenantScope is removed.
+        await using var db = _fixture.NewAuditLogContext(_fixture.RestrictedAuditConnectionString);
+        var writer = new SecurityEventWriter(db);
+        var eventId = Guid.NewGuid().ToString();
+
+        await writer.WriteAsync(
+            new SecurityEvent(AuditWriterFixture.OrgA, AuditWriterFixture.RealOwner,
+                "authz_denied", "platform:GET /require-permission/test/read", eventId,
+                new JsonObject { ["code"] = "FORBIDDEN" }),
+            CancellationToken.None);
+
+        await using var readback = _fixture.NewAuditLogContext(_fixture.ConnectionString);
+        var row = await readback.AuditLogs.SingleAsync(a => a.EntityId == eventId);
+        Assert.Equal(AuditWriterFixture.OrgA, row.OrganizationId);
+        Assert.Equal("authz_denied", row.Action);
+    }
 
     [Fact]
     public async Task WriteAsync_InsertsARow_WithTheGivenEntityActionAndMetadata()

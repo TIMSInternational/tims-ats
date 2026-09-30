@@ -100,7 +100,7 @@ PERMS="$(cat <<JSON
     {
       "Sid": "UpdateOnlyThisService",
       "Effect": "Allow",
-      "Action": ["apprunner:DescribeService", "apprunner:UpdateService"],
+      "Action": ["apprunner:DescribeService", "apprunner:UpdateService", "apprunner:ListOperations"],
       "Resource": "${SERVICE_ARN}"
     },
     {
@@ -174,8 +174,9 @@ if [[ "$ARN_OUT" == "arn:aws:iam::${ACCOUNT}:role/${ROLE}" ]]; then
   say "      arn:aws:iam::${ACCOUNT}:role/${ROLE}"
   say ""
   say "  Nothing else to configure — no secrets to add to GitHub. Merge a change under"
-  say "  services/Tims.Platform/ and the deploy runs itself. To prove it without a code change:"
-  say "      gh workflow run 'Deploy platform API'"
+  say "  services/Tims.Platform/ and the deploy runs itself once .NET Platform CI passes on main."
+  say "  To prove it without a code change:"
+  say "      gh workflow run 'Deploy platform API' --ref main -f reason='prove OIDC role'"
   exit 0
 fi
 
