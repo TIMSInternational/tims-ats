@@ -5,23 +5,14 @@ interface PortalFooterProps {
   orgName: string;
 }
 
-const columns = [
-  {
-    title: 'Plataforma',
-    links: ['Vacantes', 'Empresas', 'Evaluaciones', 'Blog'],
-  },
-  {
-    title: 'Empresa',
-    links: ['Sobre Nosotros', 'Contacto', 'Carreras', 'Socios'],
-  },
-  {
-    title: 'Legal',
-    links: ['Privacidad', 'Terminos', 'Cookies', 'Licencias'],
-  },
-];
-
 export function PortalFooter({ orgName }: PortalFooterProps) {
   const { t } = useI18n();
+  const p = t.portal;
+  const columns = [
+    { title: p.footerPlatform, links: [p.footerJobs, p.footerCompanies, p.footerAssessments, p.footerBlog] },
+    { title: p.footerCompany, links: [p.footerAbout, p.footerContact, p.footerCareers, p.footerPartners] },
+    { title: p.footerLegal, links: [p.footerPrivacy, p.footerTerms, p.footerCookies, p.footerLicenses] },
+  ];
   return (
     <footer className="bg-[#1F114C] px-8 py-8">
       <div className="mx-auto max-w-5xl">

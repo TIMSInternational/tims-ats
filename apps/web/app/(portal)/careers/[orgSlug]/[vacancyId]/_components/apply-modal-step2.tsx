@@ -85,7 +85,7 @@ export function ApplyModalStep2({
           >
             {EXPERIENCE_LEVELS.map((l) => (
               <option key={l.value} value={l.value}>
-                {p[l.labelKey]}
+                {p.experienceLevels[l.labelKey]}
               </option>
             ))}
           </select>

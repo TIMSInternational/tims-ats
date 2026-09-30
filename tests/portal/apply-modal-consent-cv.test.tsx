@@ -17,6 +17,7 @@ vi.mock('../../apps/web/lib/toast', () => ({ toast: mocks.toast }));
 vi.mock('next/navigation', () => ({ useParams: () => ({ orgSlug: 'acme' }) }));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({ portal: { getVacancy: { invalidate: async () => undefined } } }),
     portal: {
       applyToVacancy: { useMutation: () => ({ mutateAsync: mocks.applyMutateAsync }) },
       getCvUploadUrl: { useMutation: () => ({ mutateAsync: mocks.presignMutateAsync }) },
@@ -68,9 +69,9 @@ function attachCv(container: HTMLElement, name = 'resume.pdf', bytes = 2048) {
 function goToReview(opts: { withCv?: boolean } = {}) {
   const view = renderModal();
   fillStep1();
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(p.applyNext) }));
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(p.nextStep) }));
   if (opts.withCv) attachCv(view.container);
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(p.applyNext) }));
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(p.nextStep) }));
   return view;
 }
 

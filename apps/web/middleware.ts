@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
+import { buildCsp, cvUploadCspOrigin, originOf, type CspOrigins } from './lib/security/csp';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -15,56 +16,46 @@ const PUBLIC_PATHS = [
   // in the URL is the bearer credential (verified server-side). Must be public or
   // the candidate gets bounced to /login and never reaches the consent/voice screen.
   '/ai-interview',
+  // Candidate offer e-signature link (/offers/sign/[token]): the signing token is
+  // the bearer credential (offer.getBySigningToken / acceptByToken /
+  // declineByToken are public procedures). A candidate has no staff session, so
+  // this must never bounce to staff /login — regardless of which host serves it.
+  '/offers/sign',
   '/logout',
 ];
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-// C# Platform API origin (App Runner) the browser fetches directly once a read
-// surface is cut over (see lib/platform-api). Added to CSP connect-src so the
-// browser is permitted to connect; empty (dark) when the URL is unset, so the
-// CSP gains nothing until the backend is actually configured.
-const PLATFORM_API_ORIGIN = (() => {
-  const url = process.env.NEXT_PUBLIC_TIMS_PLATFORM_API_URL;
-  if (!url) return '';
-  try {
-    return new URL(url).origin;
-  } catch {
-    return '';
-  }
-})();
+// Build-time-stable origins added to connect-src; each is '' (dark) when its env
+// is unset, so the CSP gains nothing until the backend is actually configured.
+const CSP_ORIGINS: CspOrigins = {
+  // C# Platform API origin (App Runner) the browser fetches directly once a read
+  // surface is cut over (see lib/platform-api).
+  platformApi: originOf(process.env.NEXT_PUBLIC_TIMS_PLATFORM_API_URL),
+  // CV S3 bucket the careers apply form POSTs to (presigned POST from
+  // packages/api/src/lib/s3.ts). Both runtimes read the SAME explicit pair —
+  // CV_UPLOADS_BUCKET + CV_UPLOADS_REGION, with no AWS_REGION fallback and no
+  // default region — so they cannot silently disagree. Resolved at module scope,
+  // so a misconfiguration warning is logged once per instance, never per request.
+  cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
+};
 
-// Per-request, nonce-based Content-Security-Policy. In production the nonce
-// replaces 'unsafe-inline' on script-src (Next.js stamps the same nonce onto
-// its bootstrap scripts via the request CSP header), shrinking the XSS surface.
-// Dev keeps 'unsafe-inline'/'unsafe-eval' so Turbopack/HMR's inline scripts run.
-// style-src keeps 'unsafe-inline' (Tailwind/Next inject inline styles); dropping
-// it needs hashing and is out of scope here.
-function buildCsp(nonce: string): string {
-  const scriptSrc = IS_PROD
-    ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com`
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com";
+// Pages whose URL carries a bearer credential (?token= or a path token): never
+// leak it via Referer, never let a shared cache store the page.
+function isBearerLinkPathname(pathname: string): boolean {
+  return pathname === '/accept-invitation' || pathname === '/reset-password' || pathname.startsWith('/offers/sign/');
+}
 
-  return [
-    "default-src 'self'",
-    scriptSrc,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.cloudfront.net",
-    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://login.microsoftonline.com https://*.daily.co wss://*.daily.co https://*.wss.daily.co https://*.elevenlabs.io wss://*.elevenlabs.io https://*.livekit.cloud wss://*.livekit.cloud https://challenges.cloudflare.com https://*.sentry.io${PLATFORM_API_ORIGIN ? ` ${PLATFORM_API_ORIGIN}` : ''}`,
-    "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
-    "media-src 'self' blob: https://*.daily.co https://*.elevenlabs.io",
-    // ElevenLabs Conversational AI loads its audio-processing AudioWorklet from a
-    // blob URL; without worker-src blob: the live voice call fails to initialise.
-    "worker-src 'self' blob:",
-    "frame-ancestors 'none'",
-  ].join('; ');
+// A path is public when it IS one of PUBLIC_PATHS or is nested under one
+// (segment-aware: '/offers/sign' does not make '/offers/signatures' public).
+function isPublicPathname(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 export async function middleware(request: NextRequest) {
   // base64 nonce from a CSPRNG (Web Crypto is available in the Edge runtime).
   const nonce = btoa(crypto.randomUUID());
-  const csp = buildCsp(nonce);
+  const csp = buildCsp(nonce, request.nextUrl.pathname, CSP_ORIGINS, IS_PROD);
 
   // Forward the nonce + CSP on the REQUEST so Next stamps its inline scripts.
   const requestHeaders = new Headers(request.headers);
@@ -76,7 +67,7 @@ export async function middleware(request: NextRequest) {
   // Mirror the CSP onto every response we return (including redirects).
   const applyCsp = <T extends NextResponse>(res: T): T => {
     res.headers.set('content-security-policy', csp);
-    if (request.nextUrl.pathname === '/accept-invitation' || request.nextUrl.pathname === '/reset-password') {
+    if (isBearerLinkPathname(request.nextUrl.pathname)) {
       res.headers.set('referrer-policy', 'no-referrer');
       res.headers.set('cache-control', 'no-store');
     }
@@ -88,7 +79,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Allow public paths without auth
-  const isPublicPath = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isPublicPath = isPublicPathname(pathname);
   const isStaticAsset = pathname.startsWith('/_next') || pathname.startsWith('/favicon');
   const isApiRoute = pathname.startsWith('/api/');
 

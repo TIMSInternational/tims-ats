@@ -55,6 +55,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const applyMutation = trpc.portal.applyToVacancy.useMutation();
+  const utils = trpc.useUtils();
 
   const isStep1Valid = firstName.trim() && lastName.trim() && email.trim() && email.includes('@');
   // When a captcha is configured, a solved token is required to submit.
@@ -95,6 +96,8 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         consentTextVersion: APPLICATION_CONSENT_TEXT_VERSION,
       });
       setSuccess(true);
+      // The detail page shows "N personas aplicaron"; refetch it so the count includes this application.
+      void utils.portal.getVacancy.invalidate({ id: vacancyId });
     } catch (err) {
       // Duplicates are acknowledged server-side like any new application, so there is no
       // "already applied" error to map.
@@ -135,17 +138,17 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
             onClick={onClose}
             className="h-10 rounded-lg bg-[#1F114C] px-6 text-[13px] font-medium text-white transition-colors hover:bg-[#2a1a5c]"
           >
-            {p.applyDone}
+            {p.understood}
           </button>
         </div>
       </Modal>
     );
   }
 
-  const stepLabels = [p.applyStepPersonal, p.applyStepProfile, p.applyStepReview];
+  const stepLabels = [p.stepPersonal, p.stepProfile, p.stepReview];
 
   return (
-    <Modal title={`${p.applyModalTitlePrefix} ${vacancyTitle}`} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={`${p.applyTitlePrefix} ${vacancyTitle}`} onClose={onClose} maxWidth="max-w-2xl">
       {/* Step indicator */}
       <div className="mb-6 flex items-center gap-2">
         {stepLabels.map((label, i) => (
@@ -244,7 +247,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
-              {p.applyBack}
+              {p.previousStep}
             </button>
           )}
           {submitting && (
@@ -260,7 +263,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
             disabled={submitting}
             className="h-9 rounded-lg border border-[#EDEDED] px-4 text-sm text-[#585858] transition hover:bg-[#F6F6F6] disabled:opacity-50"
           >
-            {p.applyCancel}
+            {p.cancel}
           </button>
           {step < 3 ? (
             <button
@@ -268,7 +271,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
               disabled={step === 1 && !isStep1Valid}
               className="flex h-9 items-center gap-1 rounded-lg bg-[#1F114C] px-5 text-sm font-medium text-white transition hover:bg-[#2a1a5c] disabled:opacity-50"
             >
-              {p.applyNext}
+              {p.nextStep}
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>

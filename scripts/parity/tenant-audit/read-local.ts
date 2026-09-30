@@ -61,8 +61,8 @@ async function main() {
         format: 'json',
       }),
     }));
-    const truncated = await runWithTenant(orgB, () =>
-      auditService.exportLogs(orgB, { entity: 'export-cap', format: 'json' }),
+    const truncated = await runWithTenant(orgB, async () =>
+      await auditService.exportLogs(orgB, { entity: 'export-cap', format: 'json' }),
     );
     process.stdout.write(JSON.stringify({ ...results, truncated }));
   } finally {

@@ -2,7 +2,7 @@
 
 import { useI18n } from '../../../../../../lib/i18n';
 import { TurnstileWidget } from '../../../../../../components/turnstile-widget';
-import { EXPERIENCE_LEVELS } from '../_lib/experience-levels';
+import { experienceLevelLabel } from '../_lib/experience-levels';
 import { formatFileSize } from '../_lib/format-file-size';
 import { SummaryRow } from './summary-row';
 import { ApplyConsentCheckbox } from './apply-consent-checkbox';
@@ -54,7 +54,6 @@ export function ApplyModalReview({
 }: ApplyModalReviewProps) {
   const { t } = useI18n();
   const p = t.portal;
-  const experience = EXPERIENCE_LEVELS.find((l) => l.value === s.yearsExperience);
 
   return (
     <div className="space-y-5">
@@ -66,11 +65,11 @@ export function ApplyModalReview({
         {s.currentTitle && (
           <SummaryRow
             label={p.summaryCurrentTitle}
-            value={`${s.currentTitle}${s.currentCompany ? ` ${p.summaryAt} ${s.currentCompany}` : ''}`}
+            value={`${s.currentTitle}${s.currentCompany ? ` ${p.currentTitleAt} ${s.currentCompany}` : ''}`}
           />
         )}
         {s.yearsExperience && (
-          <SummaryRow label={p.summaryExperience} value={experience ? p[experience.labelKey] : s.yearsExperience} />
+          <SummaryRow label={p.summaryExperience} value={experienceLevelLabel(s.yearsExperience, p.experienceLevels)} />
         )}
         {s.linkedinUrl && <SummaryRow label="LinkedIn" value={s.linkedinUrl} />}
         {cvFile && <SummaryRow label={p.summaryCv} value={`${cvFile.name} (${formatFileSize(cvFile.size)})`} />}
