@@ -12,7 +12,7 @@ public sealed partial class UserInvitationEndpointTests
     [InlineData(true)]
     public async Task User_invitation_is_tenant_scoped_audited_and_only_marked_sent_after_acceptance(bool withRole)
     {
-        var role = withRole ? await SeedRole(PlatformOrganizationsCreateFixture.OtherOrg) : null;
+        var role = withRole ? await SeedRole(PlatformOrganizationsCreateFixture.OtherOrg, "recruiter") : null;
         var before = await fixture.Organizations.CountAllRowsAsync();
         var sender = new FakeSender();
         await using var factory = Factory(sender); using var client = factory.CreateClient();
@@ -23,7 +23,7 @@ public sealed partial class UserInvitationEndpointTests
         Assert.Equal(3, result.EnumerateObject().Count());
         Assert.Equal("accepted", result.GetProperty("delivery").GetString());
         var id = result.GetProperty("id").GetGuid(); var row = await Read(id);
-        Assert.Equal(PlatformOrganizationsCreateFixture.OtherOrg, row.Org); Assert.Equal(role, row.Role);
+        Assert.Equal(PlatformOrganizationsCreateFixture.OtherOrg, row.Org); Assert.Equal(role ?? "employee", row.Role);
         Assert.Equal("sent", row.Status); Assert.Equal("user", row.Type); Assert.NotNull(row.SentAt);
         Assert.InRange((row.ExpiresAt - row.SentAt!.Value).TotalDays, 6.99, 7.01);
         Assert.Equal(before, await fixture.Organizations.CountAllRowsAsync());
@@ -39,7 +39,8 @@ public sealed partial class UserInvitationEndpointTests
     [InlineData(true)]
     public async Task Foreign_or_inactive_role_is_rejected_before_insert_or_email(bool inactive)
     {
-        var role = await SeedRole(inactive ? PlatformOrganizationsCreateFixture.OtherOrg : PlatformOrganizationsCreateFixture.HomeOrg, active: !inactive);
+        var role = await SeedRole(inactive ? PlatformOrganizationsCreateFixture.OtherOrg : PlatformOrganizationsCreateFixture.HomeOrg,
+            inactive ? "committee" : "leader", active: !inactive);
         var before = await CountInvitations(); var sender = new FakeSender();
         await using var factory = Factory(sender); using var client = factory.CreateClient();
         Assert.Equal(HttpStatusCode.BadRequest, (await Post(client, Input(role: role))).StatusCode);
@@ -92,11 +93,10 @@ public sealed partial class UserInvitationEndpointTests
         Assert.Equal("pending", (await Read(json.RootElement.GetProperty("id").GetGuid())).Status);
     }
 
-    private async Task<string> SeedRole(Guid org, bool active = true)
+    private async Task<string> SeedRole(Guid org, string role, bool active = true)
     {
-        var role = "role_" + Guid.NewGuid().ToString("N");
         await using var db = new NpgsqlConnection(fixture.ConnectionString); await db.OpenAsync();
-        await using var cmd = new NpgsqlCommand("INSERT INTO roles(id,organization_id,name,slug,is_active,updated_at) VALUES (@id,@org,'Fixture Role',@role,@active,now())", db);
+        await using var cmd = new NpgsqlCommand("INSERT INTO roles(id,organization_id,name,slug,is_active,updated_at) VALUES (@id,@org,'Fixture Role',@role,@active,now()) ON CONFLICT(organization_id,slug) DO UPDATE SET is_active=EXCLUDED.is_active", db);
         cmd.Parameters.AddWithValue("id", Guid.NewGuid()); cmd.Parameters.AddWithValue("org", org); cmd.Parameters.AddWithValue("role", role); cmd.Parameters.AddWithValue("active", active);
         await cmd.ExecuteNonQueryAsync(); return role;
     }

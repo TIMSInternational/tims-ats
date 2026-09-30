@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { meetsPipelineFitThreshold, type PipelineFitCandidate } from '../../../../lib/pipeline-fit';
 
 export interface PipelineFilterState {
   source: string | null;
@@ -173,7 +174,7 @@ export function PipelineFilters({ filters, onChange }: Props) {
 
 /** Apply filters to board stages (client-side filtering) */
 export function applyFilters(
-  stages: Array<{ id: string; name: string; order: number; slaHours: number | null; applications: Array<{ id: string; source: string; appliedAt: Date | string; enteredStageAt: Date | string; [key: string]: unknown }> }>,
+  stages: Array<{ id: string; name: string; order: number; slaHours: number | null; applications: Array<{ id: string; source: string; appliedAt: Date | string; enteredStageAt: Date | string; candidate: PipelineFitCandidate; [key: string]: unknown }> }>,
   filters: PipelineFilterState,
 ): typeof stages {
   if (!filters.source && !filters.fitMin && !filters.maxDays && !filters.slaOnly) {
@@ -186,12 +187,9 @@ export function applyFilters(
       // Source filter
       if (filters.source && app.source !== filters.source) return false;
 
-      // FIT score filter (derived)
+      // A FIT threshold applies only to a persisted score for this vacancy.
       if (filters.fitMin) {
-        let hash = 0;
-        for (let i = 0; i < app.id.length; i++) hash = app.id.charCodeAt(i) + ((hash << 5) - hash);
-        const fit = 40 + Math.abs(hash % 55);
-        if (fit < filters.fitMin) return false;
+        if (!meetsPipelineFitThreshold(app.candidate, filters.fitMin)) return false;
       }
 
       // Date filter (days in stage)

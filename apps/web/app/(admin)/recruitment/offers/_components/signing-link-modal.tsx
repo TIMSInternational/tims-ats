@@ -6,10 +6,12 @@ import { useI18n } from '../../../../../lib/i18n';
 
 interface SigningLinkModalProps {
   signingUrl: string;
+  emailDeliveryAccepted: boolean;
+  recipientEmail: string;
   onClose: () => void;
 }
 
-export function SigningLinkModal({ signingUrl, onClose }: SigningLinkModalProps) {
+export function SigningLinkModal({ signingUrl, emailDeliveryAccepted, recipientEmail, onClose }: SigningLinkModalProps) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -31,14 +33,14 @@ export function SigningLinkModal({ signingUrl, onClose }: SigningLinkModalProps)
         <div className="px-6 py-5 border-b border-[#F0F0F0]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <div className={`w-10 h-10 rounded-lg ${emailDeliveryAccepted ? 'bg-green-100' : 'bg-amber-100'} flex items-center justify-center`}>
+                <svg className={`w-5 h-5 ${emailDeliveryAccepted ? 'text-green-600' : 'text-amber-600'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.06a4.5 4.5 0 00-6.364-6.364L4.5 8.25a4.5 4.5 0 006.364 6.364l4.5-4.5z" />
                 </svg>
               </div>
               <div>
                 <h2 className="text-[16px] font-semibold text-[#1F114C]">{t.offers.signingLinkTitle}</h2>
-                <p className="text-[12px] text-[#8B8B8B]">{t.offers.shareWithCandidate}</p>
+                <p className="text-[12px] text-[#8B8B8B]">{emailDeliveryAccepted ? t.offers.offerEmailProviderAccepted : t.offers.offerEmailUnconfirmed}</p>
               </div>
             </div>
             <button onClick={onClose} className="text-[#8B8B8B] hover:text-[#333] transition">
@@ -83,22 +85,12 @@ export function SigningLinkModal({ signingUrl, onClose }: SigningLinkModalProps)
             </div>
           </div>
 
-          <div className="bg-[#F8F7FC] rounded-xl p-4">
+          <div className={`${emailDeliveryAccepted ? 'bg-green-50' : 'bg-amber-50'} rounded-xl p-4`}>
             <p className="text-[12px] text-[#585858] leading-relaxed">
-              El candidato podra ver los detalles de la oferta y firmar digitalmente.
-              El enlace permanecera activo hasta que la oferta sea aceptada o declinada.
+              {emailDeliveryAccepted ? t.offers.offerEmailAcceptedDetail : t.offers.offerEmailUnconfirmedDetail}
             </p>
+            <p className="text-[11px] text-[#585858] mt-2">{recipientEmail}</p>
           </div>
-
-          <button
-            onClick={() => toast(t.offers.emailSendComingSoon, { type: 'info' })}
-            className="w-full h-10 rounded-lg border border-[#E5E5E5] text-[13px] text-[#585858] font-medium hover:bg-[#F6F6F6] transition flex items-center justify-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-            </svg>
-            {t.offers.sendByEmail}
-          </button>
         </div>
 
         {/* Footer */}

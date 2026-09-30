@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Tims.Application.PlatformInvitations;
+using Tims.Domain.Identity;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.PlatformOrganizations;
 
@@ -14,7 +15,8 @@ public sealed class UserInvitationCreateRepository(PlatformOrganizationsCreateDb
         if (!await db.Organizations.AnyAsync(o => o.Id == organizationId && o.IsActive && o.DeletedAt == null, ct)) return null;
         var roles = await db.Database.SqlQuery<InvitationRole>($"""
             SELECT slug AS "Slug", name AS "Name" FROM roles
-            WHERE organization_id={organizationId} AND is_active=true ORDER BY name,slug LIMIT 100
+            WHERE organization_id={organizationId} AND is_active=true
+              AND slug=ANY({RoleSlugs.AssignableStaffRoles.ToArray()}) ORDER BY name,slug LIMIT 100
             """).ToListAsync(ct);
         await scope.CommitAsync(ct);
         return roles;
@@ -33,14 +35,13 @@ public sealed class UserInvitationCreateRepository(PlatformOrganizationsCreateDb
             .Where(o => o.Id == input.OrganizationId && o.IsActive && o.DeletedAt == null)
             .Select(o => new { o.Name }).SingleOrDefaultAsync(ct);
         if (org is null) return new(UserInvitationCreateOutcome.OrganizationUnavailable);
-        if (input.RoleSlug is not null)
-        {
-            var validRole = await db.Database.SqlQuery<bool>($"""
-                SELECT EXISTS(SELECT 1 FROM roles WHERE organization_id={input.OrganizationId}
-                    AND slug={input.RoleSlug} AND is_active=true) AS "Value"
-                """).SingleAsync(ct);
-            if (!validRole) return new(UserInvitationCreateOutcome.RoleUnavailable);
-        }
+        if (input.RoleSlug is null || !RoleSlugs.AssignableStaffRoles.Contains(input.RoleSlug, StringComparer.Ordinal))
+            return new(UserInvitationCreateOutcome.RoleUnavailable);
+        var validRole = await db.Database.SqlQuery<bool>($"""
+            SELECT EXISTS(SELECT 1 FROM roles WHERE organization_id={input.OrganizationId}
+                AND slug={input.RoleSlug} AND is_active=true) AS "Value"
+            """).SingleAsync(ct);
+        if (!validRole) return new(UserInvitationCreateOutcome.RoleUnavailable);
         if (unique)
         {
             // Same key and PostgreSQL hash as the TS bulk repository. Release at commit, before email.
