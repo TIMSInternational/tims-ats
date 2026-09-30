@@ -24,7 +24,10 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function input(body: string | Uint8Array = JSON.stringify({ token: TOKEN }), headers: Record<string, string> = {}) {
+function input(
+  body: string | Uint8Array<ArrayBuffer> = JSON.stringify({ token: TOKEN }),
+  headers: Record<string, string> = {},
+) {
   return new Request('https://app.example.test/api/interview-join', {
     method: 'POST',
     headers: {
