@@ -244,8 +244,8 @@ describe('offer KPI average salary', () => {
     const text = container.textContent ?? '';
     expect(text).toMatch(/USD\s120\.000 \/ (año|year)/);
     expect(text).not.toContain('$');
-    // The average is computed over the loaded page (≤50 rows), and the label says so.
-    expect(text).toMatch(/lista cargada|loaded list/);
+    // The average covers every offer the viewer can see (offer.list is scope-filtered), and the label says so.
+    expect(text).toMatch(/visibles para ti|you can see/);
   });
 
   it('shows N/D instead of averaging across currencies', () => {
