@@ -52,6 +52,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
           data: {
             id: 'i1',
             type: 'video',
+            status: 'scheduled',
             candidate: { firstName: 'Ana', lastName: 'Ruiz' },
             vacancy: { title: 'Analista' },
           },

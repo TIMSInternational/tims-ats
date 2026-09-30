@@ -364,6 +364,27 @@ describe('F3 — client wiring the room CSP depends on', () => {
     expect(src).toMatch(/<DailyProvider\s+dailyConfig=\{\{\s*avoidEval:\s*true\s*\}\}>/);
   });
 
+  it('EVERY <DailyProvider> in apps/web sets avoidEval (counted, not just one match)', () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === '.next') continue;
+        const full = resolve(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(tsx|jsx)$/.test(entry.name)) files.push(full);
+      }
+    };
+    walk(resolve('apps/web'));
+    const openings = files.flatMap((f) =>
+      [...readFileSync(f, 'utf8').matchAll(/<DailyProvider\b[^>]*>/g)].map((m) => ({ file: f, tag: m[0] })),
+    );
+    expect(openings.length).toBeGreaterThan(0);
+    const withoutAvoidEval = openings.filter(
+      (o) => !/^<DailyProvider\s+dailyConfig=\{\{\s*avoidEval:\s*true\s*\}\}>$/.test(o.tag),
+    );
+    expect(withoutAvoidEval).toEqual([]);
+  });
+
   it('enters the room with a full document load (plain <a>), so the room CSP is actually received', () => {
     const src = readFileSync(resolve(ROOM, 'interview-table.tsx'), 'utf8');
     expect(src).toMatch(/<a\s+href=\{`\/recruitment\/interviews\/\$\{iv\.id\}\/room`\}/);

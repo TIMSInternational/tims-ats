@@ -165,7 +165,8 @@ async function scheduleInterview(page: Page): Promise<void> {
   await expect(wizard).toBeHidden();
 
   const row = page.getByRole('row', { name: new RegExp(fullName()) }).first();
-  const room = await row.getByRole('link', { name: 'Unirse' }).getAttribute('href');
+  // In-person interview: the row's room entry is labelled for scoring, not for joining a call (#325).
+  const room = await row.getByRole('link', { name: 'Calificar' }).getAttribute('href');
   interviewId = /\/recruitment\/interviews\/([0-9a-f-]{36})\/room/.exec(room ?? '')?.[1] ?? '';
   expect(interviewId, 'scheduled interview row links to its room').not.toBe('');
 }
@@ -189,35 +190,21 @@ test('candidate receives the interview invitation email', async () => {
 test('hiring leader submits a scorecard from the interview room', async () => {
   needs('scorecards');
   const { page } = leader;
-  // The merged room (#303, room/page.tsx) renders the scorecard ONLY in the in-call view, i.e. after
-  // "Unirse a la entrevista" → interview.createVideoRoom succeeds — even for an in-person interview.
-  // That procedure needs a Daily API key, which the E2E stack deliberately does not have (it answers
-  // PRECONDITION_FAILED), so the scorecard would be unreachable. Stand in for Daily at exactly that
-  // one boundary: answer createVideoRoom with a room URL on a daily.co host. Every browser request to
-  // Daily is aborted (lib/persona.ts), so the call fails into the room's join-error panel while the
-  // scorecard panel — the thing under test — renders and submits through the REAL
-  // interview.submitScorecard. Everything else on the page is unstubbed.
-  await page.route(
-    (url) => url.pathname === '/api/trpc/interview.createVideoRoom',
-    (route) =>
-      route.fulfill({
-        json: [
-          {
-            result: {
-              data: { json: { url: 'https://e2e-stub.daily.co/e2e-room', token: 'e2e-stub', roomName: 'e2e-room' } },
-            },
-          },
-        ],
-      }),
-  );
+  // In-person interview: the room opens straight to the scorecard (#325) — no video lobby, no
+  // interview.createVideoRoom (which needs a Daily API key this stack deliberately lacks), and no
+  // Daily call object. Fully unstubbed: the scorecard submits through the real interview.submitScorecard.
   await page.goto(`/recruitment/interviews/${interviewId}/room`);
-  await page.getByRole('button', { name: 'Unirse a la entrevista' }).click();
+  await expect(
+    page.getByText('Esta entrevista no usa la videollamada de la plataforma. Registra tu evaluación en el scorecard.'),
+  ).toBeVisible();
 
   const panel = page.getByRole('tabpanel', { name: 'Scorecard' });
   const submit = panel.getByRole('button', { name: 'Enviar scorecard' });
   // The form shows skeletons until the job profile + any stored scorecard load; the submit button
   // only exists once it has, so the rating groups below are the final set.
   await expect(submit).toBeDisabled();
+  // Reached without the video lobby: there is no join button to press.
+  await expect(page.getByRole('button', { name: 'Unirse a la entrevista' })).toHaveCount(0);
   const groups = await panel.getByRole('radiogroup').all();
   expect(groups.length, 'the scorecard lists at least one competency').toBeGreaterThan(0);
   for (const stars of groups) {

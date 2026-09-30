@@ -2353,6 +2353,7 @@
     "noInterviewsDesc": "Las entrevistas aparecen cuando se programan desde el pipeline",
     "cancelInterview": "Cancelar",
     "joinMeeting": "Unirse",
+    "scoreInterview": "Calificar",
     "viewDetails": "Ver detalles",
     "cancelled": "Entrevista cancelada",
     "upcoming": "Proximas Entrevistas",
@@ -3967,6 +3968,17 @@
     "joinErrorUnavailable": "La sala de video no está disponible.",
     "joinErrorNetwork": "No se pudo conectar con el servicio de video. Revisa tu conexión.",
     "joinErrorUnknown": "Ocurrió un error inesperado al unirse a la llamada.",
-    "joinRetry": "Reintentar conexión"
+    "joinRetry": "Reintentar conexión",
+    "scoreWithoutVideo": "Calificar sin video",
+    "scoreWithoutVideoHint": "Abre el scorecard sin conectarte a la videollamada.",
+    "scoringInPersonNotice": "Esta entrevista no usa la videollamada de la plataforma. Registra tu evaluación en el scorecard.",
+    "scoringWithoutVideoNotice": "Estás calificando sin video. Puedes unirte a la videollamada cuando quieras.",
+    "joinVideoCall": "Unirse a la videollamada",
+    "locationValue": "Lugar o enlace: {location}",
+    "panelHeading": "Evaluación de la entrevista",
+    "cancelledNotice": "Esta entrevista fue cancelada. No se puede unir ni calificar.",
+    "closedNotice": "Esta entrevista ya no está abierta: no se puede unir ni calificar.",
+    "topBarLabel": "Entrevista:",
+    "endCall": "Finalizar"
   }
 }
