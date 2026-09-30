@@ -118,7 +118,8 @@ export async function waitForMail(to: string, subject: RegExp, timeout = 30_000)
         const hit = (await allMessages())
           .filter((m) => m.to.map((a) => a.toLowerCase()).includes(to.toLowerCase()) && subject.test(m.subject))
           .at(-1);
-        if (hit) found = { subject: hit.subject, body: hit.body, text: toText(hit.body), links: extractLinks(hit.body) };
+        if (hit)
+          found = { subject: hit.subject, body: hit.body, text: toText(hit.body), links: extractLinks(hit.body) };
         return !!hit;
       },
       { timeout, message: `email to ${to} matching ${subject}` },

@@ -125,7 +125,8 @@ async function moveStage(page: Page, stage: string): Promise<void> {
 test('recruiter moves the candidate through screening to the HR interview stage', async () => {
   await moveStage(recruiter.page, 'Screening');
   await moveStage(recruiter.page, 'Entrevista RRHH');
-  await expect(recruiter.page.getByText('Entrevista RRHH').first()).toBeVisible();
+  await recruiter.page.reload();
+  await expect(recruiter.page.getByText('Entrevista RRHH', { exact: true }).first()).toBeVisible();
 });
 
 /** Schedule an in-person interview (never video — no Daily in E2E) with the leader as evaluator. */
@@ -220,14 +221,19 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
   if (PENDING.peopleDirectory.merged) {
     // #304 replaces the approver <select> with a server-searched people picker.
     await requester.getByPlaceholder('Buscar...').fill(approverName.split(' ')[0]);
-    await requester.getByRole('button', { name: new RegExp(approverName) }).first().click();
+    await requester
+      .getByRole('button', { name: new RegExp(approverName) })
+      .first()
+      .click();
   } else {
     await requester.getByLabel('Aprobador').selectOption({ label: approverName });
   }
   await requester.getByRole('button', { name: 'Solicitar aprobación' }).click();
   await openOffer(approverPage);
+  const approved = approverPage.getByText('Aprobada', { exact: true });
+  await expect(approved).toHaveCount(0);
   await approverPage.getByRole('button', { name: 'Aprobar', exact: true }).click();
-  await expect(approverPage.getByText('Aprobada').first()).toBeVisible();
+  await expect(approved.first()).toBeVisible();
 }
 
 test('recruiter requests offer approval; the hiring leader approves', async () => {
@@ -277,7 +283,10 @@ test('the onboarding plan starts with the default task template', async () => {
   // #309 seeds a 12-task default checklist (DEFAULT_ONBOARDING_TASKS) on hire handoff.
   const { page } = admin;
   await page.goto('/people/onboarding');
-  await page.getByRole('row', { name: new RegExp(fullName()) }).getByRole('button', { name: 'Ver tareas' }).click();
+  await page
+    .getByRole('row', { name: new RegExp(fullName()) })
+    .getByRole('button', { name: 'Ver tareas' })
+    .click();
   await expect(page.getByText('Firmar contrato y documentos de ingreso')).toBeVisible();
   await expect(page.getByText('Revisión de objetivos de 90 días y cierre del onboarding')).toBeVisible();
 });

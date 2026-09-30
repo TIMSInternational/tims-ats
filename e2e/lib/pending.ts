@@ -72,5 +72,8 @@ export function needs(...keys: PendingKey[]): void {
  */
 export function supersededBy(...keys: PendingKey[]): void {
   const allMerged = keys.every((k) => PENDING[k].merged);
-  test.skip(allMerged, `superseded: ${keys.map((k) => PENDING[k].ref).join(', ')} merged — the intended step runs instead`);
+  test.skip(
+    allMerged,
+    `superseded: ${keys.map((k) => PENDING[k].ref).join(', ')} merged — the intended step runs instead`,
+  );
 }

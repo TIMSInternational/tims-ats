@@ -154,7 +154,10 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   await page.getByRole('button', { name: 'Asignar líder' }).first().click();
   const picker = page.getByRole('dialog');
   await picker.getByPlaceholder('Buscar por nombre o email...').fill(j.leader.firstName);
-  await picker.getByRole('button', { name: new RegExp(`${j.leader.firstName} ${j.leader.lastName}`) }).first().click();
+  await picker
+    .getByRole('button', { name: new RegExp(`${j.leader.firstName} ${j.leader.lastName}`) })
+    .first()
+    .click();
   await expect(page.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first()).toBeVisible();
 });
 
@@ -194,7 +197,7 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
   const id = page.url().split('/').pop()!;
   j.vacancy = { id, title };
   saveJourney(j);
-  await expect(page.getByText('Borrador').first()).toBeVisible();
+  await expect(page.getByText('Borrador', { exact: true }).first()).toBeVisible();
 });
 
 /** Open the vacancy and submit it for approval to `approverName`. */
@@ -220,26 +223,29 @@ test('hiring leader approves the vacancy', async () => {
   needs('peopleDirectory', 'orgStructure');
   const { page } = leader;
   await page.goto(`/recruitment/vacancies/${j.vacancy!.id}`);
+  await expect(page.getByText('Aprobada', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
-  await expect(page.getByText('Aprobada').first()).toBeVisible();
+  await expect(page.getByText('Aprobada', { exact: true }).first()).toBeVisible();
 });
 
 test('company admin submits the vacancy for approval and approves it (main-only path)', async () => {
   supersededBy('peopleDirectory', 'orgStructure');
   const { page } = admin;
   await submitForApproval(page, `${j.admin.firstName} ${j.admin.lastName}`);
+  await expect(page.getByText('Aprobada', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
-  await expect(page.getByText('Aprobada').first()).toBeVisible();
+  await expect(page.getByText('Aprobada', { exact: true }).first()).toBeVisible();
 });
 
 test('recruiter publishes the approved vacancy to the careers site', async () => {
   const { page } = recruiter;
   await page.goto(`/recruitment/vacancies/${j.vacancy!.id}`);
+  await expect(page.getByText('Publicada', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: /agregar canal/i }).click();
   const dialog = page.getByRole('dialog', { name: 'Agregar canal de publicación' });
   await dialog.getByPlaceholder(/linkedin, portal de empleo/i).fill('Portal de carreras');
   await dialog.locator('select').selectOption({ label: 'Sitio web' });
   await dialog.getByRole('button', { name: 'Agregar Canal' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Publicada').first()).toBeVisible();
+  await expect(page.getByText('Publicada', { exact: true }).first()).toBeVisible();
 });

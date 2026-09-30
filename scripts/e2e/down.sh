@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tear down exactly what scripts/e2e/up.sh created: the `next start` process, the tims-e2e-ci-*
+# Tear down exactly what scripts/e2e/up.sh created: the web server process, the tims-e2e-ci-*
 # containers + network, and the `tims-e2e-ci` Supabase CLI project (its data volume included).
 # Other Supabase projects and containers on the machine are never touched.
 #
@@ -13,7 +13,7 @@ set +e
 if [ -f "$E2E_STATE/web.pid" ]; then
   pid="$(cat "$E2E_STATE/web.pid")"
   if kill -0 "$pid" 2>/dev/null; then
-    e2e_log "stopping next start (pid $pid)"
+    e2e_log "stopping the web server (pid $pid)"
     kill "$pid" 2>/dev/null
     for _ in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
     kill -9 "$pid" 2>/dev/null
