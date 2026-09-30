@@ -59,9 +59,22 @@ function toStringArray(value: unknown): string[] {
 
 interface InterviewAiPanelProps {
   interviewId: string;
+  /**
+   * The viewer is a panel evaluator who has not submitted their scorecard. The server
+   * refuses the summary and bias check (FORBIDDEN) until they do — blind evaluation,
+   * packages/api/src/services/scorecard-visibility.service.ts — so those buttons are
+   * disabled with an explanation instead of spending a click on a refusal.
+   */
+  isViewerBlinded?: boolean;
 }
 
-export function InterviewAiPanel({ interviewId }: InterviewAiPanelProps) {
+/** The error shape a tRPC mutation hands to onError (only the fields read here). */
+interface AiMutationError {
+  message: string;
+  data?: { code?: string } | null;
+}
+
+export function InterviewAiPanel({ interviewId, isViewerBlinded = false }: InterviewAiPanelProps) {
   const { t } = useI18n();
 
   const [guide, setGuide] = useState<InterviewGuideResult | null>(null);
@@ -69,6 +82,16 @@ export function InterviewAiPanel({ interviewId }: InterviewAiPanelProps) {
   const [bias, setBias] = useState<InterviewBiasResult | null>(null);
 
   const onError = (message: string) => toast(message, { type: 'error' });
+  // The summary / bias FORBIDDEN carries a hardcoded-Spanish server message; show a
+  // localized one instead: the blind-evaluation reason when it applies, else a permission one.
+  const onScorecardAiError = (err: AiMutationError) =>
+    onError(
+      err.data?.code === 'FORBIDDEN'
+        ? isViewerBlinded
+          ? t.interviews.aiBlinded
+          : t.interviews.aiForbidden
+        : err.message,
+    );
 
   const guideMutation = trpc.interview.generateGuide.useMutation({
     onSuccess: (data) => setGuide(data),
@@ -77,12 +100,12 @@ export function InterviewAiPanel({ interviewId }: InterviewAiPanelProps) {
 
   const summaryMutation = trpc.interview.generateSummary.useMutation({
     onSuccess: (data) => setSummary(data),
-    onError: (err) => onError(err.message),
+    onError: onScorecardAiError,
   });
 
   const biasMutation = trpc.interview.detectBias.useMutation({
     onSuccess: (data) => setBias(data),
-    onError: (err) => onError(err.message),
+    onError: onScorecardAiError,
   });
 
   const anyResult = guide || summary || bias;
@@ -101,14 +124,17 @@ export function InterviewAiPanel({ interviewId }: InterviewAiPanelProps) {
           label={t.interviews.generateSummary}
           loadingLabel={t.interviews.generating}
           pending={summaryMutation.isPending}
+          blocked={isViewerBlinded}
           onClick={() => summaryMutation.mutate({ interviewId })}
         />
         <AiActionButton
           label={t.interviews.detectBias}
           loadingLabel={t.interviews.generating}
           pending={biasMutation.isPending}
+          blocked={isViewerBlinded}
           onClick={() => biasMutation.mutate({ interviewId })}
         />
+        {isViewerBlinded && <p className="text-[11px] text-[#8B8B8B] px-1">{t.interviews.aiBlinded}</p>}
       </div>
 
       {!anyResult && (
@@ -126,18 +152,20 @@ function AiActionButton({
   label,
   loadingLabel,
   pending,
+  blocked = false,
   onClick,
 }: {
   label: string;
   loadingLabel: string;
   pending: boolean;
+  blocked?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={pending}
+      disabled={pending || blocked}
       className="w-full flex items-center justify-center gap-2 bg-[#1F114C] text-white py-2.5 rounded-lg text-[12px] font-medium hover:bg-[#2a1866] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {pending && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}

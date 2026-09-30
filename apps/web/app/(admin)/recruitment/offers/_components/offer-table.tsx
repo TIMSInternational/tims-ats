@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { DataTable, EmptyState, StatusBadge, CandidateAvatar, ErrorState } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n/index';
-import { formatDate, formatCurrency } from '../../../../../lib/format-utils';
+import { formatDate } from '../../../../../lib/format-utils';
+import { formatMoneyCode } from '../../../../../lib/offer-salary';
 
 const STATUS_MAP: Record<string, { cls: string; label: string }> = {
   draft: { cls: 'bg-gray-100 text-gray-600', label: 'Borrador' },
@@ -134,7 +135,7 @@ export function OfferTable({
               </td>
               <td className="px-4 py-3">
                 <span className="text-[13px] font-medium text-[#333]">
-                  {formatCurrency(offer.salary, offer.currency)}
+                  {formatMoneyCode(offer.salary, offer.currency)} / {t.offers.perYear}
                 </span>
               </td>
               <td className="px-4 py-3">

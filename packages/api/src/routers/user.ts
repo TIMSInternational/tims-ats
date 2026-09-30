@@ -2,10 +2,25 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
-import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
+import { createUserSchema, updateProfileSchema, assignRoleSchema, canGrantStaffRole } from '@tims/shared';
 import { invalidatePermissionCache } from '../lib/cache';
 import { logSecurityEvent } from '../access/security-audit';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
+
+/**
+ * Staff-role grant policy (PR #307 panel, HIGH): `user:create` / `user:update` say WHETHER a caller may add or
+ * change users, not WHICH roles they may hand out. Without this check an hr_admin could mint a super_admin through
+ * create or assignRole — the escalation the C# /tenant-invitations surface already refuses (InvitationGrantPolicy).
+ * Same pure policy on both stacks, pinned by contracts/identity-fixtures/invitation-grant-policy.json.
+ * Throwing FORBIDDEN is enough for the audit trail: the outermost `withSecurityAudit` middleware records every
+ * FORBIDDEN as an `authz_denied` security event (entity `trpc:<path>`). Under impersonation ctx.user.roles are
+ * the TARGET's roles, so an impersonating owner can never grant above the impersonated user.
+ */
+function assertCanGrantRole(callerRoles: readonly string[], roleSlug: string): void {
+  if (!canGrantStaffRole(callerRoles, roleSlug)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes asignar un rol superior al tuyo' });
+  }
+}
 
 export const userRouter = router({
   // Get current user profile. No real consumer exists today (grepped apps/web
@@ -75,6 +90,10 @@ export const userRouter = router({
       const where = {
         organizationId: ctx.user.organizationId,
         ...(isActive !== undefined ? { isActive } : {}),
+        // "Active" also means not soft-deleted: `deactivate` sets both flags, but a row can carry a deletedAt
+        // with isActive still true (drift, or a delete path that only stamps deletedAt). Only narrows the
+        // isActive:true case, so callers that list everyone (the audit-log actor filter) are unchanged.
+        ...(isActive === true ? { deletedAt: null } : {}),
         ...(search
           ? {
               OR: [
@@ -90,8 +109,10 @@ export const userRouter = router({
       const users = await db.user.findMany({
         where,
         take: limit + 1,
+        // `cursor` is the LAST row the previous page displayed, so skip it. `id` breaks createdAt ties:
+        // Prisma's cursor needs a total order or rows sharing a timestamp can repeat or vanish across pages.
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         // Narrow select — no sensitive fields (supabaseUserId, isPlatformOwner,
         // mfaEnabled, phone, lastLoginAt). `userRoles`/`role` are NOT selected:
         // no known consumer reads them (roleSlug filtering happens via the
@@ -107,11 +128,11 @@ export const userRouter = router({
         },
       });
 
-      let nextCursor: string | undefined;
-      if (users.length > limit) {
-        const nextItem = users.pop();
-        nextCursor = nextItem?.id;
-      }
+      // Fetched limit+1 only to learn whether another page exists. The look-ahead row is dropped and is
+      // NOT the cursor: with `skip: 1` above that would skip it forever (51 members → member 51 never shown).
+      const hasMore = users.length > limit;
+      if (hasMore) users.pop();
+      const nextCursor: string | undefined = hasMore ? users[users.length - 1]?.id : undefined;
 
       return { users, nextCursor };
     }),
@@ -121,6 +142,8 @@ export const userRouter = router({
     .input(createUserSchema)
     .mutation(async ({ ctx, input }) => {
       const { roleSlug, ...userData } = input;
+      // Grant policy BEFORE any lookup, provisioning, or write.
+      assertCanGrantRole(ctx.user.roles, roleSlug);
 
       // Find the role
       const role = await db.role.findFirst({
@@ -203,6 +226,9 @@ export const userRouter = router({
   assignRole: permissionProcedure('user', 'update')
     .input(assignRoleSchema)
     .mutation(async ({ ctx, input }) => {
+      // Grant policy BEFORE any lookup or write (see assertCanGrantRole).
+      assertCanGrantRole(ctx.user.roles, input.roleSlug);
+
       // Verify user belongs to same organization (IDOR prevention)
       const targetUser = await db.user.findFirst({
         where: { id: input.userId, organizationId: ctx.user.organizationId },

@@ -131,6 +131,9 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
 
           return (
             <AssessmentRow key={a.id} name={a.assessmentType.name} status={a.status}>
+              {a.result?.normalizedScore === null && a.status === 'completed' && (
+                <p className="text-[11px] text-amber-700 mt-1">{t.candidates.assessmentScorePending}</p>
+              )}
               {a.result?.normalizedScore != null && (
                 <div className="mt-1">
                   <div className="w-full bg-[#F6F6F6] rounded-full h-2">
@@ -167,11 +170,6 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
             </AssessmentRow>
           );
         })}
-
-        {/* View Full Reports button */}
-        <button className="w-full mt-3 bg-[#F6F6F6] text-[#1F114C] text-[12px] font-medium py-2 rounded-lg hover:bg-[#EDEDED] transition">
-          {t.candidates.viewFullReports}
-        </button>
       </div>
     </div>
   );

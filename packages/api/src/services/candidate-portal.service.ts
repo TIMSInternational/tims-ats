@@ -86,7 +86,10 @@ export function buildCandidateFaqContext(
         vacancyTitle: offer.vacancy.title,
         companyName: offer.vacancy.company?.name ?? null,
         status: offer.status,
-        salary: offer.salary,
+        // Offer.salary is an ANNUAL base salary; label it and give the monthly figure so the model never
+        // has to guess the unit.
+        annualBaseSalary: offer.salary,
+        monthlyEquivalent: Math.round((offer.salary / 12) * 100) / 100,
         currency: offer.currency,
         startDate: offer.startDate.toISOString(),
         contractType: offer.contractType,
@@ -103,7 +106,9 @@ export const candidatePortalService = {
   // RLS (runWithTenant), never on the privileged db. The org is already resolved by
   // the caller (it owns the notFound() decision for a bad slug).
   getDisplayCandidate(orgId: string, email: string) {
-    return runWithTenant(orgId, () => candidatePortalRepo.findCandidateName(orgId, email));
+    // async + await: Prisma queries are LAZY — they execute on .then, so the await must
+    // happen INSIDE the tenant scope or the query runs after the scope has exited.
+    return runWithTenant(orgId, async () => await candidatePortalRepo.findCandidateName(orgId, email));
   },
 
   // A candidate's applications at one org. An authenticated email with no Candidate

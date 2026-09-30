@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { onboardingCheckInTypeLabel, onboardingStatusLabel } from '../../../../lib/onboarding-labels';
 import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
 import { OnboardingTable, type OnboardingPlan } from './onboarding-table';
 import { CreatePlanModal } from './create-plan-modal';
@@ -215,12 +216,12 @@ export default function OnboardingPage() {
                         <td className="py-2 px-3">
                           {plan.user.firstName} {plan.user.lastName}
                         </td>
-                        <td className="py-2 px-3">{checkIn.type}</td>
+                        <td className="py-2 px-3">{onboardingCheckInTypeLabel(t.myOnboarding.labels, checkIn.type)}</td>
                         <td className="py-2 px-3">{new Date(checkIn.scheduledDate).toLocaleDateString('es')}</td>
-                        <td className="py-2 px-3">{checkIn.status}</td>
+                        <td className="py-2 px-3">{onboardingStatusLabel(t.myOnboarding.labels, checkIn.status)}</td>
                         <td className="py-2 px-3">
                           {checkIn.status === 'pending' && (
-                            <button type="button" onClick={() => setSelectedCheckIn({ id: checkIn.id, label: `${plan.user.firstName} ${plan.user.lastName} — ${checkIn.type}` })} className="font-medium text-[#1F114C] underline">
+                            <button type="button" onClick={() => setSelectedCheckIn({ id: checkIn.id, label: `${plan.user.firstName} ${plan.user.lastName} — ${onboardingCheckInTypeLabel(t.myOnboarding.labels, checkIn.type)}` })} className="font-medium text-[#1F114C] underline">
                               {t.onboarding.completeCheckInTitle}
                             </button>
                           )}

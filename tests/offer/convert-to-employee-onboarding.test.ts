@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { defaultOnboardingTasks } from '../../packages/api/src/services/onboarding-defaults';
 
 // NOTE: trpc.ts's withTenantContext middleware validates organizationId against a
 // strict UUID regex before it becomes the RLS GUC value — a non-UUID fixture like
@@ -102,10 +103,18 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     expect(arg.data.organizationId).toBe(ORG_ID);
     expect(arg.data.phase).toBe('day1_30');
     expect(arg.data.startDate).toEqual(mockOffer.startDate);
-    expect(arg.data.tasks.create.length).toBeGreaterThanOrEqual(8);
+    // F12: the hire handoff seeds the same dated default checklist as manual create.
+    expect(arg.data.tasks.create).toEqual(defaultOnboardingTasks(mockOffer.startDate, ORG_ID));
+    expect(arg.data.tasks.create.every((t: { dueDate?: Date }) => t.dueDate instanceof Date)).toBe(true);
     expect(arg.data.tasks.create.every((t: { organizationId: string }) => t.organizationId === ORG_ID)).toBe(true);
-    expect(arg.data.checkIns.create.map((checkIn: { type: string }) => checkIn.type)).toEqual(['day1', 'day30', 'day60']);
-    expect(arg.data.checkIns.create.every((checkIn: { organizationId: string }) => checkIn.organizationId === ORG_ID)).toBe(true);
+    expect(arg.data.checkIns.create.map((checkIn: { type: string }) => checkIn.type)).toEqual([
+      'day1',
+      'day30',
+      'day60',
+    ]);
+    expect(
+      arg.data.checkIns.create.every((checkIn: { organizationId: string }) => checkIn.organizationId === ORG_ID),
+    ).toBe(true);
     expect(mockTx.userRole.create).toHaveBeenCalledWith({
       data: { userId: 'user-new-1', roleId: 'employee-role-1', assignedBy: 'hr-1' },
     });
@@ -124,8 +133,9 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     } as never);
     const caller = await makeCaller();
 
-    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
-      .rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
     expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
     expect(runTenantTransaction).not.toHaveBeenCalled();
   });
@@ -138,8 +148,9 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     } as never);
     const caller = await makeCaller();
 
-    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
-      .rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
     expect(mockTx.user.create).not.toHaveBeenCalled();
   });
 
@@ -149,8 +160,9 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     vi.mocked(db.role.findFirst).mockResolvedValueOnce(null);
     const caller = await makeCaller();
 
-    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
-      .rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
     expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
   });
 
@@ -158,8 +170,9 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     mockTx.offer.updateMany.mockResolvedValueOnce({ count: 0 });
     const caller = await makeCaller();
 
-    await expect(caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }))
-      .rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(mockTx.user.create).not.toHaveBeenCalled();
     expect(mockTx.onboardingPlan.create).not.toHaveBeenCalled();
   });
@@ -169,7 +182,10 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
     vi.mocked(db.offer.findFirst).mockResolvedValueOnce({ ...mockOffer, status: 'converted' } as never);
     vi.mocked(db.hirePrediction.findFirst).mockResolvedValueOnce({ userId: 'user-existing-1' } as never);
-    vi.mocked(db.user.findFirst).mockResolvedValueOnce({ id: 'user-existing-1', email: 'candidate@example.com' } as never);
+    vi.mocked(db.user.findFirst).mockResolvedValueOnce({
+      id: 'user-existing-1',
+      email: 'candidate@example.com',
+    } as never);
     const caller = await makeCaller();
 
     const result = await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });

@@ -4,9 +4,9 @@ import { useState, useMemo } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n/index';
 import { OfferKpis } from './_components/offer-kpis';
+import { computeOfferKpis } from './_components/offer-kpi-data';
 import { OfferTable } from './_components/offer-table';
 import { OfferDetailView } from './_components/offer-detail-view';
-import { summarizeVisibleOffers } from './offer-metrics';
 
 export default function OffersPage() {
   const { t } = useI18n();
@@ -14,24 +14,24 @@ export default function OffersPage() {
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
 
   const offers = trpc.offer.list.useQuery({
-    pageSize: 50,
+    pageSize: 100,
     status: statusFilter || undefined,
   });
+  const allOffers = trpc.offer.list.useQuery({ pageSize: 100 });
 
   const items = offers.data?.items ?? [];
 
-  // Compute KPIs from the list data
-  const kpis = useMemo(() => summarizeVisibleOffers(items), [items]);
+  const kpis = useMemo(
+    () => computeOfferKpis(allOffers.data?.items ?? [], allOffers.data?.total ?? 0),
+    [allOffers.data],
+  );
 
   // If an offer is selected, show detail view
   if (selectedOfferId) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6">
-          <OfferDetailView
-            offerId={selectedOfferId}
-            onBack={() => setSelectedOfferId(null)}
-          />
+          <OfferDetailView offerId={selectedOfferId} onBack={() => setSelectedOfferId(null)} />
         </div>
       </div>
     );
@@ -45,9 +45,10 @@ export default function OffersPage() {
         avgSalary={kpis.avgSalary}
         avgSalaryCurrency={kpis.avgSalaryCurrency}
         pendingApprovals={kpis.pendingApprovals}
-        loading={offers.isLoading}
-        isError={offers.isError}
-        onRetry={() => offers.refetch()}
+        complete={kpis.complete}
+        loading={allOffers.isLoading}
+        isError={allOffers.isError}
+        onRetry={() => void allOffers.refetch()}
       />
       <OfferTable
         items={items}

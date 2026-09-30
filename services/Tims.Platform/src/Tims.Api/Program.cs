@@ -13,6 +13,9 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.AccessReview;
+using Tims.Api.AssessmentTypes;
+using Tims.Application.AssessmentTypes;
+using Tims.Infrastructure.AssessmentTypes;
 using Tims.Api.Fx;
 using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
@@ -338,6 +341,8 @@ try
     builder.Services.AddScoped<OrganizationInvitationCreateUseCase>();
     builder.Services.AddScoped<IUserInvitationCreateRepository, UserInvitationCreateRepository>();
     builder.Services.AddScoped<UserInvitationCreateUseCase>();
+    builder.Services.AddScoped<ITenantInvitationRepository, TenantInvitationRepository>();
+    builder.Services.AddScoped<TenantInvitationsUseCase>();
     builder.Services.AddScoped<IInvitationOnboardingRepository, InvitationOnboardingRepository>();
     builder.Services.AddScoped<InvitationOnboarding>();
     builder.Services.AddOptions<InvitationSetupOptions>().Bind(builder.Configuration.GetSection("Invitations"))
@@ -569,6 +574,13 @@ try
     builder.Services.AddDbContext<NineBoxWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<INineBoxWriteRepository, NineBoxWriteRepository>();
     builder.Services.AddScoped<NineBoxWriteUseCase>();
+
+    // F13: tenant assessment-type authoring (create/update/deactivate). Maps assessment_types
+    // (efcoreStranglerWrite) + audit_logs (efcoreAppendOnly) in ONE context so the audit row shares the write's
+    // transaction. Runs UNDER TenantScope; dark unless AssessmentTypeWriteEnabled.
+    builder.Services.AddDbContext<AssessmentTypeWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IAssessmentTypeWriteRepository, AssessmentTypeWriteRepository>();
+    builder.Services.AddScoped<AssessmentTypeWriteUseCase>();
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface. Plain read-only context over the
     // Prisma-OWNED surveys/survey_responses/action_plans/leader_commitments/alerts (+ users) — surveys.type/.status,
@@ -1334,6 +1346,11 @@ try
     {
         app.MapInvitationResendEndpoints();
     }
+    // F8: company-admin team invitations for the caller's own organization. Dark unless TenantInvitationsEnabled.
+    if (externalOptions.TenantInvitationsEnabled || isOpenApiDocGeneration)
+    {
+        app.MapTenantInvitationEndpoints();
+    }
 
     // Phase-5 slice 23 (#81): GET /platform/dashboard/{plan-distribution,user-growth,
     // recent-activity,attention-items,mrr-trend,mrr-forecast,customer-health,upsell-opportunities,search}
@@ -1470,6 +1487,14 @@ try
     if (externalOptions.NineBoxWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapNineBoxWriteEndpoints();
+    }
+
+    // F13: tenant assessment-type authoring — POST /assessments/types, PATCH /assessments/types/{id},
+    // POST /assessments/types/{id}/deactivate. assessment:create|update + org scope; cross-org id → 404; duplicate
+    // name → 409. Dark unless the flag is on.
+    if (externalOptions.AssessmentTypeWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapAssessmentTypeWriteEndpoints();
     }
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface (14 reads). Staff-JWT + engagement:read; the

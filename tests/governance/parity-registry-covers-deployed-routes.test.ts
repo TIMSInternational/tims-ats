@@ -456,6 +456,22 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'POST /interviews/candidate-join',
     ],
   },
+  {
+    reason:
+      'TENANT INVITATIONS LANDED DARK 2026-09-29 (F8 / PR #307) — four of the five routes; GET /tenant-invitations ' +
+      "IS registered (surfaces.ts 'tenant-invitations', C#-only). GET /tenant-invitations/roles returns the grantable " +
+      'role catalogue as {slug,name} pairs with no ids, and both parity orgs are provisioned with the same catalogue, ' +
+      'so RLS Mode B would see byte-identical non-empty payloads BY CONSTRUCTION and FAIL a correct endpoint; ' +
+      'globalScope would be false (the rows are per-org). The three POSTs MUTATE, and create + resend SEND REAL EMAIL ' +
+      'through the configured provider, so a verify-write surface needs a delivery-suppressed fixture first. All four ' +
+      'are covered by Tims.IntegrationTests TenantInvitationEndpointTests (gate, grant policy, cross-tenant 404, audit).',
+    routes: [
+      'GET /tenant-invitations/roles',
+      'POST /tenant-invitations',
+      'POST /tenant-invitations/{id}/resend',
+      'POST /tenant-invitations/{id}/revoke',
+    ],
+  },
 ];
 
 const allowlistNormalised = UNREGISTERED_ALLOWLIST.flatMap((g) =>
@@ -518,7 +534,16 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         178 → 181: invitation account setup added three capability-scoped POSTs. They are documented in
     //         the dedicated allowlist group below because tenant-role parity is structurally inapplicable before
     //         the invited principal has a tenant user row.
-    expect(deployed.size).toBe(182);
+    //         181 → 186: F8 tenant invitations (PR #307) deployed five routes DARK; one is registered
+    //         (GET /tenant-invitations) and four are allowlisted under their own group.
+    //         186 → 189 (F13 / PR #309): the three assessment-type authoring writes
+    //         (POST /assessments/types, PATCH /assessments/types/{id}, POST …/{id}/deactivate) — landed
+    //         dark AND registered in the same change (write-surfaces.ts `assessment-types`), so the
+    //         allowlist is unchanged.
+    //         189 → 190 (WP-H / PR #308): POST /interviews/candidate-join, deployed DARK behind
+    //         Platform:CandidateInterviewJoinEnabled and allowlisted with the invitation-setup group
+    //         (anonymous, capability-token). #308 measured 181 → 182 on its own base; +1 over main's 189.
+    expect(deployed.size).toBe(190);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -529,14 +554,16 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //        36 → 39 was slice 23 PR 3; 30 → 36 was PR 2; 27 → 30 was PR 1, which created that
     //        surface; 24 → 27 was slice 22's `invitation` surface, 2026-08-12; 26 → 27 on the write
     //        side was 2026-08-11: `organization-create` registered POST /platform/organizations, #208.)
-    expect(registryEndpointCount).toBe(92);
+    //   92 → 93, 2026-09-29: + tenant-invitations/list (PR #307).
+    //   93 → 96 (PR #309): write side 27 → 30, the `assessment-types` surface's three endpoints.
+    expect(registryEndpointCount).toBe(96);
     //   ...resolving to 92 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
     //   (This pin is WHY the deleted reporting registration's second kpis probe at period=90D was not
     //   restored: it normalises onto `GET /reporting/kpis` and would collide here.)
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(92);
-    //   27 write paths resolved through the Proxy stub, none degenerate.
-    expect(writePaths.length).toBe(27);
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(96);
+    //   30 write paths resolved through the Proxy stub, none degenerate (27 → 30: assessment-types).
+    expect(writePaths.length).toBe(30);
   });
 
   it('every registry entry points at a route that is actually deployed', () => {
@@ -583,8 +610,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   eleven pending a fixture whose shape differs from every prior surface's (per-role ROWS, not
     //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
     // 86 → 89: the three invitation-setup operations are capability scoped before tenant membership.
-    // 89 → 90: WP-H's anonymous candidate interview join, the same capability-token shape.
-    expect(allowlistNormalised.length).toBe(90);
+    // 89 → 93: tenant invitations' four unregistrable routes (roles catalogue + three emailing/mutating POSTs).
+    // 93 → 94: WP-H's anonymous candidate interview join (PR #308), the same capability-token shape as
+    //   invitation setup (#308 measured 89 → 90 on its own base; +1 over main's 93).
+    expect(allowlistNormalised.length).toBe(94);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -601,6 +630,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // identity-authorized rather than grant-authorized, so the registry's by-role comparison needs
     // per-role rows instead of a grant fixture. Folding it into the fit-engine group would state the
     // wrong prerequisite for both.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the twelve documented gap categories').toBe(12);
+    // 12 → 13 on 2026-09-29: tenant invitations' group (a Mode-B-inexpressible catalogue + email-sending writes).
+    expect(UNREGISTERED_ALLOWLIST.length, 'the thirteen documented gap categories').toBe(13);
   });
 });

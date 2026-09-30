@@ -178,6 +178,38 @@ describe('candidateAssessmentService.submitAssessment', () => {
     expect(result).toEqual({ rawScore: 5, normalizedScore: 100, hasPending: true });
   });
 
+  it('persists a pending score instead of zero when all questions need manual review', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([FREE_TEXT_Q] as never);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
+
+    const result = await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q2', freeText: 'my essay' },
+    ]);
+
+    expect(result).toEqual({ rawScore: null, normalizedScore: null, hasPending: true });
+    expect(candidateAssessmentWriteRepo.upsertResultInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        rawScore: null,
+        normalizedScore: null,
+        breakdown: { autoScored: 0, pendingManual: ['q2'] },
+      }),
+    );
+    expect(candidateAssessmentWriteRepo.getNormCountsInTx).not.toHaveBeenCalled();
+  });
+
   it('closes the double-submit race via the conditional final write (finding #1)', async () => {
     // Both assignments report in_progress (the early in-tx probe does NOT
     // catch this race under READ COMMITTED — see repository comment) but the

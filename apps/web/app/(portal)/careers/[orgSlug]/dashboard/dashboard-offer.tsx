@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { formatAnnualOfferSalary } from '../../../../../lib/offer-salary';
 
 // "My Offer" section of the candidate dashboard (Wave 1 Slice 4). Lists the
 // candidate's offers with key terms and links a 'sent' offer to the existing public
@@ -28,13 +29,6 @@ export function DashboardOffer({ orgSlug }: { orgSlug: string }) {
     if (s === 'accepted') return 'bg-[#ECFDF3] text-[#067647]';
     if (s === 'declined') return 'bg-[#FEF3F2] text-[#B42318]';
     return 'bg-[#F4F1FF] text-[#1F114C]';
-  };
-  const money = (salary: number, currency: string) => {
-    try {
-      return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(salary);
-    } catch {
-      return `${salary.toLocaleString()} ${currency}`;
-    }
   };
 
   const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.offer}</h2>;
@@ -85,7 +79,7 @@ export function DashboardOffer({ orgSlug }: { orgSlug: string }) {
               <dl className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[12px]">
                 <div>
                   <dt className="text-[#8B8B8B]">{t.portalDashboard.offerSalary}</dt>
-                  <dd className="text-[#1F114C]">{money(offer.salary, offer.currency)}</dd>
+                  <dd className="text-[#1F114C]">{formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}</dd>
                 </div>
                 <div>
                   <dt className="text-[#8B8B8B]">{t.portalDashboard.offerStartDate}</dt>

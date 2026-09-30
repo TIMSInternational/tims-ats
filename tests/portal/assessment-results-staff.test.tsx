@@ -55,4 +55,24 @@ describe('AssessmentResults staff surfacing — norm band', () => {
     expect(screen.queryByText(en.assessmentPlayer.bandLabels.above_average)).not.toBeInTheDocument();
     expect(screen.queryByText(en.assessmentPlayer.bandLabels.below_average)).not.toBeInTheDocument();
   });
+
+  it('labels an all-essay result as pending without displaying a fabricated zero or PDF action', () => {
+    renderResults({
+      assignments: [
+        {
+          id: 'essay-1',
+          status: 'completed',
+          assignedAt: new Date(),
+          completedAt: new Date(),
+          assessmentType: { id: 't2', name: 'Essay Test', code: 'essay' },
+          result: { id: 'r2', normalizedScore: null, band: null, percentile: null, normSampleSize: null },
+        },
+      ],
+      fitScores: [],
+    });
+
+    expect(screen.getByText(en.candidates.assessmentScorePending)).toBeInTheDocument();
+    expect(screen.queryByText(/0\/100/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.candidates.viewFullReports })).not.toBeInTheDocument();
+  });
 });
