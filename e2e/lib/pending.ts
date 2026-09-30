@@ -12,7 +12,7 @@ export const PENDING = {
   offerSigningPublic: {
     ref: '#300',
     why: '/offers/sign is not a public route on main — a signed-out candidate is bounced to /login',
-    merged: false,
+    merged: true,
   },
   cvUploadCsp: {
     // #300 allows only the exact *.amazonaws.com bucket origin, so against LocalStack the upload stays
@@ -24,12 +24,12 @@ export const PENDING = {
   explicitConsent: {
     ref: '#302',
     why: 'the apply form has no explicit data-processing consent checkbox on main',
-    merged: false,
+    merged: true,
   },
   scorecards: {
     ref: '#303',
     why: '"Enviar Scorecard" in the interview room is not wired to any mutation on main',
-    merged: false,
+    merged: true,
   },
   peopleDirectory: {
     ref: '#304',
