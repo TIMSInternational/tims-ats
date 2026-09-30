@@ -70,7 +70,7 @@ export function checkVerifyFull(url: string, opts: { allowLoopback?: boolean } =
  */
 export function pgClientConfig(
   url: string,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): {
   connectionString: string;
   ssl: false | { rejectUnauthorized: true; ca?: string };

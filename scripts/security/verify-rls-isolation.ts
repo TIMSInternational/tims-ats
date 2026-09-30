@@ -31,7 +31,8 @@
  *      Exit 2 is NOT a pass. A gate that reports it as one is the #38 failure mode.
  *
  * The empty-tables guard matters because this check's core assertion is EMPIRICAL: it can only speak for
- * a table that has rows. In production it covers 44 of 100 candidates — a fact the success line now
+ * a table that has rows. In production it covered 44 of 100 candidates (36 once the positive control
+ * moved to one test tenant, #292) — RLS_MIN_PROBED now fails the run below a floor; the success line
  * reports, because "verified" was being read as "all of them".
  *
  * Safe to run against production: every statement is a read, and the empirical probe runs inside a
@@ -47,12 +48,7 @@
 import { readFileSync, writeSync } from 'node:fs';
 import { Client } from 'pg';
 import { checkVerifyFull, pgClientConfig } from './db-tls';
-import {
-  probeOrgIdProblem,
-  resolveMinProbed,
-  resolveProbeRole,
-  runEmpiricalProbe,
-} from './rls-probe';
+import { probeOrgIdProblem, resolveMinProbed, resolveProbeRole, runEmpiricalProbe } from './rls-probe';
 
 /**
  * Load DIRECT_URL / DATABASE_URL from packages/db/.env when they aren't already in the environment,
@@ -338,7 +334,7 @@ async function main(): Promise<void> {
   }
 
   if (findings.length === 0) {
-    // Report the COVERAGE, not just the verdict. In production the probe covers 44 of 100 candidates, so
+    // Report the COVERAGE, not just the verdict. In production the probe covered 44 (now 36) of 100, so
     // the empirical probe — the part that actually caught #111 — speaks for well under half of them. That
     // was previously invisible: the check said "verified" and a reader reasonably assumed "all of them".
     console.log(

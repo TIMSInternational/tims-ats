@@ -28,17 +28,19 @@
 #       GRANT USAGE ON SCHEMA public, supabase_migrations TO ci_readonly;
 #       GRANT SELECT ON ALL TABLES IN SCHEMA public, supabase_migrations TO ci_readonly;
 #       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ci_readonly;
-#       GRANT app_tenant TO ci_readonly;   -- REQUIRED, and NOT obvious: see below
+#     then, as postgres:  psql -v ON_ERROR_STOP=1 -f scripts/db/ci-readonly-probe-role.sql
 #
-#     THE MEMBERSHIP GRANT IS LOAD-BEARING. Check 14's empirical probe issues `SET LOCAL ROLE app_tenant`,
-#     and in Postgres `SET ROLE` requires membership in the target role (or superuser). Without that last
-#     line the role connects fine, reads fine, and then check 14 dies with
-#     `permission denied to set role "app_tenant"` — i.e. exit 2, every night, forever. Verified on a
-#     throwaway PG17 cluster: without it the probe fails, with it `SET LOCAL ROLE app_tenant` succeeds.
+#     ci_readonly MUST NOT be a member of app_tenant (#292). It used to be, because check 14's probe did
+#     `SET LOCAL ROLE app_tenant` — and app_tenant holds INSERT/UPDATE/DELETE on the tenant tables, so the
+#     "read-only" credential could assume DML with one statement. NOINHERIT does not prevent SET ROLE.
+#     The provisioning script creates `ci_rls_probe` (NOLOGIN, NOBYPASSRLS, SELECT-only), lets ci_readonly
+#     SET ROLE to it, REVOKEs app_tenant from ci_readonly, and asserts all of that before committing.
+#     Probing as ci_rls_probe is equivalent because every public policy applies TO public — check 14
+#     asserts that invariant nightly (`policy-role-scope`). Check 17 reads ACLs and needs no membership.
+#     Until the script has run, check 14 exits 2 naming it: loud, never a silent skip.
 #
-#     `NOINHERIT` is what keeps that safe: the role can ASSUME app_tenant explicitly (which is all check 14
-#     needs) but does not passively hold its privileges — verified, `current_user` stays `ci_readonly`
-#     until it opts in. Do not drop NOINHERIT to "simplify" this.
+#     TLS: the secret MUST carry sslmode=verify-full. The pre-step below refuses anything else, and
+#     PGSSLROOTCERT pins the committed Supabase CA for both libpq (pg_dump, check 16) and the Node checks.
 #
 #     Use the SESSION pooler (:5432). The transaction pooler (:6543) cannot `SET LOCAL ROLE` at all, which
 #     check 14 also depends on. `pg_dump --schema-only` needs no table data, but check 14's probe DOES read
@@ -88,6 +90,13 @@ jobs:
             exit 1
           fi
 
+      - name: Refuse a credential that does not require verify-full TLS
+        env:
+          PROD_DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+        # Reads the URL from the environment by NAME and never prints it. libpq treats require/prefer as
+        # "encrypt but trust anyone" and verify-ca skips the hostname, so only verify-full is accepted.
+        run: npx tsx scripts/security/assert-verify-full.ts PROD_DIRECT_URL
+
       - name: Install PostgreSQL 17 client (check 16 needs pg_dump >= server)
         run: |
           # Production is PostgreSQL 17.x and pg_dump refuses to dump a server newer than itself. Ubuntu
@@ -105,9 +114,14 @@ jobs:
       - name: Run checks 14, 16 and 17
         id: checks
         env:
-          # The Supabase session pooler chains to this committed project CA, which Node does not
-          # trust by default. Keep full TLS verification; never disable certificate checks.
-          NODE_EXTRA_CA_CERTS: scripts/parity/supabase-root-ca.pem
+          # The Supabase session pooler chains to this committed project CA. PGSSLROOTCERT is read by
+          # libpq (pg_dump, check 16) AND by scripts/security/db-tls.ts (checks 14, 17), so one variable
+          # pins the CA for all three. The URL's own sslmode=verify-full is asserted by the pre-step;
+          # PGSSLMODE is belt-and-braces for a URL that somehow lacks one. Never disable verification.
+          PGSSLROOTCERT: scripts/parity/supabase-root-ca.pem
+          PGSSLMODE: verify-full
+          # Check 14's coverage floor: exit 2 if the empirical probe covers fewer tables than this.
+          RLS_MIN_PROBED: '30'
           # Non-secret UUID of a populated test tenant, stored as a repository variable.
           # A positive-control row is required because ci_readonly itself obeys RLS.
           RLS_PROBE_ORG_ID: ${{ vars.RLS_PROBE_ORG_ID }}

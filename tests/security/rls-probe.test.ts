@@ -135,7 +135,9 @@ describe('db-tls', () => {
     expect(cfg.ssl).toEqual({ rejectUnauthorized: true });
     expect(cfg.connectionString).not.toMatch(/ssl/);
     expect(cfg.connectionString).toMatch(/application_name=n/);
-    const withCa = pgClientConfig(remote('?sslmode=verify-full'), { PGSSLROOTCERT: 'scripts/parity/supabase-root-ca.pem' });
+    const withCa = pgClientConfig(remote('?sslmode=verify-full'), {
+      PGSSLROOTCERT: 'scripts/parity/supabase-root-ca.pem',
+    });
     expect(withCa.ssl).toMatchObject({ rejectUnauthorized: true, ca: expect.stringContaining('BEGIN CERTIFICATE') });
     expect(() => pgClientConfig(remote('?sslmode=require'), {})).toThrow(/verify-full/);
   });
