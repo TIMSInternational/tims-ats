@@ -70,6 +70,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Audit production dependencies for high and critical advisories
+        run: pnpm audit --prod --audit-level high
       - run: pnpm --filter @tims/db exec prisma generate --schema prisma/schema
       - run: npx vitest run
 

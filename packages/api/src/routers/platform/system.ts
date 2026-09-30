@@ -4,7 +4,7 @@ import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
 import { logSecurityEvent } from '../../access/security-audit';
 import { PLAN_PRICES } from '../../lib/plan-prices';
-import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices } from './system.helpers';
+import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices, getOverallHealthStatus } from './system.helpers';
 import { cacheInvalidatePrefix } from '../../lib/cache';
 import {
   sendBulkNotificationInput,
@@ -32,7 +32,7 @@ export const systemRouter = router({
       /* DB down */
     }
 
-    const [userCount, orgCount, loginsToday, activeUsers, auditLogsToday, vacancyCount, failedLogins] =
+    const [userCount, orgCount, loginsToday, enabledUsers, auditLogsToday, vacancyCount, failedLogins] =
       await Promise.all([
         db.user.count(),
         db.organization.count(),
@@ -58,16 +58,12 @@ export const systemRouter = router({
       vacancyCount,
       loginsToday,
       failedLogins,
-      activeUsers,
-      auditLogsToday,
-      todayStart,
+      enabledUsers,
     });
-
-    const hasIssues = services.some((s) => s.status !== 'operational');
 
     return {
       services,
-      overall: hasIssues ? 'degraded' : 'operational',
+      overall: getOverallHealthStatus(services),
       recentErrors: recentErrors.map((e) => {
         const meta = e.metadata as Record<string, unknown> | null;
         return {
@@ -75,7 +71,6 @@ export const systemRouter = router({
           service: e.entity || 'Sistema',
           time: e.createdAt,
           message: (meta?.message as string) || e.action,
-          status: 'resolved' as const,
         };
       }),
       stats: { userCount, orgCount, loginsToday, auditLogsToday },

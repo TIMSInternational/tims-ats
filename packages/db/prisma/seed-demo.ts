@@ -2394,7 +2394,7 @@ async function main() {
   console.log(`[Documents] ${docDefs.length} candidate documents`);
 
   console.log('\n=== Demo data seeded successfully! ===');
-  console.log('Login as admin@tims.co / TimsAts2026! to see all org-level data.');
+  console.log('Login as admin@tims.co (password: the SEED_USER_PASSWORD used for seed-users.ts) to see all org-level data.');
 }
 
 main()

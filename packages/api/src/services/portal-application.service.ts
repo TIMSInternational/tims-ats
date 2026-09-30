@@ -1,4 +1,5 @@
 import { logger } from '@tims/shared';
+import { runWithTenant } from '@tims/db';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { candidateAiService } from './candidate-ai.service';
 import { fetchCvObject } from '../lib/s3';
@@ -40,7 +41,10 @@ export const portalApplicationService = {
   async processCvUpload(orgId: string, candidateId: string, cvFileKey: string, fileName: string): Promise<void> {
     try {
       await withTimeout(
-        (async () => {
+        // Called from the PUBLIC portal.applyToVacancy (no tenant in scope). The repos
+        // below use tenantDb, which fails closed without a tenant — scope them to the
+        // vacancy's org (the same RLS scope the staff CV-upload path runs under).
+        runWithTenant(orgId, async () => {
           const { buffer, sizeBytes } = await fetchCvObject(cvFileKey);
           const doc = await candidateRepository.createDocument(orgId, {
             candidateId,
@@ -52,7 +56,7 @@ export const portalApplicationService = {
 
           const text = await extractCvText(buffer, contentTypeFromKey(cvFileKey));
           await candidateAiService.parseCV(orgId, text, doc.id, candidateId);
-        })(),
+        }),
         CV_PROCESSING_TIMEOUT_MS,
         'CV upload processing',
       );
