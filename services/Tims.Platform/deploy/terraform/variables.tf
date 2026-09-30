@@ -151,7 +151,7 @@ variable "enable_alarms" {
 variable "alarm_email" {
   description = "Email address subscribed to the alarm SNS topic. The subscription delivers nothing until the recipient clicks the AWS confirmation link."
   type        = string
-  default     = "federico.tafur@altostrats.com"
+  default     = "fedetafur3@gmail.com"
 
   validation {
     condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alarm_email))

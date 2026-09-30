@@ -244,7 +244,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://tims-ats.vercel.app/login
 ## 4. Alerting: CloudWatch alarms to email
 
 Decision (2026-09-29): CloudWatch alarms on the App Runner service's built-in metrics, sent by SNS to
-`federico.tafur@altostrats.com`. No Sentry for the C# API. The nightly DB controls and backup-drill
+`fedetafur3@gmail.com`. No Sentry for the C# API. The nightly DB controls and backup-drill
 workflows already alert by GitHub's failure email and are not covered here.
 
 | Alarm                           | Metric (`AWS/AppRunner`)       | Fires when                                 |
@@ -280,19 +280,19 @@ with `--email` (or `TIMS_ALARM_EMAIL`).
 2. Preview the changes. This only reads from AWS:
 
 ```bash
-bash scripts/ops/create-alarms.sh --email federico.tafur@altostrats.com
+bash scripts/ops/create-alarms.sh --email fedetafur3@gmail.com
 ```
 
 3. Apply:
 
 ```bash
-bash scripts/ops/create-alarms.sh --email federico.tafur@altostrats.com --apply
+bash scripts/ops/create-alarms.sh --email fedetafur3@gmail.com --apply
 ```
 
    While the subscription is still unconfirmed, `--apply` prints an **ALERTING IS NOT LIVE** banner and
    exits 4 (the alarms are still created). After you confirm in step 4, re-run it: it exits 0.
 
-4. **Confirm the subscription.** AWS emails `federico.tafur@altostrats.com` with the subject
+4. **Confirm the subscription.** AWS emails `fedetafur3@gmail.com` with the subject
    "AWS Notification - Subscription Confirmation". Click **Confirm subscription**. **Until you
    do, no alarm reaches anyone.** Check the status:
 
@@ -313,7 +313,7 @@ aws cloudwatch set-alarm-state --profile tims-ats --region us-west-2 --alarm-nam
 The alarm goes back to OK at its next evaluation, within about 5 minutes, and sends the OK email.
 
 To change a threshold, re-run with an environment override, for example
-`ALARM_LATENCY_P95_MS=4000 bash scripts/ops/create-alarms.sh --email federico.tafur@altostrats.com --apply`. The script uses
+`ALARM_LATENCY_P95_MS=4000 bash scripts/ops/create-alarms.sh --email fedetafur3@gmail.com --apply`. The script uses
 `put-metric-alarm`, which updates the alarm in place.
 
 ### 4.2 Terraform (once the module is reconciled with live)

@@ -75,7 +75,7 @@ Flip the backend flag in `feature_flags` (→ `terraform apply`) AND set the mat
 ## Alerting (`alarms.tf`, opt-in)
 
 `enable_alarms = true` creates an SNS topic, an email subscription (`alarm_email`, default
-`federico.tafur@altostrats.com`) and five CloudWatch alarms: 5xx count, 5xx rate, p95 latency, CPU and
+`fedetafur3@gmail.com`) and five CloudWatch alarms: 5xx count, 5xx rate, p95 latency, CPU and
 memory. Because this module has never been applied, the live alarms are created by
 `scripts/ops/create-alarms.sh` instead, with the same names and thresholds. See
 `docs/runbooks/production-rollback-and-alerting.md` §4, including the **SNS email confirmation click**.

@@ -125,7 +125,7 @@ describe('terraform/alarms.tf mirrors the script', () => {
     const math = TF.match(/alarm_name\s*=\s*"\$\{local\.alarm_prefix\}-(5xx-rate)"/)?.[1];
     expect([...simple, math].sort()).toEqual(EXPECTED_ALARMS);
     expect(TF_VARS).toMatch(/variable "enable_alarms" \{[\s\S]*?default\s*=\s*false/);
-    expect(TF_VARS).toMatch(/variable "alarm_email" \{[\s\S]*?default\s*=\s*"federico\.tafur@altostrats\.com"/);
+    expect(TF_VARS).toMatch(/variable "alarm_email" \{[\s\S]*?default\s*=\s*"fedetafur3@gmail\.com"/);
     for (const r of [
       'aws_sns_topic" "alarms',
       'aws_sns_topic_subscription" "alarm_email',
