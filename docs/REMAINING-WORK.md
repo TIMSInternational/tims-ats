@@ -34,6 +34,15 @@
 
 ### Current implementation wave — 2026-09-14 (unreleased)
 
+- **F8, tenant team invitations (PR #307, not merged/deployed):** a company admin invites users into their
+  OWN org via C# `/tenant-invitations` (list/roles/create/resend/revoke) and the web "Equipo" page
+  (`/settings/users`). Dark behind `Platform__TenantInvitationsEnabled` + `NEXT_PUBLIC_TENANT_INVITATIONS_VIA_CSHARP`.
+  The staff-role grant policy (no one grants above their own role) is now enforced on BOTH stacks, including
+  the previously unguarded tRPC `user.create` / `user.assignRole`, pinned by one shared golden matrix. Resend has
+  a 5-minute per-invitation cooldown. Open: per-org daily invitation cap, a delivery-suppressed write fixture for
+  the parity harness, the 11 other pop-then-skip pagination sites (issue drafted). See
+  `architecture/csharp-migration/tenant-invitations.md`.
+
 - **#75 / #217, invitation resend port:** a default-disabled C# resend endpoint and console hook
   now handle provider acceptance, unchanged state on delivery failure, and guarded updates against
   concurrent acceptance/revocation. Creation/bulk/acceptance ports, runtime activation, live delivery
