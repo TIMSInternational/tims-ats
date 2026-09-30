@@ -59,6 +59,7 @@ vi.mock('../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-a
 
 import { ScorecardForm } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-form';
 import { ScorecardPanel } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-panel';
+import { resolveCompetencies } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-model';
 
 const ME = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -285,6 +286,66 @@ describe('interview room scorecard', () => {
     const payload = mutate.mock.calls[0]?.[0] as { ratings: Record<string, number> };
     expect(Object.keys(payload.ratings)).toHaveLength(2);
     for (const k of Object.keys(payload.ratings)) expect(k.length).toBeLessThanOrEqual(80);
+  });
+
+  it('reordering the profile competencies keeps each saved rating on its own competency', () => {
+    // codex r3 P2: keys used to get a " #2" suffix by list position, so reversing two
+    // long names that share their first 80 chars swapped their saved ratings on reopen.
+    const prefix = 'B'.repeat(80);
+    const one = { name: `${prefix} one`, level: 3 };
+    const two = { name: `${prefix} two`, level: 3 };
+    h.jobProfile = { isLoading: false, isError: false, data: { competencies: [one, two] } };
+    const first = renderForm();
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: one.name })).getByRole('radio', { name: '1 of 5' }));
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: two.name })).getByRole('radio', { name: '5 of 5' }));
+    fireEvent.click(screen.getByRole('radio', { name: en.interviewRoom.recYes }));
+    fireEvent.click(submitButton());
+    const saved = (mutate.mock.calls[0]?.[0] as { ratings: Record<string, number> }).ratings;
+    first.unmount();
+
+    h.jobProfile = { isLoading: false, isError: false, data: { competencies: [two, one] } };
+    h.existing = {
+      isLoading: false,
+      isError: false,
+      refetch: () => undefined,
+      data: { id: 'sc1', ratings: saved, recommendation: 'yes', overallNotes: null, submittedAt: new Date() },
+    };
+    renderForm();
+    expect(
+      within(screen.getByRole('radiogroup', { name: one.name })).getByRole('radio', { name: '1 of 5' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(
+      within(screen.getByRole('radiogroup', { name: two.name })).getByRole('radio', { name: '5 of 5' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    // No stored key was orphaned into an extra "unknown competency" row.
+    expect(screen.getAllByRole('radiogroup').filter((g) => g.getAttribute('aria-label')?.startsWith(prefix))).toHaveLength(2);
+  });
+
+  it('rating keys depend only on the competency name, never on list order', () => {
+    const long = (s: string) => `${'C'.repeat(80)}${s}`;
+    const a = resolveCompetencies([{ name: long('x') }, { name: long('y') }, { name: 'SQL' }]).items;
+    const b = resolveCompetencies([{ name: 'SQL' }, { name: long('y') }, { name: long('x') }]).items;
+    const keyOf = (items: typeof a, label: string) => items.find((c) => c.label === label)?.key;
+    for (const label of [long('x'), long('y'), 'SQL']) expect(keyOf(a, label)).toBe(keyOf(b, label));
+    expect(keyOf(a, long('x'))).not.toBe(keyOf(a, long('y')));
+    expect(keyOf(a, 'SQL')).toBe('SQL');
+    for (const c of a) expect(c.key.length).toBeLessThanOrEqual(80);
+  });
+
+  it("a withheld stub from the server never renders as a score, even once scores are revealed", () => {
+    const scorecards = [
+      { id: 'x', evaluatorId: OTHER, ratings: {}, recommendation: '', submittedAt: new Date(), isWithheld: true },
+    ];
+    h.existing = {
+      isLoading: false,
+      isError: false,
+      refetch: () => undefined,
+      data: { id: 'sc1', ratings: { SQL: 4, Storytelling: 4 }, recommendation: 'yes', overallNotes: null, submittedAt: new Date() },
+    };
+    renderForm({ interview: interview({ scorecards } as unknown as Partial<InterviewDetail>) });
+    const section = screen.getByRole('region', { name: en.interviews.evaluatorComparison });
+    expect(section).toHaveTextContent(en.interviewRoom.comparisonSubmitted);
+    expect(section).not.toHaveTextContent('—');
   });
 
   it('re-opens a stored scorecard with a fractional (API-valid) rating without blanking the others', () => {

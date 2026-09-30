@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { interviewAiService } from '../../services/interview-ai.service';
 import { assertScoped } from '../../access';
+import { scorecardVisibilityService } from '../../services/scorecard-visibility.service';
 
 // ---------------------------------------------------------------------------
 // Interview AI router — thin controller over interviewAiService. All three
@@ -27,6 +28,8 @@ export const interviewAiRouter = router({
     .input(interviewIdInput)
     .mutation(async ({ ctx, input }) => {
       await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // Derived from every scorecard — refused while the caller is a blinded panel evaluator.
+      await scorecardVisibilityService.assertNotBlinded(ctx.user.organizationId, input.interviewId, ctx.user.id);
       return interviewAiService.generateSummary(ctx.user.organizationId, input.interviewId);
     }),
 
@@ -35,6 +38,8 @@ export const interviewAiRouter = router({
     .input(interviewIdInput)
     .mutation(async ({ ctx, input }) => {
       await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // Derived from every scorecard — refused while the caller is a blinded panel evaluator.
+      await scorecardVisibilityService.assertNotBlinded(ctx.user.organizationId, input.interviewId, ctx.user.id);
       return interviewAiService.detectBias(ctx.user.organizationId, input.interviewId);
     }),
 });

@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { emailService } from '../../services/email.service';
 import { scopeWhereFor, assertScoped } from '../../access';
+import { isBlindedViewer, visibleScorecard } from '../../services/scorecard-visibility.service';
 
 export const interviewCrudRouter = router({
   // 8.1 — List interviews with filters
@@ -107,7 +108,20 @@ export const interviewCrudRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
       }
 
-      return interview;
+      // Blind evaluation (services/scorecard-visibility.service.ts): a panel
+      // evaluator who has not submitted gets only their own scorecard in full;
+      // others arrive as status stubs, and the AI summary (derived from them) is
+      // withheld. Non-panel staff with interview:read see everything, as before.
+      const blinded = isBlindedViewer(
+        ctx.user.id,
+        interview.evaluators.map((e) => e.userId),
+        interview.scorecards,
+      );
+      return {
+        ...interview,
+        scorecards: interview.scorecards.map((sc) => visibleScorecard(sc, ctx.user.id, blinded)),
+        summary: blinded ? null : interview.summary,
+      };
     }),
 
   // 8.3 — Schedule a new interview

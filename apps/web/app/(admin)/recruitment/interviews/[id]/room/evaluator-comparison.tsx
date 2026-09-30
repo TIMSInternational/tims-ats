@@ -9,7 +9,10 @@ interface EvaluatorComparisonProps {
   evaluators: InterviewDetail['evaluators'];
   scorecards: InterviewDetail['scorecards'];
   currentUserId: string | null;
-  /** Other evaluators' scores stay hidden until the viewer has submitted (avoids anchoring). */
+  /**
+   * Other evaluators' scores stay hidden until the viewer has submitted (avoids anchoring).
+   * Enforced server-side too: interview.getById sends only status stubs to a blinded viewer.
+   */
   revealScores: boolean;
 }
 
@@ -31,7 +34,9 @@ export function EvaluatorComparison({ evaluators, scorecards, currentUserId, rev
             const card = scorecards.find((s) => s.evaluatorId === ev.userId && s.submittedAt !== null);
             const avg = card ? averageRating(parseStoredRatings(card.ratings)) : null;
             const rec = card ? parseRecommendation(card.recommendation) : null;
-            const showScore = card !== undefined && (isYou || revealScores);
+            // The server withholds others' content while the viewer is blinded (isWithheld);
+            // never render a stub as a score, even if revealScores flips before the refetch lands.
+            const showScore = card !== undefined && !card.isWithheld && (isYou || revealScores);
             return (
               <li key={ev.id} className="flex items-center gap-2 text-[10px]">
                 <span className="text-[#585858] truncate">

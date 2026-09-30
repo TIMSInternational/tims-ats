@@ -57,7 +57,10 @@ export function resolveCompetencies(jobProfileCompetencies: unknown): ResolvedCo
       // RATING_KEY_MAX (80) characters and are still different competencies.
       if (seenNames.has(parsed.data.name)) continue;
       seenNames.add(parsed.data.name);
-      const key = uniqueRatingKey(parsed.data.name, usedKeys);
+      const key = ratingKeyFor(parsed.data.name);
+      // Only reachable on a 32-bit hash collision between two >80-char names that also
+      // share their first 70 characters; keep the first rather than merge two ratings.
+      if (usedKeys.has(key)) continue;
       usedKeys.add(key);
       items.push({ key, label: parsed.data.name, targetLevel: parsed.data.level ?? null });
     }
@@ -70,17 +73,35 @@ export function resolveCompetencies(jobProfileCompetencies: unknown): ResolvedCo
 }
 
 /**
- * A persisted rating key: the name itself when it fits, else a truncation with a
- * numeric suffix so distinct long names never collapse into one rating field.
+ * A persisted rating key, derived from the competency's FULL name alone — never from
+ * its position in the list — so reordering the job profile's competencies can never
+ * re-attach a saved rating to a different competency (codex r3 P2).
+ *
+ * - Names that fit RATING_KEY_MAX (80) are their own key (unchanged from before, so
+ *   every short-name and default-competency key already stored still matches).
+ * - Longer names become a truncation plus a hash of the full name, so two long names
+ *   sharing their first 80 characters still get distinct, stable keys.
+ *
+ * Compatibility: an earlier, never-merged revision of this PR keyed long names by
+ * list position ("<truncation> #2"). Any such stored key no longer matches a live
+ * competency, and withStoredCompetencies() surfaces it as its own row instead of
+ * dropping it. No main-branch data uses long-name keys: the room never submitted
+ * before this PR.
  */
-function uniqueRatingKey(name: string, used: Set<string>): string {
-  const base = name.slice(0, RATING_KEY_MAX);
-  if (!used.has(base)) return base;
-  for (let n = 2; ; n += 1) {
-    const suffix = ` #${n}`;
-    const candidate = name.slice(0, RATING_KEY_MAX - suffix.length) + suffix;
-    if (!used.has(candidate)) return candidate;
+export function ratingKeyFor(name: string): string {
+  if (name.length <= RATING_KEY_MAX) return name;
+  const suffix = ` #${fnv1a32Hex(name)}`;
+  return name.slice(0, RATING_KEY_MAX - suffix.length) + suffix;
+}
+
+/** 32-bit FNV-1a over UTF-16 code units, as 8 hex chars. Deterministic; not a security hash. */
+function fnv1a32Hex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
   }
+  return hash.toString(16).padStart(8, '0');
 }
 
 // Mirrors submitScorecard's input contract exactly (z.number().min(1).max(5), NOT

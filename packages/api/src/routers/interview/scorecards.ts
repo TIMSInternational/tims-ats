@@ -3,6 +3,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { assertScoped, scopeWhereFor } from '../../access';
+import { scorecardVisibilityService, visibleScorecard } from '../../services/scorecard-visibility.service';
 import type { Prisma } from '@tims/db';
 
 export const interviewScorecardsRouter = router({
@@ -28,8 +29,14 @@ export const interviewScorecardsRouter = router({
           evaluator: { select: { id: true, firstName: true, lastName: true, avatar: true } },
         },
       });
+      if (!scorecard) return null;
 
-      return scorecard;
+      // Blind evaluation: asking for SOMEONE ELSE's card obeys the same rule as
+      // getById — a blinded panel evaluator gets a status stub, not the content.
+      const blinded =
+        evaluatorId !== ctx.user.id &&
+        (await scorecardVisibilityService.isBlinded(ctx.user.organizationId, input.interviewId, ctx.user.id));
+      return visibleScorecard(scorecard, ctx.user.id, blinded);
     }),
 
   // 8.7 — Submit a scorecard
@@ -86,6 +93,8 @@ export const interviewScorecardsRouter = router({
     .input(z.object({ interviewId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // Aggregate view (averages + consensus) — refused while the caller is blinded.
+      await scorecardVisibilityService.assertNotBlinded(ctx.user.organizationId, input.interviewId, ctx.user.id);
 
       const scorecards = await db.interviewScorecard.findMany({
         where: {
