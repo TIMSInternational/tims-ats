@@ -2,10 +2,25 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
-import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
+import { createUserSchema, updateProfileSchema, assignRoleSchema, canGrantStaffRole } from '@tims/shared';
 import { invalidatePermissionCache } from '../lib/cache';
 import { logSecurityEvent } from '../access/security-audit';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
+
+/**
+ * Staff-role grant policy (PR #307 panel, HIGH): `user:create` / `user:update` say WHETHER a caller may add or
+ * change users, not WHICH roles they may hand out. Without this check an hr_admin could mint a super_admin through
+ * create or assignRole — the escalation the C# /tenant-invitations surface already refuses (InvitationGrantPolicy).
+ * Same pure policy on both stacks, pinned by contracts/identity-fixtures/invitation-grant-policy.json.
+ * Throwing FORBIDDEN is enough for the audit trail: the outermost `withSecurityAudit` middleware records every
+ * FORBIDDEN as an `authz_denied` security event (entity `trpc:<path>`). Under impersonation ctx.user.roles are
+ * the TARGET's roles, so an impersonating owner can never grant above the impersonated user.
+ */
+function assertCanGrantRole(callerRoles: readonly string[], roleSlug: string): void {
+  if (!canGrantStaffRole(callerRoles, roleSlug)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes asignar un rol superior al tuyo' });
+  }
+}
 
 export const userRouter = router({
   // Get current user profile. No real consumer exists today (grepped apps/web
@@ -123,6 +138,8 @@ export const userRouter = router({
     .input(createUserSchema)
     .mutation(async ({ ctx, input }) => {
       const { roleSlug, ...userData } = input;
+      // Grant policy BEFORE any lookup, provisioning, or write.
+      assertCanGrantRole(ctx.user.roles, roleSlug);
 
       // Find the role
       const role = await db.role.findFirst({
@@ -205,6 +222,9 @@ export const userRouter = router({
   assignRole: permissionProcedure('user', 'update')
     .input(assignRoleSchema)
     .mutation(async ({ ctx, input }) => {
+      // Grant policy BEFORE any lookup or write (see assertCanGrantRole).
+      assertCanGrantRole(ctx.user.roles, input.roleSlug);
+
       // Verify user belongs to same organization (IDOR prevention)
       const targetUser = await db.user.findFirst({
         where: { id: input.userId, organizationId: ctx.user.organizationId },
