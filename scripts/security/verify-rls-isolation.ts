@@ -36,9 +36,23 @@
  *
  * Safe to run against production: every statement is a read, and the empirical probe runs inside a
  * transaction that is always rolled back.
+ *
+ * ENVIRONMENT (#292)
+ *   RLS_PROBE_ORG_ID  UUID of a populated test tenant — the positive control for a NOBYPASSRLS reader.
+ *   RLS_PROBE_ROLE    role the probe assumes; default ci_rls_probe (SELECT-only, NOLOGIN, NOBYPASSRLS —
+ *                     scripts/db/ci-readonly-probe-role.sql). Absent role = exit 2, never a skip.
+ *   RLS_MIN_PROBED    minimum tables the empirical probe must cover (default 30), else exit 2.
+ *   A remote URL must carry sslmode=verify-full (scripts/security/db-tls.ts), else exit 2.
  */
 import { readFileSync, writeSync } from 'node:fs';
 import { Client } from 'pg';
+import { checkVerifyFull, pgClientConfig } from './db-tls';
+import {
+  probeOrgIdProblem,
+  resolveMinProbed,
+  resolveProbeRole,
+  runEmpiricalProbe,
+} from './rls-probe';
 
 /**
  * Load DIRECT_URL / DATABASE_URL from packages/db/.env when they aren't already in the environment,
@@ -124,18 +138,25 @@ async function main(): Promise<void> {
     );
   }
 
+  // TLS is asserted, not inferred: pg@8 aliases require/prefer/verify-ca to verify-full today and has
+  // announced that alias will change. A remote URL must say verify-full or this check does not connect.
+  const tls = checkVerifyFull(url);
+  if (!tls.ok) die2(`refusing to connect — ${tls.reason}`);
+
   // A least-privilege CI reader is subject to RLS, so counting with an unset org GUC
   // would make every populated table appear empty. A known test tenant is the positive
   // control: it must see rows before the same table is probed with no tenant selected.
-  const probeOrganizationId = process.env.RLS_PROBE_ORG_ID;
-  if (
-    probeOrganizationId &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(probeOrganizationId)
-  ) {
-    die2('RLS_PROBE_ORG_ID must be a valid organization UUID.');
-  }
+  const probeOrganizationId = process.env.RLS_PROBE_ORG_ID || undefined;
+  const orgProblem = probeOrgIdProblem(probeOrganizationId);
+  if (orgProblem) die2(orgProblem);
+  const probeRoleOrProblem = resolveProbeRole(process.env.RLS_PROBE_ROLE);
+  if ('problem' in probeRoleOrProblem) die2(probeRoleOrProblem.problem);
+  const probeRole = probeRoleOrProblem.role;
+  const minOrProblem = resolveMinProbed(process.env.RLS_MIN_PROBED);
+  if ('problem' in minOrProblem) die2(minOrProblem.problem);
+  const minProbed = minOrProblem.min;
 
-  const db = new Client({ connectionString: url });
+  const db = new Client(pgClientConfig(url));
   await db.connect();
   const findings: Finding[] = [];
   /** Tables the fail-closed probe actually exercised. Zero means nothing was verified — see below. */
@@ -193,6 +214,22 @@ async function main(): Promise<void> {
       }
     }
 
+    // ── 2c. Every policy must apply TO public (#292) ────────────────────────────────────────────
+    // The empirical probe runs as ci_rls_probe, not app_tenant. That only speaks for app_tenant while
+    // every policy binds every role; a policy scoped TO app_tenant alone would not bind the probe role.
+    const { rows: scoped } = await db.query<{ tablename: string; policyname: string; roles: string }>(
+      `SELECT tablename, policyname, array_to_string(roles, ',') AS roles
+         FROM pg_policies
+        WHERE schemaname = 'public' AND roles <> ARRAY['public']::name[]
+        ORDER BY tablename, policyname`,
+    );
+    for (const p of scoped) {
+      findings.push({
+        check: 'policy-role-scope',
+        detail: `${p.tablename}.${p.policyname} applies TO ${p.roles}, not public — the empirical probe role is not bound by it, so check 14 cannot speak for this table.`,
+      });
+    }
+
     // ── 3. No RLS-enabled table left with zero policies (deny-all breaks the app) ──────────────
     const { rows: bare } = await db.query<{ relname: string }>(
       `SELECT c.relname
@@ -231,37 +268,31 @@ async function main(): Promise<void> {
       );
     }
 
+    // The probe role must exist and must itself obey RLS. Missing = the owner has not yet run the
+    // provisioning script; that is did-not-run, loudly, never a silent skip of the empirical probe.
+    const { rows: probeRoleRows } = await db.query<{ rolbypassrls: boolean; rolsuper: boolean }>(
+      `SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = $1`,
+      [probeRole],
+    );
+    if (probeRoleRows.length === 0) {
+      die2(
+        `the probe role "${probeRole}" does not exist. Run scripts/db/ci-readonly-probe-role.sql ` +
+          '(as postgres, psql -v ON_ERROR_STOP=1) — see the header of .github/workflows/nightly-db-controls.yml.',
+      );
+    }
+    if (probeRoleRows[0].rolbypassrls || probeRoleRows[0].rolsuper) {
+      die2(`the probe role "${probeRole}" bypasses RLS, so it cannot demonstrate that RLS fails closed.`);
+    }
+
     await db.query('BEGIN');
     try {
-      await db.query(`SELECT set_config('app.current_org_id', '', true)`);
-      for (const { relname } of candidates) {
-        // Quote the identifier properly rather than interpolating it raw. `relname` comes from pg_class
-        // so it is a real table name, not user input — but Postgres permits a double quote inside an
-        // identifier, and a bare `"${relname}"` would let such a name break out of the quoting. Doubling
-        // internal quotes is the standard escape. Pre-existing, flagged by a reviewer of #124; fixed here
-        // because it is one line in a script whose entire job is to be trustworthy.
-        const q = `"${relname.replace(/"/g, '""')}"`;
-        if (probeOrganizationId) {
-          await db.query(`SELECT set_config('app.current_org_id', $1, true)`, [probeOrganizationId]);
-        }
-        const total = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${q}`);
-        if (probeOrganizationId) {
-          await db.query(`SELECT set_config('app.current_org_id', '', true)`);
-        }
-        if (total.rows[0].n === '0') continue; // empty table proves nothing either way
-
-        probed++;
-        await db.query('SET LOCAL ROLE app_tenant');
-        const seen = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${q}`);
-        await db.query('RESET ROLE');
-
-        if (seen.rows[0].n !== '0') {
-          findings.push({
-            check: 'FAILS-OPEN',
-            detail: `${relname}: app_tenant with NO org GUC sees ${seen.rows[0].n} of ${total.rows[0].n} rows. Tenant isolation must fail CLOSED — this should be 0.`,
-          });
-        }
-      }
+      const result = await runEmpiricalProbe(
+        db,
+        candidates.map((c) => c.relname),
+        { probeOrgId: probeOrganizationId, probeRole },
+      );
+      probed = result.probed;
+      findings.push(...result.findings);
     } finally {
       await db.query('ROLLBACK');
     }
@@ -286,6 +317,22 @@ async function main(): Promise<void> {
           `certified as isolating.${findings.length > 0 ? ' The findings above still stand.' : ''}`,
       );
     }
+
+    // Coverage floor. Moving the positive control to a single test tenant dropped coverage 44 → 36 of
+    // 100 with no signal; a drop to 3 would have printed the same ✓. Below the floor, the empirical
+    // probe is too thin to certify isolation — did-not-run, with the structural findings preserved.
+    if (probed < minProbed) {
+      if (findings.length > 0) {
+        writeSync(2, `\n✖ ${findings.length} RLS isolation finding(s):\n\n`);
+        for (const f of findings) writeSync(2, `  [${f.check}] ${f.detail}\n`);
+        writeSync(2, '\n');
+      }
+      die2(
+        `the empirical probe covered only ${probed} of ${candidates.length} RLS-enabled tables, below ` +
+          `RLS_MIN_PROBED=${minProbed}. Seed the probe tenant (RLS_PROBE_ORG_ID) or lower the floor ` +
+          `deliberately.${findings.length > 0 ? ' The findings above still stand.' : ''}`,
+      );
+    }
   } finally {
     await db.end();
   }
@@ -297,7 +344,8 @@ async function main(): Promise<void> {
     console.log(
       `✓ RLS tenant isolation verified: fail-closed on unset GUC, one policy per tenant table.\n` +
         `  Empirical probe covered ${probed} of ${candidateCount} RLS-enabled tables ` +
-        `(${candidateCount - probed} were empty, so they prove nothing either way).`,
+        `(${candidateCount - probed} were empty for the probe tenant, so they prove nothing either way; ` +
+        `floor RLS_MIN_PROBED=${minProbed}).`,
     );
     process.exit(0);
   }
