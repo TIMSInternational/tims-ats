@@ -31,10 +31,17 @@ import { interviewScorecardRepository } from '../repositories/interview-scorecar
 //   the intended consumers of the debrief — this is exactly what interview:read
 //   granted them before this rule existed, so it stays the least surprising.
 //
+//   "Submitted" means a COMPLETE card: submitScorecard refuses a card that does
+//   not rate the interview's whole competency set (scorecard-submission.service),
+//   so a placeholder submission cannot be used to un-blind.
+//
 // Known limits (deliberate, documented): an evaluator removed from the panel
-// before submitting stops being blinded (removal needs interview:update); and a
+// before submitting stops being blinded — removal needs interview:update and
+// removeEvaluator refuses self-removal, so it takes a second person; and a
 // submitted evaluator can still UPDATE their scorecard after seeing the others
-// (the rule protects the first independent read, not re-submission).
+// (the room offers "Update") — every such re-submission writes an audit_logs row
+// (`interview_scorecard_resubmitted`) with the previous values, so it is
+// detectable rather than prevented.
 // ---------------------------------------------------------------------------
 
 export interface WithholdableScorecard {

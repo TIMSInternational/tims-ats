@@ -4,6 +4,8 @@ import { tenantDb as db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { assertScoped, scopeWhereFor } from '../../access';
 import { scorecardVisibilityService, visibleScorecard } from '../../services/scorecard-visibility.service';
+import { scorecardSubmissionService } from '../../services/scorecard-submission.service';
+import { MAX_RATING_KEYS, RATING_KEY_MAX } from '@tims/shared';
 import type { Prisma } from '@tims/db';
 
 export const interviewScorecardsRouter = router({
@@ -44,7 +46,11 @@ export const interviewScorecardsRouter = router({
     .input(
       z.object({
         interviewId: z.string().uuid(),
-        ratings: z.record(z.string().max(80), z.number().min(1).max(5)),
+        ratings: z
+          .record(z.string().max(RATING_KEY_MAX), z.number().min(1).max(5))
+          .refine((r) => Object.keys(r).length <= MAX_RATING_KEYS, {
+            message: `A lo sumo ${MAX_RATING_KEYS} competencias`,
+          }),
         recommendation: z.enum(['strong_yes', 'yes', 'neutral', 'no', 'strong_no']),
         overallNotes: z.string().max(2000).optional(),
       })
@@ -56,36 +62,33 @@ export const interviewScorecardsRouter = router({
       // scorecard — without this, any org member could upsert one (the upsert
       // keys on evaluatorId: ctx.user.id, so they'd forge their own row).
       const evaluator = await db.interviewEvaluator.findFirst({
-        where: { interviewId: input.interviewId, userId: ctx.user.id },
+        where: { interviewId: input.interviewId, userId: ctx.user.id, interview: { organizationId: ctx.user.organizationId } },
         select: { id: true },
       });
       if (!evaluator) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Solo un evaluador asignado puede enviar la evaluacion' });
       }
 
-      return db.interviewScorecard.upsert({
-        where: {
-          interviewId_evaluatorId: {
-            interviewId: input.interviewId,
-            evaluatorId: ctx.user.id,
-          },
-        },
-        create: {
-          organizationId: ctx.user.organizationId,
-          interviewId: input.interviewId,
-          evaluatorId: ctx.user.id,
-          ratings: input.ratings,
-          recommendation: input.recommendation,
-          overallNotes: input.overallNotes,
-          submittedAt: new Date(),
-        },
-        update: {
-          ratings: input.ratings,
-          recommendation: input.recommendation,
-          overallNotes: input.overallNotes,
-          submittedAt: new Date(),
-        },
-      });
+      // Completeness is enforced HERE (not only in the room UI): submitting is what
+      // un-blinds an evaluator, so an empty/partial card must not count. A
+      // re-submission is allowed (the room offers "Update") but audited — see
+      // services/scorecard-submission.service.ts.
+      const result = await scorecardSubmissionService.submit(
+        ctx.user.organizationId,
+        input.interviewId,
+        ctx.user.id,
+        ctx.user.impersonatorId ?? ctx.user.id,
+        { ratings: input.ratings, recommendation: input.recommendation, overallNotes: input.overallNotes },
+      );
+      if (!result.ok) {
+        throw result.reason === 'not_found'
+          ? new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' })
+          : new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'La evaluacion debe calificar todas las competencias de la entrevista',
+            });
+      }
+      return result.scorecard;
     }),
 
   // 8.11 — Compare evaluator scores

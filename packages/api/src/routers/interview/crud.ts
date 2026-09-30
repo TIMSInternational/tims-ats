@@ -365,8 +365,14 @@ export const interviewCrudRouter = router({
       // SCOPED probe — same escalation guard as addEvaluator: a narrow caller
       // must not manage the panel of an out-of-scope interview by id.
       await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // Blind evaluation (PR #303): leaving the panel un-blinds a viewer, so a panel
+      // member holding interview:update must not remove THEMSELVES to read the other
+      // evaluators' cards before submitting. Someone else has to take them off.
+      if (input.userId === ctx.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes quitarte a ti mismo del panel de evaluadores' });
+      }
       const result = await db.interviewEvaluator.deleteMany({
-        where: { interviewId: input.interviewId, userId: input.userId },
+        where: { interviewId: input.interviewId, userId: input.userId, interview: { organizationId: ctx.user.organizationId } },
       });
       if (result.count === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado' });
       return { success: true };
