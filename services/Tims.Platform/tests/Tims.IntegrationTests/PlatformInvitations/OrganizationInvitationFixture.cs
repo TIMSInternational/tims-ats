@@ -20,6 +20,10 @@ public sealed class OrganizationInvitationFixture : IAsyncLifetime
             await using var command = connection.CreateCommand();
             command.CommandText = Schema;
             await command.ExecuteNonQueryAsync();
+            command.CommandText = "INSERT INTO roles(id,organization_id,name,slug,updated_at) VALUES (@id,@org,'Employee','employee',now()) ON CONFLICT(organization_id,slug) DO NOTHING";
+            command.Parameters.AddWithValue("id", Guid.NewGuid());
+            command.Parameters.AddWithValue("org", PlatformOrganizationsCreateFixture.OtherOrg);
+            await command.ExecuteNonQueryAsync();
         }
     }
     public Task DisposeAsync() => Organizations.DisposeAsync();

@@ -39,6 +39,10 @@
     <ProjectReference Include="..\Tims.Domain\Tims.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="OrgProvisioning/role-grants.json" LogicalName="Tims.Infrastructure.OrgProvisioning.role-grants.json" />
+  </ItemGroup>
+
   <!-- Test seams: the deterministic-clock constructors on the rate limiters are internal so they
        stay out of the production surface, but the WP2.6 tests drive them to pin bucket + weight. -->
   <ItemGroup>

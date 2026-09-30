@@ -47,7 +47,7 @@ export async function bulkInviteUsers(organizationId: string, invitedById: strin
         const delivered = timeout > 0 && await sendEmail({
           to: user.email,
           subject: `Invitacion para unirte a ${org!.name} en TIMS ATS`,
-          html: renderInvitationEmail({ organization: org!.name, role: user.roleSlug, url, expiresAt }),
+          html: renderInvitationEmail({ organization: org!.name, role: user.roleSlug ?? 'employee', url, expiresAt }),
           abortSignal: AbortSignal.timeout(timeout),
         });
         if (!delivered) {

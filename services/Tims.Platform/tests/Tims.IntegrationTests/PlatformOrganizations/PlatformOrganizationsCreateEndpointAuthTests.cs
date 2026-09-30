@@ -164,7 +164,7 @@ public sealed class PlatformOrganizationsCreateEndpointAuthTests(PlatformOrganiz
         var counts = await _fixture.CountAllProvisionedRowsAsync(orgId!.Value);
         Assert.Equal(
             new PlatformOrganizationsCreateFixture.ProvisionedCounts(
-                1, 1, 1, 1, 1, 1, PlatformOrganizationsCreateFixture.AtsBaseModules.Length),
+                1, 1, 1, 1, 9, 1, PlatformOrganizationsCreateFixture.AtsBaseModules.Length),
             counts);
         Assert.Single(await _fixture.ReadAuditRowsAsync(orgId.Value));
     }

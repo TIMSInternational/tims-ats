@@ -6,6 +6,7 @@ import { useI18n } from '../../../../lib/i18n/index';
 import { OfferKpis } from './_components/offer-kpis';
 import { OfferTable } from './_components/offer-table';
 import { OfferDetailView } from './_components/offer-detail-view';
+import { summarizeVisibleOffers } from './offer-metrics';
 
 export default function OffersPage() {
   const { t } = useI18n();
@@ -20,26 +21,7 @@ export default function OffersPage() {
   const items = offers.data?.items ?? [];
 
   // Compute KPIs from the list data
-  const kpis = useMemo(() => {
-    const activeStatuses = ['pending_approval', 'approved', 'sent'];
-    const activeCount = items.filter((o) => activeStatuses.includes(o.status)).length;
-    const accepted = items.filter((o) => o.status === 'accepted').length;
-    const sentOrResolved = items.filter((o) =>
-      ['sent', 'accepted', 'declined', 'expired'].includes(o.status),
-    ).length;
-    const acceptanceRate = sentOrResolved > 0 ? Math.round((accepted / sentOrResolved) * 100) : 0;
-    const acceptedItems = items.filter((o) => o.status === 'accepted');
-    const salaryItems = acceptedItems.length > 0 ? acceptedItems : items;
-    const salaryCurrencies = new Set(salaryItems.map((o) => o.currency ?? 'USD'));
-    const avgSalary =
-      salaryItems.length > 0 && salaryCurrencies.size === 1
-        ? Math.round(salaryItems.reduce((sum, o) => sum + o.salary, 0) / salaryItems.length)
-        : null;
-    const avgSalaryCurrency = salaryCurrencies.size === 1 ? [...salaryCurrencies][0] : null;
-    const pendingApprovals = items.filter((o) => o.status === 'pending_approval').length;
-
-    return { activeCount, acceptanceRate, avgSalary, avgSalaryCurrency, pendingApprovals };
-  }, [items]);
+  const kpis = useMemo(() => summarizeVisibleOffers(items), [items]);
 
   // If an offer is selected, show detail view
   if (selectedOfferId) {

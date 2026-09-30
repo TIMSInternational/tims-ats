@@ -322,6 +322,24 @@ public sealed class PlatformOrganizationsCreateFixture : IAsyncLifetime
         return rows;
     }
 
+    public async Task<IReadOnlyList<(string Slug, string Module, string Action, string Scope)>> ReadRoleGrantsAsync(
+        Guid organizationId, string? connectionString = null)
+    {
+        await using var connection = await OpenAsync(connectionString);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT r.slug,p.module,p.action,rp.scope FROM roles r
+            JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id
+            WHERE r.organization_id=@org ORDER BY r.slug,p.module,p.action
+            """;
+        command.Parameters.AddWithValue("org", organizationId);
+        var rows = new List<(string, string, string, string)>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            rows.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+        return rows;
+    }
+
     public async Task<SubscriptionRow?> ReadSubscriptionAsync(Guid organizationId, string? connectionString = null)
     {
         await using var connection = await OpenAsync(connectionString);
@@ -509,7 +527,7 @@ public sealed class PlatformOrganizationsCreateFixture : IAsyncLifetime
         return (long)(await command.ExecuteScalarAsync())!;
     }
 
-    /// <summary><c>role_permissions</c> rows, globally. The create path must never write one.</summary>
+    /// <summary><c>role_permissions</c> rows, globally.</summary>
     public async Task<long> CountRolePermissionsAsync(string? connectionString = null)
     {
         await using var connection = await OpenAsync(connectionString);
@@ -656,15 +674,19 @@ public sealed class PlatformOrganizationsCreateFixture : IAsyncLifetime
             role_id uuid NOT NULL REFERENCES roles (id)
         );
 
-        -- Schema-only, and it exists for ONE assertion. The TS creates a "Super Administrador" role with no
-        -- permissions and no members; three comments in this slice say so. Without this table the
-        -- role_permissions half of that claim is untestable BY CONSTRUCTION, so a future "improvement" that
-        -- grants the role a permission — the most natural edit anyone will ever make to this code, since the
-        -- role as written is useless — would diverge from TS with the whole suite green.
+        CREATE TABLE permissions (
+            id uuid PRIMARY KEY,
+            module text NOT NULL,
+            action text NOT NULL,
+            description text,
+            CONSTRAINT permissions_module_action_key UNIQUE (module, action)
+        );
         CREATE TABLE role_permissions (
             id uuid PRIMARY KEY,
             role_id uuid NOT NULL REFERENCES roles (id) ON DELETE CASCADE,
-            permission_id uuid NOT NULL
+            permission_id uuid NOT NULL REFERENCES permissions (id),
+            scope text NOT NULL,
+            CONSTRAINT role_permissions_role_id_permission_id_key UNIQUE (role_id, permission_id)
         );
         """;
 
@@ -800,6 +822,7 @@ public sealed class PlatformOrganizationsCreateFixture : IAsyncLifetime
         """
         GRANT SELECT, INSERT, UPDATE, DELETE ON organizations, companies, business_units, teams, roles,
             subscriptions, org_entitlements TO app_tenant;
+        GRANT SELECT, INSERT ON permissions, role_permissions TO app_tenant;
         GRANT SELECT ON plan_modules, modules, plans, users TO app_tenant;
 
         ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
@@ -831,6 +854,14 @@ public sealed class PlatformOrganizationsCreateFixture : IAsyncLifetime
         CREATE POLICY tenant_isolation ON roles
             USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
             WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+
+        ALTER TABLE role_permissions ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE role_permissions FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON role_permissions
+            USING (EXISTS (SELECT 1 FROM roles par WHERE par.id = role_permissions.role_id
+                AND par.organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid))
+            WITH CHECK (EXISTS (SELECT 1 FROM roles par WHERE par.id = role_permissions.role_id
+                AND par.organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid));
 
         ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
         ALTER TABLE subscriptions FORCE ROW LEVEL SECURITY;

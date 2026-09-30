@@ -16,6 +16,7 @@ import { CandidateTimeline } from './candidate-timeline';
 import { RiskFlags } from './risk-flags';
 import { CvParseCard } from './cv-parse-card';
 import { ScreenCandidateCard } from './screen-candidate-card';
+import { AssignAssessmentModal } from './assign-assessment-modal';
 
 const TABS = [
   'tabProfile', 'tabApplications', 'tabAssessments', 'tabInterviews',
@@ -52,6 +53,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const { id } = use(params);
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>('tabProfile');
+  const [showAssignAssessment, setShowAssignAssessment] = useState(false);
 
   const candidate = trpc.candidate.getById.useQuery({ id });
   const timeline = trpc.candidate.getTimeline.useQuery({ candidateId: id });
@@ -187,6 +189,11 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
           <span className="text-sm font-medium text-[#1F114C]">{c.firstName} {c.lastName}</span>
         </div>
+        {c.applications.some((application) => application.status === 'active') && (
+          <button type="button" onClick={() => setShowAssignAssessment(true)} className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white">
+            {t.assessments.assignAssessment}
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -214,6 +221,13 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
         {renderActiveTab()}
       </div>
+      {showAssignAssessment && (
+        <AssignAssessmentModal
+          candidateId={id}
+          applications={c.applications.filter((application) => application.status === 'active')}
+          onClose={() => setShowAssignAssessment(false)}
+        />
+      )}
     </div>
   );
 }

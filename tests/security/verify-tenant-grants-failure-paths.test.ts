@@ -44,7 +44,7 @@
  * stripped from the child environment, and the one URL supplied points at a closed loopback port.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -178,5 +178,25 @@ describe('verify-tenant-grants.ts — exit 2 means DID NOT RUN, never a pass', (
       expect(code, `${c.name}: expected exit 2`).toBe(2);
       expect(out, `${c.name}: must not claim success`).not.toMatch(/✓/);
     }
+  });
+});
+
+describe('verify-tenant-grants.ts — #292: TLS refusal and no role assumption', () => {
+  it('refuses a remote URL without sslmode=verify-full, and never prints the URL', () => {
+    const url = 'postgresql://ci_readonly:S3cretPw9@db.example.invalid:5432/postgres?sslmode=prefer';
+    const { code, out } = run(makeCwd('tls-prefer', ONE_MODEL), { DIRECT_URL: url });
+    expect(code, out).toBe(2);
+    expect(out).toMatch(/verify-full/);
+    expect(out).not.toMatch(/S3cretPw9|example\.invalid/);
+  });
+
+  it('issues no SET ROLE — it reads ACLs, so the CI credential needs no app_tenant membership', () => {
+    // Previously the check did `SET ROLE app_tenant`, which forced ci_readonly to be a MEMBER of a role
+    // holding tenant DML. A regression to that would re-open the finding; the ACL query replaces it.
+    const src = readFileSync(SCRIPT, 'utf8');
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toMatch(/SET\s+(LOCAL\s+)?ROLE/i);
+    expect(code).not.toMatch(/role_table_grants/);
+    expect(code).toMatch(/aclexplode\(coalesce\(c\.relacl, acldefault\('r', c\.relowner\)\)\)/);
   });
 });

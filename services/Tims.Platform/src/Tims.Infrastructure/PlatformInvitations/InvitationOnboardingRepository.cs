@@ -13,19 +13,20 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
         await using var connection = await source.DataSource.OpenConnectionAsync(ct);
         await using var command = new NpgsqlCommand("""
             SELECT i.id,i.email,i.organization_id,o.name,
-              CASE WHEN i.type::text='org_admin' THEN 'super_admin' ELSE i.role_slug END,
+              CASE WHEN i.type::text='org_admin' THEN 'super_admin' ELSE COALESCE(i.role_slug,@default_role) END,
               i.status::text,i.expires_at,
               EXISTS(SELECT 1 FROM auth.users a WHERE lower(a.email)=lower(i.email)),
               EXISTS(SELECT 1 FROM audit_logs l WHERE l.organization_id=i.organization_id
                 AND l.entity_id=i.id::text AND l.action='invitation_account_completed')
             FROM platform_invitations i JOIN organizations o ON o.id=i.organization_id
             WHERE i.token=@token AND o.is_active AND o.deleted_at IS NULL
-              AND ((i.type::text='user' AND i.role_slug IS NULL) OR EXISTS(SELECT 1 FROM roles r
+              AND EXISTS(SELECT 1 FROM roles r
                 WHERE r.organization_id=i.organization_id AND r.is_active
                   AND r.slug=ANY(@staff_roles)
-                  AND r.slug=CASE WHEN i.type::text='org_admin' THEN 'super_admin' ELSE i.role_slug END))
+                  AND r.slug=CASE WHEN i.type::text='org_admin' THEN 'super_admin' ELSE COALESCE(i.role_slug,@default_role) END)
             """, connection);
         command.Parameters.AddWithValue("token", token);
+        command.Parameters.AddWithValue("default_role", RoleSlugs.DefaultStaffRole);
         command.Parameters.AddWithValue("staff_roles", RoleSlugs.AssignableStaffRoles.ToArray());
         await using var reader = await command.ExecuteReaderAsync(ct);
         return await reader.ReadAsync(ct) ? Read(reader) : null;
@@ -52,7 +53,7 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
         string kind;
         await using (var command = new NpgsqlCommand("""
             SELECT i.id,i.email,i.organization_id,o.name,
-              CASE WHEN i.type::text='org_admin' THEN 'super_admin' ELSE i.role_slug END,
+              CASE WHEN i.type::text='org_admin' THEN 'super_admin' ELSE COALESCE(i.role_slug,@default_role) END,
               i.status::text,i.expires_at,true,false,i.type::text
             FROM platform_invitations i JOIN organizations o ON o.id=i.organization_id
             WHERE i.token=@token AND o.is_active AND o.deleted_at IS NULL
@@ -60,6 +61,7 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("token", token);
+            command.Parameters.AddWithValue("default_role", RoleSlugs.DefaultStaffRole);
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct)) return false;
             invitation = Read(reader);
@@ -70,20 +72,16 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             invitation.ExpiresAt <= DateTime.UtcNow ||
             !string.Equals(invitation.Email, identity.Email, StringComparison.OrdinalIgnoreCase)) return false;
 
-        var roleSlug = kind == "org_admin" ? "super_admin" : invitation.RoleSlug;
-        if (roleSlug is not null && !RoleSlugs.AssignableStaffRoles.Contains(roleSlug, StringComparer.Ordinal))
+        var roleSlug = kind == "org_admin" ? "super_admin" : invitation.RoleSlug ?? RoleSlugs.DefaultStaffRole;
+        if (!RoleSlugs.AssignableStaffRoles.Contains(roleSlug, StringComparer.Ordinal))
             return false;
-        Guid? roleId = null;
-        if (roleSlug is not null)
-        {
-            await using var role = new NpgsqlCommand("""
-                SELECT id FROM roles WHERE organization_id=@org AND slug=@slug AND is_active FOR SHARE
-                """, connection, transaction);
-            role.Parameters.AddWithValue("org", invitation.OrganizationId);
-            role.Parameters.AddWithValue("slug", roleSlug);
-            roleId = await role.ExecuteScalarAsync(ct) as Guid?;
-            if (roleId is null) return false;
-        }
+        await using var role = new NpgsqlCommand("""
+            SELECT id FROM roles WHERE organization_id=@org AND slug=@slug AND is_active FOR SHARE
+            """, connection, transaction);
+        role.Parameters.AddWithValue("org", invitation.OrganizationId);
+        role.Parameters.AddWithValue("slug", roleSlug);
+        var roleId = await role.ExecuteScalarAsync(ct) as Guid?;
+        if (roleId is null) return false;
 
         Guid userId;
         var exists = false;
@@ -127,15 +125,12 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             previous.Parameters.AddWithValue("invitation", invitation.Id.ToString());
             previous.Parameters.AddWithValue("actor", userId);
             if (await previous.ExecuteScalarAsync(ct) is not true) return false;
-            if (roleId is not null)
-            {
-                await using var retainedRole = new NpgsqlCommand(
-                    "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id=@user AND role_id=@role)",
-                    connection, transaction);
-                retainedRole.Parameters.AddWithValue("user", userId);
-                retainedRole.Parameters.AddWithValue("role", roleId.Value);
-                if (await retainedRole.ExecuteScalarAsync(ct) is not true) return false;
-            }
+            await using var retainedRole = new NpgsqlCommand(
+                "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id=@user AND role_id=@role)",
+                connection, transaction);
+            retainedRole.Parameters.AddWithValue("user", userId);
+            retainedRole.Parameters.AddWithValue("role", roleId.Value);
+            if (await retainedRole.ExecuteScalarAsync(ct) is not true) return false;
             await transaction.CommitAsync(ct);
             return true;
         }
@@ -162,12 +157,11 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             await insert.ExecuteNonQueryAsync(ct);
         }
 
-        if (roleId is not null)
+        await using (var assign = new NpgsqlCommand("""
+            INSERT INTO user_roles(id,user_id,role_id) VALUES(@id,@user,@role)
+            ON CONFLICT(user_id,role_id) DO NOTHING
+            """, connection, transaction))
         {
-            await using var assign = new NpgsqlCommand("""
-                INSERT INTO user_roles(id,user_id,role_id) VALUES(@id,@user,@role)
-                ON CONFLICT(user_id,role_id) DO NOTHING
-                """, connection, transaction);
             assign.Parameters.AddWithValue("id", Guid.NewGuid());
             assign.Parameters.AddWithValue("user", userId);
             assign.Parameters.AddWithValue("role", roleId.Value);
