@@ -249,12 +249,17 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
   await openOffer(requester);
   if (PENDING.peopleDirectory.merged) {
     // #304 replaces the approver <select> with a server-searched people picker.
-    // The app header has its own 'Buscar...' box; the picker lives in the page's main region.
-    await requester.getByRole('main').getByPlaceholder('Buscar...').fill(approverName.split(' ')[0]);
-    await requester
+    // Scope BOTH the search box and the result to the page's main region: the app header has its own
+    // 'Buscar...' box, and the sidebar's account button is also named after the signed-in user — so when
+    // the approver IS the requester (the main-only path) an unscoped `.first()` clicks the sidebar user
+    // menu instead of the picker row (CI run 36749791674), leaving 'Solicitar aprobación' disabled.
+    const main = requester.getByRole('main');
+    await main.getByPlaceholder('Buscar...').fill(approverName.split(' ')[0]);
+    await main
       .getByRole('button', { name: new RegExp(approverName) })
       .first()
       .click();
+    await expect(main.getByRole('button', { name: 'Solicitar aprobación' })).toBeEnabled();
   } else {
     await requester.getByLabel('Aprobador').selectOption({ label: approverName });
   }
