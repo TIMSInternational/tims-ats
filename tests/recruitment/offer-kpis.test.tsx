@@ -57,7 +57,7 @@ describe('OfferKpis', () => {
     expect(card(en.offers.kpiActive)).toHaveTextContent(en.offers.activeOffers);
     expect(card(en.offers.kpiAcceptance)).toHaveTextContent('50%');
     expect(card(en.offers.kpiAcceptance)).toHaveTextContent(en.offers.ofSentOrResolved);
-    expect(card(en.offers.kpiAvgSalary)).toHaveTextContent('$1,000.00');
+    expect(card(en.offers.kpiAvgSalary)).toHaveTextContent(new RegExp(`USD\\s1\\.000 / ${en.offers.perYear}`));
     expect(card(en.offers.kpiAvgSalary)).toHaveTextContent(en.offers.avgOfAccepted);
     expect(card(en.offers.kpiPending)).toHaveTextContent('1');
     expect(card(en.offers.kpiPending)).toHaveTextContent(en.offers.pendingYourApproval);

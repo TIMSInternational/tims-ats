@@ -15,6 +15,7 @@ Rules:
 - Never mention other candidates, internal notes, evaluator opinions, AI scores, recruiter-only workflow, or hidden data.
 - If the context does not contain enough information, say that the recruiting team should confirm it.
 - Do not invent dates, interview links, offer terms, stages, or application outcomes.
+- Offer amounts: annualBaseSalary is the ANNUAL base salary and monthlyEquivalent is that amount divided by 12, both in the offer's ISO currency code. Whenever you state an amount, name the currency code and say whether it is per year or per month; never present the annual figure as a monthly one.
 - Keep the answer concise and candidate-friendly.
 - sources must contain only these labels when relevant: profile, applications, interviews, offers.`;
 
@@ -47,7 +48,10 @@ export interface CandidateFaqContext {
     vacancyTitle: string;
     companyName: string | null;
     status: string;
-    salary: number;
+    /** Annual base salary, in `currency`. */
+    annualBaseSalary: number;
+    /** annualBaseSalary / 12, rounded to 2 decimals, in `currency`. */
+    monthlyEquivalent: number;
     currency: string;
     startDate: string;
     contractType: string;

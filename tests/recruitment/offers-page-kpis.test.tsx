@@ -86,7 +86,7 @@ describe('Offers page KPIs', () => {
     // active = sent + pending_approval; acceptance = 2 accepted / 4 sent-or-resolved; avg = (100+300)/2
     expect(card(en.offers.kpiActive)).toHaveTextContent('2');
     expect(card(en.offers.kpiAcceptance)).toHaveTextContent('50%');
-    expect(card(en.offers.kpiAvgSalary)).toHaveTextContent('$200.00');
+    expect(card(en.offers.kpiAvgSalary)).toHaveTextContent(new RegExp(`USD\\s200 / ${en.offers.perYear}`));
     expect(card(en.offers.kpiPending)).toHaveTextContent('1');
     expect(screen.queryByText(en.offers.kpiIncomplete)).not.toBeInTheDocument();
   });
