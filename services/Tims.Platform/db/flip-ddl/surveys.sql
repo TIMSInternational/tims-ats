@@ -2,7 +2,7 @@
 -- Regenerate: node scripts/db/extract-table-ddl.mjs surveys survey_responses
 --
 -- Tables: survey_responses, surveys
--- Source: packages/db/baseline/prod-public-schema.sql (captured 2026-08-04T17:30:30Z, server 17.6)
+-- Source: packages/db/baseline/prod-public-schema.sql (captured 2026-09-29T00:09:44Z, server 17.6)
 --
 -- WHY THIS FILE EXISTS (issue #128, runbook §0 P8)
 -- Deleting a Prisma model during an ownership flip can remove the only executable definition of a
@@ -123,8 +123,20 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_readonly') THEN
+    GRANT SELECT ON TABLE public.survey_responses TO ci_readonly;
+  END IF;
+END $$;
+
+DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
     GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.surveys TO app_tenant;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_readonly') THEN
+    GRANT SELECT ON TABLE public.surveys TO ci_readonly;
   END IF;
 END $$;
 

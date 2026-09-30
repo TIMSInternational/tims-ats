@@ -78,6 +78,6 @@ describe('course detail enrollment scoping (codex)', () => {
   it('getCourseById scopes the embedded enrollments', () => {
     const src = readFileSync(join(ROOT, 'packages/api/src/routers/learning.ts'), 'utf8');
     const block = blockAt(src, 'getCourseById:');
-    expect(block).toMatch(/enrollments:\s*\{\s*where:\s*enrollScope/);
+    expect(block).toMatch(/enrollments:\s*\{\s*where:\s*\{\s*AND:\s*\[\{\s*organizationId:\s*ctx\.user\.organizationId\s*\},\s*enrollScope/);
   });
 });

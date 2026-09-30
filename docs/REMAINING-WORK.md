@@ -858,6 +858,10 @@ Honest-hybrid pass: real metric where data exists + cheap; honest `N/D`/`EmptySt
 
 ---
 
+## Learning beta implementation — 2026-09-28
+
+- **2026-09-28 learning beta refresh (implemented, awaiting deploy):** a tenant with zero courses/enrollments was shown hardcoded growth, gap reduction, learning paths, pre/post-test results, team progress and AI recommendations. The dashboard now displays only API-backed counts and real path/course names, with an honest empty state. Course and path creation are wired to tenant-checked writes, and enrollment validates both course and user organization membership. Learning KPI caches are invalidated on writes. Export, gap analytics, team reporting, and AI recommendations still require real data contracts and implementation before a full Learning beta.
+
 ## Remaining — blocked on user / product decisions
 
 | Owner        | Task                                                                                                                                              |

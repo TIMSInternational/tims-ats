@@ -57,14 +57,6 @@ function getFitColor(score: number): string {
   return 'bg-red-500';
 }
 
-function deriveFitScore(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
-  }
-  return 40 + Math.abs(hash % 55);
-}
-
 function formatRelativeTime(dateStr: Date | string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const days = Math.floor(diff / 86400000);
@@ -147,15 +139,14 @@ export function TalentPoolTable({
         {/* Empty */}
         {!isLoading && candidates.length === 0 && (
           <div className="py-16 text-center text-[13px] text-[#8B8B8B]">
-            No se encontraron candidatos
+            {tp.noCandidatesFound}
           </div>
         )}
 
         {/* Rows */}
         {!isLoading &&
           candidates.map((c, idx) => {
-            const fitScore = c.fitScores[0]?.overallScore ?? deriveFitScore(c.id);
-            const fitColor = getFitColor(fitScore);
+            const fitScore = c.fitScores[0]?.overallScore ?? null;
             const poolStyle = POOL_BADGE_STYLES[c.poolType] ?? 'bg-gray-50 text-gray-600';
             const lastDate = c.updatedAt || c.createdAt;
             const subtitle = [c.currentTitle, c.currentCompany].filter(Boolean).join(' — ');
@@ -180,9 +171,13 @@ export function TalentPoolTable({
                   </div>
                 </div>
                 <div className="w-[100px] text-center">
-                  <span className={`${fitColor} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
-                    {fitScore}
-                  </span>
+                  {fitScore === null ? (
+                    <span className="text-[11px] text-[#8B8B8B]">—</span>
+                  ) : (
+                    <span className={`${getFitColor(fitScore)} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
+                      {Math.round(fitScore)}
+                    </span>
+                  )}
                 </div>
                 <div className="w-[120px]">
                   <span className={`text-[10px] ${poolStyle} px-2 py-0.5 rounded-full`}>{c.poolType}</span>

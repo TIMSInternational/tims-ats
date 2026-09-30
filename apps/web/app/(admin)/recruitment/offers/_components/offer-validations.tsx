@@ -4,6 +4,7 @@ import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate } from '../../../../../lib/format-utils';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
+import { useCan } from '../../../../../lib/permissions';
 
 interface Validation {
   id: string;
@@ -27,6 +28,7 @@ interface OfferValidationsProps {
   offerId: string;
   validations: Validation[];
   legalChecks: LegalCheck[];
+  readOnly?: boolean;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -41,17 +43,27 @@ const TYPE_LABELS: Record<string, string> = {
 function ValidationItem({ validation }: { validation: Validation }) {
   const { t } = useI18n();
   const isPassed = validation.status === 'passed';
+  const isWaived = validation.status === 'waived';
+  const isFailed = validation.status === 'failed';
   const isPending = validation.status === 'pending';
   const isInReview = validation.status === 'in_review' || validation.status === 'in_progress';
 
   const bgCls = isPassed
     ? 'bg-green-50 border-green-200'
+    : isFailed
+      ? 'bg-red-50 border-red-200'
+      : isWaived
+        ? 'bg-blue-50 border-blue-200'
     : isInReview
       ? 'bg-amber-50 border-amber-200'
       : 'bg-[#F6F6F6] border-[#EDEDED]';
 
   const iconCls = isPassed
     ? 'bg-green-500'
+    : isFailed
+      ? 'bg-red-500'
+      : isWaived
+        ? 'bg-blue-500'
     : isInReview
       ? 'bg-amber-500'
       : 'bg-[#EDEDED]';
@@ -59,9 +71,13 @@ function ValidationItem({ validation }: { validation: Validation }) {
   return (
     <div className={`flex items-start gap-3 p-3 rounded-lg border ${bgCls} mb-2`}>
       <div className={`w-6 h-6 rounded-full ${iconCls} flex items-center justify-center shrink-0 mt-0.5`}>
-        {isPassed ? (
+        {isPassed || isWaived ? (
           <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
             <path d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+        ) : isFailed ? (
+          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path d="M6 6l12 12M18 6L6 18" />
           </svg>
         ) : isInReview ? (
           <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -88,9 +104,10 @@ function ValidationItem({ validation }: { validation: Validation }) {
             {validation.isBlocking ? t.offers.blocking : t.offers.nonBlocking}
           </span>
         </div>
-        {isPassed && validation.completedAt && (
-          <p className="text-[10px] text-green-600 mt-0.5">
-            {t.offers.completed} — {formatDate(validation.completedAt)}
+        {(isPassed || isWaived || isFailed) && (
+          <p className={`text-[10px] mt-0.5 ${isFailed ? 'text-red-700' : isWaived ? 'text-blue-700' : 'text-green-600'}`}>
+            {isPassed ? t.offers.completed : isWaived ? t.offers.waived : t.offers.failed}
+            {validation.completedAt && ` — ${formatDate(validation.completedAt)}`}
             {validation.completedByUser && ` — ${validation.completedByUser.firstName} ${validation.completedByUser.lastName}`}
           </p>
         )}
@@ -113,11 +130,14 @@ function ValidationItem({ validation }: { validation: Validation }) {
 function LegalCheckItem({
   check,
   offerId,
+  readOnly,
 }: {
   check: LegalCheck;
   offerId: string;
+  readOnly: boolean;
 }) {
   const { t } = useI18n();
+  const can = useCan();
   const utils = trpc.useUtils();
   const updateCheck = trpc.offer.updateLegalCheck.useMutation({
     onSuccess: () => {
@@ -128,8 +148,10 @@ function LegalCheckItem({
   });
 
   return (
-    <div
-      className="flex items-center gap-2 cursor-pointer"
+    <button
+      type="button"
+      disabled={readOnly || !can('offer', 'update') || updateCheck.isPending}
+      className="flex items-center gap-2 text-left disabled:cursor-default disabled:opacity-75"
       onClick={() => updateCheck.mutate({ id: check.id, completed: !check.completed })}
     >
       {check.completed ? (
@@ -144,14 +166,14 @@ function LegalCheckItem({
       <span className={`text-[11px] ${check.completed ? 'text-[#333]' : 'text-[#8B8B8B]'}`}>
         {check.checkName}
       </span>
-    </div>
+    </button>
   );
 }
 
-export function OfferValidations({ offerId, validations, legalChecks }: OfferValidationsProps) {
+export function OfferValidations({ offerId, validations, legalChecks, readOnly = false }: OfferValidationsProps) {
   const { t } = useI18n();
 
-  const completedValidations = validations.filter((v) => v.status === 'passed').length;
+  const completedValidations = validations.filter((v) => v.status === 'passed' || v.status === 'waived').length;
   const totalValidations = validations.length;
   const completedLegal = legalChecks.filter((c) => c.completed).length;
   const totalLegal = legalChecks.length;
@@ -171,7 +193,7 @@ export function OfferValidations({ offerId, validations, legalChecks }: OfferVal
         ))}
         {validations.length === 0 && (
           <p className="text-[12px] text-[#8B8B8B] text-center py-4">
-            No hay validaciones configuradas para esta oferta
+            {t.offers.noValidationsConfigured}
           </p>
         )}
       </div>
@@ -187,7 +209,7 @@ export function OfferValidations({ offerId, validations, legalChecks }: OfferVal
           </div>
           <div className="space-y-1.5">
             {legalChecks.map((check) => (
-              <LegalCheckItem key={check.id} check={check} offerId={offerId} />
+              <LegalCheckItem key={check.id} check={check} offerId={offerId} readOnly={readOnly} />
             ))}
           </div>
           <p className="text-[10px] text-[#8B8B8B] mt-3 pt-3 border-t border-[#F0F0F0]">

@@ -9,6 +9,8 @@ namespace Tims.Domain.Identity;
 /// </summary>
 public static class RoleSlugs
 {
+    public const string DefaultStaffRole = "employee";
+
     public static readonly IReadOnlyList<string> AssignableStaffRoles = new[]
     {
         "super_admin", "hr_admin", "hrbp", "recruiter", "leader", "committee", "employee",

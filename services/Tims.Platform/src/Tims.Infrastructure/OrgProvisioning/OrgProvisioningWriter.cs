@@ -21,7 +21,7 @@ public sealed record OrgDefaultsIds(Guid CompanyId, Guid BusinessUnitId, Guid Te
 /// scope for any C# slice, and which is why these tables can never reach <c>efcore[]</c>: the TS writer
 /// cannot be retired.</para>
 ///
-/// <para>The complete seven-table setup is shared through <see cref="OrganizationBundleWriter"/>.
+/// <para>The complete organization setup is shared through <see cref="OrganizationBundleWriter"/>.
 /// Organization invitations use it in the same transaction as their pending invitation and creation audit.</para>
 ///
 /// <para><b>A static class in Infrastructure, not an Application port.</b> It operates on an EF

@@ -61,7 +61,7 @@ export function OfferKpis({
       <KpiCard
         label={t.offers.kpiAcceptance}
         value={`${acceptanceRate}%`}
-        subtitle={t.offers.avgOfAccepted}
+        subtitle={t.offers.ofSentOrResolved}
         icon={
           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="m4.5 12.75 6 6 9-13.5" />

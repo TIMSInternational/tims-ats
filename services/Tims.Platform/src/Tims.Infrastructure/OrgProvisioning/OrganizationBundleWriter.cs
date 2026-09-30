@@ -4,7 +4,7 @@ using Tims.Application.PlatformOrganizations;
 
 namespace Tims.Infrastructure.OrgProvisioning;
 
-/// <summary>The organization, default hierarchy, entitlements, admin role and subscription.
+/// <summary>The organization, default hierarchy, entitlements, scoped roles and subscription.
 /// Requires the caller's transaction; never commits. Shared by direct creation and invitations.</summary>
 public static class OrganizationBundleWriter
 {
@@ -21,16 +21,7 @@ public static class OrganizationBundleWriter
             """, ct);
         await OrgProvisioningWriter.ProvisionDefaultsAsync(db, organizationId, name, now, ct);
         await OrgProvisioningWriter.ProvisionEntitlementsAsync(db, organizationId, now, ct);
-        db.Set<RoleWriteEntity>().Add(new RoleWriteEntity
-        {
-            Id = Guid.NewGuid(),
-            OrganizationId = organizationId,
-            Name = "Super Administrador",
-            Slug = "super_admin",
-            IsSystem = true,
-            UpdatedAt = now,
-        });
-        await db.SaveChangesAsync(ct);
+        await RoleAccessProvisioner.ProvisionAsync(db, organizationId, now, ct);
         var status = PlatformOrganizationsCreateUseCase.ResolveSubscriptionStatus(plan);
         var trial = PlatformOrganizationsCreateUseCase.ResolveTrialEndsAt(plan, now);
         var trialText = trial is null ? null : Timestamp(trial.Value);
