@@ -57,6 +57,8 @@ vi.mock('@tims/db', () => ({
     user: { findMany: vi.fn(async () => []) },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
+  // The public token procedures enter an explicit unscoped scope (signingTokenProcedure).
+  runUnscoped: (_reason: string, fn: () => unknown) => fn(),
 }));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
