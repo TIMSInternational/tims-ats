@@ -51,8 +51,3 @@ export interface Credentials {
   email: string;
   password: string;
 }
-
-/** The seeded platform owner's LOCAL auth credentials (random per bring-up). */
-export function ownerCredentials(stack: Stack = readStack()): Credentials {
-  return JSON.parse(readFileSync(stack.ownerCredsFile, 'utf8')) as Credentials;
-}

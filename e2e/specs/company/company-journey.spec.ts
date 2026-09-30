@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { ownerCredentials } from '../../lib/stack';
+import { provisionRunOwner, runOwnerCredentials } from '../../lib/owner';
+import { readStack } from '../../lib/stack';
 import { newJourney, saveJourney, type JourneyState } from '../../lib/journey';
 import { newPersona, signIn, closePersona, type Persona } from '../../lib/persona';
 import { waitForMail, linkContaining } from '../../lib/mail';
@@ -26,6 +27,8 @@ const TEAM = 'Logística';
 test.beforeAll(async ({ browser }, testInfo) => {
   j = newJourney(testInfo.retry);
   saveJourney(j);
+  // Precondition, not under test: this attempt's own platform owner (lib/owner.ts explains why).
+  await provisionRunOwner(readStack(), j.runId);
   owner = await newPersona(browser);
   admin = await newPersona(browser);
   recruiter = await newPersona(browser);
@@ -66,7 +69,7 @@ async function acceptInvitation(page: Page, who: JourneyState['admin']): Promise
 
 test('platform owner creates the company', async () => {
   const { page } = owner;
-  await signIn(page, ownerCredentials());
+  await signIn(page, runOwnerCredentials(j.runId));
   await page.goto('/platform/organizations');
   await page.getByRole('button', { name: /nueva organizaci[oó]n/i }).click();
   const form = page.locator('form').filter({ has: page.getByPlaceholder('constructora-bolivar') });

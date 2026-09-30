@@ -29,6 +29,16 @@ Ports (fixed, chosen not to clash with the Supabase CLI defaults or the manual `
 app `https://localhost:3543`, API `https://localhost:7543`, Supabase `55321`/`55322`,
 LocalStack `4577`.
 
+**Rate limits and rapid reruns.** The app's real rate limiters stay on. Two of them matter here:
+
+- The tRPC limiter is per user (100 queries/min). Every run — and every retry attempt — therefore
+  provisions its own platform owner (`lib/owner.ts`); all other personas are created per run anyway.
+- The C# limiter keys unauthenticated calls on the trusted client IP, which only Vercel supplies
+  (`x-real-ip`); locally every invitation-setup call (preview/register/complete — 9 per run) lands in
+  one shared `anonymous` bucket of 30 mutations/min. A single run (and a CI retry) fits; **starting a
+  fourth run within the same minute fails an invitation acceptance with a 429.** Wait a minute
+  between rapid local reruns.
+
 ## What the stack is (scripts/e2e/up.sh)
 
 Supabase CLI (auth + Postgres) → the committed **production schema baseline** + `seed.ts` +

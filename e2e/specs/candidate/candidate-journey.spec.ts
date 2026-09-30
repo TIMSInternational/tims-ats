@@ -229,6 +229,9 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
     await requester.getByLabel('Aprobador').selectOption({ label: approverName });
   }
   await requester.getByRole('button', { name: 'Solicitar aprobación' }).click();
+  // Wait for the request to land (the offer leaves Borrador) before anyone navigates away —
+  // otherwise a fast navigation can abort the mutation (seen when requester and approver are one page).
+  await expect(requester.getByText('Pendiente', { exact: true }).first()).toBeVisible();
   await openOffer(approverPage);
   const approved = approverPage.getByText('Aprobada', { exact: true });
   await expect(approved).toHaveCount(0);
