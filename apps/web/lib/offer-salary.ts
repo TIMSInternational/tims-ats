@@ -1,8 +1,8 @@
 /**
  * Offer salary semantics — single source of truth for the web app.
  *
- * `Offer.salary` is stored as an ANNUAL base salary (the letter, KPIs and the
- * approval chain all read it that way). Vacancies, however, store a range per
+ * `Offer.salary` is stored as an ANNUAL base salary (the letter, the signing page,
+ * the candidate portal and the KPIs all read it that way). Vacancies, however, store a range per
  * `salary.period` ('monthly' | 'yearly'). The create form therefore captures
  * amount + period and converts explicitly with `toAnnualSalary`, and every
  * display shows the currency CODE, a localized amount and the period.
@@ -11,6 +11,9 @@
 export type SalaryPeriod = 'monthly' | 'yearly';
 
 export const MONTHS_PER_YEAR = 12;
+
+/** Mirrors the API cap on `offer.create` / `offer.update` (packages/api/src/routers/offer/crud.ts). */
+export const MAX_OFFER_ANNUAL_SALARY = 1_000_000_000_000;
 
 const ZERO_DECIMAL = new Set(['COP', 'CLP', 'JPY', 'KRW', 'PYG', 'VND']);
 

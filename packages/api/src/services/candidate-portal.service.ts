@@ -86,7 +86,10 @@ export function buildCandidateFaqContext(
         vacancyTitle: offer.vacancy.title,
         companyName: offer.vacancy.company?.name ?? null,
         status: offer.status,
-        salary: offer.salary,
+        // Offer.salary is an ANNUAL base salary; label it and give the monthly figure so the model never
+        // has to guess the unit.
+        annualBaseSalary: offer.salary,
+        monthlyEquivalent: Math.round((offer.salary / 12) * 100) / 100,
         currency: offer.currency,
         startDate: offer.startDate.toISOString(),
         contractType: offer.contractType,

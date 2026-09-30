@@ -9,6 +9,7 @@ import type { CandidateDetail } from '../../../../../lib/trpc-types';
 import {
   annualToPeriod,
   formatMoneyCode,
+  MAX_OFFER_ANNUAL_SALARY,
   parseVacancySalary,
   toAnnualSalary,
   vacancyMidpointIn,
@@ -47,7 +48,9 @@ export function CreateOfferModal({
   const referenceAmount = referenceCurrency ? vacancyMidpointIn(vacancyRange, period) : null;
   const placeholderAmount = referenceCurrency === currency ? referenceAmount : null;
   const salaryValue = Number(salary);
-  const isSalaryValid = salary.trim() !== '' && Number.isFinite(salaryValue) && salaryValue > 0;
+  const maxInPeriod = annualToPeriod(MAX_OFFER_ANNUAL_SALARY, period);
+  const isSalaryValid =
+    salary.trim() !== '' && Number.isFinite(salaryValue) && salaryValue > 0 && salaryValue <= maxInPeriod;
   const annualSalary = isSalaryValid ? toAnnualSalary(salaryValue, period) : null;
   const isValid = !!application && annualSalary !== null && !!startDate && !!contractType.trim();
 
@@ -57,10 +60,10 @@ export function CreateOfferModal({
     if (id !== applicationId) setSalary('');
     setApplicationId(id);
     const range = parseVacancySalary(applications.find((item) => item.id === id)?.vacancy.salary);
-    if (range) {
-      setPeriod(range.period);
-      if (range.currency) setCurrency(range.currency);
-    }
+    // A vacancy without salary data must not inherit the previous vacancy's period/currency —
+    // fall back to the form defaults (monthly / COP).
+    setPeriod(range?.period ?? 'monthly');
+    setCurrency(range?.currency ?? 'COP');
   };
 
   const handleCreate = async () => {
@@ -112,6 +115,7 @@ export function CreateOfferModal({
             <input
               type="number"
               min="1"
+              max={maxInPeriod}
               step="0.01"
               value={salary}
               placeholder={placeholderAmount !== null ? String(placeholderAmount) : undefined}

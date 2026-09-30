@@ -68,8 +68,8 @@ describe('candidate FAQ prompt context', () => {
         {
           id: 'offer-1',
           status: 'sent',
-          salary: 100,
-          currency: 'USD',
+          salary: 96_000_000,
+          currency: 'COP',
           startDate: new Date('2026-08-01T00:00:00.000Z'),
           contractType: 'full_time',
           expiresAt: new Date('2999-07-20T00:00:00.000Z'),
@@ -82,6 +82,9 @@ describe('candidate FAQ prompt context', () => {
     const serialized = JSON.stringify(context);
     expect(context.upcomingInterviews[0]?.hasJoinLink).toBe(true);
     expect(context.offers[0]?.signable).toBe(true);
+    // Offer.salary is annual — the model gets an explicit annual label plus the monthly equivalent, never a bare number.
+    expect(context.offers[0]).toMatchObject({ annualBaseSalary: 96_000_000, monthlyEquivalent: 8_000_000, currency: 'COP' });
+    expect(context.offers[0]).not.toHaveProperty('salary');
     expect(serialized).not.toContain('https://video.example/private-room');
     expect(serialized).not.toContain('secret-signing-token');
     expect(serialized).not.toContain('settings');
