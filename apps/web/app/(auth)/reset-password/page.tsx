@@ -52,11 +52,11 @@ function ResetPasswordForm() {
     setError('');
 
     if (password.length < 12 || password.length > 128) {
-      setError('La contrasena debe tener entre 12 y 128 caracteres');
+      setError(t.auth.passwordMinLength);
       return;
     }
     if (password !== confirmPassword) {
-      setError('Las contrasenas no coinciden');
+      setError(t.auth.passwordsDontMatch);
       return;
     }
 

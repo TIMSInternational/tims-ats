@@ -5,9 +5,9 @@ namespace Tims.Infrastructure.Audit;
 
 /// <summary>
 /// See <see cref="ISecurityEventWriter"/>'s doc comment for the full rationale (new sibling to
-/// <see cref="BillingAuditWriter"/>'s implementation, not a replacement). NO <see cref="TenantScope"/>
-/// — the current implementation requires a privileged connection for INSERT under forced RLS.
-/// Callers include resolved staff, platform owners and API keys. Reuses
+/// <see cref="BillingAuditWriter"/>'s implementation, not a replacement). Writes under
+/// <see cref="TenantScope"/> for the event's organization, so forced RLS does not depend on
+/// the connection login holding BYPASSRLS. Callers include resolved staff, platform owners and API keys. Reuses
 /// <see cref="AuditLogEntity"/>/<see cref="AuditLogDbContext"/> verbatim.
 /// </summary>
 public sealed class SecurityEventWriter(AuditLogDbContext db, ILogger<SecurityEventWriter>? logger = null) : ISecurityEventWriter
@@ -25,6 +25,9 @@ public sealed class SecurityEventWriter(AuditLogDbContext db, ILogger<SecurityEv
         timeout.CancelAfter(WriteTimeout);
         try
         {
+            await using var scope = await TenantScope.BeginAsync(
+                _db, securityEvent.OrganizationId, timeout.Token).ConfigureAwait(false);
+
             _db.AuditLogs.Add(new AuditLogEntity
             {
                 Id = Guid.NewGuid(),
@@ -39,6 +42,7 @@ public sealed class SecurityEventWriter(AuditLogDbContext db, ILogger<SecurityEv
             });
 
             await _db.SaveChangesAsync(timeout.Token).ConfigureAwait(false);
+            await scope.CommitAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

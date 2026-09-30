@@ -149,3 +149,43 @@ describe('verify-rls-isolation.ts — exit 2 means DID NOT RUN, never a pass', (
     }
   });
 });
+
+/**
+ * #292 tier-3 findings: refusals that must happen BEFORE any connection, so they are testable offline.
+ * The live paths (probe role missing, coverage floor, policy-role-scope, probe-org positive control) were
+ * verified end-to-end on a throwaway loopback PG17 cluster; the probe loop's control flow is pinned
+ * offline in tests/security/rls-probe.test.ts.
+ */
+describe('verify-rls-isolation.ts — pre-connection refusals (#292)', () => {
+  const REMOTE_REQUIRE = 'postgresql://ci_readonly:S3cretPw9@db.example.invalid:5432/postgres?sslmode=require';
+
+  it('exits 2 on a malformed RLS_PROBE_ORG_ID, before connecting', () => {
+    const { code, out } = run(makeCwd('bad-uuid'), { DIRECT_URL: DEAD_URL, RLS_PROBE_ORG_ID: 'not-a-uuid' });
+    expect(code, out).toBe(2);
+    expect(out).toMatch(/RLS_PROBE_ORG_ID must be a valid organization UUID/);
+    expect(out).not.toMatch(/ECONNREFUSED/); // refused before any connection attempt
+  });
+
+  it('exits 2 on a malformed RLS_MIN_PROBED or RLS_PROBE_ROLE', () => {
+    const a = run(makeCwd('bad-floor'), { DIRECT_URL: DEAD_URL, RLS_MIN_PROBED: '-1' });
+    expect(a.code, a.out).toBe(2);
+    expect(a.out).toMatch(/RLS_MIN_PROBED must be a non-negative integer/);
+    const b = run(makeCwd('bad-role'), { DIRECT_URL: DEAD_URL, RLS_PROBE_ROLE: 'x"; DROP' });
+    expect(b.code, b.out).toBe(2);
+    expect(b.out).toMatch(/RLS_PROBE_ROLE must be a plain lower-case role name/);
+  });
+
+  it('refuses a remote URL without sslmode=verify-full, and never prints the URL', () => {
+    for (const url of [REMOTE_REQUIRE, REMOTE_REQUIRE.replace('require', 'verify-ca'), REMOTE_REQUIRE.split('?')[0]]) {
+      const { code, out } = run(makeCwd(`tls-${code_(url)}`), { DIRECT_URL: url });
+      expect(code, out).toBe(2);
+      expect(out).toMatch(/verify-full/);
+      expect(out).not.toMatch(/S3cretPw9|example\.invalid|ci_readonly:/);
+      expect(out).not.toMatch(/✓/);
+    }
+  });
+});
+
+function code_(url: string): string {
+  return url.includes('?') ? url.split('sslmode=')[1] : 'absent';
+}
