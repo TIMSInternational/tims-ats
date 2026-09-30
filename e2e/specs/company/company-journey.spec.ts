@@ -144,8 +144,10 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   const { page } = admin;
   await page.goto('/settings/business-units');
   // Scope to the page's main region (the app header/sidebar carry their own buttons and the signed-in
-  // user's name). On a company with no units yet, 'Nueva unidad' renders twice inside main — the top-bar
-  // action and the empty state's call to action — so take the first.
+  // user's name), and then to OUR unit card and team row: a new company is provisioned with a default
+  // 'General' unit whose 'Equipo General' team sorts first, so a page-wide `.first()` 'Nuevo equipo' /
+  // 'Asignar líder' lands on the wrong unit/team (CI run 36753117719). With no units at all, 'Nueva unidad'
+  // would render twice (top bar + empty state), hence `.first()` on that one only.
   const main = page.getByRole('main');
   await main.getByRole('button', { name: 'Nueva unidad' }).first().click();
   const unit = page.getByRole('dialog', { name: 'Nueva unidad' });
@@ -153,13 +155,16 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   await unit.getByRole('button', { name: 'Guardar' }).click();
   await expect(unit).toBeHidden();
 
-  await main.getByRole('button', { name: 'Nuevo equipo' }).first().click();
+  // Each business unit card is a <section aria-label={unit.name}>.
+  const unitCard = main.getByRole('region', { name: UNIT, exact: true });
+  await unitCard.getByRole('button', { name: 'Nuevo equipo' }).click();
   const team = page.getByRole('dialog', { name: 'Nuevo equipo' });
   await team.getByLabel('Nombre', { exact: true }).fill(TEAM);
   await team.getByRole('button', { name: 'Guardar' }).click();
   await expect(team).toBeHidden();
 
-  await main.getByRole('button', { name: 'Asignar líder' }).first().click();
+  const teamRow = unitCard.getByRole('listitem').filter({ hasText: TEAM });
+  await teamRow.getByRole('button', { name: 'Asignar líder' }).click();
   const picker = page.getByRole('dialog', { name: 'Asignar líder' });
   await picker.getByPlaceholder('Buscar por nombre o email...').fill(j.leader.firstName);
   await picker
@@ -168,7 +173,7 @@ test('company admin sets up a business unit whose team is led by the hiring lead
     .click();
   await expect(picker).toBeHidden();
   // The team row now reads "Líder: <name>".
-  await expect(main.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first()).toBeVisible();
+  await expect(teamRow.getByText(`${j.leader.firstName} ${j.leader.lastName}`)).toBeVisible();
 });
 
 test('recruiter creates a vacancy with the wizard (no AI)', async () => {
