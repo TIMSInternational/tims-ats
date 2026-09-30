@@ -72,8 +72,10 @@ export default function ForgotPasswordPage() {
               </div>
             )}
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">Email</label>
+              <label htmlFor="forgot-email" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.email}</label>
               <input
+                id="forgot-email"
+                autoComplete="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
