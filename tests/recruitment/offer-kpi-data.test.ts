@@ -53,6 +53,19 @@ describe('offer KPIs', () => {
     expect(kpis.avgSalaryCurrency).toBeNull();
   });
 
+  it('groups currencies case- and whitespace-insensitively', () => {
+    const kpis = computeOfferKpis(
+      [
+        { status: 'accepted', salary: 90_000_000, currency: 'cop' },
+        { status: 'accepted', salary: 96_000_000, currency: ' COP' },
+        { status: 'accepted', salary: 102_000_000, currency: 'COP' },
+      ],
+      3,
+    );
+
+    expect(kpis).toMatchObject({ avgSalary: 96_000_000, avgSalaryCurrency: 'COP' });
+  });
+
   it('does not present a partial first page as organization-wide metrics', () => {
     const kpis = computeOfferKpis([{ status: 'accepted', salary: 100, currency: 'USD' }], 101);
 

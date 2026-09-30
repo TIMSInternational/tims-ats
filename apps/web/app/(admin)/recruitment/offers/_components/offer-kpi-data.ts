@@ -13,7 +13,11 @@ export type OfferKpiData = {
   complete: boolean;
 };
 
-/** Only present organization-wide metrics when the entire offer list was loaded. */
+/**
+ * KPIs over every offer the viewer can see. offer.list is scope-filtered, so these are the caller's
+ * visible offers, not necessarily the whole organization. Metrics are only presented when the full
+ * visible list was loaded (items.length === total); otherwise every value is null and complete=false.
+ */
 export function computeOfferKpis(items: readonly OfferForKpi[], total: number): OfferKpiData {
   if (items.length !== total) {
     return {
@@ -28,7 +32,8 @@ export function computeOfferKpis(items: readonly OfferForKpi[], total: number): 
 
   const accepted = items.filter((offer) => offer.status === 'accepted');
   const sentOrResolved = items.filter((offer) => ['sent', 'accepted', 'declined', 'expired'].includes(offer.status));
-  const acceptedCurrencies = new Set(accepted.map((offer) => offer.currency ?? 'USD'));
+  // Group on the normalized code so legacy 'cop' / ' COP' rows are not treated as a different currency.
+  const acceptedCurrencies = new Set(accepted.map((offer) => (offer.currency ?? 'USD').trim().toUpperCase()));
   const avgSalaryCurrency = acceptedCurrencies.size === 1 ? [...acceptedCurrencies][0] : null;
 
   return {

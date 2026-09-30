@@ -51,7 +51,7 @@ export function OfferKpis({
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <KpiCard
         label={t.offers.kpiActive}
-        value={activeCount ?? 'N/D'}
+        value={activeCount ?? t.offers.notAvailable}
         subtitle={complete ? t.offers.activeOffers : t.offers.kpiIncomplete}
         icon={
           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -62,7 +62,7 @@ export function OfferKpis({
       />
       <KpiCard
         label={t.offers.kpiAcceptance}
-        value={acceptanceRate === null ? 'N/D' : `${acceptanceRate}%`}
+        value={acceptanceRate === null ? t.offers.notAvailable : `${acceptanceRate}%`}
         subtitle={complete ? t.offers.ofSentOrResolved : t.offers.kpiIncomplete}
         icon={
           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -74,7 +74,11 @@ export function OfferKpis({
       />
       <KpiCard
         label={t.offers.kpiAvgSalary}
-        value={avgSalary === null ? 'N/D' : formatCurrency(avgSalary, avgSalaryCurrency ?? 'USD')}
+        value={
+          avgSalary === null || avgSalaryCurrency === null
+            ? t.offers.notAvailable
+            : formatCurrency(avgSalary, avgSalaryCurrency)
+        }
         subtitle={complete ? t.offers.avgOfAccepted : t.offers.kpiIncomplete}
         icon={
           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -85,7 +89,7 @@ export function OfferKpis({
       />
       <KpiCard
         label={t.offers.kpiPending}
-        value={pendingApprovals ?? 'N/D'}
+        value={pendingApprovals ?? t.offers.notAvailable}
         subtitle={complete ? t.offers.pendingYourApproval : t.offers.kpiIncomplete}
         icon={
           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
