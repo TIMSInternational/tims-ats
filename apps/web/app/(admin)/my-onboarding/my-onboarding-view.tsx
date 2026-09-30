@@ -7,16 +7,22 @@ import { MyPlanSummary } from './my-plan-summary';
 import { MyTaskList } from './my-task-list';
 import { MyCheckInList } from './my-check-in-list';
 
-// The own-scoped list also returns plans where the caller is the BUDDY, so the
-// caller's own plan is picked by plan.user.id, never by position.
-const PLAN_LOOKUP_LIMIT = 25;
+// `mine: true` makes the SERVER return only plans where the caller is the hire
+// (without it the own-scoped list also returns plans where the caller is the
+// BUDDY, and a paginated client-side search could miss the caller's own plan).
+// One active plan per hire is enforced server-side, so limit 1 is enough; the
+// user-id match below is kept as a belt-and-braces check.
+const PLAN_LOOKUP_LIMIT = 1;
 
 export function MyOnboardingView() {
   const { t } = useI18n();
   const m = t.myOnboarding;
   const { userId } = usePermissions();
 
-  const plans = trpc.onboarding.list.useQuery({ limit: PLAN_LOOKUP_LIMIT, status: 'active' }, { enabled: !!userId });
+  const plans = trpc.onboarding.list.useQuery(
+    { limit: PLAN_LOOKUP_LIMIT, status: 'active', mine: true },
+    { enabled: !!userId },
+  );
   const ownPlan = plans.data?.plans.find((plan) => plan.user.id === userId);
   const detail = trpc.onboarding.getById.useQuery({ id: ownPlan?.id ?? '' }, { enabled: !!ownPlan });
 

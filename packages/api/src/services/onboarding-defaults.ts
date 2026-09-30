@@ -4,11 +4,15 @@
 // is no per-org template model, so this constant is the single source of truth.
 //
 // `responsible` is the owner role slug (hr | it | manager | buddy | employee —
-// "employee" is the new hire; the personal "Mi Onboarding" view lets the hire
-// toggle only their own tasks). `dueOffsetDays` is relative to the plan's start
+// "employee" is the new hire; an own-scoped caller may toggle only the tasks
+// they own — enforced server-side by onboarding-self-service.ts, not just the UI). `dueOffsetDays` is relative to the plan's start
 // date; `phase` is derived from it so the two can never disagree.
 export const ONBOARDING_TASK_OWNERS = ['hr', 'it', 'manager', 'buddy', 'employee'] as const;
 export type OnboardingTaskOwner = (typeof ONBOARDING_TASK_OWNERS)[number];
+/** The owner slug of tasks the new hire completes themself (enforced server-side, onboarding-self-service.ts). */
+export const NEW_HIRE_TASK_OWNER_SLUG: OnboardingTaskOwner = 'employee';
+/** The owner slug of tasks the plan's buddy completes (enforced server-side, onboarding-self-service.ts). */
+export const BUDDY_TASK_OWNER_SLUG: OnboardingTaskOwner = 'buddy';
 
 type DefaultOnboardingTask = {
   readonly title: string;

@@ -5,17 +5,38 @@ const orgId = '11111111-1111-1111-1111-111111111111';
 const hrId = '22222222-2222-2222-2222-222222222222';
 const hireId = '33333333-3333-3333-3333-333333333333';
 
-const { userCount, planFindFirst, planCreate } = vi.hoisted(() => ({
-  userCount: vi.fn(),
-  planFindFirst: vi.fn(),
-  planCreate: vi.fn(),
-}));
+const { userCount, planFindFirst, planCreate, txExecuteRaw, calls } = vi.hoisted(() => {
+  const calls: string[] = [];
+  return {
+    calls,
+    userCount: vi.fn(),
+    planFindFirst: vi.fn(),
+    planCreate: vi.fn(),
+    txExecuteRaw: vi.fn(),
+  };
+});
 
+// create runs inside runTenantTransaction (advisory lock → check → create); the
+// mock hands the callback a tx whose calls are recorded in order.
 vi.mock('@tims/db', () => ({
-  tenantDb: {
-    user: { count: userCount },
-    onboardingPlan: { findFirst: planFindFirst, create: planCreate },
-  },
+  tenantDb: { user: { count: userCount } },
+  runTenantTransaction: (_org: string, fn: (tx: unknown) => unknown) =>
+    fn({
+      $executeRaw: (strings: TemplateStringsArray, ...values: unknown[]) => {
+        calls.push('lock');
+        return txExecuteRaw(strings.join('?'), ...values);
+      },
+      onboardingPlan: {
+        findFirst: (args: unknown) => {
+          calls.push('findFirst');
+          return planFindFirst(args);
+        },
+        create: (args: unknown) => {
+          calls.push('create');
+          return planCreate(args);
+        },
+      },
+    }),
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
 }));
 vi.mock('../../packages/api/src/access', () => ({
@@ -48,6 +69,7 @@ async function caller() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  calls.length = 0;
   userCount.mockResolvedValue(1);
   planFindFirst.mockResolvedValue(null);
   planCreate.mockResolvedValue({ id: 'plan-1' });
@@ -91,6 +113,17 @@ describe('onboarding.create (manual HR path)', () => {
     expect(data.organizationId).toBe(orgId);
     expect(data.tasks?.create).toEqual(defaultOnboardingTasks(startDate, orgId));
     expect(data.checkIns.create.map((item: { type: string }) => item.type)).toEqual(['day1', 'day30', 'day60']);
+  });
+
+  it('takes a per-(org, hire) advisory lock BEFORE the one-active-plan check (no check-then-act race)', async () => {
+    await (await caller()).onboarding.create({ userId: hireId, startDate: new Date('2026-10-01') });
+    expect(calls).toEqual(['lock', 'findFirst', 'create']);
+    const [sql, key] = txExecuteRaw.mock.calls[0]!;
+    expect(sql).toContain('pg_advisory_xact_lock');
+    expect(key).toBe(`onboarding_plan_active:${orgId}:${hireId}`);
+    expect(planFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: orgId, userId: hireId, status: 'active' } }),
+    );
   });
 
   it('refuses a second active plan for the same hire instead of duplicating tasks', async () => {
