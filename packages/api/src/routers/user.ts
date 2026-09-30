@@ -90,8 +90,10 @@ export const userRouter = router({
       const users = await db.user.findMany({
         where,
         take: limit + 1,
+        // `cursor` is the LAST row the previous page displayed, so skip it. `id` breaks createdAt ties:
+        // Prisma's cursor needs a total order or rows sharing a timestamp can repeat or vanish across pages.
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         // Narrow select — no sensitive fields (supabaseUserId, isPlatformOwner,
         // mfaEnabled, phone, lastLoginAt). `userRoles`/`role` are NOT selected:
         // no known consumer reads them (roleSlug filtering happens via the
@@ -107,11 +109,11 @@ export const userRouter = router({
         },
       });
 
-      let nextCursor: string | undefined;
-      if (users.length > limit) {
-        const nextItem = users.pop();
-        nextCursor = nextItem?.id;
-      }
+      // Fetched limit+1 only to learn whether another page exists. The look-ahead row is dropped and is
+      // NOT the cursor: with `skip: 1` above that would skip it forever (51 members → member 51 never shown).
+      const hasMore = users.length > limit;
+      if (hasMore) users.pop();
+      const nextCursor: string | undefined = hasMore ? users[users.length - 1]?.id : undefined;
 
       return { users, nextCursor };
     }),
