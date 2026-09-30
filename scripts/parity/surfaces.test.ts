@@ -52,7 +52,23 @@ describe('SURFACES', () => {
       'reporting', // re-registered 2026-08-17 (#195) — see 'evaluation360' above.
       'succession', // re-registered 2026-08-17 (#195) — see 'evaluation360' above.
       'team-intel', // re-registered 2026-08-17 (#195) — see 'evaluation360' above.
+      // NEW 2026-09-29 (F8 / PR #307) — the tenant self-serve invitation list, C#-only, registered in the same
+      // PR that deployed it dark.
+      'tenant-invitations',
     ]);
+  });
+
+  it('tenant-invitations registers only the list, C#-only, with a grant-level deny and a granted probe', () => {
+    const s = SURFACES['tenant-invitations'];
+    expect(s.flag).toBe('Platform__TenantInvitationsEnabled');
+    expect(s.probeRole).toBe('hr_admin'); // a real org-wide grant, not super_admin's kernel bypass
+    expect(s.endpoints).toHaveLength(1);
+    const [list] = s.endpoints;
+    expect(list.csharpPath).toBe('/tenant-invitations'); // exact, never a substring match
+    expect(list.tsProcedure).toBeUndefined(); // greenfield C#: no TS twin exists
+    expect(list.globalScope).toBeUndefined(); // per-org rows: RLS Mode B must run
+    expect(list.idScopeKey).toBeUndefined();
+    expect(list.expectedByRole).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 403 });
   });
 
   it('every surface probes with a role it actually grants 200 — the #203 defect class', () => {
