@@ -48,9 +48,17 @@ describe('computeResult', () => {
     expect(result).toEqual({ rawScore: 5, normalizedScore: 100, hasPending: true });
   });
 
-  it('returns 0 normalizedScore (not NaN) when everything is pending', () => {
+  it('returns no score when everything is pending manual review', () => {
     const result = computeResult([{ isCorrect: null, pointsAwarded: null, points: 20 }]);
-    expect(result).toEqual({ rawScore: 0, normalizedScore: 0, hasPending: true });
+    expect(result).toEqual({ rawScore: null, normalizedScore: null, hasPending: true });
+  });
+
+  it('preserves a genuine zero when an automatically graded answer is incorrect', () => {
+    expect(computeResult([{ isCorrect: false, pointsAwarded: 0, points: 5 }])).toEqual({
+      rawScore: 0,
+      normalizedScore: 0,
+      hasPending: false,
+    });
   });
 });
 

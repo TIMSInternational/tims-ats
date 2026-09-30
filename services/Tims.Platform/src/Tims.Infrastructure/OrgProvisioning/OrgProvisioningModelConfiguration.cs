@@ -60,19 +60,6 @@ public static class OrgProvisioningModelConfiguration
             entity.Property(t => t.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
         });
 
-        modelBuilder.Entity<RoleWriteEntity>(entity =>
-        {
-            entity.ToTable("roles");
-            entity.HasKey(r => r.Id);
-            entity.Property(r => r.Id).HasColumnName("id");
-            entity.Property(r => r.OrganizationId).HasColumnName("organization_id");
-            entity.Property(r => r.Name).HasColumnName("name");
-            entity.Property(r => r.Slug).HasColumnName("slug");
-            entity.Property(r => r.IsSystem).HasColumnName("is_system");
-            entity.Property(r => r.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
-            // `description` and `is_active` are never sent by the TS create — left to NULL / the DB default.
-        });
-
         modelBuilder.Entity<OrgEntitlementWriteEntity>(entity =>
         {
             entity.ToTable("org_entitlements");

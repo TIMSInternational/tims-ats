@@ -4,8 +4,8 @@ import { useI18n } from '../../../../../lib/i18n';
 
 const values = [
   {
-    title: 'Evaluacion Cientifica',
-    description: 'Nuestras evaluaciones se basan en metodologias cientificas que identifican el mejor talento de forma objetiva.',
+    titleKey: 'whyWorkScienceTitle',
+    descriptionKey: 'whyWorkScienceDesc',
     bgColor: 'bg-[#F0EEFB]',
     iconColor: 'text-[#1F114C]',
     icon: (
@@ -15,8 +15,8 @@ const values = [
     ),
   },
   {
-    title: 'Proceso Transparente',
-    description: 'Mantente informado en cada etapa del proceso con actualizaciones en tiempo real y comunicacion clara.',
+    titleKey: 'whyWorkTransparentTitle',
+    descriptionKey: 'whyWorkTransparentDesc',
     bgColor: 'bg-[#E8F8F5]',
     iconColor: 'text-[#2A9D8F]',
     icon: (
@@ -26,8 +26,8 @@ const values = [
     ),
   },
   {
-    title: 'Entrevistas Digitales',
-    description: 'Participa en entrevistas desde cualquier lugar con nuestra plataforma de video integrada y flexible.',
+    titleKey: 'whyWorkDigitalTitle',
+    descriptionKey: 'whyWorkDigitalDesc',
     bgColor: 'bg-[#FEE8E7]',
     iconColor: 'text-[#DD0C15]',
     icon: (
@@ -37,8 +37,8 @@ const values = [
     ),
   },
   {
-    title: 'Desarrollo Profesional',
-    description: 'Accede a oportunidades de crecimiento y desarrollo continuo dentro de las mejores empresas.',
+    titleKey: 'whyWorkGrowthTitle',
+    descriptionKey: 'whyWorkGrowthDesc',
     bgColor: 'bg-[#FFF7E6]',
     iconColor: 'text-[#F59E0B]',
     icon: (
@@ -49,7 +49,7 @@ const values = [
       </svg>
     ),
   },
-];
+] as const;
 
 export function WhyWorkSection() {
   const { t } = useI18n();
@@ -62,12 +62,12 @@ export function WhyWorkSection() {
         </p>
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {values.map((v) => (
-            <div key={v.title} className="rounded-xl bg-white p-5 text-center shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <div key={v.titleKey} className="rounded-xl bg-white p-5 text-center shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
               <div className={`mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl ${v.bgColor} ${v.iconColor}`}>
                 {v.icon}
               </div>
-              <h3 className="text-[13px] font-semibold text-[#1F114C]">{v.title}</h3>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-[#585858]">{v.description}</p>
+              <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.portal[v.titleKey]}</h3>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[#585858]">{t.portal[v.descriptionKey]}</p>
             </div>
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { csvRow, getAppUrl } from '@tims/shared';
+import { ASSIGNABLE_STAFF_ROLES, csvRow, getAppUrl } from '@tims/shared';
 import { router, publicProcedure } from '../../trpc';
 import { db, InvitationType, InvitationStatus } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { bulkInviteUsers, resendInvitation } from '../../services/bulk-invitation.service';
 import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
-import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
+import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '../../services/org-provisioning';
 import { renderInvitationEmail } from '../../services/invitation-email';
 
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
@@ -128,9 +128,7 @@ export const invitationsRouter = router({
         await provisionOrgDefaults(tx, org.id, input.organizationName);
         await provisionOrgEntitlements(tx, org.id);
 
-        await tx.role.create({
-          data: { organizationId: org.id, name: 'Super Administrador', slug: 'super_admin', isSystem: true },
-        });
+        await provisionOrgRoles(tx, org.id);
         await tx.subscription.create({
           data: {
             organizationId: org.id,
@@ -174,12 +172,18 @@ export const invitationsRouter = router({
       z.object({
         email: z.string().email().max(255),
         organizationId: z.string().uuid(),
-        roleSlug: z.string().max(50).optional(),
+        roleSlug: z.enum(ASSIGNABLE_STAFF_ROLES).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const org = await db.organization.findUnique({ where: { id: input.organizationId }, select: { name: true } });
-      if (!org) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
+      const org = await db.organization.findUnique({ where: { id: input.organizationId }, select: { name: true, isActive: true, deletedAt: true } });
+      if (!org?.isActive || org.deletedAt) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
+      const roleSlug = input.roleSlug ?? 'employee';
+      const role = await db.role.findFirst({
+        where: { organizationId: input.organizationId, slug: roleSlug, isActive: true },
+        select: { id: true },
+      });
+      if (!role) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Role unavailable for this organization' });
 
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -190,7 +194,7 @@ export const invitationsRouter = router({
           type: InvitationType.user,
           organizationId: input.organizationId,
           organizationName: org.name,
-          roleSlug: input.roleSlug,
+          roleSlug,
           token,
           status: InvitationStatus.sent,
           invitedById: ctx.user.id,
@@ -204,7 +208,7 @@ export const invitationsRouter = router({
       await sendEmail({
         to: input.email,
         subject: `Invitacion para unirte a ${org.name} en TIMS ATS`,
-        html: renderInvitationEmail({ organization: org.name, role: input.roleSlug, url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
+        html: renderInvitationEmail({ organization: org.name, role: roleSlug, url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
       });
 
       return invitation;
@@ -358,7 +362,7 @@ export const invitationsRouter = router({
               email: z.string().email().max(255),
               firstName: z.string().max(100).optional(),
               lastName: z.string().max(100).optional(),
-              roleSlug: z.string().max(50).optional(),
+              roleSlug: z.enum(ASSIGNABLE_STAFF_ROLES).optional(),
             }),
           )
           .min(1)

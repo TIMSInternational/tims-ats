@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useCallback, useState } from 'react';
 import { DailyProvider } from '@daily-co/daily-react';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton } from '../../../../../../components';
@@ -10,6 +10,9 @@ import { VideoArea } from './video-area';
 import { VideoControls } from './video-controls';
 import { ScorecardPanel } from './scorecard-panel';
 import { AutoJoin } from './auto-join';
+import { JoinErrorPanel } from './join-error-panel';
+import { interviewTypeLabel } from './interview-type-label';
+import type { DailyJoinErrorCategory } from './daily-join-error';
 
 function getInitials(name: string): string {
   return name
@@ -34,6 +37,10 @@ export default function InterviewRoomPage({
   // Only fetch video token after interview loads — this also creates the room
   const videoToken = trpc.interview.createVideoRoom.useMutation();
   const [roomData, setRoomData] = useState<{ url: string; token: string } | null>(null);
+  // A failed Daily join used to leave the room on "Conectando..." forever.
+  const [joinError, setJoinError] = useState<DailyJoinErrorCategory | null>(null);
+  const [joinAttempt, setJoinAttempt] = useState(0);
+  const handleJoinError = useCallback((category: DailyJoinErrorCategory) => setJoinError(category), []);
 
   // Join button handler — creates room + gets token
   const handleJoin = async () => {
@@ -46,6 +53,18 @@ export default function InterviewRoomPage({
     }
   };
 
+  // Retry = fresh token (the old one may be the reason it failed) + a remounted AutoJoin.
+  const handleRetryJoin = async () => {
+    try {
+      const result = await videoToken.mutateAsync({ interviewId: id });
+      setRoomData({ url: result.url, token: result.token });
+      setJoinError(null);
+      setJoinAttempt((n) => n + 1);
+    } catch {
+      setJoinError('network');
+    }
+  };
+
   if (interview.isLoading) {
     return <InterviewRoomSkeleton />;
   }
@@ -55,7 +74,7 @@ export default function InterviewRoomPage({
       <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-center">
           <p className="text-white text-[14px] mb-2">{t.interviews.couldNotLoadInterview}</p>
-          <p className="text-white/50 text-[12px]">{interview.error?.message ?? 'Entrevista no encontrada'}</p>
+          <p className="text-white/50 text-[12px]">{interview.error?.message ?? t.interviews.roomInterviewNotFound}</p>
         </div>
       </div>
     );
@@ -72,8 +91,7 @@ export default function InterviewRoomPage({
         <InterviewTopBar
           candidateName={candidateName}
           vacancyTitle={data.vacancy.title}
-          fitScore={87}
-          isRecording={false}
+          isInCall={false}
         />
         <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
           <div className="text-center">
@@ -81,7 +99,7 @@ export default function InterviewRoomPage({
               <span className="text-white text-3xl font-bold">{candidateInitials}</span>
             </div>
             <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
-            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — Entrevista {data.type}</p>
+            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — {t.interviews.roomTypeLabel} {interviewTypeLabel(t, data.type)}</p>
             <button
               onClick={handleJoin}
               disabled={videoToken.isPending}
@@ -90,14 +108,14 @@ export default function InterviewRoomPage({
               {videoToken.isPending ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Conectando...
+                  {t.interviews.roomConnecting}
                 </>
               ) : (
                 <>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                     <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  Unirse a la entrevista
+                  {t.interviews.roomJoin}
                 </>
               )}
             </button>
@@ -111,28 +129,30 @@ export default function InterviewRoomPage({
   }
 
   // In-call view — DailyProvider only renders with valid url + token
+  // avoidEval: load Daily's call-machine bundle via a script tag, which the room
+  // route's CSP in lib/security/csp.ts allows, instead of fetch + Function(),
+  // which would require 'unsafe-eval' in script-src.
   return (
-    <DailyProvider>
-      <AutoJoin url={roomData.url} token={roomData.token} />
+    <DailyProvider dailyConfig={{ avoidEval: true }}>
+      <AutoJoin key={joinAttempt} url={roomData.url} token={roomData.token} onError={handleJoinError} />
       <div className="h-full flex flex-col overflow-hidden">
         <InterviewTopBar
           candidateName={candidateName}
           vacancyTitle={data.vacancy.title}
-          fitScore={87}
-          isRecording
+          isInCall
         />
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           <div className="h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink">
-            <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
-            <VideoControls />
+            {joinError ? (
+              <JoinErrorPanel category={joinError} onRetry={handleRetryJoin} />
+            ) : (
+              <>
+                <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
+                <VideoControls />
+              </>
+            )}
           </div>
-          <ScorecardPanel
-            interviewId={data.id}
-            candidateName={candidateName}
-            candidateInitials={candidateInitials}
-            vacancyTitle={data.vacancy.title}
-            fitScore={87}
-          />
+          <ScorecardPanel interview={data} candidateInitials={candidateInitials} />
         </div>
       </div>
     </DailyProvider>

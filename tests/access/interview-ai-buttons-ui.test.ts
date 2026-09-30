@@ -134,8 +134,14 @@ describe('scorecard-panel — placeholder/mock AI UI removed', () => {
 describe('room page — wires interviewId into the scorecard/AI panel', () => {
   const src = () => read(ROOM_PAGE);
 
-  it('passes interviewId to the ScorecardPanel', () => {
-    expect(src()).toMatch(/interviewId=\{/);
+  // The panel now receives the whole loaded interview (the scorecard form needs
+  // more than the id), so the id reaches the AI panel via `interview.id`.
+  it('passes the loaded interview to the ScorecardPanel', () => {
+    expect(src()).toMatch(/<ScorecardPanel[^>]*\binterview=\{data\}/);
+  });
+
+  it('ScorecardPanel forwards interview.id to the AI panel', () => {
+    expect(read(SCORECARD)).toMatch(/<InterviewAiPanel[^>]*\binterviewId=\{interview\.id\}/);
   });
 });
 

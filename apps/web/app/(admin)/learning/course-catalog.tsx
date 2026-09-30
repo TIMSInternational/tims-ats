@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Skeleton, ErrorState } from '../../../components';
 import { EnrollModal } from './enroll-modal';
 import { useI18n } from '../../../lib/i18n';
+import { formatCourseDuration } from './course-duration';
 
 interface Course {
   id: string;
@@ -143,7 +144,7 @@ export function CourseCatalog({ courses, loading, isError, onRetry, t }: CourseC
                       {tag.label}
                     </span>
                   </div>
-                  <span className="text-[10px] text-[#8B8B8B]">{course.duration}h</span>
+                  <span className="text-[10px] text-[#8B8B8B]">{formatCourseDuration(course.duration)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
