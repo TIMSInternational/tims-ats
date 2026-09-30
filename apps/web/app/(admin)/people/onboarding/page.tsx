@@ -221,7 +221,7 @@ export default function OnboardingPage() {
                         <td className="py-2 px-3">{onboardingStatusLabel(t.myOnboarding.labels, checkIn.status)}</td>
                         <td className="py-2 px-3">
                           {checkIn.status === 'pending' && (
-                            <button type="button" onClick={() => setSelectedCheckIn({ id: checkIn.id, label: `${plan.user.firstName} ${plan.user.lastName} — ${checkIn.type}` })} className="font-medium text-[#1F114C] underline">
+                            <button type="button" onClick={() => setSelectedCheckIn({ id: checkIn.id, label: `${plan.user.firstName} ${plan.user.lastName} — ${onboardingCheckInTypeLabel(t.myOnboarding.labels, checkIn.type)}` })} className="font-medium text-[#1F114C] underline">
                               {t.onboarding.completeCheckInTitle}
                             </button>
                           )}
