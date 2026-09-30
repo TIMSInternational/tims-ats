@@ -16,9 +16,10 @@ namespace Tims.IntegrationTests.AssessmentTypes;
 /// <summary>
 /// F13 endpoint matrix over the REAL host + real Postgres (RLS forced, app_tenant): JWT → PrincipalResolver →
 /// PermissionService <c>assessment:create|update</c> → org-scope → TenantScope write + in-transaction audit.
-/// Covers 401 (no/tampered token, and before body validation), 403 (no grant, narrow scope), 400 (bad body),
-/// 404 (dark flag, cross-org id, missing id), 409 (case-insensitive duplicate name), audit rows, and the
-/// create → update → deactivate lifecycle.
+/// Covers 401 (no/tampered token, and before body validation), 403 (no grant, narrow scope — on create, update AND
+/// deactivate), 400 (bad body), 404 (dark flag, cross-org id, missing id), 409 (case-insensitive duplicate of an
+/// ACTIVE name), 200 + suffixed code (a deactivated type's name, an accent variant), the exact response key set,
+/// audit rows, and the create → update → deactivate lifecycle.
 /// </summary>
 [Collection("AssessmentTypeWrite")]
 public sealed class AssessmentTypeWriteEndpointTests(AssessmentTypeWriteFixture fixture)
@@ -95,6 +96,11 @@ public sealed class AssessmentTypeWriteEndpointTests(AssessmentTypeWriteFixture 
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await ReadJson(response);
+        // Exact key set: the web client parses this with a STRICT zod schema (assessment-types.ts), so an added
+        // property (e.g. the unmapped `config` jsonb) is a client-breaking contract change, not a harmless extra.
+        Assert.Equal(
+            ["code", "createdAt", "description", "duration", "id", "isActive", "name", "organizationId", "updatedAt"],
+            body.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
         Assert.Equal("prueba_logica_alfa", body.GetProperty("code").GetString());
         Assert.Equal(AssessmentTypeWriteFixture.OrgA.ToString(), body.GetProperty("organizationId").GetString());
         Assert.True(body.GetProperty("isActive").GetBoolean());
@@ -205,6 +211,66 @@ public sealed class AssessmentTypeWriteEndpointTests(AssessmentTypeWriteFixture 
     }
 
     [Fact]
+    public async Task Create_NameOfDeactivatedType_Is200_WithSuffixedCode()
+    {
+        // "Retirado" is deactivated: its NAME is free again (the UI hides inactive types and there is no reactivate),
+        // but its CODE row still exists, so the new type gets retirado_2.
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Send(client, HttpMethod.Post, Types, new { name = "retirado" },
+            Mint(AssessmentTypeWriteFixture.AdminSub));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await ReadJson(response);
+        Assert.Equal("retirado_2", body.GetProperty("code").GetString());
+        Assert.True(body.GetProperty("isActive").GetBoolean());
+        Assert.False(await _fixture.ScalarAsync<bool>(
+            "SELECT is_active FROM assessment_types WHERE id = @id", ("id", AssessmentTypeWriteFixture.RetiredTypeId)));
+    }
+
+    [Fact]
+    public async Task Create_AccentVariantOfActiveName_Is200_WithSuffixedCode_Not409()
+    {
+        // Documented behaviour (AssessmentTypeWriteUseCase docstring): only a case-insensitive NAME match is a 409.
+        // An accent/punctuation variant is a different name that derives the same base code → suffixed, 200.
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Send(client, HttpMethod.Post, Types, new { name = "Existénte!" },
+            Mint(AssessmentTypeWriteFixture.AdminSub));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("existente_2", (await ReadJson(response)).GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData(null)] // no token
+    [InlineData(AssessmentTypeWriteFixture.ReadOnlySub)] // assessment:read only
+    [InlineData(AssessmentTypeWriteFixture.NarrowSub)] // update @ team: org catalog needs org scope
+    public async Task Deactivate_WithoutOrgScopedUpdateGrant_IsDenied_RowStaysActive(string? sub)
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var before = await _fixture.CountAuditAsync(AssessmentTypeWriteFixture.ExistingTypeId, "assessment_type_deactivated");
+        var response = await Send(client, HttpMethod.Post,
+            $"{Types}/{AssessmentTypeWriteFixture.ExistingTypeId}/deactivate", null, sub is null ? null : Mint(sub));
+        Assert.Equal(sub is null ? HttpStatusCode.Unauthorized : HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await _fixture.ScalarAsync<bool>(
+            "SELECT is_active FROM assessment_types WHERE id = @id", ("id", AssessmentTypeWriteFixture.ExistingTypeId)));
+        Assert.Equal(before, await _fixture.CountAuditAsync(AssessmentTypeWriteFixture.ExistingTypeId, "assessment_type_deactivated"));
+    }
+
+    [Fact]
+    public async Task Update_NarrowScopeCaller_Is403_RowUnchanged()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Send(client, HttpMethod.Patch, $"{Types}/{AssessmentTypeWriteFixture.ExistingTypeId}",
+            new { name = "Renamed by narrow" }, Mint(AssessmentTypeWriteFixture.NarrowSub));
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, await CountTypesNamed("Renamed by narrow"));
+        Assert.Equal("Existente", await _fixture.ScalarAsync<string>(
+            "SELECT name FROM assessment_types WHERE id = @id", ("id", AssessmentTypeWriteFixture.ExistingTypeId)));
+    }
+
+    [Fact]
     public async Task Update_ReadOnlyCaller_Is403()
     {
         await using var factory = EnabledFactory();
@@ -225,7 +291,7 @@ public sealed class AssessmentTypeWriteEndpointTests(AssessmentTypeWriteFixture 
         var created = await ReadJson(await Send(client, HttpMethod.Post, Types, new { name = "Ciclo Beta" }, token));
         var id = Guid.Parse(created.GetProperty("id").GetString()!);
 
-        // Renaming onto another type's name → 409, row unchanged.
+        // Renaming onto another ACTIVE type's name → 409, row unchanged.
         var dup = await Send(client, HttpMethod.Patch, $"{Types}/{id}", new { name = "existente" }, token);
         Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
 

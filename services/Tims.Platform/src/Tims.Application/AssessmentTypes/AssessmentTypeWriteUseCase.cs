@@ -12,8 +12,14 @@ namespace Tims.Application.AssessmentTypes;
 ///
 /// <para>The body parsers are pure and live here so they unit-test without a host: strict object (unknown key → 400),
 /// bounded strings, integer-only duration. The <c>code</c> column (NOT NULL, <c>@@unique([organizationId, code])</c>)
-/// is DERIVED from the name — accent-folded, lower-cased, non-alphanumerics collapsed to <c>_</c> — so two names that
-/// differ only by case/accents/punctuation collide on the unique index and surface as 409.</para>
+/// is DERIVED from the name — accent-folded, lower-cased, non-alphanumerics collapsed to <c>_</c>.</para>
+///
+/// <para><b>What is a duplicate.</b> Only the NAME, compared case-insensitively against the org's ACTIVE types, is a
+/// 409 ("Existente" vs "EXISTENTE"). Names that differ by accents or punctuation ("Lógica" vs "Logica", "A-B" vs
+/// "A B") are DIFFERENT names: they derive the same base code, and <see cref="PickFreeCode"/> suffixes it
+/// (<c>logica_2</c>) → 200. A deactivated type does not reserve its name (there is no reactivate endpoint; one added
+/// later must re-check the name against active types), but it keeps its code, so a new type reusing the name gets a
+/// suffixed code.</para>
 /// </summary>
 public sealed class AssessmentTypeWriteUseCase(IAssessmentTypeWriteRepository repository)
 {

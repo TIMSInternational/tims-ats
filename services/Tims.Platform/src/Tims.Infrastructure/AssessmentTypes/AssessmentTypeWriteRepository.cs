@@ -17,10 +17,20 @@ namespace Tims.Infrastructure.AssessmentTypes;
 /// <para><b>Audit is fail-closed.</b> The type write and its <c>audit_logs</c> row are ONE <c>SaveChanges</c> inside
 /// the scope's transaction; if either fails the scope disposes uncommitted and nothing persists.</para>
 ///
-/// <para><b>Uniqueness.</b> A case-insensitive name clash within the org is a 409. The derived <c>code</c> must also
-/// be unique per org (<c>assessment_types_organization_id_code_key</c>); a code clash WITHOUT a name clash (e.g. a
-/// type was renamed but kept its code) gets a numeric suffix instead of a spurious 409. A concurrent insert that
-/// still trips the unique index surfaces as 23505 → 409.</para>
+/// <para><b>Uniqueness.</b> A case-insensitive name clash with another ACTIVE type in the org is a 409; deactivated
+/// types do not reserve their name. The derived <c>code</c> must be unique per org across ALL rows, active or not
+/// (<c>assessment_types_organization_id_code_key</c>); a code clash WITHOUT a name clash (an accent/punctuation
+/// variant, a renamed type that kept its code, a deactivated type's name reused) gets a numeric suffix instead of a
+/// spurious 409. A concurrent insert that still trips the code index surfaces as 23505 → 409.</para>
+///
+/// <para><b>Known race — rename.</b> The name check is check-then-act with NO database backstop: there is no unique
+/// index on <c>(organization_id, lower(name))</c>. Two concurrent creates of the same name are caught by the CODE
+/// index (same derived code → one 23505 → 409), but two concurrent RENAMES to the same name (codes are immutable, so
+/// they differ) can both commit. The fix is a partial unique index
+/// <c>ON assessment_types (organization_id, lower(name)) WHERE is_active</c>; it is not added here because the table's
+/// DDL is Prisma-owned and Prisma 6.8 cannot express an expression/partial index (<c>db push</c> would drop it as
+/// drift), and applying it to production first needs a read-only duplicate check nobody on this change can run.
+/// Tracked in docs/architecture/csharp-migration/assessment-type-authoring.md.</para>
 /// </summary>
 public sealed class AssessmentTypeWriteRepository(AssessmentTypeWriteDbContext db) : IAssessmentTypeWriteRepository
 {
@@ -174,7 +184,8 @@ public sealed class AssessmentTypeWriteRepository(AssessmentTypeWriteDbContext d
     {
         var lowered = name.ToLowerInvariant();
         return _db.AssessmentTypes.AnyAsync(
-            t => t.OrganizationId == organizationId && t.Name.ToLower() == lowered && (excludeId == null || t.Id != excludeId),
+            t => t.OrganizationId == organizationId && t.IsActive && t.Name.ToLower() == lowered
+                && (excludeId == null || t.Id != excludeId),
             cancellationToken);
     }
 

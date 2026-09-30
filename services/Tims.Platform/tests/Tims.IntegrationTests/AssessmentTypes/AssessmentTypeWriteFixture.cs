@@ -11,7 +11,8 @@ namespace Tims.IntegrationTests.AssessmentTypes;
 ///
 /// Principals (OrgA unless noted): Admin = assessment create+update @ organization; Narrow = create+update @ team
 /// (fails the org-scope requirement → 403); ReadOnly = assessment read only (→ 403); OrgBAdmin = OrgB admin
-/// (cross-org). Seeded types: OrgA "Existente" (duplicate-name target) and one OrgB type (cross-org target).
+/// (cross-org). Seeded types: OrgA "Existente" (duplicate-name target), OrgA "Retirado" (DEACTIVATED — its name is
+/// free to reuse, its code is not) and one OrgB type (cross-org target).
 /// </summary>
 public sealed class AssessmentTypeWriteFixture : IAsyncLifetime
 {
@@ -20,6 +21,7 @@ public sealed class AssessmentTypeWriteFixture : IAsyncLifetime
     public static readonly Guid AdminId = Guid.Parse("c0000000-0000-0000-0000-000000000001");
     public static readonly Guid ExistingTypeId = Guid.Parse("7a000000-0000-0000-0000-000000000001");
     public static readonly Guid OrgBTypeId = Guid.Parse("7a000000-0000-0000-0000-0000000000b0");
+    public static readonly Guid RetiredTypeId = Guid.Parse("7a000000-0000-0000-0000-000000000002");
 
     public const string AdminSub = "sub-atw-admin";
     public const string NarrowSub = "sub-atw-narrow";
@@ -146,6 +148,7 @@ public sealed class AssessmentTypeWriteFixture : IAsyncLifetime
           ('e0000000-0000-0000-0000-0000000000b0', 'c0000000-0000-0000-0000-0000000000b0', 'a0000000-0000-0000-0000-0000000000b1');
         INSERT INTO assessment_types (id, organization_id, name, code, is_active, updated_at) VALUES
           ('7a000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Existente', 'existente', true, '2026-05-01 00:00:00'),
+          ('7a000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Retirado', 'retirado', false, '2026-05-01 00:00:00'),
           ('7a000000-0000-0000-0000-0000000000b0', '22222222-2222-2222-2222-222222222222', 'Tipo OrgB', 'tipo_orgb', true, '2026-05-01 00:00:00');
         """;
 }
