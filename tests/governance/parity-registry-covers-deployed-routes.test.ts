@@ -257,6 +257,15 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'TENANT PEOPLE DIRECTORY LANDED DARK 2026-09-29 (TenantPeopleDirectoryEnabled). A new C#-only picker read with no ' +
+      'tRPC twin to diff against (it replaces user.list for recruiter pickers). It has real-PostgreSQL integration coverage ' +
+      'under production-shaped RLS, including cross-tenant isolation, drifted foreign-role rows and denied roles, but the ' +
+      'shared remote harness has no interview/vacancy/offer create grants or approver fixtures yet. Register fixture-first ' +
+      'before enabling the flag in production.',
+    routes: ['GET /tenant/people/assignable'],
+  },
+  {
+    reason:
       'INFRA / DIAGNOSTIC, not a domain surface. `/` and the two whoami routes are liveness and identity echoes; ' +
       '/require-permission and /require-org-scope (Program.cs:1225, :1265) are the permission-kernel probes the C# ' +
       'auth integration tests drive. None reads tenant data, so none carries a parity, RLS or RBAC obligation.',
@@ -532,7 +541,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         (POST /assessments/types, PATCH /assessments/types/{id}, POST …/{id}/deactivate) — landed
     //         dark AND registered in the same change (write-surfaces.ts `assessment-types`), so the
     //         allowlist is unchanged.
-    expect(deployed.size).toBe(189);
+    //         189 → 190 (PR #304): the dark tenant people directory (GET /tenant/people/assignable),
+    //         allowlisted above.
+    expect(deployed.size).toBe(190);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -600,7 +611,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
     // 86 → 89: the three invitation-setup operations are capability scoped before tenant membership.
     // 89 → 93: tenant invitations' four unregistrable routes (roles catalogue + three emailing/mutating POSTs).
-    expect(allowlistNormalised.length).toBe(93);
+    // 93 → 94 (PR #304): the dark tenant people directory, pending a remote grant/approver fixture.
+    expect(allowlistNormalised.length).toBe(94);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -618,6 +630,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // per-role rows instead of a grant fixture. Folding it into the fit-engine group would state the
     // wrong prerequisite for both.
     // 12 → 13 on 2026-09-29: tenant invitations' group (a Mode-B-inexpressible catalogue + email-sending writes).
-    expect(UNREGISTERED_ALLOWLIST.length, 'the thirteen documented gap categories').toBe(13);
+    // 13 → 14 (PR #304): the tenant people directory is a C#-only picker read with no tRPC twin.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the fourteen documented gap categories').toBe(14);
   });
 });

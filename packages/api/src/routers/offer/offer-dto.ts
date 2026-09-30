@@ -7,6 +7,8 @@
  * user — who could then forge the candidate's acceptance/decline. Strip
  * `signingToken` from `settings` before returning an offer to staff, while
  * preserving the other legitimate settings (e.g. signatureName, acceptedAt).
+ * `signingTokenRecipient` (the address the live token was issued to) is token
+ * bookkeeping, not an offer field, so it is stripped too; the DTO shape is unchanged.
  */
 export function redactOfferSettings<T extends { settings?: unknown }>(offer: T): T;
 export function redactOfferSettings<T extends { settings?: unknown }>(offer: T | null): T | null;
@@ -14,7 +16,7 @@ export function redactOfferSettings<T extends { settings?: unknown }>(offer: T |
   if (!offer) return offer;
   const { settings } = offer;
   if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
-    const { signingToken: _omit, ...rest } = settings as Record<string, unknown>;
+    const { signingToken: _omit, signingTokenRecipient: _omitRecipient, ...rest } = settings as Record<string, unknown>;
     return { ...offer, settings: rest };
   }
   return offer;

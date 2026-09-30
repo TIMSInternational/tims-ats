@@ -2611,6 +2611,7 @@
     "offerEmailUnconfirmed": "No se confirmó el envío del correo",
     "offerEmailAcceptedDetail": "El proveedor aceptó el mensaje. Confirma la recepción con el candidato; esto todavía no garantiza la entrega al buzón.",
     "offerEmailUnconfirmedDetail": "El proveedor no confirmó el envío. Puedes compartir el enlace por un canal seguro o cerrar y volver a intentar; el mismo enlace se conservará.",
+    "offerEmailUnconfirmedNoLinkDetail": "El proveedor no confirmó el envío. Cierra y vuelve a intentar, o pide a un administrador de RR. HH. que comparta el enlace de firma.",
     "shareWithCandidate": "Comparte este enlace con el candidato",
     "signingLinkLabel": "Enlace de firma",
     "emailSendComingSoon": "Envío por email: próximamente",
@@ -3906,6 +3907,12 @@
     "errorAssessmentNotReady": "Esta evaluación aún no tiene preguntas disponibles. Comunícate con el equipo que te la asignó.",
     "errorGeneric": "Algo salió mal. Intenta de nuevo.",
     "backToDashboard": "Volver al panel"
+  },
+  "assignablePeople": {
+    "loadError": "No pudimos cargar las personas disponibles. Intenta de nuevo.",
+    "forbidden": "No tienes permiso para ver las personas disponibles para esta acción.",
+    "noEligibleApprovers": "Ninguna persona de tu organización tiene permiso para aprobar. Pide a un administrador que asigne ese permiso.",
+    "noEvaluators": "No se encontraron personas en tu organización."
   },
   "interviewRoom": {
     "tabsLabel": "Panel de la entrevista",

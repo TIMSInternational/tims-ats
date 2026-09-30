@@ -1,14 +1,71 @@
 import { z } from 'zod';
-import { router, permissionProcedure } from '../../trpc';
+import { router, permissionProcedure, anyPermissionProcedure } from '../../trpc';
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import { scopeWhereFor, assertScoped } from '../../access';
+import { scopeWhereFor, assertScoped, buildAccessForUser, createAnchorLoader } from '../../access';
+import { filterStaffRoleSlugs } from '@tims/shared';
 import { redactOfferSettings } from './offer-dto';
 
+// Every approver must be an active member of this organization holding offer:approve; otherwise the offer
+// would sit in pending_approval forever (same failure vacancy.submitForApproval closed in #120). Reject
+// the whole submission if any id fails.
+async function assertOfferApprovers(organizationId: string, offerId: string, approverIds: string[]) {
+  const unique = [...new Set(approverIds)];
+  const approvers = await db.user.findMany({
+    where: { id: { in: unique }, organizationId, isActive: true, deletedAt: null },
+    select: { id: true, userRoles: { select: { role: { select: { slug: true } } } } },
+  });
+  const byId = new Map(approvers.map((u) => [u.id, u]));
+  for (const approverId of unique) {
+    const approver = byId.get(approverId);
+    if (!approver) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Uno o mas aprobadores no son validos (inactivo, de otra organizacion, o inexistente)',
+      });
+    }
+    const roles = filterStaffRoleSlugs(approver.userRoles.map((ur) => ur.role.slug));
+    const access = await buildAccessForUser(
+      { id: approver.id, organizationId, roles, isPlatformOwner: false },
+      'offer',
+      'approve',
+    );
+    if (!access.allowed) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Uno o mas aprobadores no tienen permiso para aprobar ofertas',
+      });
+    }
+    // offer:approve can be scope-limited (leaders hold it at TEAM scope), and approve() re-checks THIS
+    // offer via assertScoped against the approver's own access. Probe it now with the APPROVER's access,
+    // not the caller's, so an out-of-scope approver is rejected here instead of parking the offer in
+    // pending_approval with someone who can never act (mirrors vacancy approvals, #120 round 2).
+    const approverAccessContext = {
+      allowed: true as const,
+      scope: access.scope,
+      roles: access.roles,
+      anchors: createAnchorLoader(organizationId, approverId),
+    };
+    try {
+      await assertScoped('offer', offerId, approverAccessContext, approverId, organizationId);
+    } catch (err) {
+      // assertScoped signals scope denial with NOT_FOUND; anything else is a real failure and propagates.
+      if (err instanceof TRPCError && err.code === 'NOT_FOUND') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Uno o mas aprobadores no tienen esta oferta dentro de su alcance',
+        });
+      }
+      throw err;
+    }
+  }
+}
+
 export const offerApprovalsRouter = router({
-  // 9.5 — Submit offer for approval
-  submitForApproval: permissionProcedure('offer', 'update')
+  // 9.5 — Submit offer for approval. offer:create (recruiters) suffices: the body only moves a DRAFT into
+  // the approval chain and never edits terms, which stays offer:update.
+  submitForApproval: anyPermissionProcedure('offer', ['update', 'create'])
     .input(
       z.object({
         id: z.string().uuid(),
@@ -36,6 +93,8 @@ export const offerApprovalsRouter = router({
           message: 'Solo se pueden enviar a aprobacion ofertas en estado borrador',
         });
       }
+
+      await assertOfferApprovers(ctx.user.organizationId, input.id, input.approverIds);
 
       // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — `db` is
       // `tenantDb`, so the outer wrapper never made these writes atomic.

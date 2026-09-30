@@ -54,7 +54,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
     onMutate: () => setSigningError(null),
     onSuccess: (data) => {
-      setSigningUrl(window.location.origin + data.signingUrl);
+      setSigningUrl(data.signingUrl ? window.location.origin + data.signingUrl : '');
       setEmailDeliveryAccepted(data.emailDeliveryAccepted);
       setRecipientEmail(data.candidateEmail);
       setShowSigningModal(true);
@@ -129,7 +129,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         onViewLetter={() => setShowLetterModal(true)}
         onSendForSigning={() => generateSigningLink.mutate({ offerId })}
         isGeneratingLink={generateSigningLink.isPending}
-        canSendForSigning={o.status === 'approved' || o.status === 'sent'}
+        // Re-sending a SENT offer re-emails the live bearer link, which the server allows only to offer:update.
+        canSendForSigning={o.status === 'approved' || (o.status === 'sent' && can('offer', 'update'))}
       />
       {signingError && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">{signingError}</p>

@@ -261,6 +261,12 @@ public sealed class PlatformOptions
     public bool TenantAuditReadEnabled { get; init; }
 
     /// <summary>
+    /// Tenant assignable-people directory for pickers (GET /tenant/people/assignable). Dark by default;
+    /// the frontend keeps calling tRPC user.list until NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP is set.
+    /// </summary>
+    public bool TenantPeopleDirectoryEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 11c: when true, the C# FX-derived READ surface is mapped and live — the FIVE deferred
     /// compensation FX reads (<c>GET /compensation/band-distribution</c>, <c>/compensation/pay-equity</c>,
     /// <c>/compensation/simulate-adjustment</c>, <c>/compensation/total-comp-breakdown</c>,

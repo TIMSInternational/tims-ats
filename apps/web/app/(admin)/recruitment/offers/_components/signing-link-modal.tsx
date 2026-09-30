@@ -5,6 +5,7 @@ import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
 
 interface SigningLinkModalProps {
+  /** Empty when the caller may not see the bearer link (offer:create without offer:update). */
   signingUrl: string;
   emailDeliveryAccepted: boolean;
   recipientEmail: string;
@@ -53,7 +54,7 @@ export function SigningLinkModal({ signingUrl, emailDeliveryAccepted, recipientE
 
         {/* Content */}
         <div className="px-6 py-5 space-y-4">
-          <div>
+          {signingUrl && (<div>
             <label className="block text-xs text-[#8B8B8B] mb-1.5">{t.offers.signingLinkLabel}</label>
             <div className="flex gap-2">
               <input
@@ -83,11 +84,15 @@ export function SigningLinkModal({ signingUrl, emailDeliveryAccepted, recipientE
                 )}
               </button>
             </div>
-          </div>
+          </div>)}
 
           <div className={`${emailDeliveryAccepted ? 'bg-green-50' : 'bg-amber-50'} rounded-xl p-4`}>
             <p className="text-[12px] text-[#585858] leading-relaxed">
-              {emailDeliveryAccepted ? t.offers.offerEmailAcceptedDetail : t.offers.offerEmailUnconfirmedDetail}
+              {emailDeliveryAccepted
+                ? t.offers.offerEmailAcceptedDetail
+                : signingUrl
+                  ? t.offers.offerEmailUnconfirmedDetail
+                  : t.offers.offerEmailUnconfirmedNoLinkDetail}
             </p>
             <p className="text-[11px] text-[#585858] mt-2">{recipientEmail}</p>
           </div>
