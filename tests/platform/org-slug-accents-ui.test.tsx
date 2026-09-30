@@ -39,6 +39,17 @@ describe('organization slug fields', () => {
     expect(slugValue(view.container)).toBe('logistica-andina');
   });
 
+  it('"Nueva Organización" folds accents in a hand-typed slug and keeps a trailing hyphen', () => {
+    const view = render(<CreateOrgModal onClose={vi.fn()} onSuccess={vi.fn()} />, { wrapper });
+    const slugInput = [...view.container.querySelectorAll('input')].find((input) =>
+      input.className.includes('font-mono'),
+    )!;
+    fireEvent.change(slugInput, { target: { value: 'Compañía Ñandú' } });
+    expect(slugValue(view.container)).toBe('compania-nandu');
+    fireEvent.change(slugInput, { target: { value: 'mi-' } });
+    expect(slugValue(view.container)).toBe('mi-');
+  });
+
   it('"Invitar Organización" derives logistica from Logística and folds hand-typed accents', () => {
     const view = render(<InviteOrgModal onClose={vi.fn()} onSuccess={vi.fn()} />, { wrapper });
     const nameInput = view.getAllByRole('textbox')[1];
