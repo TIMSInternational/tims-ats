@@ -165,7 +165,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
     // ── R4: the role (organizations.ts:204-206) ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task CreateAsync_creates_one_system_role_with_no_permissions_and_no_members()
+    public async Task CreateAsync_provisions_staff_roles_and_scoped_permissions()
     {
         var input = NewInput();
         await using var db = fixture.NewContext(fixture.ConnectionString);
@@ -173,25 +173,24 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
 
         var orgId = Guid.Parse((await CreateAsync(repository, input)).Row!.Id);
 
-        var role = Assert.Single(await fixture.ReadRolesAsync(orgId));
+        var roles = await fixture.ReadRolesAsync(orgId);
+        Assert.Equal(9, roles.Count);
+        var role = Assert.Single(roles, r => r.Slug == "super_admin");
         Assert.Equal("Super Administrador", role.Name);
         Assert.Equal("super_admin", role.Slug);
         Assert.True(role.IsSystem);
-        // `description` is never sent and `is_active` keeps its DB default.
-        Assert.Null(role.Description);
+        Assert.NotNull(role.Description);
         Assert.True(role.IsActive);
         Assert.Equal(Now, role.UpdatedAt);
-
-        // A "Super Administrador" that grants nothing to nobody: the TS writes no role_permissions and no
-        // user_roles rows. Reproduced deliberately, and BOTH halves are asserted — the role_permissions half
-        // is the one a future "improvement" would break, since a system role with zero permissions is the
-        // most obviously wrong-looking thing in this port and is nevertheless exactly what TS writes.
-        //
-        // Global counts, and that is the strongest form available: the create context maps NEITHER table, so
-        // no code path in this slice can increment either. A non-zero count here means something started
-        // writing them, which is the whole question.
+        Assert.Contains(roles, r => r.Slug == "employee" && r.IsActive);
+        Assert.Contains(roles, r => r.Slug == "recruiter" && r.IsActive);
+        var grants = await fixture.ReadRoleGrantsAsync(orgId);
+        Assert.Contains(grants, g => g == ("employee", "onboarding", "read", "own"));
+        Assert.Contains(grants, g => g == ("recruiter", "vacancy", "publish", "organization"));
+        Assert.Contains(grants, g => g == ("super_admin", "offer", "approve", "organization"));
+        Assert.DoesNotContain(grants, g => g.Slug == "candidate");
         Assert.Equal(0, await CountAsync("SELECT count(*) FROM user_roles"));
-        Assert.Equal(0, await fixture.CountRolePermissionsAsync());
+        Assert.True(await fixture.CountRolePermissionsAsync() >= grants.Count);
     }
 
     // ── R5 / R6: the subscription (organizations.ts:208-215) ─────────────────────────────────────
@@ -373,7 +372,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         var stored = await ReadBySlugAsync(input.Slug, connectionString);
         Assert.NotNull(stored);
         var counts = await fixture.CountAllProvisionedRowsAsync(stored!.Value, connectionString);
-        Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 1, 1, 7), counts);
+        Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 9, 1, 7), counts);
 
         var audit = Assert.Single(await fixture.ReadAuditRowsAsync(stored.Value, connectionString));
         Assert.Equal("org_created", audit.Action);
@@ -399,7 +398,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
 
             var orgId = Guid.Parse(result.Row!.Id);
             var counts = await fixture.CountAllProvisionedRowsAsync(orgId);
-            Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 1, 1, 0), counts);
+            Assert.Equal(new PlatformOrganizationsCreateFixture.ProvisionedCounts(1, 1, 1, 1, 9, 1, 0), counts);
             Assert.Single(await fixture.ReadAuditRowsAsync(orgId));
         }
         finally
@@ -512,7 +511,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.Equal(before.Companies + 1, after.Companies);
         Assert.Equal(before.BusinessUnits + 1, after.BusinessUnits);
         Assert.Equal(before.Teams + 1, after.Teams);
-        Assert.Equal(before.Roles + 1, after.Roles);
+        Assert.Equal(before.Roles + 9, after.Roles);
         Assert.Equal(before.Subscriptions + 1, after.Subscriptions);
         Assert.Equal(before.Entitlements + PlatformOrganizationsCreateFixture.AtsBaseModules.Length, after.Entitlements);
         Assert.Single(await fixture.ReadAuditRowsAsync(orgId));

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { CandidateAvatar, StatusBadge } from '../../../../components';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
 import { useI18n } from '../../../../lib/i18n';
+import { getPipelineFit } from '../../../../lib/pipeline-fit';
 
 interface PipelineTableViewProps {
   stages: PipelineStageWithApps[];
@@ -23,12 +24,6 @@ function daysAgo(date: Date | string): number {
 function hoursAgo(date: Date | string): number {
   const d = typeof date === 'string' ? new Date(date) : date;
   return Math.max(0, (Date.now() - d.getTime()) / 3600000);
-}
-
-function deriveFitScore(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  return 40 + Math.abs(hash % 55);
 }
 
 function fitColor(score: number) {
@@ -72,7 +67,8 @@ interface FlatApp {
   stageOrder: number;
   stageId: string;
   slaHours: number | null;
-  fitScore: number;
+  fitScore: number | null;
+  isPartialFit: boolean;
   days: number;
   isOverdue: boolean;
 }
@@ -99,7 +95,7 @@ export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
         // SLA overdue is time-in-CURRENT-stage, not time since the original
         // application, and uses precise hours so sub-24h SLAs can trigger same-day.
         const hoursInStage = hoursAgo(app.enteredStageAt);
-        const fit = deriveFitScore(app.id);
+        const fit = getPipelineFit(app.candidate);
         result.push({
           id: app.id,
           candidateId: c.id,
@@ -114,7 +110,8 @@ export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
           stageOrder: stage.order,
           stageId: stage.id,
           slaHours: stage.slaHours,
-          fitScore: fit,
+          fitScore: fit?.score ?? null,
+          isPartialFit: fit?.isPartial ?? false,
           days,
           isOverdue: stage.slaHours != null && hoursInStage > stage.slaHours,
         });
@@ -126,11 +123,14 @@ export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
   const sorted = useMemo(() => {
     const arr = [...flatApps];
     arr.sort((a, b) => {
+      if (sortKey === 'fit' && (a.fitScore === null || b.fitScore === null)) {
+        return a.fitScore === null ? (b.fitScore === null ? 0 : 1) : -1;
+      }
       let cmp = 0;
       switch (sortKey) {
         case 'name': cmp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`); break;
         case 'stage': cmp = a.stageOrder - b.stageOrder; break;
-        case 'fit': cmp = a.fitScore - b.fitScore; break;
+        case 'fit': cmp = (a.fitScore ?? 0) - (b.fitScore ?? 0); break;
         case 'days': cmp = a.days - b.days; break;
         case 'source': cmp = a.source.localeCompare(b.source); break;
       }
@@ -198,7 +198,13 @@ export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
                     </span>
                   </td>
                   <td className="py-2.5 px-3 text-center">
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${fitColor(app.fitScore)}`}>{app.fitScore}</span>
+                    {app.fitScore === null ? (
+                      <span title={t.pipeline.fitPending} className="text-[11px] text-[#8B8B8B]">—</span>
+                    ) : (
+                      <span title={`${t.pipeline.fitScore}: ${app.fitScore}${app.isPartialFit ? ` (${t.pipeline.fitPartial})` : ''}`} className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${fitColor(app.fitScore)}`}>
+                        {Math.round(app.fitScore)}{app.isPartialFit ? '*' : ''}
+                      </span>
+                    )}
                   </td>
                   <td className="py-2.5 px-3 text-center">
                     <span className="text-[10px] text-[#585858]">{SOURCE_LABELS[app.source] ?? app.source}</span>

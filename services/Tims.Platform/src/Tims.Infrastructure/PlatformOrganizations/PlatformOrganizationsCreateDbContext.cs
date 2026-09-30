@@ -58,8 +58,6 @@ public sealed class PlatformOrganizationsCreateDbContext(DbContextOptions<Platfo
 {
     public DbSet<PlatformOrganizationWriteEntity> Organizations => Set<PlatformOrganizationWriteEntity>();
 
-    public DbSet<RoleWriteEntity> Roles => Set<RoleWriteEntity>();
-
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
 
     public DbSet<PlatformOrganizationOwnerEntity> Users => Set<PlatformOrganizationOwnerEntity>();

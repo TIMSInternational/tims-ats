@@ -103,7 +103,9 @@ export const candidatePortalService = {
   // RLS (runWithTenant), never on the privileged db. The org is already resolved by
   // the caller (it owns the notFound() decision for a bad slug).
   getDisplayCandidate(orgId: string, email: string) {
-    return runWithTenant(orgId, () => candidatePortalRepo.findCandidateName(orgId, email));
+    // async + await: Prisma queries are LAZY — they execute on .then, so the await must
+    // happen INSIDE the tenant scope or the query runs after the scope has exited.
+    return runWithTenant(orgId, async () => await candidatePortalRepo.findCandidateName(orgId, email));
   },
 
   // A candidate's applications at one org. An authenticated email with no Candidate

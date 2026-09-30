@@ -40,7 +40,7 @@ export const offerValidationsRouter = router({
       // the parent offer — pipeline stages pattern.
       const validation = await db.preemploymentValidation.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
-        select: { id: true, offerId: true, status: true },
+        select: { id: true, offerId: true, status: true, offer: { select: { status: true } } },
       });
 
       if (!validation) {
@@ -48,6 +48,9 @@ export const offerValidationsRouter = router({
       }
 
       await assertScoped('offer', validation.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      if (validation.offer.status === 'converted') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se pueden cambiar validaciones de una contratación registrada' });
+      }
 
       return db.preemploymentValidation.update({
         where: { id: input.id },
@@ -60,88 +63,6 @@ export const offerValidationsRouter = router({
           completedAt: input.status !== 'pending' ? new Date() : null,
         },
       });
-    }),
-
-  // 9.12 — Upload medical exam (stub)
-  uploadMedical: permissionProcedure('offer', 'create')
-    .input(
-      z.object({
-        offerId: z.string().uuid(),
-        fileName: z.string().max(255),
-        fileType: z.string().max(100),
-        fileSize: z.number().int().positive(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Probe the offer through scope before creating the validation record.
-      await assertScoped('offer', input.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);
-
-      const offer = await db.offer.findFirst({
-        where: { id: input.offerId, organizationId: ctx.user.organizationId },
-        select: { id: true },
-      });
-
-      if (!offer) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Oferta no encontrada' });
-      }
-
-      // Stub: return mock upload URL and create a pending validation
-      const validation = await db.preemploymentValidation.create({
-        data: {
-          organizationId: ctx.user.organizationId,
-          offerId: input.offerId,
-          type: 'medical_exam',
-          status: 'pending',
-          isBlocking: true,
-          notes: `Archivo: ${input.fileName}`,
-        },
-      });
-
-      return {
-        validation,
-        uploadUrl: `https://storage.mock.tims.app/medical/${validation.id}/${input.fileName}`,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      };
-    }),
-
-  // 9.13 — Analyze medical exam (stub — mock AI)
-  analyzeMedical: permissionProcedure('offer', 'read')
-    .input(z.object({ validationId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      // Fetch-then-probe hop: input key is a child id (validationId). Fetch the
-      // validation to get its offerId, then scope-probe the parent offer.
-      const validation = await db.preemploymentValidation.findFirst({
-        where: {
-          id: input.validationId,
-          organizationId: ctx.user.organizationId,
-          type: 'medical_exam',
-        },
-        select: { id: true, offerId: true },
-      });
-
-      if (!validation) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Validacion medica no encontrada' });
-      }
-
-      await assertScoped('offer', validation.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);
-
-      // Stub: return mock AI analysis
-      return {
-        validationId: input.validationId,
-        analysis: {
-          status: 'fit_for_duty',
-          summary: 'El candidato cumple con los requisitos medicos para el puesto.',
-          findings: [
-            { category: 'general_health', result: 'normal', notes: 'Sin observaciones' },
-            { category: 'vision', result: 'normal', notes: '20/20 ambos ojos' },
-            { category: 'cardiovascular', result: 'normal', notes: 'Dentro de parametros' },
-          ],
-          restrictions: [],
-          recommendations: ['Examen de seguimiento en 12 meses'],
-        },
-        generatedAt: new Date().toISOString(),
-        model: 'mock-ai-v1',
-      };
     }),
 
   // 9.14 — Get legal checklist for an offer
@@ -175,7 +96,7 @@ export const offerValidationsRouter = router({
       // check to get its offerId, then scope-probe the parent offer.
       const check = await db.legalCheck.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
-        select: { id: true, offerId: true },
+        select: { id: true, offerId: true, offer: { select: { status: true } } },
       });
 
       if (!check) {
@@ -183,6 +104,9 @@ export const offerValidationsRouter = router({
       }
 
       await assertScoped('offer', check.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      if (check.offer.status === 'converted') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se pueden cambiar verificaciones de una contratación registrada' });
+      }
 
       return db.legalCheck.update({
         where: { id: input.id },

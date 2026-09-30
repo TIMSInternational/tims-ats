@@ -8,11 +8,14 @@ import { ApprovalChain } from './approval-chain';
 import { OfferTimeline } from './offer-timeline';
 import { OfferValidations } from './offer-validations';
 import { OfferLetterModal } from './offer-letter-modal';
+import { HireConfirmationModal } from './hire-confirmation-modal';
 import { SigningLinkModal } from './signing-link-modal';
 import { OfferApprovalActions } from './offer-approval-actions';
 import { OFFER_STATUS_LABEL } from './offer-detail-view.helpers';
 import { CandidateHeader, OfferCard } from './offer-detail-view.parts';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCan } from '../../../../../lib/permissions';
 
 interface OfferDetailViewProps {
   offerId: string;
@@ -21,14 +24,36 @@ interface OfferDetailViewProps {
 
 export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const { t } = useI18n();
+  const router = useRouter();
+  const can = useCan();
+  const utils = trpc.useUtils();
   const offer = trpc.offer.getById.useQuery({ id: offerId });
   const [showLetterModal, setShowLetterModal] = useState(false);
   const [showSigningModal, setShowSigningModal] = useState(false);
   const [signingUrl, setSigningUrl] = useState('');
+  const [emailDeliveryAccepted, setEmailDeliveryAccepted] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [showHireConfirmation, setShowHireConfirmation] = useState(false);
+
+  const convertToEmployee = trpc.offer.convertToEmployee.useMutation({
+    onSuccess: async () => {
+      setShowHireConfirmation(false);
+      toast(t.offers.hiringAuthorized, { type: 'success' });
+      await Promise.all([
+        utils.offer.getById.invalidate({ id: offerId }),
+        utils.offer.list.invalidate(),
+        utils.onboarding.list.invalidate(),
+        utils.onboarding.getDashboardKpis.invalidate(),
+      ]);
+    },
+    onError: (error) => toast(error.message, { type: 'error' }),
+  });
 
   const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
     onSuccess: (data) => {
       setSigningUrl(window.location.origin + data.signingUrl);
+      setEmailDeliveryAccepted(data.emailDeliveryAccepted);
+      setRecipientEmail(data.candidateEmail);
       setShowSigningModal(true);
       offer.refetch();
     },
@@ -61,10 +86,15 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const statusInfo = OFFER_STATUS_LABEL[o.status] ?? OFFER_STATUS_LABEL.draft;
   const validations = o.validations ?? [];
   const legalChecks = (o.legalChecks ?? []) as Array<{ id: string; checkName: string; completed: boolean; completedAt: Date | string | null; completedByUser: { id: string; firstName: string; lastName: string } | null }>;
-  const completedValidations = validations.filter((v) => v.status === 'passed').length;
-  const totalValidations = validations.length || 6;
+  const completedValidations = validations.filter((v) => v.status === 'passed' || v.status === 'waived').length;
+  const totalValidations = validations.length;
   const progressPct = totalValidations > 0 ? (completedValidations / totalValidations) * 100 : 0;
-  const allComplete = completedValidations === totalValidations && totalValidations > 0;
+  const blockingValidationOpen = validations.some((v) => v.isBlocking && v.status !== 'passed' && v.status !== 'waived');
+  const legalCheckOpen = legalChecks.some((check) => !check.completed);
+  const canAuthorize = o.status === 'accepted' && !blockingValidationOpen && !legalCheckOpen && can('offer', 'approve');
+  const authorizationReason = blockingValidationOpen
+    ? t.offers.hireBlockedValidations
+    : legalCheckOpen ? t.offers.hireBlockedLegal : undefined;
   const benefits = o.benefits as Record<string, string> | null;
   const benefitList = benefits ? Object.values(benefits) : [];
   const terms = o.terms as Record<string, string> | null;
@@ -82,7 +112,13 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         completedValidations={completedValidations}
         totalValidations={totalValidations}
         progressPct={progressPct}
-        allComplete={allComplete}
+        canAuthorize={canAuthorize}
+        authorizationReason={authorizationReason}
+        showHireAction={o.status === 'accepted' && can('offer', 'approve')}
+        isConverted={o.status === 'converted'}
+        isAuthorizing={convertToEmployee.isPending}
+        onAuthorize={() => setShowHireConfirmation(true)}
+        onViewOnboarding={can('onboarding', 'read') ? () => router.push('/people/onboarding') : undefined}
         onViewLetter={() => setShowLetterModal(true)}
         onSendForSigning={() => generateSigningLink.mutate({ offerId })}
         isGeneratingLink={generateSigningLink.isPending}
@@ -110,6 +146,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
             offerId={offerId}
             validations={validations}
             legalChecks={legalChecks}
+            readOnly={o.status === 'converted'}
           />
         </div>
       </div>
@@ -117,6 +154,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       {/* Offer Letter Modal */}
       {showLetterModal && (
         <OfferLetterModal
+          companyName={o.organization.name}
           offer={{
             candidate: o.candidate,
             vacancy: o.vacancy,
@@ -136,7 +174,19 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       {showSigningModal && (
         <SigningLinkModal
           signingUrl={signingUrl}
+          emailDeliveryAccepted={emailDeliveryAccepted}
+          recipientEmail={recipientEmail}
           onClose={() => setShowSigningModal(false)}
+        />
+      )}
+
+      {showHireConfirmation && (
+        <HireConfirmationModal
+          candidateName={`${o.candidate.firstName} ${o.candidate.lastName}`}
+          initialJobTitle={o.vacancy.title}
+          isPending={convertToEmployee.isPending}
+          onClose={() => setShowHireConfirmation(false)}
+          onConfirm={(jobTitle) => convertToEmployee.mutate({ offerId, jobTitle })}
         />
       )}
     </div>
