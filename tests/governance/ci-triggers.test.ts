@@ -60,7 +60,12 @@ function triggerBlock(
   return body;
 }
 
-const NO_PUSH_BY_DESIGN = new Set(['nightly-db-controls.yml', 'deploy-platform-api.yml', 'rollback-platform-api.yml']);
+const NO_PUSH_BY_DESIGN = new Set([
+  'nightly-db-controls.yml',
+  'deploy-platform-api.yml',
+  'rollback-platform-api.yml',
+  'backup-restore-drill.yml',
+]);
 
 const workflows = readdirSync(WORKFLOW_DIR)
   .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
@@ -98,6 +103,14 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     expect(triggerBlock(nightly!.src, 'workflow_dispatch')).not.toBeNull();
     // Reject inline maps/arrays too; the narrow block parser only supports empty inline objects.
     expect(nightly!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
+  });
+
+  it('the backup-restore drill remains schedule/dispatch only, never PR-triggered', () => {
+    const drill = workflows.find((w) => w.name === 'backup-restore-drill.yml');
+    expect(drill).toBeDefined();
+    expect(triggerBlock(drill!.src, 'schedule')?.some((line) => /cron:/.test(line))).toBe(true);
+    expect(triggerBlock(drill!.src, 'workflow_dispatch')).not.toBeNull();
+    expect(drill!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
   });
 
   it('the API deploy runs only after .NET Platform CI completes on main — never on push (F16)', () => {
