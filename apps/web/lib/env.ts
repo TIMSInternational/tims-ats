@@ -6,7 +6,7 @@ import { z } from 'zod';
 const optionalSecret = () => z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).optional());
 const optionalUrl = () => z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
 
-const envSchema = z.object({
+const baseEnvSchema = z.object({
   // Supabase
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
@@ -80,8 +80,26 @@ const envSchema = z.object({
   // rate-limit exempt and the secret's own entropy is the only brute-force control.
   ALERT_METRICS_CRON_SECRET: z.string().min(32).optional(),
 
+  // CV uploads (careers apply form -> S3 presigned POST, packages/api/src/lib/s3.ts).
+  // CV_UPLOADS_REGION must be the bucket's OWN region and is required whenever the
+  // bucket is set: s3.ts signs against it and the Edge middleware derives the CSP
+  // connect-src origin from it (apps/web/lib/security/csp.ts). There is deliberately
+  // no AWS_REGION fallback — on Vercel that is the function's region, not the bucket's.
+  CV_UPLOADS_BUCKET: optionalSecret(),
+  CV_UPLOADS_REGION: optionalSecret(),
+
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+});
+
+const envSchema = baseEnvSchema.superRefine((e, ctx) => {
+  if (e.CV_UPLOADS_BUCKET && !e.CV_UPLOADS_REGION) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CV_UPLOADS_REGION'],
+      message: "required when CV_UPLOADS_BUCKET is set (the bucket's own region)",
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -12,21 +12,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 
 const hardNavigate = vi.fn<(path: string) => void>();
+const hardReload = vi.fn<() => void>();
 
 vi.mock('../../apps/web/app/(admin)/recruitment/interviews/[id]/room/hard-exit', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('../../apps/web/app/(admin)/recruitment/interviews/[id]/room/hard-exit')>();
-  return { ...actual, hardNavigate: (path: string) => hardNavigate(path) };
+  return { ...actual, hardNavigate: (path: string) => hardNavigate(path), hardReload: () => hardReload() };
 });
 
 import { HardExitGuard } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/hard-exit-guard';
 
 const ROOM = '/recruitment/interviews/abc/room';
 
+// The guard wraps the history INSTANCE methods; the prototype's are the
+// browser's originals, used here to move the URL the way back/forward does.
+const rawPushState = (url: string) => History.prototype.pushState.call(window.history, null, '', url);
+const rawReplaceState = (url: string) => History.prototype.replaceState.call(window.history, null, '', url);
+
 describe('HardExitGuard — programmatic (router.push / router.replace) exits', () => {
   beforeEach(() => {
     hardNavigate.mockReset();
-    window.history.replaceState(null, '', ROOM);
+    hardReload.mockReset();
+    rawReplaceState(ROOM);
   });
 
   afterEach(() => {
@@ -79,5 +86,23 @@ describe('HardExitGuard — programmatic (router.push / router.replace) exits', 
     expect(window.history.pushState).toBe(wrappedPush);
     window.history.pushState({ __NA: true }, '', '/dashboard');
     expect(hardNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads on a back/forward that LEAVES the room path', () => {
+    render(<HardExitGuard />);
+    rawPushState('/recruitment/candidates/42');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(hardReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT reload on a same-path back/forward (query/hash) — that would drop the live call', () => {
+    render(<HardExitGuard />);
+    rawPushState(`${ROOM}?panel=notes`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    rawPushState(`${ROOM}#chat`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    rawReplaceState(ROOM);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(hardReload).not.toHaveBeenCalled();
   });
 });

@@ -5,8 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { S3Client } from '../../packages/api/node_modules/@aws-sdk/client-s3';
 import { createPresignedPost } from '../../packages/api/node_modules/@aws-sdk/s3-presigned-post';
 import { NextRequest } from '../../apps/web/node_modules/next/server';
-import { hardExitTarget, type AnchorClick } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/hard-exit';
-import { buildCsp, isDailyCallRoute, isSupportedS3Region, s3PresignedPostOrigin } from '../../apps/web/lib/security/csp';
+import {
+  hardExitTarget,
+  type AnchorClick,
+} from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/hard-exit';
+import {
+  buildCsp,
+  cvUploadCspOrigin,
+  isDailyCallRoute,
+  isSupportedS3Region,
+  s3PresignedPostOrigin,
+} from '../../apps/web/lib/security/csp';
 
 const state = vi.hoisted(() => ({ user: null as null | { id: string } }));
 vi.mock('@tims/auth/middleware', () => ({
@@ -46,17 +55,39 @@ describe('F5 — CV upload S3 origin in connect-src', () => {
   }
 
   it.each([
-    ['tims-cv-uploads', 'us-east-1'],
-    ['tims-cv-uploads', 'us-west-2'],
-    ['tims.cv.dotted', 'eu-west-1'],
-    ...[
-      'eu-central-1', 'ap-southeast-2', 'ap-northeast-1', 'sa-east-1', 'ca-central-1', 'me-south-1',
-      'af-south-1', 'il-central-1', 'mx-central-1', 'us-gov-west-1', 'ap-southeast-5',
-    ].flatMap((r) => [['tims-cv-uploads', r], ['tims.cv.dotted', r]]),
-  ])('matches the SDK presigned-POST origin for bucket %s in %s', async (bucket, region) => {
-    expect(s3PresignedPostOrigin(bucket, region)).not.toBe('');
-    expect(s3PresignedPostOrigin(bucket, region)).toBe(await sdkOrigin(bucket, region));
+    'us-east-1',
+    'us-west-2',
+    'eu-west-1',
+    'eu-central-1',
+    'ap-southeast-2',
+    'ap-northeast-1',
+    'sa-east-1',
+    'ca-central-1',
+    'me-south-1',
+    'af-south-1',
+    'il-central-1',
+    'mx-central-1',
+    'us-gov-west-1',
+    'ap-southeast-5',
+  ])('matches the SDK presigned-POST origin for a virtual-hostable bucket in %s', async (region) => {
+    expect(s3PresignedPostOrigin('tims-cv-uploads', region)).not.toBe('');
+    expect(s3PresignedPostOrigin('tims-cv-uploads', region)).toBe(await sdkOrigin('tims-cv-uploads', region));
   });
+
+  it.each(['tims.cv.dotted', 'Tims-CV', 'my..bucket'])(
+    'emits NO origin for %s — the SDK addresses it path-style on the REGION-WIDE endpoint',
+    async (bucket) => {
+      expect(s3PresignedPostOrigin(bucket, 'eu-west-1')).toBe('');
+      if (bucket === 'tims.cv.dotted') {
+        // Ground truth for why: allowing this origin would allow EVERY bucket in the region.
+        expect(await sdkOrigin(bucket, 'eu-west-1')).toBe('https://s3.eu-west-1.amazonaws.com');
+      }
+      const warn = vi.fn<(m: string) => void>();
+      expect(cvUploadCspOrigin(bucket, 'eu-west-1', warn)).toBe('');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toMatch(/virtual-hostable/);
+    },
+  );
 
   it.each(['cn-north-1', 'cn-northwest-1', 'us-iso-east-1', 'us-isob-east-1', 'eusc-de-east-1'])(
     'returns NO origin for non-amazonaws.com partition %s (the SDK uses another DNS suffix there)',
@@ -67,8 +98,27 @@ describe('F5 — CV upload S3 origin in connect-src', () => {
     },
   );
 
-  it('defaults the region to us-east-1 exactly like packages/api/src/lib/s3.ts', () => {
-    expect(s3PresignedPostOrigin('tims-cv', undefined)).toBe('https://tims-cv.s3.us-east-1.amazonaws.com');
+  it('has NO default region (s3.ts has none either) — an unset region yields no origin', () => {
+    expect(s3PresignedPostOrigin('tims-cv', undefined)).toBe('');
+    expect(s3PresignedPostOrigin('tims-cv', '')).toBe('');
+  });
+
+  it('cvUploadCspOrigin is silent when the bucket is unset (feature dark)', () => {
+    const warn = vi.fn<(m: string) => void>();
+    expect(cvUploadCspOrigin(undefined, undefined, warn)).toBe('');
+    expect(cvUploadCspOrigin('', 'us-east-1', warn)).toBe('');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unset', undefined, /CV_UPLOADS_REGION is not set/],
+    ['unsupported partition', 'cn-north-1', /not a supported amazonaws\.com region/],
+    ['malformed', "us-east-1 'unsafe-eval'", /not a supported amazonaws\.com region/],
+  ])('cvUploadCspOrigin omits the origin and warns when the region is %s', (_label, region, reason) => {
+    const warn = vi.fn<(m: string) => void>();
+    expect(cvUploadCspOrigin('tims-cv-uploads', region, warn)).toBe('');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toMatch(reason);
   });
 
   it('is empty (adds nothing) when the bucket is unset or the region is malformed', () => {
@@ -78,7 +128,7 @@ describe('F5 — CV upload S3 origin in connect-src', () => {
     expect(s3PresignedPostOrigin('bad bucket;', 'us-east-1')).toBe('');
   });
 
-  it('agrees with s3.ts: CV_UPLOADS_REGION wins over AWS_REGION in both places', async () => {
+  it('agrees with s3.ts: both runtimes use CV_UPLOADS_REGION and ignore AWS_REGION', async () => {
     vi.stubEnv('CV_UPLOADS_BUCKET', 'tims-cv-uploads');
     vi.stubEnv('CV_UPLOADS_REGION', 'eu-west-1');
     vi.stubEnv('AWS_REGION', 'us-west-2');
@@ -98,9 +148,50 @@ describe('F5 — CV upload S3 origin in connect-src', () => {
     expect(connectSrc.split(' ')).toContain(new URL(url).origin);
   });
 
+  it('bucket set + CV_UPLOADS_REGION unset: s3.ts throws, CSP omits the origin, middleware warns (no AWS_REGION fallback)', async () => {
+    vi.stubEnv('CV_UPLOADS_BUCKET', 'tims-cv-uploads');
+    // The Vercel function region — must NOT be used for the bucket by either runtime.
+    vi.stubEnv('AWS_REGION', 'us-west-2');
+    vi.stubEnv('AWS_ACCESS_KEY_ID', 'AKIDEXAMPLE');
+    vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'x');
+    vi.resetModules();
+    const { createCvUploadPresignedPost } = await import('../../packages/api/src/lib/s3');
+    await expect(createCvUploadPresignedPost('org-1', 'application/pdf')).rejects.toThrow(
+      'CV_UPLOADS_REGION is not configured',
+    );
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const middleware = await loadMiddleware();
+      const res = await middleware(
+        new NextRequest('https://app.tims.com/careers/acme/v1', { headers: { host: 'app.tims.com' } }),
+      );
+      expect(res.headers.get('content-security-policy')).not.toContain('amazonaws');
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/CV_UPLOADS_REGION is not set/));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('middleware warns and omits the origin for an unsupported CV_UPLOADS_REGION', async () => {
+    vi.stubEnv('CV_UPLOADS_BUCKET', 'tims-cv-uploads');
+    vi.stubEnv('CV_UPLOADS_REGION', 'cn-north-1');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const middleware = await loadMiddleware();
+      const res = await middleware(
+        new NextRequest('https://app.tims.com/careers/acme/v1', { headers: { host: 'app.tims.com' } }),
+      );
+      expect(res.headers.get('content-security-policy')).not.toContain('amazonaws');
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/not a supported amazonaws\.com region/));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('middleware adds ONLY the bucket origin — no *.amazonaws.com wildcard', async () => {
     vi.stubEnv('CV_UPLOADS_BUCKET', 'tims-cv-uploads');
-    vi.stubEnv('AWS_REGION', 'us-west-2');
+    vi.stubEnv('CV_UPLOADS_REGION', 'us-west-2');
     const middleware = await loadMiddleware();
     const res = await middleware(
       new NextRequest('https://app.tims.com/careers/acme/v1', { headers: { host: 'app.tims.com' } }),
@@ -118,6 +209,60 @@ describe('F5 — CV upload S3 origin in connect-src', () => {
       new NextRequest('https://app.tims.com/careers/acme/v1', { headers: { host: 'app.tims.com' } }),
     );
     expect(res.headers.get('content-security-policy')).not.toContain('amazonaws');
+  });
+});
+
+describe('env schema — CV_UPLOADS_REGION required with CV_UPLOADS_BUCKET', () => {
+  function stubRequiredEnv() {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://x.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon');
+    vi.stubEnv('DATABASE_URL', 'postgres://localhost/x');
+    vi.stubEnv('NODE_ENV', 'production');
+  }
+
+  it('fails production env validation when the bucket is set without a region', async () => {
+    stubRequiredEnv();
+    vi.stubEnv('CV_UPLOADS_BUCKET', 'tims-cv-uploads');
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      vi.resetModules();
+      await expect(import('../../apps/web/lib/env')).rejects.toThrow('Invalid environment variables');
+      expect(err).toHaveBeenCalledWith(expect.stringContaining('CV_UPLOADS_REGION'));
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  it.each([
+    ['bucket + region', 'tims-cv-uploads', 'us-west-2'],
+    ['neither (feature dark)', '', ''],
+  ])('accepts %s', async (_label, bucket, region) => {
+    stubRequiredEnv();
+    vi.stubEnv('CV_UPLOADS_BUCKET', bucket);
+    vi.stubEnv('CV_UPLOADS_REGION', region);
+    vi.resetModules();
+    const { env } = await import('../../apps/web/lib/env');
+    expect(env.CV_UPLOADS_REGION).toBe(region || undefined);
+  });
+});
+
+describe('bearer-link pages never leak their token (Referer / shared cache)', () => {
+  it.each(['/offers/sign/tok_abc', '/accept-invitation', '/reset-password'])(
+    '%s gets referrer-policy no-referrer + cache-control no-store',
+    async (path) => {
+      const middleware = await loadMiddleware();
+      const res = await middleware(
+        new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }),
+      );
+      expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(res.headers.get('cache-control')).toBe('no-store');
+    },
+  );
+
+  it.each(['/careers/acme/v1', '/offers/signatures'])('%s is not treated as a bearer-link page', async (path) => {
+    const middleware = await loadMiddleware();
+    const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));
+    expect(res.headers.get('referrer-policy')).toBeNull();
   });
 });
 

@@ -10,6 +10,11 @@ export function hardNavigate(path: string): void {
   window.location.assign(path);
 }
 
+/** Reload the current URL as a full document (used after a back/forward that left the room). */
+export function hardReload(): void {
+  window.location.reload();
+}
+
 export interface AnchorClick {
   href: string;
   currentHref: string;

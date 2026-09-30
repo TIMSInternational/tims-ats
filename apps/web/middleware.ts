@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
-import { buildCsp, originOf, s3PresignedPostOrigin, type CspOrigins } from './lib/security/csp';
+import { buildCsp, cvUploadCspOrigin, originOf, type CspOrigins } from './lib/security/csp';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -33,18 +33,17 @@ const CSP_ORIGINS: CspOrigins = {
   // surface is cut over (see lib/platform-api).
   platformApi: originOf(process.env.NEXT_PUBLIC_TIMS_PLATFORM_API_URL),
   // CV S3 bucket the careers apply form POSTs to (presigned POST from
-  // packages/api/src/lib/s3.ts). Same bucket/region resolution as s3.ts.
-  cvUpload: s3PresignedPostOrigin(
-    process.env.CV_UPLOADS_BUCKET,
-    process.env.CV_UPLOADS_REGION || process.env.AWS_REGION,
-  ),
+  // packages/api/src/lib/s3.ts). Both runtimes read the SAME explicit pair —
+  // CV_UPLOADS_BUCKET + CV_UPLOADS_REGION, with no AWS_REGION fallback and no
+  // default region — so they cannot silently disagree. Resolved at module scope,
+  // so a misconfiguration warning is logged once per instance, never per request.
+  cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
 };
 
-// Module scope => logged once per middleware instance, never per request.
-if (process.env.CV_UPLOADS_BUCKET && !CSP_ORIGINS.cvUpload) {
-  console.warn(
-    '[csp] CV_UPLOADS_BUCKET is set but its S3 origin could not be derived (unsupported region/partition or invalid name); CV uploads will be blocked by connect-src.',
-  );
+// Pages whose URL carries a bearer credential (?token= or a path token): never
+// leak it via Referer, never let a shared cache store the page.
+function isBearerLinkPathname(pathname: string): boolean {
+  return pathname === '/accept-invitation' || pathname === '/reset-password' || pathname.startsWith('/offers/sign/');
 }
 
 // A path is public when it IS one of PUBLIC_PATHS or is nested under one
@@ -68,7 +67,7 @@ export async function middleware(request: NextRequest) {
   // Mirror the CSP onto every response we return (including redirects).
   const applyCsp = <T extends NextResponse>(res: T): T => {
     res.headers.set('content-security-policy', csp);
-    if (request.nextUrl.pathname === '/accept-invitation' || request.nextUrl.pathname === '/reset-password') {
+    if (isBearerLinkPathname(request.nextUrl.pathname)) {
       res.headers.set('referrer-policy', 'no-referrer');
       res.headers.set('cache-control', 'no-store');
     }

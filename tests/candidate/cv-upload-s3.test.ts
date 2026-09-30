@@ -35,7 +35,7 @@ import { createCvUploadPresignedPost, fetchCvObject, CV_MAX_BYTES } from '../../
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv('CV_UPLOADS_BUCKET', 'tims-cv-uploads-test');
-  vi.stubEnv('AWS_REGION', 'us-east-1');
+  vi.stubEnv('CV_UPLOADS_REGION', 'us-east-1');
 });
 
 afterEach(() => {
@@ -76,6 +76,15 @@ describe('createCvUploadPresignedPost', () => {
   it('throws when CV_UPLOADS_BUCKET is not configured', async () => {
     vi.unstubAllEnvs();
     await expect(createCvUploadPresignedPost('org-1', 'application/pdf')).rejects.toThrow('CV_UPLOADS_BUCKET');
+  });
+
+  it('throws when CV_UPLOADS_REGION is not configured — never falls back to AWS_REGION', async () => {
+    vi.stubEnv('CV_UPLOADS_REGION', '');
+    vi.stubEnv('AWS_REGION', 'us-west-2');
+    await expect(createCvUploadPresignedPost('org-1', 'application/pdf')).rejects.toThrow(
+      'CV_UPLOADS_REGION is not configured',
+    );
+    expect(createPresignedPostMock).not.toHaveBeenCalled();
   });
 });
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { hardExitTarget, hardNavigate, historyExitTarget } from './hard-exit';
+import { hardExitTarget, hardNavigate, hardReload, historyExitTarget } from './hard-exit';
 
 let isInstalled = false;
 
@@ -16,6 +16,9 @@ let isInstalled = false;
 function installRoomHardExit(): void {
   if (isInstalled) return;
   isInstalled = true;
+  // The document's own path. The history wraps below keep it from changing
+  // except via back/forward, so it is the room path for the document's lifetime.
+  const roomPathname = window.location.pathname;
 
   const onClick = (e: MouseEvent) => {
     const el = e.target instanceof Element ? e.target.closest('a[href]') : null;
@@ -36,8 +39,12 @@ function installRoomHardExit(): void {
     e.stopPropagation();
     hardNavigate(next);
   };
-  // Back/forward: the URL has already changed; reload it as a full document.
-  const onPopState = () => window.location.reload();
+  // Back/forward: the URL has already changed. Reload it as a full document
+  // only when it left the room path — a same-path entry (query/hash) stays on
+  // this document, and reloading it would drop the live Daily call.
+  const onPopState = () => {
+    if (window.location.pathname !== roomPathname) hardReload();
+  };
 
   // Programmatic exits: Next commits every soft navigation through these.
   const history = window.history;
