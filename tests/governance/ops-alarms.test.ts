@@ -40,10 +40,12 @@ esac
   chmodSync(fake, 0o755);
 });
 
+const EMAIL = ['--email', 'alerts@example.com'];
+
 function run(args: string[], env: Record<string, string> = {}) {
   const r = spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, ...env },
+    env: { ...process.env, TIMS_ALARM_EMAIL: '', PATH: `${dir}:${process.env.PATH}`, ...env },
   });
   const calls = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [];
   return { ...r, calls };
@@ -53,17 +55,29 @@ const MUTATING = /sns create-topic|sns subscribe|put-metric-alarm|delete|set-top
 
 describe('scripts/ops/create-alarms.sh', () => {
   it('is a DRY RUN by default: read-only lookups only, every mutation printed instead', () => {
-    const r = run([]);
+    const r = run(EMAIL);
     expect(r.status, r.stderr).toBe(0);
     expect(r.calls.filter((c) => MUTATING.test(c))).toEqual([]);
     expect(r.stdout.match(/would run: aws cloudwatch put-metric-alarm/g)?.length).toBe(5);
     expect(r.stdout).toContain('would run: aws sns subscribe');
-    expect(r.stdout).toContain('federico.tafur@altostrats.com');
+    expect(r.stdout).toContain('alerts@example.com');
   });
 
-  it('--apply creates the topic, subscribes the email, and upserts all five alarms', () => {
-    const r = run(['--apply']);
-    expect(r.status, r.stderr).toBe(0);
+  it('has NO default recipient: refuses without --email or TIMS_ALARM_EMAIL, before calling AWS', () => {
+    for (const args of [[], ['--apply']]) {
+      const r = run(args);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('alert recipient is required');
+      expect(r.calls).toEqual([]);
+    }
+    expect(readFileSync(SCRIPT, 'utf8')).not.toMatch(/altostrats|@gmail/);
+    expect(run([], { TIMS_ALARM_EMAIL: 'env@example.com' }).stdout).toContain('env@example.com');
+  });
+
+  it('--apply creates the topic, subscribes the email, upserts all five alarms — and exits 4 while unconfirmed', () => {
+    const r = run([...EMAIL, '--apply']);
+    expect(r.status, r.stderr).toBe(4);
+    expect(r.stderr).toContain('ALERTING IS NOT LIVE');
     expect(r.calls.filter((c) => c.includes('sns create-topic'))).toHaveLength(1);
     expect(r.calls.filter((c) => c.includes('sns subscribe'))).toHaveLength(1);
     const alarms = r.calls.filter((c) => c.includes('put-metric-alarm'));
@@ -77,20 +91,31 @@ describe('scripts/ops/create-alarms.sh', () => {
   });
 
   it('--apply does not re-subscribe an address that is already subscribed (idempotent)', () => {
-    const r = run(['--apply'], { FAKE_SUB: 'arn:aws:sns:us-west-2:747814092517:tims-platform-api-alarms:abc' });
+    const r = run([...EMAIL, '--apply'], {
+      FAKE_SUB: 'arn:aws:sns:us-west-2:747814092517:tims-platform-api-alarms:abc',
+    });
     expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).not.toContain('ALERTING IS NOT LIVE');
+    expect(r.calls.filter((c) => c.includes('sns subscribe'))).toEqual([]);
+  });
+
+  it('--apply exits 4 with the banner when an EXISTING subscription is still pending (alarms still upserted)', () => {
+    const r = run([...EMAIL, '--apply'], { FAKE_SUB: 'PendingConfirmation' });
+    expect(r.status).toBe(4);
+    expect(r.stderr).toContain('ALERTING IS NOT LIVE');
+    expect(r.calls.filter((c) => c.includes('put-metric-alarm'))).toHaveLength(5);
     expect(r.calls.filter((c) => c.includes('sns subscribe'))).toEqual([]);
   });
 
   it('--apply refuses the wrong AWS account and changes nothing', () => {
-    const r = run(['--apply'], { FAKE_ACCOUNT: '111111111111' });
+    const r = run([...EMAIL, '--apply'], { FAKE_ACCOUNT: '111111111111' });
     expect(r.status).toBe(1);
     expect(r.calls.filter((c) => MUTATING.test(c))).toEqual([]);
   });
 
   it('rejects a malformed email or threshold before calling AWS', () => {
     expect(run(['--email', 'not-an-email']).status).toBe(1);
-    expect(run([], { ALARM_CPU_PERCENT: '85; rm -rf /' }).status).toBe(1);
+    expect(run(EMAIL, { ALARM_CPU_PERCENT: '85; rm -rf /' }).status).toBe(1);
   });
 });
 

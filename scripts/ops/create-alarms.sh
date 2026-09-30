@@ -2,10 +2,11 @@
 #
 # create-alarms.sh — CloudWatch alarms -> SNS email for the C# platform API (App Runner).
 #
-#   bash scripts/ops/create-alarms.sh                 # DRY RUN (default): read-only lookups, prints the plan
-#   bash scripts/ops/create-alarms.sh --apply         # creates / updates the resources
+#   bash scripts/ops/create-alarms.sh --email ADDR           # DRY RUN (default): read-only lookups, prints the plan
+#   bash scripts/ops/create-alarms.sh --email ADDR --apply   # creates / updates the resources
 #
-# Options:  --email ADDR      (default federico.tafur@altostrats.com, or $TIMS_ALARM_EMAIL)
+# Options:  --email ADDR      REQUIRED (or $TIMS_ALARM_EMAIL). No default: the alert recipient is an
+#                             explicit operator decision, never a personal address baked into the repo.
 #           --profile NAME    (default tims-ats, or $TIMS_AWS_PROFILE)
 #           --region NAME     (default us-west-2, or $TIMS_AWS_REGION)
 # Thresholds (env, defaults match services/Tims.Platform/deploy/terraform/variables.tf):
@@ -23,7 +24,9 @@
 # if the alarm set here and in alarms.tf ever diverge.
 #
 # ⚠️ The SNS email subscription delivers NOTHING until the recipient clicks "Confirm subscription" in
-# the "AWS Notification - Subscription Confirmation" email. The script prints the subscription state.
+# the "AWS Notification - Subscription Confirmation" email. With --apply, a subscription that is still
+# pending prints a banner and the script EXITS 4 (after every alarm has been upserted), so an
+# unconfirmed alert path never looks like a finished setup. Re-run after confirming: exit 0.
 #
 set -euo pipefail
 
@@ -32,8 +35,9 @@ SERVICE_NAME="tims-platform-api"
 TOPIC_NAME="${SERVICE_NAME}-alarms"
 PROFILE="${TIMS_AWS_PROFILE:-tims-ats}"
 REGION="${TIMS_AWS_REGION:-us-west-2}" # NOT us-east-1 — that account holds unrelated NexaDev projects.
-EMAIL="${TIMS_ALARM_EMAIL:-federico.tafur@altostrats.com}"
+EMAIL="${TIMS_ALARM_EMAIL:-}"
 APPLY=0
+PENDING=0
 
 ALARM_5XX_COUNT="${ALARM_5XX_COUNT:-10}"
 ALARM_5XX_RATE_PERCENT="${ALARM_5XX_RATE_PERCENT:-5}"
@@ -73,6 +77,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+[[ -n "$EMAIL" ]] || die "an alert recipient is required: pass --email ADDR (or set TIMS_ALARM_EMAIL)."
 [[ "$EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "not an email address: '$EMAIL'"
 for n in "$ALARM_5XX_COUNT" "$ALARM_5XX_RATE_PERCENT" "$ALARM_LATENCY_P95_MS" "$ALARM_CPU_PERCENT" "$ALARM_MEMORY_PERCENT"; do
   [[ "$n" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "threshold is not a number: '$n'"
@@ -134,13 +139,17 @@ if [[ "$WHO" == "$ACCOUNT" ]]; then
 fi
 if [[ -n "$EXISTING_SUB" && "$EXISTING_SUB" != "None" ]]; then
   if [[ "$EXISTING_SUB" == "PendingConfirmation" ]]; then
+    PENDING=1
     warn "$EMAIL is subscribed but NOT CONFIRMED — click the link in the AWS confirmation email."
   else
     ok "$EMAIL already subscribed and confirmed"
   fi
 else
   mutate sns subscribe --topic-arn "$TOPIC_ARN" --protocol email --notification-endpoint "$EMAIL"
-  [[ "$APPLY" -eq 1 ]] && warn "Subscription created as PendingConfirmation — $EMAIL must click the AWS confirmation link."
+  if [[ "$APPLY" -eq 1 ]]; then
+    PENDING=1
+    warn "Subscription created as PendingConfirmation — $EMAIL must click the AWS confirmation link."
+  fi
 fi
 
 # ── Alarms (names, metrics and thresholds mirror terraform/alarms.tf) ─────────────────────────────
@@ -195,7 +204,18 @@ say ""
 if [[ "$APPLY" -eq 1 ]]; then
   "${AWSX[@]}" cloudwatch describe-alarms --alarm-name-prefix "${SERVICE_NAME}-" \
     --query 'MetricAlarms[].[AlarmName,StateValue]' --output text
-  ok "Done. Confirm the SNS email if it is still pending — until then NO alarm reaches anyone."
+  if [[ "$PENDING" -eq 1 ]]; then
+    printf '\n' >&2
+    printf '  ################################################################################\n' >&2
+    printf '  ##  ALERTING IS NOT LIVE: the SNS subscription for %s\n' "$EMAIL" >&2
+    printf '  ##  is PendingConfirmation. NO alarm reaches anyone until the link in the\n' >&2
+    printf '  ##  "AWS Notification - Subscription Confirmation" email is clicked.\n' >&2
+    printf '  ##  Confirm it, re-run this script (exit 0), then run the end-to-end test\n' >&2
+    printf '  ##  in docs/runbooks/production-rollback-and-alerting.md section 4.1.\n' >&2
+    printf '  ################################################################################\n' >&2
+    exit 4
+  fi
+  ok "Done. The subscription is confirmed. Now run the end-to-end alarm test (runbook section 4.1)."
 else
   say "Dry run only. Re-run with --apply to create/update these resources."
 fi
