@@ -262,7 +262,8 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
   await openOffer(requester);
   if (PENDING.peopleDirectory.merged) {
     // #304 replaces the approver <select> with a server-searched people picker.
-    await requester.getByPlaceholder('Buscar...').fill(approverName.split(' ')[0]);
+    // The app header has its own 'Buscar...' box; the picker lives in the page's main region.
+    await requester.getByRole('main').getByPlaceholder('Buscar...').fill(approverName.split(' ')[0]);
     await requester
       .getByRole('button', { name: new RegExp(approverName) })
       .first()
