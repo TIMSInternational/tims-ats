@@ -188,16 +188,52 @@ test('candidate receives the interview invitation email', async () => {
 
 test('hiring leader submits a scorecard from the interview room', async () => {
   needs('scorecards');
-  // Written against #303 (star-rating.tsx / scorecard-form.tsx). The room tries to join Daily on load;
-  // that request is aborted (lib/persona.ts), so the scorecard is exercised without any video.
   const { page } = leader;
+  // The merged room (#303, room/page.tsx) renders the scorecard ONLY in the in-call view, i.e. after
+  // "Unirse a la entrevista" → interview.createVideoRoom succeeds — even for an in-person interview.
+  // That procedure needs a Daily API key, which the E2E stack deliberately does not have (it answers
+  // PRECONDITION_FAILED), so the scorecard would be unreachable. Stand in for Daily at exactly that
+  // one boundary: answer createVideoRoom with a room URL on a daily.co host. Every browser request to
+  // Daily is aborted (lib/persona.ts), so the call fails into the room's join-error panel while the
+  // scorecard panel — the thing under test — renders and submits through the REAL
+  // interview.submitScorecard. Everything else on the page is unstubbed.
+  await page.route(
+    (url) => url.pathname === '/api/trpc/interview.createVideoRoom',
+    (route) =>
+      route.fulfill({
+        json: [
+          {
+            result: {
+              data: { json: { url: 'https://e2e-stub.daily.co/e2e-room', token: 'e2e-stub', roomName: 'e2e-room' } },
+            },
+          },
+        ],
+      }),
+  );
   await page.goto(`/recruitment/interviews/${interviewId}/room`);
-  for (const stars of await page.getByRole('radiogroup').all()) {
+  await page.getByRole('button', { name: 'Unirse a la entrevista' }).click();
+
+  const panel = page.getByRole('tabpanel', { name: 'Scorecard' });
+  const submit = panel.getByRole('button', { name: 'Enviar scorecard' });
+  // The form shows skeletons until the job profile + any stored scorecard load; the submit button
+  // only exists once it has, so the rating groups below are the final set.
+  await expect(submit).toBeDisabled();
+  const groups = await panel.getByRole('radiogroup').all();
+  expect(groups.length, 'the scorecard lists at least one competency').toBeGreaterThan(0);
+  for (const stars of groups) {
     await stars.getByRole('radio', { name: '4 de 5' }).click();
   }
-  await page.locator('input[name=scorecard-recommendation]').first().check();
-  await page.getByRole('button', { name: 'Enviar scorecard' }).click();
+  await expect(panel.getByText(`${groups.length} de ${groups.length} competencias evaluadas`)).toBeVisible();
+  // RecommendationPicker: native radios (visually hidden) inside their <label>s.
+  await panel.getByRole('group', { name: 'Recomendación' }).getByText('Contratar', { exact: true }).click();
+  await expect(panel.getByRole('radio', { name: 'Contratar', exact: true })).toBeChecked();
+
+  await expect(submit).toBeEnabled();
+  await submit.click();
   await expect(page.getByText('Scorecard enviado.')).toBeVisible();
+  // Persisted, not just toasted: after the refetch the form reports the stored submission.
+  await expect(panel.getByRole('status').filter({ hasText: /^Enviado el / })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Actualizar scorecard' })).toBeVisible();
 });
 
 test('recruiter moves the candidate to Oferta and drafts an offer', async () => {
