@@ -10,13 +10,13 @@ people into **their own** organization from the web "Equipo" page (`/settings/us
 C#: no tRPC twin exists. It is separate from the platform-owner invitation console (`/platform/invitations/*`,
 see `invitation-resend.md` and `organization-invitation-create.md`), which stays cross-organization.
 
-| Route                                      | Purpose                                         |
-| ------------------------------------------ | ----------------------------------------------- |
-| `GET /tenant-invitations`                  | Keyset-paged open invitations, `status=all\|active\|expired` |
-| `GET /tenant-invitations/roles`            | Roles this caller may grant                     |
-| `POST /tenant-invitations`                 | Create + send (`{email, roleSlug}` only)        |
-| `POST /tenant-invitations/{id}/resend`     | Resend, 7 more days of validity                 |
-| `POST /tenant-invitations/{id}/revoke`     | Revoke a pending/sent/expired invitation        |
+| Route                                  | Purpose                                                      |
+| -------------------------------------- | ------------------------------------------------------------ |
+| `GET /tenant-invitations`              | Keyset-paged open invitations, `status=all\|active\|expired` |
+| `GET /tenant-invitations/roles`        | Roles this caller may grant                                  |
+| `POST /tenant-invitations`             | Create + send (`{email, roleSlug}` only)                     |
+| `POST /tenant-invitations/{id}/resend` | Resend, 7 more days of validity                              |
+| `POST /tenant-invitations/{id}/revoke` | Revoke a pending/sent/expired invitation                     |
 
 The organization always comes from the resolved principal. A body carrying `organizationId` (or any extra
 key) is a 400, not ignored. Every statement runs in `TenantScope` AND filters `organization_id`, because the
@@ -44,13 +44,13 @@ hr_admin every one except super_admin; anyone else only the staff roles they hol
 
 Other role-writing paths, and why they are outside this policy:
 
-| Path | Why it is not covered |
-| ---- | --------------------- |
+| Path                                      | Why it is not covered                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `platform.users.changeOrgUserRole` (tRPC) | `platformProcedure`, which only platform owners can call. They are cross-organization by design. |
-| `offer.lifecycle` hire (tRPC) | Always grants `employee`, which every caller may grant. |
-| `apps/web/app/auth/callback/route.ts` | Org creation: the founder becomes super_admin of the new org. |
-| C# `InvitationOnboardingRepository` | Acceptance grants the invitation's stored role, which was checked at create/resend. |
-| `prisma/seed*.ts` | Local/dev seeders, not a runtime path. |
+| `offer.lifecycle` hire (tRPC)             | Always grants `employee`, which every caller may grant.                                          |
+| `apps/web/app/auth/callback/route.ts`     | Org creation: the founder becomes super_admin of the new org.                                    |
+| C# `InvitationOnboardingRepository`       | Acceptance grants the invitation's stored role, which was checked at create/resend.              |
+| `prisma/seed*.ts`                         | Local/dev seeders, not a runtime path.                                                           |
 
 ## Resend cooldown
 
@@ -70,14 +70,14 @@ bounds request rate, but not the number of emails one tenant can trigger per day
 
 ## Audit
 
-| Event | When |
-| ----- | ---- |
-| `user_invitation_created` | Created. Written in the same transaction as the row. |
-| `user_invitation_delivery {outcome, surface:"tenant"}` | After a create's delivery attempt. |
-| `user_invitation_denied {reason:"role_not_grantable", roleSlug[, operation:"resend"]}` | Create or resend refused by the grant policy. |
-| `invitation_resend {outcome, surface:"tenant"}` | Every resend outcome, including NotFound and Cooldown. |
-| `user_invitation_revoked {previousStatus}` | Revoked. Written in the same transaction as the update. |
-| `user_invitation_revoke_refused {outcome, surface:"tenant"}` | Unknown/foreign id (NotFound) or terminal state (InvalidStatus). |
+| Event                                                                                  | When                                                             |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `user_invitation_created`                                                              | Created. Written in the same transaction as the row.             |
+| `user_invitation_delivery {outcome, surface:"tenant"}`                                 | After a create's delivery attempt.                               |
+| `user_invitation_denied {reason:"role_not_grantable", roleSlug[, operation:"resend"]}` | Create or resend refused by the grant policy.                    |
+| `invitation_resend {outcome, surface:"tenant"}`                                        | Every resend outcome, including NotFound and Cooldown.           |
+| `user_invitation_revoked {previousStatus}`                                             | Revoked. Written in the same transaction as the update.          |
+| `user_invitation_revoke_refused {outcome, surface:"tenant"}`                           | Unknown/foreign id (NotFound) or terminal state (InvalidStatus). |
 
 Rows are always written against the **caller's** organization. A foreign id never produces a row in the
 foreign org.
