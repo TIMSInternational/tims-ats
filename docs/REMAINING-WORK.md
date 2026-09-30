@@ -1,5 +1,18 @@
 # Known Issues & Remaining Work
 
+- **2026-09-29 onboarding checklist + assessment-type authoring (PR #309, implemented, awaiting deploy):** new
+  onboarding plans get a default 12-task checklist and the hire gets a "Mi Onboarding" view. Server-side, an
+  own-scoped caller (the `employee` role) may now only toggle `completed` on tasks they own — the hire on
+  `employee` tasks, the plan's buddy on `buddy` tasks — and cannot update plans or complete check-ins (this was
+  UI-only before the fix). One active plan per hire is serialized with a per-(org, hire) advisory lock (create and
+  re-activation), not a unique index. Tenants can create/edit/deactivate assessment types in .NET 10, dark behind
+  `Platform__AssessmentTypeWriteEnabled` + `NEXT_PUBLIC_ASSESSMENT_TYPES_VIA_CSHARP`; registered as parity write
+  surface `assessment-types`, never run live. Open: `verify-write assessment-types` (API flag first), the
+  concurrent-rename name race (needs a partial index + a read-only prod duplicate check, see
+  `architecture/csharp-migration/assessment-type-authoring.md`), and backfilling the default checklist into
+  existing plans created before this change (draft issue in the PR). Team-scoped callers who are a plan's buddy
+  still reach it through the buddy arm of the scope fragment with full edit rights (pre-existing, unchanged).
+
 - **2026-09-22 onboarding data integrity (implemented, awaiting deploy):** the dashboard displayed preset course completion, IT access requests and a generated learning route for tenants with no onboarding plans, inferred check-in completion from elapsed days, and called pending tasks "documents". The dashboard now displays persisted check-ins and active-plan counts only; fabricated panels and the nonfunctional export control were removed. Real course/access provisioning, generated learning routes, document tracking, check-in scheduling and export still require implementation before those features can be included in beta scope.
 
 - **2026-09-22 public application hardening (implemented, awaiting deploy):** local browser submission created a synthetic candidate/application in the default pipeline stage, and duplicate submission kept one application. The unauthenticated endpoint no longer overwrites an existing candidate profile based only on a claimed email address. Turnstile verification now bounds response time and rejects malformed provider responses; tests cover success/failure. The local browser run used the existing non-production CAPTCHA bypass; Cloudflare's official test secret was verified independently against Siteverify. A full production-domain application with the real widget and recruiter/candidate portal follow-through remains required before beta.
@@ -33,6 +46,15 @@
 > `docs/architecture/table-ownership.md` (the authoritative per-table/per-domain ledger).
 
 ### Current implementation wave — 2026-09-14 (unreleased)
+
+- **F8, tenant team invitations (PR #307, not merged/deployed):** a company admin invites users into their
+  OWN org via C# `/tenant-invitations` (list/roles/create/resend/revoke) and the web "Equipo" page
+  (`/settings/users`). Dark behind `Platform__TenantInvitationsEnabled` + `NEXT_PUBLIC_TENANT_INVITATIONS_VIA_CSHARP`.
+  The staff-role grant policy (no one grants above their own role) is now enforced on BOTH stacks, including
+  the previously unguarded tRPC `user.create` / `user.assignRole`, pinned by one shared golden matrix. Resend has
+  a 5-minute per-invitation cooldown. Open: per-org daily invitation cap, a delivery-suppressed write fixture for
+  the parity harness, the 11 other pop-then-skip pagination sites (issue drafted). See
+  `architecture/csharp-migration/tenant-invitations.md`.
 
 - **#75 / #217, invitation resend port:** a default-disabled C# resend endpoint and console hook
   now handle provider acceptance, unchanged state on delivery failure, and guarded updates against

@@ -88,7 +88,17 @@ surface, flipped per §6):
 - **Writes (9):** `ValidationStaffWriteEnabled`, `ExternalVendorWriteEnabled`, `CompensationWriteEnabled`,
   `Evaluation360WriteEnabled`, `SuccessionWriteEnabled`, `NineBoxWriteEnabled`, `EngagementWriteEnabled`,
   `BillingWebhookWriteEnabled`, `BillingSelfServeEnabled`.
+- **Tenant self-serve, added after the original 21 (F8, PR #307):** `TenantInvitationsEnabled` — maps all five
+  `/tenant-invitations` routes (list, grantable roles, create, resend, revoke; reads AND writes behind one flag).
+  Default false. It sends real email on create/resend, so it also needs the `Email__*` / `Invitations__AppOrigin`
+  configuration from `csharp-email-delivery.md`. The FE half is `NEXT_PUBLIC_TENANT_INVITATIONS_VIA_CSHARP=true`
+  (build-time) plus `NEXT_PUBLIC_TIMS_PLATFORM_API_URL`; with either off, the Equipo nav entry and the setup
+  checklist link are hidden. See `tenant-invitations.md`.
   (The exact CLR property names are in `services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs`.)
+- **Added after this list was frozen** (not counted in the 21; `PlatformOptions.cs` is authoritative):
+  `AssessmentTypeWriteEnabled` — F13 tenant assessment-type authoring (PR #309), greenfield C# with no TS writer.
+  Set it `true` and run `verify-write assessment-types` BEFORE building Vercel with
+  `NEXT_PUBLIC_ASSESSMENT_TYPES_VIA_CSHARP=true`. See `assessment-type-authoring.md`.
 - **Tenant people directory (added 2026-09-29, PR #304 — not part of the 21 above):**
   `Platform__TenantPeopleDirectoryEnabled` (C#, default false) serves `GET /tenant/people/assignable`; the web
   consumer is the build-time Vercel flag `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP` (unset = pickers stay on
@@ -240,6 +250,10 @@ prod-verify you drop the TS router/service/repo and flip its tables to `efcore` 
       `Stripe__WebhookSecret` secret (and the existing `STRIPE_SECRET_KEY` into `Stripe__SecretKey`); (2) flip
       `manage_stripe_secrets = true` + `Platform:BillingWebhookWriteEnabled = true`; (3) no Stripe
       dashboard/API action of any kind is required.
+
+14. `AssessmentTypeWriteEnabled` (F13, PR #309) — **greenfield**: no TS writer ever existed, so there is no TS
+    router to delete and nothing to canary against. API flag + `verify-write assessment-types` first, then the web
+    build flag. `assessment_types` stays `efcoreStranglerWrite` (the TS `listTypes` read and the demo seed remain).
 
 **The H1/both-stacks hardenings ship LIVE with the TS side already** (succession/nine-box/engagement reject cross-org
 FK refs) — they only ever reject previously-broken writes, so they are safe irrespective of cutover timing.

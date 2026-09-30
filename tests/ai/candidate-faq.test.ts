@@ -19,7 +19,20 @@ const context: CandidateFaqContext = {
     },
   ],
   upcomingInterviews: [],
-  offers: [],
+  offers: [
+    {
+      vacancyTitle: 'Software Engineer',
+      companyName: 'TIMS',
+      status: 'sent',
+      annualBaseSalary: 96_000_000,
+      monthlyEquivalent: 8_000_000,
+      currency: 'COP',
+      startDate: '2026-10-01T00:00:00.000Z',
+      contractType: 'Indefinido',
+      expiresAt: null,
+      signable: true,
+    },
+  ],
 };
 
 describe('answerCandidateFaq', () => {
@@ -50,6 +63,11 @@ describe('answerCandidateFaq', () => {
     expect(message).toContain('<candidate_question>');
     expect(message).toContain('<candidate_portal_context_json>');
     expect(message).toContain('Software Engineer');
+    expect(message).toContain('"annualBaseSalary":96000000');
+    expect(message).toContain('"monthlyEquivalent":8000000');
+    const systemPrompt = (invokeAgentMock.mock.calls[0]![0] as { systemPrompt: string }).systemPrompt;
+    expect(systemPrompt).toMatch(/annualBaseSalary is the ANNUAL base salary/);
+    expect(systemPrompt).toMatch(/per year or per month/);
     expect(result).toEqual({
       answer: 'Your application is in interview.',
       sources: ['applications'],

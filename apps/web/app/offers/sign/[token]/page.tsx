@@ -4,8 +4,8 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { formatAnnualOfferSalary } from '../../../../lib/offer-salary';
 
-const fmtCurrency = (n: number, c: string) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: c }).format(n);
 const fmtDate = (d: Date | string) => new Intl.DateTimeFormat('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(d));
 
 export default function OfferSignPage() {
@@ -101,7 +101,7 @@ export default function OfferSignPage() {
                 </div>
                 <div className="text-sm">
                   <span className="text-[#8B8B8B] block text-xs">{t.offers.annualBaseSalary}</span>
-                  <span className="font-medium text-[#333]">{fmtCurrency(o.salary, o.currency)}</span>
+                  <span className="font-medium text-[#333]">{formatAnnualOfferSalary(o.salary, o.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}</span>
                 </div>
                 <div className="text-sm">
                   <span className="text-[#8B8B8B] block text-xs">{t.offers.signContractType}</span>

@@ -2,6 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
   - "workers"
+  # Playwright E2E journeys. Top-level (not apps/web/e2e) because they drive the whole stack —
+  # web, the C# API, Supabase and LocalStack — and must keep @playwright/test out of the web
+  # app's dependency graph and build.
+  - "e2e"
 allowBuilds:
   "@parcel/watcher": true
   "@prisma/client": true
@@ -28,11 +32,11 @@ allowBuilds:
 overrides:
   "@opentelemetry/api": "1.9.1"
   "vite@>=8.0.0 <8.0.16": "8.0.16"
-  "brace-expansion@>=1 <2": "1.1.18"
-  "brace-expansion@>=2 <3": "2.1.4"
-  "brace-expansion@>=5 <5.0.9": "5.0.9"
+  "brace-expansion@>=1 <2": "1.1.20"
+  "brace-expansion@>=2 <3": "2.1.6"
+  "brace-expansion@>=5 <5.0.11": "5.0.11"
   "js-yaml@>=4 <4.3.2": "4.3.2"
-  "fast-uri@>=3 <3.1.6": "3.1.6"
+  "fast-uri@>=3 <3.1.8": "3.1.8"
   "postcss@>=8 <8.5.18": "8.5.18"
   "nanoid@>=3 <3.3.18": "3.3.18"
   "browserslist@>=4 <4.28.7": "4.28.7"

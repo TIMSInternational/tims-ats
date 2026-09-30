@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
+import { describeOfferActionError } from '../../../../../lib/offer-action-error';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { Skeleton } from '../../../../../components';
 import { ApprovalChain } from './approval-chain';
@@ -48,8 +49,10 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
     },
     onError: (error) => toast(error.message, { type: 'error' }),
   });
+  const [signingError, setSigningError] = useState<string | null>(null);
 
   const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
+    onMutate: () => setSigningError(null),
     onSuccess: (data) => {
       setSigningUrl(data.signingUrl ? window.location.origin + data.signingUrl : '');
       setEmailDeliveryAccepted(data.emailDeliveryAccepted);
@@ -57,7 +60,11 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       setShowSigningModal(true);
       offer.refetch();
     },
-    onError: (err) => toast(err.message, { type: 'error' }),
+    onError: (err) => {
+      const message = describeOfferActionError(err, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction });
+      setSigningError(message);
+      toast(message, { type: 'error' });
+    },
   });
 
   if (offer.isLoading) {
@@ -125,6 +132,9 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         // Re-sending a SENT offer re-emails the live bearer link, which the server allows only to offer:update.
         canSendForSigning={o.status === 'approved' || (o.status === 'sent' && can('offer', 'update'))}
       />
+      {signingError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">{signingError}</p>
+      )}
 
       {/* Two columns */}
       <div className="flex flex-col md:flex-row gap-6">

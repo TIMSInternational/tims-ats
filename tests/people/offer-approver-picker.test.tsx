@@ -88,7 +88,9 @@ describe('offer approval actions — approver picker', () => {
     // Codex #304 round 2: the directory is permission-based, not scope-aware, so an unrelated-team leader
     // can be listed; submitForApproval rejects them and the panel must say why instead of failing silently.
     const scopeError = 'Uno o mas aprobadores no tienen esta oferta dentro de su alcance';
-    submitMutateAsync.mockRejectedValue(new Error(scopeError));
+    // Real tRPC shape (approvals.ts throws BAD_REQUEST): describeOfferActionError (#306) shows a plain-text
+    // BAD_REQUEST verbatim, but maps a code-less error to the generic label — so the code must be present.
+    submitMutateAsync.mockRejectedValue(Object.assign(new Error(scopeError), { data: { code: 'BAD_REQUEST' } }));
     const { OfferApprovalActions } =
       await import('../../apps/web/app/(admin)/recruitment/offers/_components/offer-approval-actions');
     const onUpdated = vi.fn();

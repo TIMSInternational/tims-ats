@@ -73,8 +73,10 @@ export default function PortalLoginPage() {
                 </div>
               )}
               <div>
-                <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.portalAuth.emailLabel}</label>
+                <label htmlFor="portal-login-email" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.portalAuth.emailLabel}</label>
                 <input
+                  id="portal-login-email"
+                  autoComplete="email"
                   type="email"
                   required
                   value={email}

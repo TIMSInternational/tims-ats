@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
 import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '@tims/api';
 import { isSafePortalNext } from '../../../lib/portal-auth';
+import { slugify } from '../../../lib/slugify';
 import { PASSWORD_SETUP_PROOF_COOKIE, PASSWORD_SETUP_PROOF_PATH } from '../../../lib/password-setup-proof';
 
 function recoveryRedirect(origin: string, invitationToken: string | null, userId: string) {
@@ -114,10 +115,7 @@ export async function GET(request: Request) {
   if (accountType === 'company' || supabaseUser.user_metadata?.account_type === 'company') {
     const companyName =
       supabaseUser.user_metadata?.company_name || `${supabaseUser.email.split('@')[1].split('.')[0]} Org`;
-    const slug = companyName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+    const slug = slugify(companyName);
 
     // Create org + user + role in transaction
     await db.$transaction(async (tx) => {
