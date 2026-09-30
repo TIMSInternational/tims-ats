@@ -127,10 +127,11 @@ public sealed class RelayAttributionTests
         Assert.True(called);
     }
 
-    [Fact]
-    public async Task SignedAnonymousCandidateInterviewJoinReceivesDistinctTrustedIp()
+    [Theory]
+    [InlineData("/interviews/candidate-join")]
+    [InlineData("/interviews/candidate-join/")]
+    public async Task SignedAnonymousCandidateInterviewJoinReceivesDistinctTrustedIp(string path)
     {
-        const string path = "/interviews/candidate-join";
         var context = Request(Envelope("203.0.113.8", actor: "", method: "POST", path: path));
         context.User = new ClaimsPrincipal(new ClaimsIdentity());
         context.Request.Method = "POST";

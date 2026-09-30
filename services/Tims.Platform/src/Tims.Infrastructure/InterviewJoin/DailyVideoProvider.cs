@@ -20,8 +20,15 @@ public sealed class DailyOptions
     public const string SectionName = "Daily";
     public const string DefaultApiUrl = "https://api.daily.co/v1";
 
+    /// <summary>The value terraform seeds into every secret until it is set out of band. It is NOT a key.</summary>
+    public const string TerraformPlaceholder = "REPLACE_ME_OUT_OF_BAND";
+
     public string? ApiKey { get; init; }
     public string ApiUrl { get; init; } = DefaultApiUrl;
+
+    /// <summary>A key is usable when it is non-blank and is not the terraform placeholder.</summary>
+    public bool HasUsableApiKey => !string.IsNullOrWhiteSpace(ApiKey) &&
+        !string.Equals(ApiKey.Trim(), TerraformPlaceholder, StringComparison.Ordinal);
 
     public bool IsValid() => Uri.TryCreate(ApiUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
         uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0;
@@ -50,7 +57,7 @@ public sealed class DailyVideoProvider(HttpClient client, IOptions<DailyOptions>
 {
     private readonly DailyOptions _options = options.Value;
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
+    public bool IsConfigured => _options.HasUsableApiKey;
 
     private Uri Endpoint(string path) => new(_options.ApiUrl.TrimEnd('/') + path);
 
@@ -85,6 +92,8 @@ public sealed class DailyVideoProvider(HttpClient client, IOptions<DailyOptions>
             }
 
             // 400 = the room already exists (TS parity): fetch it, and extend it if it closes too early.
+            // Adopting it is safe only because every caller passes a name derived from the interview's own id
+            // (CandidateInterviewJoin.IsOwnRoomName), and the caller re-checks the returned room (SameRoom).
             using var get = Request(HttpMethod.Get, "/rooms/" + Uri.EscapeDataString(roomName));
             using var existing = await client.SendAsync(get, ct);
             if (!existing.IsSuccessStatusCode)

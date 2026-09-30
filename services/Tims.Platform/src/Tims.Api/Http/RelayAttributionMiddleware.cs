@@ -26,8 +26,7 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
         // interview join (WP-H). Everything else must carry an authenticated identity.
         var anonymousInvitationSetup = context.User.Identity?.IsAuthenticated != true
             && (context.Request.Path.StartsWithSegments("/invitations/setup")
-                || context.Request.Path.Equals(Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.RoutePath,
-                    StringComparison.OrdinalIgnoreCase))
+                || Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.IsRoute(context.Request.Path))
             && string.IsNullOrEmpty(context.Request.Headers.Authorization);
         if (context.User.Identity?.IsAuthenticated != true && !anonymousInvitationSetup)
         {

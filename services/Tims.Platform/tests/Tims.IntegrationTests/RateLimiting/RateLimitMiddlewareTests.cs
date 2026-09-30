@@ -94,6 +94,22 @@ public sealed class RateLimitMiddlewareTests
     }
 
     [Theory]
+    [InlineData("/interviews/candidate-join/")]
+    [InlineData("/Interviews/Candidate-Join")]
+    [InlineData("/interviews/candidate-join//")]
+    public async Task Candidate_interview_join_budget_cannot_be_sidestepped_by_path_spelling(string variant)
+    {
+        var guard = InMemoryGuard();
+        var middleware = new RateLimitMiddleware(_ => Task.CompletedTask);
+        void Ip(HttpContext ctx) => ctx.Request.Headers["x-real-ip"] = "198.51.100.24";
+        for (var i = 0; i < 10; i++)
+            await middleware.InvokeAsync(Request(HttpMethods.Post, i % 2 == 0 ? variant : "/interviews/candidate-join", Ip), guard);
+        var blocked = Request(HttpMethods.Post, variant, Ip);
+        await middleware.InvokeAsync(blocked, guard);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, blocked.Response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("/health")]
     [InlineData("/ready")]
     [InlineData("/")]

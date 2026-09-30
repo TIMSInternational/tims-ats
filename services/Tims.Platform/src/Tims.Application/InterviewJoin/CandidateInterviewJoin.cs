@@ -38,8 +38,36 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
     public static string HashToken(string token) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
-    /// <summary>The TS video.service room-name convention: <c>tims-</c> + the first 8 characters of the id.</summary>
-    public static string RoomNameFor(Guid interviewId) => "tims-" + interviewId.ToString("D")[..8];
+    /// <summary>
+    /// The room name for a NEW room: <c>tims-</c> + the FULL interview id (32 hex, no dashes). Shared with the TS
+    /// video.service, so staff and candidate land in the same room. A name derived from the whole id cannot
+    /// collide with another interview's (or tenant's) room, which is what makes adopting an existing room of
+    /// this name on Daily's "already exists" 400 safe.
+    /// </summary>
+    public static string RoomNameFor(Guid interviewId) => "tims-" + interviewId.ToString("N");
+
+    /// <summary>The pre-2026-09 TS convention (<c>tims-</c> + first 8 hex). Accepted ONLY from the row's own stored meeting_url.</summary>
+    public static string LegacyRoomNameFor(Guid interviewId) => "tims-" + interviewId.ToString("D")[..8];
+
+    /// <summary>
+    /// True when <paramref name="roomName"/> is a name this interview's own id produces. A stored meeting_url
+    /// naming any other room (another interview's, a hand-pasted one) is never joined: its name is not bound
+    /// to this row, so a guest token for it could admit the candidate to someone else's interview.
+    /// </summary>
+    public static bool IsOwnRoomName(string roomName, Guid interviewId) =>
+        string.Equals(roomName, RoomNameFor(interviewId), StringComparison.Ordinal) ||
+        string.Equals(roomName, LegacyRoomNameFor(interviewId), StringComparison.Ordinal);
+
+    /// <summary>
+    /// The stored URL and the room Daily returned are the same room on the same Daily domain. Daily's answer is
+    /// authoritative for the account's domain (<c>{domain}.daily.co</c>), so this pins the stored meeting_url's
+    /// host to the configured Daily account without a separate domain setting.
+    /// </summary>
+    public static bool SameRoom(string storedUrl, VideoRoom room) =>
+        TryDailyRoom(storedUrl, out var storedName) && TryDailyRoom(room.Url, out var roomName) &&
+        string.Equals(storedName, roomName, StringComparison.Ordinal) &&
+        string.Equals(storedName, room.Name, StringComparison.Ordinal) &&
+        string.Equals(new Uri(storedUrl).Host, new Uri(room.Url).Host, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Accepts only an https Daily room URL (<c>https://{sub}.daily.co/{room}</c>, no credentials, query or
@@ -135,13 +163,12 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
         if (!video.IsConfigured) return unavailable;
         var closesAt = new DateTimeOffset(ClosesAt(interview), TimeSpan.Zero);
 
-        string roomName;
-        VideoRoom? room;
+        // Only a room named from THIS interview's id is ever joined (never one a stored URL merely points at).
+        string storedUrl;
+        VideoRoom? room = null;
         if (interview.MeetingUrl is not null)
         {
-            if (!TryDailyRoom(interview.MeetingUrl, out roomName)) return unavailable;
-            // Also re-extends a room created earlier by staff with a shorter lifetime.
-            room = await video.EnsureRoomAsync(roomName, closesAt, ct);
+            storedUrl = interview.MeetingUrl;
         }
         else
         {
@@ -149,12 +176,15 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
             if (created is null || !TryDailyRoom(created.Url, out _)) return unavailable;
             var stored = await repository.ClaimMeetingUrlAsync(interview.Id, interview.OrganizationId,
                 created.Url, ct);
-            if (!TryDailyRoom(stored, out roomName)) return unavailable;
-            // A concurrent writer stored a different room first: join THAT one, never a second room.
-            room = stored == created.Url ? created : await video.EnsureRoomAsync(roomName, closesAt, ct);
+            if (stored is null) return unavailable;
+            storedUrl = stored;
+            if (stored == created.Url) room = created;
         }
-        if (room is null || !TryDailyRoom(room.Url, out var ensuredName) || ensuredName != roomName)
-            return unavailable;
+        if (!TryDailyRoom(storedUrl, out var roomName) || !IsOwnRoomName(roomName, interview.Id)) return unavailable;
+        // Also re-extends a room created earlier by staff with a shorter lifetime; a concurrent writer's room
+        // (staff created it first) is joined instead of a second one.
+        room ??= await video.EnsureRoomAsync(roomName, closesAt, ct);
+        if (room is null || !SameRoom(storedUrl, room)) return unavailable;
 
         var notBefore = new DateTimeOffset(DateTime.SpecifyKind(interview.ScheduledAt, DateTimeKind.Utc), TimeSpan.Zero)
             - EarlyJoin;
@@ -163,6 +193,6 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
         var guestToken = await video.CreateGuestTokenAsync(roomName,
             DisplayName(interview.CandidateFirstName, interview.CandidateLastName), notBefore, expiresAt, ct);
         if (string.IsNullOrEmpty(guestToken)) return unavailable;
-        return new(CandidateJoinOutcomes.Ready, JoinUrl: room.Url + "?t=" + Uri.EscapeDataString(guestToken));
+        return new(CandidateJoinOutcomes.Ready, JoinUrl: storedUrl + "?t=" + Uri.EscapeDataString(guestToken));
     }
 }

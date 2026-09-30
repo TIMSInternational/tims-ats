@@ -40,6 +40,26 @@ public sealed class CandidateInterviewJoinRepositoryTests(CandidateInterviewJoin
     }
 
     [Fact]
+    public async Task Meeting_url_claim_org_predicate_holds_even_with_rls_disabled()
+    {
+        // RLS off, so the ONLY thing refusing a wrong-organization claim is the WHERE organization_id filter.
+        // (The test above cannot tell the two apart: RLS alone would make it pass.)
+        var seeded = await fixture.SeedAsync();
+        await fixture.ExecuteAsync("ALTER TABLE interviews NO FORCE ROW LEVEL SECURITY; ALTER TABLE interviews DISABLE ROW LEVEL SECURITY");
+        try
+        {
+            var wrongOrg = Guid.NewGuid();
+            Assert.Null(await fixture.Repository().ClaimMeetingUrlAsync(seeded.InterviewId, wrongOrg,
+                "https://tims.daily.co/cross-tenant", default));
+            Assert.Null(await fixture.MeetingUrlAsync(seeded.InterviewId));
+        }
+        finally
+        {
+            await fixture.ExecuteAsync("ALTER TABLE interviews ENABLE ROW LEVEL SECURITY; ALTER TABLE interviews FORCE ROW LEVEL SECURITY");
+        }
+    }
+
+    [Fact]
     public async Task Join_audit_is_tenant_scoped_and_never_contains_the_token()
     {
         var seeded = await fixture.SeedAsync();

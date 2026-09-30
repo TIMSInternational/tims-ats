@@ -21,8 +21,8 @@ internal static class RateLimitHttp
     /// Anonymous capability-token routes get the strict <c>auth</c> tier (IP-keyed), not the default mutation
     /// tier: the candidate interview join (WP-H). Referenced as a constant so it cannot drift from the route.
     /// </summary>
-    private static bool IsCapabilityTokenRoute(PathString path) => string.Equals(path.Value,
-        Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.RoutePath, StringComparison.OrdinalIgnoreCase);
+    private static bool IsCapabilityTokenRoute(PathString path) =>
+        Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.IsRoute(path);
 
     /// <summary>Maps a URL path to the dotted-path shape the category rules expect (/candidate/export → candidate.export).</summary>
     public static string ToDottedPath(PathString path) =>

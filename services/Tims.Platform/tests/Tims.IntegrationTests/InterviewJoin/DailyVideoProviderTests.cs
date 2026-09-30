@@ -100,6 +100,45 @@ public sealed class DailyVideoProviderTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("REPLACE_ME_OUT_OF_BAND")]
+    [InlineData(" REPLACE_ME_OUT_OF_BAND\n")]
+    public async Task Blank_or_terraform_placeholder_key_is_unconfigured_and_never_calls_daily(string? key)
+    {
+        var handler = new Handler();
+        var provider = Provider(handler, key);
+        Assert.False(provider.IsConfigured);
+        Assert.Null(await provider.CreateGuestTokenAsync("r", "Ana", Until, Until, default));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData(true, null, true)]
+    [InlineData(true, "REPLACE_ME_OUT_OF_BAND", true)]
+    [InlineData(true, "real-key", false)]
+    [InlineData(false, null, false)]
+    public void Startup_warns_only_when_the_join_is_on_without_a_usable_key(bool enabled, string? key, bool warns)
+    {
+        var logger = new CapturingLogger();
+        Assert.Equal(warns, Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.WarnIfVideoUnconfigured(
+            logger, enabled, new DailyOptions { ApiKey = key }));
+        Assert.Equal(warns ? 1 : 0, logger.Records.Count);
+        if (warns) Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Warning, logger.Records[0].Level);
+    }
+
+    private sealed class CapturingLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> Records { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Records.Add((logLevel, formatter(state, exception)));
+    }
+
+    [Theory]
     [InlineData("https://api.daily.co/v1", true)]
     [InlineData("http://api.daily.co/v1", false)]
     [InlineData("https://user:pw@api.daily.co/v1", false)]

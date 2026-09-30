@@ -1324,6 +1324,12 @@ try
     {
         app.MapCandidateInterviewJoinEndpoints();
     }
+    if (!isOpenApiDocGeneration)
+    {
+        CandidateInterviewJoinEndpoints.WarnIfVideoUnconfigured(app.Logger,
+            externalOptions.CandidateInterviewJoinEnabled,
+            app.Services.GetRequiredService<IOptions<DailyOptions>>().Value);
+    }
     if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
     {
         app.MapInvitationResendEndpoints();

@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Tims.Api.Http;
 using Tims.Application.InterviewJoin;
+using Tims.Infrastructure.InterviewJoin;
 
 namespace Tims.Api.InterviewJoin;
 
@@ -14,6 +15,14 @@ public static class CandidateInterviewJoinEndpoints
 {
     public const string RoutePath = "/interviews/candidate-join";
     private const int MaxBodyBytes = 1024;
+
+    /// <summary>
+    /// True for this route in any spelling ASP.NET routing also matches — case-insensitive and with or without a
+    /// trailing slash — so the rate-limit tier and the relay allow-list cannot be sidestepped by <c>.../candidate-join/</c>.
+    /// </summary>
+    public static bool IsRoute(PathString path) =>
+        path.Value is { Length: > 0 } value &&
+        string.Equals(value.TrimEnd('/'), RoutePath, StringComparison.OrdinalIgnoreCase);
 
     public static void MapCandidateInterviewJoinEndpoints(this WebApplication app)
     {
@@ -33,6 +42,20 @@ public static class CandidateInterviewJoinEndpoints
             return Results.Ok(result);
         }).AllowAnonymous().Accepts<JoinBody>("application/json").Produces<CandidateJoinResult>()
             .Produces(400).Produces(429).WithName("CandidateInterviewJoin").WithTags("CandidateInterviewJoin");
+    }
+
+    /// <summary>
+    /// Startup signal (warning, never a failure): the join is ON but <c>Daily:ApiKey</c> is blank or still the
+    /// terraform placeholder, so every joinable interview answers <c>unavailable</c>. Without this line the only
+    /// symptom is candidates retrying a dead page. Returns whether it warned.
+    /// </summary>
+    public static bool WarnIfVideoUnconfigured(ILogger logger, bool joinEnabled, DailyOptions daily)
+    {
+        if (!joinEnabled || daily.HasUsableApiKey) return false;
+        logger.LogWarning(
+            "Platform:CandidateInterviewJoinEnabled is on but Daily:ApiKey is not configured (blank or the " +
+            "terraform placeholder): every candidate video join will answer 'unavailable'. Set Daily__ApiKey.");
+        return true;
     }
 
     /// <summary>Strict body: JSON object with exactly one string property <c>token</c>, bounded size.</summary>
