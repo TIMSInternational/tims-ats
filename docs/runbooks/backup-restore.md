@@ -234,7 +234,9 @@ Use a PostgreSQL 17 client, from the repo root, on an encrypted disk you delete 
    is production data: protect it and delete it at the end.
 
 2. Create the new Supabase project (same region, Postgres 17), then recreate the project roles with
-   their real attributes (not the drill's `NOLOGIN` stand-ins).
+   their real attributes (not the drill's `NOLOGIN` stand-ins) — including `backup_drill_reader`
+   (re-run `create-drill-role.sql`): its SELECT grants on `public` are in the dump, and `pg_restore`
+   reports an error for every GRANT whose role is missing.
 3. Restore `public`. A new project already has a `public` schema, and a dump taken with `-n public`
    carries `CREATE SCHEMA public`, so restoring over it fails with "schema public already exists".
    Do what the drill does (and `local-e2e.sh` scenario 13 proves, as a superuser on the image — not

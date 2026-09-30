@@ -199,7 +199,9 @@ MODE_ARGS="capture $OUT/evidence.txt $DUMPDIR/prod.dump"
 scenario "capture" 0
 MODE_ARGS=""
 fresh_target nomark
-as supabase_admin "$TGT_PORT" -c "CREATE ROLE app_tenant NOLOGIN" -c "DROP SCHEMA auth CASCADE" -c "DROP SCHEMA public CASCADE" || exit 2
+# Path B step 2: recreate the project roles first. backup_drill_reader is one of them — its SELECT
+# grants on public are part of the dump.
+as supabase_admin "$TGT_PORT" -c "CREATE ROLE app_tenant NOLOGIN" -c "CREATE ROLE backup_drill_reader NOLOGIN" -c "DROP SCHEMA auth CASCADE" -c "DROP SCHEMA public CASCADE" || exit 2
 PGPASSWORD="$ADMIN_PW" "$PG_RESTORE" -h 127.0.0.1 -p "$TGT_PORT" -U supabase_admin -d postgres --no-owner "$DUMPDIR/prod.dump" \
   >"$OUT/manual-restore.log" 2>&1 || { echo "  FAIL  manual restore failed"; FAILED=1; }
 DST_URL="postgresql://supabase_admin:$ADMIN_PW@127.0.0.1:$TGT_PORT/postgres"
