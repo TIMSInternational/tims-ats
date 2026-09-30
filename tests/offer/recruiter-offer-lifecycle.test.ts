@@ -267,7 +267,9 @@ describe('offer.generateSigningLink — recruiter can send an APPROVED offer', (
 
   it('still returns the signing link to an HR admin (offer:update), as before the widening', async () => {
     const existing = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-    useOffer('sent', { signingToken: existing });
+    // Issued to the candidate's current address, so the re-send reuses it (a changed recipient rotates —
+    // signing-token-rotation.test.ts).
+    useOffer('sent', { signingToken: existing, signingTokenRecipient: 'ana@candidate.test' });
     const caller = await makeCaller(['hr_admin']);
     const result = await caller.signing.generateSigningLink({ offerId: OFFER_ID });
     expect(result.signingUrl).toBe(`/offers/sign/${existing}`);

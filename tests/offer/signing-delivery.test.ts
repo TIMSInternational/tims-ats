@@ -81,7 +81,9 @@ describe('offer signing-link delivery', () => {
     findOffer.mockResolvedValueOnce({
       id: OFFER_ID,
       status: 'sent',
-      settings: { signingToken: 'stable-token' },
+      // Issued to the candidate's current address, so a retry reuses it (recipient-change rotation is
+      // covered in signing-token-rotation.test.ts).
+      settings: { signingToken: 'stable-token', signingTokenRecipient: 'qa@example.test' },
       updatedAt,
       sentAt: updatedAt,
       expiresAt: null,

@@ -7,6 +7,11 @@ import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 
+// The address a signing token was issued to, compared on re-send (see generateSigningLink).
+function normaliseRecipient(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export const offerSigningRouter = router({
   // Generate a unique signing link for an offer. offer:create (recruiters) suffices to send an APPROVED
   // offer — the body never edits terms, which stays offer:update. Re-sending an already-SENT offer (which
@@ -105,10 +110,18 @@ export const offerSigningRouter = router({
       }
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
-      // A retry must reuse the same bearer link so a prior provider-accepted
-      // message cannot point to a newly invalidated token.
+      // A retry to the SAME recipient must reuse the same bearer link so a prior provider-accepted
+      // message cannot point to a newly invalidated token. But the recipient is whatever candidate.email
+      // says now: if it changed since the token was minted (e.g. a typo'd address was corrected), the
+      // copy already delivered to the old address is a working bearer link to salary/terms and to
+      // accept/decline. So reuse only when the token was issued to this exact (normalised) address;
+      // otherwise — including legacy rows that never recorded a recipient — rotate, which kills the old
+      // link. Rotation goes through the same compare-and-set as the first send.
+      const recipient = normaliseRecipient(offer.candidate.email);
       const existingToken = existingSettings.signingToken;
-      const reusableToken = offer.status === 'sent' && typeof existingToken === 'string' && existingToken.length > 0
+      const reusableToken = offer.status === 'sent'
+        && typeof existingToken === 'string' && existingToken.length > 0
+        && existingSettings.signingTokenRecipient === recipient
         ? existingToken : null;
       const signingToken = reusableToken
         ? reusableToken
@@ -125,7 +138,7 @@ export const offerSigningRouter = router({
           data: {
             status: 'sent',
             sentAt: offer.sentAt ?? new Date(),
-            settings: { ...existingSettings, signingToken },
+            settings: { ...existingSettings, signingToken, signingTokenRecipient: recipient },
           },
         });
         if (transition.count !== 1) {
@@ -257,7 +270,9 @@ export const offerSigningRouter = router({
       // 'sent' wins. `updateMany` matches 0 rows for a concurrent second accept
       // (status already flipped), so two clicks can't both be accepted (TOCTOU).
       const transition = await db.offer.updateMany({
-        where: { id: offer.id, status: 'sent' },
+        // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
+        // between (recipient changed) must leave the superseded link unable to accept/decline.
+        where: { id: offer.id, status: 'sent', settings: { path: ['signingToken'], equals: input.token } },
         data: {
           status: 'accepted',
           respondedAt: now,
@@ -352,7 +367,9 @@ export const offerSigningRouter = router({
       // Atomic conditional transition (see acceptByToken): guards against a
       // concurrent accept/decline race — only the request still seeing 'sent' wins.
       const transition = await db.offer.updateMany({
-        where: { id: offer.id, status: 'sent' },
+        // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
+        // between (recipient changed) must leave the superseded link unable to accept/decline.
+        where: { id: offer.id, status: 'sent', settings: { path: ['signingToken'], equals: input.token } },
         data: {
           status: 'declined',
           respondedAt: now,
