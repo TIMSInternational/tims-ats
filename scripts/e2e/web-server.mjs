@@ -18,6 +18,8 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(join(process.cwd(), 'package.json'));
 const next = require('next');
@@ -27,6 +29,18 @@ const upstream = new URL(process.env.E2E_SUPABASE_UPSTREAM ?? '');
 if (!port || !['127.0.0.1', 'localhost'].includes(upstream.hostname)) {
   console.error('[e2e web] E2E_WEB_TLS_PORT and a LOCAL E2E_SUPABASE_UPSTREAM are required');
   process.exit(2);
+}
+
+// Final net before Next reads apps/web/.env*: refuse to start if any key would come from a .env file
+// (a developer's apps/web/.env.local is a symlink to the LIVE root .env) or any effective URL is
+// non-local. Run in a child process so @next/env's module-level cache in THIS process stays untouched.
+try {
+  execFileSync(process.execPath, [fileURLToPath(new URL('./env-guard.mjs', import.meta.url))], {
+    stdio: 'inherit',
+  });
+} catch {
+  console.error('[e2e web] env isolation guard failed — refusing to start');
+  process.exit(3);
 }
 
 const app = next({ dev: false, hostname: 'localhost', port });

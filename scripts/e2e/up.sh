@@ -83,8 +83,10 @@ start_supabase() {
   supabase start --workdir "$E2E_DIR" \
     -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
     >"$E2E_STATE/logs/supabase-start.log" 2>&1 || {
-    tail -40 "$E2E_STATE/logs/supabase-start.log" >&2
-    e2e_die "supabase start failed"
+    # The log echoes keys/JWT secrets: show only lines that carry no key-like material.
+    grep -viE 'key|secret|jwt|token|password|postgres(ql)?://' "$E2E_STATE/logs/supabase-start.log" |
+      tail -40 >&2 || true
+    e2e_die "supabase start failed (full log, which contains local keys: $E2E_STATE/logs/supabase-start.log)"
   }
   supabase status --workdir "$E2E_DIR" -o env 2>/dev/null |
     grep -E '^(ANON_KEY|SERVICE_ROLE_KEY|API_URL|DB_URL)=' >"$E2E_STATE/supabase.env"
@@ -335,7 +337,36 @@ TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 DAILY_API_URL=http://127.0.0.1:9/v1
 $(cat "$E2E_REPO_ROOT/scripts/e2e/web-flags.env")
 EOF
+  write_env_file_blocklist >>"$E2E_STATE/web.env"
   e2e_assert_env_file_local "$E2E_STATE/web.env"
+}
+
+# Next's @next/env fills every key UNDEFINED in process.env from apps/web/.env* (build and server),
+# and a developer's apps/web/.env.local is a symlink to the LIVE root .env. `unset` cannot stop that;
+# an explicit empty value does. So every key named in any .env file Next would load (plus the root
+# ones it symlinks to, plus known-dangerous keys) that the stack does not set itself is written as
+# `KEY=`. Only key NAMES are read, never values. scripts/e2e/env-guard.mjs then proves it took.
+E2E_ALWAYS_BLANK_KEYS="BEDROCK_AWS_ACCESS_KEY_ID BEDROCK_AWS_SECRET_ACCESS_KEY DAILY_API_KEY
+ELEVENLABS_API_KEY SENTRY_DSN NEXT_PUBLIC_SENTRY_DSN SENTRY_AUTH_TOKEN VERCEL VERCEL_ENV VERCEL_URL"
+write_env_file_blocklist() {
+  local set_keys f key
+  set_keys="$(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' "$E2E_STATE/web.env" | cut -d= -f1 | sort -u)"
+  {
+    for f in "$E2E_REPO_ROOT"/apps/web/.env "$E2E_REPO_ROOT"/apps/web/.env.local \
+      "$E2E_REPO_ROOT"/apps/web/.env.production "$E2E_REPO_ROOT"/apps/web/.env.production.local \
+      "$E2E_REPO_ROOT"/apps/web/.env.sentry-build-plugin "$E2E_REPO_ROOT"/.env \
+      "$E2E_REPO_ROOT"/.env.local "$E2E_REPO_ROOT"/.env.production \
+      "$E2E_REPO_ROOT"/.env.production.local; do
+      [ -r "$f" ] || continue
+      grep -oE '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=' "$f" |
+        sed -E 's/^[[:space:]]*(export[[:space:]]+)?//; s/[[:space:]]*=$//' || true
+    done
+    # shellcheck disable=SC2086 # word-splitting the list is the point
+    printf '%s\n' $E2E_ALWAYS_BLANK_KEYS
+  } | sort -u | while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    printf '%s\n' "$set_keys" | grep -qxF "$key" || printf '%s=\n' "$key"
+  done
 }
 
 start_web() {
@@ -346,7 +377,14 @@ start_web() {
   source "$E2E_STATE/web.env"
   set +a
   # No external AI/video: these must be absent so every such call fails closed locally.
-  unset AWS_PROFILE BEDROCK_AWS_ACCESS_KEY_ID BEDROCK_AWS_SECRET_ACCESS_KEY DAILY_API_KEY ELEVENLABS_API_KEY || true
+  # AWS_PROFILE is unset (not blanked) so the SDK uses the dummy AWS_ACCESS_KEY_ID above. The
+  # BEDROCK_*/DAILY/ELEVENLABS keys are EMPTY in web.env, which is what keeps .env files from
+  # re-supplying them (see write_env_file_blocklist).
+  unset AWS_PROFILE || true
+  # Fails if any key would still be read from an apps/web/.env* file, or any effective URL is
+  # non-local. web-server.mjs runs the same check again at server start.
+  (cd "$E2E_REPO_ROOT/apps/web" && E2E_NAME="$E2E_NAME" node "$E2E_REPO_ROOT/scripts/e2e/env-guard.mjs") ||
+    e2e_die "web env is not isolated from .env files / not local-only (key names above)"
   if [ "${E2E_SKIP_WEB_BUILD:-0}" = "1" ] && [ -f "$E2E_REPO_ROOT/apps/web/.next/BUILD_ID" ]; then
     e2e_log "reusing existing apps/web/.next (E2E_SKIP_WEB_BUILD=1)"
   else

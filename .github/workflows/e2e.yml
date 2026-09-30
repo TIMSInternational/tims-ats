@@ -9,9 +9,11 @@ name: E2E
 # concurrency group, and it must not delay or couple to the fast type-check/vitest jobs.
 #
 # No secrets: every credential is generated per run inside the runner (signing key, service keys,
-# passwords) and is never uploaded. External services are unreachable by construction — no AWS,
-# Daily or ElevenLabs credentials exist here, the AWS SDK endpoint is LocalStack, and the specs
-# abort any browser request to Daily/ElevenLabs/LiveKit.
+# passwords) and is never uploaded. External AI/video is NOT unreachable by construction (the
+# Bedrock SDK and the ElevenLabs client hardcode their hosts); what holds is: no Bedrock, Daily or
+# ElevenLabs credentials are provided (blanked, and scripts/e2e/env-guard.mjs refuses to start if a
+# .env file would supply any), no journey step triggers AI, and the specs abort any browser request
+# to Daily/ElevenLabs/LiveKit. A server-side call would go out unauthenticated and fail.
 
 on:
   push:
@@ -45,7 +47,7 @@ jobs:
           cache: pnpm
 
       # Pinned to the CLI version the stack was built and verified with.
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3 (what @v1 resolved to on 2026-09-29)
         with:
           version: 2.39.2
 
