@@ -28,9 +28,10 @@ export interface SetupChecklistLabels {
 // (see setup-checklist.tsx), while logic like this is unit-tested directly.
 //
 // "teamInvited" links to /settings/users (the tenant self-serve "Equipo" page, which invites
-// into the CALLER'S org via the C# /tenant-invitations surface) — but only for viewers holding
-// user:create. Everyone else gets a status-only row: the page would render a no-permission state
-// for them, and a "Go" link to a dead end is the same failure `canManageBranding` guards below.
+// into the CALLER'S org via the C# /tenant-invitations surface) — but only when the viewer holds
+// user:create AND the tenant-invitations flag is on. Otherwise it is a status-only row: without the
+// grant the page renders a no-permission state, and with the flag off it renders "unavailable" — a
+// "Go" link to either dead end is the same failure `canManageBranding` guards below.
 //
 // `canManageBranding` (whole-branch review): hr_admin holds organization:read
 // (sees this widget, including this row's DONE/not-done state) but not
@@ -44,10 +45,12 @@ export function deriveSetupChecklistRows(
   labels: SetupChecklistLabels,
   canManageBranding: boolean,
   canInviteTeam = false,
+  invitationsEnabled = false,
 ): SetupChecklistRow[] {
+  const teamInviteHref = canInviteTeam && invitationsEnabled ? '/settings/users' : null;
   return [
     { key: 'companyStructureReady', label: labels.companyStructureReady, done: items.companyStructureReady, href: null },
-    { key: 'teamInvited', label: labels.teamInvited, done: items.teamInvited, href: canInviteTeam ? '/settings/users' : null },
+    { key: 'teamInvited', label: labels.teamInvited, done: items.teamInvited, href: teamInviteHref },
     { key: 'brandingSet', label: labels.brandingSet, done: items.brandingSet, href: canManageBranding ? '/settings/branding' : null },
     { key: 'firstVacancyPosted', label: labels.firstVacancyPosted, done: items.firstVacancyPosted, href: '/recruitment/vacancies' },
     { key: 'firstVacancyPublished', label: labels.firstVacancyPublished, done: items.firstVacancyPublished, href: '/recruitment/vacancies' },

@@ -150,8 +150,9 @@ describe('computeVisibleSections', () => {
 });
 
 describe('/settings/users (Equipo) — gated on user:create, not user:read', () => {
+  // Flag ON here: this block pins the permission gate. The flag gate is pinned in the block below.
   const hrefsFor = (role: 'super_admin' | 'hr_admin', can: (m: string, a?: string) => boolean) =>
-    computeVisibleSections(MANIFESTS[role].sections, can, false).flatMap((s) => s.items.map((i) => i.href));
+    computeVisibleSections(MANIFESTS[role].sections, can, false, () => true).flatMap((s) => s.items.map((i) => i.href));
 
   it('is declared for super_admin and hr_admin only (the roles holding user:create in the access matrix)', () => {
     for (const role of NAV_ROLES) {
@@ -175,10 +176,46 @@ describe('/settings/users (Equipo) — gated on user:create, not user:read', () 
 
   it('items without an explicit action are still checked with read', () => {
     const seen: string[] = [];
-    computeVisibleSections(MANIFESTS.super_admin.sections, (m, a) => { seen.push(`${m}:${a}`); return true; }, false);
+    computeVisibleSections(MANIFESTS.super_admin.sections, (m, a) => { seen.push(`${m}:${a}`); return true; }, false, () => true);
     expect(seen).toContain('pipeline:read');
     expect(seen).toContain('user:create');
     expect(seen).not.toContain('pipeline:undefined');
+  });
+});
+
+describe('/settings/users (Equipo) — hidden while the tenant-invitations flag is off', () => {
+  const canEverything = () => true;
+  const hrefs = (role: 'super_admin' | 'hr_admin', isFeatureOn?: (flag: 'tenantInvitations') => boolean) =>
+    computeVisibleSections(MANIFESTS[role].sections, canEverything, false, isFeatureOn).flatMap((s) =>
+      s.items.map((i) => i.href),
+    );
+
+  it('flag OFF + user:create → hidden (the page would open on an "unavailable" notice)', () => {
+    for (const role of ['super_admin', 'hr_admin'] as const) {
+      expect(hrefs(role, () => false)).not.toContain('/settings/users');
+      expect(hrefs(role, () => false)).toContain('/settings/business-units'); // only the flagged item is pruned
+    }
+  });
+
+  it('omitting isFeatureOn hides flagged items (fail-closed default)', () => {
+    for (const role of ['super_admin', 'hr_admin'] as const) expect(hrefs(role)).not.toContain('/settings/users');
+  });
+
+  it('flag ON + user:create → shown, and the predicate is asked about exactly tenantInvitations', () => {
+    const asked: string[] = [];
+    const shown = hrefs('hr_admin', (flag) => {
+      asked.push(flag);
+      return true;
+    });
+    expect(shown).toContain('/settings/users');
+    expect(new Set(asked)).toEqual(new Set(['tenantInvitations']));
+  });
+
+  it('every flagged item is the Equipo entry (no other item silently depends on a flag)', () => {
+    for (const role of NAV_ROLES) {
+      const flagged = MANIFESTS[role].sections.flatMap((s) => s.items.filter((i) => i.featureFlag !== undefined));
+      for (const item of flagged) expect([item.href, item.featureFlag]).toEqual(['/settings/users', 'tenantInvitations']);
+    }
   });
 });
 
