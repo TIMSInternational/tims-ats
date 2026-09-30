@@ -3,14 +3,30 @@ import { createClient } from '@supabase/supabase-js';
 
 const db = new PrismaClient();
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lzhfnjfsdwdywwnlqgqq.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Everything this script needs comes from the environment and is REQUIRED — no
+// defaults. It used to fall back to the PRODUCTION Supabase project when
+// NEXT_PUBLIC_SUPABASE_URL was unset and to a password hardcoded in this file, so an
+// unconfigured run silently created known-password accounts in prod. Fail closed.
+const MIN_SEED_PASSWORD_LENGTH = 12;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
-
-const PASSWORD = 'TimsAts2026!';
+function requireSeedEnv(): { supabaseUrl: string; serviceKey: string; password: string } {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? '';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
+  const password = process.env.SEED_USER_PASSWORD ?? '';
+  const problems: string[] = [];
+  if (!supabaseUrl) problems.push('NEXT_PUBLIC_SUPABASE_URL is not set (the Supabase project to seed — there is no default).');
+  if (!serviceKey) problems.push('SUPABASE_SERVICE_ROLE_KEY is not set.');
+  if (password.length < MIN_SEED_PASSWORD_LENGTH) {
+    problems.push(`SEED_USER_PASSWORD must be set to at least ${MIN_SEED_PASSWORD_LENGTH} characters (no default).`);
+  }
+  if (problems.length > 0) {
+    for (const p of problems) console.error(`ERROR: ${p}`);
+    console.error('Run with:');
+    console.error('  NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... SEED_USER_PASSWORD=... npx tsx prisma/seed-users.ts');
+    process.exit(1);
+  }
+  return { supabaseUrl, serviceKey, password };
+}
 
 // Users to create — one per key role level
 const TEST_USERS = [
@@ -123,13 +139,11 @@ const ROLE_PERMISSIONS: Record<string, Array<{ module: string; action: string }>
 };
 
 async function main() {
-  console.log('Seeding test users with proper RBAC...\n');
-
-  if (!SUPABASE_SERVICE_KEY) {
-    console.error('ERROR: SUPABASE_SERVICE_ROLE_KEY not set. Run with:');
-    console.error('  SUPABASE_SERVICE_ROLE_KEY=... npx tsx prisma/seed-users.ts');
-    process.exit(1);
-  }
+  const env = requireSeedEnv();
+  const supabase = createClient(env.supabaseUrl, env.serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  console.log(`Seeding test users with proper RBAC into ${new URL(env.supabaseUrl).host}...\n`);
 
   // Find TIMS International org
   const org = await db.organization.findUnique({ where: { slug: 'tims-international' } });
@@ -183,7 +197,7 @@ async function main() {
     // Create Supabase auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: testUser.email,
-      password: PASSWORD,
+      password: env.password,
       email_confirm: true,
     });
 
@@ -248,7 +262,7 @@ async function main() {
   }
 
   console.log('\n=== Test Users Created ===');
-  console.log('All use password: TimsAts2026!');
+  console.log('All use the password from SEED_USER_PASSWORD (not printed).');
   console.log('');
   console.log('  Platform Owner:  federico@nexadev.ai');
   console.log('  Super Admin:     admin@tims.co');

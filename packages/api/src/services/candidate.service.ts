@@ -173,7 +173,7 @@ export const candidateService = {
           id: `asc-${a.id}`,
           type: 'assessment_completed',
           title: `${a.assessmentType.name} completed`,
-          description: a.result ? `Score: ${a.result.normalizedScore}` : null,
+          description: a.result?.normalizedScore != null ? `Score: ${a.result.normalizedScore}` : null,
           date: a.completedAt,
           actor: null,
         });
