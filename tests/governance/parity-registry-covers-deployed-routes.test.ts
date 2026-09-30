@@ -268,10 +268,12 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
     reason:
       'TENANT ORG STRUCTURE LANDED DARK 2026-09-29 (TenantOrgStructureEnabled). C#-only management surface for business ' +
       'units, teams, leaders, members and unit assignees (the anchors leader/unit-scoped approvals read), plus the ' +
-      'vacancy-picker options read. The tRPC organization router has only partial, differently-authorized twins ' +
-      '(create-only, user:create for assignments), so a by-role diff would compare different contracts. Covered by ' +
-      'real-PostgreSQL integration tests under production-shaped RLS (cross-tenant 404s, permission denial, 409s, audit). ' +
-      'Register fixture-first before enabling the flag in production.',
+      'vacancy-picker options read. The tRPC organization router has only partial twins (create-only units/teams; ' +
+      'assign/unassign unit — gated identically, user:create/user:delete), so a by-role diff would compare different ' +
+      'contracts. Covered by real-PostgreSQL integration tests under production-shaped RLS with seed-matrix grants ' +
+      '(cross-tenant 404s, a 403 table over every route incl. a narrow-scope grant, 409s, audit). NOT verifiable in ' +
+      'prod until registered: register fixture-first (the parity seed has no org-structure grants) BEFORE enabling ' +
+      'TenantOrgStructureEnabled in production.',
     routes: [
       'GET /tenant/org-structure',
       'GET /tenant/org-structure/options',

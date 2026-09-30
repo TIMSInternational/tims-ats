@@ -12,18 +12,21 @@ public sealed class AssignablePeopleUseCase(IAssignablePeopleRepository reposito
         CancellationToken cancellationToken) =>
         ListAsync(organizationId, purpose, search, limit, null, cancellationToken)!;
 
-    /// <summary>Returns <c>null</c> when <paramref name="vacancyId"/> is not a non-deleted vacancy of the organization.</summary>
+    /// <summary>
+    /// Returns <c>null</c> when <paramref name="vacancy"/> names a vacancy that is not a non-deleted vacancy of the
+    /// organization, or one outside the caller's own vacancy scope (the two are indistinguishable by design).
+    /// </summary>
     public async Task<AssignablePeopleResult?> ListAsync(
         Guid organizationId,
         AssignablePurpose purpose,
         string? search,
         int limit,
-        Guid? vacancyId,
+        VacancyApproverFilter? vacancy,
         CancellationToken cancellationToken)
     {
         // Vacancy-specific scope is only defined for the vacancy approver picker.
-        if (vacancyId is not null && purpose != AssignablePurpose.VacancyApprover)
-            throw new ArgumentException("vacancyId is only valid for the vacancy approver purpose", nameof(vacancyId));
+        if (vacancy is not null && purpose != AssignablePurpose.VacancyApprover)
+            throw new ArgumentException("vacancyId is only valid for the vacancy approver purpose", nameof(vacancy));
         if (limit is < 1 or > AssignablePurposes.MaxLimit)
             throw new ArgumentOutOfRangeException(nameof(limit));
         var term = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
@@ -31,7 +34,7 @@ public sealed class AssignablePeopleUseCase(IAssignablePeopleRepository reposito
             throw new ArgumentOutOfRangeException(nameof(search));
 
         var people = await repository.ListAsync(
-            organizationId, AssignablePurposes.RuleFor(purpose), term, limit, vacancyId, cancellationToken);
+            organizationId, AssignablePurposes.RuleFor(purpose), term, limit, vacancy, cancellationToken);
         return people is null ? null : new(people);
     }
 }

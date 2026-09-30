@@ -10,6 +10,7 @@ import {
 } from '../../../../lib/platform-api/org-structure';
 import { useOrgErrorMessage } from './use-org-error-message';
 import { TeamRow } from './team-row';
+import type { OrgStructureAbilities } from './use-org-abilities';
 import { alertCls, dangerSmallBtn, smallBtn } from './units-styles';
 
 export interface BusinessUnitCardActions {
@@ -23,13 +24,12 @@ export interface BusinessUnitCardActions {
 
 interface BusinessUnitCardProps {
   unit: OrgBusinessUnit;
-  canCreate: boolean;
-  canUpdate: boolean;
+  abilities: OrgStructureAbilities;
   actions: BusinessUnitCardActions;
 }
 
 /** A business unit with its unit assignees (unit-scope approvers) and teams. */
-export function BusinessUnitCard({ unit, canCreate, canUpdate, actions }: BusinessUnitCardProps) {
+export function BusinessUnitCard({ unit, abilities, actions }: BusinessUnitCardProps) {
   const { t } = useI18n();
   const errorMessage = useOrgErrorMessage();
   const [failure, setFailure] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export function BusinessUnitCard({ unit, canCreate, canUpdate, actions }: Busine
             {unit.teamCount} {t.units.teamsCount}
           </p>
         </div>
-        {canUpdate && (
+        {abilities.updateStructure && (
           <div className="flex flex-wrap gap-1.5">
             <button type="button" onClick={actions.onEdit} className={smallBtn}>
               {t.units.rename}
@@ -96,7 +96,7 @@ export function BusinessUnitCard({ unit, canCreate, canUpdate, actions }: Busine
       <div className="mb-4">
         <div className="flex items-center justify-between mb-1.5">
           <h4 className="text-[12px] font-semibold text-[#585858]">{t.units.assigneesTitle}</h4>
-          {canUpdate && (
+          {abilities.assignPeople && (
             <button type="button" onClick={actions.onAddAssignee} className={smallBtn}>
               {t.units.addAssignee}
             </button>
@@ -113,7 +113,7 @@ export function BusinessUnitCard({ unit, canCreate, canUpdate, actions }: Busine
                   <p className="text-[12px] font-medium text-[#333] truncate">{person.fullName}</p>
                   <p className="text-[11px] text-[#8B8B8B] truncate">{person.email}</p>
                 </div>
-                {canUpdate && (
+                {abilities.unassignPeople && (
                   <button
                     type="button"
                     disabled={removeAssignee.isPending}
@@ -136,7 +136,7 @@ export function BusinessUnitCard({ unit, canCreate, canUpdate, actions }: Busine
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <h4 className="text-[12px] font-semibold text-[#585858]">{t.units.teamsTitle}</h4>
-          {canCreate && unit.isActive && (
+          {abilities.createStructure && unit.isActive && (
             <button type="button" onClick={actions.onNewTeam} className={smallBtn}>
               {t.units.newTeam}
             </button>
@@ -150,7 +150,7 @@ export function BusinessUnitCard({ unit, canCreate, canUpdate, actions }: Busine
               <TeamRow
                 key={team.id}
                 team={team}
-                canUpdate={canUpdate}
+                abilities={abilities}
                 onRename={() => actions.onRenameTeam(team)}
                 onSetLeader={() => actions.onSetLeader(team)}
                 onManageMembers={() => actions.onManageMembers(team)}

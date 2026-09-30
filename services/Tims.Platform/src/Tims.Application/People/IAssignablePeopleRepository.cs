@@ -10,15 +10,15 @@ public interface IAssignablePeopleRepository
     /// their ACTIVE staff roles in the same organization (or through an active <c>super_admin</c> role) are returned.
     /// </summary>
     /// <remarks>
-    /// With <paramref name="vacancyId"/>, only approvers whose resolved <c>vacancy:approve</c> scope covers that
+    /// With <paramref name="vacancy"/>, only approvers whose resolved <c>vacancy:approve</c> scope covers that
     /// vacancy are returned (see <see cref="VacancyApproverScope"/>); returns <c>null</c> when the vacancy is
-    /// not a non-deleted vacancy of the organization.
+    /// not a non-deleted vacancy of the organization OR the caller's own scope does not cover it.
     /// </remarks>
     Task<IReadOnlyList<AssignablePerson>?> ListAsync(
         Guid organizationId,
         AssignablePurposeRule rule,
         string? search,
         int limit,
-        Guid? vacancyId,
+        VacancyApproverFilter? vacancy,
         CancellationToken cancellationToken);
 }

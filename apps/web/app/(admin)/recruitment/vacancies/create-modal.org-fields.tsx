@@ -113,7 +113,9 @@ export function VacancyOrgFields({
           </div>
         ) : pickingManager ? (
           <UserPicker
-            purpose="vacancy_approver"
+            // Not vacancy_approver: a hiring manager need not hold vacancy:approve, and that picker is gated on
+            // vacancy:update. vacancy_assignee lists any active member, like vacancy.create accepts.
+            purpose="vacancy_assignee"
             onSelect={(_id, user) => {
               onHiringManagerChange(user);
               setPickingManager(false);

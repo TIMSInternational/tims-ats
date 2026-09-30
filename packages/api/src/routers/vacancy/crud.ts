@@ -278,7 +278,7 @@ export const vacancyCrudRouter = router({
           message: 'autoPublish requiere requireApproval en false',
         });
       }
-      await assertVacancyPlacement(ctx.user.organizationId, input, input.businessUnitId ?? null);
+      await assertVacancyPlacement(ctx.user.organizationId, input);
 
       const baseData = {
         ...input,

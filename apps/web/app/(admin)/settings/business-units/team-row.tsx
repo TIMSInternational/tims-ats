@@ -4,11 +4,12 @@ import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { useOrgStructureMutation, type OrgTeam } from '../../../../lib/platform-api/org-structure';
 import { useOrgErrorMessage } from './use-org-error-message';
+import type { OrgStructureAbilities } from './use-org-abilities';
 import { dangerSmallBtn, smallBtn } from './units-styles';
 
 interface TeamRowProps {
   team: OrgTeam;
-  canUpdate: boolean;
+  abilities: OrgStructureAbilities;
   onRename: () => void;
   onSetLeader: () => void;
   onManageMembers: () => void;
@@ -17,7 +18,7 @@ interface TeamRowProps {
 }
 
 /** One team inside a business unit card: leader, member count, and its management actions. */
-export function TeamRow({ team, canUpdate, onRename, onSetLeader, onManageMembers, onFailure }: TeamRowProps) {
+export function TeamRow({ team, abilities, onRename, onSetLeader, onManageMembers, onFailure }: TeamRowProps) {
   const { t } = useI18n();
   const errorMessage = useOrgErrorMessage();
   const update = useOrgStructureMutation('updateTeam', {
@@ -41,37 +42,43 @@ export function TeamRow({ team, canUpdate, onRename, onSetLeader, onManageMember
           {t.units.membersCount}
         </p>
       </div>
-      {canUpdate && (
-        <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        {(abilities.assignPeople || abilities.unassignPeople) && (
           <button type="button" onClick={onManageMembers} className={smallBtn}>
             {t.units.members}
           </button>
+        )}
+        {abilities.setLeader && (
           <button type="button" onClick={onSetLeader} disabled={update.isPending} className={smallBtn}>
             {team.leader ? t.units.changeLeader : t.units.setLeader}
           </button>
-          {team.leader && (
-            <button
-              type="button"
-              disabled={update.isPending}
-              onClick={() => update.mutate({ id: team.id, leaderUserId: null })}
-              className={smallBtn}
-            >
-              {t.units.clearLeader}
-            </button>
-          )}
-          <button type="button" onClick={onRename} className={smallBtn}>
-            {t.units.rename}
-          </button>
+        )}
+        {abilities.setLeader && team.leader && (
           <button
             type="button"
             disabled={update.isPending}
-            onClick={() => update.mutate({ id: team.id, isActive: !team.isActive })}
-            className={team.isActive ? dangerSmallBtn : smallBtn}
+            onClick={() => update.mutate({ id: team.id, leaderUserId: null })}
+            className={smallBtn}
           >
-            {team.isActive ? t.units.deactivate : t.units.reactivate}
+            {t.units.clearLeader}
           </button>
-        </div>
-      )}
+        )}
+        {abilities.updateStructure && (
+          <>
+            <button type="button" onClick={onRename} className={smallBtn}>
+              {t.units.rename}
+            </button>
+            <button
+              type="button"
+              disabled={update.isPending}
+              onClick={() => update.mutate({ id: team.id, isActive: !team.isActive })}
+              className={team.isActive ? dangerSmallBtn : smallBtn}
+            >
+              {team.isActive ? t.units.deactivate : t.units.reactivate}
+            </button>
+          </>
+        )}
+      </div>
     </li>
   );
 }

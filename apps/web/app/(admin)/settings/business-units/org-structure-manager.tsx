@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { usePermissions } from '../../../../lib/permissions';
 import { EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { useOrgStructure, type OrgBusinessUnit, type OrgTeam } from '../../../../lib/platform-api/org-structure';
 import { AssignPersonModal, type AssignPersonTarget } from './assign-person-modal';
@@ -11,6 +10,7 @@ import { BusinessUnitFormModal } from './business-unit-form-modal';
 import { TeamFormModal } from './team-form-modal';
 import { TeamMembersModal } from './team-members-modal';
 import { UnitsTopBar } from './units-top-bar';
+import { useOrgStructureAbilities } from './use-org-abilities';
 import { UserBusinessUnitModal } from './user-business-unit-modal';
 import { inputCls, primaryBtn, secondaryBtn } from './units-styles';
 
@@ -25,12 +25,11 @@ type Dialog =
 /** Admin screen for business units, teams, leaders, members and unit assignees (C# org structure). */
 export function OrgStructureManager() {
   const { t } = useI18n();
-  const { can } = usePermissions();
   const structure = useOrgStructure();
   const [companyId, setCompanyId] = useState('');
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const canCreate = can('organization', 'create');
-  const canUpdate = can('organization', 'update');
+  const abilities = useOrgStructureAbilities();
+  const canCreate = abilities.createStructure;
   const close = () => setDialog(null);
 
   const companies = structure.data?.companies ?? [];
@@ -42,7 +41,7 @@ export function OrgStructureManager() {
 
   const topActions = (
     <>
-      {canUpdate && (
+      {abilities.setHomeUnit && (
         <button type="button" onClick={() => setDialog({ kind: 'primaryUnit' })} className={secondaryBtn}>
           {t.units.primaryUnitTitle}
         </button>
@@ -84,7 +83,13 @@ export function OrgStructureManager() {
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
             <EmptyState
               icon={
-                <svg className="w-8 h-8 text-[#B8B8B8]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <svg
+                  className="w-8 h-8 text-[#B8B8B8]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  viewBox="0 0 24 24"
+                >
                   <path d="M3.75 21h16.5M4.5 3h15v18h-15V3Zm4.5 4.5h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6h1.5m-1.5 3h1.5m-1.5 3h1.5" />
                 </svg>
               }
@@ -98,8 +103,7 @@ export function OrgStructureManager() {
             <BusinessUnitCard
               key={unit.id}
               unit={unit}
-              canCreate={canCreate}
-              canUpdate={canUpdate}
+              abilities={abilities}
               actions={{
                 onEdit: () => setDialog({ kind: 'unit', unit }),
                 onNewTeam: () => setDialog({ kind: 'team', businessUnitId: unit.id }),
@@ -132,7 +136,7 @@ export function OrgStructureManager() {
       {dialog?.kind === 'unit' && <BusinessUnitFormModal unit={dialog.unit} companies={companies} onClose={close} />}
       {dialog?.kind === 'team' && <TeamFormModal businessUnitId={dialog.businessUnitId} onClose={close} />}
       {dialog?.kind === 'renameTeam' && <TeamFormModal team={dialog.team} onClose={close} />}
-      {membersTeam && <TeamMembersModal team={membersTeam} canUpdate={canUpdate} onClose={close} />}
+      {membersTeam && <TeamMembersModal team={membersTeam} abilities={abilities} onClose={close} />}
       {dialog?.kind === 'person' && <AssignPersonModal target={dialog.target} onClose={close} />}
       {dialog?.kind === 'primaryUnit' && (
         <UserBusinessUnitModal

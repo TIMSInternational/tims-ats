@@ -50,12 +50,8 @@ public sealed partial class OrgStructureRepository
     {
         var org = actor.OrganizationId;
         await using var scope = await TenantScope.BeginAsync(db, org, ct);
-        var teams = await db.Teams.FromSqlInterpolated($"""
-            SELECT id, organization_id, business_unit_id, name, leader_id, is_active FROM teams
-            WHERE id = {teamId} AND organization_id = {org} FOR UPDATE
-            """).AsNoTracking().ToListAsync(ct);
-        if (teams.Count != 1) return Fail<TeamRow>(OrgWriteStatus.NotFound, OrgStructureErrorCodes.NotFound);
-        var current = teams[0];
+        var current = await LockTeamAsync(org, teamId, ct);
+        if (current is null) return Fail<TeamRow>(OrgWriteStatus.NotFound, OrgStructureErrorCodes.NotFound);
 
         if (input.IsActive is { IsSet: true, Value: true } && !current.IsActive)
         {
@@ -97,9 +93,9 @@ public sealed partial class OrgStructureRepository
     {
         var org = actor.OrganizationId;
         await using var scope = await TenantScope.BeginAsync(db, org, ct);
-        var team = await db.Teams.AsNoTracking()
-            .Where(row => row.Id == teamId && row.OrganizationId == org)
-            .Select(row => new { row.IsActive }).SingleOrDefaultAsync(ct);
+        // Row-lock the team (as UpdateTeamAsync does) so a concurrent deactivation cannot interleave between
+        // this is_active check and the membership insert: it either commits first (→ 409 here) or waits.
+        var team = await LockTeamAsync(org, teamId, ct);
         if (team is null) return Fail<TeamMembershipRow>(OrgWriteStatus.NotFound, OrgStructureErrorCodes.NotFound);
         if (!team.IsActive) return Fail<TeamMembershipRow>(OrgWriteStatus.Conflict, OrgStructureErrorCodes.TeamInactive);
         if (await CheckActiveUserAsync(org, userId, ct) is { } userFailure)
@@ -161,6 +157,16 @@ public sealed partial class OrgStructureRepository
             .Select(row => new { row.IsActive }).SingleOrDefaultAsync(ct);
         if (user is null) return (OrgWriteStatus.NotFound, OrgStructureErrorCodes.NotFound);
         return user.IsActive ? null : (OrgWriteStatus.BadRequest, OrgStructureErrorCodes.UserInactive);
+    }
+
+    /// <summary>Row-locks one team of the organization and returns it, or null if absent/foreign.</summary>
+    private async Task<OrgTeamEntity?> LockTeamAsync(Guid org, Guid teamId, CancellationToken ct)
+    {
+        var rows = await db.Teams.FromSqlInterpolated($"""
+            SELECT id, organization_id, business_unit_id, name, leader_id, is_active FROM teams
+            WHERE id = {teamId} AND organization_id = {org} FOR UPDATE
+            """).AsNoTracking().ToListAsync(ct);
+        return rows.Count == 1 ? rows[0] : null;
     }
 
     private static OrgWriteResult<T> Fail<T>(OrgWriteStatus status, string code) => OrgWriteResult<T>.Fail(status, code);

@@ -17,7 +17,8 @@ export function isAssignablePeopleViaCSharp(): boolean {
 }
 const MAX_SEARCH_LENGTH = 100;
 
-export type AssignablePurpose = 'interview_evaluator' | 'vacancy_approver' | 'offer_approver';
+// vacancy_assignee: the wizard's hiring manager (vacancy.create assignedTo) — any active member, org-wide callers only.
+export type AssignablePurpose = 'interview_evaluator' | 'vacancy_approver' | 'offer_approver' | 'vacancy_assignee';
 
 export interface AssignablePerson {
   id: string;

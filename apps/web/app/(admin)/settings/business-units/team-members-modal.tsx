@@ -6,16 +6,17 @@ import { toast } from '../../../../lib/toast';
 import { Modal, UserPicker } from '../../../../components';
 import { useOrgStructureMutation, type OrgTeam } from '../../../../lib/platform-api/org-structure';
 import { useOrgErrorMessage } from './use-org-error-message';
+import type { OrgStructureAbilities } from './use-org-abilities';
 import { alertCls, dangerSmallBtn, secondaryBtn, smallBtn } from './units-styles';
 
 interface TeamMembersModalProps {
   team: OrgTeam;
-  canUpdate: boolean;
+  abilities: OrgStructureAbilities;
   onClose: () => void;
 }
 
 /** Lists a team's members and adds / removes them (C# org structure). */
-export function TeamMembersModal({ team, canUpdate, onClose }: TeamMembersModalProps) {
+export function TeamMembersModal({ team, abilities, onClose }: TeamMembersModalProps) {
   const { t } = useI18n();
   const errorMessage = useOrgErrorMessage();
   const [adding, setAdding] = useState(false);
@@ -50,7 +51,7 @@ export function TeamMembersModal({ team, canUpdate, onClose }: TeamMembersModalP
                 </p>
                 <p className="text-[11px] text-[#8B8B8B] truncate">{m.email}</p>
               </div>
-              {canUpdate && (
+              {abilities.unassignPeople && (
                 <button
                   type="button"
                   disabled={busy}
@@ -68,7 +69,7 @@ export function TeamMembersModal({ team, canUpdate, onClose }: TeamMembersModalP
         </ul>
       )}
 
-      {canUpdate && (
+      {abilities.assignPeople && (
         <div className="mt-4">
           {adding ? (
             <UserPicker

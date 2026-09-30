@@ -73,6 +73,23 @@ public static class OrgStructureBodies
         return true;
     }
 
+    /// <summary>
+    /// True when a PATCH team body sets or clears ONLY <c>leaderUserId</c> — the one team field people management
+    /// (<c>user:update</c>) may write. Anything else (or an unreadable body) takes the structure gate.
+    /// </summary>
+    public static bool IsLeaderOnlyTeamUpdate(JsonObject? body)
+    {
+        if (body is null) return false;
+        try
+        {
+            return body.Count == 1 && body.ContainsKey("leaderUserId");
+        }
+        catch (ArgumentException)
+        {
+            return false; // duplicate keys: never relax the gate on a body the parser cannot trust
+        }
+    }
+
     public static bool TryMemberRole(JsonObject body, out string? role)
     {
         role = null;

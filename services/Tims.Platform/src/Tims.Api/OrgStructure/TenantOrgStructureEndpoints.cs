@@ -12,13 +12,25 @@ namespace Tims.Api.OrgStructure;
 /// Tenant org structure (business units, teams, leaders, members, unit assignees, home units) — the data
 /// leader- and unit-scoped approvals anchor on, which no UI could previously create. Reads/writes run under
 /// TenantScope with explicit org predicates; ids from another tenant are 404; every write is audited in its
-/// own transaction. Management requires <c>organization:*</c> at organization/company scope; the vacancy
-/// picker options accept organization:read OR vacancy:create OR vacancy:update and expose no people data.
-/// Dark unless <see cref="PlatformOptions.TenantOrgStructureEnabled"/>.
+/// own transaction. Every route except <c>/options</c> requires organization/company scope. Gates mirror what
+/// the same capability needs in tRPC today (packages/api/src/routers/organization.ts) so enabling this surface
+/// neither widens nor narrows a seeded role (seed-access-matrix.ts):
+/// <list type="bullet">
+///   <item><description>read the tree → <c>organization:read</c> (super_admin, hr_admin).</description></item>
+///   <item><description>create / rename / (de)activate a business unit or team → <c>organization:create</c> /
+///   <c>organization:update</c> (super_admin only — tRPC createBusinessUnit/createTeam).</description></item>
+///   <item><description>add / remove a unit assignee or team member → <c>user:create</c> / <c>user:delete</c>
+///   (tRPC assignUserToUnit/unassignUserFromUnit; super_admin, hr_admin).</description></item>
+///   <item><description>set or clear ONLY a team's leader, or a user's home unit → <c>user:update</c> (or
+///   <c>organization:update</c> for the leader) — people assignment, not structure.</description></item>
+/// </list>
+/// The vacancy picker options accept organization:read OR vacancy:create OR vacancy:update at any scope and
+/// expose no people data. Dark unless <see cref="PlatformOptions.TenantOrgStructureEnabled"/>.
 /// </summary>
 public static class TenantOrgStructureEndpoints
 {
     private const string Base = "/tenant/org-structure";
+    private const string UserModule = "user";
 
     public static void MapTenantOrgStructureEndpoints(this WebApplication app)
     {
@@ -72,9 +84,14 @@ public static class TenantOrgStructureEndpoints
 
         app.MapPatch(Base + "/teams/{id:guid}", async (Guid id, [AsParameters] Deps deps, TimeProvider clock, CancellationToken ct) =>
             {
-                var (actor, failure) = await deps.GateAsync("update", ct);
-                if (failure is not null) return failure;
+                // The body is read first ONLY to choose the gate; it is validated after it. A caller holding
+                // neither grant is still refused (403) whatever the body — auth before validation.
                 var body = await OrgStructureGate.ReadObjectAsync(deps.Http, false, ct);
+                var (actor, failure) = OrgStructureBodies.IsLeaderOnlyTeamUpdate(body)
+                    ? await deps.GateAsync(ct, requireOrgScope: true,
+                        (OrgStructureGate.OrganizationModule, "update"), (UserModule, "update"))
+                    : await deps.GateAsync("update", ct);
+                if (failure is not null) return failure;
                 if (body is null || !OrgStructureBodies.TryUpdateTeam(body, out var input)) return Invalid();
                 return OrgStructureGate.ToResult(await deps.UseCase.UpdateTeamAsync(actor!, id, input, Now(clock), ct));
             })
@@ -83,7 +100,7 @@ public static class TenantOrgStructureEndpoints
 
         app.MapPut(Base + "/teams/{id:guid}/members/{userId:guid}", async (Guid id, Guid userId, [AsParameters] Deps deps, CancellationToken ct) =>
             {
-                var (actor, failure) = await deps.GateAsync("update", ct);
+                var (actor, failure) = await deps.UserGateAsync("create", ct);
                 if (failure is not null) return failure;
                 var body = await OrgStructureGate.ReadObjectAsync(deps.Http, true, ct);
                 if (body is null || !OrgStructureBodies.TryMemberRole(body, out var role)) return Invalid();
@@ -94,28 +111,28 @@ public static class TenantOrgStructureEndpoints
 
         app.MapDelete(Base + "/teams/{id:guid}/members/{userId:guid}", async (Guid id, Guid userId, [AsParameters] Deps deps, CancellationToken ct) =>
             {
-                var (actor, failure) = await deps.GateAsync("update", ct);
+                var (actor, failure) = await deps.UserGateAsync("delete", ct);
                 return failure ?? OrgStructureGate.ToResult(await deps.UseCase.DeleteTeamMemberAsync(actor!, id, userId, ct));
             })
             .Describe<object>("TenantOrgStructureDeleteTeamMember", StatusCodes.Status204NoContent);
 
         app.MapPut(Base + "/business-units/{id:guid}/assignees/{userId:guid}", async (Guid id, Guid userId, [AsParameters] Deps deps, TimeProvider clock, CancellationToken ct) =>
             {
-                var (actor, failure) = await deps.GateAsync("update", ct);
+                var (actor, failure) = await deps.UserGateAsync("create", ct);
                 return failure ?? OrgStructureGate.ToResult(await deps.UseCase.PutUnitAssigneeAsync(actor!, id, userId, Now(clock), ct));
             })
             .Describe<UnitAssignmentRow>("TenantOrgStructurePutUnitAssignee", StatusCodes.Status200OK, conflict: true);
 
         app.MapDelete(Base + "/business-units/{id:guid}/assignees/{userId:guid}", async (Guid id, Guid userId, [AsParameters] Deps deps, CancellationToken ct) =>
             {
-                var (actor, failure) = await deps.GateAsync("update", ct);
+                var (actor, failure) = await deps.UserGateAsync("delete", ct);
                 return failure ?? OrgStructureGate.ToResult(await deps.UseCase.DeleteUnitAssigneeAsync(actor!, id, userId, ct));
             })
             .Describe<object>("TenantOrgStructureDeleteUnitAssignee", StatusCodes.Status204NoContent);
 
         app.MapPut(Base + "/users/{userId:guid}/business-unit", async (Guid userId, [AsParameters] Deps deps, TimeProvider clock, CancellationToken ct) =>
             {
-                var (actor, failure) = await deps.GateAsync("update", ct);
+                var (actor, failure) = await deps.UserGateAsync("update", ct);
                 if (failure is not null) return failure;
                 var body = await OrgStructureGate.ReadObjectAsync(deps.Http, false, ct);
                 if (body is null || !OrgStructureBodies.TryUserBusinessUnit(body, out var unitId)) return Invalid();
@@ -152,6 +169,10 @@ public static class TenantOrgStructureEndpoints
     {
         public Task<(OrgActor? Actor, IResult? Failure)> GateAsync(string organizationAction, CancellationToken ct) =>
             GateAsync(ct, requireOrgScope: true, (OrgStructureGate.OrganizationModule, organizationAction));
+
+        /// <summary>People-assignment routes: the tRPC unit-assignment gates (<c>user:create</c>/<c>user:delete</c>).</summary>
+        public Task<(OrgActor? Actor, IResult? Failure)> UserGateAsync(string userAction, CancellationToken ct) =>
+            GateAsync(ct, requireOrgScope: true, (UserModule, userAction));
 
         public Task<(OrgActor? Actor, IResult? Failure)> GateAsync(
             CancellationToken ct, bool requireOrgScope, params (string Module, string Action)[] anyOf) =>

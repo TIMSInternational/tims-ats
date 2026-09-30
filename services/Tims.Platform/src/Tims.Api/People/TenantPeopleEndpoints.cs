@@ -46,17 +46,19 @@ public static class TenantPeopleEndpoints
             }
 
             var rule = AssignablePurposes.RuleFor(parsedPurpose);
+            AccessScope callerScope;
             var context = await ResolveAsync(user, httpContext, principalResolver, options.Value, cancellationToken);
             if (context is null) return Results.Unauthorized();
             try
             {
                 var decision = await permissionService.CheckAsync(
                     context, rule.CallerModule, rule.CallerAction, cancellationToken);
-                if (!decision.Allowed || decision.Scope is not { } callerScope || decision.Roles is null)
+                if (!decision.Allowed || decision.Scope is not { } scope || decision.Roles is null)
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
                 // The unfiltered directory needs org-wide scope (AssignablePurposes.CallerScopeAllows).
-                if (!AssignablePurposes.CallerScopeAllows(rule, callerScope))
+                if (!AssignablePurposes.CallerScopeAllows(rule, scope))
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
+                callerScope = scope;
             }
             catch (TenantOrgRequiredException)
             {
@@ -65,9 +67,18 @@ public static class TenantPeopleEndpoints
             if (!Guid.TryParse(context.OrganizationId, out var organizationId))
                 return Results.BadRequest(new { error = "organization_required" });
 
+            // The caller's own vacancy:update scope must cover ?vacancyId (as submitForApproval requires first).
+            VacancyApproverFilter? vacancyFilter = null;
+            if (parsedVacancyId is { } requestedVacancy)
+            {
+                if (!Guid.TryParse(context.UserId, out var callerId))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                vacancyFilter = new VacancyApproverFilter(requestedVacancy, callerId, callerScope);
+            }
+
             var result = await useCase.ListAsync(organizationId, parsedPurpose, search,
-                limit ?? AssignablePurposes.DefaultLimit, parsedVacancyId, cancellationToken);
-            // Unknown, soft-deleted and other-tenant vacancies are indistinguishable.
+                limit ?? AssignablePurposes.DefaultLimit, vacancyFilter, cancellationToken);
+            // Unknown, soft-deleted, other-tenant and out-of-caller-scope vacancies are indistinguishable.
             return result is null ? Results.NotFound(new { error = "vacancy_not_found" }) : Results.Ok(result);
         })
         .RequireAuthorization()

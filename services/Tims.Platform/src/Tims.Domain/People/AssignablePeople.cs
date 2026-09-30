@@ -8,6 +8,7 @@ public enum AssignablePurpose
     InterviewEvaluator,
     VacancyApprover,
     OfferApprover,
+    VacancyAssignee,
 }
 
 /// <summary>
@@ -36,6 +37,7 @@ public static class AssignablePurposes
         ["interview_evaluator"] = AssignablePurpose.InterviewEvaluator,
         ["vacancy_approver"] = AssignablePurpose.VacancyApprover,
         ["offer_approver"] = AssignablePurpose.OfferApprover,
+        ["vacancy_assignee"] = AssignablePurpose.VacancyAssignee,
     };
 
     /// <summary>Parses the exact snake_case wire value; anything else (including casing drift) is rejected.</summary>
@@ -55,6 +57,13 @@ public static class AssignablePurposes
     ///   <item><description>vacancy_approver → vacancy:update (<c>vacancy.submitForApproval</c>).</description></item>
     ///   <item><description>offer_approver → offer:create (<c>offer.submitForApproval</c> accepts offer:update OR
     ///   offer:create; every matrix holder of offer:update also holds offer:create).</description></item>
+    ///   <item><description>vacancy_assignee → vacancy:create (the wizard's "hiring manager", written as
+    ///   <c>vacancy.create</c>'s <c>assignedTo</c>). Any active member is a valid assignee (org-placement.ts checks
+    ///   only that), so there is no eligibility filter — which makes it the staff directory, so
+    ///   <see cref="CallerScopeAllows"/> requires org-wide scope (recruiter, hr_admin, super_admin). A team-scoped
+    ///   leader creating a vacancy is refused this picker, exactly as the legacy tRPC <c>user.list</c> refuses them.
+    ///   It is deliberately NOT <c>vacancy_approver</c>: a hiring manager need not hold vacancy:approve, and that
+    ///   purpose is gated on vacancy:update, which a vacancy creator (leader) may lack.</description></item>
     /// </list>
     /// interview.schedule only requires the evaluators to be members of the organization.
     /// </remarks>
@@ -63,6 +72,7 @@ public static class AssignablePurposes
         AssignablePurpose.InterviewEvaluator => new("interview", "create", null, null),
         AssignablePurpose.VacancyApprover => new("vacancy", "update", "vacancy", "approve"),
         AssignablePurpose.OfferApprover => new("offer", "create", "offer", "approve"),
+        AssignablePurpose.VacancyAssignee => new("vacancy", "create", null, null),
         _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, null),
     };
 

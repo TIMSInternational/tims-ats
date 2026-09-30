@@ -6,6 +6,15 @@ namespace Tims.Domain.People;
 public sealed record VacancyScopeAnchors(Guid? TeamId, Guid? BusinessUnitId, Guid? AssignedTo, Guid? CreatedBy);
 
 /// <summary>
+/// <c>?vacancyId</c> on the vacancy approver picker: the vacancy to narrow the list to, and the CALLER with the
+/// scope of the picker permission they were authorized on (vacancy:update). The caller's own scope must cover
+/// the vacancy — the check <c>vacancy.submitForApproval</c> runs on the caller before anything else
+/// (<c>assertScoped('vacancy', id, ctx.access, …)</c>) — otherwise the vacancy is treated as not found, so an
+/// in-tenant id outside the caller's scope is indistinguishable from an unknown one (no existence oracle).
+/// </summary>
+public sealed record VacancyApproverFilter(Guid VacancyId, Guid CallerUserId, AccessScope CallerScope);
+
+/// <summary>
 /// Pure port of "would <c>assertScoped('vacancy', id, approverAccess, approverId)</c> pass" — the check
 /// <c>vacancy.submitForApproval</c> runs per approver (packages/api/src/routers/vacancy/approvals.ts) —
 /// evaluated against ONE vacancy with the approver's already-resolved widest <c>vacancy:approve</c> scope
