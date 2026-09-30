@@ -192,3 +192,48 @@ describe('apply modal — CV on the review step (F5 UX)', () => {
     expect(mocks.presignMutateAsync).toHaveBeenCalledOnce();
   });
 });
+
+describe('apply modal — submit error copy', () => {
+  const issuesError = (path: string) =>
+    Object.assign(
+      new Error(
+        JSON.stringify(
+          [{ code: 'invalid_literal', path: [path], message: 'El texto de autorización cambió.' }],
+          null,
+          2,
+        ),
+      ),
+      { data: { code: 'BAD_REQUEST' } },
+    );
+
+  async function submitWith(error: unknown) {
+    mocks.applyMutateAsync.mockRejectedValue(error);
+    goToReview();
+    fireEvent.click(consentBox());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledOnce());
+    return mocks.toast.mock.calls[0]![0] as string;
+  }
+
+  it('a stale consent text version (stale bundle) asks the candidate to reload — never raw zod JSON', async () => {
+    const shown = await submitWith(issuesError('consentTextVersion'));
+    expect(shown).toBe(p.applyConsentVersionChanged);
+    expect(shown).not.toContain('[');
+  });
+
+  it('any other input-validation failure shows the generic error, not raw JSON', async () => {
+    expect(await submitWith(issuesError('email'))).toBe(p.applySubmitError);
+  });
+
+  it('a deliberate BAD_REQUEST message (captcha) is shown as-is', async () => {
+    const captcha = Object.assign(new Error('Verificacion de seguridad fallida.'), { data: { code: 'BAD_REQUEST' } });
+    expect(await submitWith(captcha)).toBe('Verificacion de seguridad fallida.');
+  });
+
+  it('an internal error (e.g. a raw Prisma unique-constraint message) never reaches the toast verbatim', async () => {
+    const internal = Object.assign(new Error('Unique constraint failed on the fields: (`email`)'), {
+      data: { code: 'INTERNAL_SERVER_ERROR' },
+    });
+    expect(await submitWith(internal)).toBe(p.applySubmitError);
+  });
+});

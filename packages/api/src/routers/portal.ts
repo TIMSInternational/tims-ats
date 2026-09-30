@@ -11,6 +11,37 @@ import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE, logger } fr
 // The ONE public response of portal.applyToVacancy, whatever happened server-side.
 const APPLY_ACKNOWLEDGMENT = { received: true } as const;
 
+type CandidateMatch = { id: string; email: string; deletedAt: Date | null };
+type PortalDbClient = Pick<typeof db, 'candidate'>;
+
+// Prisma compiles `{ equals, mode: 'insensitive' }` to an UNESCAPED `ILIKE` (measured on
+// Prisma 6.8.2), so `_` / `%` in a submitted email are wildcards: `a_b@x.com` would match
+// `axb@x.com`. Escape them so the query itself is exact, then post-filter on exact
+// case-insensitive equality anyway, so correctness never depends on how Prisma compiles it.
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+// Every candidate in the org whose email is EXACTLY `email` ignoring case (email must
+// already be trimmed + lowercased). Soft-deleted rows are included: callers decide.
+async function findCandidatesByExactEmail(
+  client: PortalDbClient,
+  orgId: string,
+  email: string,
+): Promise<CandidateMatch[]> {
+  const rows = await client.candidate.findMany({
+    where: { organizationId: orgId, email: { equals: escapeLikePattern(email), mode: 'insensitive' } },
+    select: { id: true, email: true, deletedAt: true },
+    orderBy: { createdAt: 'asc' },
+    take: 20,
+  });
+  return rows.filter((r) => r.email.trim().toLowerCase() === email);
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === 'P2002';
+}
+
 // Verify a Cloudflare Turnstile token on the public apply form. In production the
 // secret MUST be configured (else every apply is rejected — fail closed). Once the
 // secret is set, a valid token is required — this throttles scripted spam/DoS
@@ -205,22 +236,23 @@ export const portalRouter = router({
       // a different person from `ana@example.com` and could bypass a withdrawal.
       const email = input.email.trim().toLowerCase();
 
-      let outcome: { kind: 'new'; candidateId: string } | { kind: 'duplicate' } | { kind: 'withdrawn' };
-      try {
-        // Candidate, consent evidence and application commit atomically: an application
-        // never exists without the authorization that allowed its data to be processed.
-        outcome = await db.$transaction(async (tx) => {
-          const variants = await tx.candidate.findMany({
-            where: { organizationId: orgId, email: { equals: email, mode: 'insensitive' } },
-            select: { id: true, email: true },
-            orderBy: { createdAt: 'asc' },
-            take: 20,
-          });
+      type ApplyOutcome =
+        | { kind: 'new'; candidateId: string }
+        | { kind: 'duplicate' }
+        | { kind: 'withdrawn' }
+        | { kind: 'deleted' };
+
+      // Candidate, consent evidence and application commit atomically: an application
+      // never exists without the authorization that allowed its data to be processed.
+      const attemptApply = () =>
+        db.$transaction(async (tx): Promise<ApplyOutcome> => {
+          // Exact case-insensitive matches only — never a wildcard neighbour.
+          const variants = await findCandidatesByExactEmail(tx, orgId, email);
           const variantIds = variants.map((v) => v.id);
 
-          // A withdrawn application consent on ANY case-variant of this email blocks
-          // further processing: no candidate write, no consent write, no application,
-          // no CV processing.
+          // A withdrawn application consent on ANY case-variant of this email — including
+          // a soft-deleted one — blocks further processing: no candidate write, no consent
+          // write, no application, no CV processing.
           if (variantIds.length > 0) {
             const withdrawn = await tx.dataConsent.findFirst({
               where: {
@@ -234,9 +266,16 @@ export const portalRouter = router({
             if (withdrawn) return { kind: 'withdrawn' as const };
           }
 
+          // Soft-deleted candidates are never reused or revived from this unauthenticated
+          // form, and (orgId, email) is unique so a fresh row cannot be created beside one
+          // either: when every match is soft-deleted the submission is acknowledged with
+          // no writes (a staff decision removed that record).
+          const active = variants.filter((v) => v.deletedAt === null);
+          if (variants.length > 0 && active.length === 0) return { kind: 'deleted' as const };
+
           // This endpoint is unauthenticated: an existing candidate's profile is never
-          // updated from it, only reused.
-          const existingCandidate = variants.find((v) => v.email === email) ?? variants[0];
+          // updated from it, only reused. Every candidate here is an exact case variant.
+          const existingCandidate = active.find((v) => v.email === email) ?? active[0];
           const candidateId =
             existingCandidate?.id ??
             (
@@ -312,27 +351,37 @@ export const portalRouter = router({
           });
           return { kind: 'new' as const, candidateId };
         });
+
+      let outcome: ApplyOutcome;
+      try {
+        outcome = await attemptApply();
       } catch (err) {
-        // Unique-constraint race on concurrent double-submit — resolve idempotently.
-        // (The losing transaction rolled back; the winner committed its own rows.)
-        if ((err as { code?: string }).code === 'P2002') {
-          const app = await db.application.findFirst({
-            where: {
-              vacancyId: vacancy.id,
-              candidate: { organizationId: orgId, email: { equals: email, mode: 'insensitive' } },
-            },
-            select: { id: true },
-          });
-          if (app) return APPLY_ACKNOWLEDGMENT;
-        }
-        throw err;
+        // Unique-constraint race on a concurrent submit for the same email. The losing
+        // transaction rolled back; the winner committed its own rows.
+        if (!isUniqueViolation(err)) throw err;
+        const matchIds = (await findCandidatesByExactEmail(db, orgId, email)).map((c) => c.id);
+        const app =
+          matchIds.length > 0
+            ? await db.application.findFirst({
+                where: { vacancyId: vacancy.id, candidateId: { in: matchIds } },
+                select: { id: true },
+              })
+            : null;
+        // The winner already applied to THIS vacancy → idempotent acknowledgment.
+        if (app) return APPLY_ACKNOWLEDGMENT;
+        // Otherwise the race was only on the candidate row (e.g. the winner applied to a
+        // different vacancy): retry once — the winner's candidate is now visible and is
+        // reused. A second failure propagates.
+        outcome = await attemptApply();
       }
 
-      if (outcome.kind === 'withdrawn') {
+      if (outcome.kind === 'withdrawn' || outcome.kind === 'deleted') {
         // Refused privately. No PII (no email, no candidate id) in the log line.
         logger.info(
           { component: 'portal', organizationId: orgId, vacancyId: vacancy.id },
-          'Public application refused: application consent withdrawn',
+          outcome.kind === 'withdrawn'
+            ? 'Public application refused: application consent withdrawn'
+            : 'Public application refused: candidate record is soft-deleted',
         );
       }
 
@@ -355,9 +404,10 @@ export const portalRouter = router({
         );
       }
 
-      // New, duplicate and withdrawn-refused submissions all get the SAME public
-      // acknowledgment, so the response never reveals whether an email belongs to an
-      // existing candidate, already applied, or withdrew consent.
+      // New, duplicate, withdrawn- and deleted-refused submissions all get the SAME public
+      // acknowledgment, so the response BODY never reveals whether an email belongs to an
+      // existing candidate, already applied, or withdrew consent. (Response timing still
+      // can: only a new application runs synchronous CV processing — tracked follow-up.)
       return APPLY_ACKNOWLEDGMENT;
     }),
 });

@@ -11,6 +11,7 @@ import { ApplyModalStep1 } from './apply-modal-step1';
 import { ApplyModalStep2 } from './apply-modal-step2';
 import { ApplyModalReview } from './apply-modal-review';
 import { useCvUpload } from '../_lib/use-cv-upload';
+import { applyErrorMessage } from '../_lib/apply-error-message';
 
 interface ApplyModalProps {
   vacancyId: string;
@@ -95,12 +96,9 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
       });
       setSuccess(true);
     } catch (err) {
-      const msg = err instanceof Error && err.message ? err.message : p.applySubmitError;
-      if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
-        toast(p.applyModalDuplicateError, { type: 'error' });
-      } else {
-        toast(msg, { type: 'error' });
-      }
+      // Duplicates are acknowledged server-side like any new application, so there is no
+      // "already applied" error to map.
+      toast(applyErrorMessage(err, p), { type: 'error' });
       setSubmitting(false);
     }
   };

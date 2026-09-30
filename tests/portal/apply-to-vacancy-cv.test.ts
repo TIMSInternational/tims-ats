@@ -153,6 +153,20 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
     expect(dbMocks.candidate.findMany).not.toHaveBeenCalled();
   });
 
+  it('the real server error for a superseded version maps to the client "reload the page" copy', async () => {
+    const { applyErrorMessage } =
+      await import('../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_lib/apply-error-message');
+    const caller = await makeCaller();
+
+    const err = await caller.portal
+      .applyToVacancy({ ...baseApplyInput, consentTextVersion: 'portal-apply-1999-01-01' })
+      .catch((e: unknown) => e);
+
+    expect(applyErrorMessage(err, { applySubmitError: 'GENERIC', applyConsentVersionChanged: 'RELOAD' })).toBe(
+      'RELOAD',
+    );
+  });
+
   it('records the consent (org, candidate, purpose, text version, timestamp) inside the application transaction', async () => {
     const order: string[] = [];
     dbMocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -194,30 +208,57 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
   });
 
   // A stateful stand-in for the candidates + data_consents tables, honouring the Prisma
-  // semantics the router relies on (case-insensitive email equality, upsert = create when
-  // absent / apply `update` when present), so the tests observe what is actually STORED.
+  // semantics the router relies on, so the tests observe what is actually STORED:
+  //  - `email: { equals, mode: 'insensitive' }` compiles to a Postgres `ILIKE` (measured on
+  //    Prisma 6.8.2) — so `_` and `%` ARE wildcards unless backslash-escaped. The mock
+  //    implements exactly that, so a router that trusts the query as "equality" fails here.
+  //  - upsert = create when absent / apply `update` when present.
   type Row = Record<string, unknown>;
-  function seedDb(init: { candidates?: { id: string; email: string }[]; consents?: Row[] }) {
+  type CandidateRow = { id: string; email: string; deletedAt?: Date | null };
+  function ilikeMatches(value: string, pattern: string): boolean {
+    let re = '';
+    for (let i = 0; i < pattern.length; i++) {
+      const ch = pattern[i]!;
+      if (ch === '\\' && i + 1 < pattern.length) re += pattern[++i]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      else if (ch === '%') re += '.*';
+      else if (ch === '_') re += '.';
+      else re += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    return new RegExp(`^${re}$`, 'is').test(value);
+  }
+  function seedDb(init: { candidates?: CandidateRow[]; consents?: Row[] }) {
     const state = {
-      candidates: [...(init.candidates ?? [])],
+      candidates: (init.candidates ?? []).map((c) => ({ deletedAt: null, ...c })),
       consents: (init.consents ?? []).map((c) => ({ ...c })),
     };
     dbMocks.candidate.findMany.mockImplementation(
       async (arg: { where: { organizationId: string; email: { equals: string; mode: string } } }) => {
         expect(arg.where.organizationId).toBe(ORG_ID);
         expect(arg.where.email.mode).toBe('insensitive');
-        return state.candidates.filter((c) => c.email.toLowerCase() === arg.where.email.equals.toLowerCase());
+        return state.candidates.filter((c) => ilikeMatches(c.email, arg.where.email.equals));
       },
     );
     dbMocks.candidate.create.mockImplementation(async (arg: { data: { email: string } }) => {
-      const row = { id: `new-${state.candidates.length}`, email: arg.data.email };
+      const row = { id: `new-${state.candidates.length}`, email: arg.data.email, deletedAt: null };
       state.candidates.push(row);
       return { id: row.id };
     });
     dbMocks.dataConsent.findFirst.mockImplementation(
-      async (arg: { where: { subjectUserId: { in: string[] } } }) =>
-        state.consents.find((c) => arg.where.subjectUserId.in.includes(c.subjectUserId as string) && c.withdrawnAt) ??
-        null,
+      async (arg: {
+        where: {
+          organizationId: string;
+          consentType: string;
+          subjectUserId: { in: string[] };
+          withdrawnAt: { not: null };
+        };
+      }) =>
+        state.consents.find(
+          (c) =>
+            c.organizationId === arg.where.organizationId &&
+            c.consentType === arg.where.consentType &&
+            arg.where.subjectUserId.in.includes(c.subjectUserId as string) &&
+            c.withdrawnAt,
+        ) ?? null,
     );
     dbMocks.dataConsent.upsert.mockImplementation(
       async (arg: { where: { subjectUserId_consentType: { subjectUserId: string } }; create: Row; update: Row }) => {
@@ -312,6 +353,23 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
     expect(dbMocks.application.create).not.toHaveBeenCalled();
   });
 
+  it('a withdrawn consent of ANOTHER type or ANOTHER org does not block (positive control)', async () => {
+    seedDb({
+      candidates: [existingAna],
+      consents: [
+        { ...withdrawnConsent(), consentType: 'ai_interview' },
+        { ...withdrawnConsent(), organizationId: '99999999-9999-9999-9999-999999999999' },
+      ],
+    });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy(baseApplyInput);
+
+    expect(dbMocks.application.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ candidateId: CANDIDATE_ID }) }),
+    );
+  });
+
   it('stores a new candidate under the canonical (lowercased) email', async () => {
     const state = seedDb({});
     const caller = await makeCaller();
@@ -340,6 +398,195 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
     expect(dbMocks.application.create).toHaveBeenCalledOnce(); // only the fresh one
   });
 
+  // ── Exact identity: LIKE wildcards in the submitted email never match a stranger ──
+  const stranger = { id: 'stranger-1', email: 'axb@x.com' };
+
+  it('`a_b@x.com` does not attach to the existing `axb@x.com` candidate', async () => {
+    const state = seedDb({ candidates: [stranger] });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy({
+      ...baseApplyInput,
+      email: 'a_b@x.com',
+      cvFileKey: `cv-uploads/${ORG_ID}/x.pdf`,
+    });
+
+    expect(state.candidates.map((c) => c.email)).toEqual(['axb@x.com', 'a_b@x.com']);
+    const appArg = dbMocks.application.create.mock.calls[0]![0] as { data: { candidateId: string } };
+    expect(appArg.data.candidateId).toBe('new-1');
+    const consentArg = dbMocks.dataConsent.upsert.mock.calls[0]![0] as { create: { subjectUserId: string } };
+    expect(consentArg.create.subjectUserId).toBe('new-1');
+    expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, 'new-1', `cv-uploads/${ORG_ID}/x.pdf`, 'x.pdf');
+  });
+
+  it('`_____@gmail.com` matches no arbitrary 5-character mailbox', async () => {
+    const state = seedDb({ candidates: [{ id: 'stranger-2', email: 'abcde@gmail.com' }] });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy({ ...baseApplyInput, email: '_____@gmail.com' });
+
+    expect(dbMocks.candidate.create).toHaveBeenCalledOnce();
+    const appArg = dbMocks.application.create.mock.calls[0]![0] as { data: { candidateId: string } };
+    expect(appArg.data.candidateId).not.toBe('stranger-2');
+    expect(state.candidates).toHaveLength(2);
+  });
+
+  it("a stranger's withdrawal never blocks a wildcard-lookalike email", async () => {
+    seedDb({ candidates: [stranger], consents: [{ ...withdrawnConsent(), subjectUserId: 'stranger-1' }] });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy({ ...baseApplyInput, email: 'a_b@x.com' });
+
+    expect(dbMocks.application.create).toHaveBeenCalledOnce();
+  });
+
+  it('`%` in an email is rejected by input validation before any DB access', async () => {
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy({ ...baseApplyInput, email: '%@x.com' })).rejects.toThrow();
+    expect(dbMocks.vacancy.findFirstOrThrow).not.toHaveBeenCalled();
+    expect(dbMocks.candidate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('escapes LIKE wildcards in the lookup itself (not only post-filtered)', async () => {
+    seedDb({});
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy({ ...baseApplyInput, email: 'a_b@x.com' });
+
+    const arg = dbMocks.candidate.findMany.mock.calls[0]![0] as { where: { email: { equals: string } } };
+    expect(arg.where.email.equals).toBe('a\\_b@x.com');
+  });
+
+  it('an inexact row returned by the lookup (any collation/compile quirk) is never used', async () => {
+    dbMocks.candidate.findMany.mockResolvedValue([{ id: 'stranger-1', email: 'axb@x.com', deletedAt: null }]);
+    dbMocks.dataConsent.findFirst.mockImplementation(async (arg: { where: { subjectUserId: { in: string[] } } }) =>
+      arg.where.subjectUserId.in.includes('stranger-1') ? { id: 'withdrawn-stranger' } : null,
+    );
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy({ ...baseApplyInput, email: 'a_b@x.com' });
+
+    expect(dbMocks.candidate.create).toHaveBeenCalledOnce();
+    expect(dbMocks.application.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ candidateId: CANDIDATE_ID }) }),
+    );
+  });
+
+  it('positive control: a real case variant is still reused (no new candidate)', async () => {
+    seedDb({ candidates: [{ id: CANDIDATE_ID, email: 'ANA@Example.com' }] });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy({ ...baseApplyInput, email: 'ana@example.com' });
+
+    expect(dbMocks.candidate.create).not.toHaveBeenCalled();
+    expect(dbMocks.application.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ candidateId: CANDIDATE_ID }) }),
+    );
+  });
+
+  // ── Soft-deleted candidates: never reused or revived; a withdrawal on one still blocks ──
+  it('only a soft-deleted match: acknowledged with no candidate/consent/application write and no CV', async () => {
+    const state = seedDb({ candidates: [{ ...existingAna, deletedAt: new Date('2026-01-01') }] });
+    const caller = await makeCaller();
+
+    const res = await caller.portal.applyToVacancy({ ...baseApplyInput, cvFileKey: `cv-uploads/${ORG_ID}/x.pdf` });
+
+    expect(res).toEqual({ received: true });
+    expect(dbMocks.candidate.create).not.toHaveBeenCalled();
+    expect(dbMocks.dataConsent.upsert).not.toHaveBeenCalled();
+    expect(dbMocks.application.create).not.toHaveBeenCalled();
+    expect(processCvUploadMock).not.toHaveBeenCalled();
+    expect(state.candidates).toHaveLength(1);
+  });
+
+  it('a soft-deleted and an active case variant: the ACTIVE one is reused', async () => {
+    seedDb({
+      candidates: [
+        { id: 'deleted-1', email: 'ana@example.com', deletedAt: new Date('2026-01-01') },
+        { id: 'active-1', email: 'Ana@Example.com' },
+      ],
+    });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy(baseApplyInput);
+
+    expect(dbMocks.application.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ candidateId: 'active-1' }) }),
+    );
+  });
+
+  it('a withdrawal recorded on a soft-deleted variant still blocks', async () => {
+    seedDb({
+      candidates: [
+        { id: 'deleted-1', email: 'ana@example.com', deletedAt: new Date('2026-01-01') },
+        { id: 'active-1', email: 'Ana@Example.com' },
+      ],
+      consents: [{ ...withdrawnConsent(), subjectUserId: 'deleted-1' }],
+    });
+    const caller = await makeCaller();
+
+    await caller.portal.applyToVacancy(baseApplyInput);
+
+    expect(dbMocks.application.create).not.toHaveBeenCalled();
+  });
+
+  // ── P2002 race on concurrent submits ──
+  const p2002 = () => Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+
+  it('P2002 when the winner already applied to this vacancy: acknowledgment, no retry', async () => {
+    seedDb({ candidates: [existingAna] });
+    dbMocks.$transaction.mockImplementationOnce(async () => {
+      throw p2002();
+    });
+    dbMocks.application.findFirst.mockResolvedValue({ id: APPLICATION_ID });
+    const caller = await makeCaller();
+
+    const res = await caller.portal.applyToVacancy(baseApplyInput);
+
+    expect(res).toEqual({ received: true });
+    expect(dbMocks.$transaction).toHaveBeenCalledOnce();
+    expect(dbMocks.application.findFirst).toHaveBeenCalledWith({
+      where: { vacancyId: VACANCY_ID, candidateId: { in: [CANDIDATE_ID] } },
+      select: { id: true },
+    });
+  });
+
+  it('P2002 with no application for this vacancy: retries once and creates the application', async () => {
+    seedDb({});
+    dbMocks.$transaction.mockImplementationOnce(async () => {
+      throw p2002();
+    });
+    const caller = await makeCaller();
+
+    const res = await caller.portal.applyToVacancy(baseApplyInput);
+
+    expect(res).toEqual({ received: true });
+    expect(dbMocks.$transaction).toHaveBeenCalledTimes(2);
+    expect(dbMocks.application.create).toHaveBeenCalledOnce();
+  });
+
+  it('a second P2002 on the retry propagates (no infinite retry)', async () => {
+    seedDb({});
+    dbMocks.$transaction.mockImplementation(async () => {
+      throw p2002();
+    });
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow();
+    expect(dbMocks.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('a non-P2002 transaction error propagates without retry', async () => {
+    dbMocks.$transaction.mockImplementationOnce(async () => {
+      throw new Error('db down');
+    });
+    const caller = await makeCaller();
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow('db down');
+    expect(dbMocks.$transaction).toHaveBeenCalledOnce();
+  });
+
   it('does not create the application when recording consent fails', async () => {
     dbMocks.dataConsent.upsert.mockRejectedValue(new Error('db down'));
     const caller = await makeCaller();
@@ -351,7 +598,7 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
 
 describe('portal.applyToVacancy — CV processing', () => {
   it('does not create or overwrite an existing candidate profile based on an unauthenticated email claim', async () => {
-    dbMocks.candidate.findMany.mockResolvedValue([{ id: CANDIDATE_ID, email: baseApplyInput.email }]);
+    dbMocks.candidate.findMany.mockResolvedValue([{ id: CANDIDATE_ID, email: baseApplyInput.email, deletedAt: null }]);
     const caller = await makeCaller();
     await caller.portal.applyToVacancy({ ...baseApplyInput, firstName: 'Impersonator' });
 
