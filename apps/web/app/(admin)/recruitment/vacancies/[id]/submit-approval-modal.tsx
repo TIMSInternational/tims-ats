@@ -4,14 +4,18 @@ import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { Modal, UserPicker } from '../../../../../components';
 import type { PickedUser } from '../../../../../components/user-picker';
+import { isAssignablePeopleViaCSharp } from '../../../../../lib/platform-api/assignable-people';
 
 interface SubmitApprovalModalProps {
+  vacancyId: string;
   onConfirm: (approverIds: string[]) => void;
   onClose: () => void;
   isPending: boolean;
+  /** Server message from the last failed submit (e.g. an approver outside the vacancy's scope). */
+  errorMessage?: string | null;
 }
 
-export function SubmitApprovalModal({ onConfirm, onClose, isPending }: SubmitApprovalModalProps) {
+export function SubmitApprovalModal({ vacancyId, onConfirm, onClose, isPending, errorMessage }: SubmitApprovalModalProps) {
   const { t } = useI18n();
   const [selected, setSelected] = useState<PickedUser[]>([]);
 
@@ -52,6 +56,8 @@ export function SubmitApprovalModal({ onConfirm, onClose, isPending }: SubmitApp
 
       <UserPicker
         purpose="vacancy_approver"
+        vacancyId={vacancyId}
+        emptyHint={isAssignablePeopleViaCSharp() ? t.vacancies.noEligibleApprovers : undefined}
         excludeIds={selected.map((u) => u.id)}
         onSelect={addApprover}
         disabled={isPending}
@@ -59,6 +65,12 @@ export function SubmitApprovalModal({ onConfirm, onClose, isPending }: SubmitApp
         loadingLabel={t.vacancies.loadingApprovers}
         emptyLabel={t.vacancies.noApproversFound}
       />
+
+      {errorMessage && (
+        <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-[#991b1b]">
+          {errorMessage}
+        </p>
+      )}
 
       <div className="flex justify-end gap-3 mt-6">
         <button

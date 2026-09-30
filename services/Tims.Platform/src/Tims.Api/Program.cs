@@ -33,6 +33,7 @@ using Tims.Api.Engagement;
 using Tims.Api.FitEngine;
 using Tims.Api.Notification;
 using Tims.Api.People;
+using Tims.Api.OrgStructure;
 using Tims.Api.Dei;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
@@ -58,6 +59,7 @@ using Tims.Application.Dei;
 using Tims.Application.FitEngine;
 using Tims.Application.Notification;
 using Tims.Application.People;
+using Tims.Application.OrgStructure;
 using Tims.Application.Fx;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
@@ -86,6 +88,7 @@ using Tims.Infrastructure.Dei;
 using Tims.Infrastructure.FitEngine;
 using Tims.Infrastructure.Notification;
 using Tims.Infrastructure.People;
+using Tims.Infrastructure.OrgStructure;
 using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
@@ -701,6 +704,11 @@ try
     builder.Services.AddDbContext<AssignablePeopleDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IAssignablePeopleRepository, AssignablePeopleRepository>();
     builder.Services.AddScoped<AssignablePeopleUseCase>();
+    // Tenant org structure (strangler writes to business_units/teams/user_teams/user_business_units/
+    // users.business_unit_id + audit_logs, always under TenantScope). Dark unless TenantOrgStructureEnabled.
+    builder.Services.AddDbContext<OrgStructureDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IOrgStructureRepository, OrgStructureRepository>();
+    builder.Services.AddScoped<OrgStructureUseCase>();
 
     // Phase-5 Slice 18 (efcoreReadOnly on users/roles/user_roles/role_permissions/permissions/
     // organizations; access_reviews stays Prisma-owned until Task 9): the access-review report +
@@ -1610,6 +1618,12 @@ try
     if (externalOptions.TenantPeopleDirectoryEnabled || isOpenApiDocGeneration)
     {
         app.MapTenantPeopleEndpoints();
+    }
+
+    // Tenant org structure management + vacancy-picker options: /tenant/org-structure/**.
+    if (externalOptions.TenantOrgStructureEnabled || isOpenApiDocGeneration)
+    {
+        app.MapTenantOrgStructureEndpoints();
     }
 
     if (externalOptions.AuditLogReadEnabled || isOpenApiDocGeneration)

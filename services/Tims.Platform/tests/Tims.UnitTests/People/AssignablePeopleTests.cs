@@ -10,6 +10,7 @@ public sealed class AssignablePeopleTests
     [InlineData("interview_evaluator", AssignablePurpose.InterviewEvaluator)]
     [InlineData("vacancy_approver", AssignablePurpose.VacancyApprover)]
     [InlineData("offer_approver", AssignablePurpose.OfferApprover)]
+    [InlineData("vacancy_assignee", AssignablePurpose.VacancyAssignee)]
     public void TryParse_AcceptsOnlyTheExactWireNames(string value, AssignablePurpose expected)
     {
         Assert.True(AssignablePurposes.TryParse(value, out var purpose));
@@ -34,6 +35,9 @@ public sealed class AssignablePeopleTests
             AssignablePurposes.RuleFor(AssignablePurpose.VacancyApprover));
         Assert.Equal(new AssignablePurposeRule("offer", "create", "offer", "approve"),
             AssignablePurposes.RuleFor(AssignablePurpose.OfferApprover));
+        // The wizard's hiring manager feeds vacancy.create's assignedTo, which accepts any active member.
+        Assert.Equal(new AssignablePurposeRule("vacancy", "create", null, null),
+            AssignablePurposes.RuleFor(AssignablePurpose.VacancyAssignee));
     }
 
     [Theory]
@@ -45,6 +49,9 @@ public sealed class AssignablePeopleTests
     [InlineData(AssignablePurpose.VacancyApprover, AccessScope.Unit, true)]
     [InlineData(AssignablePurpose.VacancyApprover, AccessScope.Own, true)]
     [InlineData(AssignablePurpose.OfferApprover, AccessScope.Team, true)]
+    [InlineData(AssignablePurpose.VacancyAssignee, AccessScope.Organization, true)]
+    [InlineData(AssignablePurpose.VacancyAssignee, AccessScope.Team, false)]
+    [InlineData(AssignablePurpose.VacancyAssignee, AccessScope.Unit, false)]
     public void CallerScope_TheWholeDirectoryNeedsOrgWideScope_ApproverListsAnyGrantedScope(
         AssignablePurpose purpose, AccessScope scope, bool expected) =>
         Assert.Equal(expected, AssignablePurposes.CallerScopeAllows(AssignablePurposes.RuleFor(purpose), scope));
@@ -72,6 +79,30 @@ public sealed class AssignablePeopleTests
         Assert.Null(repository.LastSearch);
     }
 
+    private static VacancyApproverFilter Filter() => new(Guid.NewGuid(), Guid.NewGuid(), AccessScope.Unit);
+
+    [Theory]
+    [InlineData(AssignablePurpose.InterviewEvaluator)]
+    [InlineData(AssignablePurpose.OfferApprover)]
+    [InlineData(AssignablePurpose.VacancyAssignee)]
+    public async Task UseCase_RejectsVacancyIdForNonVacancyPurposesBeforeQuerying(AssignablePurpose purpose)
+    {
+        var repository = new RecordingRepository();
+        await Assert.ThrowsAsync<ArgumentException>(() => new AssignablePeopleUseCase(repository)
+            .ListAsync(Guid.NewGuid(), purpose, null, 10, Filter(), CancellationToken.None));
+        Assert.Equal(0, repository.Calls);
+    }
+
+    [Fact]
+    public async Task UseCase_ForwardsVacancyIdForTheVacancyApproverPurpose()
+    {
+        var repository = new RecordingRepository();
+        var filter = Filter();
+        await new AssignablePeopleUseCase(repository)
+            .ListAsync(Guid.NewGuid(), AssignablePurpose.VacancyApprover, null, 10, filter, CancellationToken.None);
+        Assert.Equal(filter, repository.LastVacancy);
+    }
+
     private sealed class RecordingRepository : IAssignablePeopleRepository
     {
         public int Calls { get; private set; }
@@ -79,13 +110,16 @@ public sealed class AssignablePeopleTests
         public AssignablePurposeRule? LastRule { get; private set; }
         public IReadOnlyList<AssignablePerson> Result { get; init; } = [];
 
-        public Task<IReadOnlyList<AssignablePerson>> ListAsync(Guid organizationId, AssignablePurposeRule rule,
-            string? search, int limit, CancellationToken cancellationToken)
+        public VacancyApproverFilter? LastVacancy { get; private set; }
+
+        public Task<IReadOnlyList<AssignablePerson>?> ListAsync(Guid organizationId, AssignablePurposeRule rule,
+            string? search, int limit, VacancyApproverFilter? vacancy, CancellationToken cancellationToken)
         {
             Calls++;
             LastSearch = search;
             LastRule = rule;
-            return Task.FromResult(Result);
+            LastVacancy = vacancy;
+            return Task.FromResult<IReadOnlyList<AssignablePerson>?>(Result);
         }
     }
 }

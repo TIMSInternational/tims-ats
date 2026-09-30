@@ -267,6 +267,13 @@ public sealed class PlatformOptions
     public bool TenantPeopleDirectoryEnabled { get; init; }
 
     /// <summary>
+    /// Tenant org structure (business units, teams, leaders, members, unit assignees) under
+    /// /tenant/org-structure, plus the vacancy-picker options read. Dark by default; the frontend keeps the
+    /// read-only viewer until NEXT_PUBLIC_TENANT_ORG_STRUCTURE_VIA_CSHARP is set.
+    /// </summary>
+    public bool TenantOrgStructureEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 11c: when true, the C# FX-derived READ surface is mapped and live — the FIVE deferred
     /// compensation FX reads (<c>GET /compensation/band-distribution</c>, <c>/compensation/pay-equity</c>,
     /// <c>/compensation/simulate-adjustment</c>, <c>/compensation/total-comp-breakdown</c>,

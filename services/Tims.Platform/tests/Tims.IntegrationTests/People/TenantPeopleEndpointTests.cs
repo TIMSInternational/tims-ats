@@ -69,6 +69,15 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
         people.Select(p => p.GetProperty("id").GetGuid()).Order().ToArray();
 
     [Fact]
+    public async Task VacancyAssignees_AreEveryActiveMember_TheSameDirectoryAsEvaluators()
+    {
+        // vacancy.create accepts ANY active member as assignedTo (org-placement.ts), so no eligibility filter.
+        Assert.Equal(Ids(await People("?purpose=interview_evaluator&limit=50")),
+            Ids(await People("?purpose=vacancy_assignee&limit=50")));
+        Assert.Contains(TenantPeopleFixture.Employee, Ids(await People("?purpose=vacancy_assignee&limit=50")));
+    }
+
+    [Fact]
     public async Task Recruiter_ListsEveryActiveMemberOfOwnTenantAsEvaluators()
     {
         var people = await People("?purpose=interview_evaluator");
@@ -164,6 +173,8 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [InlineData(TenantPeopleFixture.HrAdminSub, "interview_evaluator")]
     [InlineData(TenantPeopleFixture.HrAdminSub, "vacancy_approver")]
     [InlineData(TenantPeopleFixture.HrAdminSub, "offer_approver")]
+    [InlineData(TenantPeopleFixture.RecruiterSub, "vacancy_assignee")]
+    [InlineData(TenantPeopleFixture.HrAdminSub, "vacancy_assignee")]
     // hrbp holds vacancy:update at UNIT scope: an approver list (permission-filtered) is allowed at any scope.
     [InlineData(TenantPeopleFixture.HrbpSub, "vacancy_approver")]
     public async Task CallerHoldingThePickerMutationPermission_Is200(string sub, string purpose)
@@ -186,6 +197,11 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [InlineData(TenantPeopleFixture.LeaderSub, "interview_evaluator")]
     [InlineData(TenantPeopleFixture.CommitteeSub, "interview_evaluator")]
     [InlineData(TenantPeopleFixture.HrbpSub, "interview_evaluator")]
+    // vacancy:create IS granted to leader (@team) and hrbp (@unit), but the assignee list is the whole directory.
+    [InlineData(TenantPeopleFixture.LeaderSub, "vacancy_assignee")]
+    [InlineData(TenantPeopleFixture.HrbpSub, "vacancy_assignee")]
+    [InlineData(TenantPeopleFixture.CommitteeSub, "vacancy_assignee")]
+    [InlineData(TenantPeopleFixture.EmployeeSub, "vacancy_assignee")]
     public async Task CallerWithoutThePickerPermissionOrScope_Is403(string sub, string purpose)
     {
         var response = await Get($"?purpose={purpose}", sub);

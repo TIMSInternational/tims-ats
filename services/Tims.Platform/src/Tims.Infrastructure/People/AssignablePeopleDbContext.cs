@@ -4,7 +4,7 @@ namespace Tims.Infrastructure.People;
 
 /// <summary>
 /// READ-ONLY tenant directory context over the Prisma-owned identity tables (users, user_roles, roles,
-/// role_permissions, permissions). Every query runs inside <see cref="TenantScope"/>, so the live
+/// role_permissions, permissions) plus the vacancy/teams/business_units/user_business_units scope anchors. Every query runs inside <see cref="TenantScope"/>, so the live
 /// tenant_isolation policies apply on top of the explicit organization predicates. Never written.
 /// </summary>
 public sealed class AssignablePeopleDbContext(DbContextOptions<AssignablePeopleDbContext> options) : DbContext(options)
@@ -18,6 +18,14 @@ public sealed class AssignablePeopleDbContext(DbContextOptions<AssignablePeopleD
     public DbSet<DirectoryRolePermission> RolePermissions => Set<DirectoryRolePermission>();
 
     public DbSet<DirectoryPermission> Permissions => Set<DirectoryPermission>();
+
+    public DbSet<DirectoryVacancy> Vacancies => Set<DirectoryVacancy>();
+
+    public DbSet<DirectoryTeam> Teams => Set<DirectoryTeam>();
+
+    public DbSet<DirectoryBusinessUnit> BusinessUnits => Set<DirectoryBusinessUnit>();
+
+    public DbSet<DirectoryUserBusinessUnit> UserBusinessUnits => Set<DirectoryUserBusinessUnit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +66,7 @@ public sealed class AssignablePeopleDbContext(DbContextOptions<AssignablePeopleD
             entity.Property(row => row.Id).HasColumnName("id");
             entity.Property(row => row.RoleId).HasColumnName("role_id");
             entity.Property(row => row.PermissionId).HasColumnName("permission_id");
+            entity.Property(row => row.Scope).HasColumnName("scope");
         });
         modelBuilder.Entity<DirectoryPermission>(entity =>
         {
@@ -66,6 +75,46 @@ public sealed class AssignablePeopleDbContext(DbContextOptions<AssignablePeopleD
             entity.Property(row => row.Id).HasColumnName("id");
             entity.Property(row => row.Module).HasColumnName("module");
             entity.Property(row => row.Action).HasColumnName("action");
+        });
+        // Vacancy-scoped approver filter (?vacancyId): the scope anchors of ONE vacancy and the approver-side
+        // anchors (led teams, unit assignments) — the same columns anchors.ts reads.
+        modelBuilder.Entity<DirectoryVacancy>(entity =>
+        {
+            entity.ToTable("vacancies");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.Id).HasColumnName("id");
+            entity.Property(row => row.OrganizationId).HasColumnName("organization_id");
+            entity.Property(row => row.TeamId).HasColumnName("team_id");
+            entity.Property(row => row.BusinessUnitId).HasColumnName("business_unit_id");
+            entity.Property(row => row.AssignedTo).HasColumnName("assigned_to");
+            entity.Property(row => row.CreatedBy).HasColumnName("created_by");
+            entity.Property(row => row.DeletedAt).HasColumnName("deleted_at");
+        });
+        modelBuilder.Entity<DirectoryTeam>(entity =>
+        {
+            entity.ToTable("teams");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.Id).HasColumnName("id");
+            entity.Property(row => row.OrganizationId).HasColumnName("organization_id");
+            entity.Property(row => row.LeaderId).HasColumnName("leader_id");
+            entity.Property(row => row.IsActive).HasColumnName("is_active");
+        });
+        modelBuilder.Entity<DirectoryBusinessUnit>(entity =>
+        {
+            entity.ToTable("business_units");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.Id).HasColumnName("id");
+            entity.Property(row => row.OrganizationId).HasColumnName("organization_id");
+            entity.Property(row => row.IsActive).HasColumnName("is_active");
+        });
+        modelBuilder.Entity<DirectoryUserBusinessUnit>(entity =>
+        {
+            entity.ToTable("user_business_units");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.Id).HasColumnName("id");
+            entity.Property(row => row.OrganizationId).HasColumnName("organization_id");
+            entity.Property(row => row.UserId).HasColumnName("user_id");
+            entity.Property(row => row.BusinessUnitId).HasColumnName("business_unit_id");
         });
     }
 }
@@ -102,6 +151,7 @@ public sealed class DirectoryRolePermission
     public Guid Id { get; set; }
     public Guid RoleId { get; set; }
     public Guid PermissionId { get; set; }
+    public string Scope { get; set; } = string.Empty;
 }
 
 public sealed class DirectoryPermission
@@ -109,4 +159,38 @@ public sealed class DirectoryPermission
     public Guid Id { get; set; }
     public string Module { get; set; } = string.Empty;
     public string Action { get; set; } = string.Empty;
+}
+
+public sealed class DirectoryVacancy
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid? TeamId { get; set; }
+    public Guid? BusinessUnitId { get; set; }
+    public Guid? AssignedTo { get; set; }
+    public Guid? CreatedBy { get; set; }
+    public DateTime? DeletedAt { get; set; }
+}
+
+public sealed class DirectoryTeam
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid? LeaderId { get; set; }
+    public bool IsActive { get; set; }
+}
+
+public sealed class DirectoryBusinessUnit
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public bool IsActive { get; set; }
+}
+
+public sealed class DirectoryUserBusinessUnit
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid BusinessUnitId { get; set; }
 }

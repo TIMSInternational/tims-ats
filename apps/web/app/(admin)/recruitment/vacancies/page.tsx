@@ -132,7 +132,10 @@ export default function VacanciesPage() {
         onDepartmentChange={setDepartmentFilter}
         onClearFilters={clearFilters}
         hasFilters={!!(search || statusFilter || priorityFilter || departmentFilter)}
-        onCreateClick={() => setShowCreate(true)}
+        onCreateClick={() => {
+          createVacancy.reset();
+          setShowCreate(true);
+        }}
       />
 
       {/* Table */}
@@ -152,6 +155,7 @@ export default function VacanciesPage() {
           onConfirm={(data) => createVacancy.mutate(data)}
           onClose={() => setShowCreate(false)}
           isPending={createVacancy.isPending}
+          errorMessage={createVacancy.error?.message ?? null}
         />
       )}
       {closeTarget && (

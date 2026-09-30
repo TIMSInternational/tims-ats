@@ -41,6 +41,8 @@ export class PlatformApiError extends Error {
    * not deployed".
    */
   readonly hasHandlerMessage: boolean;
+  /** Stable machine-readable `code` from a `{ code, message }` error body (e.g. a 409 conflict), if any. */
+  readonly code: string | undefined;
 
   constructor(status: number, statusText: string, body?: unknown) {
     const handlerMessage = extractErrorMessage(body);
@@ -48,7 +50,16 @@ export class PlatformApiError extends Error {
     this.name = 'PlatformApiError';
     this.status = status;
     this.hasHandlerMessage = handlerMessage !== undefined;
+    this.code = extractErrorCode(body);
   }
+}
+
+function extractErrorCode(body: unknown): string | undefined {
+  if (body && typeof body === 'object' && 'code' in body) {
+    const code = (body as { code?: unknown }).code;
+    if (typeof code === 'string' && code.length > 0 && code.length <= 100) return code;
+  }
+  return undefined;
 }
 
 // The C# minimal-API error responses are shaped `{ message: string }` (e.g. every
@@ -257,7 +268,7 @@ type DeleteJsonResponse<P extends DeletePaths> = paths[P] extends {
   : unknown;
 
 async function mutate(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body: unknown,
   pathParams: PathParams | undefined,
@@ -327,4 +338,18 @@ export async function platformDelete<P extends DeletePaths>(
   pathParams?: PathParams,
 ): Promise<DeleteJsonResponse<P>> {
   return mutate('DELETE', path, undefined, pathParams) as Promise<DeleteJsonResponse<P>>;
+}
+
+/**
+ * Untyped mutation escape hatch (POST/PUT/PATCH/DELETE) for endpoints not yet present in the committed
+ * OpenAPI contract, or whose verb (PUT) has no typed helper. Same auth/relay/error handling as the typed
+ * helpers; callers MUST zod-validate whatever body comes back.
+ */
+export async function platformSendRaw(
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+  pathParams?: PathParams,
+): Promise<unknown> {
+  return mutate(method, path, body, pathParams);
 }

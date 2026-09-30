@@ -35,11 +35,17 @@ interface UserPickerProps {
    * When set, the list comes from the tenant assignable-people directory for this purpose (C# behind
    * NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP, tRPC user.list otherwise) — so a recruiter without
    * user:read can still pick evaluators and approvers once the directory is live. Eligibility is
-   * permission-based, not scope-aware: the submit mutation re-checks scope and callers must show its error.
+   * permission-based, not scope-aware (except
+   * 'vacancy_approver' with `vacancyId`, which the C# directory filters by scope): the submit mutation
+   * re-checks scope and callers must show its error.
    */
   purpose?: AssignablePurpose;
   /** Focus the search box on mount (modals). Inline pickers on a page pass false. Defaults to true. */
   autoFocus?: boolean;
+  /** With purpose 'vacancy_approver': only offer approvers whose scope covers this vacancy (C# directory). */
+  vacancyId?: string;
+  /** Shown instead of `emptyLabel` when the list is empty and nothing has been searched. */
+  emptyHint?: string;
 }
 
 interface PickerSource {
@@ -62,6 +68,8 @@ export function UserPicker({
   emptyLabel,
   purpose,
   autoFocus = true,
+  vacancyId,
+  emptyHint,
 }: UserPickerProps) {
   const [search, setSearch] = useState('');
   const legacy = trpc.user.list.useQuery(
@@ -73,6 +81,7 @@ export function UserPicker({
     search,
     limit: 25,
     enabled: purpose !== undefined,
+    vacancyId,
   });
 
   const source: PickerSource =
@@ -110,7 +119,9 @@ export function UserPicker({
         ) : source.isLoading ? (
           <p className="px-3 py-3 text-[12px] text-[#8B8B8B]">{loadingLabel}</p>
         ) : users.length === 0 ? (
-          <p className="px-3 py-3 text-[12px] text-[#8B8B8B]">{emptyLabel}</p>
+          <p className="px-3 py-3 text-[12px] text-[#8B8B8B]">
+            {emptyHint && search.trim() === '' && source.rows.length === 0 ? emptyHint : emptyLabel}
+          </p>
         ) : (
           users.map((u) => (
             <button

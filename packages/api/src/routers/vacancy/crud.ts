@@ -4,6 +4,7 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser } from '../../access';
+import { assertVacancyPlacement, assertVacancyUpdatePlacement } from './org-placement';
 
 // ---------------------------------------------------------------------------
 // Shared selects — explicit field selection (CLAUDE.md: never return full records)
@@ -277,6 +278,7 @@ export const vacancyCrudRouter = router({
           message: 'autoPublish requiere requireApproval en false',
         });
       }
+      await assertVacancyPlacement(ctx.user.organizationId, input);
 
       const baseData = {
         ...input,
@@ -359,6 +361,7 @@ export const vacancyCrudRouter = router({
       const { id, ...data } = input;
 
       await assertScoped('vacancy', id, ctx.access, ctx.user.id, ctx.user.organizationId);
+      await assertVacancyUpdatePlacement(ctx.user.organizationId, id, data);
 
       return db.vacancy.update({
         where: { id },

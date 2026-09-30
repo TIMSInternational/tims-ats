@@ -3,16 +3,20 @@
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { Modal } from '../../../../components';
+import type { PickedUser } from '../../../../components/user-picker';
 import { Step1BasicInfo, Step2Description, Step3Compensation } from './create-modal.fields';
+import { VacancyOrgFields } from './create-modal.org-fields';
 import type { Step, VacancyFormData } from './create-modal.helpers';
 
 interface CreateModalProps {
   onConfirm: (data: VacancyFormData) => void;
   onClose: () => void;
   isPending: boolean;
+  /** Server message from the last failed create, shown inside the wizard (not only as a toast). */
+  errorMessage?: string | null;
 }
 
-export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps) {
+export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: CreateModalProps) {
   const { t } = useI18n();
   const [step, setStep] = useState<Step>(1);
 
@@ -23,6 +27,9 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
   const [contractType, setContractType] = useState('indefinido');
   const [location, setLocation] = useState('');
   const [remotePolicy, setRemotePolicy] = useState<'onsite' | 'remote' | 'hybrid'>('hybrid');
+  const [businessUnitId, setBusinessUnitId] = useState<string | null>(null);
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [hiringManager, setHiringManager] = useState<PickedUser | null>(null);
 
   // Step 2: Description & requirements
   const [description, setDescription] = useState('');
@@ -42,7 +49,12 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
   const [salaryPeriod, setSalaryPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [slaTargetDays, setSlaTargetDays] = useState('30');
   const [autoPublish, setAutoPublish] = useState(false);
-  const [requireApproval, setRequireApproval] = useState(true);
+  const [requireApproval, setRequireApprovalState] = useState(true);
+  // The server rejects autoPublish together with requireApproval, so turning approval on clears it.
+  const setRequireApproval = (value: boolean) => {
+    setRequireApprovalState(value);
+    if (value) setAutoPublish(false);
+  };
 
   const isStep1Valid = title.trim().length > 0;
 
@@ -76,9 +88,12 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
       location: location.trim() || undefined,
       remotePolicy,
       salary,
+      businessUnitId: businessUnitId ?? undefined,
+      teamId: teamId ?? undefined,
+      assignedTo: hiringManager?.id,
       settings: {
         slaTargetDays: parseInt(slaTargetDays) || 30,
-        autoPublish,
+        autoPublish: requireApproval ? false : autoPublish,
         requireApproval,
       },
     });
@@ -115,6 +130,18 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
           priority={priority} setPriority={setPriority}
         />
       )}
+      {step === 1 && (
+        <div className="mt-4">
+          <VacancyOrgFields
+            businessUnitId={businessUnitId}
+            teamId={teamId}
+            hiringManager={hiringManager}
+            onBusinessUnitChange={setBusinessUnitId}
+            onTeamChange={setTeamId}
+            onHiringManagerChange={setHiringManager}
+          />
+        </div>
+      )}
 
       {step === 2 && (
         <Step2Description
@@ -141,6 +168,12 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
           title={title} location={location} remotePolicy={remotePolicy}
           contractType={contractType} positions={positions}
         />
+      )}
+
+      {errorMessage && (
+        <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-[#991b1b]">
+          {t.vacancies.createFailed}: {errorMessage}
+        </p>
       )}
 
       {/* Navigation */}
@@ -172,7 +205,7 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
               disabled={!isStep1Valid || isPending}
               className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
             >
-              {isPending ? 'Creando...' : 'Crear vacante'}
+              {isPending ? t.vacancies.creatingVacancy : t.vacancies.createVacancySubmit}
             </button>
           )}
         </div>

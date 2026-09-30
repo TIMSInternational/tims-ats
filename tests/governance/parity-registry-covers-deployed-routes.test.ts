@@ -266,6 +266,30 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'TENANT ORG STRUCTURE LANDED DARK 2026-09-29 (TenantOrgStructureEnabled). C#-only management surface for business ' +
+      'units, teams, leaders, members and unit assignees (the anchors leader/unit-scoped approvals read), plus the ' +
+      'vacancy-picker options read. The tRPC organization router has only partial twins (create-only units/teams; ' +
+      'assign/unassign unit — gated identically, user:create/user:delete), so a by-role diff would compare different ' +
+      'contracts. Covered by real-PostgreSQL integration tests under production-shaped RLS with seed-matrix grants ' +
+      '(cross-tenant 404s, a 403 table over every route incl. a narrow-scope grant, 409s, audit). NOT verifiable in ' +
+      'prod until registered: register fixture-first (the parity seed has no org-structure grants) BEFORE enabling ' +
+      'TenantOrgStructureEnabled in production.',
+    routes: [
+      'GET /tenant/org-structure',
+      'GET /tenant/org-structure/options',
+      'POST /tenant/org-structure/business-units',
+      'PATCH /tenant/org-structure/business-units/{id}',
+      'POST /tenant/org-structure/teams',
+      'PATCH /tenant/org-structure/teams/{id}',
+      'PUT /tenant/org-structure/teams/{id}/members/{userId}',
+      'DELETE /tenant/org-structure/teams/{id}/members/{userId}',
+      'PUT /tenant/org-structure/business-units/{id}/assignees/{userId}',
+      'DELETE /tenant/org-structure/business-units/{id}/assignees/{userId}',
+      'PUT /tenant/org-structure/users/{userId}/business-unit',
+    ],
+  },
+  {
+    reason:
       'INFRA / DIAGNOSTIC, not a domain surface. `/` and the two whoami routes are liveness and identity echoes; ' +
       '/require-permission and /require-org-scope (Program.cs:1225, :1265) are the permission-kernel probes the C# ' +
       'auth integration tests drive. None reads tenant data, so none carries a parity, RLS or RBAC obligation.',
@@ -554,7 +578,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         190 → 191 (WP-H / PR #308): POST /interviews/candidate-join, deployed DARK behind
     //         Platform:CandidateInterviewJoinEnabled and allowlisted with the invitation-setup group
     //         (anonymous, capability-token). #308 measured 181 → 182 on its own base; +1 over main's 190.
-    expect(deployed.size).toBe(191);
+    //         191 → 202 (PR #310): the dark tenant org structure — eleven routes, all allowlisted in the
+    //         org-structure group above. Main 191 (after #308) + #310's +11 = 202.
+    expect(deployed.size).toBe(202);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -626,7 +652,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 94 → 95: WP-H's anonymous candidate interview join (PR #308), the same capability-token shape as
     //   invitation setup (#308 measured 89 → 90 on its own base; +1 over main's 94). It joins an
     //   EXISTING group, so the group/category count is unchanged.
-    expect(allowlistNormalised.length).toBe(95);
+    // 95 → 106 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
+    //   Main 95 (after #308) + #310's +11 = 106.
+    expect(allowlistNormalised.length).toBe(106);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -645,6 +673,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // wrong prerequisite for both.
     // 12 → 13 on 2026-09-29: tenant invitations' group (a Mode-B-inexpressible catalogue + email-sending writes).
     // 13 → 14 (PR #304): the tenant people directory is a C#-only picker read with no tRPC twin.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the fourteen documented gap categories').toBe(14);
+    // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the fifteen documented gap categories').toBe(15);
   });
 });

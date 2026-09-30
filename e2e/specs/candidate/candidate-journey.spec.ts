@@ -235,6 +235,11 @@ test('recruiter moves the candidate to Oferta and drafts an offer', async () => 
   await dialog.getByLabel('Tipo Contrato').fill('Término indefinido');
   await dialog.getByRole('button', { name: 'Crear borrador de oferta' }).click();
   await expect(dialog).toBeHidden();
+  // On success the modal closes and THEN the app router-pushes to the offers list. Wait for that list to
+  // show the new offer before the next test navigates, so its page.goto cannot race the in-flight client
+  // navigation (a first attempt once found the list without the offer: CI run 36754356674, flaky).
+  await expect(page).toHaveURL(/\/recruitment\/offers$/);
+  await expect(page.getByText(fullName()).first()).toBeVisible();
 });
 
 /** Open this candidate's offer from the offers list. */
