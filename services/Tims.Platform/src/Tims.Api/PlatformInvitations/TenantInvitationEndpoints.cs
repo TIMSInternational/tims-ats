@@ -14,8 +14,9 @@ namespace Tims.Api.PlatformInvitations;
 /// <summary>
 /// F8: a company admin invites users to THEIR OWN organization. The organization is taken from the resolved
 /// principal only (no organization id is accepted in any route or body). Every route requires
-/// <c>user:create</c> at organization scope (<see cref="TenantInvitationGate"/>); creation additionally
-/// enforces InvitationGrantPolicy, so nobody can grant a role above their own. Rate limiting is the global
+/// <c>user:create</c> at organization scope (<see cref="TenantInvitationGate"/>); creation AND resend
+/// additionally enforce InvitationGrantPolicy against the invitation's role, so nobody can grant (or revive a
+/// grant of) a role above their own. Revoke is not role-gated: it can only remove a pending grant. Rate limiting is the global
 /// RateLimitMiddleware (same as the platform invitation routes). Dark unless TenantInvitationsEnabled.
 /// </summary>
 public static class TenantInvitationEndpoints
@@ -86,7 +87,20 @@ public static class TenantInvitationEndpoints
             var gate = await TenantInvitationGate.AuthorizeAsync(user, http, resolver, permissions, platform.Value, true, ct);
             if (gate.Failure is not null) return gate.Failure;
             if (!Guid.TryParseExact(id, "D", out var invitationId)) return Results.BadRequest();
-            var result = await useCase.ResendAsync(gate.OrganizationId, invitationId, new Uri(delivery.Value.AppOrigin), ct);
+            var attempt = await useCase.ResendAsync(gate.OrganizationId, gate.Context!.Roles, invitationId,
+                new Uri(delivery.Value.AppOrigin), ct);
+            if (attempt.Resend is not { } result)
+            {
+                // Same denial + audit shape as create: reviving this invitation would grant a role above the caller's.
+                await audit.WriteAsync(new SecurityEvent(gate.OrganizationId, gate.ActorId, "user_invitation_denied",
+                    "platform_invitation", id, new JsonObject
+                    {
+                        ["reason"] = "role_not_grantable",
+                        ["roleSlug"] = attempt.DeniedRoleSlug,
+                        ["operation"] = "resend",
+                    }, http.ClientIpFor()), CancellationToken.None);
+                return Results.Json(new { message = "You cannot resend an invitation for a role above your own" }, statusCode: 403);
+            }
             await audit.WriteAsync(new SecurityEvent(gate.OrganizationId, gate.ActorId, "invitation_resend", "platform_invitation", id,
                 new JsonObject { ["outcome"] = result.Outcome.ToString(), ["surface"] = "tenant" }, http.ClientIpFor()), CancellationToken.None);
             return result.Outcome switch

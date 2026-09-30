@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;
 using Tims.Application.PlatformInvitations;
+using Tims.Domain.Identity;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.PlatformOrganizations;
 
@@ -71,10 +72,30 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
         return TenantInvitationRevokeOutcome.Revoked;
     }
 
-    public IInvitationResendRepository ForOrganization(Guid organizationId) => new Scoped(db, organizationId);
-
-    private sealed class Scoped(PlatformOrganizationsCreateDbContext db, Guid organizationId) : IInvitationResendRepository
+    public async Task<TenantInvitationTarget?> FindTargetAsync(Guid organizationId, Guid id, CancellationToken ct)
     {
+        await using var scope = await TenantScope.BeginAsync(db, organizationId, ct);
+        var row = await db.Database.SqlQuery<TenantInvitationTarget>($"""
+            SELECT role_slug AS "RoleSlug" FROM platform_invitations
+            WHERE id = {id} AND organization_id = {organizationId} AND type::text = 'user'
+            """).SingleOrDefaultAsync(ct);
+        await scope.CommitAsync(ct);
+        return row;
+    }
+
+    public IInvitationResendRepository ForOrganization(Guid organizationId, IReadOnlyList<string> grantableRoles) =>
+        new Scoped(db, organizationId, grantableRoles.ToArray());
+
+    /// <remarks>
+    /// Both statements also require the invitation's effective role (<c>COALESCE(role_slug, 'employee')</c>, as
+    /// acceptance computes it) to be one the caller may grant, so the use case's pre-delivery role check cannot
+    /// be raced into resending an invitation whose role changed in between.
+    /// </remarks>
+    private sealed class Scoped(PlatformOrganizationsCreateDbContext db, Guid organizationId, string[] grantableRoles)
+        : IInvitationResendRepository
+    {
+        private const string DefaultRole = RoleSlugs.DefaultStaffRole;
+
         public async Task<InvitationResendSnapshot?> FindAsync(Guid id, CancellationToken ct)
         {
             await using var scope = await TenantScope.BeginAsync(db, organizationId, ct);
@@ -83,6 +104,7 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
                        organization_id AS "OrganizationId", organization_name AS "OrganizationName", updated_at AS "UpdatedAt"
                 FROM platform_invitations
                 WHERE id = {id} AND organization_id = {organizationId} AND type::text = 'user'
+                  AND COALESCE(role_slug, {DefaultRole}) = ANY({grantableRoles})
                 """).SingleOrDefaultAsync(ct);
             await scope.CommitAsync(ct);
             return row;
@@ -104,6 +126,7 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
                 WHERE invitation.id = {expected.Id} AND invitation.organization_id = {organizationId}
                   AND invitation.token = {expected.Token} AND invitation.updated_at = {updated}
                   AND invitation.status::text IN ('pending', 'sent', 'expired')
+                  AND COALESCE(invitation.role_slug, {DefaultRole}) = ANY({grantableRoles})
                 """, ct);
             await scope.CommitAsync(ct);
             return changed == 1;

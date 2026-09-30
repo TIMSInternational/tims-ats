@@ -22,6 +22,9 @@ public sealed class TenantInvitationFixture : IAsyncLifetime
     public const string HrAdminSub = "sub-f8-hr-admin";
     public const string RecruiterSub = "sub-f8-recruiter";
     public static readonly Guid AcmeInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000a");
+    public static readonly Guid ExpiredSuperAdminInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000b");
+    public static readonly Guid PendingRecruiterInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000c");
+    public static readonly Guid GuardedSuperAdminInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000d");
     public OrganizationInvitationFixture Inner { get; } = new();
     public string ConnectionString => Inner.ConnectionString;
 
@@ -53,6 +56,14 @@ public sealed class TenantInvitationFixture : IAsyncLifetime
             INSERT INTO platform_invitations(id,email,type,organization_id,organization_name,role_slug,token,status,invited_by_id,expires_at,updated_at)
               VALUES ('f8000000-0000-0000-0000-00000000000a','acme-invitee@acme.test','user','11111111-1111-1111-1111-111111111111','Acme',
                 'employee','f8-acme-token','pending','a1000000-0000-0000-0000-0000000000aa',now()+interval '7 days',now());
+            INSERT INTO platform_invitations(id,email,type,organization_id,organization_name,role_slug,token,status,invited_by_id,expires_at,updated_at)
+              VALUES
+              ('f8000000-0000-0000-0000-00000000000b','expired-sa@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
+                'super_admin','f8-expired-sa-token','expired','f8000000-0000-0000-0000-0000000000c1',now()-interval '1 day',now()-interval '8 days'),
+              ('f8000000-0000-0000-0000-00000000000c','pending-rec@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
+                'recruiter','f8-pending-rec-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '1 day',now()-interval '6 days'),
+              ('f8000000-0000-0000-0000-00000000000d','guarded-sa@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
+                'super_admin','f8-guarded-sa-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '1 day',now()-interval '6 days');
             """;
         await command.ExecuteNonQueryAsync();
     }
@@ -172,6 +183,61 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
     }
 
     [Fact]
+    public async Task Hr_admin_cannot_revive_an_expired_super_admin_invitation_but_super_admin_can()
+    {
+        var sender = new FakeSender();
+        using var factory = Factory(sender);
+        var client = factory.CreateClient();
+        var id = TenantInvitationFixture.ExpiredSuperAdminInvitation;
+        var expiresBefore = await ExpiresAt(id);
+
+        var denied = await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.HrAdminSub);
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        Assert.Equal("expired", await Status(id)); Assert.Equal(expiresBefore, await ExpiresAt(id)); Assert.Equal(0, sender.Calls);
+        Assert.Equal(1, await DenialAudits(id));
+
+        // Positive control: the same invitation IS resendable by a caller who may grant super_admin.
+        var allowed = await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.SuperAdminSub);
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        Assert.Equal("sent", await Status(id)); Assert.True(await ExpiresAt(id) > DateTime.UtcNow.AddDays(6));
+        Assert.Equal(1, sender.Calls); Assert.Equal("expired-sa@beta.test", sender.To);
+    }
+
+    [Fact]
+    public async Task Hr_admin_resends_an_invitation_for_a_role_they_may_grant()
+    {
+        var sender = new FakeSender();
+        using var factory = Factory(sender);
+        var id = TenantInvitationFixture.PendingRecruiterInvitation;
+        var response = await Send(factory.CreateClient(), HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.HrAdminSub);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("sent", await Status(id)); Assert.Equal(1, sender.Calls); Assert.Equal(0, await DenialAudits(id));
+    }
+
+    [Fact]
+    public async Task Delivery_repository_rechecks_the_role_inside_its_own_statements()
+    {
+        // Defense in depth below the use case: an organization-bound delivery repository whose grantable set
+        // excludes the stored role can neither read nor mark-sent the invitation, even with a valid snapshot.
+        using var factory = Factory(new FakeSender());
+        using var scope = factory.Services.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<Tims.Application.PlatformInvitations.ITenantInvitationRepository>();
+        var id = TenantInvitationFixture.GuardedSuperAdminInvitation;
+        var org = PlatformOrganizationsCreateFixture.OtherOrg;
+        var hrGrantable = Tims.Domain.Identity.InvitationGrantPolicy.GrantableRoles(["hr_admin"]);
+        var saGrantable = Tims.Domain.Identity.InvitationGrantPolicy.GrantableRoles(["super_admin"]);
+
+        Assert.Null(await repository.ForOrganization(org, hrGrantable).FindAsync(id, default));
+        var snapshot = await repository.ForOrganization(org, saGrantable).FindAsync(id, default);
+        Assert.NotNull(snapshot);
+        var now = DateTime.UtcNow;
+        Assert.False(await repository.ForOrganization(org, hrGrantable).MarkSentAsync(snapshot!, now, now.AddDays(7), default));
+        Assert.Equal("pending", await Status(id));
+        Assert.True(await repository.ForOrganization(org, saGrantable).MarkSentAsync(snapshot!, now, now.AddDays(7), default));
+        Assert.Equal("sent", await Status(id));
+    }
+
+    [Fact]
     public async Task Role_list_is_limited_to_grantable_roles()
     {
         using var factory = Factory(new FakeSender());
@@ -198,6 +264,25 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         await using var command = new NpgsqlCommand("SELECT status::text FROM platform_invitations WHERE id=@id", connection);
         command.Parameters.AddWithValue("id", id);
         return (string?)await command.ExecuteScalarAsync();
+    }
+
+    private async Task<DateTime> ExpiresAt(Guid id)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT expires_at FROM platform_invitations WHERE id=@id", connection);
+        command.Parameters.AddWithValue("id", id);
+        return (DateTime)(await command.ExecuteScalarAsync())!;
+    }
+
+    private async Task<long> DenialAudits(Guid id)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT count(*) FROM audit_logs WHERE action='user_invitation_denied' AND entity_id=@id AND metadata::text LIKE '%resend%'", connection);
+        command.Parameters.AddWithValue("id", id.ToString());
+        return (long)(await command.ExecuteScalarAsync())!;
     }
 
     private WebApplicationFactory<Program> Factory(FakeSender sender, bool enabled = true) =>

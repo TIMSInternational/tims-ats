@@ -27,4 +27,10 @@ public static class InvitationGrantPolicy
 
     public static bool CanGrant(IEnumerable<string> callerRoles, string role) =>
         GrantableRoles(callerRoles).Contains(role, StringComparer.Ordinal);
+
+    /// <summary>
+    /// The role a <c>user</c> invitation grants on acceptance: its stored <c>role_slug</c>, or the default staff
+    /// role when NULL — the same <c>COALESCE(role_slug, 'employee')</c> InvitationOnboardingRepository applies.
+    /// </summary>
+    public static string EffectiveInvitedRole(string? roleSlug) => roleSlug ?? RoleSlugs.DefaultStaffRole;
 }

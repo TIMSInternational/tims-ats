@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   revoke: vi.fn(),
   resend: vi.fn(),
   toast: vi.fn(),
+  invitationRole: 'employee' as string | null,
 }));
 
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -57,7 +58,7 @@ vi.mock('../../apps/web/lib/platform-api/tenant-invitations', async (importOrigi
         {
           id: '11111111-1111-4111-8111-111111111111',
           email: 'pending@x.test',
-          roleSlug: 'employee',
+          roleSlug: mocks.invitationRole,
           status: 'sent',
           createdAt: '2026-09-20T10:00:00Z',
           expiresAt: '2026-09-27T10:00:00Z',
@@ -82,6 +83,7 @@ beforeEach(() => {
   mocks.enabled = true;
   mocks.canCreate = true;
   mocks.permsLoading = false;
+  mocks.invitationRole = 'employee';
   for (const fn of [mocks.create, mocks.revoke, mocks.resend, mocks.toast]) fn.mockReset();
 });
 
@@ -135,5 +137,23 @@ describe('/settings/users (Equipo)', () => {
     render(<TeamSettingsPage />);
     fireEvent.click(screen.getByRole('button', { name: m.resend }));
     expect(mocks.resend).toHaveBeenCalledExactlyOnceWith('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('disables resend for an invitation whose role the caller cannot grant (the API would 403)', () => {
+    mocks.invitationRole = 'super_admin';
+    render(<TeamSettingsPage />);
+    const button = screen.getByRole('button', { name: m.resend }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toBe(m.resendNotGrantable);
+    fireEvent.click(button);
+    expect(mocks.resend).not.toHaveBeenCalled();
+    // Revoke only removes a pending grant, so it stays available.
+    expect((screen.getByRole('button', { name: m.revoke }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('treats a NULL role as employee for the resend check', () => {
+    mocks.invitationRole = null;
+    render(<TeamSettingsPage />);
+    expect((screen.getByRole('button', { name: m.resend }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

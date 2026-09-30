@@ -2238,6 +2238,7 @@
     "statusSent": "Enviada",
     "statusExpired": "Vencida",
     "resend": "Reenviar",
+    "resendNotGrantable": "No puedes reenviar una invitación para un rol superior al tuyo",
     "revoke": "Revocar",
     "resent": "Invitación reenviada.",
     "revoked": "Invitación revocada.",

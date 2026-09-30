@@ -54,6 +54,10 @@ export function PendingInvitationsTable() {
     expired: { cls: 'bg-gray-100 text-gray-600', label: m.statusExpired },
   };
   const busy = resend.isPending || revoke.isPending;
+  // Resend revives a grant of the invitation's role, so the API refuses it (403) unless the caller could
+  // grant that role. `roles.data` IS the caller's grantable list; mirror the rule so the button is not a trap.
+  // A NULL role is accepted as `employee`. Until the list loads, defer to the server.
+  const canResend = (inv: TenantInvitation) => !roles.data || roleNames.has(inv.roleSlug ?? 'employee');
 
   return (
     <>
@@ -81,7 +85,8 @@ export function PendingInvitationsTable() {
             <td className="px-4 py-3 text-right whitespace-nowrap">
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !canResend(inv)}
+                title={canResend(inv) ? undefined : m.resendNotGrantable}
                 onClick={() => resend.mutate(inv.id)}
                 className={`${ACTION_CLS} text-[#1F114C] mr-4`}
               >

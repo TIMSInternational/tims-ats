@@ -15,13 +15,22 @@ public sealed record TenantInvitationRevokeResponse(Guid Id, string Status);
 public enum TenantInvitationCreateOutcome { Created, Invalid, RoleNotGrantable, RoleUnavailable, OrganizationUnavailable, Duplicate }
 public sealed record TenantInvitationCreateResult(TenantInvitationCreateOutcome Outcome, OrganizationInvitationResponse? Response = null);
 public enum TenantInvitationRevokeOutcome { Revoked, NotFound, InvalidStatus }
+/// <summary>The role an invitation will grant on acceptance (<c>role_slug</c>; NULL = the default staff role).</summary>
+public sealed record TenantInvitationTarget(string? RoleSlug);
+/// <summary><see cref="DeniedRoleSlug"/> is set (and <see cref="Resend"/> null) when the caller may not grant the invitation's role.</summary>
+public sealed record TenantInvitationResendResult(InvitationResendResult? Resend, string? DeniedRoleSlug = null);
 
 public interface ITenantInvitationRepository
 {
     Task<IReadOnlyList<TenantInvitationRow>> ListOpenAsync(Guid organizationId, CancellationToken ct);
     Task<TenantInvitationRevokeOutcome> RevokeAsync(Guid organizationId, Guid id, Guid actor, DateTime now, CancellationToken ct);
-    /// <summary>A delivery/resend repository that can only see and update this organization's invitations.</summary>
-    IInvitationResendRepository ForOrganization(Guid organizationId);
+    /// <summary>The stored role of one of this organization's user invitations, or null when it is not visible.</summary>
+    Task<TenantInvitationTarget?> FindTargetAsync(Guid organizationId, Guid id, CancellationToken ct);
+    /// <summary>
+    /// A delivery/resend repository that can only see and update this organization's invitations whose
+    /// effective role is in <paramref name="grantableRoles"/> (re-checked inside the guarded UPDATE itself).
+    /// </summary>
+    IInvitationResendRepository ForOrganization(Guid organizationId, IReadOnlyList<string> grantableRoles);
 }
 
 /// <summary>
@@ -54,7 +63,8 @@ public sealed class TenantInvitationsUseCase(IUserInvitationCreateRepository cre
         if (!UserInvitationCreateUseCase.IsValid(input)) return new(TenantInvitationCreateOutcome.Invalid);
         // Privilege check BEFORE any write: the role must be grantable by this caller.
         if (!InvitationGrantPolicy.CanGrant(callerRoles, roleSlug)) return new(TenantInvitationCreateOutcome.RoleNotGrantable);
-        var create = new UserInvitationCreateUseCase(createRepository, repository.ForOrganization(organizationId), sender, clock);
+        var delivery = repository.ForOrganization(organizationId, InvitationGrantPolicy.GrantableRoles(callerRoles));
+        var create = new UserInvitationCreateUseCase(createRepository, delivery, sender, clock);
         var result = await create.ExecuteUniqueAsync(input, actor, appOrigin, ct);
         return result.Outcome switch
         {
@@ -65,8 +75,24 @@ public sealed class TenantInvitationsUseCase(IUserInvitationCreateRepository cre
         };
     }
 
-    public Task<InvitationResendResult> ResendAsync(Guid organizationId, Guid id, Uri appOrigin, CancellationToken ct) =>
-        new InvitationResendUseCase(repository.ForOrganization(organizationId), sender, clock).ExecuteAsync(id, appOrigin, ct);
+    /// <summary>
+    /// Resending restores 7 days of validity to a bearer token whose acceptance grants the STORED role, so it is
+    /// a grant in its own right: the caller must be allowed to grant that role, exactly as on create. Otherwise
+    /// an hr_admin could revive an expired super_admin invitation they could never have created. Revoke is
+    /// deliberately not role-gated: it can only remove a pending grant, never confer one.
+    /// </summary>
+    public async Task<TenantInvitationResendResult> ResendAsync(Guid organizationId, IReadOnlyList<string> callerRoles,
+        Guid id, Uri appOrigin, CancellationToken ct)
+    {
+        var target = await repository.FindTargetAsync(organizationId, id, ct);
+        if (target is null) return new(new InvitationResendResult(InvitationResendOutcome.NotFound));
+        var role = InvitationGrantPolicy.EffectiveInvitedRole(target.RoleSlug);
+        var grantable = InvitationGrantPolicy.GrantableRoles(callerRoles);
+        // Privilege check BEFORE any email or write, as on create.
+        if (!grantable.Contains(role, StringComparer.Ordinal)) return new(null, role);
+        var resend = new InvitationResendUseCase(repository.ForOrganization(organizationId, grantable), sender, clock);
+        return new(await resend.ExecuteAsync(id, appOrigin, ct));
+    }
 
     public Task<TenantInvitationRevokeOutcome> RevokeAsync(Guid organizationId, Guid id, Guid actor, CancellationToken ct)
     {

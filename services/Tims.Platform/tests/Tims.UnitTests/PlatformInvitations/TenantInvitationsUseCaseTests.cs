@@ -54,6 +54,7 @@ public sealed class TenantInvitationsUseCaseTests
         Assert.Equal("accepted", result.Response!.Delivery);
         Assert.Equal(Org, create.LastInput!.OrganizationId); Assert.True(create.LastUnique);
         Assert.Equal(1, sender.Calls); Assert.Equal([Org], tenant.BoundOrganizations);
+        Assert.Equal(InvitationGrantPolicy.GrantableRoles(["hr_admin"]), tenant.BoundGrantableRoles);
     }
 
     [Theory]
@@ -87,9 +88,42 @@ public sealed class TenantInvitationsUseCaseTests
     public async Task Resend_only_sees_the_callers_organization()
     {
         var tenant = new TenantRepo(); var sender = new Sender();
-        var result = await Case(new CreateRepo(), tenant, sender).ResendAsync(Org, Guid.NewGuid(), Origin, default);
-        Assert.Equal(InvitationResendOutcome.NotFound, result.Outcome);
-        Assert.Equal([Org], tenant.BoundOrganizations); Assert.Equal(0, sender.Calls);
+        var result = await Case(new CreateRepo(), tenant, sender).ResendAsync(Org, ["super_admin"], Guid.NewGuid(), Origin, default);
+        Assert.Equal(InvitationResendOutcome.NotFound, result.Resend!.Outcome);
+        Assert.Equal([Org], tenant.LookedUpOrganizations); Assert.Empty(tenant.BoundOrganizations); Assert.Equal(0, sender.Calls);
+    }
+
+    [Theory]
+    [InlineData("hr_admin", "super_admin")]
+    [InlineData("recruiter", "hr_admin")]
+    [InlineData("leader", "recruiter")]
+    public async Task Resending_an_invitation_for_a_role_above_the_caller_is_refused_before_any_email_or_write(string caller, string stored)
+    {
+        var tenant = new TenantRepo { Target = new(stored) }; var sender = new Sender();
+        var result = await Case(new CreateRepo(), tenant, sender).ResendAsync(Org, [caller], Guid.NewGuid(), Origin, default);
+        Assert.Null(result.Resend); Assert.Equal(stored, result.DeniedRoleSlug);
+        Assert.Empty(tenant.BoundOrganizations); Assert.Equal(0, sender.Calls); Assert.Equal(0, tenant.MarkSentCalls);
+    }
+
+    [Theory]
+    [InlineData("hr_admin", "recruiter")]
+    [InlineData("super_admin", "super_admin")]
+    [InlineData("recruiter", "recruiter")]
+    [InlineData("recruiter", null)] // NULL role_slug is accepted as employee, which every caller may grant
+    public async Task Resending_a_grantable_role_sends_and_binds_the_callers_grantable_roles(string caller, string? stored)
+    {
+        var tenant = new TenantRepo { Target = new(stored) }; var sender = new Sender();
+        var result = await Case(new CreateRepo(), tenant, sender).ResendAsync(Org, [caller], Guid.NewGuid(), Origin, default);
+        Assert.Null(result.DeniedRoleSlug); Assert.Equal(InvitationResendOutcome.Sent, result.Resend!.Outcome);
+        Assert.Equal([Org], tenant.BoundOrganizations); Assert.Equal(1, sender.Calls); Assert.Equal(1, tenant.MarkSentCalls);
+        Assert.Equal(InvitationGrantPolicy.GrantableRoles([caller]), tenant.BoundGrantableRoles);
+    }
+
+    [Fact]
+    public void Effective_invited_role_matches_acceptance_coalesce()
+    {
+        Assert.Equal("employee", InvitationGrantPolicy.EffectiveInvitedRole(null));
+        Assert.Equal("super_admin", InvitationGrantPolicy.EffectiveInvitedRole("super_admin"));
     }
 
     private static TenantInvitationsUseCase Case(CreateRepo create, TenantRepo tenant, Sender sender) =>
@@ -115,16 +149,26 @@ public sealed class TenantInvitationsUseCaseTests
 
     private sealed class TenantRepo : ITenantInvitationRepository
     {
+        public TenantInvitationTarget? Target { get; init; }
         public List<Guid> BoundOrganizations { get; } = [];
+        public List<Guid> LookedUpOrganizations { get; } = [];
+        public IReadOnlyList<string>? BoundGrantableRoles { get; private set; }
+        public int MarkSentCalls { get; private set; }
+        public Task<TenantInvitationTarget?> FindTargetAsync(Guid organizationId, Guid id, CancellationToken ct)
+        { LookedUpOrganizations.Add(organizationId); return Task.FromResult(Target); }
         public Task<IReadOnlyList<TenantInvitationRow>> ListOpenAsync(Guid organizationId, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<TenantInvitationRow>>([]);
         public Task<TenantInvitationRevokeOutcome> RevokeAsync(Guid organizationId, Guid id, Guid actor, DateTime now, CancellationToken ct) =>
             Task.FromResult(TenantInvitationRevokeOutcome.NotFound);
-        public IInvitationResendRepository ForOrganization(Guid organizationId) { BoundOrganizations.Add(organizationId); return new Delivery(); }
-        private sealed class Delivery : IInvitationResendRepository
+        public IInvitationResendRepository ForOrganization(Guid organizationId, IReadOnlyList<string> grantableRoles)
+        { BoundOrganizations.Add(organizationId); BoundGrantableRoles = grantableRoles; return new Delivery(this, organizationId); }
+        private sealed class Delivery(TenantRepo owner, Guid organizationId) : IInvitationResendRepository
         {
-            public Task<InvitationResendSnapshot?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult<InvitationResendSnapshot?>(null);
-            public Task<bool> MarkSentAsync(InvitationResendSnapshot expected, DateTime sentAt, DateTime expiresAt, CancellationToken ct) => Task.FromResult(true);
+            public Task<InvitationResendSnapshot?> FindAsync(Guid id, CancellationToken ct) =>
+                Task.FromResult(owner.Target is null ? null
+                    : new InvitationResendSnapshot(id, "invitee@example.test", "tok", "expired", organizationId, "Org", DateTime.UtcNow));
+            public Task<bool> MarkSentAsync(InvitationResendSnapshot expected, DateTime sentAt, DateTime expiresAt, CancellationToken ct)
+            { owner.MarkSentCalls++; return Task.FromResult(true); }
         }
     }
 

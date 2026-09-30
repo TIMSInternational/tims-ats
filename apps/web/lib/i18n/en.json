@@ -2238,6 +2238,7 @@
     "statusSent": "Sent",
     "statusExpired": "Expired",
     "resend": "Resend",
+    "resendNotGrantable": "You cannot resend an invitation for a role above your own",
     "revoke": "Revoke",
     "resent": "Invitation resent.",
     "revoked": "Invitation revoked.",
