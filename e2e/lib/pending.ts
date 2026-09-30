@@ -54,7 +54,7 @@ export const PENDING = {
   onboardingDefaults: {
     ref: '#309',
     why: 'onboarding plans are created with zero tasks on main (no default template)',
-    merged: false,
+    merged: true,
   },
 } as const;
 
