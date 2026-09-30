@@ -74,7 +74,7 @@ export function ApplyModalStep1({
           />
         </div>
         <div>
-          <label className={labelCls}>Telefono</label>
+          <label className={labelCls}>{p.phoneLabel}</label>
           <input
             type="tel"
             value={phone}
@@ -86,7 +86,7 @@ export function ApplyModalStep1({
         </div>
       </div>
       <div>
-        <label className={labelCls}>Ubicacion</label>
+        <label className={labelCls}>{p.locationLabel}</label>
         <input
           type="text"
           value={location}

@@ -86,10 +86,16 @@
  * `tests/security/verify-tenant-grants-failure-paths.test.ts` pins this contract offline. Per #38, a gate
  * whose did-not-run path is untested is not a gate.
  *
- * Read-only: every statement is a SELECT, safe against production.
+ * Read-only: every statement is a catalog SELECT, safe against production. Grants are read from
+ * `pg_class.relacl` via `aclexplode`, which shows EVERY grantee to any caller — unlike
+ * `information_schema.role_table_grants`, which only lists grants visible to the current role's
+ * enabled roles and therefore reported zero for a NOINHERIT reader. Reading the ACL directly means
+ * this check needs no membership in app_tenant at all (#292: the CI credential must not be able to
+ * assume a role that holds DML).
  */
 import { readFileSync, writeSync } from 'node:fs';
 import { Client } from 'pg';
+import { checkVerifyFull, pgClientConfig } from './db-tls';
 import { parsePrismaTables } from '../table-ownership.mjs';
 
 function loadDbEnv(): void {
@@ -160,7 +166,10 @@ async function main(): Promise<void> {
     die2('parsed ZERO tables from packages/db/prisma/schema — refusing to run (would flag everything).');
   }
 
-  const db = new Client({ connectionString: url });
+  const tls = checkVerifyFull(url);
+  if (!tls.ok) die2(`refusing to connect — ${tls.reason}`);
+
+  const db = new Client(pgClientConfig(url));
   const violations: Violation[] = [];
   try {
     await db.connect();
@@ -220,10 +229,12 @@ async function main(): Promise<void> {
     }
 
     const { rows: readableRows } = await db.query<{ n: string }>(
-      `SELECT count(DISTINCT table_name)::text AS n
-         FROM information_schema.role_table_grants
-        WHERE table_schema = 'public' AND grantee = 'app_tenant'
-          AND privilege_type = 'SELECT' AND table_name = ANY($1::text[])`,
+      `SELECT count(DISTINCT c.relname)::text AS n
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+        CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+        WHERE c.relkind IN ('r', 'v', 'f', 'p') AND a.grantee = 'app_tenant'::regrole
+          AND a.privilege_type = 'SELECT' AND c.relname = ANY($1::text[])`,
       [[...prismaOwned]],
     );
     const readable = Number(readableRows[0]?.n ?? 0);
@@ -245,18 +256,18 @@ async function main(): Promise<void> {
       rls_enabled: boolean;
       policies: string;
     }>(
-      `SELECT g.table_name,
-              string_agg(DISTINCT g.privilege_type, ',' ORDER BY g.privilege_type) AS privs,
+      `SELECT c.relname AS table_name,
+              string_agg(DISTINCT a.privilege_type, ',' ORDER BY a.privilege_type) AS privs,
               coalesce(bool_or(c.relrowsecurity), false)                           AS rls_enabled,
               coalesce(max((SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid)), 0) AS policies
-         FROM information_schema.role_table_grants g
-         LEFT JOIN pg_namespace n ON n.nspname = 'public'
-         LEFT JOIN pg_class     c ON c.relname = g.table_name AND c.relnamespace = n.oid
-        WHERE g.table_schema = 'public'
-          AND g.grantee      = 'app_tenant'
-          AND g.privilege_type = ANY($1::text[])
-        GROUP BY g.table_name
-        ORDER BY g.table_name`,
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+        CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+        WHERE c.relkind IN ('r', 'v', 'f', 'p')
+          AND a.grantee = 'app_tenant'::regrole
+          AND a.privilege_type = ANY($1::text[])
+        GROUP BY c.relname
+        ORDER BY c.relname`,
       [[...WRITE_PRIVS]],
     );
 

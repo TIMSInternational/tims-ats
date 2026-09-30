@@ -151,7 +151,7 @@ export const candidateAssessmentService = {
       let percentile: number | null = null;
       let band: ScoreBand | null = null;
       let normSampleSize: number | null = null;
-      if (!hasPending) {
+      if (!hasPending && normalizedScore !== null) {
         const { countBelow, countEqual, sampleSize } = await candidateAssessmentWriteRepo.getNormCountsInTx(
           tx,
           org.id,
