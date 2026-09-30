@@ -1473,7 +1473,9 @@ CREATE TABLE public.interviews (
     cancel_reason text,
     created_by_id uuid NOT NULL,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp(3) without time zone NOT NULL
+    updated_at timestamp(3) without time zone NOT NULL,
+    candidate_join_token_hash character varying(64),
+    candidate_join_token_expires_at timestamp(3) without time zone
 );
 
 ALTER TABLE ONLY public.interviews FORCE ROW LEVEL SECURITY;
@@ -4570,6 +4572,12 @@ CREATE INDEX interviews_application_id_idx ON public.interviews USING btree (app
 --
 
 CREATE INDEX interviews_candidate_id_idx ON public.interviews USING btree (candidate_id);
+
+--
+-- Name: interviews_candidate_join_token_hash_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX interviews_candidate_join_token_hash_key ON public.interviews USING btree (candidate_join_token_hash);
 
 --
 -- Name: interviews_created_by_id_idx; Type: INDEX; Schema: public; Owner: postgres
