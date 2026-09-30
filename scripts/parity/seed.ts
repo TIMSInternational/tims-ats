@@ -2270,6 +2270,108 @@ export async function resolveEngagementWriteResources(cfg: HarnessConfig): Promi
   }
 }
 
+// ── assessment-type write-verification preconditions (F13, PR #309) ──────────
+// 3 writes under Platform__AssessmentTypeWriteEnabled: create (org from the JWT → no IDOR target),
+// update + deactivate (by-id; a cross-org id is not found under TenantScope + the explicit org filter
+// → 404). Grants: hr_admin assessment read/create/update @organization, hrbp read @unit — both copied
+// from seed-access-matrix.ts (hr_admin :56-61, hrbp :74), not invented. hrbp is the DENIED role: it
+// holds no assessment:create/update, so its 403 is a GRANT-level denial from PermissionService.
+// hr_admin is the PROBE (not super_admin, unlike most write surfaces): super_admin is privileged in
+// PermissionService and would pass without any role_permissions row, so a super_admin probe would
+// prove nothing about the grant fixture this surface depends on. hr_admin's 200 is the positive control.
+//
+// assessment_types.organization_id has NO foreign key (baseline prod-public-schema.sql:654 — only the
+// pkey and the (organization_id, code) unique index), so these rows do not cascade with the org:
+// teardown() and the prior-run cleanup below delete them explicitly.
+
+/** Fixed-UUID assessment types the by-id writes target (prefix e0000366…). */
+export const WRITE_ASSESSMENT_TYPES = {
+  updateA: 'e0000366-0000-4000-8000-000000000001', // update target (org A)
+  updateB: 'e0000366-0000-4000-8000-000000000002', // update IDOR target (org B)
+  deactivateA: 'e0000366-0000-4000-8000-000000000003', // deactivate target (org A, re-activated every run)
+  deactivateB: 'e0000366-0000-4000-8000-000000000004', // deactivate IDOR target (org B)
+} as const;
+
+/** The create marker name — the created row self-locates by (org A, this name). */
+export const WRITE_ASSESSMENT_TYPE_MARKER = 'Parity Write Assessment Type';
+/** The seeded description of every fixed row; update-type changes it, a denied write must not. */
+export const WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION = 'parity seeded';
+
+async function seedAssessmentTypeGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const readPerm = await upsertPermission(db, 'assessment', 'read');
+  const createPerm = await upsertPermission(db, 'assessment', 'create');
+  const updatePerm = await upsertPermission(db, 'assessment', 'update');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, readPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, updatePerm, 'organization');
+    }
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, readPerm, 'unit');
+  }
+}
+
+/** Resets the four fixed rows (active, seeded description) and drops prior-run create-marker rows. */
+export async function seedAssessmentTypeWritePreconditions(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  const markerIds = await db.query<IdRow>(
+    'SELECT id FROM assessment_types WHERE organization_id = ANY($1) AND name = $2',
+    [[orgAId, orgBId], WRITE_ASSESSMENT_TYPE_MARKER],
+  );
+  await db.query('DELETE FROM assessment_types WHERE id = ANY($1)', [markerIds.rows.map((r) => r.id)]);
+  const rows: [string, string, string][] = [
+    [WRITE_ASSESSMENT_TYPES.updateA, orgAId, 'parity_write_update_a'],
+    [WRITE_ASSESSMENT_TYPES.updateB, orgBId, 'parity_write_update_b'],
+    [WRITE_ASSESSMENT_TYPES.deactivateA, orgAId, 'parity_write_deactivate_a'],
+    [WRITE_ASSESSMENT_TYPES.deactivateB, orgBId, 'parity_write_deactivate_b'],
+  ];
+  for (const [id, orgId, code] of rows) {
+    await db.query(
+      `INSERT INTO assessment_types (id, organization_id, name, code, description, is_active, updated_at)
+       VALUES ($1, $2, $3, $4, $5, true, now())
+       ON CONFLICT (id) DO UPDATE SET
+         organization_id = EXCLUDED.organization_id, name = EXCLUDED.name, code = EXCLUDED.code,
+         description = EXCLUDED.description, is_active = true, updated_at = now()`,
+      [id, orgId, `Parity Write ${code}`, code, WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION],
+    );
+  }
+}
+
+/** Resolved-id shape for the assessment-types write surface (Omit<AssessmentTypeWriteResolved,'base'>). */
+export interface AssessmentTypeWriteResources {
+  orgAId: string;
+  userIdByRole: Record<string, string>;
+}
+
+/** The surface's ensurePreconditions hook. */
+export async function ensureAssessmentTypeWritePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    await seedAssessmentTypeWritePreconditions(db, await orgIdBySlug(db, ORG_SLUGS.a), await orgIdBySlug(db, ORG_SLUGS.b));
+  } finally {
+    await db.end();
+  }
+}
+
+/** The surface's resolveResources hook. */
+export async function resolveAssessmentTypeWriteResources(cfg: HarnessConfig): Promise<AssessmentTypeWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      orgAId: await orgIdBySlug(db, ORG_SLUGS.a),
+      userIdByRole: {
+        hr_admin: await userIdByEmail(db, 'parity+a-hr_admin@tims.test'),
+        hrbp: await userIdByEmail(db, 'parity+a-hrbp@tims.test'),
+      },
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 // ── nine-box write-verification preconditions ────────────────────────────────
 // 5 calibration writes. TENANCY QUIRK: calibration_members/votes have NO organization_id — RLS is a
 // session-subquery policy, so cross-org isolation on member/vote inserts rides on the session's org.
@@ -2755,6 +2857,9 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // only); read fixtures (surveys/survey_responses for enps etc.) are seeded separately below.
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedEngagementGrants(db, roleIds);
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedMonitoringGrants(db, roleIds);
+    // assessment grants (F13 assessment-type write surface): hr_admin read/create/update@org, hrbp
+    // read@unit, per seed-access-matrix.ts. The fixed type rows are write-verify-only (ensure hook).
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedAssessmentTypeGrants(db, roleIds);
     // eNPS read data (both orgs, DIFFERENTIATED — see the fixture-rationale comment above
     // seedEngagementEnpsData). Org-independent of `roles`; only needs each org's super_admin id.
     await seedEngagementEnpsData(db, orgIds.a, orgIds.b, userIds);
@@ -2831,6 +2936,9 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // platform owners (the create surface's notify fan-out targets every `is_platform_owner` user,
       // not just the seeded parity one). Must precede step 5 regardless of ordering elsewhere.
       await db.query('DELETE FROM notifications WHERE organization_id = ANY($1)', [orgIds]);
+      // assessment_types — same reason: `organization_id` has NO FK (baseline:654), so the
+      // verify-write assessment-types rows would survive the organizations delete as orphans.
+      await db.query('DELETE FROM assessment_types WHERE organization_id = ANY($1)', [orgIds]);
       const teamRows = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = ANY($1)', [orgIds]);
       const teamIds = teamRows.rows.map((r) => r.id);
       if (teamIds.length) await db.query('DELETE FROM user_teams WHERE team_id = ANY($1)', [teamIds]);

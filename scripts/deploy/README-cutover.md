@@ -156,6 +156,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `fit-engine-write`    | write | `FitEngineWriteEnabled`        | NONE — surface unregistered (#90)                 | NONE — no FE wrapper shipped (#90)           | BLOCKED (one-active-writer control for fit_scores — see cutover.sh)        |
 | `notification`        | read  | `NotificationReadEnabled`      | NONE — surface unregistered (#98)                 | NONE — no FE wrapper shipped (#98)           | BLOCKED (step-5 unrunnable; identity-authorized, needs per-role rows)      |
 | `notification-write`  | write | `NotificationWriteEnabled`     | NONE — surface unregistered (#98)                 | NONE — no FE wrapper shipped (#98)           | BLOCKED (router-path writer control only; notify() is outside — cutover.sh)|
+| `assessment-types-write` | write | `AssessmentTypeWriteEnabled` | `verify-write assessment-types`                 | `NEXT_PUBLIC_ASSESSMENT_TYPES_VIA_CSHARP`    | BLOCKED (greenfield C#; step-5 verify-write never run — API flag first)     |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).

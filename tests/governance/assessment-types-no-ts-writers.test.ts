@@ -19,6 +19,10 @@ import { join } from 'path';
 //     (find-or-create by code). It is seeding, not a runtime path. It is allow-listed BY FILE, and
 //     pinned below so the allowance cannot silently widen to a second write in that file.
 //   - tests/** and *.test.* — mocks spell `assessmentType: { create: vi.fn() }`, which is not a write.
+//   - RAW SQL under scripts/ (and tools/, contracts/): scripts/parity/seed.ts INSERTs/DELETEs the
+//     `assessment-types` write-surface fixture rows on a `pg` client against the parity database — a
+//     harness fixture, not a runtime path (the calibration tripwire's precedent). Prisma delegate and
+//     nested writes are still forbidden there; only raw DML is scoped to RUNTIME sources.
 //
 // KNOWN LIMIT. Unlike the calibration tripwire this one cannot flag a BARE delegate reference
 // (`() => tenantDb.assessmentType`): `assessmentType` is also a relation/JSON field name read all over
@@ -98,11 +102,15 @@ function hitsAcrossLines(sources: Source[], re: RegExp): string[] {
   return found;
 }
 
-const PATTERNS: [string, RegExp][] = [
-  ['delegate write', DELEGATE_WRITE],
-  ['bracket write', BRACKET_WRITE],
-  ['nested relation write', NESTED_WRITE],
-  ['raw DML', RAW_DML],
+const NON_RUNTIME_PREFIXES = ['scripts/', 'tools/', 'contracts/'];
+const RUNTIME: Source[] = SCANNED.filter((s) => !NON_RUNTIME_PREFIXES.some((p) => s.file.startsWith(p)));
+
+/** [label, pattern, runtime-only?] */
+const PATTERNS: [string, RegExp, boolean][] = [
+  ['delegate write', DELEGATE_WRITE, false],
+  ['bracket write', BRACKET_WRITE, false],
+  ['nested relation write', NESTED_WRITE, false],
+  ['raw DML', RAW_DML, true],
 ];
 
 describe('assessment_types has no TypeScript writer outside the demo seed (F13 premise)', () => {
@@ -140,9 +148,9 @@ describe('assessment_types has no TypeScript writer outside the demo seed (F13 p
     expect(files).toEqual(['synthetic/w.ts']);
   });
 
-  it.each(PATTERNS)('no %s reaches assessment_types outside the allow-listed seed', (_label, re) => {
+  it.each(PATTERNS)('no %s reaches assessment_types outside the allow-listed seed', (_label, re, runtimeOnly) => {
     const found = hitsAcrossLines(
-      SCANNED.filter((s) => s.file !== SEED_ALLOWED),
+      (runtimeOnly ? RUNTIME : SCANNED).filter((s) => s.file !== SEED_ALLOWED),
       re,
     );
     expect(
@@ -150,6 +158,15 @@ describe('assessment_types has no TypeScript writer outside the demo seed (F13 p
       `A TypeScript writer reaches assessment_types. F13 made C# the writer (AssessmentTypeWriteEndpoints,\n` +
         `Platform:AssessmentTypeWriteEnabled) — add behaviour there, not here:\n${found.join('\n')}`,
     ).toEqual([]);
+  });
+
+  it('the runtime set still includes the packages that matter (raw-DML scope is not vacuous)', () => {
+    for (const [dir, floor] of [
+      ['packages/api/src', 150],
+      ['apps/web', 400],
+    ] as const) {
+      expect(RUNTIME.filter((s) => s.file.startsWith(`${dir}/`)).length, dir).toBeGreaterThanOrEqual(floor);
+    }
   });
 
   it('the seed allowance is exactly one create (find-or-create of the demo catalog)', () => {

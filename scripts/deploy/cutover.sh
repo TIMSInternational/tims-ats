@@ -131,13 +131,16 @@ surface_row() {
     access-review-write)
       echo "write|AccessReviewWriteEnabled|verify-write|access-review|NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP|CONFIRMED_LIVE|Phase-5 Slice-18 write. UPDATE 2026-07-31: flag confirmed live in prod (parity-verified fresh 3/3 PASS immediately before flipping) and the TS side of the single attest mutation (attestAccessReview/attest()/insertAttestation/orgExists) has been DELETED outright — C# is now the sole writer of access_reviews, nothing else wrote it before or since. Unlike compensation-write/engagement-write this is COMPLETE, not partial (one mutation, fully ported), so CONFIRMED_LIVE (not COEXISTENCE) matches the succession-write/nine-box-write convention. verify-write is unaffected either way — write-surfaces.ts's accessReviewSurface hits the C# HTTP endpoints directly, never via the TS router."
       ;;
+    assessment-types-write)
+      echo "write|AssessmentTypeWriteEnabled|verify-write|assessment-types|NEXT_PUBLIC_ASSESSMENT_TYPES_VIA_CSHARP|BLOCKED|F13 tenant assessment-type authoring (PR #309): POST /assessments/types, PATCH /assessments/types/{id}, POST /assessments/types/{id}/deactivate, all DARK behind this flag (routes are not mapped while it is off). GREENFIELD C#: there was never a TS writer (pinned by tests/governance/assessment-types-no-ts-writers.test.ts), so there is no TS side to diff and no TS router to delete; verify-write asserts C# side effects with raw SQL readbacks. Registered in scripts/parity/write-surfaces.ts as 'assessment-types' with its own grant fixture (seedAssessmentTypeGrants: hr_admin assessment read/create/update@organization, hrbp read@unit) — the probe is hr_admin, not super_admin, because super_admin bypasses role_permissions and would prove nothing about the grant; hrbp is the grant-level DENIED role. BLOCKED on step 5: 'verify-write assessment-types' has NEVER run against prod. FLIP ORDER: set Platform__AssessmentTypeWriteEnabled=true on App Runner and run verify-write FIRST, then build Vercel with NEXT_PUBLIC_ASSESSMENT_TYPES_VIA_CSHARP=true (NEXT_PUBLIC_* is inlined at build time). The reverse order shows authors an 'unavailable' error on every save (an unmapped-route 404, distinguished from a real 404 since this PR). Known gap, documented not fixed: concurrent RENAMES to the same name can both commit (no (organization_id, lower(name)) index) — see docs/architecture/csharp-migration/assessment-type-authoring.md."
+      ;;
     *)
       return 1
       ;;
   esac
 }
 
-ALL_SURFACES="team-intel reporting billing-read billing-usage evaluation360 succession compensation nine-box engagement dei audit-log access-review dashboard fit-engine evaluation360-write succession-write nine-box-write compensation-write engagement-write access-review-write fit-engine-write notification notification-write"
+ALL_SURFACES="team-intel reporting billing-read billing-usage evaluation360 succession compensation nine-box engagement dei audit-log access-review dashboard fit-engine evaluation360-write succession-write nine-box-write compensation-write engagement-write access-review-write fit-engine-write notification notification-write assessment-types-write"
 
 field() {
   # field <pipe-delimited-row> <index 1-based>

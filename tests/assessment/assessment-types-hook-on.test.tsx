@@ -76,6 +76,30 @@ describe('assessment-type C# wrapper (flag on)', () => {
     expect(assessmentTypeErrorMessage(caught, messages)).toBe('dup');
   });
 
+  it('tells a handler 404 (type gone) from an unmapped-route 404 (API flag off)', async () => {
+    const { useUpdateAssessmentType } = await import('../../apps/web/lib/platform-api/assessment-types');
+    const { assessmentTypeErrorMessage } =
+      await import('../../apps/web/app/(admin)/recruitment/assessments/assessment-type-error');
+    const { result } = renderHook(() => useUpdateAssessmentType('unavailable'), { wrapper });
+
+    // The C# handler's own 404 carries { message } — the id is not in the caller's org.
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Tipo de evaluacion no encontrado' }), { status: 404 }),
+    );
+    let caught: unknown;
+    await act(async () => {
+      caught = await result.current.mutateAsync({ id: TYPE_ID, name: 'X' }).catch((e: unknown) => e);
+    });
+    expect(assessmentTypeErrorMessage(caught, messages)).toBe('gone');
+
+    // ASP.NET's 404 for a route that was never mapped (Platform:AssessmentTypeWriteEnabled=false) has no body.
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    await act(async () => {
+      caught = await result.current.mutateAsync({ id: TYPE_ID, name: 'X' }).catch((e: unknown) => e);
+    });
+    expect(assessmentTypeErrorMessage(caught, messages)).toBe('unavailable');
+  });
+
   it('rejects a response that drifts from the strict schema', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...row, config: {} }), { status: 200 }));
     const { useCreateAssessmentType } = await import('../../apps/web/lib/platform-api/assessment-types');
