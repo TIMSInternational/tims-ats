@@ -45,7 +45,7 @@ vi.mock('../../packages/api/src/lib/ses', () => ({
   getEmailFromAddress: () => 'TIMS <noreply@tims.example>',
 }));
 
-type Row = { type: string; status?: string; updatedAt?: Date; cancelReason?: string | null };
+type Row = { type: string; status?: string; updatedAt?: Date; cancelReason?: string | null; meetingUrl?: string | null };
 function notificationData(row: Row) {
   return {
     org: { name: 'Acme', billingEmail: 'hr@acme.test' },
@@ -56,7 +56,7 @@ function notificationData(row: Row) {
       scheduledAt: new Date('2026-10-01T15:00:00Z'),
       duration: 60,
       location: row.type === 'onsite' ? 'Calle 1, Bogotá' : null,
-      meetingUrl: null,
+      meetingUrl: row.meetingUrl ?? null,
       cancelReason: row.cancelReason ?? null,
       updatedAt: row.updatedAt ?? new Date('2026-09-29T10:00:00Z'),
       candidate: { firstName: 'Ana', lastName: 'Gómez', email: 'ana@example.com' },
@@ -178,6 +178,43 @@ describe('interview.schedule — join token + invitation emails', () => {
     expect(html).not.toContain('/interview/join/');
   });
 
+  it('keeps an external meeting link on a video interview: no token, the link is emailed to everyone', async () => {
+    const zoom = 'https://zoom.us/j/123456789';
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'video', meetingUrl: zoom }));
+    await (await caller()).interview.schedule({ ...scheduleInput, meetingUrl: zoom });
+    expect(m.create.mock.calls[0][0].data.candidateJoinTokenHash).toBeNull();
+    await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
+    for (const to of ['ana@example.com', 'eva@acme.test']) {
+      const html = body(to, 'text/html');
+      expect(html).toContain(zoom);
+      expect(html).not.toContain('/interview/join/');
+      expect(html).not.toContain('/room');
+      expect(body(to, 'text/calendar').replace(/\r\n /g, '')).toContain(`LOCATION:${zoom}`);
+    }
+  });
+
+  it("never emails the interview's own private Daily room URL (dead without a meeting token)", async () => {
+    const own = `https://tims.daily.co/tims-${INTERVIEW_ID.replace(/-/g, '')}`;
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'video', meetingUrl: own }));
+    m.findInterview.mockResolvedValue({
+      id: INTERVIEW_ID,
+      type: 'video',
+      status: 'scheduled',
+      scheduledAt: new Date('2026-10-01T15:00:00Z'),
+      duration: 60,
+      location: null,
+      meetingUrl: own,
+    });
+    await (await caller()).interview.reschedule({ id: INTERVIEW_ID, scheduledAt: new Date('2026-10-02T15:00:00Z') });
+    expect(m.update.mock.calls[0][0].data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
+    await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
+    expect(body('ana@example.com', 'text/html')).toContain('/interview/join/');
+    expect(body('eva@acme.test', 'text/html')).toContain(`/recruitment/interviews/${INTERVIEW_ID}/room`);
+    for (const to of ['ana@example.com', 'eva@acme.test']) {
+      expect(sent().find((s) => s.to === to)?.raw).not.toContain('daily.co');
+    }
+  });
+
   it('still returns the interview when every email send fails', async () => {
     m.findForNotification.mockRejectedValue(new Error('db down'));
     await expect((await caller()).interview.schedule(scheduleInput)).resolves.toMatchObject({ id: INTERVIEW_ID });
@@ -249,7 +286,7 @@ describe('interview.reschedule / cancel', () => {
   });
 
   it('falls back to a plain email when the role lacks ses:SendRawEmail', async () => {
-    m.sendRaw.mockResolvedValue({ sent: false, errorName: 'AccessDeniedException' });
+    m.sendRaw.mockResolvedValue({ sent: false, errorName: 'AccessDeniedException', reason: 'denied' });
     m.findForNotification.mockResolvedValue(notificationData({ type: 'video' }));
     await (await caller()).interview.schedule(scheduleInput);
     await vi.waitFor(() => expect(m.sendPlain).toHaveBeenCalledTimes(2));

@@ -47,8 +47,8 @@ describe('videoService Daily.co runtime config', () => {
     vi.stubEnv('DAILY_API_URL', 'https://daily.example.test/v1/');
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(200, {
-        name: 'tims-11111111',
-        url: 'https://example.daily.co/tims-11111111',
+        name: 'tims-11111111222233334444555555555555',
+        url: 'https://example.daily.co/tims-11111111222233334444555555555555',
         privacy: 'private',
         config: {},
       }),
@@ -59,8 +59,8 @@ describe('videoService Daily.co runtime config', () => {
     const room = await videoService.createRoom('11111111-2222-3333-4444-555555555555');
 
     expect(room).toEqual({
-      roomName: 'tims-11111111',
-      url: 'https://example.daily.co/tims-11111111',
+      roomName: 'tims-11111111222233334444555555555555',
+      url: 'https://example.daily.co/tims-11111111222233334444555555555555',
     });
     expect(fetchMock).toHaveBeenCalledWith(
       'https://daily.example.test/v1/rooms/',
@@ -71,7 +71,7 @@ describe('videoService Daily.co runtime config', () => {
     );
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
-      name: 'tims-11111111',
+      name: 'tims-11111111222233334444555555555555',
       privacy: 'private',
       properties: {
         enable_chat: true,
@@ -88,8 +88,8 @@ describe('videoService Daily.co runtime config', () => {
       .mockResolvedValueOnce(jsonResponse(400, { error: 'room already exists' }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
-          name: 'tims-11111111',
-          url: 'https://example.daily.co/tims-11111111',
+          name: 'tims-11111111222233334444555555555555',
+          url: 'https://example.daily.co/tims-11111111222233334444555555555555',
           privacy: 'private',
           config: {},
         }),
@@ -99,11 +99,11 @@ describe('videoService Daily.co runtime config', () => {
     const { videoService } = await import('../../packages/api/src/services/video.service');
     await expect(
       videoService.createRoom('11111111-2222-3333-4444-555555555555'),
-    ).resolves.toMatchObject({ roomName: 'tims-11111111' });
+    ).resolves.toMatchObject({ roomName: 'tims-11111111222233334444555555555555' });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://api.daily.co/v1/rooms/tims-11111111',
+      'https://api.daily.co/v1/rooms/tims-11111111222233334444555555555555',
       expect.objectContaining({ method: 'GET' }),
     );
   });

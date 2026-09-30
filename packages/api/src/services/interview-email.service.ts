@@ -12,7 +12,7 @@ import { buildIcs, sequenceFromUpdatedAt, type IcsMethod } from '../lib/ics';
 import { buildMimeMessage } from '../lib/mime';
 import { getEmailFromAddress, sendEmail, sendRawEmail } from '../lib/ses';
 import { interviewEmailRepository, type InterviewNotificationData } from '../repositories/interview-email.repository';
-import { candidateJoinUrl, interviewHasJoinLink, staffRoomUrl } from './interview-join-token';
+import { candidateJoinApplies, candidateJoinUrl, staffRoomUrl } from './interview-join-token';
 import {
   interviewTypeLabel,
   renderInterviewEmail,
@@ -61,17 +61,26 @@ function appHost(appUrl: string): string {
   }
 }
 
-/** Pure: builds every recipient's message for one interview event. */
+/**
+ * Pure: builds every recipient's message for one interview event. `skipped` counts recipients whose
+ * message could not be built (malformed data) — they are not in `messages`.
+ */
 export function buildInterviewEmails(
   data: InterviewNotificationData,
   params: InterviewNotifyParams,
   appUrl: string,
   now: Date = new Date(),
-): InterviewEmailMessage[] {
+): { messages: InterviewEmailMessage[]; skipped: number } {
   const { interview, org } = data;
   const cancel = params.kind === 'cancel';
   const method: IcsMethod = cancel ? 'CANCEL' : 'REQUEST';
-  const isVideo = interviewHasJoinLink(interview.type);
+  // Tokenized join only for our own Daily room (or none yet). An external meetingUrl (Zoom/Meet/…) is sent
+  // as-is to everyone; our own private Daily room URL is never sent (it is dead without a meeting token).
+  const joinApplies = candidateJoinApplies(interview.type, {
+    meetingUrl: interview.meetingUrl,
+    interviewId: interview.id,
+  });
+  const meetingUrl = joinApplies ? null : interview.meetingUrl;
   const candidateName = `${interview.candidate.firstName} ${interview.candidate.lastName}`.trim();
   const vacancyTitle = interview.vacancy.title;
   const contactEmail = org.billingEmail ?? DEFAULT_CONTACT;
@@ -80,6 +89,7 @@ export function buildInterviewEmails(
   const uid = `interview-${interview.id}@${appHost(appUrl)}`;
   const sequence = sequenceFromUpdatedAt(interview.updatedAt);
   const messages: InterviewEmailMessage[] = [];
+  let skipped = 0;
 
   const build = (
     audience: 'candidate' | 'evaluator',
@@ -103,7 +113,7 @@ export function buildInterviewEmails(
         scheduledAt: interview.scheduledAt,
         duration: interview.duration,
         location: interview.location,
-        meetingUrl: interview.meetingUrl,
+        meetingUrl,
         joinUrl,
         oldScheduledAt: params.oldScheduledAt ?? null,
         cancelReason: interview.cancelReason,
@@ -123,20 +133,20 @@ export function buildInterviewEmails(
         stamp: now,
         summary,
         description: rendered.text,
-        location: cancel ? undefined : (joinUrl ?? interview.location ?? interview.meetingUrl ?? undefined),
+        location: cancel ? undefined : (joinUrl ?? interview.location ?? meetingUrl ?? undefined),
         url: cancel ? undefined : (joinUrl ?? undefined),
         organizer,
         attendees: [to],
       });
       messages.push({ audience, to: to.email, ...rendered, ics, method });
     } catch {
-      /* skipped: invalid recipient data (counted by the caller as not sent) */
+      skipped += 1; // invalid recipient data; counted and logged (no PII) by notify()
     }
   };
 
   if (interview.candidate.email) {
     const joinUrl =
-      !cancel && isVideo && params.candidateJoinToken ? candidateJoinUrl(appUrl, params.candidateJoinToken) : null;
+      !cancel && joinApplies && params.candidateJoinToken ? candidateJoinUrl(appUrl, params.candidateJoinToken) : null;
     build(
       'candidate',
       { name: candidateName, email: interview.candidate.email },
@@ -145,7 +155,7 @@ export function buildInterviewEmails(
       joinUrl,
     );
   }
-  const roomUrl = !cancel && isVideo ? staffRoomUrl(appUrl, interview.id) : null;
+  const roomUrl = !cancel && joinApplies ? staffRoomUrl(appUrl, interview.id) : null;
   for (const { user } of interview.evaluators) {
     if (!user.isActive || !user.email) continue;
     build(
@@ -156,10 +166,14 @@ export function buildInterviewEmails(
       roomUrl,
     );
   }
-  return messages;
+  return { messages, skipped };
 }
 
-/** Raw (MIME + .ics) send; falls back to the plain HTML email if the IAM role lacks ses:SendRawEmail. */
+/**
+ * Raw (MIME + .ics) send. Falls back to the plain HTML email (no .ics) when the IAM role lacks
+ * ses:SendRawEmail or raw sends are paused by their own breaker — never on a single failed raw send,
+ * which SES may already have accepted (a fallback there could deliver the invitation twice).
+ */
 async function deliver(message: InterviewEmailMessage, appUrl: string): Promise<boolean> {
   const raw = buildMimeMessage({
     from: getEmailFromAddress(),
@@ -176,7 +190,7 @@ async function deliver(message: InterviewEmailMessage, appUrl: string): Promise<
   });
   const result = await sendRawEmail({ to: message.to, raw, abortSignal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
   if (result.sent) return true;
-  if (/AccessDenied|NotAuthorized/i.test(result.errorName)) {
+  if (result.reason === 'denied' || result.reason === 'circuit_open') {
     return sendEmail({
       to: message.to,
       subject: message.subject,
@@ -193,9 +207,15 @@ export const interviewEmailService = {
       const data = await interviewEmailRepository.findForNotification(params.orgId, params.interviewId);
       if (!data) return;
       const appUrl = getAppUrl();
-      const messages = buildInterviewEmails(data, params, appUrl);
+      const { messages, skipped } = buildInterviewEmails(data, params, appUrl);
       const results = await Promise.allSettled(messages.map((m) => deliver(m, appUrl)));
       const failed = results.filter((r) => r.status === 'rejected' || !r.value).length;
+      if (skipped > 0) {
+        logger.warn(
+          { component: 'interview-email', interviewId: params.interviewId, kind: params.kind, skipped },
+          'Some interview email recipients were skipped (message could not be built)',
+        );
+      }
       if (failed > 0) {
         logger.warn(
           {

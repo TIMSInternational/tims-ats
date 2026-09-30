@@ -187,7 +187,8 @@ export const interviewCrudRouter = router({
       }
 
       // Video: mint the candidate join token; only its SHA-256 is persisted (same write).
-      const joinToken = issueJoinToken(data.type, data.scheduledAt, data.duration);
+      // An external meetingUrl (Zoom/Meet/…) is kept as the link and gets no token; see candidateJoinApplies.
+      const joinToken = issueJoinToken(data.type, data.scheduledAt, data.duration, { meetingUrl: data.meetingUrl });
       const interview = await db.interview.create({
         data: {
           ...data,
@@ -263,7 +264,10 @@ export const interviewCrudRouter = router({
       }
 
       // New link on every reschedule: overwriting the hash revokes the old one.
-      const joinToken = issueJoinToken(existing.type, data.scheduledAt, data.duration ?? existing.duration);
+      const joinToken = issueJoinToken(existing.type, data.scheduledAt, data.duration ?? existing.duration, {
+        meetingUrl: data.meetingUrl ?? existing.meetingUrl,
+        interviewId: existing.id,
+      });
       const updated = await db.interview.update({
         where: { id },
         data: {

@@ -8,6 +8,7 @@
 // invitation email. NEVER log the token or the join URL.
 
 import { createHash, randomBytes } from 'node:crypto';
+import { ownDailyRoomName } from './video.service';
 
 /** Interview types that get a candidate join link. */
 export const JOIN_LINK_INTERVIEW_TYPES: ReadonlySet<string> = new Set(['video']);
@@ -17,6 +18,21 @@ export const JOIN_TOKEN_GRACE_MINUTES = 30;
 
 export function interviewHasJoinLink(type: string): boolean {
   return JOIN_LINK_INTERVIEW_TYPES.has(type);
+}
+
+export type JoinRoomTarget = { meetingUrl?: string | null; interviewId?: string | null };
+
+/**
+ * Whether the candidate joins through the tokenized link (C# mints a Daily guest token), rather than
+ * through the interview's own meetingUrl. True only for a video interview whose meetingUrl is empty (the
+ * room is created on first join) or is this interview's OWN Daily room. Any other meetingUrl — Zoom, Meet,
+ * Teams, a hand-pasted Daily room — is an external link the recipients must receive as-is: the C# join
+ * would answer "unavailable" for it.
+ */
+export function candidateJoinApplies(type: string, target: JoinRoomTarget = {}): boolean {
+  if (!interviewHasJoinLink(type)) return false;
+  if (!target.meetingUrl) return true;
+  return target.interviewId ? ownDailyRoomName(target.meetingUrl, target.interviewId) !== null : false;
 }
 
 /** 32 random bytes → 43-char base64url (no padding). */
@@ -42,15 +58,16 @@ export type JoinTokenColumns = {
 /**
  * Computes the join-token columns for a create/reschedule write. A fresh token is
  * minted on EVERY call for a video interview, so a reschedule revokes the old link.
- * Non-video interviews get both columns cleared. `token` is the plaintext for the
+ * Non-video interviews, and video interviews on an external meeting link, get both columns cleared. `token` is the plaintext for the
  * email (null when there is no link).
  */
 export function issueJoinToken(
   type: string,
   scheduledAt: Date,
   durationMinutes: number,
+  room: JoinRoomTarget = {},
 ): { token: string | null; columns: JoinTokenColumns } {
-  if (!interviewHasJoinLink(type)) {
+  if (!candidateJoinApplies(type, room)) {
     return { token: null, columns: clearedJoinTokenColumns() };
   }
   const token = generateJoinToken();
