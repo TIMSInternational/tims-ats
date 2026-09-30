@@ -103,7 +103,7 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
     {
         await using var scope = await TenantScope.BeginAsync(db, organizationId, ct);
         var row = await db.Database.SqlQuery<TenantInvitationTarget>($"""
-            SELECT role_slug AS "RoleSlug" FROM platform_invitations
+            SELECT role_slug AS "RoleSlug", sent_at AS "SentAt", status::text AS "Status" FROM platform_invitations
             WHERE id = {id} AND organization_id = {organizationId} AND type::text = 'user'
             """).SingleOrDefaultAsync(ct);
         await scope.CommitAsync(ct);
@@ -111,14 +111,16 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
     }
 
     public IInvitationResendRepository ForOrganization(Guid organizationId, IReadOnlyList<string> grantableRoles) =>
-        new Scoped(db, organizationId, grantableRoles.ToArray());
+        new Scoped(db, organizationId, grantableRoles.ToArray(), TenantInvitationsUseCase.ResendCooldown);
 
     /// <remarks>
     /// Both statements also require the invitation's effective role (<c>COALESCE(role_slug, 'employee')</c>, as
     /// acceptance computes it) to be one the caller may grant, so the use case's pre-delivery role check cannot
-    /// be raced into resending an invitation whose role changed in between.
+    /// be raced into resending an invitation whose role changed in between. The mark-sent UPDATE also refuses to
+    /// record a delivery less than <c>cooldown</c> after the stored <c>sent_at</c> (a never-sent row, including a
+    /// freshly created one, always passes), so the use case's pre-send cooldown check cannot be raced either.
     /// </remarks>
-    private sealed class Scoped(PlatformOrganizationsCreateDbContext db, Guid organizationId, string[] grantableRoles)
+    private sealed class Scoped(PlatformOrganizationsCreateDbContext db, Guid organizationId, string[] grantableRoles, TimeSpan cooldown)
         : IInvitationResendRepository
     {
         private const string DefaultRole = RoleSlugs.DefaultStaffRole;
@@ -144,6 +146,7 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
             var sent = Timestamp("sent", sentAt);
             var expiry = Timestamp("expiry", expiresAt);
             var updated = Timestamp("version", expected.UpdatedAt);
+            var cooldownFloor = Timestamp("cooldown", sentAt - cooldown);
             // Same guarded compare-and-set as the platform resend path, plus the organization predicate.
             var changed = await db.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE platform_invitations AS invitation
@@ -154,6 +157,7 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
                   AND invitation.token = {expected.Token} AND invitation.updated_at = {updated}
                   AND invitation.status::text IN ('pending', 'sent', 'expired')
                   AND COALESCE(invitation.role_slug, {DefaultRole}) = ANY({grantableRoles})
+                  AND (invitation.sent_at IS NULL OR invitation.sent_at <= {cooldownFloor})
                 """, ct);
             await scope.CommitAsync(ct);
             return changed == 1;

@@ -9,6 +9,7 @@ export interface InvitationErrorMessages {
   errorNotFound: string;
   errorInvalid: string;
   errorChanged: string;
+  errorResendCooldown: string;
   errorDeliveryUnconfirmed: string;
   errorGeneric: string;
   unavailableMessage: string;
@@ -48,6 +49,9 @@ export function invitationErrorMessage(
       return operation === 'resend' || operation === 'revoke' ? m.errorNotFound : m.unavailableMessage;
     case 409:
       return operation === 'create' ? m.errorDuplicate : m.errorChanged;
+    case 429:
+      // Only resend is rate-limited per invitation (5-minute cooldown after any delivery).
+      return operation === 'resend' ? m.errorResendCooldown : m.errorGeneric;
     case 503:
       return operation === 'resend' || operation === 'create' ? m.errorDeliveryUnconfirmed : m.errorGeneric;
     default:

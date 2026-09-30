@@ -2255,6 +2255,7 @@
     "errorNotFound": "The invitation no longer exists. Refresh the list.",
     "errorInvalid": "The request is invalid or the role is no longer available.",
     "errorChanged": "The invitation changed while we were processing it. Refresh the list.",
+    "errorResendCooldown": "This invitation was sent recently. Try resending it in a few minutes.",
     "errorDeliveryUnconfirmed": "We could not confirm the email was sent. Check the list and try again.",
     "errorGeneric": "Something went wrong. Please try again.",
     "noPermissionTitle": "No permission to invite",

@@ -21,6 +21,16 @@ public sealed class TenantInvitationFixture : IAsyncLifetime
     public const string SuperAdminSub = "sub-f8-super-admin";
     public const string HrAdminSub = "sub-f8-hr-admin";
     public const string RecruiterSub = "sub-f8-recruiter";
+    /// <summary>Holds user:create at UNIT scope only — a narrow grant the gate must refuse (org scope required).</summary>
+    public const string UnitScopedSub = "sub-f8-unit-scoped";
+    public static readonly Guid SuperAdminUser = Guid.Parse("f8000000-0000-0000-0000-0000000000c1");
+    public static readonly Guid HrAdminUser = Guid.Parse("f8000000-0000-0000-0000-0000000000c2");
+    /// <summary>Delivered one minute before the fixture ran: inside the resend cooldown.</summary>
+    public static readonly Guid RecentlySentInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000e");
+    /// <summary>A pending super_admin invitation reserved for the revoke-above-own-role pin.</summary>
+    public static readonly Guid PendingSuperAdminForRevoke = Guid.Parse("f8000000-0000-0000-0000-00000000000f");
+    /// <summary>Never sent; reserved for the repository-level cooldown guard test.</summary>
+    public static readonly Guid CooldownGuardInvitation = Guid.Parse("f8000000-0000-0000-0000-000000000010");
     public static readonly Guid AcmeInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000a");
     public static readonly Guid ExpiredSuperAdminInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000b");
     public static readonly Guid PendingRecruiterInvitation = Guid.Parse("f8000000-0000-0000-0000-00000000000c");
@@ -41,21 +51,27 @@ public sealed class TenantInvitationFixture : IAsyncLifetime
             INSERT INTO roles(id,organization_id,name,slug,updated_at) VALUES
               ('f8000000-0000-0000-0000-0000000000a1','22222222-2222-2222-2222-222222222222','Super','super_admin',now()),
               ('f8000000-0000-0000-0000-0000000000a2','22222222-2222-2222-2222-222222222222','HR','hr_admin',now()),
-              ('f8000000-0000-0000-0000-0000000000a3','22222222-2222-2222-2222-222222222222','Recruiter','recruiter',now());
+              ('f8000000-0000-0000-0000-0000000000a3','22222222-2222-2222-2222-222222222222','Recruiter','recruiter',now()),
+              ('f8000000-0000-0000-0000-0000000000a4','22222222-2222-2222-2222-222222222222','HRBP','hrbp',now());
             INSERT INTO permissions(id,module,action) VALUES ('f8000000-0000-0000-0000-0000000000b1','user','create')
               ON CONFLICT (module,action) DO NOTHING;
             INSERT INTO role_permissions(id,role_id,permission_id,scope)
               SELECT gen_random_uuid(), r.id, p.id, 'organization' FROM roles r, permissions p
               WHERE r.slug IN ('super_admin','hr_admin') AND r.organization_id='22222222-2222-2222-2222-222222222222'
                 AND p.module='user' AND p.action='create';
+            INSERT INTO role_permissions(id,role_id,permission_id,scope)
+              SELECT gen_random_uuid(), 'f8000000-0000-0000-0000-0000000000a4', p.id, 'unit' FROM permissions p
+              WHERE p.module='user' AND p.action='create';
             INSERT INTO users(id,organization_id,supabase_user_id,email,is_platform_owner,is_active) VALUES
               ('f8000000-0000-0000-0000-0000000000c1','22222222-2222-2222-2222-222222222222','sub-f8-super-admin','sa@beta.test',false,true),
               ('f8000000-0000-0000-0000-0000000000c2','22222222-2222-2222-2222-222222222222','sub-f8-hr-admin','hr@beta.test',false,true),
-              ('f8000000-0000-0000-0000-0000000000c3','22222222-2222-2222-2222-222222222222','sub-f8-recruiter','rec@beta.test',false,true);
+              ('f8000000-0000-0000-0000-0000000000c3','22222222-2222-2222-2222-222222222222','sub-f8-recruiter','rec@beta.test',false,true),
+              ('f8000000-0000-0000-0000-0000000000c4','22222222-2222-2222-2222-222222222222','sub-f8-unit-scoped','hrbp@beta.test',false,true);
             INSERT INTO user_roles(id,user_id,role_id) VALUES
               (gen_random_uuid(),'f8000000-0000-0000-0000-0000000000c1','f8000000-0000-0000-0000-0000000000a1'),
               (gen_random_uuid(),'f8000000-0000-0000-0000-0000000000c2','f8000000-0000-0000-0000-0000000000a2'),
-              (gen_random_uuid(),'f8000000-0000-0000-0000-0000000000c3','f8000000-0000-0000-0000-0000000000a3');
+              (gen_random_uuid(),'f8000000-0000-0000-0000-0000000000c3','f8000000-0000-0000-0000-0000000000a3'),
+              (gen_random_uuid(),'f8000000-0000-0000-0000-0000000000c4','f8000000-0000-0000-0000-0000000000a4');
             INSERT INTO platform_invitations(id,email,type,organization_id,organization_name,role_slug,token,status,invited_by_id,expires_at,updated_at)
               VALUES ('f8000000-0000-0000-0000-00000000000a','acme-invitee@acme.test','user','11111111-1111-1111-1111-111111111111','Acme',
                 'employee','f8-acme-token','pending','a1000000-0000-0000-0000-0000000000aa',now()+interval '7 days',now());
@@ -67,6 +83,15 @@ public sealed class TenantInvitationFixture : IAsyncLifetime
                 'recruiter','f8-pending-rec-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '1 day',now()-interval '6 days'),
               ('f8000000-0000-0000-0000-00000000000d','guarded-sa@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
                 'super_admin','f8-guarded-sa-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '1 day',now()-interval '6 days');
+            INSERT INTO platform_invitations(id,email,type,organization_id,organization_name,role_slug,token,status,invited_by_id,expires_at,sent_at,updated_at)
+              VALUES
+              ('f8000000-0000-0000-0000-00000000000e','recently-sent@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
+                'employee','f8-recent-token','sent','f8000000-0000-0000-0000-0000000000c1',now()+interval '7 days',
+                (now() AT TIME ZONE 'UTC') - interval '1 minute',now()),
+              ('f8000000-0000-0000-0000-00000000000f','revoke-sa@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
+                'super_admin','f8-revoke-sa-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '7 days',NULL,now()),
+              ('f8000000-0000-0000-0000-000000000010','cooldown-guard@beta.test','user','22222222-2222-2222-2222-222222222222','Beta',
+                'employee','f8-cooldown-guard-token','pending','f8000000-0000-0000-0000-0000000000c1',now()+interval '7 days',NULL,now()-interval '1 day');
             -- Paging rows (all older than anything a test creates): n%3=0 stored expired, n%3=1 stored pending but
             -- past expires_at (EFFECTIVELY expired), n%3=2 sent and live. created_at repeats in pairs so the id
             -- tie-break is exercised on every page boundary.
@@ -124,9 +149,12 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
     {
         var sender = new FakeSender();
         using var factory = Factory(sender);
+        const string createDenial = "action='user_invitation_denied' AND entity_id IS NULL AND metadata->>'roleSlug'='super_admin' AND metadata->>'reason'='role_not_grantable'";
+        var deniedBefore = await AuditCount(createDenial, TenantInvitationFixture.HrAdminUser);
         var denied = await Send(factory.CreateClient(), HttpMethod.Post, "/tenant-invitations", TenantInvitationFixture.HrAdminSub, Body("escalate@beta.test", "super_admin"));
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         Assert.Equal(0, await Count("escalate@beta.test")); Assert.Equal(0, sender.Calls);
+        Assert.Equal(deniedBefore + 1, await AuditCount(createDenial, TenantInvitationFixture.HrAdminUser));
 
         var allowed = await Send(factory.CreateClient(), HttpMethod.Post, "/tenant-invitations", TenantInvitationFixture.SuperAdminSub, Body("second-sa@beta.test", "super_admin"));
         Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
@@ -177,6 +205,118 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         Assert.Equal(HttpStatusCode.NotFound, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.SuperAdminSub)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/revoke", TenantInvitationFixture.SuperAdminSub)).StatusCode);
         Assert.Equal("pending", await Status(id)); Assert.Equal(0, sender.Calls);
+        // Both refusals are audited against the CALLER's org, never the foreign row's org.
+        Assert.Equal(1, await AuditCount($"action='user_invitation_revoke_refused' AND entity_id='{id}' AND metadata->>'outcome'='NotFound'",
+            TenantInvitationFixture.SuperAdminUser, PlatformOrganizationsCreateFixture.OtherOrg));
+        Assert.Equal(1, await AuditCount($"action='invitation_resend' AND entity_id='{id}' AND metadata->>'outcome'='NotFound'",
+            TenantInvitationFixture.SuperAdminUser, PlatformOrganizationsCreateFixture.OtherOrg));
+        Assert.Equal(0, await AuditCount($"entity_id='{id}' AND organization_id='{PlatformOrganizationsCreateFixture.HomeOrg}'"));
+    }
+
+    [Fact]
+    public async Task Revoke_of_an_unknown_id_is_404_and_audited()
+    {
+        using var factory = Factory(new FakeSender());
+        var id = Guid.NewGuid();
+        var response = await Send(factory.CreateClient(), HttpMethod.Post, $"/tenant-invitations/{id}/revoke", TenantInvitationFixture.HrAdminSub);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(1, await AuditCount($"action='user_invitation_revoke_refused' AND entity_id='{id}' AND metadata->>'outcome'='NotFound' AND metadata->>'surface'='tenant'",
+            TenantInvitationFixture.HrAdminUser, PlatformOrganizationsCreateFixture.OtherOrg));
+    }
+
+    [Fact]
+    public async Task Hr_admin_may_revoke_a_pending_super_admin_invitation_by_design()
+    {
+        // Documented, intentional asymmetry: create/resend are grant-policy gated, revoke is NOT — removing a pending
+        // grant can never escalate anyone. Pin it so a future "consistency" change is a deliberate decision.
+        using var factory = Factory(new FakeSender());
+        var id = TenantInvitationFixture.PendingSuperAdminForRevoke;
+        var response = await Send(factory.CreateClient(), HttpMethod.Post, $"/tenant-invitations/{id}/revoke", TenantInvitationFixture.HrAdminSub);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("revoked", await Status(id));
+        Assert.Equal(1, await AuditCount($"action='user_invitation_revoked' AND entity_id='{id}' AND metadata->>'previousStatus'='pending'",
+            TenantInvitationFixture.HrAdminUser, PlatformOrganizationsCreateFixture.OtherOrg));
+    }
+
+    [Fact]
+    public async Task Resend_inside_the_cooldown_is_429_sends_nothing_writes_nothing_and_is_audited()
+    {
+        var sender = new FakeSender();
+        using var factory = Factory(sender);
+        var id = TenantInvitationFixture.RecentlySentInvitation;
+        var before = await Row(id);
+        var response = await Send(factory.CreateClient(), HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.HrAdminSub);
+        Assert.Equal((HttpStatusCode)429, response.StatusCode);
+        Assert.True(response.Headers.RetryAfter?.Delta is { } delta && delta > TimeSpan.Zero && delta <= TimeSpan.FromMinutes(5));
+        Assert.Equal(0, sender.Calls);
+        Assert.Equal(before, await Row(id)); // status, sent_at, expires_at and updated_at all untouched
+        Assert.Equal(1, await AuditCount($"action='invitation_resend' AND entity_id='{id}' AND metadata->>'outcome'='Cooldown'",
+            TenantInvitationFixture.HrAdminUser, PlatformOrganizationsCreateFixture.OtherOrg));
+    }
+
+    [Fact]
+    public async Task Mark_sent_guard_refuses_a_delivery_inside_the_cooldown_even_with_a_valid_snapshot()
+    {
+        // The in-UPDATE half of the cooldown: a request that passed the use case's pre-send check (e.g. two concurrent
+        // clicks) cannot record a second delivery inside the window. sent_at is moved WITHOUT touching updated_at, so
+        // the optimistic-concurrency guard still matches and the cooldown predicate is the only thing that can refuse.
+        using var factory = Factory(new FakeSender());
+        using var scope = factory.Services.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<Tims.Application.PlatformInvitations.ITenantInvitationRepository>();
+        var id = TenantInvitationFixture.CooldownGuardInvitation;
+        var delivery = repository.ForOrganization(PlatformOrganizationsCreateFixture.OtherOrg,
+            Tims.Domain.Identity.InvitationGrantPolicy.GrantableRoles(["hr_admin"]));
+        var snapshot = await delivery.FindAsync(id, default);
+        Assert.NotNull(snapshot);
+        var now = DateTime.UtcNow;
+
+        await Execute("UPDATE platform_invitations SET sent_at = (now() AT TIME ZONE 'UTC') - interval '2 minutes' WHERE id=@id", id);
+        Assert.False(await delivery.MarkSentAsync(snapshot!, now, now.AddDays(7), default));
+        Assert.Equal("pending", await Status(id));
+
+        // Positive control with the SAME snapshot: once the last delivery is outside the window, the write lands.
+        await Execute("UPDATE platform_invitations SET sent_at = (now() AT TIME ZONE 'UTC') - interval '6 minutes' WHERE id=@id", id);
+        Assert.True(await delivery.MarkSentAsync(snapshot!, now, now.AddDays(7), default));
+        Assert.Equal("sent", await Status(id));
+    }
+
+    [Fact]
+    public async Task Impersonated_mutation_is_403_and_writes_nothing_while_reads_still_resolve()
+    {
+        var sender = new FakeSender();
+        var secret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        await using var factory = Factory(sender).WithWebHostBuilder(b => b.UseSetting("Platform:ImpersonationSecret", secret));
+        var cookie = Tims.Domain.Identity.ImpersonationCookie.SignImpersonationToken(secret, PlatformOrganizationsCreateFixture.Actor.ToString(),
+            TenantInvitationFixture.HrAdminUser.ToString(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("Cookie", $"{Tims.Domain.Identity.ImpersonationCookie.CookieName}={cookie}");
+        const string invitationAudits = "action LIKE 'user_invitation%' OR action = 'invitation_resend'";
+        var auditsBefore = await AuditCount(invitationAudits, PlatformOrganizationsCreateFixture.Actor);
+
+        // Positive control: the impersonation resolved to the hr_admin target (a read is allowed), so the 403 below
+        // is the impersonated-write refusal, not a resolution failure.
+        Assert.Equal(HttpStatusCode.OK, (await Send(client, HttpMethod.Get, "/tenant-invitations?limit=1", PlatformOrganizationsCreateFixture.PlatformOwnerSub)).StatusCode);
+        var response = await Send(client, HttpMethod.Post, "/tenant-invitations", PlatformOrganizationsCreateFixture.PlatformOwnerSub, Body("impersonated@beta.test", "employee"));
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, await Count("impersonated@beta.test")); Assert.Equal(0, sender.Calls);
+        // No invitation row, email, or invitation audit attributed to the impersonating owner.
+        Assert.Equal(auditsBefore, await AuditCount(invitationAudits, PlatformOrganizationsCreateFixture.Actor));
+    }
+
+    [Fact]
+    public async Task Unit_scoped_user_create_grant_is_refused_on_every_route_and_writes_nothing()
+    {
+        var sender = new FakeSender();
+        using var factory = Factory(sender);
+        var client = factory.CreateClient();
+        var sub = TenantInvitationFixture.UnitScopedSub;
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(client, HttpMethod.Post, "/tenant-invitations", sub, Body("unit-scoped@beta.test", "employee"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(client, HttpMethod.Get, "/tenant-invitations", sub)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(client, HttpMethod.Get, "/tenant-invitations/roles", sub)).StatusCode);
+        var id = TenantInvitationFixture.PendingRecruiterInvitation;
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/revoke", sub)).StatusCode);
+        Assert.Equal(0, await Count("unit-scoped@beta.test")); Assert.Equal(0, sender.Calls);
+        Assert.NotEqual("revoked", await Status(id));
     }
 
     [Fact]
@@ -188,12 +328,24 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         var created = await Send(client, HttpMethod.Post, "/tenant-invitations", TenantInvitationFixture.SuperAdminSub, Body("resend-revoke@beta.test", "employee"));
         using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
         var id = json.RootElement.GetProperty("id").GetGuid();
+        var sa = TenantInvitationFixture.SuperAdminUser; var beta = PlatformOrganizationsCreateFixture.OtherOrg;
+        Assert.Equal(1, await AuditCount($"action='user_invitation_created' AND entity_id='{id}'", sa, beta));
+        Assert.Equal(1, await AuditCount($"action='user_invitation_delivery' AND entity_id='{id}' AND metadata->>'outcome'='accepted' AND metadata->>'surface'='tenant'", sa, beta));
+
+        // The initial delivery starts the cooldown: an immediate resend is refused and sends nothing.
+        Assert.Equal((HttpStatusCode)429, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.SuperAdminSub)).StatusCode);
+        Assert.Equal(1, sender.Calls);
+        await Execute("UPDATE platform_invitations SET sent_at = sent_at - interval '6 minutes' WHERE id=@id", id);
+
         Assert.Equal(HttpStatusCode.OK, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.SuperAdminSub)).StatusCode);
         Assert.Equal(2, sender.Calls);
+        Assert.Equal(1, await AuditCount($"action='invitation_resend' AND entity_id='{id}' AND metadata->>'outcome'='Sent' AND metadata->>'surface'='tenant'", sa, beta));
         Assert.Equal(HttpStatusCode.OK, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/revoke", TenantInvitationFixture.HrAdminSub)).StatusCode);
         Assert.Equal("revoked", await Status(id));
+        Assert.Equal(1, await AuditCount($"action='user_invitation_revoked' AND entity_id='{id}'", TenantInvitationFixture.HrAdminUser, beta));
         Assert.Equal(HttpStatusCode.BadRequest, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/resend", TenantInvitationFixture.SuperAdminSub)).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await Send(client, HttpMethod.Post, $"/tenant-invitations/{id}/revoke", TenantInvitationFixture.SuperAdminSub)).StatusCode);
+        Assert.Equal(1, await AuditCount($"action='user_invitation_revoke_refused' AND entity_id='{id}' AND metadata->>'outcome'='InvalidStatus'", sa, beta));
     }
 
     [Fact]
@@ -259,6 +411,7 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         var ids = new List<Guid>(); var emails = new List<string>(); var pages = 0;
         string? cursor = null;
         (DateTime CreatedAt, Guid Id)? previous = null;
+        var ties = 0;
         do
         {
             var path = "/tenant-invitations?status=all&limit=100" + (cursor is null ? "" : "&cursor=" + cursor);
@@ -270,9 +423,19 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
             foreach (var row in rows)
             {
                 var key = (row.GetProperty("createdAt").GetDateTime(), row.GetProperty("id").GetGuid());
-                // Strictly descending on (createdAt, id) across page boundaries too. Guid order here is only
-                // checked for ties, via Postgres's own uuid ordering reflected in the sequence.
-                if (previous is { } p) Assert.True(key.Item1 <= p.CreatedAt);
+                // Strictly descending on (createdAt, id) across page boundaries too. Ties on createdAt (seeded in
+                // pairs) must be broken by id DESC in Postgres's uuid order, which is byte order — i.e. ordinal
+                // order of the canonical lowercase "D" string, NOT System.Guid.CompareTo.
+                if (previous is { } p)
+                {
+                    Assert.True(key.Item1 <= p.CreatedAt);
+                    if (key.Item1 == p.CreatedAt)
+                    {
+                        Assert.True(string.CompareOrdinal(key.Item2.ToString("D"), p.Id.ToString("D")) < 0,
+                            $"tie at {key.Item1:O} not ordered by id DESC: {p.Id} then {key.Item2}");
+                        ties++;
+                    }
+                }
                 previous = key;
                 ids.Add(key.Item2); emails.Add(row.GetProperty("email").GetString()!);
             }
@@ -288,6 +451,7 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         Assert.Equal(ids.Count, ids.Distinct().Count()); // no row served twice
         Assert.Equal(TenantInvitationFixture.PagingRows, emails.Count(e => e.StartsWith("page-", StringComparison.Ordinal)));
         Assert.Equal(await OpenRowCount(), (long)ids.Count); // and none skipped
+        Assert.True(ties >= TenantInvitationFixture.PagingRows / 2 - 1); // the tie-break check actually ran
     }
 
     [Fact]
@@ -404,6 +568,38 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         await using var command = new NpgsqlCommand("SELECT expires_at FROM platform_invitations WHERE id=@id", connection);
         command.Parameters.AddWithValue("id", id);
         return (DateTime)(await command.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>audit_logs rows matching <paramref name="where"/> (test-authored SQL), optionally for one actor and org.</summary>
+    private async Task<long> AuditCount(string where, Guid? actor = null, Guid? organization = null)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            $"SELECT count(*) FROM audit_logs WHERE ({where}) AND (@actor::uuid IS NULL OR actor_id=@actor) AND (@org::uuid IS NULL OR organization_id=@org)",
+            connection);
+        command.Parameters.Add(new NpgsqlParameter("actor", NpgsqlTypes.NpgsqlDbType.Uuid) { Value = actor is { } a ? a : DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("org", NpgsqlTypes.NpgsqlDbType.Uuid) { Value = organization is { } o ? o : DBNull.Value });
+        return (long)(await command.ExecuteScalarAsync())!;
+    }
+
+    private async Task<string> Row(Guid id)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT concat_ws('|', status::text, sent_at::text, expires_at::text, updated_at::text) FROM platform_invitations WHERE id=@id", connection);
+        command.Parameters.AddWithValue("id", id);
+        return (string)(await command.ExecuteScalarAsync())!;
+    }
+
+    private async Task Execute(string sql, Guid id)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", id);
+        Assert.Equal(1, await command.ExecuteNonQueryAsync());
     }
 
     private async Task<long> DenialAudits(Guid id)

@@ -120,6 +120,49 @@ public sealed class TenantInvitationsUseCaseTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(4)]
+    public async Task Resend_inside_the_cooldown_returns_retry_after_and_sends_nothing(int minutesAgo)
+    {
+        var sentAt = DateTime.SpecifyKind(DateTime.UtcNow.AddMinutes(-minutesAgo), DateTimeKind.Unspecified); // naive, as Npgsql returns it
+        var tenant = new TenantRepo { Target = new("employee", sentAt) }; var sender = new Sender();
+        var result = await Case(new CreateRepo(), tenant, sender).ResendAsync(Org, ["hr_admin"], Guid.NewGuid(), Origin, default);
+        Assert.Null(result.Resend); Assert.Null(result.DeniedRoleSlug);
+        Assert.NotNull(result.RetryAfter);
+        Assert.InRange(result.RetryAfter!.Value, TimeSpan.Zero, TenantInvitationsUseCase.ResendCooldown);
+        Assert.Empty(tenant.BoundOrganizations); Assert.Equal(0, sender.Calls); Assert.Equal(0, tenant.MarkSentCalls);
+    }
+
+    [Theory]
+    [InlineData("revoked")]
+    [InlineData("accepted")]
+    public async Task A_non_resendable_status_is_not_masked_by_the_cooldown(string status)
+    {
+        var tenant = new TenantRepo { Target = new("employee", DateTime.UtcNow, status) };
+        var result = await Case(new CreateRepo(), tenant, new Sender()).ResendAsync(Org, ["hr_admin"], Guid.NewGuid(), Origin, default);
+        Assert.Null(result.RetryAfter); Assert.NotNull(result.Resend); // falls through to the resend use case's own status check
+    }
+
+    [Fact]
+    public async Task Resend_after_the_cooldown_sends()
+    {
+        var sentAt = DateTime.SpecifyKind(DateTime.UtcNow.AddMinutes(-6), DateTimeKind.Unspecified);
+        var tenant = new TenantRepo { Target = new("employee", sentAt) }; var sender = new Sender();
+        var result = await Case(new CreateRepo(), tenant, sender).ResendAsync(Org, ["hr_admin"], Guid.NewGuid(), Origin, default);
+        Assert.Null(result.RetryAfter); Assert.Equal(InvitationResendOutcome.Sent, result.Resend!.Outcome); Assert.Equal(1, sender.Calls);
+    }
+
+    [Fact]
+    public async Task A_denied_role_is_reported_as_denied_even_inside_the_cooldown()
+    {
+        // Privilege first: a caller who may not grant the role learns nothing about delivery timing.
+        var tenant = new TenantRepo { Target = new("super_admin", DateTime.UtcNow) }; var sender = new Sender();
+        var result = await Case(new CreateRepo(), tenant, sender).ResendAsync(Org, ["hr_admin"], Guid.NewGuid(), Origin, default);
+        Assert.Equal("super_admin", result.DeniedRoleSlug); Assert.Null(result.RetryAfter); Assert.Equal(0, sender.Calls);
+    }
+
+    [Theory]
     [InlineData(null, null, null, TenantInvitationListFilter.All, 50)]
     [InlineData("all", "1", null, TenantInvitationListFilter.All, 1)]
     [InlineData("active", "100", null, TenantInvitationListFilter.Active, 100)]

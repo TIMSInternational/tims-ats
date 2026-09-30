@@ -2053,6 +2053,9 @@
           "409": {
             "description": "Conflict"
           },
+          "429": {
+            "description": "Too Many Requests"
+          },
           "503": {
             "description": "Service Unavailable"
           }

@@ -22,6 +22,8 @@ describe('invitationErrorMessage', () => {
     [404, 'revoke', m.errorNotFound],
     [404, 'read', m.unavailableMessage],
     [409, 'resend', m.errorChanged],
+    [429, 'resend', m.errorResendCooldown],
+    [429, 'create', m.errorGeneric],
     [503, 'resend', m.errorDeliveryUnconfirmed],
     [500, 'revoke', m.errorGeneric],
   ] as const)('%i on %s maps to its translated message', (status, op, expected) => {
@@ -29,7 +31,7 @@ describe('invitationErrorMessage', () => {
   });
 
   it('never surfaces the untranslated backend message', () => {
-    for (const status of [400, 403, 404, 409, 500, 503])
+    for (const status of [400, 403, 404, 409, 429, 500, 503])
       expect(invitationErrorMessage(api(status), 'create', m)).not.toBe('backend text');
   });
 

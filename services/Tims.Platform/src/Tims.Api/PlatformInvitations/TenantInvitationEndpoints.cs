@@ -16,8 +16,10 @@ namespace Tims.Api.PlatformInvitations;
 /// principal only (no organization id is accepted in any route or body). Every route requires
 /// <c>user:create</c> at organization scope (<see cref="TenantInvitationGate"/>); creation AND resend
 /// additionally enforce InvitationGrantPolicy against the invitation's role, so nobody can grant (or revive a
-/// grant of) a role above their own. Revoke is not role-gated: it can only remove a pending grant. Rate limiting is the global
-/// RateLimitMiddleware (same as the platform invitation routes). Dark unless TenantInvitationsEnabled.
+/// grant of) a role above their own. Revoke is DELIBERATELY not role-gated: it can only remove a pending grant, never
+/// confer one, so an hr_admin may revoke a pending super_admin invitation (pinned by an integration test). Resend is
+/// refused with 429 within <see cref="TenantInvitationsUseCase.ResendCooldown"/> of the last delivery. Rate limiting is
+/// the global RateLimitMiddleware (same as the platform invitation routes). Dark unless TenantInvitationsEnabled.
 /// </summary>
 public static class TenantInvitationEndpoints
 {
@@ -95,6 +97,14 @@ public static class TenantInvitationEndpoints
             if (!Guid.TryParseExact(id, "D", out var invitationId)) return Results.BadRequest();
             var attempt = await useCase.ResendAsync(gate.OrganizationId, gate.Context!.Roles, invitationId,
                 new Uri(delivery.Value.AppOrigin), ct);
+            if (attempt.RetryAfter is { } retryAfter)
+            {
+                // Delivered less than the cooldown ago: nothing sent, nothing written. Audited like every other outcome.
+                await audit.WriteAsync(new SecurityEvent(gate.OrganizationId, gate.ActorId, "invitation_resend", "platform_invitation", id,
+                    new JsonObject { ["outcome"] = "Cooldown", ["surface"] = "tenant" }, http.ClientIpFor()), CancellationToken.None);
+                http.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return Results.Json(new { message = "This invitation was sent recently; try again in a few minutes" }, statusCode: 429);
+            }
             if (attempt.Resend is not { } result)
             {
                 // Same denial + audit shape as create: reviving this invitation would grant a role above the caller's.
@@ -118,18 +128,27 @@ public static class TenantInvitationEndpoints
                 InvitationResendOutcome.StateUnconfirmed => Results.Json(new { message = "Email accepted but invitation status is unconfirmed; refresh before resending" }, statusCode: 503),
                 _ => Results.Json(new { message = "Email delivery unconfirmed; invitation was not marked sent" }, statusCode: 503),
             };
-        }).RequireAuthorization().Produces<InvitationResendResponse>().Produces(400).Produces(401).Produces(403).Produces(404).Produces(409).Produces(503)
+        }).RequireAuthorization().Produces<InvitationResendResponse>().Produces(400).Produces(401).Produces(403).Produces(404).Produces(409).Produces(429).Produces(503)
             .WithName("ResendTenantInvitation").WithTags("TenantInvitations");
 
         app.MapPost("/tenant-invitations/{id}/revoke", async (string id, ClaimsPrincipal user, HttpContext http,
             PrincipalResolver resolver, PermissionService permissions, IOptions<PlatformOptions> platform,
-            TenantInvitationsUseCase useCase, CancellationToken ct) =>
+            TenantInvitationsUseCase useCase, ISecurityEventWriter audit, CancellationToken ct) =>
         {
             var gate = await TenantInvitationGate.AuthorizeAsync(user, http, resolver, permissions, platform.Value, true, ct);
             if (gate.Failure is not null) return gate.Failure;
             if (!Guid.TryParseExact(id, "D", out var invitationId)) return Results.BadRequest();
-            // The revoke and its audit row commit atomically inside the repository's TenantScope.
-            return await useCase.RevokeAsync(gate.OrganizationId, invitationId, gate.ActorId, ct) switch
+            // A successful revoke and its `user_invitation_revoked` audit row commit atomically inside the repository's
+            // TenantScope. A refused one (unknown/foreign id, or already accepted/revoked) is audited here, the same way
+            // resend audits its NotFound/InvalidStatus outcomes, so id probing leaves a trail on both mutations.
+            var outcome = await useCase.RevokeAsync(gate.OrganizationId, invitationId, gate.ActorId, ct);
+            if (outcome != TenantInvitationRevokeOutcome.Revoked)
+            {
+                await audit.WriteAsync(new SecurityEvent(gate.OrganizationId, gate.ActorId, "user_invitation_revoke_refused",
+                    "platform_invitation", id, new JsonObject { ["outcome"] = outcome.ToString(), ["surface"] = "tenant" },
+                    http.ClientIpFor()), CancellationToken.None);
+            }
+            return outcome switch
             {
                 TenantInvitationRevokeOutcome.Revoked => Results.Ok(new TenantInvitationRevokeResponse(invitationId, "revoked")),
                 TenantInvitationRevokeOutcome.NotFound => Results.NotFound(new { message = "Invitacion no encontrada" }),

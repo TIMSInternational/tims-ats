@@ -2255,6 +2255,7 @@
     "errorNotFound": "La invitación ya no existe. Actualiza la lista.",
     "errorInvalid": "La solicitud no es válida o el rol ya no está disponible.",
     "errorChanged": "La invitación cambió mientras la procesábamos. Actualiza la lista.",
+    "errorResendCooldown": "Esta invitación se envió hace poco. Intenta reenviarla en unos minutos.",
     "errorDeliveryUnconfirmed": "No pudimos confirmar el envío del correo. Revisa la lista e inténtalo de nuevo.",
     "errorGeneric": "Ocurrió un error. Inténtalo de nuevo.",
     "noPermissionTitle": "Sin permiso para invitar",

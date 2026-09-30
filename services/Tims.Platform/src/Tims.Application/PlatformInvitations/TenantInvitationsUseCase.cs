@@ -61,10 +61,19 @@ public sealed record TenantInvitationRevokeResponse(Guid Id, string Status);
 public enum TenantInvitationCreateOutcome { Created, Invalid, RoleNotGrantable, RoleUnavailable, OrganizationUnavailable, Duplicate }
 public sealed record TenantInvitationCreateResult(TenantInvitationCreateOutcome Outcome, OrganizationInvitationResponse? Response = null);
 public enum TenantInvitationRevokeOutcome { Revoked, NotFound, InvalidStatus }
-/// <summary>The role an invitation will grant on acceptance (<c>role_slug</c>; NULL = the default staff role).</summary>
-public sealed record TenantInvitationTarget(string? RoleSlug);
-/// <summary><see cref="DeniedRoleSlug"/> is set (and <see cref="Resend"/> null) when the caller may not grant the invitation's role.</summary>
-public sealed record TenantInvitationResendResult(InvitationResendResult? Resend, string? DeniedRoleSlug = null);
+/// <summary>
+/// The role an invitation will grant on acceptance (<c>role_slug</c>; NULL = the default staff role) and when it was
+/// last delivered (<c>sent_at</c>, naive UTC; NULL = never), which drives the resend cooldown. <c>Status</c> is the stored
+/// status: the cooldown applies only to a resendable (pending/sent/expired) row, so a revoked or accepted invitation still
+/// gets its 400 rather than a misleading 429.
+/// </summary>
+public sealed record TenantInvitationTarget(string? RoleSlug, DateTime? SentAt = null, string? Status = null);
+/// <summary>
+/// Exactly one of: <see cref="Resend"/> (the resend ran), <see cref="DeniedRoleSlug"/> (the caller may not grant the
+/// invitation's role), or <see cref="RetryAfter"/> (the invitation was delivered less than
+/// <see cref="TenantInvitationsUseCase.ResendCooldown"/> ago; nothing was sent or written).
+/// </summary>
+public sealed record TenantInvitationResendResult(InvitationResendResult? Resend, string? DeniedRoleSlug = null, TimeSpan? RetryAfter = null);
 
 public interface ITenantInvitationRepository
 {
@@ -96,6 +105,16 @@ public interface ITenantInvitationRepository
 public sealed class TenantInvitationsUseCase(IUserInvitationCreateRepository createRepository,
     ITenantInvitationRepository repository, IEmailSender sender, TimeProvider clock)
 {
+    /// <summary>
+    /// Minimum gap between two deliveries of the same invitation (the initial send counts), matching the TS
+    /// assessment reminder precedent (<c>REMINDER_COOLDOWN_MS</c>, 5 min). Enforced twice: here, before any email,
+    /// so an ordinary repeat click sends nothing; and again inside the organization-bound repository's guarded
+    /// UPDATE (<see cref="ITenantInvitationRepository.ForOrganization"/>), so a request that raced past this check
+    /// cannot record a second delivery inside the window. Scope: per invitation. A per-organization daily cap is
+    /// NOT implemented (tracked as a follow-up in docs/architecture/csharp-migration/tenant-invitations.md).
+    /// </summary>
+    public static readonly TimeSpan ResendCooldown = TimeSpan.FromMinutes(5);
+
     public async Task<IReadOnlyList<InvitationRole>?> ListGrantableRolesAsync(Guid organizationId,
         IReadOnlyList<string> callerRoles, CancellationToken ct)
     {
@@ -147,6 +166,13 @@ public sealed class TenantInvitationsUseCase(IUserInvitationCreateRepository cre
         var grantable = InvitationGrantPolicy.GrantableRoles(callerRoles);
         // Privilege check BEFORE any email or write, as on create.
         if (!grantable.Contains(role, StringComparer.Ordinal)) return new(null, role);
+        // Cooldown AFTER the privilege check (a denied caller learns nothing about delivery timing) and BEFORE any email.
+        if (target.SentAt is { } sentAt && target.Status is null or "pending" or "sent" or "expired")
+        {
+            var elapsed = Now() - DateTime.SpecifyKind(sentAt, DateTimeKind.Utc);
+            // A sent_at at/after "now" (sub-millisecond truncation, clock skew) reports the full window, never more.
+            if (elapsed < ResendCooldown) return new(null, null, elapsed < TimeSpan.Zero ? ResendCooldown : ResendCooldown - elapsed);
+        }
         var resend = new InvitationResendUseCase(repository.ForOrganization(organizationId, grantable), sender, clock);
         return new(await resend.ExecuteAsync(id, appOrigin, ct));
     }

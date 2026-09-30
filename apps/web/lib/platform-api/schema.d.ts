@@ -7255,6 +7255,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Service Unavailable */
             503: {
                 headers: {
