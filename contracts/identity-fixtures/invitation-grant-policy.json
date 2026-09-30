@@ -1,0 +1,23 @@
+{
+  "description": "Staff-role grant policy — Tims.Domain.Identity.InvitationGrantPolicy (C#, /tenant-invitations create + resend) and its TS port grantableStaffRoles/canGrantStaffRole (packages/shared/src/types/invitation-grant-policy.ts, enforced by tRPC user.create and user.assignRole). super_admin grants every assignable staff role; hr_admin every one except super_admin; anyone else only the staff roles they hold plus employee. Never external, candidate, platform_owner or an unknown slug. `grantable` is in catalogue order. Both runtimes also assert canGrant(caller, r) === grantable.includes(r) for every slug in `probeRoles`. Asserted by tests/access/invitation-grant-policy-fixtures.test.ts AND Tims.UnitTests InvitationGrantPolicyFixtureTests.",
+  "probeRoles": ["super_admin", "hr_admin", "hrbp", "recruiter", "leader", "committee", "employee", "candidate", "external", "platform_owner", "SUPER_ADMIN", "", "unknown_role"],
+  "cases": [
+    { "name": "no roles -> employee only", "callerRoles": [], "grantable": ["employee"] },
+    { "name": "super_admin -> every staff role", "callerRoles": ["super_admin"], "grantable": ["super_admin", "hr_admin", "hrbp", "recruiter", "leader", "committee", "employee"] },
+    { "name": "hr_admin -> every staff role except super_admin", "callerRoles": ["hr_admin"], "grantable": ["hr_admin", "hrbp", "recruiter", "leader", "committee", "employee"] },
+    { "name": "hrbp -> own role + employee", "callerRoles": ["hrbp"], "grantable": ["hrbp", "employee"] },
+    { "name": "recruiter -> own role + employee", "callerRoles": ["recruiter"], "grantable": ["recruiter", "employee"] },
+    { "name": "leader -> own role + employee", "callerRoles": ["leader"], "grantable": ["leader", "employee"] },
+    { "name": "committee -> own role + employee", "callerRoles": ["committee"], "grantable": ["committee", "employee"] },
+    { "name": "employee -> employee", "callerRoles": ["employee"], "grantable": ["employee"] },
+    { "name": "candidate is not a staff role -> employee only", "callerRoles": ["candidate"], "grantable": ["employee"] },
+    { "name": "external is not a staff role -> employee only", "callerRoles": ["external"], "grantable": ["employee"] },
+    { "name": "platform_owner is not a staff role -> employee only", "callerRoles": ["platform_owner"], "grantable": ["employee"] },
+    { "name": "case-sensitive: SUPER_ADMIN is unknown -> employee only", "callerRoles": ["SUPER_ADMIN"], "grantable": ["employee"] },
+    { "name": "two non-admin roles -> both + employee, catalogue order", "callerRoles": ["leader", "recruiter"], "grantable": ["recruiter", "leader", "employee"] },
+    { "name": "committee + hrbp -> catalogue order", "callerRoles": ["committee", "hrbp"], "grantable": ["hrbp", "committee", "employee"] },
+    { "name": "hr_admin + super_admin -> super_admin wins", "callerRoles": ["hr_admin", "super_admin"], "grantable": ["super_admin", "hr_admin", "hrbp", "recruiter", "leader", "committee", "employee"] },
+    { "name": "external + hr_admin -> hr_admin set (external dropped)", "callerRoles": ["external", "hr_admin"], "grantable": ["hr_admin", "hrbp", "recruiter", "leader", "committee", "employee"] },
+    { "name": "duplicate roles are harmless", "callerRoles": ["recruiter", "recruiter"], "grantable": ["recruiter", "employee"] }
+  ]
+}

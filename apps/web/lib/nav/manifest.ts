@@ -10,8 +10,18 @@ export type NavItem = {
   readonly labelKey: string;
   readonly icon: string;
   readonly module: Module | null;
+  // The action can() must grant on `module` for this item to show. Defaults to 'read' (every
+  // item that omits it). Set only where READING the module is not enough to use the page — e.g.
+  // /settings/users is an invite surface, so it needs user:create, not just user:read.
+  readonly action?: 'read' | 'create';
+  // A deploy-time feature flag the item additionally requires. Items carrying one are HIDDEN unless the
+  // caller's `isFeatureOn` says the flag is on (fail-closed) — so a dark surface never shows up as a nav
+  // dead end. The real check lives in lib/nav/feature-flags.ts; this module stays env-free and pure.
+  readonly featureFlag?: NavFeatureFlag;
   readonly sub?: readonly NavSubItem[];
 };
+/** Deploy-time flags a nav item can depend on (resolved by lib/nav/feature-flags.ts `isNavFeatureOn`). */
+export type NavFeatureFlag = 'tenantInvitations';
 export type NavSection = { readonly labelKey: string | null; readonly items: readonly NavItem[] };
 export type Shell = 'admin' | 'participant' | 'platform';
 export type RoleManifest = {
@@ -82,10 +92,23 @@ const CULTURE: NavSection = {
     { href: '/monitoring', labelKey: 'sidebar.monitoring', icon: 'monitor', module: 'monitoring' },
   ],
 };
+// /settings/users ("Equipo") is the F8 invite surface: it needs user:create AND the tenant-invitations flag.
+// With the flag off the page's primary block is an "unavailable" notice, so the item is hidden rather than
+// promoted as a dead end. The read-only members roster on that page stays reachable by URL (route gate:
+// user:read) but is not, on its own, worth a user:create-gated nav entry.
+const TEAM_SETTINGS_ITEM: NavItem = {
+  href: '/settings/users',
+  labelKey: 'sidebar.team',
+  icon: 'users',
+  module: 'user',
+  action: 'create',
+  featureFlag: 'tenantInvitations',
+};
 const SETTINGS: NavSection = {
   labelKey: null,
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
+    TEAM_SETTINGS_ITEM,
     { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
     { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
@@ -122,7 +145,10 @@ const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_M
 // no billing/integrations — org-config is read-only per the access spec). can() still prunes.
 const HR_ADMIN_SETTINGS: NavSection = {
   labelKey: null,
-  items: [{ href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' }],
+  items: [
+    { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
+    TEAM_SETTINGS_ITEM,
+  ],
 };
 const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS];
 
@@ -224,19 +250,22 @@ export function resolveLabel(messages: Record<string, unknown>, key: string): st
 }
 
 /** Prune sections to what the user may see. UX only — the API is the real gate.
- *  While loading, show only null-module items (no flash-then-vanish). */
+ *  While loading, show only null-module items (no flash-then-vanish). Items with a `featureFlag` are
+ *  hidden unless `isFeatureOn` reports it on; omitting `isFeatureOn` hides them (fail-closed). */
 export function computeVisibleSections(
   sections: readonly NavSection[],
   can: (module: string, action?: string) => boolean,
   isLoading: boolean,
+  isFeatureOn: (flag: NavFeatureFlag) => boolean = () => false,
 ): NavSection[] {
   return sections
     .map((s) => ({
       ...s,
       items: s.items.filter((it) => {
+        if (it.featureFlag !== undefined && !isFeatureOn(it.featureFlag)) return false;
         if (it.module === null) return true;
         if (isLoading) return false;
-        return can(it.module, 'read');
+        return can(it.module, it.action ?? 'read');
       }),
     }))
     .filter((s) => s.items.length > 0);

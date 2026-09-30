@@ -30,6 +30,7 @@ export const PATH_MODULE: Record<string, string | null> = {
   '/settings/billing': 'billing',
   '/settings/integrations': 'integration',
   '/settings/business-units': 'user',
+  '/settings/users': 'user',
   '/settings/branding': 'organization',
   '/settings/fit-weights': 'fit_engine',
   '/settings/audit-log': 'audit',
