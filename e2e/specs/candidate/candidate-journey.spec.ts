@@ -22,16 +22,21 @@ let leader: Persona;
 let profileUrl: string;
 let signingLink: string;
 let interviewId: string;
+// Per-ATTEMPT candidate identity: a serial-mode retry re-runs beforeAll and the whole describe, and
+// must not collide with the application/email the failed attempt already created (the company
+// project suffixes its identities the same way — lib/journey.ts newJourney).
+let candId: string;
 
 const cand = () => ({
   firstName: 'Sofía',
-  lastName: `Herrera E2E ${j.runId}`,
-  email: `sofia.${j.runId}@e2e-candidata.test`,
+  lastName: `Herrera E2E ${candId}`,
+  email: `sofia.${candId}@e2e-candidata.test`,
 });
 const fullName = () => `${cand().firstName} ${cand().lastName}`;
 
-test.beforeAll(async ({ browser }) => {
+test.beforeAll(async ({ browser }, testInfo) => {
   j = loadJourney();
+  candId = testInfo.retry > 0 ? `${j.runId}c${testInfo.retry}` : j.runId;
   if (!j.vacancy) throw new Error('[e2e] the company journey did not publish a vacancy');
   candidate = await newPersona(browser);
   recruiter = await newPersona(browser);
@@ -177,7 +182,8 @@ test('company admin schedules the interview (main-only path)', async () => {
 
 test('candidate receives the interview invitation email', async () => {
   const mail = await waitForMail(cand().email, /entrevista/i);
-  expect(mail.text).toContain('Medellín');
+  // The interview-specific location, not just the city — 'Medellín' alone is already in the vacancy.
+  expect(mail.text).toContain('Sala 2');
 });
 
 test('hiring leader submits a scorecard from the interview room', async () => {

@@ -10,9 +10,12 @@ export interface Persona {
   page: Page;
 }
 
-// Third-party services the suite must never reach, even by accident: video (Daily), voice AI
-// (ElevenLabs/LiveKit). The web app's own AI calls go through the server with no credentials and
-// its AWS endpoint pointed at LocalStack (scripts/e2e/up.sh), so Bedrock is unreachable there too.
+// Third-party services the BROWSER must never reach: video (Daily), voice AI (ElevenLabs/LiveKit).
+// Server-side, nothing is "unreachable": @ai-sdk/amazon-bedrock hardcodes the bedrock-runtime host
+// (it ignores AWS_ENDPOINT_URL) and the ElevenLabs base URL is hardcoded too. What holds is that no
+// credentials are provided (scripts/e2e/up.sh writes those keys EMPTY and env-guard.mjs refuses to
+// start if a .env file would supply them) and no journey step triggers AI — so a server-side call,
+// if one happened, would go out unauthenticated and fail.
 const BLOCKED = /(^|\.)(daily\.co|dailywebrtc\.(com|net)|elevenlabs\.io|livekit\.cloud)$/;
 
 export async function newPersona(browser: Browser): Promise<Persona> {

@@ -53,9 +53,17 @@ Safety properties:
   (`e2e_assert_local_url`, `e2e_assert_env_file_local`); the specs re-assert it in `lib/stack.ts`.
 - **No secrets.** The JWT signing key, service keys, relay secret and every password are generated
   per bring-up into the gitignored `e2e/.state/` and are never printed or uploaded.
-- **No external AI / video.** No Bedrock, Daily or ElevenLabs credentials exist in the stack; the AWS
-  SDK endpoint is LocalStack; the browser aborts any request to Daily/ElevenLabs/LiveKit
-  (`lib/persona.ts`); specs never press an AI button and schedule interviews **in person**.
+- **No external AI / video credentials — not "unreachable".** No Bedrock, Daily or ElevenLabs
+  credentials are provided: `up.sh` writes every key named in any `.env` file Next would load (a
+  developer's `apps/web/.env.local` is a symlink to the live root `.env`) as an explicit EMPTY value,
+  because `@next/env` fills any _undefined_ key from those files and `unset` does not stop it; then
+  `scripts/e2e/env-guard.mjs` asks `@next/env` itself and refuses to build or start if any key would
+  still come from a `.env` file, or if any URL in the final effective env is non-local. No journey
+  step triggers AI (specs never press an AI button and schedule interviews **in person**), and the
+  browser aborts any request to Daily/ElevenLabs/LiveKit (`lib/persona.ts`). The servers are _not_
+  network-sandboxed: the Bedrock SDK hardcodes the `bedrock-runtime` host (ignores
+  `AWS_ENDPOINT_URL`) and the ElevenLabs base URL is hardcoded, so a server-side call would go out —
+  unauthenticated — and fail.
 - **No real email.** Both the web app and the API send through LocalStack SES; `lib/mail.ts` reads
   the messages back from `GET /_aws/ses` (including raw MIME with an `.ics`).
 
