@@ -26,7 +26,14 @@ function ActivityIcon({ type }: { type: string }) {
 }
 
 function ServiceDot({ status, label, latency }: { status: string; label: string; latency?: string }) {
-  const dotColor = status === 'operational' ? 'bg-emerald-500' : status === 'degraded' ? 'bg-amber-500' : 'bg-red-500';
+  const dotColor =
+    status === 'operational'
+      ? 'bg-emerald-500'
+      : status === 'down'
+        ? 'bg-red-500'
+        : status === 'degraded'
+          ? 'bg-amber-500'
+          : 'bg-slate-400';
   return (
     <div className="flex items-center justify-between py-1.5">
       <div className="flex items-center gap-2">
@@ -107,10 +114,22 @@ export function ActivityFeed() {
           {health && (
             <span
               className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                health.overall === 'operational' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                health.overall === 'operational'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : health.overall === 'down'
+                    ? 'bg-red-100 text-red-700'
+                    : health.overall === 'degraded'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-700'
               }`}
             >
-              {health.overall === 'operational' ? 'All Systems Go' : 'Degraded'}
+              {health.overall === 'operational'
+                ? t.health.statusOperational
+                : health.overall === 'down'
+                  ? t.health.statusDown
+                  : health.overall === 'degraded'
+                    ? t.health.statusDegraded
+                    : t.health.statusUnmonitored}
             </span>
           )}
         </div>

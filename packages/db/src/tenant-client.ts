@@ -1,7 +1,20 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './client';
-import { getTenantOrgId } from './tenant-context';
+import { getTenantOrgId, getUnscopedReason } from './tenant-context';
 import { assertRlsEnforced } from './rls-guard';
+
+// Thrown when a tenantDb query runs with neither a tenant nor an explicit runUnscoped()
+// opt-in. Exported so callers/tests can recognise it; the message names both fixes.
+export class MissingTenantContextError extends Error {
+  constructor(model: string | undefined, operation: string) {
+    super(
+      `tenantDb: refusing ${model ?? '$raw'}.${operation} with no tenant in scope. ` +
+        'Wrap the call in runWithTenant(orgId, …), or — for legitimate cross-tenant/system ' +
+        'work — runUnscoped(reason, …) or the privileged base `db` client.',
+    );
+    this.name = 'MissingTenantContextError';
+  }
+}
 
 // Tenant-scoped Prisma client for RLS enforcement.
 //
@@ -23,11 +36,17 @@ const RLS_ENFORCED = process.env.RLS_ENFORCED === 'true';
 export const tenantDb = db.$extends({
   name: 'tenantRls',
   query: {
-    async $allOperations({ args, query }) {
+    async $allOperations({ model, operation, args, query }) {
       const orgId = getTenantOrgId();
-      // No org in scope (platform owner / system job): legitimately run unscoped.
       if (!orgId) {
-        return query(args);
+        // No org in scope. This used to run the query UNSCOPED on the BYPASSRLS login
+        // role for ANY caller that forgot runWithTenant — fail-open. Now only an
+        // explicit, named runUnscoped(reason, …) scope (org-less platform owner, public
+        // token-authorised lookups) may do that; everything else fails closed.
+        if (getUnscopedReason() !== null) {
+          return query(args);
+        }
+        throw new MissingTenantContextError(model, operation);
       }
       // Tenant op but RLS disabled: fail CLOSED in production so a misconfigured
       // deploy never silently runs unscoped on the BYPASSRLS login role. Dev/test

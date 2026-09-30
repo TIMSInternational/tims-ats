@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { toast } from '../../../../../lib/toast';
+import { describeOfferActionError } from '../../../../../lib/offer-action-error';
 
 export function OfferApprovalActions({
   offerId,
@@ -33,7 +35,9 @@ export function OfferApprovalActions({
       await action();
       onUpdated();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t.common.error);
+      const message = describeOfferActionError(cause, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction });
+      setError(message);
+      toast(message, { type: 'error' });
     }
   };
 
@@ -68,7 +72,7 @@ export function OfferApprovalActions({
           </div>
         </div>
       )}
-      {users.isError && <p role="alert" className="mt-2 text-[12px] text-red-600">{users.error.message}</p>}
+      {users.isError && <p role="alert" className="mt-2 text-[12px] text-red-600">{describeOfferActionError(users.error, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction })}</p>}
       {error && <p role="alert" className="mt-2 text-[12px] text-red-600">{error}</p>}
     </div>
   );

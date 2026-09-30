@@ -2127,6 +2127,19 @@ async function seedMonitoringGrants(db: Client, roleIds: Map<string, string>): P
   }
 }
 
+/** Grants hr_admin user:create at ORGANIZATION scope in each seeded org — the permission the C#
+ *  /tenant-invitations gate (TenantInvitationGate) requires, copied from seed-access-matrix.ts's hr_admin
+ *  `user` entry (read/create/update/delete @organization), not invented. super_admin needs no row (it
+ *  bypasses the permission kernel); hrbp is DELIBERATELY left without any `user` grant, exactly as in MATRIX,
+ *  so its 403 on the surface is a grant-level denial. See the 'tenant-invitations' entry in surfaces.ts. */
+async function seedTenantInvitationGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const createPerm = await upsertPermission(db, 'user', 'create');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
+  }
+}
+
 /** Write-verify-only survey + action-plan fixtures (fixed UUIDs). */
 export const WRITE_ENGAGEMENT = {
   activateSurveyA: 'e0000364-0000-4000-8000-000000000001', // activateSurvey from-state (draft, org A)
@@ -2860,6 +2873,8 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // assessment grants (F13 assessment-type write surface): hr_admin read/create/update@org, hrbp
     // read@unit, per seed-access-matrix.ts. The fixed type rows are write-verify-only (ensure hook).
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedAssessmentTypeGrants(db, roleIds);
+    // tenant-invitations grant: hr_admin user:create@organization (seed-access-matrix.ts). hrbp stays ungranted.
+    if (roles.includes('hr_admin')) await seedTenantInvitationGrants(db, roleIds);
     // eNPS read data (both orgs, DIFFERENTIATED — see the fixture-rationale comment above
     // seedEngagementEnpsData). Org-independent of `roles`; only needs each org's super_admin id.
     await seedEngagementEnpsData(db, orgIds.a, orgIds.b, userIds);

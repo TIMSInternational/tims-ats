@@ -6,6 +6,14 @@ import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { redactOfferSettings } from './offer-dto';
 
+// ISO-4217-shaped: trimmed and upper-cased so 'cop ' is stored as 'COP'; anything else is rejected
+// instead of being stored and later mis-rendered.
+const currencyCode = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Moneda inválida (código ISO de 3 letras)');
+// Annual base salary. Finite and capped so Infinity/1e300 never reach the DB or the rendered letter;
+// 1e12 comfortably covers any annual salary in a zero-decimal currency such as COP.
+const MAX_OFFER_SALARY = 1_000_000_000_000;
+const offerSalary = z.number().finite().positive().max(MAX_OFFER_SALARY, 'Salario fuera de rango');
+
 export const offerCrudRouter = router({
   // 9.1 — List offers with filters
   list: permissionProcedure('offer', 'read')
@@ -115,8 +123,8 @@ export const offerCrudRouter = router({
         candidateId: z.string().uuid(),
         vacancyId: z.string().uuid(),
         applicationId: z.string().uuid().optional(),
-        salary: z.number().positive(),
-        currency: z.string().max(10).default('USD'),
+        salary: offerSalary,
+        currency: currencyCode.default('USD'),
         startDate: z.date(),
         contractType: z.string().max(100),
         benefits: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
@@ -175,8 +183,8 @@ export const offerCrudRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        salary: z.number().positive().optional(),
-        currency: z.string().max(10).optional(),
+        salary: offerSalary.optional(),
+        currency: currencyCode.optional(),
         startDate: z.date().optional(),
         contractType: z.string().max(100).optional(),
         benefits: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),

@@ -1,0 +1,18 @@
+{
+  "name": "@tims/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright end-to-end journeys (company + candidate) against the local-only E2E stack from scripts/e2e/up.sh",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.19.19",
+    "@types/pg": "8.20.0",
+    "pg": "8.22.0",
+    "typescript": "5.9.3"
+  }
+}

@@ -33,12 +33,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 
-  type Salary = { min?: number; max?: number; currency?: string } | null;
-  const items = (vacancies.data?.pages.flatMap((page) => page.items) ?? []).map((v) => ({
-    ...v,
-    salary: v.salary as Salary,
-  }));
-  const allItems = items;
+  const allItems = vacancies.data?.pages.flatMap((page) => page.items) ?? [];
   const isSearching = Boolean(appliedSearch || appliedLocation);
 
   function handleSearch() {

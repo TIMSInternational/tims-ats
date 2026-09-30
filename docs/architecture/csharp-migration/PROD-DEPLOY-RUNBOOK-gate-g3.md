@@ -88,6 +88,12 @@ surface, flipped per §6):
 - **Writes (9):** `ValidationStaffWriteEnabled`, `ExternalVendorWriteEnabled`, `CompensationWriteEnabled`,
   `Evaluation360WriteEnabled`, `SuccessionWriteEnabled`, `NineBoxWriteEnabled`, `EngagementWriteEnabled`,
   `BillingWebhookWriteEnabled`, `BillingSelfServeEnabled`.
+- **Tenant self-serve, added after the original 21 (F8, PR #307):** `TenantInvitationsEnabled` — maps all five
+  `/tenant-invitations` routes (list, grantable roles, create, resend, revoke; reads AND writes behind one flag).
+  Default false. It sends real email on create/resend, so it also needs the `Email__*` / `Invitations__AppOrigin`
+  configuration from `csharp-email-delivery.md`. The FE half is `NEXT_PUBLIC_TENANT_INVITATIONS_VIA_CSHARP=true`
+  (build-time) plus `NEXT_PUBLIC_TIMS_PLATFORM_API_URL`; with either off, the Equipo nav entry and the setup
+  checklist link are hidden. See `tenant-invitations.md`.
   (The exact CLR property names are in `services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs`.)
 - **Added after this list was frozen** (not counted in the 21; `PlatformOptions.cs` is authoritative):
   `AssessmentTypeWriteEnabled` — F13 tenant assessment-type authoring (PR #309), greenfield C# with no TS writer.

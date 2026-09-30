@@ -220,8 +220,8 @@ export const candidateAssessmentWriteRepo = {
     data: {
       organizationId: string;
       assignmentId: string;
-      rawScore: number;
-      normalizedScore: number;
+      rawScore: number | null;
+      normalizedScore: number | null;
       breakdown: Prisma.InputJsonValue;
       percentile?: number | null;
       band?: ScoreBand | null;

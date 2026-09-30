@@ -299,20 +299,35 @@ catches the next table that inherits the grant, instead of preventing the inheri
 Being explicit, because "documented in the runbook" and "enforced" are not the same thing and this repo has
 been burned by the difference (#38):
 
-| Control                                          | Runs where                               | Enforced?                               |
-| ------------------------------------------------ | ---------------------------------------- | --------------------------------------- |
-| `tests/governance/scope-fixtures.test.ts` (#132) | `npx vitest run` → CI `Security Audit`   | ✅ **yes** — blocks CI                  |
-| `tests/governance/table-ownership.test.ts`       | `npx vitest run` + `dotnet-platform.yml` | ✅ yes                                  |
-| check 14 `verify-rls-isolation.ts`               | `/gate` check 14 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
-| check 16 `schema-baseline.sh check`              | `/gate` check 16 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
-| **check 17 `verify-tenant-grants.ts`**           | `/gate` check 17 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
-| `scripts/db/pre-flip-scan.ts` (#132)             | `/gate` **check 18**, local              | ⚠️ ship-time only — see below           |
+| Control                                          | Runs where                               | Enforced?                     |
+| ------------------------------------------------ | ---------------------------------------- | ----------------------------- |
+| `tests/governance/scope-fixtures.test.ts` (#132) | `npx vitest run` → CI `Security Audit`   | ✅ **yes** — blocks CI        |
+| `tests/governance/table-ownership.test.ts`       | `npx vitest run` + `dotnet-platform.yml` | ✅ yes                        |
+| check 14 `verify-rls-isolation.ts`               | `/gate` check 14 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep  |
+| check 16 `schema-baseline.sh check`              | `/gate` check 16 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep  |
+| **check 17 `verify-tenant-grants.ts`**           | `/gate` check 17 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep  |
+| `scripts/db/pre-flip-scan.ts` (#132)             | `/gate` **check 18**, local              | ⚠️ ship-time only — see below |
 
 > **The nightly job is inert until the `PROD_DIRECT_URL` secret exists**, and fails loudly rather than
 > skipping while it is absent — so "not yet configured" is visible in the Actions tab instead of silently
-> reading as "nothing to report". It is **additive**: it answers *did production drift since yesterday*,
-> never *did this change break something*. `/gate` remains the pre-merge control and the nightly sweep must
+> reading as "nothing to report". It is **additive**: it answers _did production drift since yesterday_,
+> never _did this change break something_. `/gate` remains the pre-merge control and the nightly sweep must
 > not be treated as having replaced it.
+
+> **The nightly credential is read-only only once `scripts/db/ci-readonly-probe-role.sql` has run** (#292).
+> `ci_readonly` was a member of `app_tenant` (check 14 needed `SET LOCAL ROLE app_tenant`), which let the
+> credential assume tenant DML. Check 14 now probes as `ci_rls_probe` (NOLOGIN, NOBYPASSRLS, SELECT-only) and
+> exits 2 until that role exists; check 17 reads grants from `pg_class.relacl` and needs no membership. The
+> probe is equivalent to `app_tenant` only while every public policy applies `TO public` — check 14 asserts
+> that (`policy-role-scope`). Check 14 also exits 2 if its empirical probe covers fewer than `RLS_MIN_PROBED`
+> tables (nightly: 30; production covered 36 of 100 with the test-tenant positive control).
+>
+> **TLS:** checks 14 and 17 refuse any non-loopback URL whose `sslmode` is not `verify-full`
+> (`scripts/security/db-tls.ts`) and set `ssl.rejectUnauthorized` explicitly, instead of relying on pg@8
+> aliasing `require` to `verify-full`. The nightly job refuses the secret up front unless it says
+> `verify-full`, and sets `PGSSLROOTCERT` to the committed Supabase CA so libpq (`pg_dump`, check 16)
+> verifies the server too. A local `/gate` run against a remote database now needs
+> `?sslmode=verify-full` and `PGSSLROOTCERT=scripts/parity/supabase-root-ca.pem`, or checks 14/17 exit 2.
 
 `main` also has **no required status checks** (see the ownership-flip runbook §1), so even the ✅ rows are
 "CI goes red", not "the merge is blocked". `gh pr merge --admin` bypasses all of it.

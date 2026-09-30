@@ -338,6 +338,8 @@ try
     builder.Services.AddScoped<OrganizationInvitationCreateUseCase>();
     builder.Services.AddScoped<IUserInvitationCreateRepository, UserInvitationCreateRepository>();
     builder.Services.AddScoped<UserInvitationCreateUseCase>();
+    builder.Services.AddScoped<ITenantInvitationRepository, TenantInvitationRepository>();
+    builder.Services.AddScoped<TenantInvitationsUseCase>();
     builder.Services.AddScoped<IInvitationOnboardingRepository, InvitationOnboardingRepository>();
     builder.Services.AddScoped<InvitationOnboarding>();
     builder.Services.AddOptions<InvitationSetupOptions>().Bind(builder.Configuration.GetSection("Invitations"))
@@ -1322,6 +1324,11 @@ try
     if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
     {
         app.MapInvitationResendEndpoints();
+    }
+    // F8: company-admin team invitations for the caller's own organization. Dark unless TenantInvitationsEnabled.
+    if (externalOptions.TenantInvitationsEnabled || isOpenApiDocGeneration)
+    {
+        app.MapTenantInvitationEndpoints();
     }
 
     // Phase-5 slice 23 (#81): GET /platform/dashboard/{plan-distribution,user-growth,

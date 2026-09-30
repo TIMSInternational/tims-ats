@@ -131,8 +131,11 @@ function LoginForm() {
             )}
 
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.email}</label>
+              <label htmlFor="login-email" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.email}</label>
               <input
+                id="login-email"
+                name="email"
+                autoComplete="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -144,13 +147,16 @@ function LoginForm() {
 
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[12px] font-medium text-[#585858]">{t.auth.password}</label>
+                <label htmlFor="login-password" className="text-[12px] font-medium text-[#585858]">{t.auth.password}</label>
                 <Link href="/forgot-password" className="text-[11px] text-[#DD0C15] hover:underline">
                   {t.auth.forgotPassword}
                 </Link>
               </div>
               <div className="relative">
               <input
+                id="login-password"
+                name="password"
+                autoComplete="current-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -162,6 +168,8 @@ function LoginForm() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? t.auth.hidePasswords : t.auth.showPasswords}
+                aria-pressed={showPassword}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B8B8B] hover:text-[#585858] transition-colors"
               >
                 {showPassword ? (

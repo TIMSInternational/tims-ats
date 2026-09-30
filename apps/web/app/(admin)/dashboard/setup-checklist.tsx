@@ -8,6 +8,7 @@ import { useCan } from '../../../lib/permissions';
 import { toast } from '../../../lib/toast';
 import { ErrorState } from '../../../components';
 import { deriveSetupChecklistRows } from './setup-checklist-rows';
+import { isTenantInvitationsEnabled } from '../../../lib/platform-api/tenant-invitations';
 
 function CheckIcon({ done }: { done: boolean }) {
   return (
@@ -29,6 +30,8 @@ export function SetupChecklist() {
   const utils = trpc.useUtils();
   const can = useCan();
   const canManageBranding = can('organization', 'update');
+  const canInviteTeam = can('user', 'create');
+  const invitationsEnabled = isTenantInvitationsEnabled();
 
   // Optimistic client-side hide the instant "hide for now" is clicked, backed
   // by the real dismissSetupChecklist mutation (per Task 4 brief). Reverted on
@@ -65,6 +68,8 @@ export function SetupChecklist() {
           firstVacancyPublished: sc.firstVacancyPublished,
         },
         canManageBranding,
+        canInviteTeam,
+        invitationsEnabled,
       )
     : [];
 

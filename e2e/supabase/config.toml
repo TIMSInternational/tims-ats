@@ -1,0 +1,79 @@
+# Supabase CLI project for the Playwright E2E stack (scripts/e2e/up.sh). LOCAL ONLY.
+#
+# No secrets live here. The JWT signing key (signing_keys.json, ES256 — the C# API only accepts
+# asymmetric tokens) is generated per bring-up by `supabase gen signing-key` and is gitignored;
+# the anon/service-role keys are minted from it by the CLI and read back via `supabase status`.
+#
+# Ports (553xx) deliberately avoid the CLI defaults (543xx) and the manual E2E stack (643xx) so
+# this project can run beside either. scripts/e2e/lib.sh hard-codes the same numbers.
+
+project_id = "tims-e2e-ci"
+
+[api]
+enabled = true
+port = 55321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 55322
+shadow_port = 55320
+major_version = 17
+
+[db.pooler]
+enabled = false
+
+[db.migrations]
+enabled = false
+
+[db.seed]
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "https://localhost:3543"
+additional_redirect_urls = ["https://localhost:3543/**", "https://localhost:3543"]
+jwt_expiry = 3600
+signing_keys_path = "./signing_keys.json"
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 12
+
+[auth.rate_limit]
+# Generous: one runner signs several personas in and out many times per run.
+email_sent = 100
+token_refresh = 1000
+sign_in_sign_ups = 1000
+token_verifications = 1000
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1s"
+
+[auth.mfa.totp]
+enroll_enabled = false
+verify_enabled = false
