@@ -110,9 +110,9 @@ export default function InterviewRoomPage({
   }
 
   // In-call view — DailyProvider only renders with valid url + token
-  // avoidEval: load Daily's call-machine bundle via <script> (allowed by the room
-  // route's CSP in lib/security/csp.ts) instead of fetch + Function(), which
-  // would require 'unsafe-eval' in script-src.
+  // avoidEval: load Daily's call-machine bundle via a script tag, which the room
+  // route's CSP in lib/security/csp.ts allows, instead of fetch + Function(),
+  // which would require 'unsafe-eval' in script-src.
   return (
     <DailyProvider dailyConfig={{ avoidEval: true }}>
       <AutoJoin url={roomData.url} token={roomData.token} />
