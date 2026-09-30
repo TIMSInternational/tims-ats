@@ -2931,7 +2931,6 @@ export interface components {
             lastName: string;
             email: string;
             avatarUrl: null | string;
-            roleSlugs: string[];
         };
         AssignRatersBody: {
             assignments: components["schemas"]["RaterAssignmentBody"][];

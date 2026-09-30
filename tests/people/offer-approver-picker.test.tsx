@@ -41,7 +41,7 @@ const ZOE = {
   firstName: 'Zoe',
   lastName: 'Zamora',
   email: 'zoe@acme.test',
-  roleSlugs: ['hr_admin'],
+  avatarUrl: null,
 };
 
 function requestedUrls(): string[] {

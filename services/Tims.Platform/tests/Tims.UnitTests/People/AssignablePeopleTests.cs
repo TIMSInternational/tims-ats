@@ -1,4 +1,5 @@
 using Tims.Application.People;
+using Tims.Domain.Access;
 using Tims.Domain.People;
 
 namespace Tims.UnitTests.People;
@@ -28,11 +29,25 @@ public sealed class AssignablePeopleTests
     {
         Assert.Equal(new AssignablePurposeRule("interview", "create", null, null),
             AssignablePurposes.RuleFor(AssignablePurpose.InterviewEvaluator));
-        Assert.Equal(new AssignablePurposeRule("vacancy", "create", "vacancy", "approve"),
+        // vacancy.submitForApproval is gated on vacancy:update (packages/api/src/routers/vacancy/approvals.ts).
+        Assert.Equal(new AssignablePurposeRule("vacancy", "update", "vacancy", "approve"),
             AssignablePurposes.RuleFor(AssignablePurpose.VacancyApprover));
         Assert.Equal(new AssignablePurposeRule("offer", "create", "offer", "approve"),
             AssignablePurposes.RuleFor(AssignablePurpose.OfferApprover));
     }
+
+    [Theory]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Organization, true)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Company, true)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Unit, false)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Team, false)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Own, false)]
+    [InlineData(AssignablePurpose.VacancyApprover, AccessScope.Unit, true)]
+    [InlineData(AssignablePurpose.VacancyApprover, AccessScope.Own, true)]
+    [InlineData(AssignablePurpose.OfferApprover, AccessScope.Team, true)]
+    public void CallerScope_TheWholeDirectoryNeedsOrgWideScope_ApproverListsAnyGrantedScope(
+        AssignablePurpose purpose, AccessScope scope, bool expected) =>
+        Assert.Equal(expected, AssignablePurposes.CallerScopeAllows(AssignablePurposes.RuleFor(purpose), scope));
 
     [Theory]
     [InlineData(0)]
@@ -55,18 +70,6 @@ public sealed class AssignablePeopleTests
         Assert.Equal(new AssignablePurposeRule("offer", "create", "offer", "approve"), repository.LastRule);
         await useCase.ListAsync(Guid.NewGuid(), AssignablePurpose.OfferApprover, "   ", 10, CancellationToken.None);
         Assert.Null(repository.LastSearch);
-    }
-
-    [Fact]
-    public async Task UseCase_DropsNonStaffRoleHintsAndDuplicates()
-    {
-        var repository = new RecordingRepository
-        {
-            Result = [new(Guid.NewGuid(), "Ana", "Lopez", "ana@test", null, ["external", "recruiter", "candidate", "recruiter"])],
-        };
-        var result = await new AssignablePeopleUseCase(repository)
-            .ListAsync(Guid.NewGuid(), AssignablePurpose.InterviewEvaluator, null, 25, CancellationToken.None);
-        Assert.Equal(["recruiter"], Assert.Single(result.People).RoleSlugs);
     }
 
     private sealed class RecordingRepository : IAssignablePeopleRepository

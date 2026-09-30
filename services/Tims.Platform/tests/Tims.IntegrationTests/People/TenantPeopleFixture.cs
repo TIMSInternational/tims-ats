@@ -13,6 +13,9 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     public const string RecruiterSub = "sub-people-recruiter";
     public const string EmployeeSub = "sub-people-employee";
     public const string LeaderSub = "sub-people-leader";
+    public const string HrAdminSub = "sub-people-hr";
+    public const string HrbpSub = "sub-people-hrbp";
+    public const string CommitteeSub = "sub-people-committee";
     public const string OrgBRecruiterSub = "sub-people-recruiter-b";
     public const string PlatformOwnerSub = "sub-people-platform-owner";
 
@@ -25,8 +28,11 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     public static readonly Guid Deleted = Guid.Parse("c1000000-0000-0000-0000-000000000007");
     public static readonly Guid ExternalOnly = Guid.Parse("c1000000-0000-0000-0000-000000000008");
     public static readonly Guid Underscore = Guid.Parse("c1000000-0000-0000-0000-000000000009");
+    public static readonly Guid Hrbp = Guid.Parse("c1000000-0000-0000-0000-00000000000a");
+    public static readonly Guid Committee = Guid.Parse("c1000000-0000-0000-0000-00000000000b");
     public static readonly Guid OrgBHrAdmin = Guid.Parse("c2000000-0000-0000-0000-000000000001");
     public static readonly Guid OrgBRecruiter = Guid.Parse("c2000000-0000-0000-0000-000000000002");
+    public static readonly Guid OrgBInactiveRoleLeader = Guid.Parse("c2000000-0000-0000-0000-000000000003");
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithUsername("postgres")
@@ -70,7 +76,7 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
             is_active boolean NOT NULL DEFAULT true,
             deleted_at timestamp NULL
         );
-        CREATE TABLE roles (id uuid PRIMARY KEY, organization_id uuid NOT NULL, slug text NOT NULL);
+        CREATE TABLE roles (id uuid PRIMARY KEY, organization_id uuid NOT NULL, slug text NOT NULL, is_active boolean NOT NULL DEFAULT true);
         CREATE TABLE permissions (id uuid PRIMARY KEY, module text NOT NULL, action text NOT NULL);
         CREATE TABLE role_permissions (id uuid PRIMARY KEY, role_id uuid NOT NULL REFERENCES roles (id), permission_id uuid NOT NULL REFERENCES permissions (id), scope text NOT NULL);
         CREATE TABLE user_roles (id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES users (id), role_id uuid NOT NULL REFERENCES roles (id));
@@ -85,11 +91,19 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
         CREATE POLICY tenant_isolation ON user_roles USING (EXISTS (SELECT 1 FROM roles par WHERE par.id = user_roles.role_id AND par.organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid));
         """;
 
-    // Grants mirror seed-access-matrix.ts for the actions this surface reads, with ONE fixture-local
-    // divergence: the leader holds vacancy:approve but NOT offer:approve, so the two approver purposes
-    // are distinguishable (a purpose that mapped to the wrong permission could not pass both tests).
-    // b1…010 is a deliberately DRIFTED row: Acme's Uma linked to Globex's hr_admin role. It must never make
-    // her an Acme approver (the directory joins roles on the caller's organization, and RLS hides the row).
+    // Acme's grants are seed-access-matrix.ts's MATRIX rows (same scopes) for every permission this surface
+    // reads — caller gates interview:create/update, vacancy:create/update, offer:create/update; eligibility
+    // vacancy:approve, offer:approve; plus hr_admin's user:read. Deliberate divergences, each load-bearing:
+    //  1. super_admin holds NO role_permissions rows, so the directory's super_admin short-circuit (the one
+    //     PermissionService applies) is what lists Ada — rows would make that branch untested.
+    //  2. the non-staff `external` role holds vacancy:approve + offer:approve (MATRIX gives it neither), so the
+    //     staff-slug filter is what keeps Xavi out of both approver lists.
+    //  3. Globex carries only the rows its tests read, and its `leader` role is DEACTIVATED (is_active=false),
+    //     so Gil — whose only approve grants ride that role — must be absent from both Globex approver lists.
+    //  4. b1…010 is a DRIFTED row: Acme's Uma linked to Globex's hr_admin role. It must never make her an Acme
+    //     approver (the directory joins roles on the caller's organization, and RLS hides the row).
+    // With MATRIX grants the leader holds BOTH approve permissions (team scope), so the vacancy/offer approver
+    // lists coincide; AssignablePeopleRepositoryTests proves the repository reads the rule's permission instead.
     private const string SeedSql =
         """
         INSERT INTO organizations (id, name) VALUES
@@ -101,30 +115,63 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('e1000000-0000-0000-0000-000000000003', 'offer', 'create'),
           ('e1000000-0000-0000-0000-000000000004', 'vacancy', 'approve'),
           ('e1000000-0000-0000-0000-000000000005', 'offer', 'approve'),
-          ('e1000000-0000-0000-0000-000000000006', 'user', 'read');
-        INSERT INTO roles (id, organization_id, slug) VALUES
-          ('a1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'recruiter'),
-          ('a1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'super_admin'),
-          ('a1000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'hr_admin'),
-          ('a1000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'leader'),
-          ('a1000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'employee'),
-          ('a1000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'external'),
-          ('a2000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'hr_admin'),
-          ('a2000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'recruiter');
+          ('e1000000-0000-0000-0000-000000000006', 'user', 'read'),
+          ('e1000000-0000-0000-0000-000000000007', 'interview', 'update'),
+          ('e1000000-0000-0000-0000-000000000008', 'vacancy', 'update'),
+          ('e1000000-0000-0000-0000-000000000009', 'offer', 'update');
+        INSERT INTO roles (id, organization_id, slug, is_active) VALUES
+          ('a1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'recruiter', true),
+          ('a1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'super_admin', true),
+          ('a1000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'hr_admin', true),
+          ('a1000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'leader', true),
+          ('a1000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'employee', true),
+          ('a1000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'external', true),
+          ('a1000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'hrbp', true),
+          ('a1000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'committee', true),
+          ('a2000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'hr_admin', true),
+          ('a2000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'recruiter', true),
+          ('a2000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', 'leader', false);
         INSERT INTO role_permissions (id, role_id, permission_id, scope) VALUES
+          -- recruiter (MATRIX: interview CRUD, vacancy CRUD+publish, offer read+create — all organization)
           ('f1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000001', 'organization'),
-          ('f1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000002', 'organization'),
-          ('f1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000003', 'organization'),
-          ('f1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000004', 'organization'),
-          ('f1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000005', 'organization'),
-          ('f1000000-0000-0000-0000-000000000006', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000004', 'team'),
-          ('f1000000-0000-0000-0000-000000000007', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000002', 'team'),
-          ('f1000000-0000-0000-0000-000000000008', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000004', 'organization'),
-          ('f1000000-0000-0000-0000-000000000009', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000005', 'organization'),
+          ('f1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000007', 'organization'),
+          ('f1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000002', 'organization'),
+          ('f1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000008', 'organization'),
+          ('f1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000003', 'organization'),
+          -- hr_admin (MATRIX: CRUD on interview/vacancy/offer/user + vacancy/offer approve — all organization)
+          ('f1000000-0000-0000-0000-000000000011', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000001', 'organization'),
+          ('f1000000-0000-0000-0000-000000000012', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000007', 'organization'),
+          ('f1000000-0000-0000-0000-000000000013', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000002', 'organization'),
+          ('f1000000-0000-0000-0000-000000000014', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000008', 'organization'),
+          ('f1000000-0000-0000-0000-000000000015', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000003', 'organization'),
+          ('f1000000-0000-0000-0000-000000000016', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000009', 'organization'),
+          ('f1000000-0000-0000-0000-000000000017', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000004', 'organization'),
+          ('f1000000-0000-0000-0000-000000000018', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000005', 'organization'),
+          ('f1000000-0000-0000-0000-000000000019', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000006', 'organization'),
+          -- leader (MATRIX: vacancy read/create/approve, interview read/create/update, offer read/approve — team)
+          ('f1000000-0000-0000-0000-000000000021', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000002', 'team'),
+          ('f1000000-0000-0000-0000-000000000022', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000004', 'team'),
+          ('f1000000-0000-0000-0000-000000000023', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000001', 'team'),
+          ('f1000000-0000-0000-0000-000000000024', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000007', 'team'),
+          ('f1000000-0000-0000-0000-000000000025', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000005', 'team'),
+          -- hrbp (MATRIX: vacancy read/create/update, interview read/create, offer read only — unit)
+          ('f1000000-0000-0000-0000-000000000031', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-000000000002', 'unit'),
+          ('f1000000-0000-0000-0000-000000000032', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-000000000008', 'unit'),
+          ('f1000000-0000-0000-0000-000000000033', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-000000000001', 'unit'),
+          -- committee (MATRIX: interview read/create/update — team)
+          ('f1000000-0000-0000-0000-000000000041', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000001', 'team'),
+          ('f1000000-0000-0000-0000-000000000042', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000007', 'team'),
+          -- external: DIVERGENCE 2 (non-staff principal holding approve grants)
+          ('f1000000-0000-0000-0000-000000000051', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000004', 'organization'),
+          ('f1000000-0000-0000-0000-000000000052', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000005', 'organization'),
+          -- Globex: DIVERGENCE 3 (subset; leader role deactivated)
           ('f2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000004', 'organization'),
           ('f2000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000005', 'organization'),
           ('f2000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000002', 'e1000000-0000-0000-0000-000000000001', 'organization'),
-          ('f2000000-0000-0000-0000-000000000004', 'a2000000-0000-0000-0000-000000000002', 'e1000000-0000-0000-0000-000000000003', 'organization');
+          ('f2000000-0000-0000-0000-000000000004', 'a2000000-0000-0000-0000-000000000002', 'e1000000-0000-0000-0000-000000000003', 'organization'),
+          ('f2000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000002', 'e1000000-0000-0000-0000-000000000008', 'organization'),
+          ('f2000000-0000-0000-0000-000000000006', 'a2000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000004', 'team'),
+          ('f2000000-0000-0000-0000-000000000007', 'a2000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000005', 'team');
         INSERT INTO users (id, organization_id, supabase_user_id, email, first_name, last_name, avatar, phone, is_platform_owner, is_active, deleted_at) VALUES
           ('c1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'sub-people-recruiter', 'rita@acme.test', 'Rita', 'Recruiter', NULL, '+57 300 0000001', false, true, NULL),
           ('c1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-people-admin', 'ada@acme.test', 'Ada', 'Admin', 'https://cdn.test/ada.png', NULL, false, true, NULL),
@@ -135,8 +182,11 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('c1000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'sub-people-deleted', 'dora@acme.test', 'Dora', 'Deleted', NULL, NULL, false, true, '2026-09-01'),
           ('c1000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'sub-people-external', 'xavi@acme.test', 'Xavi', 'External', NULL, NULL, false, true, NULL),
           ('c1000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'sub-people-underscore', 'uma@acme.test', 'Uma', 'Under_score', NULL, NULL, false, true, NULL),
+          ('c1000000-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'sub-people-hrbp', 'pablo@acme.test', 'Pablo', 'Partner', NULL, NULL, false, true, NULL),
+          ('c1000000-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'sub-people-committee', 'tomas@acme.test', 'Tomas', 'Committee', NULL, NULL, false, true, NULL),
           ('c2000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'sub-people-hr-b', 'foreign-hr@globex.test', 'Fiona', 'Foreign', NULL, NULL, false, true, NULL),
           ('c2000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'sub-people-recruiter-b', 'foreign-rec@globex.test', 'Fabio', 'Foreign', NULL, NULL, false, true, NULL),
+          ('c2000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', 'sub-people-leader-b', 'gil@globex.test', 'Gil', 'Gone', NULL, NULL, false, true, NULL),
           ('c3000000-0000-0000-0000-000000000001', NULL, 'sub-people-platform-owner', 'owner@tims.test', 'Otto', 'Owner', NULL, NULL, true, true, NULL);
         INSERT INTO user_roles (id, user_id, role_id) VALUES
           ('b1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001'),
@@ -149,8 +199,11 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('b1000000-0000-0000-0000-000000000008', 'c1000000-0000-0000-0000-000000000008', 'a1000000-0000-0000-0000-000000000006'),
           ('b1000000-0000-0000-0000-000000000009', 'c1000000-0000-0000-0000-000000000009', 'a1000000-0000-0000-0000-000000000005'),
           ('b1000000-0000-0000-0000-000000000010', 'c1000000-0000-0000-0000-000000000009', 'a2000000-0000-0000-0000-000000000001'),
+          ('b1000000-0000-0000-0000-000000000011', 'c1000000-0000-0000-0000-00000000000a', 'a1000000-0000-0000-0000-000000000007'),
+          ('b1000000-0000-0000-0000-000000000012', 'c1000000-0000-0000-0000-00000000000b', 'a1000000-0000-0000-0000-000000000008'),
           ('b2000000-0000-0000-0000-000000000001', 'c2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001'),
-          ('b2000000-0000-0000-0000-000000000002', 'c2000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000002');
+          ('b2000000-0000-0000-0000-000000000002', 'c2000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000002'),
+          ('b2000000-0000-0000-0000-000000000003', 'c2000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000003');
         """;
 }
 

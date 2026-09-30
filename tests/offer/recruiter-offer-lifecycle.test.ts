@@ -345,6 +345,16 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
     expect(where).toMatchObject({ organizationId: ORG_ID, isActive: true, deletedAt: null });
   });
 
+  it('positive control: an HR admin (offer:update, first in the any-of order) still submits', async () => {
+    useOffer('draft');
+    const caller = await makeCaller(['hr_admin']);
+    expect(await codeOf(caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [HR_ADMIN_ID] }))).toBeNull();
+    expect(mockDb.offerApproval.createMany).toHaveBeenCalledTimes(1);
+    expect(mockDb.offer.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: OFFER_ID }, data: { status: 'pending_approval' } }),
+    );
+  });
+
   it('still refuses roles with neither offer:update nor offer:create', async () => {
     useOffer('draft');
     const caller = await makeCaller(['hrbp']);

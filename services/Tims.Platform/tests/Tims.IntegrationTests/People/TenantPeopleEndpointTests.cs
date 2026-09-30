@@ -76,56 +76,59 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
         {
             TenantPeopleFixture.Recruiter, TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin,
             TenantPeopleFixture.Leader, TenantPeopleFixture.Employee, TenantPeopleFixture.ExternalOnly,
-            TenantPeopleFixture.Underscore,
+            TenantPeopleFixture.Underscore, TenantPeopleFixture.Hrbp, TenantPeopleFixture.Committee,
         }.Order().ToArray(), Ids(people));
-        // Uma's drifted Globex hr_admin row never surfaces as an Acme role hint.
-        var uma = people.Single(p => p.GetProperty("id").GetGuid() == TenantPeopleFixture.Underscore);
-        Assert.Equal(["employee"], uma.GetProperty("roleSlugs").EnumerateArray().Select(r => r.GetString()));
-        // Non-staff principal roles are never returned as hints.
-        var xavi = people.Single(p => p.GetProperty("id").GetGuid() == TenantPeopleFixture.ExternalOnly);
-        Assert.Empty(xavi.GetProperty("roleSlugs").EnumerateArray());
     }
 
     [Fact]
-    public async Task Response_IsTheMinimalPickerProjection()
+    public async Task Response_IsTheMinimalPickerProjection_WithoutRoleComposition()
     {
         var people = await People("?purpose=interview_evaluator&search=ada");
         var ada = Assert.Single(people);
-        Assert.Equal(["id", "firstName", "lastName", "email", "avatarUrl", "roleSlugs"],
+        Assert.Equal(["id", "firstName", "lastName", "email", "avatarUrl"],
             ada.EnumerateObject().Select(p => p.Name));
         Assert.Equal("https://cdn.test/ada.png", ada.GetProperty("avatarUrl").GetString());
-        Assert.Equal(["super_admin"], ada.GetProperty("roleSlugs").EnumerateArray().Select(r => r.GetString()));
 
+        // avatarUrl is required + nullable in the contract, so an absent avatar is an explicit null.
         var rita = Assert.Single(await People("?purpose=interview_evaluator&search=rita"));
-        Assert.False(rita.TryGetProperty("avatarUrl", out _));
+        Assert.Equal(JsonValueKind.Null, rita.GetProperty("avatarUrl").ValueKind);
         Assert.False(rita.TryGetProperty("phone", out _));
+        Assert.False(rita.TryGetProperty("roleSlugs", out _));
     }
 
     [Fact]
     public async Task VacancyApprovers_AreOnlyStaffHoldingVacancyApproveOrSuperAdmin()
     {
         var people = await People("?purpose=vacancy_approver");
-        // Excluded: the recruiter/employee (no grant), the inactive and deleted hr_admins, the external-role
-        // holder (non-staff principal), Uma (grant only via a DRIFTED foreign-tenant role) and Globex.
+        // Excluded: recruiter/employee/hrbp/committee (no grant), the inactive and deleted hr_admins, the
+        // external-role holder (non-staff principal), Uma (grant only via a DRIFTED foreign-tenant role) and Globex.
         Assert.Equal(new[] { TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin, TenantPeopleFixture.Leader }
             .Order().ToArray(), Ids(people));
     }
 
     [Fact]
-    public async Task OfferApprovers_UseTheOfferApprovePermissionNotTheVacancyOne()
+    public async Task OfferApprovers_AreOnlyStaffHoldingOfferApproveOrSuperAdmin()
     {
+        // seed-access-matrix.ts grants the leader offer:approve at team scope, so the leader IS listed (the
+        // directory is permission-based; offer.submitForApproval re-checks the approver's scope per offer).
         var people = await People("?purpose=offer_approver");
-        Assert.Equal(new[] { TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin }.Order().ToArray(), Ids(people));
+        Assert.Equal(new[] { TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin, TenantPeopleFixture.Leader }
+            .Order().ToArray(), Ids(people));
     }
 
     [Fact]
-    public async Task OtherTenant_SeesOnlyItsOwnPeople()
+    public async Task OtherTenant_SeesOnlyItsOwnPeople_AndADeactivatedRoleGrantsNothing()
     {
         var evaluators = await People("?purpose=interview_evaluator", TenantPeopleFixture.OrgBRecruiterSub);
-        Assert.Equal(new[] { TenantPeopleFixture.OrgBHrAdmin, TenantPeopleFixture.OrgBRecruiter }.Order().ToArray(),
-            Ids(evaluators));
-        var approvers = await People("?purpose=offer_approver", TenantPeopleFixture.OrgBRecruiterSub);
-        Assert.Equal([TenantPeopleFixture.OrgBHrAdmin], Ids(approvers));
+        Assert.Equal(new[]
+        {
+            TenantPeopleFixture.OrgBHrAdmin, TenantPeopleFixture.OrgBRecruiter, TenantPeopleFixture.OrgBInactiveRoleLeader,
+        }.Order().ToArray(), Ids(evaluators));
+        // Gil's only approve grants ride Globex's DEACTIVATED leader role.
+        Assert.Equal([TenantPeopleFixture.OrgBHrAdmin],
+            Ids(await People("?purpose=offer_approver", TenantPeopleFixture.OrgBRecruiterSub)));
+        Assert.Equal([TenantPeopleFixture.OrgBHrAdmin],
+            Ids(await People("?purpose=vacancy_approver", TenantPeopleFixture.OrgBRecruiterSub)));
     }
 
     [Fact]
@@ -139,28 +142,54 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     }
 
     [Fact]
+    public async Task EmptyResult_IsAnEmptyList_NotAnError()
+    {
+        Assert.Empty(await People("?purpose=offer_approver&search=nobody-matches-this"));
+        Assert.Empty(await People("?purpose=vacancy_approver&search=rita")); // exists, but not an approver
+    }
+
+    [Fact]
     public async Task Limit_BoundsTheResultInStableNameOrder()
     {
         var people = await People("?purpose=interview_evaluator&limit=2");
         Assert.Equal(["Ada", "Eli"], people.Select(p => p.GetProperty("firstName").GetString()));
     }
 
+    // Caller authorization follows the mutation each picker feeds (AssignablePurposes.RuleFor) with the grants of
+    // seed-access-matrix.ts, and the unfiltered evaluator directory additionally needs org-wide scope.
+    [Theory]
+    [InlineData(TenantPeopleFixture.RecruiterSub, "interview_evaluator")]
+    [InlineData(TenantPeopleFixture.RecruiterSub, "vacancy_approver")]
+    [InlineData(TenantPeopleFixture.RecruiterSub, "offer_approver")]
+    [InlineData(TenantPeopleFixture.HrAdminSub, "interview_evaluator")]
+    [InlineData(TenantPeopleFixture.HrAdminSub, "vacancy_approver")]
+    [InlineData(TenantPeopleFixture.HrAdminSub, "offer_approver")]
+    // hrbp holds vacancy:update at UNIT scope: an approver list (permission-filtered) is allowed at any scope.
+    [InlineData(TenantPeopleFixture.HrbpSub, "vacancy_approver")]
+    public async Task CallerHoldingThePickerMutationPermission_Is200(string sub, string purpose)
+    {
+        var response = await Get($"?purpose={purpose}", sub);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     [Theory]
     [InlineData(TenantPeopleFixture.EmployeeSub, "interview_evaluator")]
     [InlineData(TenantPeopleFixture.EmployeeSub, "vacancy_approver")]
     [InlineData(TenantPeopleFixture.EmployeeSub, "offer_approver")]
-    [InlineData(TenantPeopleFixture.LeaderSub, "offer_approver")]
+    // No grant at all for the picker's mutation.
+    [InlineData(TenantPeopleFixture.LeaderSub, "offer_approver")] // offer:read/approve only
+    [InlineData(TenantPeopleFixture.LeaderSub, "vacancy_approver")] // vacancy:create, not vacancy:update
+    [InlineData(TenantPeopleFixture.HrbpSub, "offer_approver")] // offer:read only
+    [InlineData(TenantPeopleFixture.CommitteeSub, "vacancy_approver")]
+    [InlineData(TenantPeopleFixture.CommitteeSub, "offer_approver")]
+    // interview:create IS granted, but at team/unit scope: the whole staff directory needs org-wide scope.
     [InlineData(TenantPeopleFixture.LeaderSub, "interview_evaluator")]
-    public async Task CallerWithoutThePickerPermission_Is403(string sub, string purpose)
+    [InlineData(TenantPeopleFixture.CommitteeSub, "interview_evaluator")]
+    [InlineData(TenantPeopleFixture.HrbpSub, "interview_evaluator")]
+    public async Task CallerWithoutThePickerPermissionOrScope_Is403(string sub, string purpose)
     {
         var response = await Get($"?purpose={purpose}", sub);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task LeaderMayOpenTheVacancyApproverPicker()
-    {
-        Assert.NotEmpty(await People("?purpose=vacancy_approver", TenantPeopleFixture.LeaderSub));
     }
 
     [Theory]

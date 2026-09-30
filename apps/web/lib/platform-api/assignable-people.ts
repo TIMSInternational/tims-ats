@@ -30,8 +30,8 @@ const personSchema = z
     firstName: z.string().max(200),
     lastName: z.string().max(200),
     email: z.string().max(320),
-    avatarUrl: z.string().max(2048).nullable().optional(),
-    roleSlugs: z.array(z.string().max(50)).max(20),
+    // Always present (null when the person has no avatar) — required + nullable in the OpenAPI contract.
+    avatarUrl: z.string().max(2048).nullable(),
   })
   .strict();
 

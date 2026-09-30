@@ -1,4 +1,3 @@
-using Tims.Domain.Identity;
 using Tims.Domain.People;
 
 namespace Tims.Application.People;
@@ -20,10 +19,6 @@ public sealed class AssignablePeopleUseCase(IAssignablePeopleRepository reposito
 
         var people = await repository.ListAsync(
             organizationId, AssignablePurposes.RuleFor(purpose), term, limit, cancellationToken);
-        // Non-staff principals (external API keys, candidates) are never surfaced as a role hint.
-        return new(people.Select(person => person with
-        {
-            RoleSlugs = RoleSlugs.FilterStaffRoleSlugs(person.RoleSlugs.Distinct(StringComparer.Ordinal)),
-        }).ToList());
+        return new(people);
     }
 }

@@ -42,7 +42,10 @@ public static class TenantPeopleEndpoints
             {
                 var decision = await permissionService.CheckAsync(
                     context, rule.CallerModule, rule.CallerAction, cancellationToken);
-                if (!decision.Allowed || decision.Scope is null || decision.Roles is null)
+                if (!decision.Allowed || decision.Scope is not { } callerScope || decision.Roles is null)
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                // The unfiltered directory needs org-wide scope (AssignablePurposes.CallerScopeAllows).
+                if (!AssignablePurposes.CallerScopeAllows(rule, callerScope))
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
             }
             catch (TenantOrgRequiredException)

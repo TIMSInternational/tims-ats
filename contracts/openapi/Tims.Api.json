@@ -7652,8 +7652,7 @@
           "firstName",
           "lastName",
           "email",
-          "avatarUrl",
-          "roleSlugs"
+          "avatarUrl"
         ],
         "type": "object",
         "properties": {
@@ -7675,12 +7674,6 @@
               "null",
               "string"
             ]
-          },
-          "roleSlugs": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         }
       },

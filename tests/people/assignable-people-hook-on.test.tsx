@@ -30,14 +30,13 @@ const ADA = {
   lastName: 'Admin',
   email: 'ada@acme.test',
   avatarUrl: 'https://cdn.test/ada.png',
-  roleSlugs: ['super_admin'],
 };
 const HUGO = {
   id: '22222222-2222-4222-8222-222222222222',
   firstName: 'Hugo',
   lastName: 'Hr',
   email: 'hugo@acme.test',
-  roleSlugs: ['hr_admin'],
+  avatarUrl: null,
 };
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -89,6 +88,37 @@ describe('assignable people — C# directory routing (flag on)', () => {
     const { result } = renderHook(() => useAssignablePeople({ purpose: 'interview_evaluator' }), { wrapper });
     await waitFor(() => expect(result.current.failure).toBe('unavailable'));
     expect(result.current.people).toEqual([]);
+  });
+
+  it('rejects a payload that carries role composition (roleSlugs was removed from the contract)', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ people: [{ ...ADA, roleSlugs: ['super_admin'] }] }), { status: 200 }),
+    );
+    const { useAssignablePeople } = await import('../../apps/web/lib/platform-api/assignable-people');
+    const { result } = renderHook(() => useAssignablePeople({ purpose: 'offer_approver' }), { wrapper });
+    await waitFor(() => expect(result.current.failure).toBe('unavailable'));
+  });
+
+  it('UserPicker with a purpose shows its empty label when the directory returns nobody', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ people: [] }), { status: 200 }));
+    const { UserPicker } = await import('../../apps/web/components/user-picker');
+    render(
+      <UserPicker purpose="offer_approver" onSelect={() => {}} searchPlaceholder="s" loadingLabel="l" emptyLabel="vacío" />,
+      { wrapper },
+    );
+    expect(await screen.findByText('vacío')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('UserPicker WITHOUT a purpose stays on tRPC user.list even with the flag on (legacy admin surfaces)', async () => {
+    const { UserPicker } = await import('../../apps/web/components/user-picker');
+    render(<UserPicker onSelect={() => {}} searchPlaceholder="s" loadingLabel="l" emptyLabel="e" />, { wrapper });
+    expect(await screen.findByText('e')).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(legacyUseQuery).toHaveBeenCalledWith(
+      { limit: 25, search: undefined, isActive: true },
+      expect.objectContaining({ enabled: true }),
+    );
   });
 
   it('UserPicker with a purpose shows a translated error instead of an endless loading label', async () => {

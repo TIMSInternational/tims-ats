@@ -49,6 +49,7 @@ public sealed class AssignablePeopleDbContext(DbContextOptions<AssignablePeopleD
             entity.Property(row => row.Id).HasColumnName("id");
             entity.Property(row => row.OrganizationId).HasColumnName("organization_id");
             entity.Property(row => row.Slug).HasColumnName("slug");
+            entity.Property(row => row.IsActive).HasColumnName("is_active");
         });
         modelBuilder.Entity<DirectoryRolePermission>(entity =>
         {
@@ -93,6 +94,7 @@ public sealed class DirectoryRole
     public Guid Id { get; set; }
     public Guid OrganizationId { get; set; }
     public string Slug { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
 }
 
 public sealed class DirectoryRolePermission

@@ -38,6 +38,10 @@ public sealed class AssignablePeopleRepository(AssignablePeopleDbContext db) : I
             query = query.Where(user => db.UserRoles.Any(userRole => userRole.UserId == user.Id
                 && db.Roles.Any(role => role.Id == userRole.RoleId
                     && role.OrganizationId == organizationId
+                    // A deactivated role grants nothing here. NOTE: the authorization kernels (TS
+                    // buildAccessForUser, C# IdentityRepository/PermissionService) do NOT read roles.is_active,
+                    // so this is stricter than submit/approve — it only ever hides a person, never adds one.
+                    && role.IsActive
                     && staffSlugs.Contains(role.Slug)
                     && (role.Slug == PrivilegedRole
                         || db.RolePermissions.Any(grant => grant.RoleId == role.Id
@@ -51,20 +55,11 @@ public sealed class AssignablePeopleRepository(AssignablePeopleDbContext db) : I
             .Take(limit)
             .Select(user => new { user.Id, user.FirstName, user.LastName, user.Email, user.Avatar })
             .ToListAsync(cancellationToken);
-
-        var ids = people.Select(person => person.Id).ToList();
-        var roles = await (
-            from userRole in db.UserRoles.AsNoTracking()
-            join role in db.Roles.AsNoTracking() on userRole.RoleId equals role.Id
-            where ids.Contains(userRole.UserId) && role.OrganizationId == organizationId
-            select new { userRole.UserId, role.Slug }).ToListAsync(cancellationToken);
         await tenant.CommitAsync(cancellationToken);
 
-        var slugsByUser = roles.ToLookup(row => row.UserId, row => row.Slug);
         return people.Select(person => new AssignablePerson(
             person.Id, person.FirstName, person.LastName, person.Email,
-            string.IsNullOrEmpty(person.Avatar) ? null : person.Avatar,
-            slugsByUser[person.Id].Order(StringComparer.Ordinal).ToList())).ToList();
+            string.IsNullOrEmpty(person.Avatar) ? null : person.Avatar)).ToList();
     }
 
     /// <summary>`%`, `_` and the escape character are LIKE metacharacters; a search term is literal text.</summary>
