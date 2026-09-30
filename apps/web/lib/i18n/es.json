@@ -3840,6 +3840,9 @@
     "joinVideoCall": "Unirse a la videollamada",
     "locationValue": "Lugar o enlace: {location}",
     "panelHeading": "Evaluación de la entrevista",
-    "cancelledNotice": "Esta entrevista fue cancelada. No se puede unir ni calificar."
+    "cancelledNotice": "Esta entrevista fue cancelada. No se puede unir ni calificar.",
+    "closedNotice": "Esta entrevista ya no está abierta: no se puede unir ni calificar.",
+    "topBarLabel": "Entrevista:",
+    "endCall": "Finalizar"
   }
 }

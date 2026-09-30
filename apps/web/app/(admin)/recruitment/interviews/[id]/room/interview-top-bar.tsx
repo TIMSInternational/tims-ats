@@ -2,6 +2,7 @@
 
 import { hardNavigate, ROOM_EXIT_PATH } from './hard-exit';
 import { useState, useEffect, useCallback } from 'react';
+import { useI18n } from '../../../../../../lib/i18n';
 
 interface InterviewTopBarProps {
   candidateName: string;
@@ -20,10 +21,13 @@ export function InterviewTopBar({
   isCallActive,
   onLeaveCall,
 }: InterviewTopBarProps) {
+  const { t } = useI18n();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     if (!isCallActive) return;
+    // Each call starts its own clock (a rejoin must not resume the previous one).
+    setElapsed(0);
     const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(interval);
   }, [isCallActive]);
@@ -39,7 +43,7 @@ export function InterviewTopBar({
   return (
     <div className="flex items-center justify-between px-6 h-[50px] bg-[#1F114C] shrink-0">
       <div className="flex items-center gap-3">
-        <span className="text-[13px] text-white/60">Interview:</span>
+        <span className="text-[13px] text-white/60">{t.interviewRoom.topBarLabel}</span>
         <span className="text-[13px] text-white font-medium">{candidateName}</span>
         <span className="text-[11px] text-white/40">&mdash;</span>
         <span className="text-[13px] text-white/60">{vacancyTitle}</span>
@@ -71,7 +75,7 @@ export function InterviewTopBar({
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
           </svg>
-          Finalizar
+          {t.interviewRoom.endCall}
         </button>
       </div>
     </div>

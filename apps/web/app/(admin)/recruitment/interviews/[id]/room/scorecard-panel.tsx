@@ -27,7 +27,7 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (focusRequest === 0) return;
-    setActiveTab('scorecard');
+    // Focus only: the evaluator may be reading another tab; do not switch it.
     headingRef.current?.focus();
   }, [focusRequest]);
   // Mirrors the server's blind-evaluation rule for UI affordances only (the server enforces it).

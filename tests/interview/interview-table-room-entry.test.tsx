@@ -31,11 +31,12 @@ vi.mock('../../apps/web/components', () => ({
 
 import { InterviewTable } from '../../apps/web/app/(admin)/recruitment/interviews/interview-table';
 
-function row(id: string, type: string, status: string): InterviewListItem {
+function row(id: string, type: string, status: string, meetingUrl: string | null = null): InterviewListItem {
   return {
     id,
     type,
     status,
+    meetingUrl,
     scheduledAt: new Date('2026-10-02T15:00:00Z'),
     duration: 45,
     candidate: { id: `c-${id}`, firstName: 'Cand', lastName: id, email: `${id}@example.com`, avatar: null },
@@ -44,7 +45,7 @@ function row(id: string, type: string, status: string): InterviewListItem {
   } as unknown as InterviewListItem;
 }
 
-const CASES: Array<[type: string, status: string, label: string | null]> = [
+const CASES: Array<[type: string, status: string, label: string | null, meetingUrl?: string]> = [
   ['video', 'scheduled', en.interviews.joinMeeting],
   ['video', 'rescheduled', en.interviews.joinMeeting],
   ['video', 'in_progress', en.interviews.joinMeeting],
@@ -57,15 +58,19 @@ const CASES: Array<[type: string, status: string, label: string | null]> = [
   ['video', 'cancelled', null],
   ['onsite', 'cancelled', null],
   ['onsite', 'no_show', null],
+  ['video', 'no_show', null],
+  // Pre-#325 data: a Daily room was created for a non-video type; it stays a video call.
+  ['onsite', 'scheduled', en.interviews.joinMeeting, 'https://tims.daily.co/interview-iv1'],
+  ['panel', 'scheduled', en.interviews.scoreInterview, 'https://meet.google.com/abc-defg-hij'],
 ];
 
 describe('interview table — room entry', () => {
-  it.each(CASES)('%s / %s → %s', (type, status, label) => {
+  it.each(CASES)('%s / %s → %s (%s)', (type, status, label, meetingUrl) => {
     localStorage.setItem('tims-locale', 'EN');
     render(
       <I18nProvider>
         <InterviewTable
-          interviews={[row('iv1', type, status)]}
+          interviews={[row('iv1', type, status, meetingUrl ?? null)]}
           isLoading={false}
           onCancel={() => undefined}
           isCancelling={false}

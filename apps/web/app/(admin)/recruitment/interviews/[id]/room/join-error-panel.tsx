@@ -39,7 +39,7 @@ export function JoinErrorPanel({ category, onRetry, onScoreWithoutVideo }: JoinE
   };
 
   const handleScoreWithoutVideo = async () => {
-    // Tear the failed call object down before the provider unmounts.
+    // CallStateBridge also destroys on unmount; both are guarded, so this stays idempotent.
     if (daily && !daily.isDestroyed()) await daily.destroy().catch(() => undefined);
     onScoreWithoutVideo();
   };
@@ -60,7 +60,6 @@ export function JoinErrorPanel({ category, onRetry, onScoreWithoutVideo }: JoinE
         <button
           type="button"
           onClick={handleScoreWithoutVideo}
-          disabled={isRetrying}
           className="block mx-auto mt-3 text-white/80 border border-white/20 px-5 py-2 rounded-lg text-[13px] font-medium hover:bg-white/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {t.interviewRoom.scoreWithoutVideo}

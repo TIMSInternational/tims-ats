@@ -12,10 +12,10 @@ import { ScorecardPanel } from './scorecard-panel';
 import { AutoJoin } from './auto-join';
 import { JoinErrorPanel } from './join-error-panel';
 import { interviewTypeLabel } from './interview-type-label';
-import { isVideoInterviewType } from './interview-mode';
+import { isVideoInterview, ROOM_STATUSES } from './interview-mode';
 import { RoomLobby } from './room-lobby';
 import { ScoringStage } from './scoring-stage';
-import { CancelledStage } from './cancelled-stage';
+import { ClosedStage } from './closed-stage';
 import { CallStateBridge } from './call-state-bridge';
 import type { DailyJoinErrorCategory } from './daily-join-error';
 
@@ -42,7 +42,9 @@ export default function InterviewRoomPage({
 
   // Scoring never requires video (#325). null = the default stage for this interview
   // (see below); set once the evaluator switches between lobby, scoring and the call.
-  const [chosenStage, setChosenStage] = useState<Stage | null>(null);
+  // Never 'call': the call stage is derived from roomData, so clearing roomData is what
+  // leaves it, and a superseded token (see joinSeq) is the only thing that could re-enter it.
+  const [chosenStage, setChosenStage] = useState<Exclude<Stage, 'call'> | null>(null);
   // Bumped on every switch so the scorecard panel takes focus (a11y).
   const [focusRequest, setFocusRequest] = useState(0);
 
@@ -72,7 +74,6 @@ export default function InterviewRoomPage({
       if (seq !== joinSeq.current) return;
       setRoomData({ url: result.url, token: result.token });
       setJoinError(null);
-      setChosenStage('call');
       setFocusRequest((n) => n + 1);
     } catch (err) {
       if (seq !== joinSeq.current) return;
@@ -113,7 +114,9 @@ export default function InterviewRoomPage({
     return <InterviewRoomSkeleton />;
   }
 
-  if (interview.error || !interview.data) {
+  // Only when there is NO data: a failed background refetch (e.g. the getById.invalidate
+  // after submitting a scorecard) must not tear down a live call or the unsaved draft.
+  if (!interview.data) {
     return (
       <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-center">
@@ -128,20 +131,24 @@ export default function InterviewRoomPage({
   const candidateName = `${data.candidate.firstName} ${data.candidate.lastName}`;
   const candidateInitials = getInitials(candidateName);
   const subtitle = `${data.vacancy.title} — ${t.interviews.roomTypeLabel} ${interviewTypeLabel(t, data.type)}`;
-  const isVideo = isVideoInterviewType(data.type);
-  const isCancelled = data.status === 'cancelled';
+  const isVideo = isVideoInterview(data);
+  // Any status outside ROOM_STATUSES (cancelled, no_show, ...) closes the room.
+  const isRoomClosed = !ROOM_STATUSES.has(data.status);
+  const closedMessage =
+    data.status === 'cancelled' ? t.interviewRoom.cancelledNotice : t.interviewRoom.closedNotice;
   // Non-video interviews always score directly; a completed video interview starts in
   // scoring too (joining would create a Daily room for a call that is over).
   const stage: Stage = !isVideo
     ? 'scoring'
-    : chosenStage === 'call' && !roomData
-      ? 'scoring'
+    : roomData
+      ? 'call'
       : (chosenStage ?? (data.status === 'completed' ? 'scoring' : 'lobby'));
 
   let stageNode: ReactNode;
   let stageClass = 'flex-1 flex flex-col bg-[#0a0a0a] min-w-0';
-  if (isCancelled) {
-    stageNode = <CancelledStage candidateName={candidateName} subtitle={subtitle} />;
+  const isInCall = stage === 'call' && roomData !== null;
+  if (isRoomClosed && !isInCall) {
+    stageNode = <ClosedStage candidateName={candidateName} subtitle={subtitle} message={closedMessage} />;
   } else if (stage === 'call' && roomData) {
     stageClass =
       'h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink';
@@ -151,6 +158,13 @@ export default function InterviewRoomPage({
     // fetch + Function(), which would require 'unsafe-eval' in script-src.
     stageNode = (
       <DailyProvider dailyConfig={{ avoidEval: true }}>
+        {/* Closed while in the call (e.g. cancelled by someone else): keep the call and its
+            controls (yanking the provider would not end it) and say so. */}
+        {isRoomClosed && (
+          <p role="status" className="absolute top-4 inset-x-4 z-20 bg-black/70 text-white text-[12px] rounded-lg px-3 py-2 text-center">
+            {closedMessage}
+          </p>
+        )}
         <AutoJoin key={joinAttempt} url={roomData.url} token={roomData.token} onError={handleJoinError} />
         <CallStateBridge onCallActiveChange={setIsCallActive} leaveRef={leaveRef} />
         {joinError ? (
@@ -192,7 +206,7 @@ export default function InterviewRoomPage({
 
   // ONE stable tree: only the stage above changes between lobby, scoring and call. The
   // scorecard panel keeps its position (hidden, not unmounted, in the lobby).
-  const isScorecardVisible = stage !== 'lobby';
+  const isScorecardVisible = stage !== 'lobby' && !isRoomClosed;
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <InterviewTopBar
@@ -203,11 +217,9 @@ export default function InterviewRoomPage({
       />
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         <div className={stageClass}>{stageNode}</div>
-        {!isCancelled && (
-          <div className={isScorecardVisible ? 'contents' : 'hidden'} hidden={!isScorecardVisible}>
-            <ScorecardPanel interview={data} candidateInitials={candidateInitials} focusRequest={focusRequest} />
-          </div>
-        )}
+        <div className={isScorecardVisible ? 'contents' : 'hidden'} hidden={!isScorecardVisible}>
+          <ScorecardPanel interview={data} candidateInitials={candidateInitials} focusRequest={focusRequest} />
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ReactNode } from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
 
@@ -18,7 +18,12 @@ const h = vi.hoisted(() => ({
   type: 'onsite',
   status: 'scheduled',
   location: 'Oficina Medellín, Sala 2' as string | null,
+  meetingUrl: null as string | null,
+  queryError: null as null | { message: string },
   providerMounts: 0,
+  // Stateful call object: destroy() flips isDestroyed(), like daily-js.
+  destroyed: false,
+  destroyCalls: 0,
   join: (_: unknown): Promise<unknown> => Promise.resolve(),
   destroy: (): Promise<void> => Promise.resolve(),
   mutateAsync: (_: unknown): Promise<{ url: string; token: string }> =>
@@ -28,8 +33,12 @@ const h = vi.hoisted(() => ({
 vi.mock('@daily-co/daily-react', () => {
   const daily = {
     join: (arg: unknown) => h.join(arg),
-    destroy: () => h.destroy(),
-    isDestroyed: () => false,
+    destroy: () => {
+      h.destroyCalls += 1;
+      h.destroyed = true;
+      return h.destroy();
+    },
+    isDestroyed: () => h.destroyed,
     leave: () => Promise.resolve(),
     participants: () => ({}),
   };
@@ -71,10 +80,11 @@ vi.mock('../../apps/web/lib/trpc', async () => {
         getById: {
           useQuery: () => ({
             isLoading: false,
-            error: null,
+            error: h.queryError,
             data: {
               id: 'i1',
               type: h.type,
+              meetingUrl: h.meetingUrl,
               status: h.status,
               location: h.location,
               scheduledAt: new Date('2026-09-30T15:00:00Z'),
@@ -118,16 +128,23 @@ vi.mock('../../apps/web/lib/trpc', async () => {
 });
 
 import InterviewRoomPage from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/page';
-import { isVideoInterviewType } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-mode';
+import {
+  isDailyRoomUrl,
+  isVideoInterview,
+} from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-mode';
 
 function renderRoom() {
   localStorage.setItem('tims-locale', 'EN');
   const params = Object.assign(Promise.resolve({ id: 'i1' }), { status: 'fulfilled', value: { id: 'i1' } });
-  return render(
+  const tree = () => (
     <I18nProvider>
       <InterviewRoomPage params={params} />
-    </I18nProvider>,
+    </I18nProvider>
   );
+  const view = render(tree());
+  // Re-renders the SAME room, so the mocked getById returns the updated `h` fields
+  // (what a background refetch does).
+  return { ...view, refetch: () => view.rerender(tree()) };
 }
 
 const star = (n: number) => en.interviewRoom.starLabel.replace('{n}', String(n));
@@ -139,10 +156,21 @@ beforeEach(() => {
   h.type = 'video';
   h.status = 'scheduled';
   h.location = 'Oficina Medellín, Sala 2';
+  h.meetingUrl = null;
+  h.queryError = null;
   h.providerMounts = 0;
+  h.destroyed = false;
+  h.destroyCalls = 0;
   h.join = () => Promise.resolve();
   h.destroy = () => Promise.resolve();
   h.mutateAsync = () => Promise.resolve({ url: 'https://tims.daily.co/room', token: 'tok' });
+});
+
+// Unmount now and let CallStateBridge's deferred destroy fire, so it is counted in
+// the test that mounted the call, never in the next one.
+afterEach(async () => {
+  cleanup();
+  await new Promise((r) => setTimeout(r, 5));
 });
 
 describe('interview room — scoring without video (#325)', () => {
@@ -232,6 +260,8 @@ describe('interview room — scoring without video (#325)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(en.interviewRoom.joinErrorTitle);
     fireEvent.click(scoreWithoutVideo());
     await waitFor(() => expect(screen.queryByTestId('daily-provider')).toBeNull());
+    // JoinErrorPanel destroys first; CallStateBridge's unmount cleanup sees isDestroyed() and skips.
+    await new Promise((r) => setTimeout(r, 5));
     expect(destroy).toHaveBeenCalledTimes(1);
 
     expect(within(firstCompetency()).getByRole('radio', { name: star(4) })).toHaveAttribute('aria-checked', 'true');
@@ -286,16 +316,135 @@ describe('interview room — scoring without video (#325)', () => {
   });
 });
 
-describe('isVideoInterviewType', () => {
+describe('interview room — live-call safety and closed rooms (#325 pass 2)', () => {
+  async function joinCall() {
+    fireEvent.click(screen.getByRole('button', { name: en.interviews.roomJoin }));
+    await waitFor(() => expect(screen.getByTestId('daily-provider')).toBeInTheDocument());
+  }
+
+  it('unmounting the video stage destroys the call object (daily-react has no cleanup of its own)', async () => {
+    const view = renderRoom();
+    await joinCall();
+    view.unmount();
+    await waitFor(() => expect(h.destroyCalls).toBe(1));
+    expect(h.destroyed).toBe(true);
+  });
+
+  it('an interview cancelled mid-call keeps the call (and its controls) and shows a notice', async () => {
+    const view = renderRoom();
+    await joinCall();
+
+    h.status = 'cancelled';
+    view.refetch();
+
+    expect(screen.getByTestId('daily-provider')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(en.interviewRoom.cancelledNotice);
+    expect(isScorecardVisible()).toBe(false);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(h.destroyCalls).toBe(0);
+  });
+
+  it('a failed background refetch with data still present does not tear down the call', async () => {
+    const view = renderRoom();
+    await joinCall();
+
+    h.queryError = { message: 'refetch failed' };
+    view.refetch();
+
+    expect(screen.getByTestId('daily-provider')).toBeInTheDocument();
+    expect(screen.queryByText(en.interviews.couldNotLoadInterview)).toBeNull();
+    expect(isScorecardVisible()).toBe(true);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(h.destroyCalls).toBe(0);
+  });
+
+  it.each(['video', 'onsite'])('a no_show %s interview gets the closed notice: no scorecard, no join', (type) => {
+    h.type = type;
+    h.status = 'no_show';
+    const mint = vi.fn();
+    h.mutateAsync = mint;
+    renderRoom();
+
+    expect(screen.getByRole('status')).toHaveTextContent(en.interviewRoom.closedNotice);
+    expect(isScorecardVisible()).toBe(false);
+    expect(screen.queryByRole('button', { name: en.interviews.roomJoin })).toBeNull();
+    expect(mint).not.toHaveBeenCalled();
+  });
+
+  it('sequence guard: a createVideoRoom that resolves after leaving to scoring is ignored', async () => {
+    h.join = () => Promise.reject(Object.assign(new Error('blocked'), { name: 'EvalError' }));
+    const mint = vi.fn().mockResolvedValueOnce({ url: 'https://tims.daily.co/room', token: 'tok1' });
+    let resolveLate: (v: { url: string; token: string }) => void = () => undefined;
+    mint.mockImplementationOnce(() => new Promise((r) => (resolveLate = r)));
+    h.mutateAsync = mint;
+    renderRoom();
+
+    await joinCall();
+    await screen.findByRole('alert');
+    // Retry re-mints a token (left pending), then the evaluator leaves for scoring.
+    fireEvent.click(screen.getByRole('button', { name: en.interviewRoom.joinRetry }));
+    await waitFor(() => expect(mint).toHaveBeenCalledTimes(2));
+    fireEvent.click(scoreWithoutVideo());
+    await waitFor(() => expect(screen.queryByTestId('daily-provider')).toBeNull());
+
+    resolveLate({ url: 'https://tims.daily.co/room', token: 'late' });
+    await new Promise((r) => setTimeout(r, 5));
+
+    // Still scoring: the late token neither re-mounted the call nor set the join state.
+    expect(screen.queryByTestId('daily-provider')).toBeNull();
+    expect(screen.getByRole('button', { name: en.interviewRoom.joinVideoCall })).toBeEnabled();
+    expect(isScorecardVisible()).toBe(true);
+  });
+
+  it('a mode switch moves focus to the panel heading without changing the selected tab', async () => {
+    renderRoom();
+    fireEvent.click(scoreWithoutVideo());
+    fireEvent.click(screen.getByRole('tab', { name: en.interviewRoom.tabCandidate }));
+
+    fireEvent.click(screen.getByRole('button', { name: en.interviewRoom.joinVideoCall }));
+    await waitFor(() => expect(screen.getByTestId('daily-provider')).toBeInTheDocument());
+
+    expect(document.activeElement).toHaveTextContent(en.interviewRoom.panelHeading);
+    expect(screen.getByRole('tab', { name: en.interviewRoom.tabCandidate })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('an onsite interview that already has a Daily room (pre-#325 data) keeps the video lobby', () => {
+    h.type = 'onsite';
+    h.meetingUrl = 'https://tims.daily.co/interview-i1';
+    renderRoom();
+    expect(screen.getByRole('button', { name: en.interviews.roomJoin })).toBeInTheDocument();
+  });
+});
+
+describe('isVideoInterview / isDailyRoomUrl', () => {
   it.each([
-    ['video', true],
-    ['onsite', false],
-    ['phone', false],
-    ['panel', false],
-    ['technical', false],
-    ['cultural', false],
-    ['something-else', false],
-  ])('%s → %s', (type, expected) => {
-    expect(isVideoInterviewType(type)).toBe(expected);
+    [{ type: 'video' }, true],
+    [{ type: 'onsite' }, false],
+    [{ type: 'phone' }, false],
+    [{ type: 'panel' }, false],
+    [{ type: 'technical' }, false],
+    [{ type: 'cultural' }, false],
+    [{ type: 'something-else' }, false],
+    [{ type: 'onsite', meetingUrl: 'https://tims.daily.co/interview-1' }, true],
+    [{ type: 'panel', meetingUrl: 'https://meet.google.com/abc-defg-hij' }, false],
+    [{ type: 'phone', meetingUrl: null }, false],
+  ])('%j → %s', (interview, expected) => {
+    expect(isVideoInterview(interview)).toBe(expected);
+  });
+
+  it.each([
+    ['https://tims.daily.co/room-1', true],
+    ['https://a.b.daily.co/room', true],
+    ['https://daily.co/room', false],
+    ['https://tims.daily.co/', false],
+    ['http://tims.daily.co/room', false],
+    ['https://tims.daily.co.evil.com/room', false],
+    ['https://evildaily.co/room', false],
+    ['https://evil.com/?u=https://tims.daily.co/room', false],
+    ['not a url', false],
+    ['', false],
+    [null, false],
+  ])('%s → %s', (url, expected) => {
+    expect(isDailyRoomUrl(url)).toBe(expected);
   });
 });

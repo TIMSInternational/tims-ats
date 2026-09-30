@@ -3840,6 +3840,9 @@
     "joinVideoCall": "Join the video call",
     "locationValue": "Location or link: {location}",
     "panelHeading": "Interview evaluation",
-    "cancelledNotice": "This interview was cancelled. It can no longer be joined or scored."
+    "cancelledNotice": "This interview was cancelled. It can no longer be joined or scored.",
+    "closedNotice": "This interview is no longer open. It can no longer be joined or scored.",
+    "topBarLabel": "Interview:",
+    "endCall": "End"
   }
 }
