@@ -25,16 +25,20 @@
 # GITHUB_RUN_ID, and TARGET_SHA = the 40-char commit being deployed, in a checkout with full history):
 #   - refuse when $AUTODEPLOY_PAUSED is "true" (a snapshot of PLATFORM_API_AUTODEPLOY_PAUSED, which
 #     the rollback runbook sets BEFORE rolling back and the rollback workflow requires);
-#   - refuse when any rollback-platform-api.yml run is queued / waiting / pending / requested /
-#     in progress;
-#   - refuse when ANY rollback run — whatever its status, including completed or cancelled — was
-#     created at or after THIS deploy run was created. That rollback was requested after this deploy
+#   - refuse when any rollback-platform-api.yml run ON MAIN is queued / waiting / pending / requested /
+#     in progress (a rollback dispatched from another branch is refused by that workflow before it
+#     holds AWS credentials, so it must not block deploys);
+#   - refuse when ANY rollback run on main — whatever its status, including completed or cancelled —
+#     was created at or after THIS deploy run was created. That rollback was requested after this deploy
 #     started, so this deploy is stale by definition: it may have decided before the pause, or the
 #     rollback may already have finished (or been cancelled) while this job waited for the lock;
 #   - if the live image changed since `decide` read it, resolve its tag to a commit: the same commit or
 #     a descendant of TARGET_SHA -> exit 3 (skip); a strict ancestor -> proceed (another pipeline deploy
 #     moved production forward while this one waited; rollbacks are excluded by the checks above);
-#     anything else (unresolvable, diverged) -> refuse. A FORCED manual deploy ($FORCE_OLDER=true,
+#     anything else (unresolvable, diverged) -> refuse. That refusal is NOT a policy against replacing
+#     a diverged image — `decide` overwrites one BY DESIGN. It exists because this run was approved
+#     against a DIFFERENT live state than the one it now finds, so it stands down and the next run
+#     re-decides against what is live. A FORCED manual deploy ($FORCE_OLDER=true,
 #     approved by `decide` against the image it read) refuses on ANY change instead: the operator
 #     forced a regression over a specific image, not over whatever is live now.
 #   Every GitHub query that fails or returns something unexpected is a refusal: an unverifiable
@@ -54,7 +58,7 @@ refuse() {
 }
 
 count_rollbacks() { # count_rollbacks <query-string> <description> — sets N (no subshell, so refuse exits)
-  N="$(gh api "$ROLLBACK_RUNS?$1&per_page=1" --jq '.total_count')" \
+  N="$(gh api "$ROLLBACK_RUNS?branch=main&$1&per_page=1" --jq '.total_count')" \
     || refuse "cannot query rollback runs ($2); refusing to deploy blind."
   [[ "$N" =~ ^[0-9]+$ ]] || refuse "unexpected rollback run count '$N' ($2)."
 }
@@ -112,5 +116,7 @@ if git merge-base --is-ancestor "$TARGET_SHA" "$LIVE_SHA"; then
   exit 3
 fi
 git merge-base --is-ancestor "$LIVE_SHA" "$TARGET_SHA" \
-  || refuse "$CHANGED, and $LIVE_TAG is neither an ancestor nor a descendant of $TARGET_SHA; refusing."
+  || refuse "$CHANGED, and $LIVE_TAG is neither an ancestor nor a descendant of $TARGET_SHA." \
+    "This deploy was decided against a different live image, so it stands down; re-dispatch (or let the" \
+    "next merge) re-decide — a diverged image is then replaced by main, by design."
 echo "preflight ok: production moved forward to $LIVE_TAG (an ancestor of $TARGET_SHA) while this deploy waited."

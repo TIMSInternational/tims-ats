@@ -274,7 +274,8 @@ describe('CD — the platform API deploy workflow', () => {
 
   it('verifies the deployment instead of assuming it worked', () => {
     const s = src();
-    expect(s, 'must health-check after deploying').toMatch(/\/health/);
+    expect(s, 'must readiness-check (DB) after deploying, not just liveness').toContain('"https://$URL/ready"');
+    expect(s, 'the wait must follow the update-service OPERATION').toContain('list-operations');
     expect(s, 'must confirm the env var count survived — the partial-map failure is silent otherwise').toMatch(
       /ENV_AFTER|ENV_BEFORE/,
     );

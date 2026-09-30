@@ -61,6 +61,10 @@ printf '%s\\t%s\\n' "\${FAKE_STATUS:-RUNNING}" "\${FAKE_IMAGE}"
     `#!/usr/bin/env bash
 echo "$*" >> "${ghLog}"
 [ "\${FAKE_GH_FAIL:-}" = 1 ] && exit 1
+# A rollback run that exists only on ANOTHER branch: visible to any query that forgets branch=main.
+if [ -n "\${FAKE_OFFBRANCH_ROLLBACK:-}" ] && [[ "$*" == *"rollback-platform-api.yml/runs?"* ]] && [[ "$*" != *"branch=main&"* ]]; then
+  echo 1; exit 0
+fi
 case "$*" in
   *"actions/runs/${RUN_ID} "*)
     [ "\${FAKE_GH_RUN_FAIL:-}" = 1 ] && exit 1
@@ -151,6 +155,16 @@ describe('apprunner-preflight.sh', () => {
     expect(createdQuery).toBeDefined();
     expect(createdQuery).toContain(`created=%3E%3D${RUN_CREATED}&`);
     expect(createdQuery).not.toContain('status=');
+  });
+
+  it('--deploy ignores rollback runs on other branches (that workflow refuses them before AWS)', () => {
+    const r = run([ARN, img('B'), '--deploy'], { FAKE_OFFBRANCH_ROLLBACK: '1' });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    const queries = readFileSync(ghLog, 'utf8')
+      .split('\n')
+      .filter((l) => l.includes('rollback-platform-api.yml/runs?'));
+    expect(queries.length).toBe(6); // five statuses + created-after
+    for (const q of queries) expect(q).toContain('runs?branch=main&');
   });
 
   it('--deploy fails CLOSED when this run creation time or the created-after count cannot be read', () => {

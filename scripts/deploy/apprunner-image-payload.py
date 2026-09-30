@@ -10,8 +10,14 @@ exact same guard.
 WHY: `aws apprunner update-service` takes a FULL source-configuration map and DROPS every env key
 the map omits. On this service that is 26 keys and 22 live `Platform__*Enabled` flags, so a
 partial or hand-written map takes ~13 production surfaces dark with no error. The payload is
-therefore derived from the LIVE config (describe-service output) and asserted to differ in exactly
-one field: /ImageRepository/ImageIdentifier.
+therefore derived from the LIVE config (describe-service output) by copying it and replacing ONLY
+/ImageRepository/ImageIdentifier.
+
+WHAT THE DIFF CHECK IS (and is not): `after` is a deepcopy of `before` with one assignment, so on the
+current code the structural diff below cannot find anything but that one change. It does NOT verify
+the file the workflow later sends — nothing re-reads payload.json. It is a TRIPWIRE against future
+edits to THIS script (a new field, a normalization, a dropped key), which would make it fire. The
+checks that can fail on today's inputs are the repository, unchanged-image and zero-env-var ones.
 
 Refuses (exit 1, nothing written) when:
   - the payload would differ in anything other than the image identifier;
@@ -72,6 +78,7 @@ def main() -> None:
 
     after = copy.deepcopy(before)
     after["ImageRepository"]["ImageIdentifier"] = new_image
+    # Tripwire (see docstring): can only fire if this function is edited to change more than the image.
     diffs = diff(before, after)
 
     ic = after["ImageRepository"].get("ImageConfiguration", {})

@@ -12,7 +12,10 @@ name: Roll back platform API
 #   - the payload is built from the LIVE config by scripts/deploy/apprunner-image-payload.py and must
 #     differ ONLY in /ImageRepository/ImageIdentifier — a partial map would drop env vars and darken
 #     every live Platform__*Enabled surface;
-#   - after the rollout: running image == requested tag, env var count unchanged, GET /health == 200.
+#   - the wait polls the update-service OPERATION (not Service.Status, which reads RUNNING even after
+#     App Runner auto-reverted a failed rollout) and fails on FAILED / ROLLBACK_* / a 15-minute timeout;
+#   - after the rollout: running image == requested tag, env var count unchanged, GET /ready == 200
+#     (bounded, retried; /ready checks the DB, /health is liveness only).
 #
 # NOTE: rolling back the image does NOT roll back the database. If the bad release applied DDL or
 # flipped a flag, handle that separately (see the runbook).
@@ -120,10 +123,16 @@ jobs:
                  --image-ids imageTag="$TAG" \
                  --query 'imageDetails[0].[imageDigest,imagePushedAt]' --output text 2>err.txt)"; then
             cat err.txt
-            echo "::error::Image tag '$TAG' does not exist in $ECR_REPO. Refusing to roll back to it."
-            echo "Recent tags (newest last):"
-            aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPO" \
-              --query 'sort_by(imageDetails,&imagePushedAt)[-10:].[imageTags[0],imagePushedAt]' --output text || true
+            # Both outcomes refuse; the message says WHICH, so an IAM or network fault mid-incident is
+            # not misread as "wrong tag".
+            if grep -q 'ImageNotFoundException' err.txt; then
+              echo "::error::Image tag '$TAG' does not exist in $ECR_REPO. Refusing to roll back to it."
+              echo "Recent tags (newest last):"
+              aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPO" \
+                --query 'sort_by(imageDetails,&imagePushedAt)[-10:].[imageTags[0],imagePushedAt]' --output text || true
+            else
+              echo "::error::Cannot read $ECR_REPO to confirm '$TAG' exists (not an ImageNotFoundException — see the AWS error above; check the deploy role's ecr:DescribeImages). Refusing to roll back blind."
+            fi
             exit 1
           fi
           echo "found: $FOUND"
@@ -160,22 +169,43 @@ jobs:
           # recorded at its start. A deploy that landed meanwhile means the operator must re-decide.
           bash scripts/deploy/apprunner-preflight.sh "$ARN" "$EXPECTED_IMAGE"
 
-          aws apprunner update-service --region "$AWS_REGION" \
+          # The OperationId is what the wait step polls: Service.Status alone cannot tell a successful
+          # rollout from one App Runner rolled back (both end RUNNING).
+          OP_ID="$(aws apprunner update-service --region "$AWS_REGION" \
             --service-arn "$ARN" --source-configuration file://payload.json \
-            --query 'OperationId' --output text
+            --query 'OperationId' --output text)"
+          echo "$OP_ID" | grep -Eq '^[0-9A-Za-z-]{8,64}$' \
+            || { echo "::error::update-service returned no usable OperationId ('$OP_ID'). Check the service by hand."; exit 1; }
+          echo "update-service started operation $OP_ID"
+          echo "OPERATION_ID=$OP_ID" >> "$GITHUB_ENV"
 
       - name: Wait for the rollout
         run: |
           set -uo pipefail
+          # Polls THE OPERATION this job started, never Service.Status: when a rollout fails its health
+          # check App Runner rolls it back by itself and the service returns to RUNNING on the PREVIOUS
+          # image, so "RUNNING" would report a failed rollout as green. Only SUCCEEDED for OPERATION_ID
+          # is success; FAILED and every ROLLBACK_* state fail the job; 15 minutes without an outcome
+          # fails it too. A failed AWS call is retried, and counts toward that bound.
           for i in $(seq 1 60); do
             sleep 15
-            S="$(aws apprunner describe-service --region "$AWS_REGION" --service-arn "$SERVICE_ARN" \
-                  --query 'Service.Status' --output text)"
-            echo "[$i] $S"
-            [ "$S" = "RUNNING" ] && exit 0
-            case "$S" in CREATE_FAILED|DELETED) echo "::error::Service entered $S"; exit 1;; esac
+            if ! aws apprunner list-operations --region "$AWS_REGION" --service-arn "$SERVICE_ARN" \
+                   --output json > ops.json 2> ops-err.txt; then
+              echo "[$i] list-operations failed: $(cat ops-err.txt)"
+              continue
+            fi
+            S="$(python3 -c 'import json,os; ops=json.load(open("ops.json")).get("OperationSummaryList") or []; print(next((o.get("Status") or "NO_STATUS" for o in ops if o.get("Id") == os.environ["OPERATION_ID"]), "NOT_FOUND"))' 2>/dev/null || echo UNPARSEABLE)"
+            echo "[$i] operation $OPERATION_ID: $S"
+            case "$S" in
+              SUCCEEDED) exit 0 ;;
+              PENDING|IN_PROGRESS|NOT_FOUND|UNPARSEABLE) ;;
+              *)
+                echo "::error::App Runner operation $OPERATION_ID ended $S. The new image is NOT live — App Runner keeps (or restores) the previous one."
+                exit 1
+                ;;
+            esac
           done
-          echo "::error::Timed out waiting for RUNNING"
+          echo "::error::Timed out after 15 minutes waiting for operation $OPERATION_ID to succeed."
           exit 1
 
       - name: Verify the rollback
@@ -189,7 +219,19 @@ jobs:
           GOT_IMAGE="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageIdentifier'])")"
           ENV_AFTER="$(python3 -c "import json;print(len(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")"
           URL="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['ServiceUrl'])")"
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://$URL/health")"
+          # /ready runs the dependency checks (Postgres; Redis when configured) and answers 503 when the
+          # DB is unreachable. /health is liveness only (Program.cs: Predicate = _ => false) and would
+          # pass a pod that cannot reach its database. Each probe is bounded (--max-time), and a few
+          # retries absorb the moment right after the operation reports SUCCEEDED. The API exposes no
+          # build-SHA endpoint, so WHICH image serves traffic rests on the operation outcome above plus
+          # the configured image read here.
+          CODE=000
+          for i in 1 2 3 4 5; do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$URL/ready" || true)"
+            [ "$CODE" = "200" ] && break
+            echo "GET /ready attempt $i -> $CODE"
+            [ "$i" = 5 ] || sleep 6
+          done
 
           {
             echo "### Rollback to \`$TAG\`"
@@ -198,8 +240,9 @@ jobs:
             echo "- reason: $REASON"
             echo "- from: \`$FROM_IMAGE\`"
             echo "- to: \`$GOT_IMAGE\`"
+            echo "- App Runner operation: \`$OPERATION_ID\` SUCCEEDED"
             echo "- env vars: $ENV_AFTER (was $ENV_BEFORE)"
-            echo "- GET /health: $CODE"
+            echo "- GET /ready: $CODE"
             echo
             echo "Deploys stay PAUSED (PLATFORM_API_AUTODEPLOY_PAUSED=true). Keep them paused until the fix is on"
             echo "main, then delete the variable and deploy (runbook: docs/runbooks/production-rollback-and-alerting.md)."
@@ -207,10 +250,10 @@ jobs:
 
           echo "image: $GOT_IMAGE"
           echo "env vars: $ENV_AFTER (was $ENV_BEFORE)"
-          echo "GET /health -> $CODE"
+          echo "GET /ready -> $CODE"
 
           case "$GOT_IMAGE" in *:"$TAG") ;; *) echo "::error::Running image is not $TAG"; exit 1;; esac
           [ "$ENV_AFTER" = "$ENV_BEFORE" ] || { echo "::error::env var count changed: $ENV_BEFORE -> $ENV_AFTER"; exit 1; }
-          [ "$CODE" = "200" ] || { echo "::error::/health returned $CODE"; exit 1; }
+          [ "$CODE" = "200" ] || { echo "::error::/ready returned $CODE"; exit 1; }
 
           echo "Rolled back to $TAG."

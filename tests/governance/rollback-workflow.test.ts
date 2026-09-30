@@ -104,7 +104,8 @@ describe('Rollback — the platform API rollback workflow', () => {
 
   it('verifies the result and records it in the job summary', () => {
     const s = src();
-    expect(s).toContain('/health');
+    expect(s).toContain('"https://$URL/ready"');
+    expect(s).toContain('list-operations');
     expect(s).toMatch(/ENV_AFTER" = "\$ENV_BEFORE/);
     expect(s).toContain('*:"$TAG")');
     expect(s).toContain('GITHUB_STEP_SUMMARY');

@@ -100,7 +100,7 @@ PERMS="$(cat <<JSON
     {
       "Sid": "UpdateOnlyThisService",
       "Effect": "Allow",
-      "Action": ["apprunner:DescribeService", "apprunner:UpdateService"],
+      "Action": ["apprunner:DescribeService", "apprunner:UpdateService", "apprunner:ListOperations"],
       "Resource": "${SERVICE_ARN}"
     },
     {

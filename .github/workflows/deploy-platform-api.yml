@@ -16,9 +16,12 @@ name: Deploy platform API
 # and the FX stale-pin incident carried a recorded remedy — "run runbook A or B" — that was NOT
 # EXECUTABLE for two weeks, because both code paths post-dated the running image.
 #
-# This workflow makes that state unreachable: every merge to main that touches the C# service builds,
-# pushes and deploys it. `scripts/deploy/check-deploy-freshness.sh` (/gate check 21) remains the
-# backstop — a control that lives only inside the thing it guards is not a control.
+# This workflow closes that gap: once `.NET Platform CI` passes on a push to main, the tested commit is
+# built (or its existing image reused), pushed and deployed — UNLESS deploys are paused, production
+# already runs that commit or a newer one, or nothing under the deploy paths below changed since the
+# running image. It is not "every merge deploys": see `decide` for the full rule.
+# `scripts/deploy/check-deploy-freshness.sh` (/gate check 21) remains the backstop — a control that
+# lives only inside the thing it guards is not a control.
 
 # ── GATED ON THE .NET TESTS (F16, 2026-09-29) ──────────────────────────────────────────────────────
 # This workflow used to fire on `push` to main in PARALLEL with `.NET Platform CI`, so a merge whose
@@ -32,9 +35,14 @@ name: Deploy platform API
 # Path semantics are preserved in two layers: `.NET Platform CI` is itself path-filtered (so this
 # never fires for web-only merges), and because its filter is BROADER than the C# service
 # (packages/db, scripts/**, ...), `decide` additionally diffs the tested commit against the RUNNING
-# image's commit and skips when nothing under services/Tims.Platform (or this file) changed.
+# image's commit and skips when nothing changed under ANY of the three deploy paths:
+#   services/Tims.Platform, .github/workflows/deploy-platform-api.yml,
+#   scripts/deploy/apprunner-image-payload.py.
 #
-# `workflow_dispatch` remains the manual escape hatch (reason required, recorded in the job summary).
+# `workflow_dispatch` remains the manual escape hatch (non-blank reason required, recorded in the job
+# summary). It does NOT bypass the tests: `target` refuses unless `.NET Platform CI` has a SUCCESSFUL
+# push-triggered run on the exact commit being dispatched (main's tip). A tip that .NET CI never ran on
+# (e.g. a web-only merge) therefore cannot be dispatched until a CI-path commit lands on top of it.
 # Roll BACK with `rollback-platform-api.yml`, never by dispatching this against an old commit.
 on:
   workflow_run:
@@ -93,14 +101,20 @@ on:
 # ONE DECISION RULE for automatic and manual deploys (Codex round 4, 2026-09-29) — see `decide`:
 # same commit -> skip; production runs a NEWER commit -> skip (automatic) or refuse unless
 # `force_older: true` (manual; recorded in the job summary); production runs an OLDER or a DIVERGED
-# commit -> deploy. Both paths only ever deploy a commit on main, so replacing a diverged image restores
-# main rather than regressing it. Besides that NEWER case, the only asymmetry: the automatic path also skips when nothing under
-# services/Tims.Platform changed; a manual dispatch deploys regardless. If the live image changes while
-# a FORCED deploy waits, the preflight refuses instead of skipping, so the operator re-decides.
-# The preflight also refuses when the live image moved WHILE WAITING to a diverged or unresolvable
-# commit: pipeline deploys only install main commits and rollbacks are excluded, so that is an
-# out-of-band change, and a human should look before it is overwritten. That is a change-while-waiting
-# guard, not a second decision rule.
+# commit -> deploy.
+#
+# A DIVERGED LIVE IMAGE IS OVERWRITTEN BY DESIGN (owner decision). Both paths only ever deploy a commit
+# on main, so replacing an image built from a commit off main's history restores main. Anything that
+# exists ONLY in the diverged image (a hotfix built from a side branch, say) is DISCARDED by the deploy;
+# if it must survive, land it on main first. The summary names the replaced image.
+#
+# Besides that NEWER case, the only asymmetry: the automatic path also skips when nothing under the three
+# deploy paths above changed; a manual dispatch deploys regardless. If the live image changes while a
+# FORCED deploy waits, the preflight refuses instead of skipping, so the operator re-decides.
+# The preflight also refuses when the live image moved WHILE WAITING (between `decide` and the lock) to a
+# diverged or unresolvable commit. That is NOT a second divergence rule: `decide` approved this deploy
+# against a DIFFERENT live state, so the run stands down and the next run re-decides against the new one
+# (and, by the rule above, will overwrite a diverged image).
 permissions:
   id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
   contents: read
@@ -137,16 +151,31 @@ jobs:
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
           DISPATCH_SHA: ${{ github.sha }}
           DISPATCH_REF: ${{ github.ref }}
+          REASON: ${{ inputs.reason }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then
             [ "$DISPATCH_REF" = "refs/heads/main" ] \
               || { echo "::error::Manual deploys run from main only (got $DISPATCH_REF)."; exit 1; }
+            [ -n "$(echo "$REASON" | tr -d '[:space:]')" ] \
+              || { echo "::error::A non-blank reason is required for a manual deploy."; exit 1; }
             SHA="$DISPATCH_SHA"
           else
             SHA="$TESTED_SHA"
           fi
           echo "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::Not a commit SHA: '$SHA'"; exit 1; }
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # A manual dispatch must not bypass the .NET tests: require a SUCCESSFUL push-triggered
+            # `.NET Platform CI` run on this exact commit. A failed query is a refusal, not a pass.
+            N="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/dotnet-platform.yml/runs?head_sha=$SHA&event=push&status=success&per_page=1" --jq '.total_count')" \
+              || { echo "::error::Cannot query .NET Platform CI runs for $SHA; refusing to deploy untested."; exit 1; }
+            echo "$N" | grep -Eq '^[0-9]+$' || { echo "::error::Unexpected .NET Platform CI run count '$N'."; exit 1; }
+            [ "$N" -gt 0 ] || {
+              echo "::error::.NET Platform CI has no successful push run on $SHA. A manual deploy only ships a commit the C# tests passed on."
+              exit 1
+            }
+          fi
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
@@ -376,33 +405,54 @@ jobs:
 
           # `update-service` takes a FULL source-configuration map. A partial one DROPS every env key
           # it omits — which would darken the 22 live flags and take ~13 production surfaces offline.
-          # So the payload is derived from the live config and asserted to differ in exactly one field
-          # (CHANGED /ImageRepository/ImageIdentifier) by the shared guard below. It runs AFTER
-          # the preflight: when production already runs this image it refuses (nothing to change), and
-          # that case must reach the preflight's exit-3 skip first. The rollback workflow
-          # runs the SAME script, so both directions pass through one tested check.
+          # So the payload is the live config copied with ONLY the image replaced (the script's
+          # structural diff is a tripwire against future edits to it, not a check of this call — see
+          # its docstring). It also refuses a zero-env-var config, an unchanged image and a different
+          # repository. It runs AFTER the preflight: an unchanged image must reach the preflight's
+          # exit-3 skip first. The rollback workflow runs the SAME script.
           python3 scripts/deploy/apprunner-image-payload.py live.json "$REGISTRY/$ECR_REPO:$TAG" payload.json
 
           echo "ENV_BEFORE=$(python3 -c "import json;print(len(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")" >> "$GITHUB_ENV"
           echo "SERVICE_ARN=$ARN" >> "$GITHUB_ENV"
 
-          aws apprunner update-service --region "$AWS_REGION" \
+          # The OperationId is what the wait step polls: Service.Status alone cannot tell a successful
+          # rollout from one App Runner rolled back (both end RUNNING).
+          OP_ID="$(aws apprunner update-service --region "$AWS_REGION" \
             --service-arn "$ARN" --source-configuration file://payload.json \
-            --query 'OperationId' --output text
+            --query 'OperationId' --output text)"
+          echo "$OP_ID" | grep -Eq '^[0-9A-Za-z-]{8,64}$' \
+            || { echo "::error::update-service returned no usable OperationId ('$OP_ID'). Check the service by hand."; exit 1; }
+          echo "update-service started operation $OP_ID"
+          echo "OPERATION_ID=$OP_ID" >> "$GITHUB_ENV"
 
       - name: Wait for the rollout
         if: steps.update.outputs.skipped != 'true'
         run: |
           set -uo pipefail
+          # Polls THE OPERATION this job started, never Service.Status: when a rollout fails its health
+          # check App Runner rolls it back by itself and the service returns to RUNNING on the PREVIOUS
+          # image, so "RUNNING" would report a failed rollout as green. Only SUCCEEDED for OPERATION_ID
+          # is success; FAILED and every ROLLBACK_* state fail the job; 15 minutes without an outcome
+          # fails it too. A failed AWS call is retried, and counts toward that bound.
           for i in $(seq 1 60); do
             sleep 15
-            S="$(aws apprunner describe-service --region "$AWS_REGION" --service-arn "$SERVICE_ARN" \
-                  --query 'Service.Status' --output text)"
-            echo "[$i] $S"
-            [ "$S" = "RUNNING" ] && exit 0
-            case "$S" in CREATE_FAILED|DELETED) echo "::error::Service entered $S"; exit 1;; esac
+            if ! aws apprunner list-operations --region "$AWS_REGION" --service-arn "$SERVICE_ARN" \
+                   --output json > ops.json 2> ops-err.txt; then
+              echo "[$i] list-operations failed: $(cat ops-err.txt)"
+              continue
+            fi
+            S="$(python3 -c 'import json,os; ops=json.load(open("ops.json")).get("OperationSummaryList") or []; print(next((o.get("Status") or "NO_STATUS" for o in ops if o.get("Id") == os.environ["OPERATION_ID"]), "NOT_FOUND"))' 2>/dev/null || echo UNPARSEABLE)"
+            echo "[$i] operation $OPERATION_ID: $S"
+            case "$S" in
+              SUCCEEDED) exit 0 ;;
+              PENDING|IN_PROGRESS|NOT_FOUND|UNPARSEABLE) ;;
+              *)
+                echo "::error::App Runner operation $OPERATION_ID ended $S. The new image is NOT live — App Runner keeps (or restores) the previous one."
+                exit 1
+                ;;
+            esac
           done
-          echo "::error::Timed out waiting for RUNNING"
+          echo "::error::Timed out after 15 minutes waiting for operation $OPERATION_ID to succeed."
           exit 1
 
       - name: Verify the deployment
@@ -416,22 +466,35 @@ jobs:
           GOT_IMAGE="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageIdentifier'])")"
           ENV_AFTER="$(python3 -c "import json;print(len(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")"
           URL="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['ServiceUrl'])")"
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://$URL/health")"
+          # /ready runs the dependency checks (Postgres; Redis when configured) and answers 503 when the
+          # DB is unreachable. /health is liveness only (Program.cs: Predicate = _ => false) and would
+          # pass a pod that cannot reach its database. Each probe is bounded (--max-time), and a few
+          # retries absorb the moment right after the operation reports SUCCEEDED. The API exposes no
+          # build-SHA endpoint, so WHICH image serves traffic rests on the operation outcome above plus
+          # the configured image read here.
+          CODE=000
+          for i in 1 2 3 4 5; do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$URL/ready" || true)"
+            [ "$CODE" = "200" ] && break
+            echo "GET /ready attempt $i -> $CODE"
+            [ "$i" = 5 ] || sleep 6
+          done
 
           echo "image: $GOT_IMAGE"
           echo "env vars: $ENV_AFTER (was $ENV_BEFORE)"
-          echo "GET /health -> $CODE"
+          echo "GET /ready -> $CODE"
 
           case "$GOT_IMAGE" in *:"$TAG") ;; *) echo "::error::Running image is not $TAG"; exit 1;; esac
           [ "$ENV_AFTER" = "$ENV_BEFORE" ] || { echo "::error::env var count changed: $ENV_BEFORE -> $ENV_AFTER"; exit 1; }
-          [ "$CODE" = "200" ] || { echo "::error::/health returned $CODE"; exit 1; }
+          [ "$CODE" = "200" ] || { echo "::error::/ready returned $CODE"; exit 1; }
 
           echo "Deployed $TAG. Production is running main."
           {
             echo "### Deployed \`$TAG\`"
             echo
             echo "- image: \`$GOT_IMAGE\`"
+            echo "- App Runner operation: \`$OPERATION_ID\` SUCCEEDED"
             echo "- env vars: $ENV_AFTER (was $ENV_BEFORE)"
-            echo "- GET /health: $CODE"
+            echo "- GET /ready: $CODE"
             echo "- to undo: run **Roll back platform API** with the previous tag (docs/runbooks/production-rollback-and-alerting.md)"
           } >> "$GITHUB_STEP_SUMMARY"
