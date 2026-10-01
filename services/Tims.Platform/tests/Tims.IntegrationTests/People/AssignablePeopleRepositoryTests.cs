@@ -22,7 +22,7 @@ public sealed class AssignablePeopleRepositoryTests(TenantPeopleFixture fixture)
     {
         // interview:update — held (MATRIX) by hr_admin, recruiter, leader, committee; NOT by hrbp (create only).
         var byUpdate = await Repository().ListAsync(
-            Acme, new AssignablePurposeRule("offer", "create", "interview", "update"), null, 50, vacancy: null, CancellationToken.None) ?? [];
+            Acme, new AssignablePurposeRule("offer", "create", "interview", "update"), null, 50, vacancy: null, subjects: null, CancellationToken.None) ?? [];
         Assert.Equal(new[]
         {
             TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin, TenantPeopleFixture.Recruiter,
@@ -31,7 +31,7 @@ public sealed class AssignablePeopleRepositoryTests(TenantPeopleFixture fixture)
 
         // interview:create adds hrbp — so the action, not just the module, is read from the rule.
         var byCreate = await Repository().ListAsync(
-            Acme, new AssignablePurposeRule("offer", "create", "interview", "create"), null, 50, vacancy: null, CancellationToken.None) ?? [];
+            Acme, new AssignablePurposeRule("offer", "create", "interview", "create"), null, 50, vacancy: null, subjects: null, CancellationToken.None) ?? [];
         Assert.Contains(TenantPeopleFixture.Hrbp, byCreate.Select(p => p.Id));
         Assert.DoesNotContain(TenantPeopleFixture.Hrbp, byUpdate.Select(p => p.Id));
     }

@@ -8,7 +8,8 @@ namespace Tims.Application.Audit;
 /// Unlike `IBillingAuditWriter`, entity and action are supplied by the caller. The implementation
 /// scopes the INSERT to the event's organization under forced RLS, including for platform-owner
 /// events targeting another organization. A lost security-audit row must NEVER fail the caller's
-/// request — every implementation must swallow its own failures.
+/// request — every implementation must swallow its own failures — but it must not be lost silently or
+/// cheaply either (#181): retry transient faults, and report a final loss at ERROR level.
 /// </summary>
 public interface ISecurityEventWriter
 {

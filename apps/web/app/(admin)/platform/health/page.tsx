@@ -54,7 +54,8 @@ export default function PlatformHealthPage() {
 
   const services = data?.services ?? [];
   const overall = data?.overall ?? 'unmonitored';
-  const recentErrors = data?.recentErrors ?? [];
+  // null = the feed could not be read (DB down) — shown as unavailable, never as "no errors".
+  const recentErrors = data?.recentErrors ?? null;
   const stats = data?.stats;
 
   if (isLoading) {
@@ -112,7 +113,7 @@ export default function PlatformHealthPage() {
               </svg>
             </div>
             <div>
-              <p className="text-[18px] font-bold text-[#1F114C]">{stats.userCount}</p>
+              <p className="text-[18px] font-bold text-[#1F114C]">{stats.userCount ?? '—'}</p>
               <p className="text-[10px] text-[#8B8B8B]">{t.health.totalUsers}</p>
             </div>
           </div>
@@ -129,8 +130,8 @@ export default function PlatformHealthPage() {
               </svg>
             </div>
             <div>
-              <p className="text-[18px] font-bold text-[#1F114C]">{stats.orgCount}</p>
-              <p className="text-[10px] text-[#8B8B8B]">Organizaciones</p>
+              <p className="text-[18px] font-bold text-[#1F114C]">{stats.orgCount ?? '—'}</p>
+              <p className="text-[10px] text-[#8B8B8B]">{t.health.organizations}</p>
             </div>
           </div>
           <div className="bg-white rounded-xl px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center gap-3">
@@ -146,7 +147,7 @@ export default function PlatformHealthPage() {
               </svg>
             </div>
             <div>
-              <p className="text-[18px] font-bold text-green-600">{stats.loginsToday}</p>
+              <p className="text-[18px] font-bold text-green-600">{stats.loginsToday ?? '—'}</p>
               <p className="text-[10px] text-[#8B8B8B]">{t.health.loginsToday}</p>
             </div>
           </div>
@@ -163,7 +164,7 @@ export default function PlatformHealthPage() {
               </svg>
             </div>
             <div>
-              <p className="text-[18px] font-bold text-[#1F114C]">{stats.auditLogsToday}</p>
+              <p className="text-[18px] font-bold text-[#1F114C]">{stats.auditLogsToday ?? '—'}</p>
               <p className="text-[10px] text-[#8B8B8B]">{t.health.eventsToday}</p>
             </div>
           </div>
@@ -176,13 +177,13 @@ export default function PlatformHealthPage() {
           const config = statusConfig[service.status as ServiceStatus] || statusConfig.unmonitored;
           return (
             <div
-              key={service.name}
+              key={service.id}
               className={`bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] ${config.ring || ''}`}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${config.dot}`} />
-                  <span className="text-[13px] font-semibold text-[#1F114C]">{service.name}</span>
+                  <span className="text-[13px] font-semibold text-[#1F114C]">{t.health.serviceNames[service.id]}</span>
                 </div>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[9px] font-semibold ${config.badge} ${config.badgeText}`}
@@ -193,11 +194,11 @@ export default function PlatformHealthPage() {
               <div className="space-y-2">
                 {service.metrics?.map((metric, idx) => (
                   <div key={idx} className="flex justify-between">
-                    <span className="text-[11px] text-[#8B8B8B]">{metric.label}</span>
+                    <span className="text-[11px] text-[#8B8B8B]">{t.health.metricLabels[metric.id]}</span>
                     <span
                       className={`text-[12px] font-medium ${'color' in metric && metric.color ? METRIC_COLORS[metric.color] || 'text-[#1F114C]' : 'text-[#1F114C]'}`}
                     >
-                      {metric.value}
+                      {metric.value ?? t.health.notAvailable}
                     </span>
                   </div>
                 ))}
@@ -246,7 +247,11 @@ export default function PlatformHealthPage() {
             </a>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0 space-y-2.5">
-            {recentErrors.length > 0 ? (
+            {recentErrors === null ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-[12px] text-[#8B8B8B] text-center">{t.health.recentErrorsUnavailable}</p>
+              </div>
+            ) : recentErrors.length > 0 ? (
               recentErrors.map((error) => {
                 return (
                   <div

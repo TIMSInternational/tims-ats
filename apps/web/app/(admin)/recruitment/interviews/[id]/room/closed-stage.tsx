@@ -8,9 +8,9 @@ interface ClosedStageProps {
 
 /**
  * An interview whose status is not open (cancelled, no_show, or anything else
- * outside ROOM_STATUSES) can be neither joined nor scored from the room. This is
- * a UI guard only: interview.submitScorecard does not yet refuse such
- * interviews server-side (#327).
+ * outside ROOM_STATUSES) can be neither joined nor scored from the room. The
+ * server also refuses scorecards for `cancelled` and `no_show` interviews
+ * (interview.submitScorecard, #327); any other non-room status is a UI guard only.
  */
 export function ClosedStage({ candidateName, subtitle, message }: ClosedStageProps) {
   return (

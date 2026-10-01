@@ -1,4 +1,5 @@
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
+import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { candidateConsentRepository } from './candidate-consent.repository';
 
@@ -226,17 +227,23 @@ export const candidateRepository = {
       };
     }
 
+    const where: Prisma.CandidateWhereInput = {
+      AND: [
+        { organizationId: orgId, isActive: true, deletedAt: null },
+        scopeWhere as Prisma.CandidateWhereInput,
+        filterClause,
+      ],
+    };
+    const cursorLive = await cursorRowMatches(cursor, (id) =>
+      db.candidate.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+    );
+    if (!cursorLive) {
+      return [];
+    }
     return db.candidate.findMany({
-      where: {
-        AND: [
-          { organizationId: orgId, isActive: true, deletedAt: null },
-          scopeWhere as Prisma.CandidateWhereInput,
-          filterClause,
-        ],
-      },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: 'desc' },
+      where,
+      ...cursorPageArgs(limit, cursor),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: buildCandidateListSelect(appScopeWhere, visibleFit),
     });
   },
@@ -346,6 +353,25 @@ export const candidateRepository = {
     return db.candidateDocument.findFirst({
       where: { id: documentId, organizationId: orgId },
       select: documentSelect,
+    });
+  },
+
+  // The CV document already recorded for this candidate + uploaded object key, if any —
+  // public apply records it unparsed in the application transaction; processing reuses it,
+  // and a retry never duplicates the row or the AI call.
+  async findCvDocumentByKey(orgId: string, candidateId: string, fileUrl: string) {
+    return db.candidateDocument.findFirst({
+      where: { organizationId: orgId, candidateId, type: 'cv', fileUrl },
+      select: { id: true, parsedData: true, fileSize: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  },
+
+  // Backfills the size of a CV row recorded before its object was fetched (public apply).
+  async setDocumentFileSize(orgId: string, documentId: string, fileSize: number) {
+    await db.candidateDocument.updateMany({
+      where: { id: documentId, organizationId: orgId },
+      data: { fileSize },
     });
   },
 

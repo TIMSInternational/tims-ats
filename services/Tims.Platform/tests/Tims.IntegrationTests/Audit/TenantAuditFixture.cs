@@ -164,9 +164,12 @@ public sealed class TenantAuditFixture : IAsyncLifetime
           ('d0000000-0000-0000-0000-000000000010','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-01'),
           ('d0000000-0000-0000-0000-000000000011','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-02'),
           ('d0000000-0000-0000-0000-000000000012','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-02'),
+          -- 13, 16 and 17 share a created_at, so pages that split them compare the TS and C# (created_at, id) tie order (#318).
           ('d0000000-0000-0000-0000-000000000013','11111111-1111-1111-1111-111111111111','cross-page','cross-page','cross-page','2026-09-01'),
           ('d0000000-0000-0000-0000-000000000014','11111111-1111-1111-1111-111111111111','cross-page','cross-page','cross-page','2026-09-02'),
-          ('d0000000-0000-0000-0000-000000000015','11111111-1111-1111-1111-111111111111','cross-page','cross-page','cross-page','2026-09-03');
+          ('d0000000-0000-0000-0000-000000000015','11111111-1111-1111-1111-111111111111','cross-page','cross-page','cross-page','2026-09-03'),
+          ('d0000000-0000-0000-0000-000000000016','11111111-1111-1111-1111-111111111111','cross-page','cross-page','cross-page','2026-09-01'),
+          ('d0000000-0000-0000-0000-000000000017','11111111-1111-1111-1111-111111111111','cross-page','cross-page','cross-page','2026-09-01');
         UPDATE audit_logs SET user_id = actor_id, entity_id = 'record-1',
           changes = '{"before":{"status":"old"},"after":{"status":"new"}}',
           metadata = '{"source":"test"}', ip_address = '127.0.0.1', user_agent = 'audit-fixture'

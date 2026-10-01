@@ -1,8 +1,15 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n';
-import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
+import { formatDate } from '../../../../../lib/format-utils';
 import type { VacancyDetail } from '../../../../../lib/trpc-types';
+import { MarkdownText } from '../../../../../components/markdown-text';
+import {
+  enumLabel,
+  formatPortalSalary,
+  parsePortalSalary,
+} from '../../../../(portal)/careers/[orgSlug]/_lib/vacancy-display';
+import { positionCountLabel } from '../create-modal.helpers';
 
 interface GeneralInfoProps {
   vacancy: VacancyDetail;
@@ -22,22 +29,16 @@ const PRIORITY_DOTS: Record<string, string> = {
   urgent: 'bg-[#DD0C15]',
 };
 
-const REMOTE_LABELS: Record<string, string> = {
-  onsite: 'Presencial',
-  remote: 'Remoto',
-  hybrid: 'Hibrido',
-};
-
 export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
-  const salary = v.salary as { min?: number; max?: number; currency?: string; period?: string } | null;
-  const salaryCurrency = salary?.currency ?? 'COP';
-  const salaryText = salary
-    ? `${salary.min ? formatCurrency(salary.min, salaryCurrency) : '—'} – ${salary.max ? formatCurrency(salary.max, salaryCurrency) : '—'} / ${salary.period === 'yearly' ? t.vacancies.yearly : t.vacancies.monthly}`
-    : '—';
+  // Same formatter as the careers portal (#301/#311): currency code + the STORED period only — a salary
+  // with no period (seed-demo) or an unknown one shows none instead of a fabricated "/ month".
+  const salary = parsePortalSalary(v.salary);
+  const salaryText = salary ? formatPortalSalary(salary, locale, t.portal) : '—';
 
-  const locationText = [v.location, v.remotePolicy ? REMOTE_LABELS[v.remotePolicy] : null].filter(Boolean).join(' (') + (v.remotePolicy ? ')' : '');
+  const remoteLabel = enumLabel(v.remotePolicy, t.portal.remotePolicies);
+  const locationText = v.location && remoteLabel ? `${v.location} (${remoteLabel})` : (v.location ?? remoteLabel ?? '');
 
   const priorityLabels: Record<string, string> = {
     low: t.vacancies.priorityLow,
@@ -51,7 +52,7 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
     { label: t.vacancies.company, value: v.company?.name ?? '—' },
     { label: t.vacancies.department, value: v.unit?.name ?? '—' },
     { label: t.vacancies.location, value: locationText || '—' },
-    { label: t.vacancies.contractType, value: v.contractType ?? '—' },
+    { label: t.vacancies.contractType, value: enumLabel(v.contractType, t.portal.contractTypes) ?? '—' },
     { label: t.vacancies.salaryBand, value: salaryText },
     {
       label: t.vacancies.hiringManager,
@@ -69,7 +70,7 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
       ),
     },
     { label: t.vacancies.openDate, value: formatDate(v.createdAt) },
-    { label: t.vacancies.positions, value: `${v.positions} vacante${v.positions > 1 ? 's' : ''}` },
+    { label: t.vacancies.positions, value: positionCountLabel(v.positions, t.vacancies) },
   ];
 
   return (
@@ -87,9 +88,11 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
       {v.description && (
         <div className="mt-4 pt-4 border-t border-[#F6F6F6]">
           <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.description}</p>
-          <div className="bg-[#F6F6F6] rounded-lg p-3 text-[12px] text-[#585858] leading-relaxed whitespace-pre-wrap">
-            {v.description}
-          </div>
+          {/* Safe Markdown subset rendered as React elements: no HTML string is ever produced. */}
+          <MarkdownText
+            source={v.description}
+            className="bg-[#F6F6F6] rounded-lg p-3 text-[12px] text-[#585858] leading-relaxed space-y-2"
+          />
         </div>
       )}
     </div>

@@ -603,6 +603,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         all allowlisted in the candidate-consent group above. Main 202 (after #310) + 3 = 205.
     //         205 → 206 (#312 review): the dark staff list GET /tenant/data-subject-requests, allowlisted in the
     //         same candidate-consent group. 205 + 1 = 206.
+    //         Re-derived after merging main: #331/#332/#334/#337/#339 added no deployed routes, so
+    //         main 202 (after #339) + #345's +4 = 206.
     expect(deployed.size).toBe(206);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
@@ -680,6 +682,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 106 → 109 (#312/#313): the candidate consent surface's three dark routes. Main 106 (after #310) + 3 = 109.
     // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
     //   the group count below is unchanged. 109 + 1 = 110.
+    //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
     expect(allowlistNormalised.length).toBe(110);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
@@ -701,7 +704,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 13 → 14 (PR #304): the tenant people directory is a C#-only picker read with no tRPC twin.
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
     // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
-    //   candidate session, a principal the by-role harness cannot express.
+    //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
     expect(UNREGISTERED_ALLOWLIST.length, 'the sixteen documented gap categories').toBe(16);
   });
 });

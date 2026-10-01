@@ -124,10 +124,10 @@ Recruiter pickers (interview evaluators, vacancy/offer approvers) read tRPC `use
 call (no `user:read`). PR #304 adds a DARK C# `GET /tenant/people/assignable` authorized on each picker's mutation
 permission (the whole-directory evaluator purpose additionally needs org-wide scope), plus the offer-flow fixes
 (recruiters may request approval and send an APPROVED offer once; re-sending a sent offer and sending after a
-post-submission candidate edit stay `offer:update`-only). Remaining before any prod flip: parity registration
-(recruiter + grant fixture), C# flag `Platform__TenantPeopleDirectoryEnabled` then web flag
-`NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP`, the 12 other `UserPicker` call sites still on `user.list`, and
-the `roles.is_active` kernel gap. See `architecture/csharp-migration/tenant-people-directory.md`.
+post-submission candidate edit stay `offer:update`-only). **Both flags are ON in production since 2026-10-01**
+(C# `Platform__TenantPeopleDirectoryEnabled`, web `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP`), and since
+#337 every `UserPicker` call site passes a `purpose` (none reads `user.list`). Still remaining: parity registration
+(recruiter + grant fixture) and the `roles.is_active` kernel gap. See `architecture/csharp-migration/tenant-people-directory.md`.
 
 ## Tenant audit migration update — 2026-09-14 (PR #257, not deployed)
 
@@ -541,8 +541,8 @@ dashboard.ts` wrapper shipped 2026-08-17 behind `NEXT_PUBLIC_DASHBOARD_READ_VIA_
     policy + a user GUC `TenantScope` does not set — a step-5/6 blocker; flipping the read flag before that
     would empty the platform notifications page. Parity registration also cannot be grant-fixture-only:
     nine procedures consult no grant, so the surface needs per-role notification ROWS (empty fixtures would
-    compare vacuously). TS defects reproduced not fixed: `list` loses one row per page boundary (#246),
-    `create`/`bulkCreate` accept an un-validated target userId (#248); 107 typeless `format: date-time`
+    compare vacuously). TS defects reproduced not fixed: `create`/`bulkCreate` accept an un-validated target userId (#248).
+    (`list`'s page-boundary row loss, #246, was reproduced too and is now FIXED in both stacks.) 107 typeless `format: date-time`
     OpenAPI properties are pre-existing (#247). Step 4's OTHER half — the
     `apps/web/lib/platform-api/notification.ts` wrapper (7 of 11 procedures have live FE call sites) — is
     its own PR by the #241 precedent. See

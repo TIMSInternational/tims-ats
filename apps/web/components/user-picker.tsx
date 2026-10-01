@@ -32,12 +32,12 @@ interface UserPickerProps {
   loadingLabel: string;
   emptyLabel: string;
   /**
-   * When set, the list comes from the tenant assignable-people directory for this purpose (C# behind
-   * NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP, tRPC user.list otherwise) — so a recruiter without
-   * user:read can still pick evaluators and approvers once the directory is live. Eligibility is
-   * permission-based, not scope-aware (except
-   * 'vacancy_approver' with `vacancyId`, which the C# directory filters by scope): the submit mutation
-   * re-checks scope and callers must show its error.
+   * The list comes from the tenant assignable-people directory for this purpose (C# when
+   * NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP is on — it is in production — tRPC user.list otherwise),
+   * gated on the permission of the mutation the picker feeds, so roles without user:read can pick people.
+   * Approver eligibility is permission-based (scope-aware only for 'vacancy_approver' with `vacancyId`);
+   * subject-scoped purposes list a narrow caller's subject set. The submit mutation re-checks scope and
+   * callers must show its error.
    */
   purpose?: AssignablePurpose;
   /** Focus the search box on mount (modals). Inline pickers on a page pass false. Defaults to true. */
@@ -56,8 +56,8 @@ interface PickerSource {
 }
 
 /**
- * Searchable org-user picker. Returns a userId (and the user object) via onSelect on click. Without a
- * `purpose` it is backed by `trpc.user.list` (admin surfaces whose users hold user:read).
+ * Searchable org-user picker. Returns a userId (and the user object) via onSelect on click. Every app call
+ * site passes a `purpose` (#317); without one it falls back to `trpc.user.list`, which needs user:read.
  */
 export function UserPicker({
   excludeIds = [],

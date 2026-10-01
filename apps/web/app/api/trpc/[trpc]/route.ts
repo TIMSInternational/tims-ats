@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { appRouter, verifyImpersonationToken, readImpersonationCookie } from '@tims/api';
 import { createSupabaseServerClient } from '@tims/auth/server';
@@ -233,7 +234,10 @@ const handler = (req: Request) =>
       };
       };
       const ctx = await build();
-      return { ...ctx, aal };
+      // Post-response work (e.g. public-apply CV processing, #314): Next's `after()` runs
+      // the task once the response is sent, within this function's maxDuration.
+      const runAfterResponse = (task: () => Promise<void>) => after(task);
+      return { ...ctx, aal, runAfterResponse };
     },
   });
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import {
@@ -256,23 +257,23 @@ export const assessmentRouter = router({
         ],
       };
 
-      const items = await db.assessmentAssignment.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { completedAt: 'desc' },
-        include: {
-          candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
-          assessmentType: { select: { id: true, name: true, code: true } },
-          result: { select: resultSelect },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.assessmentAssignment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.assessmentAssignment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+            include: {
+              candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+              assessmentType: { select: { id: true, name: true, code: true } },
+              result: { select: resultSelect },
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (items.length > limit) {
-        const extra = items.pop()!;
-        nextCursor = extra.id;
-      }
+      const { items, nextCursor } = takeCursorPage(rows, limit);
 
       // Audit each returned result BEFORE serialization (Promise.all). For a
       // super_admin (includesRaw) a failed audit write fails-closed and aborts.
@@ -344,22 +345,22 @@ export const assessmentRouter = router({
         ],
       };
 
-      const items = await db.assessmentAssignment.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { assignedAt: 'desc' },
-        include: {
-          candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
-          assessmentType: { select: { id: true, name: true, code: true, duration: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.assessmentAssignment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.assessmentAssignment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ assignedAt: 'desc' }, { id: 'desc' }],
+            include: {
+              candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+              assessmentType: { select: { id: true, name: true, code: true, duration: true } },
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (items.length > limit) {
-        const extra = items.pop()!;
-        nextCursor = extra.id;
-      }
+      const { items, nextCursor } = takeCursorPage(rows, limit);
 
       return { items, nextCursor };
     }),
