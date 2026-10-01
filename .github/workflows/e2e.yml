@@ -82,8 +82,24 @@ jobs:
       - name: Run the journeys
         run: pnpm --filter @tims/e2e exec playwright test
 
+      # A FLAKY test (failed, then passed on retry) leaves the job green — and the evidence used to be
+      # uploaded only on job failure, so a deterministic first-attempt failure could never be diagnosed
+      # (#330). playwright.config.ts keeps a trace/screenshot/video only for failed attempts
+      # (retain-on-failure), so a trace.zip under test-results means at least one attempt failed.
+      - name: Detect failed attempts (flaky tests included)
+        id: attempts
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -d e2e/test-results ] && find e2e/test-results -name trace.zip -print -quit | grep -q .; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            n=$(find e2e/test-results -name trace.zip | wc -l | tr -d ' ')
+            echo "::warning title=E2E had failed attempts::$n failed attempt(s) — traces uploaded as the playwright-report artifact, even if a retry passed."
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Collect service logs
-        if: failure()
+        if: ${{ failure() || steps.attempts.outputs.failed == 'true' }}
         run: |
           mkdir -p e2e/.state/logs/containers
           for c in api caddy localstack; do
@@ -93,7 +109,7 @@ jobs:
           rm -f e2e/.state/logs/supabase-start.log e2e/.state/logs/owner-create.json
 
       - name: Upload Playwright report and traces
-        if: failure()
+        if: ${{ failure() || steps.attempts.outputs.failed == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
@@ -103,7 +119,7 @@ jobs:
           retention-days: 14
 
       - name: Upload stack logs
-        if: failure()
+        if: ${{ failure() || steps.attempts.outputs.failed == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: e2e-stack-logs

@@ -375,3 +375,67 @@ describe('guard-prod-ddl.sh — refuses schema mutation against a non-local host
     expect(out).toMatch(/generate ok/);
   });
 });
+
+/**
+ * #328 review (MEDIUM-1): the repository is PUBLIC, so whatever the nightly job prints is public. In CI
+ * (GITHUB_ACTIONS=true) or with SCHEMA_DRIFT_OBJECTS_ONLY=1 the script names changed OBJECTS only and never
+ * echoes a verbatim schema line — a function body changed out of band could carry anything.
+ */
+describe('schema-baseline.sh — objects-only output for public CI logs', () => {
+  function stub(root: string, name: string, lines: string[]): string {
+    const path = join(root, name);
+    writeFileSync(
+      path,
+      '#!/bin/sh\n[ "$1" = "--version" ] && { echo "pg_dump (PostgreSQL) 17.0"; exit 0; }\n' +
+        `cat <<'SQLEOF'\n${lines.join('\n')}\nSQLEOF\n`,
+    );
+    chmodSync(path, 0o755);
+    return path;
+  }
+  const V1 = ['CREATE TABLE public.t (id uuid NOT NULL);'];
+  const V2 = [
+    'CREATE TABLE public.t (id uuid NOT NULL, snuck_in text);',
+    'CREATE FUNCTION public.leaky() RETURNS text',
+    "    AS $$ SELECT 'tok_SECRET_BODY_123' $$;",
+  ];
+
+  for (const [label, env] of [
+    ['SCHEMA_DRIFT_OBJECTS_ONLY=1', { SCHEMA_DRIFT_OBJECTS_ONLY: '1' }],
+    ['GITHUB_ACTIONS=true', { GITHUB_ACTIONS: 'true' }],
+  ] as const) {
+    it(`check under ${label}: exits 1, names the objects, prints no body text`, () => {
+      const root = makeTree(`objects-only-check-${label.replace(/\W/g, '')}`);
+      expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);
+      const { code, out } = run(root, ['check'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v2', V2), ...env });
+      expect(code).toBe(1);
+      expect(out).toMatch(/SCHEMA DRIFT/);
+      expect(out).toMatch(/CREATE TABLE public\.t/);
+      expect(out).toMatch(/CREATE FUNCTION public\.leaky/);
+      expect(out).toMatch(/objects-only/);
+      expect(out).not.toMatch(/snuck_in/);
+      expect(out).not.toMatch(/tok_SECRET_BODY_123/);
+    });
+  }
+
+  it('capture under objects-only mode summarises objects and counts, never body text', () => {
+    const root = makeTree('objects-only-capture');
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);
+    const { code, out } = run(root, ['capture'], {
+      DIRECT_URL: FAKE_URL,
+      PG_DUMP: stub(root, 'v2', V2),
+      SCHEMA_DRIFT_OBJECTS_ONLY: '1',
+    });
+    expect(code).toBe(0);
+    expect(out).toMatch(/\+ CREATE FUNCTION public\.leaky/);
+    expect(out).toMatch(/changed line\(s\) inside object bodies — not printed/);
+    expect(out).not.toMatch(/tok_SECRET_BODY_123/);
+  });
+
+  it('positive control: locally (no CI env) check still prints the verbatim diff', () => {
+    const root = makeTree('objects-only-local');
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);
+    const { code, out } = run(root, ['check'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v2', V2) });
+    expect(code).toBe(1);
+    expect(out).toMatch(/tok_SECRET_BODY_123/);
+  });
+});

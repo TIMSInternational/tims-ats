@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { logger } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // Upstash Redis (production) — falls back to in-memory for local dev
@@ -27,6 +28,41 @@ const LIMITS = {
 } as const;
 
 type RateLimitCategory = keyof typeof LIMITS;
+
+// ---------------------------------------------------------------------------
+// E2E-only ceiling (#330). The Playwright stack (scripts/e2e/up.sh) drives ONE user through several
+// personas and two ordered journeys, so a persona's per-user window also holds every request an earlier
+// persona of the same user made — and a Playwright retry re-runs the whole serial journey as the same
+// users. The 100/min query tier was being exhausted by the test harness, not by any product behaviour
+// (TOO_MANY_REQUESTS on pipeline.getBoard / candidate.getById in CI traces).
+//
+// The stack serves the production build, so NODE_ENV is 'production' there — NODE_ENV alone cannot tell
+// it apart from production. The multiplier is therefore honoured only when ALL of these hold:
+//   - TIMS_E2E_RATE_LIMIT_MULTIPLIER is an integer 1..1000;
+//   - NODE_ENV is not 'production', OR the process explicitly marks itself TIMS_E2E_STACK=1;
+//   - VERCEL / VERCEL_ENV are unset or empty. This is DEFENCE IN DEPTH only: it relies on the platform
+//     setting those variables (Vercel does, at build and runtime), so it protects nothing on a host that
+//     does not — the explicit marker above is the real gate;
+// and it scales ONLY the in-memory limiter: the Upstash limiters are built from the raw LIMITS, so a
+// deployment with Upstash configured (production) keeps the fixed limits whatever its env says. Both arms
+// are pinned by tests/ratelimit/e2e-ceiling.test.ts.
+// ---------------------------------------------------------------------------
+export const E2E_RATE_LIMIT_MULTIPLIER_MAX = 1000;
+
+export function resolveRateLimitMultiplier(env: Readonly<Record<string, string | undefined>>): number {
+  const raw = env.TIMS_E2E_RATE_LIMIT_MULTIPLIER;
+  if (raw === undefined || raw === '') return 1;
+  if (env.NODE_ENV === 'production' && env.TIMS_E2E_STACK !== '1') return 1;
+  if (env.VERCEL || env.VERCEL_ENV) return 1;
+  if (!/^[1-9][0-9]{0,3}$/.test(raw)) return 1;
+  return Math.min(Number(raw), E2E_RATE_LIMIT_MULTIPLIER_MAX);
+}
+
+const MEMORY_LIMIT_MULTIPLIER = resolveRateLimitMultiplier(process.env);
+if (MEMORY_LIMIT_MULTIPLIER !== 1) {
+  // Loud on purpose: if this ever appears outside the E2E stack's logs, something is misconfigured.
+  logger.warn({ multiplier: MEMORY_LIMIT_MULTIPLIER }, 'rate-limit: E2E ceiling active (TIMS_E2E_STACK) — in-memory limits scaled');
+}
 
 // ---------------------------------------------------------------------------
 // Upstash limiters (one per category, created lazily)
@@ -91,7 +127,8 @@ function windowToMs(window: string): number {
 }
 
 function checkMemoryRateLimit(identifier: string, category: RateLimitCategory): void {
-  const { requests, window } = LIMITS[category];
+  const { window } = LIMITS[category];
+  const requests = LIMITS[category].requests * MEMORY_LIMIT_MULTIPLIER;
   const windowMs = windowToMs(window);
   const now = Date.now();
   const key = `${category}:${identifier}`;

@@ -55,16 +55,32 @@ on:
   schedule:
     # 07:00 UTC daily — after any overnight deploy, before European working hours.
     - cron: '0 7 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      capture_baseline:
+        description: >-
+          Re-capture the production schema baseline (#328) INSTEAD of running the checks. main only.
+          Uploads the refreshed baseline + regenerated flip-ddl as an artifact; never pushes.
+        type: boolean
+        default: false
 
 # Never let two runs race the same database.
 concurrency:
   group: nightly-db-controls
   cancel-in-progress: false
 
+# Nothing here writes to the repository: the capture job hands its result back as an artifact for a human
+# to review and commit (ddl-governance.md §7 — a baseline is never re-captured without reading the hunks).
+permissions:
+  contents: read
+
 jobs:
   live-checks:
     name: Live DB controls (14, 16, 17)
+    # Every scheduled run, and every manual run that did not ask for a capture.
+    if: ${{ github.event_name == 'schedule' || !inputs.capture_baseline }}
+    # PROD_DIRECT_URL lives in this main-only environment, not at repository level (ddl-governance.md §5).
+    environment: prod-db-controls
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -74,7 +90,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: this job holds the production credential, so no dependency lifecycle script runs
+      # in it. Verified 2026-10-01 on a fresh --ignore-scripts install: tsx (esbuild), pg and the check
+      # scripts all run without them.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       # No `prisma generate`: none of these three need the Prisma CLIENT. Check 17 parses the .prisma
       # schema files as TEXT (scripts/table-ownership.mjs), and 14/16 talk to Postgres directly. Skipping it
@@ -130,6 +149,8 @@ jobs:
           DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
           DATABASE_URL: ${{ secrets.PROD_DIRECT_URL }}
           PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          # PUBLIC repo → public logs: check 16 names changed objects only, never verbatim schema text.
+          SCHEMA_DRIFT_OBJECTS_ONLY: '1'
         run: |
           # NOT `set -e`. Every check must run even if an earlier one fails — the same contract /gate has,
           # for the same reason: one failure must not hide the state of the other two.
@@ -168,6 +189,141 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY"
 
           exit $fail
+
+  # ── #328: re-capture the baseline from CI ─────────────────────────────────────────────────────────────
+  # A developer machine often cannot reach the direct connection at all (#328: db.<ref>.supabase.co did not
+  # resolve — IPv6 only), so `capture` could not run anywhere. This job runs it with the SAME credential,
+  # TLS pinning and pg_dump 17 as check 16 — which is the point: the nightly check diffs exactly what this
+  # job captures. ci_readonly suffices: `pg_dump --schema-only` reads catalogs and takes ACCESS SHARE locks,
+  # which SELECT covers. Check 16 PASSED as ci_readonly on 2026-09-29 (run 36614697689) against the committed
+  # baseline, so a ci_readonly dump has the committed form.
+  #
+  # NB: this repository is PUBLIC, and its artifacts and logs are readable outside the team. The artifact is
+  # a FRESH, NOT-YET-REVIEWED production dump: it can contain anything changed out of band since the last
+  # capture (function bodies, defaults, comments), which is exactly what the reviewer has not read yet. So:
+  # scripts/security/scan-for-credentials.sh must pass before anything is uploaded, logs and the step
+  # summary carry object names / counts only (SCHEMA_DRIFT_OBJECTS_ONLY), and retention is 1 day.
+  #
+  # Output is an ARTIFACT, never a commit (contents: read, persist-credentials: false). Apply it by hand
+  # and read every hunk the object-level summary lists — see the README inside the artifact.
+  capture-baseline:
+    name: Re-capture schema baseline (artifact only, #328)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_baseline }}
+    environment: prod-db-controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Refuse any ref but main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error title=Baseline capture refused::capture runs from main only (got $GITHUB_REF). The baseline must be captured against the code that will be diffed against it."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      # --ignore-scripts: this job holds the production credential, so no dependency lifecycle script runs
+      # in it. Verified 2026-10-01 on a fresh --ignore-scripts install: tsx (esbuild), pg and the check
+      # scripts all run without them.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Fail fast if the credential is absent
+        env:
+          PROD_DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+        run: |
+          if [ -z "$PROD_DIRECT_URL" ]; then
+            echo "::error title=Baseline capture did not run::PROD_DIRECT_URL is not set."
+            exit 1
+          fi
+
+      - name: Refuse a credential that does not require verify-full TLS
+        env:
+          PROD_DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+        run: npx tsx scripts/security/assert-verify-full.ts PROD_DIRECT_URL
+
+      - name: Install PostgreSQL 17 client (pg_dump >= server)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Capture the baseline, regenerate flip-ddl, re-check
+        shell: bash
+        env:
+          PGSSLROOTCERT: scripts/parity/supabase-root-ca.pem
+          PGSSLMODE: verify-full
+          DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.PROD_DIRECT_URL }}
+          PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          # PUBLIC repo → public logs: check 16 names changed objects only, never verbatim schema text.
+          SCHEMA_DRIFT_OBJECTS_ONLY: '1'
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/schema-baseline-recapture"
+          mkdir -p "$out"
+
+          # capture exits 0 or 2 (could not run); -e + pipefail turns 2 into a failed step, never a pass.
+          bash scripts/db/schema-baseline.sh capture | tee "$out/capture-summary.txt"
+
+          # Re-capturing changes the flip-ddl source; regenerate from each file's own `-- Regenerate:` line.
+          bash scripts/db/regenerate-flip-ddl.sh | tee -a "$out/capture-summary.txt"
+
+          # Round-trip: the file just written must diff clean against a fresh dump (exit 1 = drift between
+          # two dumps seconds apart, exit 2 = could not run — both fail the step).
+          bash scripts/db/schema-baseline.sh check
+
+          git diff --stat -- packages/db/baseline services/Tims.Platform/db/flip-ddl | tee "$out/diffstat.txt"
+          git diff --binary -- packages/db/baseline services/Tims.Platform/db/flip-ddl > "$out/schema-baseline-recapture.patch"
+          mkdir -p "$out/files/packages/db/baseline" "$out/files/services/Tims.Platform/db/flip-ddl"
+          cp packages/db/baseline/prod-public-schema.sql "$out/files/packages/db/baseline/"
+          cp services/Tims.Platform/db/flip-ddl/*.sql "$out/files/services/Tims.Platform/db/flip-ddl/"
+          cat > "$out/README.txt" <<EOF
+          Production schema baseline re-capture (#328) — run $GITHUB_RUN_ID, commit $GITHUB_SHA.
+
+          1. READ capture-summary.txt. Every '+'/'-' object it lists is a real production change. If one is
+             not explained by a reviewed change, STOP — docs/architecture/ddl-governance.md section 7.
+          2. Apply on a branch cut from $GITHUB_SHA (or rebase onto it):
+               git apply schema-baseline-recapture.patch
+             (or copy the files/ tree over the repo root).
+          3. npx vitest run tests/db   — the flip-ddl generator test must pass.
+          4. Commit both the baseline and the regenerated flip-ddl files in ONE PR, with the summary in its body.
+          EOF
+
+          # Counts only in the public step summary — never diff lines.
+          added=$(grep -cE '^  \+ ' "$out/capture-summary.txt" || true)
+          removed=$(grep -cE '^  - ' "$out/capture-summary.txt" || true)
+          {
+            echo "## Schema baseline re-capture"
+            echo
+            echo "- changed objects: +$added / -$removed (names in the artifact's capture-summary.txt)"
+            echo "- files changed: $(git diff --name-only -- packages/db/baseline services/Tims.Platform/db/flip-ddl | wc -l | tr -d ' ')"
+            echo
+            echo "_Artifact only (1-day retention) — nothing was committed or pushed. See README.txt in the artifact._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Nothing is uploaded unless this passes. Exit 1 (hit) and exit 2 (could not scan) both fail the job.
+      - name: Refuse to upload credential-shaped content
+        run: bash scripts/security/scan-for-credentials.sh "$RUNNER_TEMP/schema-baseline-recapture"
+
+      - name: Upload the refreshed baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-baseline-recapture
+          path: ${{ runner.temp }}/schema-baseline-recapture
+          if-no-files-found: error
+          retention-days: 1
 
 # NOT RUN HERE, deliberately:
 #   scripts/db/pre-flip-scan.ts — takes table names as arguments and answers "is THIS table safe to flip".
