@@ -25,6 +25,12 @@ import {
   WRITE_ASSESSMENT_TYPES,
   WRITE_ASSESSMENT_TYPE_MARKER,
   WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
+  WRITE_ORG_STRUCTURE,
+  WRITE_ORG_STRUCTURE_UNIT_NAME,
+  WRITE_ORG_STRUCTURE_UNIT_MARKER,
+  WRITE_ORG_STRUCTURE_TEAM_MARKER,
+  WRITE_ORG_STRUCTURE_UNIT_RENAMED,
+  type OrgStructureWriteResolved,
 } from './write-surfaces';
 
 const res: WriteResolved = {
@@ -535,6 +541,10 @@ describe('WRITE_SURFACES registry', () => {
         'succession',
         // F13 / PR #309: greenfield C# authoring, registered at landing rather than allowlisted.
         'assessment-types',
+        // PR #310's org structure, registered 2026-10-01 before the flag is flipped: TWO surfaces behind ONE flag,
+        // split by the grant that authorizes them (structure = organization:*, people = user:*).
+        'tenant-org-structure',
+        'tenant-org-people',
       ].sort(),
     );
   });
@@ -919,5 +929,183 @@ describe('WRITE_SURFACES assessment-types (F13, PR #309)', () => {
     expect(created.expect([{ id: 'X', is_active: true, audits: 1 }])).toBeNull();
     expect(created.expect([{ id: 'X', is_active: true, audits: 0 }])).toContain('audit');
     expect(created.expect([{ id: 'OTHER', is_active: true, audits: 1 }])).toContain('response id');
+  });
+});
+
+describe('WRITE_SURFACES tenant org structure (PR #310)', () => {
+  const structure = WRITE_SURFACES['tenant-org-structure'];
+  const people = WRITE_SURFACES['tenant-org-people'];
+  const r: OrgStructureWriteResolved = {
+    base: 'http://c',
+    orgAId: 'ORG_A',
+    orgBId: 'ORG_B',
+    companyAId: 'CO_A',
+    companyBId: 'CO_B',
+    userIdByRole: { super_admin: 'S', hr_admin: 'H', hrbp: 'B' },
+    putA: 'PUT_A',
+    delA: 'DEL_A',
+    userB: 'USER_B',
+    auditBaseline: { [`hr_admin|team_member_added|${WRITE_ORG_STRUCTURE.teamA}`]: 4 },
+  };
+  const OS = '/tenant/org-structure';
+  const sp = (s: typeof structure, name: string) => s.endpoints.find((e) => e.name === name)!;
+
+  it('two surfaces, ONE flag, together covering all nine write routes exactly once', () => {
+    expect(structure.flag).toBe('Platform__TenantOrgStructureEnabled');
+    expect(people.flag).toBe('Platform__TenantOrgStructureEnabled');
+    const routes = [...structure.endpoints, ...people.endpoints].map((e) => {
+      const generic = e.buildParity(r).path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}|PUT_A|DEL_A/g, '{x}');
+      return `${e.method} ${generic}`;
+    });
+    expect(routes.sort()).toEqual(
+      [
+        `POST ${OS}/business-units`,
+        `PATCH ${OS}/business-units/{x}`,
+        `POST ${OS}/teams`,
+        `PATCH ${OS}/teams/{x}`,
+        `PUT ${OS}/teams/{x}/members/{x}`,
+        `DELETE ${OS}/teams/{x}/members/{x}`,
+        `PUT ${OS}/business-units/{x}/assignees/{x}`,
+        `DELETE ${OS}/business-units/{x}/assignees/{x}`,
+        `PUT ${OS}/users/{x}/business-unit`,
+      ].sort(),
+    );
+  });
+
+  it('structure writes probe with super_admin (the only MATRIX holder) and deny hr_admin AND hrbp at the grant', () => {
+    expect(structure.probeRole).toBe('super_admin');
+    expect(structure.endpoints.map((e) => e.name)).toEqual(['create-business-unit', 'update-business-unit', 'create-team']);
+    for (const e of structure.endpoints) {
+      // hr_admin holds organization:READ only — the doc's "manages assignments but gets 403 on structure".
+      expect(e.expectedByRole, e.name).toEqual({ super_admin: 'allow', hr_admin: 'deny', hrbp: 'deny' });
+      expect(e.rbacDenyStatus, e.name).toBe(403);
+      expect(e.idorDeniedStatuses, e.name).toEqual([404]);
+      expect(e.buildIdor, e.name).toBeDefined();
+    }
+    expect(sp(structure, 'create-business-unit').successStatus).toBe(201);
+    expect(sp(structure, 'create-team').successStatus).toBe(201);
+    expect(sp(structure, 'update-business-unit').successStatus).toBeUndefined(); // 200
+  });
+
+  it('people writes probe with the GRANTED hr_admin (not super_admin) and deny hrbp on every endpoint', () => {
+    expect(people.probeRole).toBe('hr_admin');
+    expect(people.roles).toEqual(['hr_admin', 'hrbp']);
+    expect(people.endpoints.map((e) => e.name)).toEqual([
+      'set-team-leader',
+      'put-team-member',
+      'delete-team-member',
+      'put-unit-assignee',
+      'delete-unit-assignee',
+      'set-user-business-unit',
+    ]);
+    for (const e of people.endpoints) {
+      expect(e.expectedByRole, e.name).toEqual({ hr_admin: 'allow', hrbp: 'deny' });
+      expect(e.rbacDenyStatus, e.name).toBe(403);
+      expect(e.idorDeniedStatuses, e.name).toEqual([404]);
+    }
+    for (const name of ['delete-team-member', 'delete-unit-assignee']) expect(sp(people, name).successStatus, name).toBe(204);
+  });
+
+  it("set-team-leader sends ONLY leaderUserId — any other key moves it onto organization:update and 403s hr_admin", () => {
+    const e = sp(people, 'set-team-leader');
+    expect(e.method).toBe('PATCH');
+    expect(e.buildParity(r)).toEqual({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}`, body: { leaderUserId: 'PUT_A' } });
+    expect(Object.keys(e.buildIdor!(r).body as object)).toEqual(['leaderUserId']);
+    expect(Object.keys(e.extraProbes![0].build(r).body as object)).toEqual(['leaderUserId']);
+    // endpoints[0] is what cmdVerifyWrite's mounted-route preflight probes with no token.
+    expect(people.endpoints[0]).toBe(e);
+  });
+
+  it('every assignment write probes BOTH cross-tenant vectors: org-B container, and org-B user/unit', () => {
+    const vectors: Record<string, [string, string]> = {
+      'put-team-member': [`${OS}/teams/${WRITE_ORG_STRUCTURE.teamB}/members/PUT_A`, `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}/members/USER_B`],
+      'put-unit-assignee': [
+        `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitB}/assignees/PUT_A`,
+        `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitA}/assignees/USER_B`,
+      ],
+      'set-user-business-unit': [`${OS}/users/USER_B/business-unit`, `${OS}/users/PUT_A/business-unit`],
+      'set-team-leader': [`${OS}/teams/${WRITE_ORG_STRUCTURE.teamB}`, `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}`],
+    };
+    for (const [name, [idor, extra]] of Object.entries(vectors)) {
+      const e = sp(people, name);
+      expect(e.buildIdor!(r).path, name).toBe(idor);
+      expect(e.extraProbes, name).toHaveLength(1);
+      expect(e.extraProbes![0].build(r).path, name).toBe(extra);
+      expect(e.extraProbes![0].deniedStatuses, name).toEqual([404]);
+    }
+    expect((sp(people, 'set-user-business-unit').extraProbes![0].build(r).body as { businessUnitId: string }).businessUnitId).toBe(
+      WRITE_ORG_STRUCTURE.unitB,
+    );
+    expect((sp(people, 'set-team-leader').extraProbes![0].build(r).body as { leaderUserId: string }).leaderUserId).toBe('USER_B');
+  });
+
+  it('DELETE IDORs aim at REAL org-B rows and assert they SURVIVE (a positive proof, not an absent-row tautology)', () => {
+    for (const [name, sqlTable] of [
+      ['delete-team-member', 'user_teams'],
+      ['delete-unit-assignee', 'user_business_units'],
+    ] as const) {
+      const e = sp(people, name);
+      expect(e.buildIdor!(r).path, name).toContain('USER_B');
+      const b = e.readbackNoMutation(r, 'b');
+      expect(b.sql, name).toContain(sqlTable);
+      expect(b.params, name).toContain('USER_B');
+      expect(b.expect([{ n: 1 }]), name).toBeNull();
+      expect(b.expect([{ n: 0 }]), name).toContain('cross-org delete removed');
+      const a = e.readbackNoMutation(r, 'a', 'hrbp');
+      expect(a.params, name).toContain('DEL_A');
+      expect(a.expect([{ n: 0 }]), name).toContain('forbidden delete removed');
+    }
+  });
+
+  it('creates and the cross-org company/unit probes cannot write ANYWHERE (marker count spans both orgs)', () => {
+    const unit = sp(structure, 'create-business-unit');
+    expect(unit.buildParity(r).body).toEqual({ name: WRITE_ORG_STRUCTURE_UNIT_MARKER, companyId: 'CO_A' });
+    expect(unit.buildIdor!(r).body).toEqual({ name: WRITE_ORG_STRUCTURE_UNIT_MARKER, companyId: 'CO_B' });
+    const nm = unit.readbackNoMutation(r, 'b');
+    expect(nm.params).toEqual([['ORG_A', 'ORG_B'], WRITE_ORG_STRUCTURE_UNIT_MARKER]);
+    expect(nm.expect([{ n: 1 }])).toContain('forbidden unit create');
+    const team = sp(structure, 'create-team');
+    expect(team.buildIdor!(r).body).toMatchObject({ businessUnitId: WRITE_ORG_STRUCTURE.unitB });
+    const leader = team.extraProbes![0];
+    expect(leader.label).toBe('cross-org-leader');
+    expect(leader.build(r).body).toMatchObject({ businessUnitId: WRITE_ORG_STRUCTURE.unitA, leaderUserId: 'USER_B' });
+    expect(leader.readbackNoMutation(r).params).toEqual([['ORG_A', 'ORG_B'], WRITE_ORG_STRUCTURE_TEAM_MARKER]);
+  });
+
+  it('fixed-target audits assert baseline + 1, never "at least one" (audit_logs is append-only → re-runs accumulate)', () => {
+    const put = sp(people, 'put-team-member').readbackMutated(r, {});
+    expect(put.params.slice(0, 4)).toEqual(['ORG_A', 'H', 'team_member_added', WRITE_ORG_STRUCTURE.teamA]);
+    expect(put.expect([{ role: 'member', audits: 5 }])).toBeNull(); // baseline 4 + this run's 1
+    expect(put.expect([{ role: 'member', audits: 4 }])).toContain('expected 5');
+    expect(put.expect([{ role: 'member', audits: 6 }])).toContain('expected 5');
+    // An unseen key starts from zero.
+    const home = sp(people, 'set-user-business-unit').readbackMutated(r, {});
+    expect(home.params.slice(0, 4)).toEqual(['ORG_A', 'H', 'user_business_unit_set', 'PUT_A']);
+    expect(home.expect([{ business_unit_id: WRITE_ORG_STRUCTURE.unitA, audits: 1 }])).toBeNull();
+    expect(home.expect([{ business_unit_id: null, audits: 1 }])).toContain('expected unit A');
+    // The structure surface attributes to the super_admin probe.
+    const rename = sp(structure, 'update-business-unit').readbackMutated(r, {});
+    expect(rename.params.slice(0, 4)).toEqual(['ORG_A', 'S', 'business_unit_updated', WRITE_ORG_STRUCTURE.unitA]);
+    expect(rename.expect([{ name: WRITE_ORG_STRUCTURE_UNIT_RENAMED, audits: 1 }])).toBeNull();
+    expect(rename.expect([{ name: WRITE_ORG_STRUCTURE_UNIT_NAME.a, audits: 1 }])).toContain('rename did not apply');
+  });
+
+  it('readbacks FAIL on the mutation they guard against (not vacuous)', () => {
+    const leader = sp(people, 'set-team-leader');
+    expect(leader.readbackNoMutation(r, 'a', 'hrbp').expect([{ leader_id: 'PUT_A' }])).toContain('forbidden leader write');
+    expect(leader.readbackNoMutation(r, 'b').expect([{ leader_id: 'PUT_A' }])).toContain('cross-org leader write');
+    expect(leader.readbackNoMutation(r, 'a').expect([{ leader_id: null }])).toBeNull();
+    const created = sp(structure, 'create-business-unit').readbackMutated(r, { id: 'X' });
+    expect(created.expect([{ id: 'X', company_id: 'CO_A', is_active: true, audits: 1 }])).toBeNull();
+    expect(created.expect([{ id: 'X', company_id: 'CO_B', is_active: true, audits: 1 }])).toContain('company');
+    expect(created.expect([{ id: 'OTHER', company_id: 'CO_A', is_active: true, audits: 1 }])).toContain('response id');
+    expect(created.expect([{ id: 'X', company_id: 'CO_A', is_active: true, audits: 0 }])).toContain('audit');
+    const del = sp(people, 'delete-team-member');
+    expect(del.expectResponse(null)).toBeNull();
+    expect(del.expectResponse({ teamId: 'x' })).toContain('204');
+    expect(del.readbackMutated(r, null).expect([{ n: 1, audits: 1 }])).toContain('survived');
+    expect(sp(people, 'put-unit-assignee').readbackMutated(r, {}).expect([{ organization_id: 'ORG_B', audits: 1 }])).toContain(
+      'stamped',
+    );
   });
 });

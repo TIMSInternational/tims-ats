@@ -1,7 +1,8 @@
 # Tenant org structure + vacancy-scoped approvers (`/tenant/org-structure`) — PR #310, DARK
 
 **Status:** built, integration-tested against real PostgreSQL under production-shaped RLS, **not deployed, not
-flipped, not parity-registered.** Nothing here is prod-verified. Stacked on PR #304 (tenant people directory).
+flipped.** Parity-registered 2026-10-01 (all 11 routes — see "Before flipping"), but **no verify has ever run**, so
+nothing here is prod-verified. Stacked on PR #304 (tenant people directory).
 
 ## Why it exists
 
@@ -37,10 +38,23 @@ So every scoped approver was unreachable: `submitForApproval` rejected them for 
 Flip **C# first**, verify, then the web flag (build-time → redeploy). With the web flag on and C# off the business
 units screen shows the error state and the wizard shows the "could not load" hint; neither falls back to tRPC.
 
-**Before flipping in production:** register `/tenant/org-structure` in `scripts/parity/surfaces.ts` /
-`write-surfaces.ts` fixture-first (the parity seed has no organization/user grants on an org-structure fixture) and
-remove it from `UNREGISTERED_ALLOWLIST` in `tests/governance/parity-registry-covers-deployed-routes.test.ts`. Until
-then step 5 (prod verify) is **unrunnable by anyone** — the allowlist entry is the honest state, not a prod step.
+**Before flipping in production — parity registration (done 2026-10-01, never run):** all 11 routes are registered
+fixture-first and off the coverage allowlist, as three harness surfaces behind the one flag:
+
+| Harness key | Command | Routes | Probe | Denied |
+| --- | --- | --- | --- | --- |
+| `tenant-org-structure` (read) | `verify tenant-org-structure` | `GET /`, `GET /options` | hr_admin (organization:read) | org_admin both; hrbp on `GET /` only (it reaches `/options` via vacancy:create/update@unit) |
+| `tenant-org-structure` (write) | `verify-write tenant-org-structure` | POST/PATCH business units, POST teams | super_admin (the only MATRIX holder of organization:create/update) | hr_admin + hrbp, grant-level |
+| `tenant-org-people` (write) | `verify-write tenant-org-people` | leader-only PATCH team, PUT/DELETE member, PUT/DELETE unit assignee, PUT home unit | hr_admin (user:*) | hrbp, grant-level |
+
+Grants come from `seedOrgStructureGrants` (MATRIX scopes, not invented); write fixtures are dedicated fixed-UUID
+rows (`WRITE_ORG_STRUCTURE`, prefix `e0000367…`) reset by `seedOrgStructureWritePreconditions` before every
+`verify-write`, so re-runs need no teardown. Every assignment write probes BOTH cross-tenant vectors (org-B
+container + org-A user, and org-A container + org-B user) and must get 404 with no row written. Run the read verify
+and both write verifies with `Platform__TenantOrgStructureEnabled=true` at canary, BEFORE the web flag. Not covered
+remotely: the PATCH-team RENAME form (one VERB+path registers once; the leader-only form is the registered one) and
+a narrow-scope organization grant — both are in `OrgStructureEndpointTests`' 403 table. ⚠️ `seed --teardown` after
+any audited `verify-write` is refused by the append-only `audit_logs` guard (see `scripts/parity/README.md`).
 
 ## Authorization — mirrors today's tRPC capabilities
 

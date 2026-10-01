@@ -10,8 +10,11 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Re-measured 2026-08-18: 92 registered endpoints against 157 deployed
- * operations, leaving a gap of 65. (The numeric PINS below were updated when slice 23 landed; update
+ * deployed service that is. Re-measured 2026-10-01: 108 registered endpoints (108 distinct routes)
+ * against 202 deployed operations, leaving a gap of 94 — exactly the 94 allowlisted routes. (The
+ * 2026-08-18 figure was 92/157/65; the numbers between then and #310 moved only in the pins below.
+ * 2026-10-01 registered #310's org structure and #304's people directory: 96→108 registered,
+ * 106→94 allowlisted, deployed unchanged at 202.) (The numeric PINS below were updated when slice 23 landed; update
  * both this prose and the pins, or neither is trustworthy — slice 22 updated only the pins and this
  * line read 50/135/gap-85 for a commit, and slice 23's SECOND PR repeated the mistake: it moved the
  * pins to 147/63 and left every figure in this header at the pre-PR numbers. Slice 23's THIRD PR
@@ -253,39 +256,6 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'GET /tenant-audit/logs',
       'GET /tenant-audit/history',
       'POST /tenant-audit/export',
-    ],
-  },
-  {
-    reason:
-      'TENANT PEOPLE DIRECTORY LANDED DARK 2026-09-29 (TenantPeopleDirectoryEnabled). A new C#-only picker read with no ' +
-      'tRPC twin to diff against (it replaces user.list for recruiter pickers). It has real-PostgreSQL integration coverage ' +
-      'under production-shaped RLS, including cross-tenant isolation, drifted foreign-role rows and denied roles, but the ' +
-      'shared remote harness has no interview/vacancy/offer create grants or approver fixtures yet. Register fixture-first ' +
-      'before enabling the flag in production.',
-    routes: ['GET /tenant/people/assignable'],
-  },
-  {
-    reason:
-      'TENANT ORG STRUCTURE LANDED DARK 2026-09-29 (TenantOrgStructureEnabled). C#-only management surface for business ' +
-      'units, teams, leaders, members and unit assignees (the anchors leader/unit-scoped approvals read), plus the ' +
-      'vacancy-picker options read. The tRPC organization router has only partial twins (create-only units/teams; ' +
-      'assign/unassign unit — gated identically, user:create/user:delete), so a by-role diff would compare different ' +
-      'contracts. Covered by real-PostgreSQL integration tests under production-shaped RLS with seed-matrix grants ' +
-      '(cross-tenant 404s, a 403 table over every route incl. a narrow-scope grant, 409s, audit). NOT verifiable in ' +
-      'prod until registered: register fixture-first (the parity seed has no org-structure grants) BEFORE enabling ' +
-      'TenantOrgStructureEnabled in production.',
-    routes: [
-      'GET /tenant/org-structure',
-      'GET /tenant/org-structure/options',
-      'POST /tenant/org-structure/business-units',
-      'PATCH /tenant/org-structure/business-units/{id}',
-      'POST /tenant/org-structure/teams',
-      'PATCH /tenant/org-structure/teams/{id}',
-      'PUT /tenant/org-structure/teams/{id}/members/{userId}',
-      'DELETE /tenant/org-structure/teams/{id}/members/{userId}',
-      'PUT /tenant/org-structure/business-units/{id}/assignees/{userId}',
-      'DELETE /tenant/org-structure/business-units/{id}/assignees/{userId}',
-      'PUT /tenant/org-structure/users/{userId}/business-unit',
     ],
   },
   {
@@ -578,8 +548,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         190 → 191 (WP-H / PR #308): POST /interviews/candidate-join, deployed DARK behind
     //         Platform:CandidateInterviewJoinEnabled and allowlisted with the invitation-setup group
     //         (anonymous, capability-token). #308 measured 181 → 182 on its own base; +1 over main's 190.
-    //         191 → 202 (PR #310): the dark tenant org structure — eleven routes, all allowlisted in the
-    //         org-structure group above. Main 191 (after #308) + #310's +11 = 202.
+    //         191 → 202 (PR #310): the dark tenant org structure — eleven routes, then allowlisted in their
+    //         own group. Main 191 (after #308) + #310's +11 = 202.
+    //         202 UNCHANGED (2026-10-01): registering #310's eleven routes and #304's one route moves them from
+    //         the allowlist into the registry; it deploys nothing.
     expect(deployed.size).toBe(202);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
@@ -593,14 +565,22 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //        side was 2026-08-11: `organization-create` registered POST /platform/organizations, #208.)
     //   92 → 93, 2026-09-29: + tenant-invitations/list (PR #307).
     //   93 → 96 (PR #309): write side 27 → 30, the `assessment-types` surface's three endpoints.
-    expect(registryEndpointCount).toBe(96);
+    //   96 → 108 (2026-10-01): +12, the twelve routes that left the allowlist below —
+    //     read  +3: tenant-org-structure/{structure, options} + tenant-people/assignable-interview-evaluators
+    //     write +9: tenant-org-structure (create/update unit, create team) 3 + tenant-org-people (leader-only
+    //               team PATCH, member PUT/DELETE, unit-assignee PUT/DELETE, home-unit PUT) 6.
+    //   96 + 3 + 9 = 108.
+    expect(registryEndpointCount).toBe(108);
     //   ...resolving to 92 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
     //   (This pin is WHY the deleted reporting registration's second kpis probe at period=90D was not
     //   restored: it normalises onto `GET /reporting/kpis` and would collide here.)
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(96);
-    //   30 write paths resolved through the Proxy stub, none degenerate (27 → 30: assessment-types).
-    expect(writePaths.length).toBe(30);
+    //   (108 since 2026-10-01: each of the twelve new entries is a DISTINCT VERB+path — which is why only ONE
+    //   PATCH /tenant/org-structure/teams/{id} form and ONE /tenant/people/assignable purpose are registered.)
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(108);
+    //   30 write paths resolved through the Proxy stub, none degenerate (27 → 30: assessment-types;
+    //   30 → 39 on 2026-10-01: the nine org-structure writes, the first registered PUTs).
+    expect(writePaths.length).toBe(39);
   });
 
   it('every registry entry points at a route that is actually deployed', () => {
@@ -654,7 +634,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   EXISTING group, so the group/category count is unchanged.
     // 95 → 106 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
     //   Main 95 (after #308) + #310's +11 = 106.
-    expect(allowlistNormalised.length).toBe(106);
+    // 106 → 94 (2026-10-01): the fixtures landed — #310's eleven org-structure routes and #304's one people-
+    //   directory route are REGISTERED (seedOrgStructureGrants / seedTenantPeopleGrants +
+    //   seedOrgStructureWritePreconditions). 106 − 11 − 1 = 94; the registry grew by the same 12 (96 → 108).
+    expect(allowlistNormalised.length).toBe(94);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -674,6 +657,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 12 → 13 on 2026-09-29: tenant invitations' group (a Mode-B-inexpressible catalogue + email-sending writes).
     // 13 → 14 (PR #304): the tenant people directory is a C#-only picker read with no tRPC twin.
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the fifteen documented gap categories').toBe(15);
+    // 15 → 13 (2026-10-01): BOTH of the last two groups emptied — org structure and the people directory were
+    //   registered — and an empty group is forbidden above, so each group was deleted rather than left hollow.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the thirteen documented gap categories').toBe(13);
   });
 });

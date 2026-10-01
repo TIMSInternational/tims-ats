@@ -282,3 +282,62 @@ describe('runWriteRbac denyBodyIncludes', () => {
     expect(results[0].detail).toContain('wrong deny reason');
   });
 });
+
+describe('successStatus (201 create / 204 delete) and any-2xx write leaks', () => {
+  const unchanged: Readback = async () => [{ n: 0 }];
+  const created: WriteEndpointDef<WriteResolved> = { ...baseEp, method: 'PUT', successStatus: 201 };
+
+  it('parity PASSES on the declared success status and FAILS on a plain 200 where 201 is the contract', async () => {
+    const ok = await runWriteParity(created, res, 't', vi.fn(async () => ({ status: 201, body: { status: 'ok' } })), async () => [{}]);
+    expect(ok.ok).toBe(true);
+    const wrong = await runWriteParity(created, res, 't', vi.fn(async () => ({ status: 200, body: { status: 'ok' } })), async () => [{}]);
+    expect(wrong.ok).toBe(false);
+    expect(wrong.detail).toContain('expected 201, got 200');
+  });
+
+  it('parity still defaults to 200 when successStatus is omitted', async () => {
+    const r = await runWriteParity(baseEp, res, 't', vi.fn(async () => ({ status: 201, body: { status: 'ok' } })), vi.fn());
+    expect(r.detail).toContain('expected 200, got 201');
+  });
+
+  it('the PUT method reaches the caller unchanged', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 201, body: { status: 'ok' } }));
+    await runWriteParity(created, res, 'p', call, async () => [{}]);
+    expect(call).toHaveBeenCalledWith('http://csharp.local', 'PUT', '/x/res-a', 'p', { u: 'subj-a' });
+  });
+
+  it.each([200, 201, 204])('IDOR: a cross-org %i is a WRITE LEAK, not an "unexpected status"', async (status) => {
+    const r = await runWriteIdor(baseEp, res, 't', vi.fn(async () => ({ status, body: null })), unchanged);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('WRITE LEAK');
+    expect(r.detail).toContain(String(status));
+  });
+
+  it.each([201, 204])('extra probe: a cross-org %i is a WRITE LEAK', async (status) => {
+    const probe = {
+      label: 'cross-org-user',
+      build: () => ({ path: '/y', body: null }),
+      deniedStatuses: [404],
+      readbackNoMutation: () => ({ sql: 'x', params: [], expect: () => null }),
+    };
+    const r = await runWriteExtraProbe(baseEp, probe, res, 't', vi.fn(async () => ({ status, body: null })), unchanged);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('WRITE LEAK');
+  });
+
+  it('an allow role (allowRolesLiveTestable) must answer the declared success status', async () => {
+    const ep: WriteEndpointDef<WriteResolved> = {
+      ...created,
+      allowRolesLiveTestable: true,
+      readbackAllow: () => ({ sql: 'x', params: [], expect: () => null }),
+    };
+    const ok = await runWriteRbac(ep, res, { hr_admin: 'h', hrbp: 'b' }, 'super_admin', vi.fn(async (_b, _m, _p, tok) =>
+      tok === 'h' ? { status: 201, body: { status: 'ok' } } : { status: 403, body: null },
+    ), unchanged);
+    expect(ok.every((x) => x.ok)).toBe(true);
+    const bad = await runWriteRbac(ep, res, { hr_admin: 'h', hrbp: 'b' }, 'super_admin', vi.fn(async (_b, _m, _p, tok) =>
+      tok === 'h' ? { status: 200, body: { status: 'ok' } } : { status: 403, body: null },
+    ), unchanged);
+    expect(bad.find((x) => x.role === 'hr_admin')?.detail).toContain('expected 201, got 200');
+  });
+});
