@@ -126,6 +126,7 @@ describe('offer approval — state-guarded transitions', () => {
 
   it('two concurrent final approvals: exactly one approved state, never stuck in pending_approval', async () => {
     const [a, b] = await Promise.all([callerFor(APPROVER_A), callerFor(APPROVER_B)]);
+    store().overlapNextTransactions(2);
     const results = await Promise.allSettled([a.offer.approve({ id: OFFER_ID }), b.offer.approve({ id: OFFER_ID })]);
     expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
     expect(store().committed.parent.status).toBe('approved');
@@ -134,6 +135,7 @@ describe('offer approval — state-guarded transitions', () => {
 
   it('concurrent reject + approve: the offer always ends rejected, never approved', async () => {
     const [a, b] = await Promise.all([callerFor(APPROVER_A), callerFor(APPROVER_B)]);
+    store().overlapNextTransactions(2);
     const results = await Promise.allSettled([
       a.offer.reject({ id: OFFER_ID, comment: 'no' }),
       b.offer.approve({ id: OFFER_ID }),

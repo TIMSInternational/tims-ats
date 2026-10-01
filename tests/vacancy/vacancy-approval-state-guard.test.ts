@@ -84,6 +84,7 @@ describe('vacancy approval — state-guarded transitions', () => {
 
   it('two simultaneous final approvals: exactly one approved state, never stuck in pending_approval', async () => {
     const [a, b] = await Promise.all([callerFor(APPROVER_A), callerFor(APPROVER_B)]);
+    store().overlapNextTransactions(2);
     const results = await Promise.allSettled([
       a.vacancy.approve({ id: VACANCY_ID }),
       b.vacancy.approve({ id: VACANCY_ID }),
@@ -139,6 +140,7 @@ describe('vacancy approval — state-guarded transitions', () => {
 
   it('concurrent reject + approve: the vacancy never ends approved', async () => {
     const [a, b] = await Promise.all([callerFor(APPROVER_A), callerFor(APPROVER_B)]);
+    store().overlapNextTransactions(2);
     const results = await Promise.allSettled([
       a.vacancy.reject({ id: VACANCY_ID, comment: 'no' }),
       b.vacancy.approve({ id: VACANCY_ID }),

@@ -51,6 +51,10 @@ export function createApprovalRaceStore(opts: {
     approvals: opts.approvals.map((a) => ({ ...a })),
   };
   let lockHolder: Staged | null = null;
+  // Start barrier: hold every transaction at BEGIN until `barrier.size` have begun, so concurrent
+  // procedures genuinely overlap inside their transactions (the tRPC pipeline alone does not
+  // guarantee that). Only BEGIN is gated, so a row lock can never deadlock against it.
+  const barrier = { size: 0, arrived: 0, release: [] as Array<() => void> };
   const lockWaiters: Array<() => void> = [];
 
   const viewParent = (tx: Staged | null): ParentRow => ({ ...committed.parent, ...(tx?.parent ?? {}) });
@@ -147,10 +151,21 @@ export function createApprovalRaceStore(opts: {
   }
 
   async function runTenantTransaction<T>(_org: string, fn: (tx: unknown) => Promise<T>): Promise<T> {
+    if (barrier.size > 0) {
+      barrier.arrived += 1;
+      if (barrier.arrived >= barrier.size) {
+        barrier.size = 0;
+        barrier.arrived = 0;
+        for (const r of barrier.release.splice(0)) r();
+      } else {
+        await new Promise<void>((resolve) => barrier.release.push(resolve));
+      }
+    }
     const tx: Staged = { approvals: new Map() };
     const client = { [opts.parentModel]: parentFacade(tx), [opts.approvalModel]: approvalFacade(tx) };
     try {
       const result = await fn(client);
+      await tick(); // COMMIT is a round trip too: another transaction's statement can run first.
       if (tx.parent) committed.parent = { ...committed.parent, ...tx.parent };
       committed.approvals = committed.approvals.map((a) => ({ ...a, ...(tx.approvals.get(a.id) ?? {}) }));
       return result;
@@ -162,6 +177,11 @@ export function createApprovalRaceStore(opts: {
   return {
     committed,
     runTenantTransaction,
+    /** The next `n` transactions all begin before any of them runs a statement. */
+    overlapNextTransactions(n: number) {
+      barrier.size = n;
+      barrier.arrived = 0;
+    },
     /** Non-transactional client (tenantDb): reads see committed state only. */
     db: { [opts.parentModel]: parentFacade(null), [opts.approvalModel]: approvalFacade(null) },
   };
