@@ -217,7 +217,7 @@ export const portalRouter = router({
         }),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       if (!(await verifyCaptcha(input.captchaToken))) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -402,8 +402,8 @@ export const portalRouter = router({
       // (duplicate / withdrawn / deleted outcomes and the P2002 idempotent path never
       // send). Fire-and-forget: a mail failure (sync or async) must never fail or delay
       // the application, and — being detached — adds no response-timing signal. It is
-      // dispatched before CV processing so a CV failure can never suppress it. The log
-      // line carries no PII (no email, no name, no candidate id, no error message).
+      // dispatched before CV processing is scheduled so a CV failure can never suppress it.
+      // The log line carries no PII (no email, no name, no candidate id, no error message).
       // Per-recipient cap: the form chooses the address, so at most one such email per
       // address per 24h platform-wide; a capped or unavailable limiter skips the email
       // (never the application).
@@ -450,19 +450,36 @@ export const portalRouter = router({
       // their own CandidateDocument row (a cross-tenant leak once a future "download
       // the CV" feature generates a signed GET from fileUrl). Silently skipped, same
       // non-fatal posture as every other CV failure.
+      // NEVER awaited (#314): S3 fetch + extraction + an AI call (up to 20 s) ran only for a
+      // NEW application, so awaiting it made response latency an oracle for "this email
+      // already applied / was refused". It is scheduled to run after the response is sent
+      // (Next `after()` via ctx; a detached promise when no scheduler is wired). Trade-off:
+      // if the function is killed first the parse is lost, but the application is already
+      // committed and the CV can be re-parsed later (processCvUpload is idempotent).
       if (outcome.kind === 'new' && input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`)) {
-        await portalApplicationService.processCvUpload(
-          orgId,
-          outcome.candidateId,
-          input.cvFileKey,
-          input.cvFileName ?? input.cvFileKey.split('/').pop() ?? 'cv',
-        );
+        const { candidateId } = outcome;
+        const cvFileKey = input.cvFileKey;
+        const cvFileName = input.cvFileName ?? cvFileKey.split('/').pop() ?? 'cv';
+        // Self-catching (sync throws included): nothing here can reject into the runtime.
+        const task = async () => {
+          try {
+            await portalApplicationService.processCvUpload(orgId, candidateId, cvFileKey, cvFileName);
+          } catch {
+            logger.warn({ component: 'portal', vacancyId: vacancy.id }, 'Post-response CV processing failed');
+          }
+        };
+        try {
+          if (ctx.runAfterResponse) ctx.runAfterResponse(task);
+          else void Promise.resolve().then(task);
+        } catch {
+          void Promise.resolve().then(task);
+        }
       }
 
       // New, duplicate, withdrawn- and deleted-refused submissions all get the SAME public
       // acknowledgment, so the response BODY never reveals whether an email belongs to an
-      // existing candidate, already applied, or withdrew consent. (Response timing still
-      // can: only a new application runs synchronous CV processing — tracked follow-up.)
+      // existing candidate, already applied, or withdrew consent — and, with CV processing
+      // moved after the response, neither does its latency on account of the CV.
       return APPLY_ACKNOWLEDGMENT;
     }),
 });

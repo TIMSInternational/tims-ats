@@ -11,8 +11,12 @@ vi.mock('../../packages/api/src/lib/cv-extraction', () => ({
 }));
 
 const createDocumentMock = vi.fn();
+const findCvDocumentByKeyMock = vi.fn();
 vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({
-  candidateRepository: { createDocument: (...a: unknown[]) => createDocumentMock(...a) },
+  candidateRepository: {
+    createDocument: (...a: unknown[]) => createDocumentMock(...a),
+    findCvDocumentByKey: (...a: unknown[]) => findCvDocumentByKeyMock(...a),
+  },
 }));
 
 const parseCVMock = vi.fn();
@@ -30,6 +34,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   fetchCvObjectMock.mockResolvedValue({ buffer: Buffer.from('pdf bytes'), sizeBytes: 1024 });
   createDocumentMock.mockResolvedValue({ id: 'doc-1' });
+  findCvDocumentByKeyMock.mockResolvedValue(null);
   extractCvTextMock.mockResolvedValue('extracted CV text');
   parseCVMock.mockResolvedValue({ parsed: true });
 });
@@ -76,6 +81,45 @@ describe('portalApplicationService.processCvUpload', () => {
       portalApplicationService.processCvUpload(ORG_ID, CANDIDATE_ID, KEY, 'resume.pdf'),
     ).resolves.toBeUndefined();
     expect(createDocumentMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('is idempotent: an already-parsed CV for this candidate + key is skipped (no S3, no doc, no AI)', async () => {
+    findCvDocumentByKeyMock.mockResolvedValue({ id: 'doc-0', parsedData: { parsed: true } });
+
+    await portalApplicationService.processCvUpload(ORG_ID, CANDIDATE_ID, KEY, 'resume.pdf');
+
+    expect(findCvDocumentByKeyMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, KEY);
+    expect(fetchCvObjectMock).not.toHaveBeenCalled();
+    expect(createDocumentMock).not.toHaveBeenCalled();
+    expect(parseCVMock).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent: a recorded-but-unparsed CV row is reused, never duplicated', async () => {
+    findCvDocumentByKeyMock.mockResolvedValue({ id: 'doc-0', parsedData: null });
+
+    await portalApplicationService.processCvUpload(ORG_ID, CANDIDATE_ID, KEY, 'resume.pdf');
+
+    expect(createDocumentMock).not.toHaveBeenCalled();
+    expect(parseCVMock).toHaveBeenCalledWith(ORG_ID, 'extracted CV text', 'doc-0', CANDIDATE_ID);
+  });
+
+  it('logs a failure without the raw error message (which can echo file content or names)', async () => {
+    const { logger } = await import('@tims/shared');
+    const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined as never);
+    try {
+      extractCvTextMock.mockRejectedValue(new Error('corrupt PDF: Ana Gomez ana@example.com'));
+
+      await portalApplicationService.processCvUpload(ORG_ID, CANDIDATE_ID, KEY, 'resume.pdf');
+
+      expect(errorLog).toHaveBeenCalledTimes(1);
+      const serialized = JSON.stringify(errorLog.mock.calls[0]);
+      expect(serialized).not.toContain('ana@example.com');
+      expect(serialized).not.toContain('Ana Gomez');
+      expect(serialized).not.toContain('resume.pdf');
+      expect(errorLog.mock.calls[0]?.[0]).toMatchObject({ orgId: ORG_ID, errName: 'Error' });
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   it('infers docx content type from the key extension', async () => {

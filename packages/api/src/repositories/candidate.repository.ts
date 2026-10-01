@@ -342,6 +342,16 @@ export const candidateRepository = {
     });
   },
 
+  // The CV document already recorded for this candidate + uploaded object key, if any —
+  // lets public-apply CV processing be retried without duplicating the row or the AI call.
+  async findCvDocumentByKey(orgId: string, candidateId: string, fileUrl: string) {
+    return db.candidateDocument.findFirst({
+      where: { organizationId: orgId, candidateId, type: 'cv', fileUrl },
+      select: { id: true, parsedData: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  },
+
   async deleteDocument(documentId: string) {
     await db.candidateDocument.delete({ where: { id: documentId } });
   },
