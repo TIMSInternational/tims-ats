@@ -8,6 +8,31 @@ import { scorecardSubmissionService } from '../../services/scorecard-submission.
 import { MAX_RATING_KEYS, RATING_KEY_MAX } from '@tims/shared';
 import type { Prisma } from '@tims/db';
 
+/**
+ * Interview columns returned by getPendingScorecards. Deliberately excludes
+ * candidateJoinTokenHash and candidateJoinTokenExpiresAt (candidate join
+ * credential material) and staff-only free text (notes, cancelReason).
+ */
+export const PENDING_SCORECARD_INTERVIEW_SELECT = {
+  id: true,
+  organizationId: true,
+  candidateId: true,
+  vacancyId: true,
+  applicationId: true,
+  type: true,
+  status: true,
+  scheduledAt: true,
+  duration: true,
+  location: true,
+  meetingUrl: true,
+  createdAt: true,
+  updatedAt: true,
+  candidate: {
+    select: { id: true, firstName: true, lastName: true, avatar: true },
+  },
+  vacancy: { select: { id: true, title: true } },
+} satisfies Prisma.InterviewSelect;
+
 export const interviewScorecardsRouter = router({
   // 8.6 — Get scorecard for a specific interview + evaluator
   getScorecard: permissionProcedure('interview', 'read')
@@ -173,15 +198,22 @@ export const interviewScorecardsRouter = router({
           ],
         },
       },
-      include: {
+      // Explicit allowlist (#308 follow-up): the interview row carries
+      // candidateJoinTokenHash / candidateJoinTokenExpiresAt, which must never
+      // reach staff clients. Never widen this back to `include`.
+      select: {
+        id: true,
+        interviewId: true,
+        userId: true,
+        role: true,
+        status: true,
+        createdAt: true,
         interview: {
-          include: {
-            candidate: {
-              select: { id: true, firstName: true, lastName: true, avatar: true },
-            },
-            vacancy: { select: { id: true, title: true } },
+          select: {
+            ...PENDING_SCORECARD_INTERVIEW_SELECT,
             scorecards: {
               where: { evaluatorId: ctx.user.id },
+              select: { id: true, submittedAt: true },
             },
           },
         },

@@ -8,6 +8,7 @@ import { emailService } from '../../services/email.service';
 import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
+import { assertNoRejectedApproval } from './rejected-approval-guard';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
@@ -72,6 +73,13 @@ export const offerSigningRouter = router({
           message: 'Solo se pueden enviar ofertas aprobadas o ya enviadas',
         });
       }
+
+      await assertNoRejectedApproval(
+        db,
+        ctx.user.organizationId,
+        offer.id,
+        'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
+      );
 
       if (!offer.candidate.email) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene correo electrónico' });
@@ -256,7 +264,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -276,6 +284,8 @@ export const offerSigningRouter = router({
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado y no puede firmarse' });
       }
+
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible para firma');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();
@@ -354,7 +364,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -374,6 +384,8 @@ export const offerSigningRouter = router({
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
       }
+
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();

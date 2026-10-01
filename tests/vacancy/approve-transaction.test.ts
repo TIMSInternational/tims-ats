@@ -28,11 +28,12 @@ function setPendingCountAfterApproval(value: number) {
 function mockTx() {
   return {
     vacancyApproval: {
-      update: vi.fn().mockResolvedValue({ id: 'appr-1', status: 'approved' }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       count: vi.fn().mockResolvedValue(pendingCountAfterApproval.value),
     },
     vacancy: {
-      update: vi.fn().mockResolvedValue({ id: 'vac-1', status: 'approved' }),
+      // Both the row-lock CAS and the final pending_approval -> approved CAS succeed.
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
 }
@@ -42,7 +43,7 @@ const mockDb = vi.hoisted(() => ({
     findFirst: vi.fn(),
   },
   vacancy: {
-    findUniqueOrThrow: vi.fn(),
+    findFirstOrThrow: vi.fn(),
   },
   $transaction: vi.fn(),
 }));
@@ -69,7 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   setPendingCountAfterApproval(0);
   mockDb.vacancyApproval.findFirst.mockResolvedValue({ id: 'appr-1' });
-  mockDb.vacancy.findUniqueOrThrow.mockResolvedValue({
+  mockDb.vacancy.findFirstOrThrow.mockResolvedValue({
     id: VACANCY_ID,
     title: 'Sales Rep',
     status: 'approved',
@@ -123,7 +124,7 @@ describe('vacancy.approve — transaction wrapper', () => {
 
   it('still opens ONE runTenantTransaction but leaves the vacancy status alone when other approvals remain pending', async () => {
     setPendingCountAfterApproval(1);
-    mockDb.vacancy.findUniqueOrThrow.mockResolvedValue({
+    mockDb.vacancy.findFirstOrThrow.mockResolvedValue({
       id: VACANCY_ID,
       title: 'Sales Rep',
       status: 'pending_approval',

@@ -143,7 +143,7 @@ describe('interview.schedule — join token + invitation emails', () => {
     const data = m.create.mock.calls[0][0].data;
     expect(data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(data.candidateJoinTokenExpiresAt.toISOString()).toBe('2026-10-01T16:30:00.000Z');
-    expect(m.create.mock.calls[0][0].omit).toEqual({ candidateJoinTokenHash: true });
+    expect(m.create.mock.calls[0][0].omit).toEqual({ candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true });
 
     await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
     const html = body('ana@example.com', 'text/html');

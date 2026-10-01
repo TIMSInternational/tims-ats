@@ -51,17 +51,29 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
 
   const submitForApproval = trpc.vacancy.submitForApproval.useMutation({
     onSuccess: () => { invalidate(); setShowSubmit(false); toast(t.vacancies.submitForApprovalSuccess, { type: 'success' }); },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+      // CONFLICT: the vacancy moved on (another approver decided first) - refetch so stale buttons go.
+      if (err.data?.code === 'CONFLICT') invalidate();
+    },
   });
 
   const approve = trpc.vacancy.approve.useMutation({
     onSuccess: () => { invalidate(); toast(t.vacancies.approveSuccess, { type: 'success' }); },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+      // CONFLICT: the vacancy moved on (another approver decided first) - refetch so stale buttons go.
+      if (err.data?.code === 'CONFLICT') invalidate();
+    },
   });
 
   const reject = trpc.vacancy.reject.useMutation({
     onSuccess: () => { invalidate(); setShowReject(false); toast(t.vacancies.rejectSuccess, { type: 'success' }); },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+      // CONFLICT: the vacancy moved on (another approver decided first) - refetch so stale buttons go.
+      if (err.data?.code === 'CONFLICT') invalidate();
+    },
   });
 
   const pendingStepForViewer = findPendingApprovalForUser(approvals, userId);

@@ -50,11 +50,22 @@ function makeTx(target: Store) {
   };
   return {
     vacancy: {
-      update: vi.fn(async ({ data }: { data: { status: string } }) => {
-        await guard('vacancy.update');
-        target.vacancyStatus = data.status;
-        return { id: VACANCY_ID, status: data.status };
-      }),
+      // Compare-and-set on `where.status`, like the SQL UPDATE ... WHERE status = $expected.
+      // A same-status write is the row-lock no-op and is not a "status flip" for failOn.
+      updateMany: vi.fn(
+        async ({ where, data }: { where: { status?: string }; data: { status: string } }) => {
+          if (where.status !== undefined && where.status !== target.vacancyStatus) return { count: 0 };
+          if (data.status !== target.vacancyStatus) await guard('vacancy.statusFlip');
+          target.vacancyStatus = data.status;
+          return { count: 1 };
+        },
+      ),
+      findFirstOrThrow: vi.fn(async () => ({
+        id: VACANCY_ID,
+        title: 'Sales Rep',
+        status: target.vacancyStatus,
+        approvals: [],
+      })),
       findUniqueOrThrow: vi.fn(async () => ({
         id: VACANCY_ID,
         title: 'Sales Rep',
@@ -69,16 +80,19 @@ function makeTx(target: Store) {
         target.pendingApprovals += data.length;
         return { count: data.length };
       }),
-      update: vi.fn(async () => {
-        await guard('vacancyApproval.update');
-        target.pendingApprovals -= 1;
-        return { id: 'appr-1' };
-      }),
-      updateMany: vi.fn(async () => {
-        await guard('vacancyApproval.updateMany');
-        target.cancelledApprovals += target.pendingApprovals;
+      // With `approverId`: the caller's own decision. Without: cancel every remaining pending row.
+      updateMany: vi.fn(async ({ where }: { where: { approverId?: string } }) => {
+        if (where.approverId !== undefined) {
+          await guard('vacancyApproval.decide');
+          if (target.pendingApprovals === 0) return { count: 0 };
+          target.pendingApprovals -= 1;
+          return { count: 1 };
+        }
+        await guard('vacancyApproval.cancelRest');
+        const n = target.pendingApprovals;
+        target.cancelledApprovals += n;
         target.pendingApprovals = 0;
-        return { count: 0 };
+        return { count: n };
       }),
       count: vi.fn(async () => target.pendingApprovals),
     },
@@ -86,7 +100,7 @@ function makeTx(target: Store) {
 }
 
 const mockDb = vi.hoisted(() => ({
-  vacancy: { findFirst: vi.fn(), findUniqueOrThrow: vi.fn() },
+  vacancy: { findFirst: vi.fn(), findFirstOrThrow: vi.fn() },
   user: { findMany: vi.fn() },
   vacancyApproval: { findFirst: vi.fn() },
   // Models tenantDb.$transaction: NO isolation — each op hits committed state as it
@@ -127,7 +141,7 @@ beforeEach(() => {
   mockDb.vacancy.findFirst.mockResolvedValue({ id: VACANCY_ID });
   mockDb.vacancyApproval.findFirst.mockResolvedValue({ id: 'appr-1' });
   mockDb.user.findMany.mockResolvedValue([{ id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] }]);
-  mockDb.vacancy.findUniqueOrThrow.mockImplementation(async () => ({
+  mockDb.vacancy.findFirstOrThrow.mockImplementation(async () => ({
     id: VACANCY_ID,
     title: 'Sales Rep',
     status: committed.value.vacancyStatus,
@@ -184,7 +198,7 @@ describe('vacancy approvals — multi-step writes are genuinely atomic (#45, pri
   });
 
   it('submitForApproval rolls the status flip back when the approval-row insert fails mid-transaction', async () => {
-    // Write order in the procedure: vacancy.update -> vacancyApproval.createMany.
+    // Write order in the procedure: vacancy.updateMany(CAS) -> vacancyApproval.createMany.
     // Fail the SECOND write, so the first one is the thing that must not survive.
     failMidTransactionOn('vacancyApproval.createMany');
     const caller = await makeCaller();
@@ -204,8 +218,8 @@ describe('vacancy approvals — multi-step writes are genuinely atomic (#45, pri
       pendingApprovals: 1,
       cancelledApprovals: 0,
     };
-    // Write order: vacancyApproval.update -> count -> (if 0) vacancy.update.
-    failMidTransactionOn('vacancy.update');
+    // Write order: vacancy lock (no-op CAS) -> own approval -> count -> (if 0) vacancy status flip.
+    failMidTransactionOn('vacancy.statusFlip');
     const caller = await makeCaller();
 
     await expect(caller.vacancy.approve({ id: VACANCY_ID })).rejects.toThrow();
@@ -222,8 +236,8 @@ describe('vacancy approvals — multi-step writes are genuinely atomic (#45, pri
       pendingApprovals: 2,
       cancelledApprovals: 0,
     };
-    // Write order: vacancyApproval.update -> vacancy.update(draft) -> updateMany(cancelled).
-    failMidTransactionOn('vacancyApproval.updateMany');
+    // Write order: vacancy CAS(draft) -> own approval -> updateMany(cancelled).
+    failMidTransactionOn('vacancyApproval.cancelRest');
     const caller = await makeCaller();
 
     await expect(caller.vacancy.reject({ id: VACANCY_ID, comment: 'no' })).rejects.toThrow();
@@ -238,7 +252,10 @@ describe('vacancy approvals — multi-step writes are genuinely atomic (#45, pri
 
     await caller.vacancy.submitForApproval({ id: VACANCY_ID, approverIds: [APPROVER_ID] });
     await caller.vacancy.approve({ id: VACANCY_ID });
-    await caller.vacancy.reject({ id: VACANCY_ID, comment: 'no' });
+    // The vacancy is approved now: reject still opens its transaction, and the in-transaction
+    // compare-and-set refuses it (an approved vacancy can no longer be pushed back to draft).
+    await expect(caller.vacancy.reject({ id: VACANCY_ID, comment: 'no' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(committed.value.vacancyStatus).toBe('approved');
 
     expect(mockDb.$transaction).not.toHaveBeenCalled();
     expect(runTenantTransactionMock).toHaveBeenCalledTimes(3);

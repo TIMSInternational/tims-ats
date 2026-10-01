@@ -52,7 +52,7 @@ export const interviewCrudRouter = router({
       const [items, total] = await Promise.all([
         db.interview.findMany({
           where,
-          omit: { candidateJoinTokenHash: true },
+          omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
           include: {
             candidate: {
               select: { id: true, firstName: true, lastName: true, email: true, avatar: true },
@@ -86,7 +86,7 @@ export const interviewCrudRouter = router({
 
       const interview = await db.interview.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: {
             select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatar: true },
@@ -219,7 +219,7 @@ export const interviewCrudRouter = router({
             })),
           },
         },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
@@ -301,7 +301,7 @@ export const interviewCrudRouter = router({
           ...joinToken.columns,
           status: 'rescheduled',
         },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
@@ -401,7 +401,7 @@ export const interviewCrudRouter = router({
           // Revoke the candidate join link.
           ...clearedJoinTokenColumns(),
         },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
