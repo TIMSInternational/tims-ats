@@ -700,7 +700,7 @@ try
     builder.Services.AddScoped<ITenantAuditRepository, TenantAuditRepository>();
     builder.Services.AddScoped<TenantAuditReadUseCase>();
     // Tenant assignable-people directory (read-only users/user_roles/roles/role_permissions/permissions,
-    // always under TenantScope). Dark unless TenantPeopleDirectoryEnabled.
+    // always under TenantScope). Mapped only when TenantPeopleDirectoryEnabled (ON in production since 2026-10-01).
     builder.Services.AddDbContext<AssignablePeopleDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IAssignablePeopleRepository, AssignablePeopleRepository>();
     builder.Services.AddScoped<AssignablePeopleUseCase>();

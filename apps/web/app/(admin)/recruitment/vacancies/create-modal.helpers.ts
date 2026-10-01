@@ -21,14 +21,13 @@ export interface VacancyFormData {
 
 export type Step = 1 | 2 | 3;
 
-export const CONTRACT_TYPES = [
-  { value: 'indefinido', label: 'Termino indefinido' },
-  { value: 'termino_fijo', label: 'Termino fijo' },
-  { value: 'obra_labor', label: 'Obra o labor' },
-  { value: 'prestacion', label: 'Prestacion de servicios' },
-  { value: 'temporal', label: 'Temporal' },
-  { value: 'practicas', label: 'Practicas / Pasantia' },
-];
+/** Stored contract-type values. Their labels live in i18n `portal.contractTypes` — one source for both surfaces. */
+export const CONTRACT_TYPES = ['indefinido', 'termino_fijo', 'obra_labor', 'prestacion', 'temporal', 'practicas'] as const;
+
+/** "1 posición" / "3 posiciones" (or the English forms) from the active locale's labels. */
+export function positionCountLabel(count: number, labels: { positionCountOne: string; positionCountMany: string }): string {
+  return count === 1 ? labels.positionCountOne : labels.positionCountMany.replace('{n}', String(count));
+}
 
 export const inputCls = 'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]';
 export const labelCls = 'block text-xs font-medium text-[#585858] mb-1';

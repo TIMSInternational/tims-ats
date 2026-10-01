@@ -73,6 +73,7 @@ export function RecognitionModal({ onClose }: RecognitionModalProps) {
             </div>
           ) : (
             <UserPicker
+              purpose="colleague"
               onSelect={(_userId, user) => setRecipient(user)}
               disabled={give.isPending}
               searchPlaceholder={t.committee.searchUser}

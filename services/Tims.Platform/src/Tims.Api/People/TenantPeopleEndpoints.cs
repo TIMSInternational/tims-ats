@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using Tims.Api.Authentication;
 using Tims.Api.Configuration;
+using Tims.Application.Access;
 using Tims.Application.Identity;
 using Tims.Application.People;
 using Tims.Domain.Access;
@@ -11,10 +12,11 @@ using Tims.Domain.People;
 namespace Tims.Api.People;
 
 /// <summary>
-/// Tenant "assignable people" directory for pickers (interview evaluators, vacancy approvers, offer
-/// approvers). Replaces the pickers' dependency on tRPC <c>user.list</c>, which requires <c>user:read</c>
-/// — a grant recruiters deliberately do not hold. Authorization follows the action the picker serves, and
-/// the response is the minimal projection a picker renders. Dark unless TenantPeopleDirectoryEnabled.
+/// Tenant "assignable people" directory for every staff picker (see <see cref="AssignablePurposes.RuleFor"/>).
+/// Replaces the pickers' dependency on tRPC <c>user.list</c>, which requires <c>user:read</c> — a grant only
+/// super_admin and hr_admin hold. Authorization follows the mutation the picker feeds, and the response is the
+/// minimal projection a picker renders. Mapped only when TenantPeopleDirectoryEnabled (ON in production since
+/// 2026-10-01).
 /// </summary>
 public static class TenantPeopleEndpoints
 {
@@ -25,6 +27,7 @@ public static class TenantPeopleEndpoints
             ClaimsPrincipal user, HttpContext httpContext,
             PrincipalResolver principalResolver, PermissionService permissionService,
             IOptions<PlatformOptions> options, AssignablePeopleUseCase useCase,
+            IAnchorLoaderFactory anchorLoaderFactory,
             CancellationToken cancellationToken) =>
         {
             // Bind as raw values and validate here: bounds are enforced before any identity or DB work.
@@ -49,21 +52,32 @@ public static class TenantPeopleEndpoints
             AccessScope callerScope;
             var context = await ResolveAsync(user, httpContext, principalResolver, options.Value, cancellationToken);
             if (context is null) return Results.Unauthorized();
-            try
+            if (rule.CallerModule is null || rule.CallerAction is null)
             {
-                var decision = await permissionService.CheckAsync(
-                    context, rule.CallerModule, rule.CallerAction, cancellationToken);
-                if (!decision.Allowed || decision.Scope is not { } scope || decision.Roles is null)
+                // No caller permission (colleague): any resolved staff member of an organization, or a platform owner
+                // with a home organization (privileged, as PermissionService treats them). An org-less owner has no
+                // directory (400, like every other purpose); a non-staff principal (external) is refused.
+                if (string.IsNullOrEmpty(context.OrganizationId))
+                    return Results.BadRequest(new { error = "organization_required" });
+                if (!AssignablePurposes.IsAnyStaffMember(context.PrincipalType, context.Roles))
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
-                // The unfiltered directory needs org-wide scope (AssignablePurposes.CallerScopeAllows).
-                if (!AssignablePurposes.CallerScopeAllows(rule, scope))
-                    return Results.StatusCode(StatusCodes.Status403Forbidden);
-                callerScope = scope;
+                callerScope = AccessScope.Organization;
             }
-            catch (TenantOrgRequiredException)
-            {
-                return Results.BadRequest(new { error = "organization_required" });
-            }
+            else try
+                {
+                    var decision = await permissionService.CheckAsync(
+                        context, rule.CallerModule, rule.CallerAction, cancellationToken);
+                    if (!decision.Allowed || decision.Scope is not { } scope || decision.Roles is null)
+                        return Results.StatusCode(StatusCodes.Status403Forbidden);
+                    // The unfiltered directory needs org-wide scope (AssignablePurposes.CallerScopeAllows).
+                    if (!AssignablePurposes.CallerScopeAllows(rule, scope))
+                        return Results.StatusCode(StatusCodes.Status403Forbidden);
+                    callerScope = scope;
+                }
+                catch (TenantOrgRequiredException)
+                {
+                    return Results.BadRequest(new { error = "organization_required" });
+                }
             if (!Guid.TryParse(context.OrganizationId, out var organizationId))
                 return Results.BadRequest(new { error = "organization_required" });
 
@@ -76,8 +90,18 @@ public static class TenantPeopleEndpoints
                 vacancyFilter = new VacancyApproverFilter(requestedVacancy, callerId, callerScope);
             }
 
+            // A subject-scoped purpose held below org scope lists only the caller's subject set — exactly the people
+            // the mutation's assertSubjectInScope accepts (own → self, team → led teams' members, unit → unit members).
+            IReadOnlyCollection<Guid>? subjects = null;
+            if (AssignablePurposes.NeedsSubjectFilter(rule, callerScope))
+            {
+                if (!Guid.TryParse(context.UserId, out var subjectCaller))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                subjects = await SubjectIdsAsync(anchorLoaderFactory, organizationId, subjectCaller, callerScope, cancellationToken);
+            }
+
             var result = await useCase.ListAsync(organizationId, parsedPurpose, search,
-                limit ?? AssignablePurposes.DefaultLimit, vacancyFilter, cancellationToken);
+                limit ?? AssignablePurposes.DefaultLimit, vacancyFilter, subjects, cancellationToken);
             // Unknown, soft-deleted, other-tenant and out-of-caller-scope vacancies are indistinguishable.
             return result is null ? Results.NotFound(new { error = "vacancy_not_found" }) : Results.Ok(result);
         })
@@ -88,6 +112,26 @@ public static class TenantPeopleEndpoints
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .WithName("TenantPeopleListAssignable");
+    }
+
+    /// <summary>The caller's subject set for a narrow scope, resolved with the same anchors SubjectInScope reads.</summary>
+    private static async Task<IReadOnlyCollection<Guid>> SubjectIdsAsync(
+        IAnchorLoaderFactory anchorLoaderFactory, Guid organizationId, Guid callerId, AccessScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (scope == AccessScope.Own) return [callerId];
+        var anchors = anchorLoaderFactory.Create(organizationId, callerId);
+        try
+        {
+            var ids = scope == AccessScope.Team
+                ? await anchors.TeamMemberIdsAsync(cancellationToken)
+                : await anchors.UnitMemberIdsAsync(cancellationToken);
+            return ids.Select(Guid.Parse).ToHashSet();
+        }
+        finally
+        {
+            if (anchors is IAsyncDisposable disposable) await disposable.DisposeAsync();
+        }
     }
 
     private static async Task<TenantContext?> ResolveAsync(

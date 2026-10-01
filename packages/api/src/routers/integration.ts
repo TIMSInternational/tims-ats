@@ -355,20 +355,18 @@ export const integrationRouter = router({
 
   // ── System Health & KPIs ────────────────────────────────────
 
+  // Nothing measures tenant integration health, so this reports exactly that (#323, consistent with #295's
+  // platform health): every service 'unmonitored' and no number at all. It used to return a hardcoded
+  // 'healthy' with 99.97% uptime to any holder of integration:read. No web caller reads it.
   getSystemHealth: permissionProcedure('integration', 'read').query(async () => {
-    // Stub — return mock health data
+    const unmonitored = { status: 'unmonitored' as const, latencyMs: null };
     return {
-      status: 'healthy',
-      uptime: 99.97,
-      latencyMs: 42,
-      activeConnections: 3,
-      services: {
-        database: { status: 'healthy', latencyMs: 5 },
-        redis: { status: 'healthy', latencyMs: 2 },
-        storage: { status: 'healthy', latencyMs: 12 },
-        email: { status: 'healthy', latencyMs: 85 },
-      },
-      lastCheckedAt: new Date().toISOString(),
+      status: 'unmonitored' as const,
+      uptime: null,
+      latencyMs: null,
+      activeConnections: null,
+      services: { database: unmonitored, redis: unmonitored, storage: unmonitored, email: unmonitored },
+      lastCheckedAt: null,
     };
   }),
 

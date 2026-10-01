@@ -13,6 +13,7 @@ public interface IAssignablePeopleRepository
     /// With <paramref name="vacancy"/>, only approvers whose resolved <c>vacancy:approve</c> scope covers that
     /// vacancy are returned (see <see cref="VacancyApproverScope"/>); returns <c>null</c> when the vacancy is
     /// not a non-deleted vacancy of the organization OR the caller's own scope does not cover it.
+    /// With <paramref name="subjects"/>, only those user ids can be returned (a narrow-scoped caller's subject set).
     /// </remarks>
     Task<IReadOnlyList<AssignablePerson>?> ListAsync(
         Guid organizationId,
@@ -20,5 +21,6 @@ public interface IAssignablePeopleRepository
         string? search,
         int limit,
         VacancyApproverFilter? vacancy,
+        IReadOnlyCollection<Guid>? subjects,
         CancellationToken cancellationToken);
 }

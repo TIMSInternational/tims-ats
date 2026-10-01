@@ -145,10 +145,15 @@ export function ActivityFeed() {
         ) : (
           <div className="space-y-0 overflow-y-auto max-h-[260px]">
             {(health?.services ?? []).slice(0, 8).map((svc) => {
-              const latencyMetric = svc.metrics?.find(
-                (m) => m.label.toLowerCase().includes('latencia') || m.label.toLowerCase().includes('query'),
+              const latencyMetric = svc.metrics?.find((m) => m.id === 'query_time' || m.id === 'api_latency');
+              return (
+                <ServiceDot
+                  key={svc.id}
+                  status={svc.status}
+                  label={t.health.serviceNames[svc.id]}
+                  latency={latencyMetric?.value ?? undefined}
+                />
               );
-              return <ServiceDot key={svc.name} status={svc.status} label={svc.name} latency={latencyMetric?.value} />;
             })}
             {health?.services.length === 0 && (
               <p className="text-xs text-muted py-6 text-center">{t.dashboard.noServicesFound}</p>
@@ -160,11 +165,11 @@ export function ActivityFeed() {
         {health?.stats && (
           <div className="mt-auto pt-3 border-t border-border grid grid-cols-2 gap-2">
             <div className="text-center">
-              <p className="text-lg font-bold text-primary">{health.stats.loginsToday}</p>
+              <p className="text-lg font-bold text-primary">{health.stats.loginsToday ?? '—'}</p>
               <p className="text-[10px] text-muted">{t.dashboard.loginsToday}</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold text-primary">{health.stats.auditLogsToday}</p>
+              <p className="text-lg font-bold text-primary">{health.stats.auditLogsToday ?? '—'}</p>
               <p className="text-[10px] text-muted">{t.dashboard.eventsToday}</p>
             </div>
           </div>

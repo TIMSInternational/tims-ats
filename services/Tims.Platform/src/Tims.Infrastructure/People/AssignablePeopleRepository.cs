@@ -23,6 +23,7 @@ public sealed class AssignablePeopleRepository(
         string? search,
         int limit,
         VacancyApproverFilter? vacancy,
+        IReadOnlyCollection<Guid>? subjects,
         CancellationToken cancellationToken)
     {
         var staffSlugs = RoleSlugs.AssignableStaffRoles.ToList();
@@ -30,6 +31,23 @@ public sealed class AssignablePeopleRepository(
 
         var query = db.Users.AsNoTracking()
             .Where(user => user.OrganizationId == organizationId && user.IsActive && user.DeletedAt == null);
+
+        if (rule.StaffOnly)
+        {
+            // Only people holding an ACTIVE staff role of THIS organization: never an external-only principal.
+            query = query.Where(user => db.UserRoles.Any(userRole => userRole.UserId == user.Id
+                && db.Roles.Any(role => role.Id == userRole.RoleId
+                    && role.OrganizationId == organizationId
+                    && role.IsActive
+                    && staffSlugs.Contains(role.Slug))));
+        }
+
+        if (subjects is not null)
+        {
+            // The caller's subject set (own/team/unit) — an empty set lists nobody, never everybody.
+            var subjectIds = subjects.ToList();
+            query = query.Where(user => subjectIds.Contains(user.Id));
+        }
 
         if (search is not null)
         {

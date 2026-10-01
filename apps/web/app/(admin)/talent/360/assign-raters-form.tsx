@@ -92,6 +92,7 @@ export function AssignRatersForm({ cycleId }: AssignRatersFormProps) {
           <>
             <p className="text-[11px] text-[#8B8B8B] mb-1.5">{t.evaluation360.selectSubjectPrompt}</p>
             <UserPicker
+              purpose="evaluation360_participant"
               onSelect={(_id, user) => setSubject(user)}
               searchPlaceholder={t.evaluation360.searchSubjectPlaceholder}
               loadingLabel={t.evaluation360.loadingUsers}
@@ -136,6 +137,7 @@ export function AssignRatersForm({ cycleId }: AssignRatersFormProps) {
 
           {pickingRater ? (
             <UserPicker
+              purpose="evaluation360_participant"
               excludeIds={rows.map((r) => r.user.id)}
               onSelect={addRater}
               disabled={assignRaters.isPending}
