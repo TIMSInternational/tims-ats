@@ -342,6 +342,25 @@ export const candidateRepository = {
     });
   },
 
+  // The CV document already recorded for this candidate + uploaded object key, if any —
+  // public apply records it unparsed in the application transaction; processing reuses it,
+  // and a retry never duplicates the row or the AI call.
+  async findCvDocumentByKey(orgId: string, candidateId: string, fileUrl: string) {
+    return db.candidateDocument.findFirst({
+      where: { organizationId: orgId, candidateId, type: 'cv', fileUrl },
+      select: { id: true, parsedData: true, fileSize: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  },
+
+  // Backfills the size of a CV row recorded before its object was fetched (public apply).
+  async setDocumentFileSize(orgId: string, documentId: string, fileSize: number) {
+    await db.candidateDocument.updateMany({
+      where: { id: documentId, organizationId: orgId },
+      data: { fileSize },
+    });
+  },
+
   async deleteDocument(documentId: string) {
     await db.candidateDocument.delete({ where: { id: documentId } });
   },

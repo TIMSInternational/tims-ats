@@ -208,6 +208,8 @@ describe('tRPC + tenantDb — fail closed unless scoped or explicitly opted in',
     // assert the write happened, scoped, and nothing was logged as a failure.
     expect(errorLog).not.toHaveBeenCalled();
     expect(h.calls).toEqual([
+      // idempotency lookup (#314) — scoped like the write
+      expect.objectContaining({ model: 'CandidateDocument', operation: 'findFirst', scoped: true }),
       expect.objectContaining({ model: 'CandidateDocument', operation: 'create', scoped: true }),
     ]);
     expect(orgDuringParse).toBe(ORG_ID);
