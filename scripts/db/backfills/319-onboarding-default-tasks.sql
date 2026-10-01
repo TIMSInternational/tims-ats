@@ -20,14 +20,18 @@
 --        organization_id               = the PLAN's organization_id (never anything else)
 --        completed false, description / completed_at / completed_by_id NULL (column defaults)
 --   B. Every ELIGIBLE plan that already HAS tasks keeps them. Only tasks whose due_date IS NULL get one.
---      Existing due dates are never overwritten. THE RULE for a NULL due_date:
---        1. If the task title is EXACTLY one of the default titles, use that default's offset
---           (start_date + dueOffsetDays) — the same date the code would have given it.
---        2. Otherwise use the END of the task's own phase window:
---           'day1_30' -> start_date + 30, 'day31_60' -> start_date + 60, 'day61_90' -> start_date + 90.
---           The latest date still consistent with the phase, so a backfilled task never turns
---           overdue earlier than its phase allows.
---        3. Any other phase value -> left NULL and listed in the report (needs a human).
+--      Existing due dates are never overwritten. THE RULE for a NULL due_date (DUE_OFFSET_RULE below):
+--        1. Known phase ('day1_30' / 'day31_60' / 'day61_90'):
+--           a. if the title is EXACTLY a default title AND that default's offset lies inside the
+--              task's own phase window (onboardingPhaseForOffset(offset) = task.phase), use the
+--              default's offset — the same date the code would have given it;
+--           b. otherwise (no title match, or a title match whose offset falls OUTSIDE the task's
+--              phase window — e.g. 'Presentación con el equipo' (+5) re-filed under 'day61_90'),
+--              the PHASE WINDOW wins: use the END of the window, +30 / +60 / +90. The latest date
+--              still consistent with the phase, so a backfilled task is never dated outside the
+--              phase it is shown under and never turns overdue earlier than its phase allows.
+--        2. Unknown phase value: the default's offset if the title matches (there is no window to
+--           contradict it); otherwise left NULL and listed in DRY-RUN 3 (needs a human).
 --   Check-ins (scheduledOnboardingCheckIns) are NOT backfilled — out of scope for #319; the dry run
 --   reports how many eligible plans have none.
 --
@@ -47,13 +51,16 @@
 --             -v expected_empty_plans=<N> -v expected_undated_tasks=<M> \
 --             [-v include_past_day90=true] \
 --             -f scripts/db/backfills/319-onboarding-default-tasks.sql
+--   `apply` and `include_past_day90` accept exactly `true` or `false`; anything else aborts (exit 3).
 --   Re-running after a successful apply is a no-op: the dry run shows 0/0, and an apply with 0/0
 --   inserts and updates nothing.
+--   No psql? apply-via-connector/319-onboarding-default-tasks.sql is the same apply section, generated
+--   from this file with the production dry-run totals inlined (see generate-connector-applies.ts).
 --
--- DRIFT GUARD: tests/db/backfill-defaults-pinned.test.ts parses every block between the
--- BEGIN/END DEFAULT_ONBOARDING_TASKS markers below and asserts it equals the TS constant, and that the
--- phase thresholds equal onboardingPhaseForOffset. Change the constant and that test fails until this
--- file is updated.
+-- DRIFT GUARD: tests/db/backfill-defaults-pinned.test.ts pins every block between BEGIN/END markers
+-- below to the TS constants (DEFAULT_ONBOARDING_TASKS, onboardingPhaseForOffset), asserts every copy of
+-- DUE_OFFSET_RULE and PLAN_IN_WINDOW is identical, and that the dry run's past_day90 is the exact
+-- complement of the apply's in-window test.
 -- =====================================================================================================
 
 \set ON_ERROR_STOP on
@@ -64,6 +71,11 @@
 \if :{?include_past_day90}
 \else
   \set include_past_day90 false
+\endif
+SELECT (:'apply' IN ('true', 'false') AND :'include_past_day90' IN ('true', 'false')) AS backfill_flags_valid \gset
+\if :backfill_flags_valid
+\else
+  DO $abort$ BEGIN RAISE EXCEPTION '#319: -v apply and -v include_past_day90 must be exactly true or false'; END $abort$;
 \endif
 
 \echo '== #319 DRY RUN (read-only) =='
@@ -100,8 +112,18 @@ plans AS (
 ),
 undated AS (
   SELECT pl.organization_id, pl.past_day90,
-         COALESCE(d.offset_days,
-                  CASE t.phase WHEN 'day1_30' THEN 30 WHEN 'day31_60' THEN 60 WHEN 'day61_90' THEN 90 END)
+-- BEGIN DUE_OFFSET_RULE
+         CASE
+           WHEN t.phase IN ('day1_30', 'day31_60', 'day61_90') THEN
+             CASE
+               WHEN d.offset_days IS NOT NULL
+                AND (CASE WHEN d.offset_days <= 30 THEN 'day1_30' WHEN d.offset_days <= 60 THEN 'day31_60' ELSE 'day61_90' END) = t.phase
+                 THEN d.offset_days
+               ELSE CASE t.phase WHEN 'day1_30' THEN 30 WHEN 'day31_60' THEN 60 WHEN 'day61_90' THEN 90 END
+             END
+           ELSE d.offset_days
+         END
+-- END DUE_OFFSET_RULE
            AS offset_days
   FROM plans pl
   JOIN onboarding_tasks t ON t.plan_id = pl.id AND t.due_date IS NULL
@@ -150,15 +172,27 @@ undated AS (
   FROM plans pl
   JOIN onboarding_tasks t ON t.plan_id = pl.id AND t.due_date IS NULL
   LEFT JOIN defaults d ON d.title = t.title
-  WHERE COALESCE(d.offset_days,
-                 CASE t.phase WHEN 'day1_30' THEN 30 WHEN 'day31_60' THEN 60 WHEN 'day61_90' THEN 90 END) IS NOT NULL
+  WHERE
+-- BEGIN DUE_OFFSET_RULE
+         CASE
+           WHEN t.phase IN ('day1_30', 'day31_60', 'day61_90') THEN
+             CASE
+               WHEN d.offset_days IS NOT NULL
+                AND (CASE WHEN d.offset_days <= 30 THEN 'day1_30' WHEN d.offset_days <= 60 THEN 'day31_60' ELSE 'day61_90' END) = t.phase
+                 THEN d.offset_days
+               ELSE CASE t.phase WHEN 'day1_30' THEN 30 WHEN 'day31_60' THEN 60 WHEN 'day61_90' THEN 90 END
+             END
+           ELSE d.offset_days
+         END
+-- END DUE_OFFSET_RULE
+           IS NOT NULL
 )
 SELECT (SELECT count(*) FROM plans WHERE is_empty AND NOT past_day90) AS expected_empty_plans_default,
        (SELECT count(*) FROM undated WHERE NOT past_day90)            AS expected_undated_tasks_default,
        (SELECT count(*) FROM plans WHERE is_empty)                    AS expected_empty_plans_with_past,
        (SELECT count(*) FROM undated)                                 AS expected_undated_tasks_with_past;
 
--- DRY-RUN 3 (report — needs a human): undated tasks whose phase is not one of the three known values.
+-- DRY-RUN 3 (report — needs a human): undated tasks with an unknown phase and a non-default title.
 SELECT p.organization_id, t.plan_id, t.id AS task_id, t.title, t.phase
 FROM onboarding_tasks t
 JOIN onboarding_plans p ON p.id = t.plan_id AND p.status = 'active'
@@ -193,8 +227,10 @@ ORDER BY p.organization_id, t.plan_id, t."order";
   DO $abort$ BEGIN RAISE EXCEPTION '#319: -v expected_undated_tasks=<M> is required with apply=true (copy it from DRY-RUN 2)'; END $abort$;
 \endif
 
+-- CONNECTOR-APPLY-BEGIN
 BEGIN;
 SET LOCAL lock_timeout = '5s';
+SET LOCAL TimeZone = 'UTC';
 
 \o /dev/null
 SELECT set_config('backfill319.include_past_day90', :'include_past_day90', true),
@@ -245,30 +281,48 @@ BEGIN
     RAISE EXCEPTION '#319: expected 12 default tasks, found %', v_defaults;
   END IF;
 
-  -- Lock every active plan: a concurrent task insert (FK KEY SHARE on the plan) or a plan update now
-  -- waits for this transaction, so the target sets computed below cannot go stale before the writes.
+  -- Lock every active plan: a concurrent task insert (onboarding_tasks.plan_id FK -> FOR KEY SHARE on
+  -- the plan row) or a plan update now waits for this transaction, so the target sets computed below
+  -- cannot go stale before the writes.
   PERFORM 1 FROM onboarding_plans WHERE status = 'active' ORDER BY id FOR UPDATE;
 
   CREATE TEMP TABLE backfill319_empty_plans ON COMMIT DROP AS
   SELECT p.id, p.organization_id, p.start_date
   FROM onboarding_plans p
   WHERE p.status = 'active'
+-- BEGIN PLAN_IN_WINDOW
     AND (v_include_past OR p.start_date + interval '90 days' >= v_now)
+-- END PLAN_IN_WINDOW
     AND NOT EXISTS (SELECT 1 FROM onboarding_tasks t WHERE t.plan_id = p.id);
   GET DIAGNOSTICS v_plans = ROW_COUNT;
 
   CREATE TEMP TABLE backfill319_undated ON COMMIT DROP AS
-  SELECT t.id AS task_id,
-         p.start_date + make_interval(days => COALESCE(d.offset_days,
-           CASE t.phase WHEN 'day1_30' THEN 30 WHEN 'day31_60' THEN 60 WHEN 'day61_90' THEN 90 END)) AS new_due_date
-  FROM onboarding_tasks t
-  JOIN onboarding_plans p ON p.id = t.plan_id
-  LEFT JOIN backfill319_defaults d ON d.title = t.title
-  WHERE p.status = 'active'
+  SELECT task_id, start_date + make_interval(days => offset_days) AS new_due_date
+  FROM (
+    SELECT t.id AS task_id, p.start_date,
+-- BEGIN DUE_OFFSET_RULE
+         CASE
+           WHEN t.phase IN ('day1_30', 'day31_60', 'day61_90') THEN
+             CASE
+               WHEN d.offset_days IS NOT NULL
+                AND (CASE WHEN d.offset_days <= 30 THEN 'day1_30' WHEN d.offset_days <= 60 THEN 'day31_60' ELSE 'day61_90' END) = t.phase
+                 THEN d.offset_days
+               ELSE CASE t.phase WHEN 'day1_30' THEN 30 WHEN 'day31_60' THEN 60 WHEN 'day61_90' THEN 90 END
+             END
+           ELSE d.offset_days
+         END
+-- END DUE_OFFSET_RULE
+           AS offset_days
+    FROM onboarding_tasks t
+    JOIN onboarding_plans p ON p.id = t.plan_id
+    LEFT JOIN backfill319_defaults d ON d.title = t.title
+    WHERE p.status = 'active'
+-- BEGIN PLAN_IN_WINDOW
     AND (v_include_past OR p.start_date + interval '90 days' >= v_now)
-    AND t.due_date IS NULL
-    AND COALESCE(d.offset_days,
-          CASE t.phase WHEN 'day1_30' THEN 30 WHEN 'day31_60' THEN 60 WHEN 'day61_90' THEN 90 END) IS NOT NULL;
+-- END PLAN_IN_WINDOW
+      AND t.due_date IS NULL
+  ) resolved
+  WHERE offset_days IS NOT NULL;
   GET DIAGNOSTICS v_undated = ROW_COUNT;
 
   -- Guard 2: the operator's reviewed dry-run totals must still be true.
@@ -310,7 +364,9 @@ BEGIN
   SELECT count(*) INTO v_left
   FROM onboarding_plans p
   WHERE p.status = 'active'
+-- BEGIN PLAN_IN_WINDOW
     AND (v_include_past OR p.start_date + interval '90 days' >= v_now)
+-- END PLAN_IN_WINDOW
     AND NOT EXISTS (SELECT 1 FROM onboarding_tasks t WHERE t.plan_id = p.id);
   IF v_left <> 0 THEN
     RAISE EXCEPTION '#319: % eligible plans still have zero tasks after insert', v_left;
@@ -336,6 +392,7 @@ LEFT JOIN onboarding_plans p ON p.organization_id = o.id
 LEFT JOIN onboarding_tasks t ON t.plan_id = p.id
 GROUP BY o.id, o.name, o.created_at
 ORDER BY o.created_at;
+-- CONNECTOR-APPLY-END
 \else
 \echo '== DRY RUN ONLY — nothing was written. Re-run with -v apply=true and the expected_* totals to apply. =='
 \endif

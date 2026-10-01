@@ -16,9 +16,10 @@
 --     business_units  (organization_id, company_id = that company, name = 'General')
 --     teams           (organization_id, business_unit_id = that unit, name = 'Equipo General')
 --   Every other column is left to its DB default (currency 'USD', timezone 'America/Bogota',
---   language 'es', settings '{}', is_active true, created_at) or NULL (legal_name, tax_id, code,
---   parent_id, teams.leader_id). updated_at has no DB default and is set to now (UTC), as the
---   writers do.
+--   language 'es', settings '{}', is_active true) or NULL (legal_name, tax_id, code, parent_id,
+--   teams.leader_id). updated_at has no DB default and is set to now (UTC), as the writers do.
+--   created_at is set explicitly to the same UTC instant rather than left to CURRENT_TIMESTAMP, which
+--   would follow the session TimeZone (the apply also pins SET LOCAL TimeZone = 'UTC').
 --
 -- WHAT IT DELIBERATELY DOES NOT DO:
 --   * No leaders, no team members, no unit assignees, no users.business_unit_id. Provisioning assigns
@@ -47,18 +48,27 @@
 --   2. Apply, passing the target-org total the dry run printed (rolls back if it differs):
 --        psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v apply=true -v expected_orgs=<N> \
 --             -f scripts/db/backfills/320-org-structure-defaults.sql
+--   `apply` accepts exactly `true` or `false`; anything else aborts (exit 3).
 --   Re-running after a successful apply is a no-op: every org then has structure, the dry run shows
 --   0 targets, and an apply with expected_orgs=0 writes nothing.
+--   No psql? apply-via-connector/320-org-structure-defaults.sql is the same apply section, generated
+--   from this file with the production dry-run total inlined (see generate-connector-applies.ts).
 --
 -- DRIFT GUARD: tests/db/backfill-defaults-pinned.test.ts asserts the three literals between the
 -- BEGIN/END ORG_DEFAULTS markers equal what provisionOrgDefaults writes (TS) and the C#
--- OrgProvisioningWriter constants.
+-- OrgProvisioningWriter constants, that the INSERT column lists equal the columns both writers set, and
+-- that the dry run's expected_orgs predicate is the same text as the apply's TARGET_PREDICATE.
 -- =====================================================================================================
 
 \set ON_ERROR_STOP on
 \if :{?apply}
 \else
   \set apply false
+\endif
+SELECT (:'apply' IN ('true', 'false')) AS backfill_flags_valid \gset
+\if :backfill_flags_valid
+\else
+  DO $abort$ BEGIN RAISE EXCEPTION '#320: -v apply must be exactly true or false'; END $abort$;
 \endif
 
 \echo '== #320 DRY RUN (read-only) =='
@@ -88,10 +98,13 @@ ORDER BY o.created_at;
 -- TOTAL to pass as -v expected_orgs.
 SELECT count(*) AS expected_orgs
 FROM organizations o
+-- BEGIN TARGET_PREDICATE
 WHERE o.deleted_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM companies x      WHERE x.organization_id = o.id)
   AND NOT EXISTS (SELECT 1 FROM business_units x WHERE x.organization_id = o.id)
-  AND NOT EXISTS (SELECT 1 FROM teams x          WHERE x.organization_id = o.id);
+  AND NOT EXISTS (SELECT 1 FROM teams x          WHERE x.organization_id = o.id)
+-- END TARGET_PREDICATE
+;
 
 -- REPORT 2 (needs human judgement — the script never writes any of this). Per non-deleted org:
 --   active_teams_without_leader       teams.leader_id to set (Settings -> Business units)
@@ -145,8 +158,10 @@ ORDER BY o.created_at;
   DO $abort$ BEGIN RAISE EXCEPTION '#320: -v expected_orgs=<N> is required with apply=true (copy it from the dry run)'; END $abort$;
 \endif
 
+-- CONNECTOR-APPLY-BEGIN
 BEGIN;
 SET LOCAL lock_timeout = '5s';
+SET LOCAL TimeZone = 'UTC';
 
 \o /dev/null
 SELECT set_config('backfill320.expected_orgs', :'expected_orgs', true);
@@ -171,10 +186,15 @@ BEGIN
     RAISE EXCEPTION '#320: role % lacks BYPASSRLS; run as the app owner login (postgres)', current_user;
   END IF;
 
-  -- Lock the candidate org rows. Any concurrent INSERT into companies / business_units / teams for
-  -- one of them takes FOR KEY SHARE on the organization row (FK check), which conflicts with
-  -- FOR UPDATE — so it either committed before this lock (and the NOT EXISTS below, evaluated in a
-  -- fresh READ COMMITTED snapshot, sees it) or waits until we commit.
+  -- Lock the candidate org rows. Of the three tables only companies has an FK to organizations
+  -- (companies.organization_id); business_units FKs companies and teams FKs business_units, and
+  -- neither has an FK on organization_id. A concurrent INSERT INTO companies for a candidate org takes
+  -- FOR KEY SHARE on the organization row, which conflicts with this FOR UPDATE — so it either
+  -- committed before the lock (and the NOT EXISTS below, evaluated in a fresh READ COMMITTED snapshot,
+  -- sees it) or waits until we commit. Units and teams are serialized TRANSITIVELY: a candidate org
+  -- has no company, so a concurrent unit needs a concurrent company first (blocked here), and a
+  -- concurrent team needs that unit. A unit/team inserted with a mismatched organization_id (no FK
+  -- stops that) is not serialized, but the guard-3 read-back below still checks every target chain.
   PERFORM 1 FROM organizations o
   WHERE o.deleted_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM companies x WHERE x.organization_id = o.id)
@@ -185,10 +205,13 @@ BEGIN
   SELECT o.id AS organization_id, o.name AS company_name,
          gen_random_uuid() AS company_id, gen_random_uuid() AS business_unit_id, gen_random_uuid() AS team_id
   FROM organizations o
-  WHERE o.deleted_at IS NULL
-    AND NOT EXISTS (SELECT 1 FROM companies x      WHERE x.organization_id = o.id)
-    AND NOT EXISTS (SELECT 1 FROM business_units x WHERE x.organization_id = o.id)
-    AND NOT EXISTS (SELECT 1 FROM teams x          WHERE x.organization_id = o.id);
+-- BEGIN TARGET_PREDICATE
+WHERE o.deleted_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM companies x      WHERE x.organization_id = o.id)
+  AND NOT EXISTS (SELECT 1 FROM business_units x WHERE x.organization_id = o.id)
+  AND NOT EXISTS (SELECT 1 FROM teams x          WHERE x.organization_id = o.id)
+-- END TARGET_PREDICATE
+  ;
   GET DIAGNOSTICS v_orgs = ROW_COUNT;
 
   -- Guard 2: the operator's reviewed dry-run total must still be true.
@@ -197,22 +220,22 @@ BEGIN
   END IF;
 
   -- The NOT EXISTS re-checks make each insert a no-op on a re-run even if the target step changed.
-  INSERT INTO companies (id, organization_id, name, country, updated_at)
-  SELECT tg.company_id, tg.organization_id, tg.company_name, c_country, v_now
+  INSERT INTO companies (id, organization_id, name, country, created_at, updated_at)
+  SELECT tg.company_id, tg.organization_id, tg.company_name, c_country, v_now, v_now
   FROM backfill320_targets tg
   WHERE NOT EXISTS (SELECT 1 FROM companies x WHERE x.organization_id = tg.organization_id);
   GET DIAGNOSTICS v_n = ROW_COUNT;
   IF v_n <> v_orgs THEN RAISE EXCEPTION '#320: inserted % companies, expected %', v_n, v_orgs; END IF;
 
-  INSERT INTO business_units (id, organization_id, company_id, name, updated_at)
-  SELECT tg.business_unit_id, tg.organization_id, tg.company_id, c_unit, v_now
+  INSERT INTO business_units (id, organization_id, company_id, name, created_at, updated_at)
+  SELECT tg.business_unit_id, tg.organization_id, tg.company_id, c_unit, v_now, v_now
   FROM backfill320_targets tg
   WHERE NOT EXISTS (SELECT 1 FROM business_units x WHERE x.organization_id = tg.organization_id);
   GET DIAGNOSTICS v_n = ROW_COUNT;
   IF v_n <> v_orgs THEN RAISE EXCEPTION '#320: inserted % business units, expected %', v_n, v_orgs; END IF;
 
-  INSERT INTO teams (id, organization_id, business_unit_id, name, updated_at)
-  SELECT tg.team_id, tg.organization_id, tg.business_unit_id, c_team, v_now
+  INSERT INTO teams (id, organization_id, business_unit_id, name, created_at, updated_at)
+  SELECT tg.team_id, tg.organization_id, tg.business_unit_id, c_team, v_now, v_now
   FROM backfill320_targets tg
   WHERE NOT EXISTS (SELECT 1 FROM teams x WHERE x.organization_id = tg.organization_id);
   GET DIAGNOSTICS v_n = ROW_COUNT;
@@ -249,6 +272,7 @@ SELECT o.id AS organization_id, o.name AS organization,
 FROM organizations o
 WHERE o.deleted_at IS NULL
 ORDER BY o.created_at;
+-- CONNECTOR-APPLY-END
 \else
 \echo '== DRY RUN ONLY — nothing was written. Re-run with -v apply=true -v expected_orgs=<N> to apply. =='
 \endif
