@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { randomBytes } from 'crypto';
 import { hashApiKey } from '../lib/api-key';
@@ -162,15 +163,10 @@ export const integrationRouter = router({
           startedAt: true,
           completedAt: true,
         },
-        take: input.take + 1,
-        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
-        orderBy: { startedAt: 'desc' },
+        ...cursorPageArgs(input.take, input.cursor),
+        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
       });
-      const hasMore = items.length > input.take;
-      return {
-        items: items.slice(0, input.take),
-        nextCursor: hasMore ? items[input.take - 1]!.id : undefined,
-      };
+      return takeCursorPage(items, input.take);
     }),
 
   // Org-wide recent sync feed (across all connectors) for the activity panel.
@@ -329,16 +325,11 @@ export const integrationRouter = router({
 
       const items = await db.syncError.findMany({
         where,
-        take: input.take + 1,
-        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+        ...cursorPageArgs(input.take, input.cursor),
         include: { connector: { select: { id: true, name: true, type: true } } },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
-      const hasMore = items.length > input.take;
-      return {
-        items: items.slice(0, input.take),
-        nextCursor: hasMore ? items[input.take - 1]!.id : undefined,
-      };
+      return takeCursorPage(items, input.take);
     }),
 
   retryError: permissionProcedure('integration', 'update')

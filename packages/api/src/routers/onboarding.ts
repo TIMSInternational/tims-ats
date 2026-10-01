@@ -4,6 +4,7 @@ import { router, permissionProcedure } from '../trpc';
 // via RLS (see docs/security/RLS-MIGRATION-PLAN.md). Behaves identically to the base
 // db until the RLS cutover (TENANT_DATABASE_URL) is enabled.
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
@@ -73,11 +74,10 @@ export const onboardingRouter = router({
         ],
       };
 
-      const plans = await db.onboardingPlan.findMany({
+      const rows = await db.onboardingPlan.findMany({
         where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        ...cursorPageArgs(limit, cursor),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           user: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
           buddy: { select: { id: true, firstName: true, lastName: true, avatar: true } },
@@ -86,11 +86,7 @@ export const onboardingRouter = router({
         },
       });
 
-      let nextCursor: string | undefined;
-      if (plans.length > limit) {
-        const nextItem = plans.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: plans, nextCursor } = takeCursorPage(rows, limit);
 
       return { plans, nextCursor };
     }),

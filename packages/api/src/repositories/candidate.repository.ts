@@ -1,4 +1,5 @@
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
+import { cursorPageArgs } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 
 // ---------------------------------------------------------------------------
@@ -229,9 +230,8 @@ export const candidateRepository = {
           filterClause,
         ],
       },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: 'desc' },
+      ...cursorPageArgs(limit, cursor),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: buildCandidateListSelect(appScopeWhere),
     });
   },

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor } from '../../access';
 
@@ -56,22 +57,17 @@ export const performanceFeedbackRouter = router({
         ],
       };
 
-      const feedbacks = await db.feedback.findMany({
+      const rows = await db.feedback.findMany({
         where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        ...cursorPageArgs(limit, cursor),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           fromUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
           toUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
         },
       });
 
-      let nextCursor: string | undefined;
-      if (feedbacks.length > limit) {
-        const nextItem = feedbacks.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: feedbacks, nextCursor } = takeCursorPage(rows, limit);
 
       // Strip sender info for anonymous feedback
       const sanitized = feedbacks.map((fb) => ({
@@ -124,22 +120,17 @@ export const performanceFeedbackRouter = router({
         ...(category ? { category } : {}),
       };
 
-      const recognitions = await db.recognition.findMany({
+      const rows = await db.recognition.findMany({
         where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        ...cursorPageArgs(limit, cursor),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           fromUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
           toUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
         },
       });
 
-      let nextCursor: string | undefined;
-      if (recognitions.length > limit) {
-        const nextItem = recognitions.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: recognitions, nextCursor } = takeCursorPage(rows, limit);
 
       return { recognitions, nextCursor };
     }),
@@ -167,11 +158,10 @@ export const performanceFeedbackRouter = router({
         toUserId: ctx.user.id,
       };
 
-      const recognitions = await db.recognition.findMany({
+      const rows = await db.recognition.findMany({
         where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        ...cursorPageArgs(limit, cursor),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
           category: true,
@@ -181,11 +171,7 @@ export const performanceFeedbackRouter = router({
         },
       });
 
-      let nextCursor: string | undefined;
-      if (recognitions.length > limit) {
-        const nextItem = recognitions.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: recognitions, nextCursor } = takeCursorPage(rows, limit);
 
       return { recognitions, nextCursor };
     }),

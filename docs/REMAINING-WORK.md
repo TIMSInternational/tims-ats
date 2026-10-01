@@ -528,7 +528,7 @@ dashboard.ts` wrapper shipped 2026-08-17 behind `NEXT_PUBLIC_DASHBOARD_READ_VIA_
     policy + a user GUC `TenantScope` does not set — a step-5/6 blocker; flipping the read flag before that
     would empty the platform notifications page. Parity registration also cannot be grant-fixture-only:
     nine procedures consult no grant, so the surface needs per-role notification ROWS (empty fixtures would
-    compare vacuously). TS defects reproduced not fixed: `list` loses one row per page boundary (#246),
+    compare vacuously). TS defects reproduced not fixed: (`list`'s page-boundary row loss, #246, is now FIXED in both stacks),
     `create`/`bulkCreate` accept an un-validated target userId (#248); 107 typeless `format: date-time`
     OpenAPI properties are pre-existing (#247). Step 4's OTHER half — the
     `apps/web/lib/platform-api/notification.ts` wrapper (7 of 11 procedures have live FE call sites) — is

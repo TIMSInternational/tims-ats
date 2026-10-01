@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
+import { cursorPageArgs, takeCursorPage } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser } from '../../access';
@@ -217,19 +218,14 @@ export const vacancyCrudRouter = router({
         ],
       };
 
-      const items = await db.vacancy.findMany({
+      const rows = await db.vacancy.findMany({
         where,
-        take: limit + 1,
-        ...(cursor && { cursor: { id: cursor }, skip: 1 }),
-        orderBy: { createdAt: 'desc' },
+        ...cursorPageArgs(limit, cursor),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: vacancyListSelect,
       });
 
-      let nextCursor: string | undefined;
-      if (items.length > limit) {
-        const next = items.pop()!;
-        nextCursor = next.id;
-      }
+      const { items, nextCursor } = takeCursorPage(rows, limit);
 
       return { items, nextCursor };
     }),

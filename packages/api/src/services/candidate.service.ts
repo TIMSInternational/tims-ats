@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
 import { candidateRepository } from '../repositories/candidate.repository';
+import { takeCursorPage } from '../lib/cursor-page';
 import { candidateAiService } from './candidate-ai.service';
 
 // ---------------------------------------------------------------------------
@@ -26,13 +27,8 @@ export const candidateService = {
       fitMax?: number;
     },
   ) {
-    const items = await candidateRepository.list(orgId, scopeWhere, appScopeWhere, input);
-
-    let nextCursor: string | undefined;
-    if (items.length > input.limit) {
-      const extra = items.pop()!;
-      nextCursor = extra.id;
-    }
+    const rows = await candidateRepository.list(orgId, scopeWhere, appScopeWhere, input);
+    const { items, nextCursor } = takeCursorPage(rows, input.limit);
 
     return { items, nextCursor };
   },

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage } from '../lib/cursor-page';
 
 import { TRPCError } from '@trpc/server';
 import { notificationSelect } from '../repositories/notification.repository';
@@ -23,23 +24,18 @@ export const notificationRouter = router({
     .query(async ({ ctx, input }) => {
       const { cursor, limit, unreadOnly } = input;
 
-      const notifications = await db.notification.findMany({
+      const rows = await db.notification.findMany({
         where: {
           userId: ctx.user.id,
           archived: false,
           ...(unreadOnly ? { read: false } : {}),
         },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...cursorPageArgs(limit, cursor),
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: notificationSelect,
       });
 
-      let nextCursor: string | undefined;
-      if (notifications.length > limit) {
-        notifications.pop();
-        nextCursor = notifications[notifications.length - 1]?.id;
-      }
+      const { items: notifications, nextCursor } = takeCursorPage(rows, limit);
 
       return { notifications, nextCursor };
     }),
