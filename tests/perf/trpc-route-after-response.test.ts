@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const routeSrc = readFileSync(resolve(__dirname, '..', '..', 'apps/web/app/api/trpc/[trpc]/route.ts'), 'utf-8');
 
@@ -23,7 +24,7 @@ describe('tRPC route wires post-response work to next/server after()', () => {
   });
 
   it('supplies runAfterResponse in the createContext return value', () => {
-    const createContext = routeSrc.slice(routeSrc.indexOf('createContext:'));
+    const createContext = blockAt(routeSrc, 'createContext:');
     expect(createContext).toMatch(/return\s*\{[^}]*\brunAfterResponse\b[^}]*\}/);
   });
 });
