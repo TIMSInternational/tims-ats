@@ -308,11 +308,14 @@ been burned by the difference (#38):
 | **check 17 `verify-tenant-grants.ts`**           | `/gate` check 17 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep  |
 | `scripts/db/pre-flip-scan.ts` (#132)             | `/gate` **check 18**, local              | ⚠️ ship-time only — see below |
 
-> **The nightly job is inert until the `PROD_DIRECT_URL` secret exists**, and fails loudly rather than
-> skipping while it is absent — so "not yet configured" is visible in the Actions tab instead of silently
-> reading as "nothing to report". It is **additive**: it answers _did production drift since yesterday_,
-> never _did this change break something_. `/gate` remains the pre-merge control and the nightly sweep must
-> not be treated as having replaced it.
+> **The nightly job needs the `PROD_DIRECT_URL` secret** (created 2026-09-29) and fails loudly rather than
+> skipping while it is absent or weaker than `verify-full` — so "not configured" is visible in the Actions tab
+> instead of silently reading as "nothing to report". It ran green once (2026-09-29, run 36614697689: 14, 16
+> and 17 all PASS as `ci_readonly`); every run since 2026-09-30 has failed at the pre-step because the stored
+> secret says `sslmode=require` — the owner must re-save it with `sslmode=verify-full`. It is **additive**: it
+> answers _did production drift since yesterday_, never _did this change break something_. `/gate` remains
+> the pre-merge control and the nightly sweep must not be treated as having replaced it. Its exit handling is
+> pinned by `tests/governance/nightly-db-controls.test.ts`.
 
 > **The nightly credential is read-only only once `scripts/db/ci-readonly-probe-role.sql` has run** (#292).
 > `ci_readonly` was a member of `app_tenant` (check 14 needed `SET LOCAL ROLE app_tenant`), which let the
@@ -361,9 +364,19 @@ been burned by the difference (#38):
 
 ### CI, and what to do when check 16 cannot run
 
-Check 16 is local-only for now: it needs the direct connection (`:5432`) and a `pg_dump` ≥ 17, and
-wiring production credentials into CI is a separate decision (#124). Until then, drift is caught when
-`/gate` runs — which is every ship — not on every push.
+Check 16 runs at ship time (`/gate`) and nightly in CI (`.github/workflows/nightly-db-controls.yml`, #124 —
+decided: a scheduled job with a read-only `ci_readonly` credential, never the pull-request path). It needs the
+direct/session connection (`:5432`) and a `pg_dump` ≥ 17; the nightly job installs `postgresql-client-17`.
+It is not run on every push.
+
+**Re-capturing from CI (#328).** A developer machine often cannot reach the direct connection (the
+`db.<ref>.supabase.co` host is IPv6-only). Run **Nightly DB Controls** manually from `main` with
+`capture_baseline` ticked: it captures with the same credential, TLS pinning and `pg_dump` as check 16,
+regenerates every `flip-ddl/*.sql` (`scripts/db/regenerate-flip-ddl.sh`, from each file's own
+`-- Regenerate:` line), re-runs `check` as a round trip, and uploads the baseline, the regenerated files, a
+`git apply`-able patch and the object-level summary as the `schema-baseline-recapture` artifact. **It never
+commits.** A human applies the patch in a PR and reads every hunk the summary lists — §7 applies unchanged:
+an artifact is not a reason to re-capture without reading.
 
 That creates an obvious trap, so it is spelled out rather than left to be discovered: **"every schema PR
 passes check 16" is unsatisfiable on a machine with no direct connection or no `pg_dump` ≥ 17.** A rule

@@ -33,10 +33,22 @@ describe('nightly-db-controls — check 16 (schema drift) runs in CI and fails l
   });
 
   it('treats exit 1 (drift), exit 2 (did not run) and any other exit as a FAILED job', () => {
-    // Each non-zero branch of the case statement must set fail=1; only 0 may pass.
-    expect(live).toMatch(/1\)[^;]*FOUND A VIOLATION[\s\S]*?fail=1 ;;/);
-    expect(live).toMatch(/2\)[^;]*DID NOT RUN[\s\S]*?fail=1 ;;/);
-    expect(live).toMatch(/\*\)[^;]*unexpected exit[\s\S]*?fail=1 ;;/);
+    // Each non-zero branch of the case statement must set fail=1 ITSELF; only 0 may pass. Split per branch
+    // so one branch's fail=1 can never satisfy another's assertion.
+    const caseBody = /case \$rc in([\s\S]*?)\besac\b/.exec(live)?.[1];
+    expect(caseBody, 'the exit-code case statement').toBeDefined();
+    const branches = new Map(
+      caseBody!
+        .split(';;')
+        .map((b) => b.trim())
+        .filter(Boolean)
+        .map((b) => [b.slice(0, b.indexOf(')')), b] as const),
+    );
+    expect([...branches.keys()]).toEqual(['0', '1', '2', '*']);
+    expect(branches.get('0')).not.toMatch(/fail=1/);
+    for (const code of ['1', '2', '*']) {
+      expect(branches.get(code), `exit ${code} branch`).toMatch(/\bfail=1\s*$/);
+    }
     expect(live).toMatch(/exit \$fail\s*$/m);
     expect(live).toMatch(/set \+e/);
   });
