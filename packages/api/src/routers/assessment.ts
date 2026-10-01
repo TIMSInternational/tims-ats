@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
-import { cursorPageArgs, takeCursorPage } from '../lib/cursor-page';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import {
@@ -249,16 +249,21 @@ export const assessmentRouter = router({
         ],
       };
 
-      const rows = await db.assessmentAssignment.findMany({
-        where,
-        ...cursorPageArgs(limit, cursor),
-        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
-        include: {
-          candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
-          assessmentType: { select: { id: true, name: true, code: true } },
-          result: { select: resultSelect },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.assessmentAssignment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.assessmentAssignment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+            include: {
+              candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+              assessmentType: { select: { id: true, name: true, code: true } },
+              result: { select: resultSelect },
+            },
+          });
 
       const { items, nextCursor } = takeCursorPage(rows, limit);
 
@@ -332,15 +337,20 @@ export const assessmentRouter = router({
         ],
       };
 
-      const rows = await db.assessmentAssignment.findMany({
-        where,
-        ...cursorPageArgs(limit, cursor),
-        orderBy: [{ assignedAt: 'desc' }, { id: 'desc' }],
-        include: {
-          candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
-          assessmentType: { select: { id: true, name: true, code: true, duration: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.assessmentAssignment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.assessmentAssignment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ assignedAt: 'desc' }, { id: 'desc' }],
+            include: {
+              candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+              assessmentType: { select: { id: true, name: true, code: true, duration: true } },
+            },
+          });
 
       const { items, nextCursor } = takeCursorPage(rows, limit);
 

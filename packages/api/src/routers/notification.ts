@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
-import { cursorPageArgs, takeCursorPage } from '../lib/cursor-page';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 
 import { TRPCError } from '@trpc/server';
 import { notificationSelect } from '../repositories/notification.repository';
@@ -24,16 +24,22 @@ export const notificationRouter = router({
     .query(async ({ ctx, input }) => {
       const { cursor, limit, unreadOnly } = input;
 
-      const rows = await db.notification.findMany({
-        where: {
-          userId: ctx.user.id,
-          archived: false,
-          ...(unreadOnly ? { read: false } : {}),
-        },
-        ...cursorPageArgs(limit, cursor),
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: notificationSelect,
-      });
+      const where = {
+        userId: ctx.user.id,
+        archived: false,
+        ...(unreadOnly ? { read: false } : {}),
+      };
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.notification.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.notification.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            select: notificationSelect,
+          });
 
       const { items: notifications, nextCursor } = takeCursorPage(rows, limit);
 

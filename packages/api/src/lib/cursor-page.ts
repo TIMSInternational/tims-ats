@@ -38,3 +38,21 @@ export function takeCursorPage<T extends { id: string }>(
   const items = rows.slice(0, limit);
   return { items, nextCursor: items[items.length - 1]?.id };
 }
+
+/**
+ * True when no cursor was sent, or when the cursor row still matches the page's OWN `where` (tenant scope +
+ * filters). `findAnchor` must query the same client and the same `where` as the list query, as
+ * `findFirst({ where: { AND: [where, { id }] }, select: { id: true } })`.
+ *
+ * Why: over a compound `orderBy`, Prisma positions on a cursor row even when the filters exclude it (archived,
+ * status changed, filters changed between pages), and `skip: 1` then silently drops a REAL row. A stale cursor
+ * therefore yields an empty page instead — the C# TenantAuditRepository anchor semantics. One indexed lookup
+ * per paged request is the price of never skipping a row.
+ */
+export async function cursorRowMatches(
+  cursor: string | undefined,
+  findAnchor: (id: string) => Promise<{ id: string } | null>,
+): Promise<boolean> {
+  if (!cursor) return true;
+  return (await findAnchor(cursor)) !== null;
+}

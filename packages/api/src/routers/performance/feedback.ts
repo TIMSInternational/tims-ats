@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
-import { cursorPageArgs, takeCursorPage } from '../../lib/cursor-page';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor } from '../../access';
 
@@ -57,15 +57,20 @@ export const performanceFeedbackRouter = router({
         ],
       };
 
-      const rows = await db.feedback.findMany({
-        where,
-        ...cursorPageArgs(limit, cursor),
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        include: {
-          fromUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          toUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.feedback.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.feedback.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            include: {
+              fromUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              toUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+            },
+          });
 
       const { items: feedbacks, nextCursor } = takeCursorPage(rows, limit);
 
@@ -120,15 +125,20 @@ export const performanceFeedbackRouter = router({
         ...(category ? { category } : {}),
       };
 
-      const rows = await db.recognition.findMany({
-        where,
-        ...cursorPageArgs(limit, cursor),
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        include: {
-          fromUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          toUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.recognition.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.recognition.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            include: {
+              fromUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              toUser: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+            },
+          });
 
       const { items: recognitions, nextCursor } = takeCursorPage(rows, limit);
 
@@ -158,18 +168,23 @@ export const performanceFeedbackRouter = router({
         toUserId: ctx.user.id,
       };
 
-      const rows = await db.recognition.findMany({
-        where,
-        ...cursorPageArgs(limit, cursor),
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: {
-          id: true,
-          category: true,
-          message: true,
-          createdAt: true,
-          fromUser: { select: { firstName: true, lastName: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.recognition.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.recognition.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            select: {
+              id: true,
+              category: true,
+              message: true,
+              createdAt: true,
+              fromUser: { select: { firstName: true, lastName: true } },
+            },
+          });
 
       const { items: recognitions, nextCursor } = takeCursorPage(rows, limit);
 

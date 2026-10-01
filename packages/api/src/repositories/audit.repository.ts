@@ -1,5 +1,5 @@
 import { tenantDb as db } from '@tims/db';
-import { cursorPageArgs } from '../lib/cursor-page';
+import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 
 // ---------------------------------------------------------------------------
@@ -31,17 +31,6 @@ export interface AuditAccessReportFilters {
 // business-sensitive payloads not meant for bulk CSV/JSON export), mirroring the
 // truncated-flag pattern candidate.repository.ts's `findForExport` uses for pool
 // export (packages/api/src/services/candidate.service.ts:332-374).
-/**
- * True when the cursor row is visible under the SAME filters as the page. Over a compound `orderBy`, Prisma
- * positions an excluded cursor anyway and `skip: 1` then drops a genuine row; the C# port
- * (TenantAuditRepository.ListAsync) returns an empty page instead. Checked first so both stacks agree.
- */
-async function cursorInFilter(where: Prisma.AuditLogWhereInput, cursor: string | undefined): Promise<boolean> {
-  if (!cursor) return true;
-  const anchor = await db.auditLog.findFirst({ where: { AND: [where, { id: cursor }] }, select: { id: true } });
-  return anchor !== null;
-}
-
 export const auditRepository = {
   async findForExport(orgId: string, filters: AuditExportFilters, limit: number) {
     const where: Prisma.AuditLogWhereInput = { organizationId: orgId };
@@ -88,7 +77,12 @@ export const auditRepository = {
       };
     }
 
-    if (!(await cursorInFilter(where, cursor))) return [];
+    const cursorLive = await cursorRowMatches(cursor, (id) =>
+      db.auditLog.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+    );
+    if (!cursorLive) {
+      return [];
+    }
     return db.auditLog.findMany({
       where,
       ...cursorPageArgs(take, cursor),
@@ -163,7 +157,12 @@ export const auditRepository = {
   // comment above).
   async findChangesByEntity(orgId: string, entity: string, entityId: string, take: number, cursor?: string) {
     const where: Prisma.AuditLogWhereInput = { organizationId: orgId, entity, entityId };
-    if (!(await cursorInFilter(where, cursor))) return [];
+    const cursorLive = await cursorRowMatches(cursor, (id) =>
+      db.auditLog.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+    );
+    if (!cursorLive) {
+      return [];
+    }
     return db.auditLog.findMany({
       where,
       ...cursorPageArgs(take, cursor),

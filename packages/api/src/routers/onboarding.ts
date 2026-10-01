@@ -4,7 +4,7 @@ import { router, permissionProcedure } from '../trpc';
 // via RLS (see docs/security/RLS-MIGRATION-PLAN.md). Behaves identically to the base
 // db until the RLS cutover (TENANT_DATABASE_URL) is enabled.
 import { tenantDb as db } from '@tims/db';
-import { cursorPageArgs, takeCursorPage } from '../lib/cursor-page';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
@@ -74,17 +74,22 @@ export const onboardingRouter = router({
         ],
       };
 
-      const rows = await db.onboardingPlan.findMany({
-        where,
-        ...cursorPageArgs(limit, cursor),
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
-          buddy: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          tasks: { select: { id: true, title: true, completed: true, responsible: true, phase: true } },
-          checkIns: { select: { id: true, status: true, type: true, scheduledDate: true, completedAt: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.onboardingPlan.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.onboardingPlan.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            include: {
+              user: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
+              buddy: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              tasks: { select: { id: true, title: true, completed: true, responsible: true, phase: true } },
+              checkIns: { select: { id: true, status: true, type: true, scheduledDate: true, completedAt: true } },
+            },
+          });
 
       const { items: plans, nextCursor } = takeCursorPage(rows, limit);
 

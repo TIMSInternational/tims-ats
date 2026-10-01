@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
-import { cursorPageArgs, takeCursorPage } from '../lib/cursor-page';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { randomBytes } from 'crypto';
 import { hashApiKey } from '../lib/api-key';
@@ -148,24 +148,30 @@ export const integrationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const items = await db.connectorSync.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-          connectorId: input.connectorId,
-        },
-        select: {
-          id: true,
-          connectorId: true,
-          status: true,
-          entitiesProcessed: true,
-          duration: true,
-          error: true,
-          startedAt: true,
-          completedAt: true,
-        },
-        ...cursorPageArgs(input.take, input.cursor),
-        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
-      });
+      const where: Prisma.ConnectorSyncWhereInput = {
+        organizationId: ctx.user.organizationId,
+        connectorId: input.connectorId,
+      };
+      const cursorLive = await cursorRowMatches(input.cursor, (id) =>
+        db.connectorSync.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const items = !cursorLive
+        ? []
+        : await db.connectorSync.findMany({
+            where,
+            ...cursorPageArgs(input.take, input.cursor),
+            select: {
+              id: true,
+              connectorId: true,
+              status: true,
+              entitiesProcessed: true,
+              duration: true,
+              error: true,
+              startedAt: true,
+              completedAt: true,
+            },
+            orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+          });
       return takeCursorPage(items, input.take);
     }),
 
@@ -323,12 +329,17 @@ export const integrationRouter = router({
       if (input.connectorId) where.connectorId = input.connectorId;
       if (input.status) where.status = input.status;
 
-      const items = await db.syncError.findMany({
-        where,
-        ...cursorPageArgs(input.take, input.cursor),
-        include: { connector: { select: { id: true, name: true, type: true } } },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      });
+      const cursorLive = await cursorRowMatches(input.cursor, (id) =>
+        db.syncError.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const items = !cursorLive
+        ? []
+        : await db.syncError.findMany({
+            where,
+            ...cursorPageArgs(input.take, input.cursor),
+            include: { connector: { select: { id: true, name: true, type: true } } },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          });
       return takeCursorPage(items, input.take);
     }),
 

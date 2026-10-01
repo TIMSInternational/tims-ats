@@ -25,6 +25,8 @@ const state = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown> & { id: string }>,
   calls: [] as unknown[],
   callNo: 0,
+  /** Rows that still exist but no longer match the endpoint's `where` (archived, status changed, …). */
+  stale: new Set<string>(),
 }));
 
 function tieHash(id: string, salt: number): number {
@@ -57,14 +59,17 @@ function prismaFindMany(args: FindManyArgs): Row[] {
     }
     return tieHash(a.id, salt) - tieHash(b.id, salt);
   });
-  let start = 0;
+  // Prisma positions on the cursor row even when the `where` excludes it, then filters, then applies `skip`:
+  // an excluded cursor therefore makes `skip: 1` drop a genuine row.
+  let from = 0;
   if (args.cursor) {
     const index = sorted.findIndex((row) => row.id === args.cursor!.id);
     if (index < 0) return [];
-    start = index;
+    from = index;
   }
-  start += args.skip ?? 0;
-  return sorted.slice(start, start + args.take).map((row) => ({ ...row }));
+  const visible = sorted.slice(from).filter((row) => !state.stale.has(row.id));
+  const start = args.skip ?? 0;
+  return visible.slice(start, start + args.take).map((row) => ({ ...row }));
 }
 
 vi.mock('@tims/db', () => {
@@ -74,7 +79,8 @@ vi.mock('@tims/db', () => {
     // The audit repository checks the cursor row is visible under its filters before paging.
     findFirst: (args: { where: { AND: Array<{ id?: string }> } }) => {
       const id = args.where.AND.find((clause) => clause.id)?.id;
-      return Promise.resolve(state.rows.find((row) => row.id === id) ? { id } : null);
+      const match = id !== undefined && !state.stale.has(id) && state.rows.some((row) => row.id === id);
+      return Promise.resolve(match ? { id } : null);
     },
   });
   const client = new Proxy({} as Record<string, unknown>, {
@@ -379,6 +385,7 @@ async function pageThrough(endpoint: EndpointCase, size: number): Promise<Page[]
 beforeEach(() => {
   state.calls = [];
   state.callNo = 0;
+  state.stale = new Set();
 });
 
 const SIZES = [2, 3];
@@ -396,6 +403,19 @@ describe.each(ENDPOINTS)('$name cursor pagination', (endpoint) => {
     // The cursor is the last row SHOWN on its page; the last page carries none.
     for (const page of pages.slice(0, -1)) expect(page.nextCursor).toBe(page.ids[page.ids.length - 1]);
     expect(pages[pages.length - 1]!.nextCursor).toBeUndefined();
+  });
+
+  it('a cursor whose row stopped matching the filters returns an empty page, never a page missing a row', async () => {
+    state.rows = makeRows(7, endpoint.sortBy);
+    const caller = await makeCaller();
+    const first = await endpoint.call(caller, { ...endpoint.input, [endpoint.sizeKey]: 2 });
+    const cursor = first.nextCursor as string;
+    expect(cursor).toBeDefined();
+    // The last row shown on page 1 is archived / re-statused before the client asks for page 2.
+    state.stale.add(cursor);
+    const second = await endpoint.call(caller, { ...endpoint.input, [endpoint.sizeKey]: 2, cursor });
+    expect(second[endpoint.itemsKey]).toEqual([]);
+    expect(second).toHaveProperty('nextCursor', undefined);
   });
 
   it('asks for limit+1 rows, skips the cursor row, and orders by (key, id) in one direction', async () => {

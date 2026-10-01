@@ -1,5 +1,5 @@
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
-import { cursorPageArgs } from '../lib/cursor-page';
+import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 
 // ---------------------------------------------------------------------------
@@ -222,14 +222,21 @@ export const candidateRepository = {
       };
     }
 
+    const where: Prisma.CandidateWhereInput = {
+      AND: [
+        { organizationId: orgId, isActive: true, deletedAt: null },
+        scopeWhere as Prisma.CandidateWhereInput,
+        filterClause,
+      ],
+    };
+    const cursorLive = await cursorRowMatches(cursor, (id) =>
+      db.candidate.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+    );
+    if (!cursorLive) {
+      return [];
+    }
     return db.candidate.findMany({
-      where: {
-        AND: [
-          { organizationId: orgId, isActive: true, deletedAt: null },
-          scopeWhere as Prisma.CandidateWhereInput,
-          filterClause,
-        ],
-      },
+      where,
       ...cursorPageArgs(limit, cursor),
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: buildCandidateListSelect(appScopeWhere),
