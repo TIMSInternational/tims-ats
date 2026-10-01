@@ -170,3 +170,35 @@ describe('scripts/db/regenerate-flip-ddl.sh — parses its Regenerate lines, nev
     expect(r.stderr).toMatch(/extract-table-ddl\.mjs failed/);
   });
 });
+
+describe('nightly-db-controls — public-repo hardening (#328 review)', () => {
+  const live = job('live-checks');
+  const cap = job('capture-baseline');
+
+  it('both jobs that read PROD_DIRECT_URL run in the main-only prod-db-controls environment', () => {
+    for (const j of [live, cap]) {
+      expect(j).toContain('secrets.PROD_DIRECT_URL');
+      expect(j).toMatch(/^ {4}environment: prod-db-controls$/m);
+    }
+  });
+
+  it('both jobs install dependencies without lifecycle scripts', () => {
+    for (const j of [live, cap]) {
+      expect(j).toMatch(/pnpm install --frozen-lockfile --ignore-scripts/);
+      expect(j).not.toMatch(/pnpm install --frozen-lockfile\s*$/m);
+    }
+  });
+
+  it('check 16 / capture print object names only in CI', () => {
+    for (const j of [live, cap]) expect(j).toMatch(/SCHEMA_DRIFT_OBJECTS_ONLY: '1'/);
+  });
+
+  it('scans for credentials BEFORE uploading, keeps the artifact 1 day, and puts no verbatim text in the summary', () => {
+    const scan = cap.indexOf('bash scripts/security/scan-for-credentials.sh "$RUNNER_TEMP/schema-baseline-recapture"');
+    const upload = cap.indexOf('uses: actions/upload-artifact@v4');
+    expect(scan).toBeGreaterThan(-1);
+    expect(upload).toBeGreaterThan(scan);
+    expect(cap).toMatch(/retention-days: 1$/m);
+    expect(cap).not.toMatch(/cat "\$out\/[^"]*"[^\n]*\n[\s\S]*?GITHUB_STEP_SUMMARY/);
+  });
+});

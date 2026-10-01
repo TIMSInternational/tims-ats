@@ -79,6 +79,8 @@ jobs:
     name: Live DB controls (14, 16, 17)
     # Every scheduled run, and every manual run that did not ask for a capture.
     if: ${{ github.event_name == 'schedule' || !inputs.capture_baseline }}
+    # PROD_DIRECT_URL lives in this main-only environment, not at repository level (ddl-governance.md §5).
+    environment: prod-db-controls
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -88,7 +90,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: this job holds the production credential, so no dependency lifecycle script runs
+      # in it. Verified 2026-10-01 on a fresh --ignore-scripts install: tsx (esbuild), pg and the check
+      # scripts all run without them.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       # No `prisma generate`: none of these three need the Prisma CLIENT. Check 17 parses the .prisma
       # schema files as TEXT (scripts/table-ownership.mjs), and 14/16 talk to Postgres directly. Skipping it
@@ -144,6 +149,8 @@ jobs:
           DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
           DATABASE_URL: ${{ secrets.PROD_DIRECT_URL }}
           PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          # PUBLIC repo → public logs: check 16 names changed objects only, never verbatim schema text.
+          SCHEMA_DRIFT_OBJECTS_ONLY: '1'
         run: |
           # NOT `set -e`. Every check must run even if an earlier one fails — the same contract /gate has,
           # for the same reason: one failure must not hide the state of the other two.
@@ -189,14 +196,20 @@ jobs:
   # TLS pinning and pg_dump 17 as check 16 — which is the point: the nightly check diffs exactly what this
   # job captures. ci_readonly suffices: `pg_dump --schema-only` reads catalogs and takes ACCESS SHARE locks,
   # which SELECT covers. Check 16 PASSED as ci_readonly on 2026-09-29 (run 36614697689) against the committed
-  # baseline, so a ci_readonly dump has the committed form. NB: this repository is PUBLIC — the artifact
-  # holds exactly what the committed baseline already publishes (schema only, no rows), nothing more.
+  # baseline, so a ci_readonly dump has the committed form.
+  #
+  # NB: this repository is PUBLIC, and its artifacts and logs are readable outside the team. The artifact is
+  # a FRESH, NOT-YET-REVIEWED production dump: it can contain anything changed out of band since the last
+  # capture (function bodies, defaults, comments), which is exactly what the reviewer has not read yet. So:
+  # scripts/security/scan-for-credentials.sh must pass before anything is uploaded, logs and the step
+  # summary carry object names / counts only (SCHEMA_DRIFT_OBJECTS_ONLY), and retention is 1 day.
   #
   # Output is an ARTIFACT, never a commit (contents: read, persist-credentials: false). Apply it by hand
   # and read every hunk the object-level summary lists — see the README inside the artifact.
   capture-baseline:
     name: Re-capture schema baseline (artifact only, #328)
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_baseline }}
+    environment: prod-db-controls
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -215,7 +228,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: this job holds the production credential, so no dependency lifecycle script runs
+      # in it. Verified 2026-10-01 on a fresh --ignore-scripts install: tsx (esbuild), pg and the check
+      # scripts all run without them.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Fail fast if the credential is absent
         env:
@@ -251,6 +267,8 @@ jobs:
           DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
           DATABASE_URL: ${{ secrets.PROD_DIRECT_URL }}
           PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          # PUBLIC repo → public logs: check 16 names changed objects only, never verbatim schema text.
+          SCHEMA_DRIFT_OBJECTS_ONLY: '1'
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/schema-baseline-recapture"
@@ -283,17 +301,21 @@ jobs:
           4. Commit both the baseline and the regenerated flip-ddl files in ONE PR, with the summary in its body.
           EOF
 
+          # Counts only in the public step summary — never diff lines.
+          added=$(grep -cE '^  \+ ' "$out/capture-summary.txt" || true)
+          removed=$(grep -cE '^  - ' "$out/capture-summary.txt" || true)
           {
             echo "## Schema baseline re-capture"
             echo
-            echo '```'
-            cat "$out/capture-summary.txt"
+            echo "- changed objects: +$added / -$removed (names in the artifact's capture-summary.txt)"
+            echo "- files changed: $(git diff --name-only -- packages/db/baseline services/Tims.Platform/db/flip-ddl | wc -l | tr -d ' ')"
             echo
-            cat "$out/diffstat.txt"
-            echo '```'
-            echo
-            echo "_Artifact only — nothing was committed or pushed. See README.txt in the artifact._"
+            echo "_Artifact only (1-day retention) — nothing was committed or pushed. See README.txt in the artifact._"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Nothing is uploaded unless this passes. Exit 1 (hit) and exit 2 (could not scan) both fail the job.
+      - name: Refuse to upload credential-shaped content
+        run: bash scripts/security/scan-for-credentials.sh "$RUNNER_TEMP/schema-baseline-recapture"
 
       - name: Upload the refreshed baseline
         uses: actions/upload-artifact@v4
@@ -301,7 +323,7 @@ jobs:
           name: schema-baseline-recapture
           path: ${{ runner.temp }}/schema-baseline-recapture
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
 # NOT RUN HERE, deliberately:
 #   scripts/db/pre-flip-scan.ts — takes table names as arguments and answers "is THIS table safe to flip".

@@ -316,6 +316,19 @@ been burned by the difference (#38):
 > answers _did production drift since yesterday_, never _did this change break something_. `/gate` remains
 > the pre-merge control and the nightly sweep must not be treated as having replaced it. Its exit handling is
 > pinned by `tests/governance/nightly-db-controls.test.ts`.
+>
+> **Where the secret lives:** `PROD_DIRECT_URL` belongs in the **`prod-db-controls` GitHub environment**,
+> restricted to the `main` branch, not at repository level. Both jobs that read it (`live-checks`,
+> `capture-baseline`) declare `environment: prod-db-controls`, so a workflow edited on any other branch
+> cannot read it. (If the environment does not exist, GitHub creates an unprotected one on first use and the
+> secret must still be moved into it — the protection is the branch rule on the environment, not the YAML.)
+> Both jobs install dependencies with `--ignore-scripts`, so no package lifecycle script runs next to the
+> credential.
+>
+> **This repository is PUBLIC**, so the job's logs, step summary and artifacts are public too. In CI,
+> `schema-baseline.sh` names changed **objects only** (`GITHUB_ACTIONS=true` or
+> `SCHEMA_DRIFT_OBJECTS_ONLY=1`). It never echoes a verbatim schema line, because a function body or default
+> changed out of band could carry anything. Run `check` locally to see the full diff.
 
 > **The nightly credential is read-only only once `scripts/db/ci-readonly-probe-role.sql` has run** (#292).
 > `ci_readonly` was a member of `app_tenant` (check 14 needed `SET LOCAL ROLE app_tenant`), which let the
@@ -374,7 +387,10 @@ It is not run on every push.
 `capture_baseline` ticked: it captures with the same credential, TLS pinning and `pg_dump` as check 16,
 regenerates every `flip-ddl/*.sql` (`scripts/db/regenerate-flip-ddl.sh`, from each file's own
 `-- Regenerate:` line), re-runs `check` as a round trip, and uploads the baseline, the regenerated files, a
-`git apply`-able patch and the object-level summary as the `schema-baseline-recapture` artifact. **It never
+`git apply`-able patch and the object-level summary as the `schema-baseline-recapture` artifact. The upload
+happens only if `scripts/security/scan-for-credentials.sh` finds nothing credential-shaped, and the artifact is
+kept for **1 day**. The artifact is a fresh, not-yet-reviewed dump from a public repo, so it can hold anything
+changed out of band, not just what is already committed. The step summary carries counts only. **It never
 commits.** A human applies the patch in a PR and reads every hunk the summary lists — §7 applies unchanged:
 an artifact is not a reason to re-capture without reading.
 

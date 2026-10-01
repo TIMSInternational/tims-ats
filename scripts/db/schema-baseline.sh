@@ -105,12 +105,59 @@ normalise() {
     | cat -s
 }
 
+# ── Object-level change summary ───────────────────────────────────────────────────────────────────
+# OBJECTS-ONLY MODE (#328 review): this repository is PUBLIC, so anything a CI run prints is public. In CI
+# (GITHUB_ACTIONS=true) or with SCHEMA_DRIFT_OBJECTS_ONLY=1, output names changed OBJECTS only — never a
+# verbatim schema line, because a function body, default or comment changed out of band could carry
+# anything. Lines that name no object (columns, bodies) are counted, not echoed. Locally the full diff is
+# still printed: it is the reviewer's main tool and goes nowhere public.
+OBJECTS_ONLY=0
+if [ "${SCHEMA_DRIFT_OBJECTS_ONLY:-}" = "1" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then OBJECTS_ONLY=1; fi
+
+OBJ_MARK='@@obj@@ '
+# object_summary OLD NEW → one "± <object>" line per changed object line; in OBJECTS_ONLY mode other
+# changed lines are dropped and only counted.
+object_summary() {
+  local mapped
+  mapped="$(diff -U0 "$1" "$2" \
+    | grep -E '^[+-][^+-]' \
+    | sed -E "s/^([+-]).*(CREATE TABLE [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(CREATE POLICY [a-zA-Z0-9_.\"]+ ON [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(ALTER TABLE [a-zA-Z0-9_.\"]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_.\"]+ TO [a-zA-Z0-9_\"]+).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(ADD CONSTRAINT [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(CREATE FUNCTION [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(CREATE TRIGGER [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              t
+              s/^([+-]).*(ALTER TABLE (ONLY )?[a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2 (altered)/" || true)"
+  if [ "$OBJECTS_ONLY" = "1" ]; then
+    printf '%s\n' "$mapped" | grep -F "$OBJ_MARK" | sed "s/^${OBJ_MARK}//" | head -60 || true
+    local other
+    other="$(printf '%s\n' "$mapped" | grep -cvF "$OBJ_MARK" || true)"
+    [ -n "$mapped" ] || other=0
+    echo "  (+ $other changed line(s) inside object bodies — not printed: objects-only mode)"
+  else
+    printf '%s\n' "$mapped" | sed "s/^${OBJ_MARK}//" | head -60
+  fi
+}
+
 # NOTE ON CREDENTIAL EXPOSURE: pg_dump takes its connection string as an argv, so the URL — password
 # included — is visible in `ps` to other processes of the same user for the duration of the dump.
 # pg_dump offers no stdin/file alternative for a URI; avoiding it would mean parsing the URL into
-# PGHOST/PGUSER/PGPASSWORD, which is its own fragile failure mode. Accepted here because this runs on a
-# developer machine against a URL already sitting in packages/db/.env. If check 16 is wired into CI
-# (#124), pass the credentials as PG* environment variables there instead.
+# PGHOST/PGUSER/PGPASSWORD, which is its own fragile failure mode. Accepted on a developer machine, where
+# the URL already sits in packages/db/.env.
+# CI DECISION (#124, 2026-10-01): check 16 runs nightly (.github/workflows/nightly-db-controls.yml) and kept
+# the argv form. The runner is an ephemeral single-tenant VM running only this job's own processes, the URL
+# is the read-only `ci_readonly` credential (verify-full, from a main-only environment), and GitHub masks the
+# secret in logs. Converting to PG* variables was judged not worth a second URL parser in a security check.
 dump_live() {
   local url="$1" out="$2" pgd="$3"
   # --no-owner/--no-acl-less: ownership and grants are part of the security surface (#111 was a
@@ -196,17 +243,7 @@ case "$cmd" in
     else
       echo
       echo "  ── What changed vs the previous baseline ───────────────────────────────────"
-      diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" \
-        | grep -E '^[+-][^+-]' \
-        | sed -E 's/^([+-]).*(CREATE TABLE [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE POLICY [a-zA-Z0-9_."]+ ON [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(ALTER TABLE [a-zA-Z0-9_."]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/\1 \2/;
-                  s/^([+-]).*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_."]+ TO [a-zA-Z0-9_"]+).*/\1 \2/;
-                  s/^([+-]).*(ADD CONSTRAINT [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE FUNCTION [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE TRIGGER [a-zA-Z0-9_."]+).*/\1 \2/' \
-        | sed 's/^/  /' | head -60
+      object_summary "$PREV_BODY" "$TMP/live.norm.sql" | sed 's/^/  /'
       added=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^\+[^+]' || true)
       removed=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^-[^-]' || true)
       echo "  ───────────────────────────────────────────────────────────────────────────"
@@ -232,10 +269,17 @@ case "$cmd" in
 
     echo "✖ SCHEMA DRIFT: production no longer matches the committed baseline." >&2
     echo >&2
-    sed -n '3,203p' "$TMP/drift.diff" >&2
     total=$(grep -cE '^[+-][^+-]' "$TMP/drift.diff")
-    echo >&2
-    echo "  ($total changed line(s); showing the first 200 of the diff)" >&2
+    if [ "$OBJECTS_ONLY" = "1" ]; then
+      echo "  Changed objects (objects-only mode — run 'check' locally for the full diff):" >&2
+      object_summary "$TMP/base.norm.sql" "$TMP/live.norm.sql" | sed 's/^/  /' >&2
+      echo >&2
+      echo "  ($total changed line(s) in total)" >&2
+    else
+      sed -n '3,203p' "$TMP/drift.diff" >&2
+      echo >&2
+      echo "  ($total changed line(s); showing the first 200 of the diff)" >&2
+    fi
     cat >&2 <<'EOF'
 
 Every hunk is a production change that no committed file explains, OR a committed change that has

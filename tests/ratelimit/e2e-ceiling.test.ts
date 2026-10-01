@@ -115,3 +115,57 @@ describe('the E2E stack actually sets it', () => {
     expect(upSh).toMatch(/^TIMS_E2E_RATE_LIMIT_MULTIPLIER=[1-9][0-9]*$/m);
   });
 });
+
+describe('the Upstash path ignores the multiplier entirely', () => {
+  // pnpm hosts @upstash/* under packages/api only; mock them by that path (as application-email-cap.test.ts does).
+  const UPSTASH_RATELIMIT = join(__dirname, '../../packages/api/node_modules/@upstash/ratelimit');
+  const UPSTASH_REDIS = join(__dirname, '../../packages/api/node_modules/@upstash/redis');
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.doUnmock(UPSTASH_RATELIMIT);
+    vi.doUnmock(UPSTASH_REDIS);
+    vi.resetModules();
+  });
+
+  it('with the E2E marker AND multiplier set, slidingWindow still gets the raw LIMITS and the memory path is unused', async () => {
+    vi.resetModules();
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://fake.upstash.test');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'fake-token');
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('TIMS_E2E_STACK', '1');
+    vi.stubEnv('TIMS_E2E_RATE_LIMIT_MULTIPLIER', '50');
+    vi.stubEnv('VERCEL', '');
+    vi.stubEnv('VERCEL_ENV', '');
+    const windows: Array<[number, string]> = [];
+    let limitCalls = 0;
+    vi.doMock(UPSTASH_REDIS, () => ({ Redis: class {} }));
+    vi.doMock(UPSTASH_RATELIMIT, () => {
+      class Ratelimit {
+        limit() {
+          limitCalls++;
+          return Promise.resolve({ success: true, reset: Date.now() + 60_000 });
+        }
+        static slidingWindow(requests: number, window: string) {
+          windows.push([requests, window]);
+          return {};
+        }
+        static fixedWindow() {
+          return {};
+        }
+      }
+      return { Ratelimit };
+    });
+    const mod = await import('../../packages/api/src/middleware/rate-limit');
+
+    expect(windows).toEqual([
+      [30, '1m'],
+      [100, '1m'],
+      [10, '5m'],
+      [10, '1m'],
+      [5, '5m'],
+    ]);
+    await mod.checkRateLimit('u', 'query');
+    expect(limitCalls).toBe(1);
+  });
+});

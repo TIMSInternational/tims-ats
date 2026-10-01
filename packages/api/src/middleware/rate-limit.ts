@@ -40,9 +40,12 @@ type RateLimitCategory = keyof typeof LIMITS;
 // it apart from production. The multiplier is therefore honoured only when ALL of these hold:
 //   - TIMS_E2E_RATE_LIMIT_MULTIPLIER is an integer 1..1000;
 //   - NODE_ENV is not 'production', OR the process explicitly marks itself TIMS_E2E_STACK=1;
-//   - it is not a Vercel deployment (VERCEL / VERCEL_ENV unset or empty — Vercel sets them itself);
-// and it scales ONLY the in-memory limiter. A deployment with Upstash configured (production) keeps the
-// fixed LIMITS whatever its env says. Pinned by tests/ratelimit/e2e-ceiling.test.ts.
+//   - VERCEL / VERCEL_ENV are unset or empty. This is DEFENCE IN DEPTH only: it relies on the platform
+//     setting those variables (Vercel does, at build and runtime), so it protects nothing on a host that
+//     does not — the explicit marker above is the real gate;
+// and it scales ONLY the in-memory limiter: the Upstash limiters are built from the raw LIMITS, so a
+// deployment with Upstash configured (production) keeps the fixed limits whatever its env says. Both arms
+// are pinned by tests/ratelimit/e2e-ceiling.test.ts.
 // ---------------------------------------------------------------------------
 export const E2E_RATE_LIMIT_MULTIPLIER_MAX = 1000;
 
