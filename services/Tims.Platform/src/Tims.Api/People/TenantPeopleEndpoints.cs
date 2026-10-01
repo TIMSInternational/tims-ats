@@ -64,20 +64,20 @@ public static class TenantPeopleEndpoints
                 callerScope = AccessScope.Organization;
             }
             else try
-            {
-                var decision = await permissionService.CheckAsync(
-                    context, rule.CallerModule, rule.CallerAction, cancellationToken);
-                if (!decision.Allowed || decision.Scope is not { } scope || decision.Roles is null)
-                    return Results.StatusCode(StatusCodes.Status403Forbidden);
-                // The unfiltered directory needs org-wide scope (AssignablePurposes.CallerScopeAllows).
-                if (!AssignablePurposes.CallerScopeAllows(rule, scope))
-                    return Results.StatusCode(StatusCodes.Status403Forbidden);
-                callerScope = scope;
-            }
-            catch (TenantOrgRequiredException)
-            {
-                return Results.BadRequest(new { error = "organization_required" });
-            }
+                {
+                    var decision = await permissionService.CheckAsync(
+                        context, rule.CallerModule, rule.CallerAction, cancellationToken);
+                    if (!decision.Allowed || decision.Scope is not { } scope || decision.Roles is null)
+                        return Results.StatusCode(StatusCodes.Status403Forbidden);
+                    // The unfiltered directory needs org-wide scope (AssignablePurposes.CallerScopeAllows).
+                    if (!AssignablePurposes.CallerScopeAllows(rule, scope))
+                        return Results.StatusCode(StatusCodes.Status403Forbidden);
+                    callerScope = scope;
+                }
+                catch (TenantOrgRequiredException)
+                {
+                    return Results.BadRequest(new { error = "organization_required" });
+                }
             if (!Guid.TryParse(context.OrganizationId, out var organizationId))
                 return Results.BadRequest(new { error = "organization_required" });
 
