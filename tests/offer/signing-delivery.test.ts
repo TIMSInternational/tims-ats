@@ -180,13 +180,13 @@ describe('offer signing-link delivery — negative paths (#322)', () => {
     }));
   });
 
-  it.each(['http://localhost:3000', 'http://127.0.0.1:3000'])(
+  it.each(['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000'])(
     'tolerates a loopback http URL in production (local `next start`): %s',
     async (url) => {
       vi.stubEnv('NODE_ENV', 'production');
       process.env.NEXT_PUBLIC_APP_URL = url;
       await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
-      expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({ signingUrl: expect.stringMatching(/^http:\/\/(localhost|127\.0\.0\.1):3000\/offers\/sign\//) }));
+      expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({ signingUrl: expect.stringMatching(/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):3000\/offers\/sign\//) }));
     },
   );
 
