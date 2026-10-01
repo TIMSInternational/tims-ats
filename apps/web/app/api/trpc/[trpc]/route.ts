@@ -104,7 +104,11 @@ const handler = (req: Request) =>
       // Surface the Supabase identity regardless of whether a staff `User` exists.
       // Candidate (portal) sessions never resolve to a `User`, but they ARE
       // authenticated — `candidateProcedure` reads this to resolve a `Candidate`.
-      const supabaseAuth = supabaseUser?.email
+      // Only a CONFIRMED email is an identity a candidate can be resolved by: the
+      // portal matches candidates by email, so an unverified address (a password
+      // sign-up on /register while email confirmation is off, for example) must never
+      // open someone else's application history (docs/architecture/candidate-portal-email-verification.md).
+      const supabaseAuth = supabaseUser?.email && supabaseUser.email_confirmed_at
         ? { email: supabaseUser.email, userId: supabaseUser.id }
         : null;
 

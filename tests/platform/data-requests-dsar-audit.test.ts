@@ -25,6 +25,9 @@ const findMany = {
   assessmentAssignment: vi.fn(),
   employeeDemographics: vi.fn(),
   employeeCompensation: vi.fn(),
+  dataConsent: vi.fn(),
+  applicationConsentEvidence: vi.fn(),
+  dataSubjectRequest: vi.fn(),
 };
 const dataAccessCreateMany = vi.fn();
 const auditLogCreate = vi.fn();
@@ -40,6 +43,9 @@ vi.mock('@tims/db', () => ({
     assessmentAssignment: { findMany: (...a: unknown[]) => findMany.assessmentAssignment(...a) },
     employeeDemographics: { findMany: (...a: unknown[]) => findMany.employeeDemographics(...a) },
     employeeCompensation: { findMany: (...a: unknown[]) => findMany.employeeCompensation(...a) },
+    dataConsent: { findMany: (...a: unknown[]) => findMany.dataConsent(...a) },
+    applicationConsentEvidence: { findMany: (...a: unknown[]) => findMany.applicationConsentEvidence(...a) },
+    dataSubjectRequest: { findMany: (...a: unknown[]) => findMany.dataSubjectRequest(...a) },
     dataAccessLog: { createMany: (...a: unknown[]) => dataAccessCreateMany(...a) },
     auditLog: { create: (...a: unknown[]) => auditLogCreate(...a) },
   },
@@ -120,6 +126,9 @@ function seed(opts: { sensitive?: boolean } = {}) {
   findMany.employeeCompensation.mockResolvedValue(
     sensitive ? [{ id: COMP_ID, organizationId: SUBJECT_ORG, currentSalary: 100, currency: 'COP' }] : [],
   );
+  findMany.dataConsent.mockResolvedValue([]);
+  findMany.applicationConsentEvidence.mockResolvedValue([]);
+  findMany.dataSubjectRequest.mockResolvedValue([]);
 }
 
 /** All data_access_logs rows written, flattened across the per-entity createMany calls. */
@@ -318,7 +327,8 @@ describe('DSAR export — the bundle shape is pinned', () => {
     // zero tests.
     const out = await caller().exportSubjectData({ email: 'a@b.com' });
     const bundle = JSON.parse(out.json);
-    expect(Object.keys(bundle).sort()).toEqual(['generatedAt', 'hr', 'identity', 'recruitment', 'subject']);
+    expect(Object.keys(bundle).sort()).toEqual(['generatedAt', 'hr', 'identity', 'privacy', 'recruitment', 'subject']);
+    expect(Object.keys(bundle.privacy).sort()).toEqual(['consentEvidence', 'consents', 'subjectRequests']);
     expect(Object.keys(bundle.identity).sort()).toEqual(['candidates', 'users']);
     expect(Object.keys(bundle.recruitment).sort()).toEqual(['applications', 'assessments', 'interviews', 'offers']);
     expect(Object.keys(bundle.hr).sort()).toEqual(['compensation', 'demographics']);
@@ -355,5 +365,39 @@ describe('DSAR export — the §21 rows do not replace the export-event audit', 
     dataAccessCreateMany.mockRejectedValue(new Error('audit write failed'));
     await expect(caller().exportSubjectData({ email: 'a@b.com' })).rejects.toBeInstanceOf(TRPCError);
     expect(auditLogCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('DSAR export — consent evidence and data-subject requests (#313, #312)', () => {
+  it('bundles the subject-level consents, per-application evidence and requests under privacy', async () => {
+    findMany.dataConsent.mockResolvedValue([
+      { id: 'c1', consentType: 'recruitment_data_processing', textVersion: 'v1', withdrawnAt: null },
+    ]);
+    findMany.applicationConsentEvidence.mockResolvedValue([
+      { applicationId: 'app-1', textVersion: 'v1', textSha256: 'ab'.repeat(32), ipHash: 'cd'.repeat(32) },
+    ]);
+    findMany.dataSubjectRequest.mockResolvedValue([{ id: 'r1', requestType: 'deletion', status: 'pending' }]);
+
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const bundle = JSON.parse(out.json) as { privacy: Record<string, unknown[]> };
+
+    expect(bundle.privacy.consents).toHaveLength(1);
+    expect(bundle.privacy.consentEvidence).toHaveLength(1);
+    expect(bundle.privacy.subjectRequests).toHaveLength(1);
+    expect(out.counts).toMatchObject({ consents: 1, consentEvidence: 1, subjectRequests: 1 });
+    // Consents are matched on BOTH sides of the subject (candidate and employee ids).
+    const consentWhere = findMany.dataConsent.mock.calls[0][0] as { where: { subjectUserId: { in: string[] } } };
+    expect(consentWhere.where.subjectUserId.in.sort()).toEqual([CANDIDATE_ID, USER_ID].sort());
+    // Evidence and requests are candidate-keyed.
+    expect(findMany.applicationConsentEvidence.mock.calls[0][0]).toMatchObject({
+      where: { candidateId: { in: [CANDIDATE_ID] } },
+    });
+    expect(findMany.dataSubjectRequest.mock.calls[0][0]).toMatchObject({ where: { candidateId: { in: [CANDIDATE_ID] } } });
+  });
+
+  it('reads the privacy rows before any append-only audit row is written', async () => {
+    findMany.dataSubjectRequest.mockRejectedValue(new Error('db down'));
+    await expect(caller().exportSubjectData({ email: 'a@b.com' })).rejects.toThrow();
+    expect(dataAccessCreateMany).not.toHaveBeenCalled();
   });
 });

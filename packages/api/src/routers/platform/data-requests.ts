@@ -200,6 +200,53 @@ export const dataRequestsRouter = router({
           : [],
       ]);
 
+      // #313/#312: the authorizations the subject gave (and revoked), the per-application proof of
+      // each, and their pending/resolved data-subject requests. The IP is stored only as an
+      // org-salted hash, which the export carries as-is. Read BEFORE the audit writes below, so a failed read
+      // cannot leave an append-only audit row for an export that never returned.
+      const subjectIds = [...candidateIds, ...userIds];
+      const [consents, consentEvidence, subjectRequests] = await Promise.all([
+        subjectIds.length
+          ? db.dataConsent.findMany({
+              where: { subjectUserId: { in: subjectIds } },
+              select: {
+                id: true,
+                organizationId: true,
+                subjectUserId: true,
+                consentType: true,
+                textVersion: true,
+                agreedAt: true,
+                withdrawnAt: true,
+                withdrawalChannel: true,
+                withdrawalReason: true,
+              },
+            })
+          : [],
+        candidateIds.length
+          ? db.applicationConsentEvidence.findMany({
+              where: { candidateId: { in: candidateIds } },
+              select: {
+                applicationId: true,
+                consentType: true,
+                textVersion: true,
+                textSha256: true,
+                locale: true,
+                agreedAt: true,
+                ipHash: true,
+                userAgent: true,
+                captchaVerified: true,
+                isBackfilled: true,
+              },
+            })
+          : [],
+        candidateIds.length
+          ? db.dataSubjectRequest.findMany({
+              where: { candidateId: { in: candidateIds } },
+              select: { id: true, requestType: true, status: true, source: true, createdAt: true, resolvedAt: true },
+            })
+          : [],
+      ]);
+
       // §21 +AUDIT: one data_access_logs row per sensitive record actually exposed
       // by this bundle, keyed to that record's OWN organizationId, written BEFORE
       // the data is returned so a fail-closed audit failure aborts the export.
@@ -240,6 +287,7 @@ export const dataRequestsRouter = router({
         identity: { users, candidates },
         recruitment: { applications, interviews, offers, assessments },
         hr: { demographics, compensation },
+        privacy: { consents, consentEvidence, subjectRequests },
       };
 
       // Audit the PII access: this is a cross-org, PII-bearing export (salary, DOB,
@@ -314,6 +362,9 @@ export const dataRequestsRouter = router({
           assessments: assessments.length,
           demographics: demographics.length,
           compensation: compensation.length,
+          consents: consents.length,
+          consentEvidence: consentEvidence.length,
+          subjectRequests: subjectRequests.length,
         },
       };
     }),

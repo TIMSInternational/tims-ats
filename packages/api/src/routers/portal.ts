@@ -6,7 +6,13 @@ import { captchaBypassAllowed } from './portal-helpers';
 import { createCvUploadPresignedPost } from '../lib/s3';
 import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
 import { portalApplicationService } from '../services/portal-application.service';
-import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE, logger } from '@tims/shared';
+import {
+  APPLICATION_CONSENT_LOCALES,
+  APPLICATION_CONSENT_TEXT_VERSION,
+  APPLICATION_CONSENT_TYPE,
+  logger,
+} from '@tims/shared';
+import { buildApplicationConsentEvidence } from '../lib/application-consent-evidence';
 import { emailService } from '../services/email.service';
 import { consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
@@ -215,9 +221,11 @@ export const portalRouter = router({
         consentTextVersion: z.literal(APPLICATION_CONSENT_TEXT_VERSION, {
           errorMap: () => ({ message: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.' }),
         }),
+        // Locale the consent text was shown in; the server hashes ITS canonical copy (#313).
+        consentLocale: z.enum(APPLICATION_CONSENT_LOCALES).default('es'),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       if (!(await verifyCaptcha(input.captchaToken))) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -235,6 +243,9 @@ export const portalRouter = router({
       });
 
       const orgId = vacancy.organizationId;
+      // A configured secret means the token was verified above; without one only a
+      // non-production bypass let the request through (captchaBypassAllowed).
+      const captchaVerified = Boolean(process.env.TURNSTILE_SECRET_KEY);
 
       // Canonical email identity: new candidates are stored trimmed + lowercased, and
       // existing ones are matched case-insensitively within this org (legacy and
@@ -351,7 +362,7 @@ export const portalRouter = router({
               })
             ).id;
 
-          await tx.application.create({
+          const application = await tx.application.create({
             data: {
               organizationId: orgId,
               candidateId,
@@ -360,6 +371,22 @@ export const portalRouter = router({
               source: input.source,
               coverLetter: input.coverLetter,
             },
+            select: { id: true },
+          });
+          // Per-application consent evidence (#313), same transaction: every application carries
+          // proof of the authorization given FOR IT — text version + hash, time, request metadata.
+          await tx.applicationConsentEvidence.create({
+            data: buildApplicationConsentEvidence({
+              organizationId: orgId,
+              applicationId: application.id,
+              candidateId,
+              textVersion: input.consentTextVersion,
+              locale: input.consentLocale,
+              controllerName: vacancy.organization?.name ?? '',
+              agreedAt: new Date(),
+              headers: ctx.headers,
+              captchaVerified,
+            }),
             select: { id: true },
           });
           return { kind: 'new' as const, candidateId, recipient };
