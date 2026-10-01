@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope } from '../../access';
 
@@ -33,23 +34,23 @@ export const performanceCoachingRouter = router({
         ],
       };
 
-      const sessions = await db.coachingSession.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { scheduledAt: 'desc' },
-        include: {
-          employee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          leader: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          _count: { select: { commitments: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.coachingSession.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.coachingSession.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ scheduledAt: 'desc' }, { id: 'desc' }],
+            include: {
+              employee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              leader: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              _count: { select: { commitments: true } },
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (sessions.length > limit) {
-        const nextItem = sessions.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: sessions, nextCursor } = takeCursorPage(rows, limit);
 
       return { sessions, nextCursor };
     }),
@@ -141,23 +142,23 @@ export const performanceCoachingRouter = router({
         ],
       };
 
-      const commitments = await db.commitment.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { dueDate: 'asc' },
-        include: {
-          employee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          session: { select: { id: true, topic: true, scheduledAt: true } },
-          creator: { select: { id: true, firstName: true, lastName: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.commitment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.commitment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ dueDate: 'asc' }, { id: 'asc' }],
+            include: {
+              employee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              session: { select: { id: true, topic: true, scheduledAt: true } },
+              creator: { select: { id: true, firstName: true, lastName: true } },
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (commitments.length > limit) {
-        const nextItem = commitments.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: commitments, nextCursor } = takeCursorPage(rows, limit);
 
       return { commitments, nextCursor };
     }),
@@ -191,25 +192,25 @@ export const performanceCoachingRouter = router({
         ],
       };
 
-      const commitments = await db.commitment.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { dueDate: 'asc' },
-        select: {
-          id: true,
-          description: true,
-          status: true,
-          dueDate: true,
-          completedAt: true,
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.commitment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.commitment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ dueDate: 'asc' }, { id: 'asc' }],
+            select: {
+              id: true,
+              description: true,
+              status: true,
+              dueDate: true,
+              completedAt: true,
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (commitments.length > limit) {
-        const nextItem = commitments.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: commitments, nextCursor } = takeCursorPage(rows, limit);
 
       return { commitments, nextCursor };
     }),

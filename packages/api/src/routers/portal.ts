@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure } from '../trpc';
 import { db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 import { captchaBypassAllowed } from './portal-helpers';
 import { createCvUploadPresignedPost } from '../lib/s3';
 import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
@@ -105,31 +106,31 @@ export const portalRouter = router({
       if (input.location) where.location = { contains: input.location, mode: 'insensitive' };
       if (input.search) where.title = { contains: input.search, mode: 'insensitive' };
 
-      const items = await db.vacancy.findMany({
-        where,
-        take: input.take + 1,
-        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          location: true,
-          remotePolicy: true,
-          contractType: true,
-          salary: true,
-          priority: true,
-          createdAt: true,
-          company: { select: { id: true, name: true } },
-          unit: { select: { name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      const cursorLive = await cursorRowMatches(input.cursor, (id) =>
+        db.vacancy.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const items = !cursorLive
+        ? []
+        : await db.vacancy.findMany({
+            where,
+            ...cursorPageArgs(input.take, input.cursor),
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              location: true,
+              remotePolicy: true,
+              contractType: true,
+              salary: true,
+              priority: true,
+              createdAt: true,
+              company: { select: { id: true, name: true } },
+              unit: { select: { name: true } },
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          });
 
-      const hasMore = items.length > input.take;
-      return {
-        items: items.slice(0, input.take),
-        nextCursor: hasMore ? items[input.take - 1]!.id : undefined,
-      };
+      return takeCursorPage(items, input.take);
     }),
 
   // Get single vacancy detail for portal

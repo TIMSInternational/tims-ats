@@ -148,7 +148,7 @@ public sealed class NotificationReadEndpointAuthTests(NotificationFixture fixtur
     }
 
     [Fact]
-    public async Task List_LimitOne_PagesAndReturnsTheOverflowRowId()
+    public async Task List_LimitOne_NamesTheLastReturnedRowAsTheCursor()
     {
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
@@ -157,25 +157,64 @@ public sealed class NotificationReadEndpointAuthTests(NotificationFixture fixtur
         Assert.Single(body["notifications"]!.AsArray());
         Assert.Equal(NotificationFixture.N1.ToString(), body["notifications"]![0]!["id"]!.GetValue<string>());
 
-        // The TS pops the (limit+1)-th row and uses ITS id — N2, the first row of the NEXT page, not the last
-        // of this one. Pinned because the next page then SKIPS it (Prisma cursor + skip:1): a faithful
-        // reproduction of a real TS defect, filed separately. If someone "fixes" the port, this goes red.
-        Assert.Equal(NotificationFixture.N2.ToString(), body["nextCursor"]!.GetValue<string>());
+        // #246: the cursor is N1 — the last row SHOWN — not N2, the look-ahead row. Naming N2 made the next
+        // page start after it, so N2 appeared on neither page.
+        Assert.Equal(NotificationFixture.N1.ToString(), body["nextCursor"]!.GetValue<string>());
     }
 
     [Fact]
-    public async Task List_WithCursor_SkipsTheCursorRow_ReproducingTheTsRowLoss()
+    public async Task List_WithCursor_StartsStrictlyAfterTheCursorRow()
     {
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
         var body = await BodyOf(
-            await Get(client, $"{List}?limit=1&cursor={NotificationFixture.N2}", Mint(NotificationFixture.MemberSub)));
+            await Get(client, $"{List}?limit=1&cursor={NotificationFixture.N1}", Mint(NotificationFixture.MemberSub)));
 
         var ids = body["notifications"]!.AsArray().Select(n => n!["id"]!.GetValue<string>()).ToList();
 
-        // cursor=N2 with skip:1 starts AFTER N2 → N3. N2 itself appears on NEITHER page: page 1 returned N1
-        // and named N2 as the cursor, and page 2 skips it. That row loss is the TS behaviour, reproduced.
-        Assert.Equal([NotificationFixture.N3.ToString()], ids);
+        Assert.Equal([NotificationFixture.N2.ToString()], ids);
+        Assert.Equal(NotificationFixture.N2.ToString(), body["nextCursor"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task List_PagingThroughTiedTimestamps_ShowsEveryRowExactlyOnce(int limit)
+    {
+        // #246 + the tie-break: five rows for a user with NO other notifications, FOUR of which share one
+        // created_at. Without the (createdAt, id) keyset, the old `created_at <= boundary OFFSET 1` repeated
+        // or dropped rows inside the tie. Expected order is (created_at DESC, id DESC).
+        var user = NotificationFixture.NoGrantId;
+        var ids = Enumerable.Range(1, 5).Select(i => Guid.Parse($"d1000000-0000-0000-0000-00000000000{i}")).ToList();
+        var values = string.Join(",\n", ids.Select((id, i) =>
+            $"('{id}', '{NotificationFixture.OrgA}', '{user}', 'info', 'tie {i}', false, false, " +
+            (i == 4 ? "'2026-05-01 09:00:00.000')" : "'2026-05-01 10:00:00.000')")));
+        await _fixture.ExecuteAsync(
+            $"INSERT INTO notifications (id, organization_id, user_id, type, title, read, archived, created_at) VALUES {values}");
+        try
+        {
+            await using var factory = EnabledFactory();
+            using var client = factory.CreateClient();
+            var seen = new List<string>();
+            string? cursor = null;
+            for (var page = 0; page < 10; page++)
+            {
+                var path = cursor is null ? $"{List}?limit={limit}" : $"{List}?limit={limit}&cursor={cursor}";
+                var body = await BodyOf(await Get(client, path, Mint(NotificationFixture.NoGrantSub)));
+                seen.AddRange(body["notifications"]!.AsArray().Select(n => n!["id"]!.GetValue<string>()));
+                cursor = body["nextCursor"]?.GetValue<string>();
+                if (cursor is null) break;
+            }
+
+            var expected = new[] { ids[3], ids[2], ids[1], ids[0], ids[4] }.Select(id => id.ToString());
+            Assert.Equal(expected, seen);
+        }
+        finally
+        {
+            await _fixture.ExecuteAsync($"DELETE FROM notifications WHERE user_id = '{user}'");
+        }
     }
 
     [Fact]
