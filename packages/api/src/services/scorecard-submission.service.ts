@@ -1,6 +1,7 @@
 import { ratingsCoverCompetencySet } from '@tims/shared';
 import {
   interviewScorecardRepository,
+  SCORECARD_CLOSED_STATUSES,
   type ScorecardSubmissionData,
 } from '../repositories/interview-scorecard.repository';
 
@@ -25,14 +26,13 @@ import {
 //   - CLOSED INTERVIEWS REFUSE CARDS (#327): `cancelled` and `no_show` never
 //     took place, so there is nothing to score. `completed` stays OPEN — scoring
 //     after the interview ends is the normal flow, and the room's "Update" edit
-//     must keep working once the interview is marked completed.
+//     must keep working once the interview is marked completed. Checked here
+//     (fast refusal) and again inside the write transaction (the repository
+//     returns null if a cancel landed in between).
 // ---------------------------------------------------------------------------
 
-/** Interview statuses that refuse scorecard submission (#327). */
-export const SCORECARD_CLOSED_STATUSES: readonly string[] = ['cancelled', 'no_show'];
-
 export type SubmitScorecardResult =
-  | { ok: true; scorecard: Awaited<ReturnType<typeof interviewScorecardRepository.submit>> }
+  | { ok: true; scorecard: NonNullable<Awaited<ReturnType<typeof interviewScorecardRepository.submit>>> }
   | { ok: false; reason: 'not_found' | 'incomplete' | 'closed' };
 
 export const scorecardSubmissionService = {
@@ -48,6 +48,7 @@ export const scorecardSubmissionService = {
     if (SCORECARD_CLOSED_STATUSES.includes(context.status)) return { ok: false, reason: 'closed' };
     if (!ratingsCoverCompetencySet(data.ratings, context.competencies)) return { ok: false, reason: 'incomplete' };
     const scorecard = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data);
+    if (!scorecard) return { ok: false, reason: 'closed' };
     return { ok: true, scorecard };
   },
 };

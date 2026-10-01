@@ -1,6 +1,9 @@
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 
+/** Interview statuses that refuse scorecard submission (#327). */
+export const SCORECARD_CLOSED_STATUSES: readonly string[] = ['cancelled', 'no_show'];
+
 export interface ScorecardSubmissionData {
   ratings: Record<string, number>;
   recommendation: string;
@@ -60,6 +63,11 @@ export const interviewScorecardRepository = {
    * already submitted — so the other evaluators' cards were already visible to
    * them) also writes an audit_logs row carrying the previous values, in the same
    * transaction: an evaluator who revises after reading the panel is detectable.
+   *
+   * Returns null, writing nothing, when the interview is closed (cancelled /
+   * no_show) at write time. The service already checked the status, but a cancel
+   * can land between that read and this transaction; re-checking here narrows that
+   * window to the transaction itself (#332 panel, L1).
    */
   async submit(
     orgId: string,
@@ -69,6 +77,11 @@ export const interviewScorecardRepository = {
     data: ScorecardSubmissionData,
   ) {
     return runTenantTransaction(orgId, async (tx) => {
+      const open = await tx.interview.findFirst({
+        where: { id: interviewId, organizationId: orgId, status: { notIn: [...SCORECARD_CLOSED_STATUSES] } },
+        select: { id: true },
+      });
+      if (!open) return null;
       const previous = await tx.interviewScorecard.findFirst({
         where: { organizationId: orgId, interviewId, evaluatorId },
         select: { id: true, ratings: true, recommendation: true, submittedAt: true },

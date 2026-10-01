@@ -50,6 +50,7 @@ const store = vi.hoisted(() => ({
   jobProfile: null as null | { organizationId: string; vacancyId: string; competencies: unknown },
   audit: [] as Array<Record<string, unknown>>,
   interviewStatus: 'scheduled',
+  afterInterviewRead: null as null | (() => void),
 }));
 
 type Where = Record<string, unknown>;
@@ -118,13 +119,18 @@ function evaluatorUser(id: string) {
 vi.mock('@tims/db', () => {
   const tenantDb = {
     interview: {
-      findFirst: async ({ where }: { where: { id: string; organizationId: string } }) => {
+      findFirst: async ({ where }: { where: { id: string; organizationId: string; status?: { notIn: string[] } } }) => {
         if (where.id !== INTERVIEW || where.organizationId !== ORG_A) return null;
+        const status = store.interviewStatus;
+        const hook = store.afterInterviewRead;
+        store.afterInterviewRead = null;
+        hook?.();
+        if (where.status && where.status.notIn.includes(status)) return null;
         return {
           id: INTERVIEW,
           organizationId: ORG_A,
           vacancyId: VACANCY,
-          status: store.interviewStatus,
+          status,
           evaluators: store.panel
             .filter((p) => p.orgId === ORG_A)
             .map((p) => ({ id: p.id, interviewId: p.interviewId, userId: p.userId, user: evaluatorUser(p.userId) })),
@@ -315,6 +321,7 @@ beforeEach(() => {
   };
   store.audit = [];
   store.interviewStatus = 'scheduled';
+  store.afterInterviewRead = null;
 });
 
 function expectWithheld(sc: ScorecardOut | undefined | null) {
@@ -610,6 +617,19 @@ describe('submitScorecard — a closed interview refuses scorecards (#327)', () 
       caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: { SQL: 1, Storytelling: 1 }, recommendation: 'strong_no' }),
     ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
     expect(store.cards.find((c) => c.evaluatorId === ME)).toMatchObject({ ratings: full, recommendation: 'yes' });
+    expect(store.audit).toEqual([]);
+  });
+
+  it('refuses when the interview is cancelled AFTER the pre-check but before the write (in-transaction re-check)', async () => {
+    // The service's first read sees `scheduled`; a cancel lands right after it.
+    store.afterInterviewRead = () => {
+      store.interviewStatus = 'cancelled';
+    };
+    const caller = await callerAs(ME);
+    await expect(
+      caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(store.cards.some((c) => c.evaluatorId === ME)).toBe(false);
     expect(store.audit).toEqual([]);
   });
 
