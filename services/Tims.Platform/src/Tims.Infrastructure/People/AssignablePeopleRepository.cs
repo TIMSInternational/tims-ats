@@ -23,6 +23,7 @@ public sealed class AssignablePeopleRepository(
         string? search,
         int limit,
         VacancyApproverFilter? vacancy,
+        IReadOnlyCollection<Guid>? subjects,
         CancellationToken cancellationToken)
     {
         var staffSlugs = RoleSlugs.AssignableStaffRoles.ToList();
@@ -30,6 +31,13 @@ public sealed class AssignablePeopleRepository(
 
         var query = db.Users.AsNoTracking()
             .Where(user => user.OrganizationId == organizationId && user.IsActive && user.DeletedAt == null);
+
+        if (subjects is not null)
+        {
+            // The caller's subject set (own/team/unit) — an empty set lists nobody, never everybody.
+            var subjectIds = subjects.ToList();
+            query = query.Where(user => subjectIds.Contains(user.Id));
+        }
 
         if (search is not null)
         {

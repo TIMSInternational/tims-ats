@@ -29,6 +29,7 @@ export function PersonPickerModal({
     <Modal title={title} onClose={onClose}>
       <p className="text-[12px] text-[#8B8B8B] mb-3">{description}</p>
       <UserPicker
+        purpose="org_structure_member"
         excludeIds={excludeIds}
         disabled={isPending}
         onSelect={(userId) => onPick(userId)}

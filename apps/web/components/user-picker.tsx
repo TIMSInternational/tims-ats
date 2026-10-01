@@ -56,8 +56,8 @@ interface PickerSource {
 }
 
 /**
- * Searchable org-user picker. Returns a userId (and the user object) via onSelect on click. Without a
- * `purpose` it is backed by `trpc.user.list` (admin surfaces whose users hold user:read).
+ * Searchable org-user picker. Returns a userId (and the user object) via onSelect on click. Every app call
+ * site passes a `purpose` (#317); without one it falls back to `trpc.user.list`, which needs user:read.
  */
 export function UserPicker({
   excludeIds = [],

@@ -29,6 +29,7 @@ export function AssignUserModal({ businessUnitId, excludeIds, onClose, onAssigne
     <Modal title={t.units.assignUser} onClose={onClose}>
       <p className="text-[12px] text-[#8B8B8B] mb-3">{t.units.pickUser}</p>
       <UserPicker
+        purpose="org_structure_member"
         excludeIds={excludeIds}
         disabled={assign.isPending}
         onSelect={(userId) => assign.mutate({ userId, businessUnitId })}

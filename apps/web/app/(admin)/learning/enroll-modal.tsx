@@ -70,6 +70,7 @@ export function EnrollModal({ courseId, courseTitle, onClose }: EnrollModalProps
             </div>
           ) : (
             <UserPicker
+              purpose="learning_enrollee"
               onSelect={(_userId, user) => setEmployee(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}
