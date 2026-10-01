@@ -177,6 +177,27 @@ public sealed class SecurityDenialAuditTests(MonitoringReadFixture fixture)
         Assert.NotEqual("203.0.113.66", row.IpAddress);   // the spoofed value never lands
     }
 
+    [Theory]
+    [InlineData("1.2.3.4, not-an-address")]
+    [InlineData("1.2.3.4, 10.0.0.9:443")]
+    [InlineData("1.2.3.4, 127.1")]
+    public async Task A_last_hop_that_is_not_an_address_is_recorded_as_unknown_never_verbatim(string xff)
+    {
+        // #181. The trusted-proxy chain decides WHICH value is attribution; it cannot guarantee that the value is
+        // an address. Whatever survives is normalized at the writer, so the forensic column only ever holds an IP
+        // literal or NULL — never caller-shaped text. The denial itself is still audited.
+        await ClearDenialsAsync();
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, ExecutiveKpis, Mint(MonitoringReadFixture.NoGrantSub), xff: xff);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var row = Assert.Single(await DenialRowsAsync());
+        Assert.Null(row.IpAddress);
+        Assert.Equal(MonitoringReadFixture.NoGrantId, row.ActorId);
+    }
+
     [Fact]
     public async Task An_explicitly_TRUSTED_x_real_ip_is_honoured()
     {

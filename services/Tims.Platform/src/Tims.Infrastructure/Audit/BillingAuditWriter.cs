@@ -30,9 +30,7 @@ public sealed class BillingAuditWriter(AuditLogDbContext db, ILogger<BillingAudi
         {
             var orgGuid = Guid.Parse(organizationId);
 
-            await using var scope = await TenantScope.BeginAsync(_db, orgGuid, cancellationToken).ConfigureAwait(false);
-
-            _db.AuditLogs.Add(new AuditLogEntity
+            var entity = new AuditLogEntity
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = orgGuid,
@@ -40,10 +38,20 @@ public sealed class BillingAuditWriter(AuditLogDbContext db, ILogger<BillingAudi
                 Action = action,
                 Entity = BillingEntity,
                 Metadata = metadata.ToJsonString(),
-            });
-
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            };
+            try
+            {
+                await using var scope = await TenantScope.BeginAsync(_db, orgGuid, cancellationToken).ConfigureAwait(false);
+                _db.AuditLogs.Add(entity);
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                // #181 review HIGH-2: the scoped AuditLogDbContext is shared with SecurityEventWriter. A failed write
+                // must not leave a stale Added entity that poisons the next audit write in the same request.
+                _db.Entry(entity).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+            }
         }
         catch (Exception ex)
         {
