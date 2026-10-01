@@ -11,6 +11,7 @@ const sendOffer = vi.fn();
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: findOffer, updateMany: updateOffer },
+    offerApproval: { count: vi.fn(async () => 0) },
     organization: { findFirst: findOrg },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),

@@ -53,6 +53,7 @@ const sendOffer = vi.fn();
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst, findMany, updateMany },
+    offerApproval: { count: vi.fn(async () => 0) },
     organization: { findFirst: vi.fn(async () => ({ name: 'Example Company' })) },
     user: { findMany: vi.fn(async () => []) },
   },

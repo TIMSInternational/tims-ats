@@ -99,6 +99,19 @@ export const offerApprovalsRouter = router({
       // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — `db` is
       // `tenantDb`, so the outer wrapper never made these writes atomic.
       return runTenantTransaction(ctx.user.organizationId, async (tx) => {
+        // Compare-and-set draft -> pending_approval FIRST: the draft check above ran outside this
+        // transaction, so two concurrent submissions would otherwise both create an approval chain.
+        const moved = await tx.offer.updateMany({
+          where: { id: input.id, organizationId: ctx.user.organizationId, status: 'draft' },
+          data: { status: 'pending_approval' },
+        });
+        if (moved.count !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'La oferta ya no está en borrador; recarga e inténtalo de nuevo',
+          });
+        }
+
         // Create approval chain
         await tx.offerApproval.createMany({
           data: input.approverIds.map((approverId, index) => ({
@@ -110,9 +123,8 @@ export const offerApprovalsRouter = router({
           })),
         });
 
-        const updated = await tx.offer.update({
-          where: { id: input.id },
-          data: { status: 'pending_approval' },
+        const updated = await tx.offer.findFirstOrThrow({
+          where: { id: input.id, organizationId: ctx.user.organizationId },
           include: {
             approvals: {
               orderBy: { step: 'asc' },
@@ -138,51 +150,64 @@ export const offerApprovalsRouter = router({
       // Probe the offer through scope before acting on the approval record.
       await assertScoped('offer', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      const approval = await db.offerApproval.findFirst({
-        where: {
-          organizationId: ctx.user.organizationId,
-          offerId: input.id,
-          approverId: ctx.user.id,
-          status: 'pending',
-        },
-      });
-
-      if (!approval) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'No se encontro aprobacion pendiente para este usuario',
-        });
-      }
-
-      // runTenantTransaction per #45 (prisma#17948) — the approval flip + the
-      // conditional offer-status flip must commit or roll back together.
+      // State-guarded (live defect: a rejected offer could be approved by the remaining approvers and
+      // then emailed for signature). Every transition is a compare-and-set inside one transaction:
+      //  1. lock the offer row with a no-op CAS on status='pending_approval'. A concurrent approve or
+      //     reject of the same offer blocks here until the other commits, then re-evaluates the
+      //     predicate — so a rejected offer fails it, and two final approvals are serialized (no
+      //     write-skew where each counts the other's still-pending row and the offer stays stuck);
+      //  2. flip only THIS approver's row, and only while it is still pending;
+      //  3. count pending rows (fresh READ COMMITTED snapshot, taken after the lock) and, when none
+      //     remain, CAS pending_approval -> approved.
       return runTenantTransaction(ctx.user.organizationId, async (tx) => {
-        await tx.offerApproval.update({
-          where: { id: approval.id },
+        const offerId = input.id;
+        const organizationId = ctx.user.organizationId;
+        const locked = await tx.offer.updateMany({
+          where: { id: offerId, organizationId, status: 'pending_approval' },
+          data: { status: 'pending_approval' },
+        });
+        if (locked.count !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'La oferta ya no está pendiente de aprobación',
+          });
+        }
+
+        const decided = await tx.offerApproval.updateMany({
+          where: { organizationId, offerId, approverId: ctx.user.id, status: 'pending' },
           data: {
             status: 'approved',
             comment: input.comment,
             decidedAt: new Date(),
           },
         });
+        if (decided.count === 0) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'No se encontro aprobacion pendiente para este usuario',
+          });
+        }
 
-        // Check if all approvals are done
         const pendingCount = await tx.offerApproval.count({
-          where: {
-            offerId: input.id,
-            status: 'pending',
-          },
+          where: { organizationId, offerId, status: 'pending' },
         });
 
         if (pendingCount === 0) {
-          const approved = await tx.offer.update({
-            where: { id: input.id },
+          const flipped = await tx.offer.updateMany({
+            where: { id: offerId, organizationId, status: 'pending_approval' },
             data: { status: 'approved' },
           });
-          return redactOfferSettings(approved);
+          if (flipped.count !== 1) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: 'La oferta ya no está pendiente de aprobación',
+            });
+          }
         }
 
-        return redactOfferSettings(await tx.offer.findUnique({ where: { id: input.id } }));
+        return redactOfferSettings(
+          await tx.offer.findFirstOrThrow({ where: { id: offerId, organizationId } }),
+        );
       });
     }),
 
@@ -198,38 +223,41 @@ export const offerApprovalsRouter = router({
       // Probe the offer through scope before acting on the approval record.
       await assertScoped('offer', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      const approval = await db.offerApproval.findFirst({
-        where: {
-          organizationId: ctx.user.organizationId,
-          offerId: input.id,
-          approverId: ctx.user.id,
-          status: 'pending',
-        },
-      });
-
-      if (!approval) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'No se encontro aprobacion pendiente para este usuario',
-        });
-      }
-
-      // runTenantTransaction per #45 (prisma#17948).
+      // State-guarded: only a pending_approval offer can be rejected, and only by an approver whose
+      // own row is still pending. The offer CAS runs first so it serializes against a concurrent
+      // final approve (see approve above); a throw rolls the whole transaction back.
       return runTenantTransaction(ctx.user.organizationId, async (tx) => {
-        await tx.offerApproval.update({
-          where: { id: approval.id },
+        const offerId = input.id;
+        const organizationId = ctx.user.organizationId;
+        const rejected = await tx.offer.updateMany({
+          where: { id: offerId, organizationId, status: 'pending_approval' },
+          data: { status: 'rejected' },
+        });
+        if (rejected.count !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'La oferta ya no está pendiente de aprobación',
+          });
+        }
+
+        const decided = await tx.offerApproval.updateMany({
+          where: { organizationId, offerId, approverId: ctx.user.id, status: 'pending' },
           data: {
             status: 'rejected',
             comment: input.comment,
             decidedAt: new Date(),
           },
         });
+        if (decided.count === 0) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'No se encontro aprobacion pendiente para este usuario',
+          });
+        }
 
-        const rejected = await tx.offer.update({
-          where: { id: input.id },
-          data: { status: 'rejected' },
-        });
-        return redactOfferSettings(rejected);
+        return redactOfferSettings(
+          await tx.offer.findFirstOrThrow({ where: { id: offerId, organizationId } }),
+        );
       });
     }),
 
@@ -267,6 +295,8 @@ export const offerApprovalsRouter = router({
             status: 'pending',
           },
           { offer: scopeWhere as Prisma.OfferWhereInput },
+          // A rejected offer leaves the other approvers' rows pending; never surface it to them.
+          { offer: { status: 'pending_approval' } },
         ],
       },
       include: {

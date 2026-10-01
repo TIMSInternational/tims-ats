@@ -68,6 +68,19 @@ export const offerSigningRouter = router({
         });
       }
 
+      // Defense in depth for the "rejected offer resurrected as approved" defect (fixed in approvals.ts):
+      // offers only enter an approval chain from draft and never return to draft, so ANY rejected
+      // approval means the offer was rejected. Rows already corrupted before that fix stay unsendable.
+      const rejectedApprovals = await db.offerApproval.count({
+        where: { offerId: offer.id, organizationId: ctx.user.organizationId, status: 'rejected' },
+      });
+      if (rejectedApprovals > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
+        });
+      }
+
       if (!offer.candidate.email) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene correo electrónico' });
       }
