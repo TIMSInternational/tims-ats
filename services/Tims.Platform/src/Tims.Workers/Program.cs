@@ -19,6 +19,13 @@ using Tims.Workers.Hris;
 using Tims.Workers.Jobs;
 using Tims.Workers.Scheduling;
 
+// Container health-check mode (ECS task definition): `dotnet Tims.Workers.dll --healthcheck` probes this
+// host's own /health on loopback and exits — it never builds the host. See ContainerHealthProbe.
+if (ContainerHealthProbe.IsProbeInvocation(args))
+{
+    return await ContainerHealthProbe.RunAsync(args);
+}
+
 // Two-stage Serilog init: a bootstrap logger captures failures during host build (including
 // config-validation failures), then the full logger is swapped in. Mirrors Tims.Api.
 Log.Logger = new LoggerConfiguration()
@@ -182,3 +189,6 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// The host ran to a graceful shutdown (the --healthcheck branch above returns its own code).
+return 0;

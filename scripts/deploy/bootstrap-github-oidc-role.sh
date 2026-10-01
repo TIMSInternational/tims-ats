@@ -15,7 +15,9 @@
 # inventing one.
 #
 # ── SCOPE OF THE ROLE ────────────────────────────────────────────────────────────────────────────
-# Deliberately narrow. It can push to ONE ECR repository and update ONE App Runner service. It cannot
+# Deliberately narrow. It can push to ONE ECR repository and update ONE App Runner service (the API),
+# plus — for Tims.Workers (deploy-platform-workers.yml) — push to the workers ECR repository, register
+# task-definition revisions and update ONE ECS service, passing only the two workers task roles. It cannot
 # read secrets, touch the database, create IAM, or reach any other service. The trust policy admits
 # only pushes to `main` of this one repository — a PR branch cannot assume it, so a fork or an
 # untrusted branch cannot deploy.
@@ -37,6 +39,14 @@ SERVICE_ARN="arn:aws:apprunner:${REGION}:${ACCOUNT}:service/tims-platform-api/fe
 # live state — verify against AWS, not against unapplied terraform.
 ECR_ACCESS_ROLE="arn:aws:iam::${ACCOUNT}:role/tims-platform-api-ecr-access-role"
 OIDC_ARN="arn:aws:iam::${ACCOUNT}:oidc-provider/token.actions.githubusercontent.com"
+# Tims.Workers (deploy-platform-workers.yml): its own ECR repo + single-replica ECS Fargate service, both
+# created by the owner-run scripts/deploy/create-workers-service.sh. Granting these before they exist is
+# harmless (IAM does not require the resources to exist) and lets the workflow work the moment they do.
+WORKERS_ECR_REPO="tims-platform-workers"
+WORKERS_CLUSTER="tims-platform"
+WORKERS_SERVICE="tims-platform-workers"
+WORKERS_EXECUTION_ROLE="arn:aws:iam::${ACCOUNT}:role/tims-platform-workers-execution"
+WORKERS_TASK_ROLE="arn:aws:iam::${ACCOUNT}:role/tims-platform-workers-task"
 
 say() { printf '%s\n' "$*"; }
 ok()  { printf '  \033[32m✓\033[0m %s\n' "$*"; }
@@ -109,6 +119,39 @@ PERMS="$(cat <<JSON
       "Action": "iam:PassRole",
       "Resource": "${ECR_ACCESS_ROLE}",
       "Condition": { "StringEquals": { "iam:PassedToService": "bullet.amazonaws.com" } }
+    },
+    {
+      "Sid": "PushOnlyToTheWorkersRepository",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchGetImage",
+        "ecr:DescribeImages"
+      ],
+      "Resource": "arn:aws:ecr:${REGION}:${ACCOUNT}:repository/${WORKERS_ECR_REPO}"
+    },
+    {
+      "Sid": "TaskDefinitionsAreNotResourceScopable",
+      "Effect": "Allow",
+      "Action": ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "UpdateOnlyTheWorkersService",
+      "Effect": "Allow",
+      "Action": ["ecs:DescribeServices", "ecs:UpdateService"],
+      "Resource": "arn:aws:ecs:${REGION}:${ACCOUNT}:service/${WORKERS_CLUSTER}/${WORKERS_SERVICE}"
+    },
+    {
+      "Sid": "EcsRunsTheWorkersTaskAsTheseRoles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": ["${WORKERS_EXECUTION_ROLE}", "${WORKERS_TASK_ROLE}"],
+      "Condition": { "StringEquals": { "iam:PassedToService": "ecs-tasks.amazonaws.com" } }
     }
   ]
 }
