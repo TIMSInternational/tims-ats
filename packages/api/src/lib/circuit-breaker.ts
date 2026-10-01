@@ -70,6 +70,17 @@ export const sesCircuit = new CircuitBreaker({
   resetTimeoutMs: 60_000, // 60 seconds
 });
 
+// Offer emails get their OWN failure budget (#322 review, L3). generateSigningLink awaits the send under a
+// 4s abort; before that bound an offer send could hang but never FAIL, so it never counted against
+// sesCircuit. Now a slow SES region turns offer sends into timeouts, and on the shared breaker three of
+// them would suppress invitations and reminders for a minute. Isolated here, a run of slow offer sends
+// only pauses offer sends (which the recruiter sees as "delivery unconfirmed" and can retry).
+export const sesOfferCircuit = new CircuitBreaker({
+  name: 'AWS SES (offers)',
+  threshold: 3,
+  resetTimeoutMs: 60_000,
+});
+
 // Raw (MIME, .ics) sends get their OWN failure budget: a raw-only problem must never open the shared SES
 // breaker and suppress every other email (offers, application-received, …) plus the plain fallback.
 export const sesRawCircuit = new CircuitBreaker({
