@@ -112,6 +112,51 @@ describe('offer approval — state-guarded transitions', () => {
     },
   );
 
+  it('2 approvers: the step-2 approver rejects, then the step-1 approver cannot approve', async () => {
+    await (await callerFor(APPROVER_B)).offer.reject({ id: OFFER_ID, comment: 'no budget' });
+    await expect((await callerFor(APPROVER_A)).offer.approve({ id: OFFER_ID })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+    expect(store().committed.parent.status).toBe('rejected');
+    expect(statuses()).toEqual(['pending', 'rejected']);
+  });
+
+  it('a NON-final approver cannot record an approval on a rejected offer (needs the lock CAS)', async () => {
+    // Without the leading status CAS this approve "succeeds": B's own row flips, one row is still
+    // pending so the final CAS never runs, and a rejected offer carries a fresh approval.
+    const APPROVER_C = '33333333-3333-4333-8333-333333333333';
+    seed('pending_approval', [
+      [APPROVER_A, 'pending'],
+      [APPROVER_B, 'pending'],
+      [APPROVER_C, 'pending'],
+    ]);
+    await (await callerFor(APPROVER_A)).offer.reject({ id: OFFER_ID, comment: 'no' });
+    await expect((await callerFor(APPROVER_B)).offer.approve({ id: OFFER_ID })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+    expect(store().committed.parent.status).toBe('rejected');
+    expect(statuses()).toEqual(['rejected', 'pending', 'pending']);
+  });
+
+  it('final approval is idempotent: a retry after it committed returns the approved offer', async () => {
+    seed('pending_approval', [[APPROVER_A, 'pending']]);
+    const a = await callerFor(APPROVER_A);
+    await a.offer.approve({ id: OFFER_ID });
+    await expect(a.offer.approve({ id: OFFER_ID })).resolves.toMatchObject({ status: 'approved' });
+    expect(store().committed.parent.status).toBe('approved');
+    expect(statuses()).toEqual(['approved']);
+  });
+
+  it('a replay by an approver who did NOT approve still conflicts', async () => {
+    seed('approved', [
+      [APPROVER_A, 'approved'],
+      [APPROVER_B, 'pending'],
+    ]);
+    await expect((await callerFor(APPROVER_B)).offer.approve({ id: OFFER_ID })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+  });
+
   it('an approver with no pending row gets NOT_FOUND and the reject rolls back', async () => {
     seed('pending_approval', [
       [APPROVER_A, 'approved'],

@@ -21,6 +21,7 @@ const mockOffer = {
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },
+    offerApproval: { count: vi.fn().mockResolvedValue(0) },
     user: { findFirst: vi.fn().mockResolvedValue(null) },
     role: { findFirst: vi.fn().mockResolvedValue({ id: 'employee-role-1' }) },
     hirePrediction: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -122,6 +123,22 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
       where: { id: OFFER_ID, organizationId: ORG_ID, status: 'accepted' },
       data: { status: 'converted' },
     });
+  });
+
+  it('refuses to convert an accepted offer whose approval chain holds a rejection', async () => {
+    const { tenantDb: db, runTenantTransaction } = await import('@tims/db');
+    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    vi.mocked(db.offerApproval.count).mockResolvedValueOnce(1 as never);
+    const caller = await makeCaller();
+
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(db.offerApproval.count).toHaveBeenCalledWith({
+      where: { offerId: OFFER_ID, organizationId: ORG_ID, status: 'rejected' },
+    });
+    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(runTenantTransaction).not.toHaveBeenCalled();
   });
 
   it('rejects an unpassed blocking validation before provisioning an identity', async () => {

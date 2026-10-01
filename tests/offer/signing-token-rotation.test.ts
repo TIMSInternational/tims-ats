@@ -42,6 +42,7 @@ function matches(where: Where): boolean {
 }
 
 const findFirst = vi.fn(async () => snapshot());
+const countRejected = vi.fn(async (_args: unknown) => 0);
 const findMany = vi.fn(async ({ where }: { where: Where }) => (matches(where) ? [snapshot()] : []));
 const updateMany = vi.fn(async ({ where, data }: { where: Where; data: Partial<Row> }) => {
   if (!matches(where)) return { count: 0 };
@@ -53,7 +54,7 @@ const sendOffer = vi.fn();
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst, findMany, updateMany },
-    offerApproval: { count: vi.fn(async () => 0) },
+    offerApproval: { count: countRejected },
     organization: { findFirst: vi.fn(async () => ({ name: 'Example Company' })) },
     user: { findMany: vi.fn(async () => []) },
   },
@@ -237,6 +238,26 @@ describe('signing-token rotation on re-send', () => {
       success: true,
     });
     expect(row.status).toBe('accepted');
+  });
+});
+
+describe('rejected approval chain — the candidate link is dead', () => {
+  it('accept and decline both refuse a SENT offer whose approval chain holds a rejection', async () => {
+    row.status = 'sent';
+    row.settings = { signingToken: 'live-token', signingTokenRecipient: 'typo@example.test' };
+    const api = await caller();
+
+    countRejected.mockResolvedValueOnce(1);
+    await expect(api.offer.acceptByToken({ token: 'live-token', signatureName: 'Ana Ruiz' })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+    countRejected.mockResolvedValueOnce(1);
+    await expect(api.offer.declineByToken({ token: 'live-token' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(countRejected).toHaveBeenCalledWith({
+      where: { offerId: OFFER_ID, organizationId: ORG_ID, status: 'rejected' },
+    });
+    expect(row.status).toBe('sent');
+    expect(sendOffer).not.toHaveBeenCalled();
   });
 });
 

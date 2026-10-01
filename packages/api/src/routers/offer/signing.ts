@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
+import { assertNoRejectedApproval } from './rejected-approval-guard';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
@@ -68,18 +69,11 @@ export const offerSigningRouter = router({
         });
       }
 
-      // Defense in depth for the "rejected offer resurrected as approved" defect (fixed in approvals.ts):
-      // offers only enter an approval chain from draft and never return to draft, so ANY rejected
-      // approval means the offer was rejected. Rows already corrupted before that fix stay unsendable.
-      const rejectedApprovals = await db.offerApproval.count({
-        where: { offerId: offer.id, organizationId: ctx.user.organizationId, status: 'rejected' },
-      });
-      if (rejectedApprovals > 0) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
-        });
-      }
+      await assertNoRejectedApproval(
+        offer.id,
+        ctx.user.organizationId,
+        'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
+      );
 
       if (!offer.candidate.email) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene correo electrónico' });
@@ -264,7 +258,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -284,6 +278,8 @@ export const offerSigningRouter = router({
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado y no puede firmarse' });
       }
+
+      await assertNoRejectedApproval(offer.id, offer.organizationId, 'Esta oferta no esta disponible para firma');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();
@@ -362,7 +358,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -382,6 +378,8 @@ export const offerSigningRouter = router({
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
       }
+
+      await assertNoRejectedApproval(offer.id, offer.organizationId, 'Esta oferta no esta disponible');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();

@@ -62,6 +62,23 @@ async function assertOfferApprovers(organizationId: string, offerId: string, app
   }
 }
 
+// Explicit projection for approval-flow responses. Deliberately omits `settings` (which holds the
+// candidate's signing bearer token) and compensation terms; the approval UI refetches the offer.
+const OFFER_DECISION_SELECT = {
+  id: true,
+  organizationId: true,
+  candidateId: true,
+  vacancyId: true,
+  applicationId: true,
+  status: true,
+  sentAt: true,
+  respondedAt: true,
+  expiresAt: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.OfferSelect;
+
 export const offerApprovalsRouter = router({
   // 9.5 — Submit offer for approval. offer:create (recruiters) suffices: the body only moves a DRAFT into
   // the approval chain and never edits terms, which stays offer:update.
@@ -123,18 +140,24 @@ export const offerApprovalsRouter = router({
           })),
         });
 
-        const updated = await tx.offer.findFirstOrThrow({
+        return tx.offer.findFirstOrThrow({
           where: { id: input.id, organizationId: ctx.user.organizationId },
-          include: {
+          select: {
+            ...OFFER_DECISION_SELECT,
             approvals: {
               orderBy: { step: 'asc' },
-              include: {
+              select: {
+                id: true,
+                step: true,
+                status: true,
+                comment: true,
+                decidedAt: true,
+                createdAt: true,
                 approver: { select: { id: true, firstName: true, lastName: true } },
               },
             },
           },
         });
-        return redactOfferSettings(updated);
       });
     }),
 
@@ -167,6 +190,20 @@ export const offerApprovalsRouter = router({
           data: { status: 'pending_approval' },
         });
         if (locked.count !== 1) {
+          // Idempotent replay: this approver's approval already completed the offer (a client retry
+          // after the final approval committed). Anything else - rejected, sent, draft - conflicts.
+          const replay = await tx.offerApproval.count({
+            where: {
+              organizationId,
+              offerId,
+              approverId: ctx.user.id,
+              status: 'approved',
+              offer: { status: 'approved' },
+            },
+          });
+          if (replay > 0) {
+            return tx.offer.findFirstOrThrow({ where: { id: offerId, organizationId }, select: OFFER_DECISION_SELECT });
+          }
           throw new TRPCError({
             code: 'CONFLICT',
             message: 'La oferta ya no está pendiente de aprobación',
@@ -205,9 +242,7 @@ export const offerApprovalsRouter = router({
           }
         }
 
-        return redactOfferSettings(
-          await tx.offer.findFirstOrThrow({ where: { id: offerId, organizationId } }),
-        );
+        return tx.offer.findFirstOrThrow({ where: { id: offerId, organizationId }, select: OFFER_DECISION_SELECT });
       });
     }),
 
@@ -255,9 +290,7 @@ export const offerApprovalsRouter = router({
           });
         }
 
-        return redactOfferSettings(
-          await tx.offer.findFirstOrThrow({ where: { id: offerId, organizationId } }),
-        );
+        return tx.offer.findFirstOrThrow({ where: { id: offerId, organizationId }, select: OFFER_DECISION_SELECT });
       });
     }),
 

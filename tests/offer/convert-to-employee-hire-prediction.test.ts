@@ -27,6 +27,7 @@ const mockTx = {
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },
+    offerApproval: { count: vi.fn().mockResolvedValue(0) },
     user: { findFirst: vi.fn().mockResolvedValue(null) },
     role: { findFirst: vi.fn().mockResolvedValue({ id: 'employee-role-1' }) },
     hirePrediction: { findFirst: vi.fn().mockResolvedValue(null) },
