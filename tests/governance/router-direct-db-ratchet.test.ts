@@ -19,10 +19,19 @@ import { join, relative } from 'path';
 //   - a router that stops importing one (ported, deleted, or moved behind a repository) fails until its
 //     entry is removed below. That is the ratchet: the allowlist can only shrink.
 //
-// Scope: "client" means a VALUE import of `db`, `tenantDb` or `runTenantTransaction` from '@tims/db'.
-// Type imports (`import type { Prisma }`, `type X` specifiers) and enums (`InvoiceStatus`, ...) are not
-// data access and are ignored. A dynamic `import('@tims/db')` / `require('@tims/db')` that is not
-// a type position, and any deep import of the db package, also fail.
+// WHAT THE SCANNER CATCHES (each form has a probe in the self-test below):
+//   - a named VALUE import of `db`, `tenantDb` or `runTenantTransaction` from '@tims/db', aliased or not;
+//   - a namespace or default import of '@tims/db' (exposes every client);
+//   - a static import from a db-package subpath or source path ('@tims/db/...', '../db/src/...',
+//     '.../packages/db/src/...');
+//   - a dynamic `import(...)` or `require(...)` of '@tims/db' or any subpath, awaited or not, UNLESS it is
+//     immediately followed by `.<Capitalised>` — the type-position form `import('@tims/db').Prisma.X`.
+// And, across ALL of packages/api/src except `*.repository.ts`: no file may re-export a db client
+// (`export * from '@tims/db'`, `export { tenantDb } from '@tims/db'`, or re-exporting/aliasing an
+// imported client binding), so a router cannot launder access through a non-repository helper.
+// NOT caught: Type imports (`import type { Prisma }`, `type X` specifiers) and enums
+// (`InvoiceStatus`, ...), which are not data access; and access obtained through a helper that wraps a
+// client in a FUNCTION (it is a static scan, not a type-flow analysis) — that is review's job.
 //
 // Measured on 2026-10-01 at origin/main 5f36edad: 47 router files, of which 31 use `tenantDb` and 16
 // use only the unscoped `db` (platform-owner routers, auth, portal). #39 listed 34 tenantDb routers;
@@ -95,11 +104,30 @@ function routerFiles(dir: string): string[] {
   });
 }
 
-/** Value-imported db clients, plus a marker for any import shape this scanner cannot classify. */
+const API_SRC_DIR = join(__dirname, '../../packages/api/src');
+const DB_SPECIFIER = String.raw`(?:@tims\/db(?:\/[^'"]*)?|[^'"]*\bdb\/(?:src|prisma)\b[^'"]*)`;
+
+/** Local binding name → imported client, for every named value import of a client from @tims/db. */
+function clientBindings(source: string): Map<string, string> {
+  const bindings = new Map<string, string>();
+  const named = new RegExp(String.raw`import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]${DB_SPECIFIER}['"]`, 'g');
+  for (const m of source.matchAll(named)) {
+    if (m[1]) continue;
+    for (const raw of m[2].split(',')) {
+      const spec = raw.trim();
+      if (!spec || spec.startsWith('type ')) continue;
+      const [imported, local] = spec.split(/\s+as\s+/).map((x) => x.trim());
+      if (CLIENTS.has(imported)) bindings.set(local ?? imported, imported);
+    }
+  }
+  return bindings;
+}
+
+/** Db clients a file can reach, plus markers for import shapes that expose them wholesale. */
 function dbClientsIn(source: string): string[] {
   const found = new Set<string>();
-  const named = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]@tims\/db['"]/g;
-  for (const m of source.matchAll(named)) {
+  const exact = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]@tims\/db['"]/g;
+  for (const m of source.matchAll(exact)) {
     if (m[1]) continue;
     for (const raw of m[2].split(',')) {
       const spec = raw.trim();
@@ -108,13 +136,47 @@ function dbClientsIn(source: string): string[] {
       if (CLIENTS.has(name)) found.add(name);
     }
   }
-  // Namespace / default imports expose every client.
-  if (/import\s+(\*\s+as\s+\w+|\w+)\s+from\s*['"]@tims\/db['"]/.test(source)) found.add('<namespace import>');
-  // Deep imports of the db package (client.ts, tenant-client.ts, ...).
-  if (/from\s*['"](@tims\/db\/|[./]+(packages\/)?db\/src)/.test(source)) found.add('<deep import>');
-  // Runtime dynamic import / require. `import('@tims/db').Prisma...` in a type position is allowed.
-  if (/(await\s+import|require)\s*\(\s*['"]@tims\/db['"]\s*\)/.test(source)) found.add('<dynamic import>');
+  if (new RegExp(String.raw`import\s+(\*\s+as\s+\w+|\w+)\s+from\s*['"]${DB_SPECIFIER}['"]`).test(source)) {
+    found.add('<namespace import>');
+  }
+  const deep = /(?:import|export)\s+(?!type\s)[^'";]*?from\s*['"](?:@tims\/db\/[^'"]*|[^'"]*\bdb\/(?:src|prisma)\b[^'"]*)['"]/;
+  if (deep.test(source)) found.add('<deep import>');
+  const dynamic = new RegExp(String.raw`\b(?:import|require)\s*\(\s*['"]${DB_SPECIFIER}['"]\s*\)(?!\s*\.\s*[A-Z])`);
+  if (dynamic.test(source)) found.add('<dynamic import>');
   return [...found].sort();
+}
+
+/** Ways a file re-exports a db client. */
+function dbClientReExportsIn(source: string): string[] {
+  const found: string[] = [];
+  if (new RegExp(String.raw`export\s*\*\s*(?:as\s+\w+\s*)?from\s*['"]${DB_SPECIFIER}['"]`).test(source)) {
+    found.push('export * from db');
+  }
+  for (const m of source.matchAll(new RegExp(String.raw`export\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]${DB_SPECIFIER}['"]`, 'g'))) {
+    if (m[1]) continue;
+    for (const raw of m[2].split(',')) {
+      const spec = raw.trim();
+      if (spec.startsWith('type ')) continue;
+      const name = spec.split(/\s+as\s+/)[0].trim();
+      if (CLIENTS.has(name)) found.push(`export { ${name} } from db`);
+    }
+  }
+  for (const [local, imported] of clientBindings(source)) {
+    const id = local.replace(/[$]/g, '\\$');
+    const reexport = new RegExp(
+      String.raw`export\s*\{[^}]*\b${id}\b[^}]*\}(?!\s*from)|export\s+(?:const|let|var)\s+\w+\s*(?::[^=]+)?=\s*${id}\b|export\s+default\s+${id}\b`,
+    );
+    if (reexport.test(source)) found.push(`re-exports ${imported} (as local ${local})`);
+  }
+  return found;
+}
+
+function apiSourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) return name === 'node_modules' ? [] : apiSourceFiles(p);
+    return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !/\.d\.ts$/.test(name) ? [p] : [];
+  });
 }
 
 describe('#39 router direct-db ratchet', () => {
@@ -156,7 +218,14 @@ describe('#39 router direct-db ratchet', () => {
     expect(TENANT_DB_CEILING).toBeLessThanOrEqual(31);
   });
 
-  it('the scanner sees every client import shape (self-test, so the ratchet cannot pass vacuously)', () => {
+  it('no non-repository file in packages/api/src re-exports a db client', () => {
+    const offenders = apiSourceFiles(API_SRC_DIR)
+      .filter((f) => !f.endsWith('.repository.ts'))
+      .flatMap((f) => dbClientReExportsIn(readFileSync(f, 'utf8')).map((how) => `${relative(API_SRC_DIR, f)}: ${how}`));
+    expect(offenders).toEqual([]);
+  });
+
+  it('the import scanner catches every documented form (self-test, so the ratchet cannot pass vacuously)', () => {
     expect(dbClientsIn("import { tenantDb as db } from '@tims/db';")).toEqual(['tenantDb']);
     expect(dbClientsIn("import {\n  db,\n  SubscriptionStatus,\n} from '@tims/db';")).toEqual(['db']);
     expect(dbClientsIn('import { tenantDb as db, runTenantTransaction } from "@tims/db";')).toEqual([
@@ -164,13 +233,46 @@ describe('#39 router direct-db ratchet', () => {
       'tenantDb',
     ]);
     expect(dbClientsIn("import * as dbm from '@tims/db';")).toEqual(['<namespace import>']);
+    expect(dbClientsIn("import dbm from '@tims/db';")).toEqual(['<namespace import>']);
+    expect(dbClientsIn("import * as tc from '@tims/db/src/tenant-client';")).toContain('<namespace import>');
     expect(dbClientsIn("import { tenantDb } from '@tims/db/src/tenant-client';")).toEqual(['<deep import>']);
+    expect(dbClientsIn("import { db } from '../../../db/src/client';")).toEqual(['<deep import>']);
+    expect(dbClientsIn("import { db } from '../../../../packages/db/src/client';")).toEqual(['<deep import>']);
     expect(dbClientsIn("const { db } = await import('@tims/db');")).toEqual(['<dynamic import>']);
+    expect(dbClientsIn("const m = import('@tims/db');")).toEqual(['<dynamic import>']);
+    expect(dbClientsIn("import('@tims/db').then((m) => m.tenantDb);")).toEqual(['<dynamic import>']);
+    expect(dbClientsIn("const c = await import('@tims/db/src/client');")).toEqual(['<dynamic import>']);
+    expect(dbClientsIn("const { db } = require('@tims/db');")).toEqual(['<dynamic import>']);
+    expect(dbClientsIn("const t = require('@tims/db/src/tenant-client').tenantDb;")).toEqual(['<dynamic import>']);
     // Not data access:
     expect(dbClientsIn("import type { Prisma } from '@tims/db';")).toEqual([]);
     expect(dbClientsIn("import { type TenantDb, InvoiceStatus } from '@tims/db';")).toEqual([]);
     expect(dbClientsIn("type T = import('@tims/db').Prisma.TransactionClient;")).toEqual([]);
+    expect(dbClientsIn("import type { TenantDb } from '@tims/db/src/tenant-client';")).toEqual([]);
     // And it actually found today's offenders — a scanner that matched nothing would pass the first test.
     expect(actual.size).toBe(FILE_CEILING);
+  });
+
+  it('the re-export scanner catches every documented form (self-test)', () => {
+    expect(dbClientReExportsIn("export * from '@tims/db';")).toEqual(['export * from db']);
+    expect(dbClientReExportsIn("export * as dbx from '@tims/db/src/client';")).toEqual(['export * from db']);
+    expect(dbClientReExportsIn("export { tenantDb } from '@tims/db';")).toEqual(['export { tenantDb } from db']);
+    expect(dbClientReExportsIn("export { db as rawDb } from '@tims/db';")).toEqual(['export { db } from db']);
+    expect(dbClientReExportsIn("import { tenantDb as db } from '@tims/db';\nexport { db };")).toEqual([
+      're-exports tenantDb (as local db)',
+    ]);
+    expect(dbClientReExportsIn("import { tenantDb as db } from '@tims/db';\nexport { db as client };")).toEqual([
+      're-exports tenantDb (as local db)',
+    ]);
+    expect(dbClientReExportsIn("import { db } from '@tims/db';\nexport const client = db;")).toEqual([
+      're-exports db (as local db)',
+    ]);
+    expect(dbClientReExportsIn("import { runTenantTransaction } from '@tims/db';\nexport default runTenantTransaction;")).toEqual([
+      're-exports runTenantTransaction (as local runTenantTransaction)',
+    ]);
+    // Not re-exports:
+    expect(dbClientReExportsIn("export type { Prisma } from '@tims/db';")).toEqual([]);
+    expect(dbClientReExportsIn("export { InvoiceStatus } from '@tims/db';")).toEqual([]);
+    expect(dbClientReExportsIn("import { tenantDb as db } from '@tims/db';\nexport const n = await db.user.count();")).toEqual([]);
   });
 });
