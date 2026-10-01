@@ -1,5 +1,14 @@
 import { sendEmail } from '../lib/ses';
+import { sesOfferCircuit } from '../lib/circuit-breaker';
 import { emailTemplates } from './email-templates.service';
+
+/**
+ * Offer emails are awaited inside offer.generateSigningLink (#322): without a bound, a hung SES call
+ * would hold the mutation until the function times out, after the link is already active. An abort
+ * makes sendEmail return false, which the UI reports as "delivery unconfirmed". Those timeouts count
+ * against sesOfferCircuit, not the shared sesCircuit, so slow offer sends cannot pause other mail.
+ */
+export const OFFER_EMAIL_SEND_TIMEOUT_MS = 4_000;
 
 export const emailService = {
   async sendAssessmentReminder(params: {
@@ -40,7 +49,13 @@ export const emailService = {
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.offerSent(rest);
-    return sendEmail({ to: candidateEmail, subject, html });
+    return sendEmail({
+      to: candidateEmail,
+      subject,
+      html,
+      abortSignal: AbortSignal.timeout(OFFER_EMAIL_SEND_TIMEOUT_MS),
+      breaker: sesOfferCircuit,
+    });
   },
 
   async notifyOfferAccepted(params: {
