@@ -28,16 +28,25 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
     /// INNER join on a LIVE candidate of the same organization: a link whose candidate was soft-deleted (or is
     /// missing / in another org) resolves to nothing, i.e. <c>invalid</c> — a removed candidate's emailed link
     /// never mints a room token.
+    /// <para>#329 item 5 — the same statement also reports the two states that must revoke the link early: the
+    /// organization's suspension (<c>is_active</c>/<c>deleted_at</c>, the same predicate the API-key lockout uses)
+    /// and the application's closure. An interview whose <c>application_id</c> no longer resolves inside its own
+    /// organization is treated as CLOSED, never as "no application" — fail closed.</para>
     /// </remarks>
     public async Task<CandidateJoinInterview?> FindByTokenHashAsync(string tokenHash, CancellationToken ct)
     {
         await using var connection = await source.DataSource.OpenConnectionAsync(ct);
         await using var command = new NpgsqlCommand("""
             SELECT i.id,i.organization_id,i.type,i.status,i.scheduled_at,i.duration,i.cancelled_at,
-              i.candidate_join_token_expires_at,i.meeting_url,c.first_name,c.last_name
+              i.candidate_join_token_expires_at,i.meeting_url,c.first_name,c.last_name,
+              (i.application_id IS NOT NULL AND (a.id IS NULL OR a.status IN ('rejected','withdrawn')
+                OR a.rejected_at IS NOT NULL)) AS application_closed,
+              (o.id IS NULL OR NOT o.is_active OR o.deleted_at IS NOT NULL) AS organization_inactive
             FROM interviews i
             JOIN candidates c ON c.id=i.candidate_id AND c.organization_id=i.organization_id
               AND c.deleted_at IS NULL
+            LEFT JOIN applications a ON a.id=i.application_id AND a.organization_id=i.organization_id
+            LEFT JOIN organizations o ON o.id=i.organization_id
             WHERE i.candidate_join_token_hash=@hash
             """, connection);
         command.Parameters.Add(new NpgsqlParameter("hash", NpgsqlDbType.Varchar) { Value = tokenHash });
@@ -49,7 +58,40 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
             reader.IsDBNull(7) ? null : Utc(reader.GetDateTime(7)),
             reader.IsDBNull(8) ? null : reader.GetString(8),
             reader.IsDBNull(9) ? null : reader.GetString(9),
-            reader.IsDBNull(10) ? null : reader.GetString(10));
+            reader.IsDBNull(10) ? null : reader.GetString(10),
+            ApplicationClosed: reader.GetBoolean(11),
+            OrganizationInactive: reader.GetBoolean(12));
+    }
+
+    /// <remarks>
+    /// Pre-tenant and cross-organization by design (the collision is cross-tenant), on the same privileged base
+    /// connection as the hash lookup. The room name is compared after stripping scheme/host, query and fragment so
+    /// a differently-spelled URL for the same room still counts. The interview's OWN row must be visible too: if
+    /// it is not, this connection cannot see interviews at all (e.g. a non-BYPASSRLS login under forced RLS) and
+    /// "no other row" would be a blind answer — that is reported as shared, i.e. fail closed.
+    /// </remarks>
+    public async Task<bool> IsRoomSharedAsync(Guid interviewId, string roomName, CancellationToken ct)
+    {
+        try
+        {
+            await using var connection = await source.DataSource.OpenConnectionAsync(ct);
+            await using var command = new NpgsqlCommand("""
+                SELECT count(*) FILTER (WHERE id=@id), count(*) FILTER (WHERE id<>@id)
+                FROM interviews
+                WHERE lower(split_part(split_part(split_part(meeting_url,'#',1),'?',1),'/',4))=lower(@room)
+                """, connection);
+            command.Parameters.AddWithValue("id", interviewId);
+            command.Parameters.Add(new NpgsqlParameter("room", NpgsqlDbType.Text) { Value = roomName });
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return true;
+            return reader.GetInt64(0) == 0 || reader.GetInt64(1) > 0;
+        }
+        catch (NpgsqlException exception)
+        {
+            logger.LogError(exception, "Candidate interview join room-collision check failed for {InterviewId}",
+                interviewId);
+            return true;
+        }
     }
 
     public async Task<string?> ClaimMeetingUrlAsync(Guid interviewId, Guid organizationId, string roomUrl,

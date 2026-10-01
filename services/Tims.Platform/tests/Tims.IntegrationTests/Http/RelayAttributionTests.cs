@@ -14,7 +14,7 @@ public sealed class RelayAttributionTests
 {
     private const string Secret = "relay-test-secret";
     private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-    private static string Envelope(string ip, string? actor = null, long age = 0,
+    private static string Envelope(string? ip, string? actor = null, long age = 0,
         string method = "GET", string path = "/test?q=a")
     {
         var body = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new
@@ -44,9 +44,11 @@ public sealed class RelayAttributionTests
         if (envelope is not null) context.Request.Headers[RelayAttributionMiddleware.HeaderName] = envelope;
         return context;
     }
-    private static Task Run(HttpContext context, IRelayNonceStore nonces, RequestDelegate next)
+    private static Task Run(HttpContext context, IRelayNonceStore nonces, RequestDelegate next,
+        string? allowWithoutIp = null)
     {
-        var options = Options.Create(new PlatformOptions { ImpersonationSecret = Secret });
+        var options = Options.Create(new PlatformOptions
+        { ImpersonationSecret = Secret, AllowAnonymousRelayWithoutClientIp = allowWithoutIp });
         return new TrustedProxyHeaderMiddleware(ctx => new RelayAttributionMiddleware(next).InvokeAsync(ctx, options, nonces))
             .InvokeAsync(context, options);
     }
@@ -160,6 +162,67 @@ public sealed class RelayAttributionTests
         context.Request.Headers.Authorization = "";
         await Run(context, new Nonces(), _ => throw new InvalidOperationException("must not be reached"));
         Assert.Equal(401, context.Response.StatusCode);
+    }
+
+    private static DefaultHttpContext AnonymousRequest(string? ip, string path)
+    {
+        var context = Request(Envelope(ip, actor: "", method: "POST", path: path));
+        context.User = new ClaimsPrincipal(new ClaimsIdentity());
+        context.Request.Method = "POST";
+        context.Request.Path = path;
+        context.Request.QueryString = QueryString.Empty;
+        context.Request.Headers.Authorization = "";
+        return context;
+    }
+
+    [Theory]
+    [InlineData("/interviews/candidate-join")]
+    [InlineData("/invitations/setup/preview")]
+    public async Task AnonymousRelayWithoutAClientIpFailsClosed(string path)
+    {
+        // #329 item 2: with no vouched IP every anonymous caller would share the single `anonymous` rate-limit
+        // bucket (and write IP-less audit rows). Refused with 503 before anything downstream runs — including
+        // the stale direct-caller x-forwarded-for, which must NOT be substituted for the missing relay IP.
+        var context = AnonymousRequest(null, path);
+        await Run(context, new Nonces(), _ => throw new InvalidOperationException("must not be reached"));
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("TRUE")]
+    [InlineData("1")]
+    public async Task OnlyAnExactTrueOptsOutOfTheNullIpRefusal(string? flag)
+    {
+        var context = AnonymousRequest(null, "/interviews/candidate-join");
+        await Run(context, new Nonces(), _ => throw new InvalidOperationException("must not be reached"), flag);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TheDevelopmentOptOutLetsANullIpAnonymousRelayThrough()
+    {
+        var context = AnonymousRequest(null, "/interviews/candidate-join");
+        var called = false;
+        await Run(context, new Nonces(), ctx =>
+        {
+            called = true;
+            Assert.Null(ctx.ClientIpFor()); // unknown stays unknown — the relay edge is never substituted
+            return Task.CompletedTask;
+        }, "true");
+        Assert.True(called);
+    }
+
+    [Fact]
+    public async Task AnAuthenticatedRelayWithoutAClientIpIsNotRefused()
+    {
+        // Authenticated callers are keyed by their principal, not their IP, so a missing IP does not collapse them.
+        var context = Request(Envelope(null));
+        var called = false;
+        await Run(context, new Nonces(), _ => { called = true; return Task.CompletedTask; });
+        Assert.True(called);
+        Assert.NotEqual(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
     }
 
     private sealed class Nonces : IRelayNonceStore

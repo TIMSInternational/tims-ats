@@ -43,6 +43,16 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
+        // #329 item 2 — fail closed. An anonymous relayed request has NO principal to key the limiter on, so its
+        // only identity is the relay-vouched IP. The web relay vouches for one only on Vercel; without it every
+        // anonymous caller (every candidate, every invitee) would collapse into the one shared `anonymous` bucket —
+        // one caller can then exhaust it for all — and its audit rows would carry no address. Refuse instead.
+        if (anonymousInvitationSetup && metadata.Ip is null
+            && !string.Equals(options.Value.AllowAnonymousRelayWithoutClientIp, "true", StringComparison.Ordinal))
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            return;
+        }
         // Runs AFTER the untrusted-header stripper, BEFORE all attribution consumers.
         // Unknown web IP stays unknown; do not accidentally substitute the relay edge.
         context.Request.Headers.Remove("x-forwarded-for");

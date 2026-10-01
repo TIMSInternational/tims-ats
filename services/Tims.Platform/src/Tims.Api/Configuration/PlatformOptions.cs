@@ -792,4 +792,14 @@ public sealed class PlatformOptions
     /// log line.</para>
     /// </summary>
     public string? SecurityDenialAuditDisabled { get; init; }
+
+    /// <summary>
+    /// #329 item 2 — DEVELOPMENT escape hatch, exact "true" only. A relayed ANONYMOUS request (invitation setup,
+    /// candidate interview join) whose signed attribution carries no client IP is refused with 503 by
+    /// <see cref="Tims.Api.Http.RelayAttributionMiddleware"/>: the web relay only vouches for an IP on Vercel, and
+    /// without one every anonymous caller would share the single <c>anonymous</c> rate-limit bucket and write
+    /// IP-less audit rows. Set this only on a local stack whose web app runs outside Vercel. Polarity matches
+    /// <see cref="TrustXRealIpHeader"/>: absent or garbled keeps the refusal ON.
+    /// </summary>
+    public string? AllowAnonymousRelayWithoutClientIp { get; init; }
 }
