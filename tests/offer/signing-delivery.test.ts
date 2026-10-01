@@ -6,12 +6,13 @@ const updatedAt = new Date('2026-09-28T10:00:00Z');
 const findOffer = vi.fn();
 const updateOffer = vi.fn();
 const findOrg = vi.fn();
+const countRejected = vi.fn();
 const sendOffer = vi.fn();
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: findOffer, updateMany: updateOffer },
-    offerApproval: { count: vi.fn(async () => 0) },
+    offerApproval: { count: countRejected },
     organization: { findFirst: findOrg },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
@@ -65,6 +66,7 @@ beforeEach(() => {
   findOrg.mockResolvedValue({ name: 'Example Company' });
   updateOffer.mockResolvedValue({ count: 1 });
   sendOffer.mockResolvedValue(true);
+  countRejected.mockResolvedValue(0);
 });
 afterEach(() => { delete process.env.NEXT_PUBLIC_APP_URL; vi.unstubAllEnvs(); });
 
@@ -101,6 +103,33 @@ describe('offer signing-link delivery', () => {
     const result = await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
     expect(result).toMatchObject({ signingUrl: '/offers/sign/stable-token', emailDeliveryAccepted: false });
     expect(updateOffer).not.toHaveBeenCalled();
+  });
+
+  it('refuses an APPROVED offer whose approval chain holds a rejection (resurrected before the approve fix)', async () => {
+    countRejected.mockResolvedValueOnce(1);
+    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+    expect(countRejected).toHaveBeenCalledWith({
+      where: { offerId: OFFER_ID, organizationId: ORG_ID, status: 'rejected' },
+    });
+    expect(updateOffer).not.toHaveBeenCalled();
+    expect(sendOffer).not.toHaveBeenCalled();
+  });
+
+  it('refuses every status other than approved/sent before touching the offer', async () => {
+    for (const status of ['draft', 'pending_approval', 'rejected', 'accepted', 'declined', 'withdrawn']) {
+      findOffer.mockResolvedValueOnce({
+        id: OFFER_ID, status, settings: {}, updatedAt, sentAt: null, expiresAt: null,
+        candidate: { firstName: 'QA', lastName: 'Candidate', email: 'qa@example.test' },
+        vacancy: { title: 'QA role' },
+      });
+      await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+        code: 'BAD_REQUEST',
+      });
+    }
+    expect(updateOffer).not.toHaveBeenCalled();
+    expect(sendOffer).not.toHaveBeenCalled();
   });
 
   it('does not email a link if the conditional transition lost a race', async () => {
