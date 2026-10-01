@@ -268,7 +268,7 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
         await using var factory = Factory();
         using var client = factory.CreateClient();
         var token = Mint(CandidateConsentFixture.AdminSub);
-        var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+        var responses = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ =>
             Send(client, HttpMethod.Post, Withdraw(target), new { channel = "email", requestDeletion = true }, token)));
 
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));

@@ -1908,6 +1908,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/candidates/{candidateId}/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CandidateConsentGet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/candidates/{candidateId}/consent/withdrawal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CandidateConsentWithdrawByStaff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/portal/consent/withdrawal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CandidateConsentWithdrawBySubject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagement/surveys": {
         parameters: {
             query?: never;
@@ -3476,6 +3524,37 @@ export interface components {
             firstName: string;
             lastName: string;
         };
+        CandidateConsentEvidenceItem: {
+            applicationId: string;
+            textVersion: string;
+            textSha256: null | string;
+            locale: null | string;
+            agreedAt: string;
+            captchaVerified: null | boolean;
+            hasRequestMetadata: boolean;
+            isBackfilled: boolean;
+        };
+        CandidateConsentStatus: {
+            status: string;
+            textVersion: null | string;
+            agreedAt: null | string;
+            withdrawnAt: null | string;
+            withdrawalChannel: null | string;
+            withdrawalReason: null | string;
+            withdrawnBy: null | string;
+        };
+        CandidateConsentView: {
+            candidateId: string;
+            consent: components["schemas"]["CandidateConsentStatus"];
+            evidence: components["schemas"]["CandidateConsentEvidenceItem"][];
+            deletionRequest: null | components["schemas"]["CandidateDeletionRequest"];
+        };
+        CandidateDeletionRequest: {
+            id: string;
+            status: string;
+            source: string;
+            createdAt: string;
+        };
         CandidateJoinResult: {
             outcome: string;
             /** Format: date-time */
@@ -4514,6 +4593,12 @@ export interface components {
             /** Format: date-time */
             deletedAt: null | string;
         };
+        PortalConsentWithdrawalBody: {
+            organizationSlug: string;
+        };
+        PortalWithdrawalAck: {
+            received: boolean;
+        };
         PromotionEquityView: {
             /** Format: int32 */
             year: number | string;
@@ -4712,6 +4797,11 @@ export interface components {
             applications: number | string;
             /** Format: int32 */
             hires: number | string;
+        };
+        StaffConsentWithdrawalBody: {
+            channel: string;
+            reason?: null | string;
+            requestDeletion?: null | boolean;
         };
         StaffValidationRow: {
             id: string;
@@ -10617,6 +10707,169 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CandidateConsentGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateConsentView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CandidateConsentWithdrawByStaff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffConsentWithdrawalBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateConsentView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CandidateConsentWithdrawBySubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalConsentWithdrawalBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalWithdrawalAck"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

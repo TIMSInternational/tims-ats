@@ -290,6 +290,21 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'CANDIDATE CONSENT LANDED DARK 2026-10-01 (CandidateConsentEnabled, #312/#313). Greenfield C#: there is no tRPC ' +
+      'twin to diff against (TS only writes consent inside portal.applyToVacancy and reads its own consents). The ' +
+      'staff read/withdrawal are candidate:read|update at org scope; the self-service withdrawal is authorized by a ' +
+      'Supabase session whose CONFIRMED email the auth service re-verifies — a principal the by-role harness has no ' +
+      'role for. Covered by real-PostgreSQL integration tests under production-shaped RLS (cross-tenant 404s, 401/403 ' +
+      'incl. a narrow-scope grant, idempotency, a concurrent-withdrawal race, audit, unverified-email 403, exact-email ' +
+      'matching). Register the two staff routes fixture-first BEFORE enabling CandidateConsentEnabled in production.',
+    routes: [
+      'GET /tenant/candidates/{candidateId}/consent',
+      'POST /tenant/candidates/{candidateId}/consent/withdrawal',
+      'POST /portal/consent/withdrawal',
+    ],
+  },
+  {
+    reason:
       'INFRA / DIAGNOSTIC, not a domain surface. `/` and the two whoami routes are liveness and identity echoes; ' +
       '/require-permission and /require-org-scope (Program.cs:1225, :1265) are the permission-kernel probes the C# ' +
       'auth integration tests drive. None reads tenant data, so none carries a parity, RLS or RBAC obligation.',
@@ -580,7 +595,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         (anonymous, capability-token). #308 measured 181 → 182 on its own base; +1 over main's 190.
     //         191 → 202 (PR #310): the dark tenant org structure — eleven routes, all allowlisted in the
     //         org-structure group above. Main 191 (after #308) + #310's +11 = 202.
-    expect(deployed.size).toBe(202);
+    //         202 → 205 (#312/#313): the dark candidate consent surface — GET + POST withdrawal under
+    //         /tenant/candidates/{candidateId}/consent and the self-service POST /portal/consent/withdrawal,
+    //         all allowlisted in the candidate-consent group above. Main 202 (after #310) + 3 = 205.
+    expect(deployed.size).toBe(205);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -654,7 +672,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   EXISTING group, so the group/category count is unchanged.
     // 95 → 106 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
     //   Main 95 (after #308) + #310's +11 = 106.
-    expect(allowlistNormalised.length).toBe(106);
+    // 106 → 109 (#312/#313): the candidate consent surface's three dark routes. Main 106 (after #310) + 3 = 109.
+    expect(allowlistNormalised.length).toBe(109);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -674,6 +693,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 12 → 13 on 2026-09-29: tenant invitations' group (a Mode-B-inexpressible catalogue + email-sending writes).
     // 13 → 14 (PR #304): the tenant people directory is a C#-only picker read with no tRPC twin.
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the fifteen documented gap categories').toBe(15);
+    // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
+    //   candidate session, a principal the by-role harness cannot express.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the sixteen documented gap categories').toBe(16);
   });
 });

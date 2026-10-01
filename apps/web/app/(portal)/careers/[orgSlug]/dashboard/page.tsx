@@ -4,6 +4,7 @@ import { redirect, notFound } from 'next/navigation';
 import { db } from '@tims/db';
 import { candidatePortalService } from '@tims/api';
 import { PortalDashboardShell } from './dashboard-shell';
+import { DashboardVerifyEmail } from './dashboard-verify-email';
 
 // Authenticated candidate landing. Server-resolves identity by (Supabase email) ×
 // (org from the route) → Candidate. No staff User / org-membership involved. The
@@ -15,6 +16,9 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
 
   const supabaseUser = await getUser();
   if (!supabaseUser?.email) redirect(`/careers/${orgSlug}/login`);
+  // An unconfirmed email is not an identity: the candidate lookup below is by email, so it must never run for an
+  // address its holder has not proven (a magic-link login always confirms it; a password sign-up may not).
+  if (!supabaseUser.email_confirmed_at) return <DashboardVerifyEmail orgSlug={orgSlug} />;
 
   const org = await db.organization.findUnique({
     where: { slug: orgSlug },

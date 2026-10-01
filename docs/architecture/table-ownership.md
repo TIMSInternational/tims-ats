@@ -83,7 +83,8 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "ai_agent_org_configs",
     "ai_agent_usage_logs",
     "job_profiles",
-    "ai_interview_sessions"
+    "ai_interview_sessions",
+    "application_consent_evidence"
   ],
   "efcoreAppendOnly": ["data_access_logs", "audit_logs"],
   "efcoreStranglerWrite": [
@@ -112,7 +113,9 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "assessment_types",
     "interviews",
     "user_teams",
-    "user_business_units"
+    "user_business_units",
+    "data_consents",
+    "data_subject_requests"
   ],
   "quartzInfra": [
     "qrtz_job_details",
@@ -129,6 +132,7 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
   ],
   "notes": {
     "candidate_interview_join_wph": "WP-H candidate video-interview join (POST /interviews/candidate-join, behind Platform:CandidateInterviewJoinEnabled, default false). `interviews` MOVES from efcoreReadOnly[] to efcoreStranglerWrite[]: CandidateInterviewJoinRepository (raw Npgsql, no ToTable, so the ToTable check cannot see it and this note is the record) runs ONE pre-tenant SELECT by candidate_join_token_hash, then a narrow tenant-filtered UPDATE of meeting_url (+updated_at) only WHERE id AND organization_id AND meeting_url IS NULL, as app_tenant with app.current_org_id = the resolved org. `candidates` stays efcoreReadOnly[] (first_name/last_name read, joined on the same organization_id). `audit_logs` stays efcoreAppendOnly[] (INSERT of a candidate_interview_join row, actor NULL, outcome only, never the token). Prisma keeps the DDL (migration 20260929120000_interview_candidate_join_token) and every existing TS writer, including the TS token issue/clear at schedule/reschedule/cancel. Not an ownership flip.",
+    "candidate_consent_20261001": "#312/#313 default-disabled candidate consent surface (CandidateConsentEnabled) through CandidateConsentDbContext, always under TenantScope with explicit organization predicates except the pre-tenant SELECT of an ACTIVE organization by its public slug (self-service). `data_consents` enters efcoreStranglerWrite[]: INSERT a withdrawal-only marker row (text_version none:withdrawal-only) when a candidate has none, else UPDATE withdrawn_at/withdrawal_channel/withdrawal_reason/withdrawn_by_user_id/updated_at of a not-yet-withdrawn row; never DELETE, never rewrites text_version/agreed_at. `data_subject_requests` (new, Prisma DDL in migration 20261001120000_consent_evidence_withdrawal) enters efcoreStranglerWrite[]: INSERT pending deletion requests. `application_consent_evidence` (new, same migration) enters efcoreReadOnly[]: TS portal.applyToVacancy is its only writer. `candidates` stays efcoreReadOnly[] (id/organization_id/email), `organizations` read only, `audit_logs` stays efcoreAppendOnly[] (one INSERT per withdrawal, same transaction). Prisma keeps all DDL; the TS apply-flow consent upsert remains. No ownership flip.",
     "tenant_org_structure_20260929": "Default-disabled /tenant/org-structure (TenantOrgStructureEnabled) through OrgStructureDbContext, always under TenantScope with explicit organization predicates. INSERT/UPDATE business_units and teams, INSERT/UPDATE/DELETE user_teams and user_business_units (both move efcoreReadOnly -> efcoreStranglerWrite), UPDATE users.business_unit_id, SELECT companies, INSERT audit_logs in the same transaction. The widened GET /tenant/people/assignable?vacancyId additionally SELECTs vacancies, teams, business_units and user_business_units through AssignablePeopleDbContext. Prisma keeps DDL; the TS organization router writers (createBusinessUnit/createTeam/assignUserToUnit/unassignUserFromUnit) remain. No ownership flip.",
     "tenant_people_directory_20260929": "Default-disabled GET /tenant/people/assignable (TenantPeopleDirectoryEnabled) reads users, user_roles, roles, role_permissions and permissions through AssignablePeopleDbContext, always under TenantScope with explicit organization predicates. SELECT only; no writer, no DDL, no ownership move (all five tables are already EF-mapped strangler/identity tables).",
     "assessment_type_authoring_f13": "F13 tenant assessment-type authoring (greenfield C#; TS only had the read-only assessment.listTypes). `assessment_types` MOVES from efcoreReadOnly[] to efcoreStranglerWrite[]: AssessmentTypeWriteDbContext INSERTs (create) and UPDATEs name/description/duration/is_active/updated_at (update, soft deactivate) under TenantScope as app_tenant, with an explicit organization_id filter; `code` is derived from the name on insert and never updated; `config` is not mapped. It never DELETEs. `audit_logs` stays efcoreAppendOnly[] (one INSERT per mutation, same transaction). ExternalAssessmentDbContext still maps assessment_types read-only. Prisma keeps the DDL. Dark behind Platform:AssessmentTypeWriteEnabled (default false).",

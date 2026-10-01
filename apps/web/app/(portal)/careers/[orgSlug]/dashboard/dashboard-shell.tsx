@@ -9,6 +9,7 @@ import { DashboardInterviews } from './dashboard-interviews';
 import { DashboardAssessments } from './dashboard-assessments';
 import { DashboardOffer } from './dashboard-offer';
 import { DashboardFaqChat } from './dashboard-faq-chat';
+import { DashboardPrivacy } from './dashboard-privacy';
 
 // Candidate dashboard shell. Renders the authenticated frame with the full
 // dashboard: My Applications (Wave 1 Slice 2), My Interviews (Wave 1 Slice 3),
@@ -63,6 +64,7 @@ export function PortalDashboardShell({
             <DashboardAssessments orgSlug={orgSlug} />
             <DashboardOffer orgSlug={orgSlug} />
             <DashboardFaqChat orgSlug={orgSlug} />
+            <DashboardPrivacy orgSlug={orgSlug} orgName={orgName} />
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">

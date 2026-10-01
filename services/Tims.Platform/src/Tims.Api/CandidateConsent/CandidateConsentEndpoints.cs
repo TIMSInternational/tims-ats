@@ -139,7 +139,7 @@ public static class CandidateConsentEndpoints
 
                 if (identity is null || !string.Equals(identity.Id, sub, StringComparison.Ordinal))
                 {
-                    return Results.Json(new { error = "email_not_verified" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new { code = "email_not_verified" }, statusCode: StatusCodes.Status403Forbidden);
                 }
 
                 var (ok, node) = await TryReadJsonAsync(httpContext, cancellationToken);
