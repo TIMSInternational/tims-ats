@@ -15,7 +15,7 @@ namespace Tims.Application.Audit;
 /// string arrived, so the forensic column can only ever hold an address or nothing.</para>
 ///
 /// <para><b>User agent.</b> Client-controlled by definition and not a trust input, but it is persisted into an
-/// append-only table: it is bounded (512, the relay envelope's own limit) and stripped of control characters so a
+/// append-only table: it is bounded (512, the relay envelope's own limit) and stripped of control, format (Cf) and line/paragraph-separator characters so a
 /// caller cannot forge extra lines into log/CSV exports of these rows.</para>
 /// </summary>
 public static class AuditAttribution
@@ -27,12 +27,17 @@ public static class AuditAttribution
     {
         var trimmed = candidate?.Trim();
         if (string.IsNullOrEmpty(trimmed) || trimmed.Length > 45) return null;
+        // Brackets (`[::1]`, `[::1]:8080`) and zone ids (`fe80::1%eth0`) are URL/socket notation, not an address:
+        // IPAddress.TryParse accepts some of them and would store a port or an interface name.
+        if (trimmed.IndexOfAny(['[', ']', '%']) >= 0) return null;
         if (!IPAddress.TryParse(trimmed, out var address)) return null;
-        // IPAddress.TryParse also accepts IPv4 inet_aton shorthands ("1", "0x7f.1", "127.1"); require the dotted-quad
-        // round-trip so only an unambiguous IPv4 literal is stored. IPv6 is stored in its canonical form.
+        // IPAddress.TryParse also accepts IPv4 inet_aton shorthands ("1", "0x7f.1", "127.1", "01.2.3.4"); require
+        // the dotted-quad round-trip so only an unambiguous IPv4 literal is stored.
         if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
             && !string.Equals(address.ToString(), trimmed, StringComparison.Ordinal)) return null;
-        return address.ToString();
+        // One address, one spelling: an IPv4-mapped IPv6 address (::ffff:1.2.3.4) is stored as the IPv4 it maps,
+        // so the same client never appears under two forms. Other IPv6 in canonical form.
+        return address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();
     }
 
     /// <summary>Control characters removed, bounded to <see cref="MaxUserAgentLength"/>; null when nothing remains.</summary>
@@ -43,7 +48,13 @@ public static class AuditAttribution
         foreach (var ch in candidate)
         {
             if (builder.Length == MaxUserAgentLength) break;
-            if (!char.IsControl(ch)) builder.Append(ch);
+            if (char.IsControl(ch)) continue;
+            // Format (Cf: U+200B zero-width, U+202E bidi override) and line/paragraph separators (U+2028/9) are
+            // invisible or line-breaking in viewers and exports — the same class of forgery as a raw CR/LF.
+            var category = char.GetUnicodeCategory(ch);
+            if (category is System.Globalization.UnicodeCategory.Format or System.Globalization.UnicodeCategory.LineSeparator
+                or System.Globalization.UnicodeCategory.ParagraphSeparator) continue;
+            builder.Append(ch);
         }
 
         if (builder.Length > 0 && char.IsHighSurrogate(builder[^1])) builder.Length--;

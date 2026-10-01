@@ -36,6 +36,22 @@ describe('Sentry join-token redaction', () => {
     }
   });
 
+  it('scrubs a JSON "token" value (plain and JSON-escaped) and a double-encoded join path (review LOW-9)', () => {
+    for (const value of [
+      `{"token":"${TOKEN}"}`,
+      `{ "token" : "${TOKEN}" }`,
+      `"body":"{\\"token\\":\\"${TOKEN}\\"}"`,
+      `/login?next=%252Finterview%252Fjoin%252F${TOKEN}`,
+    ]) {
+      const redacted = redactJoinTokens(value);
+      expect(redacted, value).not.toContain(TOKEN);
+      expect(redacted, value).toContain('[redacted]');
+    }
+    // An object event: the request body field itself is scrubbed.
+    const event = redactSentryEvent({ request: { data: { token: TOKEN } }, extra: { body: `{"token":"${TOKEN}"}` } });
+    expect(JSON.stringify(event)).not.toContain(TOKEN);
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);

@@ -9,7 +9,8 @@ public sealed class AuditAttributionTests
     [InlineData("203.0.113.7", "203.0.113.7")]
     [InlineData(" 203.0.113.7 ", "203.0.113.7")]
     [InlineData("2001:DB8::1", "2001:db8::1")]
-    [InlineData("::ffff:203.0.113.7", "::ffff:203.0.113.7")]
+    [InlineData("::ffff:203.0.113.7", "203.0.113.7")] // IPv4-mapped is unmapped: one client, one spelling
+    [InlineData("::", "::")]
     public void A_literal_address_is_kept_in_canonical_form(string input, string expected) =>
         Assert.Equal(expected, AuditAttribution.Ip(input));
 
@@ -24,6 +25,12 @@ public sealed class AuditAttributionTests
     [InlineData("127.1")]
     [InlineData("0x7f.0.0.1")]
     [InlineData("203.0.113.7:443")]
+    // Review LOW-7 probes: socket/URL notation and zone ids are not addresses.
+    [InlineData("[::1]")]
+    [InlineData("[2001:db8::1]:8080")]
+    [InlineData("fe80::1%eth0")]
+    [InlineData("fe80::1%2")]
+    [InlineData("01.2.3.4")]
     public void Anything_that_is_not_an_unambiguous_address_is_recorded_as_unknown(string? input) =>
         Assert.Null(AuditAttribution.Ip(input));
 
@@ -34,6 +41,15 @@ public sealed class AuditAttributionTests
     [Fact]
     public void User_agent_loses_control_characters_so_it_cannot_forge_lines() =>
         Assert.Equal("Mozilla/5.0 forged: row", AuditAttribution.UserAgent("Mozilla/5.0\r\n forged: row\u0000"));
+
+    [Theory]
+    [InlineData('\u2028')] // line separator
+    [InlineData('\u2029')] // paragraph separator
+    [InlineData('\u202E')] // right-to-left override
+    [InlineData('\u200B')] // zero-width space
+    [InlineData('\u0085')] // next line (a C1 control)
+    public void User_agent_loses_invisible_and_line_breaking_unicode(char forged) =>
+        Assert.Equal("ab", AuditAttribution.UserAgent("a" + forged + "b"));
 
     [Fact]
     public void User_agent_is_bounded()

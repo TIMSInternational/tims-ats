@@ -167,6 +167,26 @@ public sealed class CandidateInterviewJoinRepositoryTests(CandidateInterviewJoin
     }
 
     [Fact]
+    public async Task Join_audit_attribution_is_normalized_like_every_security_audit_row()
+    {
+        var seeded = await fixture.SeedAsync();
+        Assert.True(await fixture.Repository().RecordAsync(new(seeded.InterviewId, seeded.OrganizationId,
+            CandidateJoinOutcomes.Ready, "10.0.0.1, 6.6.6.6", "agent\u2028Forged: line\u202E"), default));
+        Assert.Equal((null, "agentForged: line"), await fixture.AttributionAsync(seeded.InterviewId));
+    }
+
+    [Fact]
+    public async Task A_collision_check_that_throws_anything_fails_closed()
+    {
+        // Review LOW-8: not only NpgsqlException — a disposed data source throws ObjectDisposedException.
+        var dataSource = NpgsqlDataSource.Create(fixture.ConnectionString);
+        await dataSource.DisposeAsync();
+        var repository = new CandidateInterviewJoinRepository(new(dataSource),
+            NullLogger<CandidateInterviewJoinRepository>.Instance);
+        Assert.True(await repository.IsRoomSharedAsync(Guid.NewGuid(), "tims-1234abcd", default));
+    }
+
+    [Fact]
     public async Task Audit_failure_returns_false_instead_of_throwing()
     {
         var seeded = await fixture.SeedAsync();
@@ -237,6 +257,18 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
         await using var command = new NpgsqlCommand("SELECT meeting_url FROM interviews WHERE id=@id", connection);
         command.Parameters.AddWithValue("id", interviewId);
         return await command.ExecuteScalarAsync() as string;
+    }
+
+    public string ConnectionString => _connectionString;
+
+    public async Task<(string? Ip, string? Ua)> AttributionAsync(Guid interviewId)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT ip_address,user_agent FROM audit_logs WHERE entity_id=@id", connection);
+        command.Parameters.AddWithValue("id", interviewId.ToString());
+        await using var reader = await command.ExecuteReaderAsync(); Assert.True(await reader.ReadAsync());
+        return (reader.IsDBNull(0) ? null : reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
     }
 
     public async Task<(Guid Org, string Action, string Entity, string Metadata)> AuditAsync(Guid interviewId)

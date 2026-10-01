@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
+using Tims.Application.Audit;
 using Tims.Application.InterviewJoin;
 
 namespace Tims.Infrastructure.InterviewJoin;
@@ -86,8 +87,9 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
             if (!await reader.ReadAsync(ct)) return true;
             return reader.GetInt64(0) == 0 || reader.GetInt64(1) > 0;
         }
-        catch (NpgsqlException exception)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            // Any failure (not just NpgsqlException — e.g. InvalidOperationException from the pool) fails CLOSED.
             logger.LogError(exception, "Candidate interview join room-collision check failed for {InterviewId}",
                 interviewId);
             return true;
@@ -132,8 +134,9 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
             {
                 Value = JsonSerializer.Serialize(new { outcome = audit.Outcome, actor = "candidate_join_link" }),
             });
-            command.Parameters.AddWithValue("ip", (object?)audit.IpAddress ?? DBNull.Value);
-            command.Parameters.AddWithValue("ua", (object?)Bounded(audit.UserAgent) ?? DBNull.Value);
+            // Same normalization as every security-audit row (#181): an IP literal or NULL; UA bounded and stripped.
+            command.Parameters.AddWithValue("ip", (object?)AuditAttribution.Ip(audit.IpAddress) ?? DBNull.Value);
+            command.Parameters.AddWithValue("ua", (object?)AuditAttribution.UserAgent(audit.UserAgent) ?? DBNull.Value);
             await command.ExecuteNonQueryAsync(ct);
             await transaction.CommitAsync(ct);
             return true;
@@ -155,8 +158,6 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
         scope.Parameters.AddWithValue("org", organizationId.ToString());
         await scope.ExecuteNonQueryAsync(ct);
     }
-
-    private static string? Bounded(string? value) => value is { Length: > 512 } ? value[..512] : value;
 
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }
