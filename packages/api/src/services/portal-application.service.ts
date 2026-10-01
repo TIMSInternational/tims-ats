@@ -11,11 +11,12 @@ function contentTypeFromKey(key: string): CvContentType {
   throw new Error(`Cannot infer CV content type from key: ${key}`);
 }
 
-// S3 fetch + PDF/DOCX parse + a Bedrock round-trip have no deadline of their own — without
-// one here, a slow/adversarial input could run past the platform's own function timeout and
-// take the whole (already-committed) application submission down with it. This bounds
-// processCvUpload's own promise; it does not cancel the underlying work, which may keep
-// running detached — acceptable, since nothing awaits or depends on it after the race.
+// S3 fetch + PDF/DOCX parse + a Bedrock round-trip have no deadline of their own. Since
+// #314 this runs AFTER the response (Next `after()` / waitUntil), whose budget is the
+// route's maxDuration (30 s) shared with the pre-response work — so it is bounded well
+// inside that, leaving the runtime time to log the failure instead of being killed
+// mid-flight. This bounds processCvUpload's own promise; it does not cancel the underlying
+// work, which may keep running detached — acceptable, since nothing depends on it.
 const CV_PROCESSING_TIMEOUT_MS = 20_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -35,13 +36,12 @@ export const portalApplicationService = {
    * Fetches an uploaded CV from S3, extracts its text, and runs it through the
    * gated cv-parser agent. NEVER throws: a candidate's application must always
    * succeed even if their file is corrupt, unreadable, or the AI call fails.
-   * The CandidateDocument row is created as soon as the upload itself is
-   * confirmed (so staff can see a file was submitted), before extraction is
-   * attempted — a later extraction/parse failure leaves that row without
-   * parsedData rather than rolling it back. The whole chain is time-boxed
-   * (see CV_PROCESSING_TIMEOUT_MS) so a slow S3/parse/AI call can't run past
-   * the platform's own function timeout. Idempotent: safe to re-run for the same
-   * candidate + key (an already-parsed CV is skipped, an unparsed row is reused).
+   * Public apply records the CandidateDocument row (unparsed) inside the
+   * application transaction, so staff see the submitted file even if this never
+   * runs; here the row is reused (created only if missing), its size backfilled,
+   * and parsedData filled in. A later extraction/parse failure leaves the row
+   * without parsedData. Time-boxed (see CV_PROCESSING_TIMEOUT_MS). Idempotent:
+   * an already-parsed CV is skipped, so a future re-parse job is safe.
    */
   async processCvUpload(orgId: string, candidateId: string, cvFileKey: string, fileName: string): Promise<void> {
     try {
@@ -50,8 +50,8 @@ export const portalApplicationService = {
         // below use tenantDb, which fails closed without a tenant — scope them to the
         // vacancy's org (the same RLS scope the staff CV-upload path runs under).
         runWithTenant(orgId, async () => {
-          // Idempotent (#314 — this runs post-response and may be retried): a CV already
-          // parsed for this candidate + key is left alone; a recorded-but-unparsed one is
+          // Idempotent (#314): a CV already parsed for this candidate + key is left alone;
+          // the recorded-but-unparsed row (normally written by the apply transaction) is
           // reused rather than duplicated.
           const existing = await candidateRepository.findCvDocumentByKey(orgId, candidateId, cvFileKey);
           if (existing?.parsedData != null) return;
@@ -65,6 +65,9 @@ export const portalApplicationService = {
               fileUrl: cvFileKey,
               fileSize: sizeBytes,
             }));
+          if (existing && existing.fileSize == null) {
+            await candidateRepository.setDocumentFileSize(orgId, existing.id, sizeBytes);
+          }
 
           const text = await extractCvText(buffer, contentTypeFromKey(cvFileKey));
           await candidateAiService.parseCV(orgId, text, doc.id, candidateId);

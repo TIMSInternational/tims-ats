@@ -12,10 +12,12 @@ vi.mock('../../packages/api/src/lib/cv-extraction', () => ({
 
 const createDocumentMock = vi.fn();
 const findCvDocumentByKeyMock = vi.fn();
+const setDocumentFileSizeMock = vi.fn();
 vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({
   candidateRepository: {
     createDocument: (...a: unknown[]) => createDocumentMock(...a),
     findCvDocumentByKey: (...a: unknown[]) => findCvDocumentByKeyMock(...a),
+    setDocumentFileSize: (...a: unknown[]) => setDocumentFileSizeMock(...a),
   },
 }));
 
@@ -95,11 +97,21 @@ describe('portalApplicationService.processCvUpload', () => {
   });
 
   it('is idempotent: a recorded-but-unparsed CV row is reused, never duplicated', async () => {
-    findCvDocumentByKeyMock.mockResolvedValue({ id: 'doc-0', parsedData: null });
+    findCvDocumentByKeyMock.mockResolvedValue({ id: 'doc-0', parsedData: null, fileSize: null });
 
     await portalApplicationService.processCvUpload(ORG_ID, CANDIDATE_ID, KEY, 'resume.pdf');
 
     expect(createDocumentMock).not.toHaveBeenCalled();
+    expect(setDocumentFileSizeMock).toHaveBeenCalledWith(ORG_ID, 'doc-0', 1024);
+    expect(parseCVMock).toHaveBeenCalledWith(ORG_ID, 'extracted CV text', 'doc-0', CANDIDATE_ID);
+  });
+
+  it('does not rewrite the size of a reused row that already has one', async () => {
+    findCvDocumentByKeyMock.mockResolvedValue({ id: 'doc-0', parsedData: null, fileSize: 999 });
+
+    await portalApplicationService.processCvUpload(ORG_ID, CANDIDATE_ID, KEY, 'resume.pdf');
+
+    expect(setDocumentFileSizeMock).not.toHaveBeenCalled();
     expect(parseCVMock).toHaveBeenCalledWith(ORG_ID, 'extracted CV text', 'doc-0', CANDIDATE_ID);
   });
 

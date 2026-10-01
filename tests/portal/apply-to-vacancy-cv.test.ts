@@ -17,6 +17,7 @@ const dbMocks = {
   dataConsent: { upsert: vi.fn(), findFirst: vi.fn() },
   application: { findFirst: vi.fn(), create: vi.fn() },
   pipelineStage: { findFirstOrThrow: vi.fn() },
+  candidateDocument: { create: vi.fn() },
   // Interactive transaction: the callback receives the same mocked client, so every
   // write made through `tx` is observable on dbMocks.
   $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMocks)),
@@ -108,6 +109,7 @@ beforeEach(() => {
   consumeApplicationEmailQuotaMock.mockResolvedValue(true);
   dbMocks.application.findFirst.mockResolvedValue(null);
   dbMocks.application.create.mockResolvedValue({ id: APPLICATION_ID });
+  dbMocks.candidateDocument.create.mockResolvedValue({ id: 'doc-1' });
 });
 
 afterEach(() => {
@@ -709,6 +711,64 @@ describe('portal.applyToVacancy — CV processing never delays the response (#31
     expect(tasks).toHaveLength(1);
     await tasks[0]!();
     expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, `cv-uploads/${ORG_ID}/x.pdf`, 'resume.pdf');
+  });
+
+  it('records the submitted CV (unparsed, org-scoped) inside the application transaction, before responding', async () => {
+    let inTx = false;
+    let docWrittenInTx = false;
+    dbMocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      inTx = true;
+      try {
+        return await fn(dbMocks);
+      } finally {
+        inTx = false;
+      }
+    });
+    dbMocks.candidateDocument.create.mockImplementation(async () => {
+      docWrittenInTx = inTx;
+      return { id: 'doc-1' };
+    });
+    const tasks: Array<() => Promise<void>> = [];
+    const caller = await makeCaller(new Headers(), { runAfterResponse: (t) => tasks.push(t) });
+
+    await caller.portal.applyToVacancy(cvInput);
+
+    // Nothing post-response has run, yet staff can already see the file.
+    expect(processCvUploadMock).not.toHaveBeenCalled();
+    expect(docWrittenInTx).toBe(true);
+    expect(dbMocks.candidateDocument.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: ORG_ID,
+        candidateId: CANDIDATE_ID,
+        type: 'cv',
+        fileName: 'resume.pdf',
+        fileUrl: `cv-uploads/${ORG_ID}/x.pdf`,
+      },
+      select: { id: true },
+    });
+    const data = dbMocks.candidateDocument.create.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(data).not.toHaveProperty('parsedData');
+  });
+
+  it('records no CV row without a key, for a foreign-org key, or for a duplicate submission', async () => {
+    const caller = await makeCaller(new Headers(), { runAfterResponse: () => undefined });
+
+    await caller.portal.applyToVacancy(baseApplyInput);
+    await caller.portal.applyToVacancy({ ...cvInput, cvFileKey: 'cv-uploads/some-other-org/x.pdf' });
+    dbMocks.application.findFirst.mockResolvedValueOnce({ id: APPLICATION_ID });
+    await caller.portal.applyToVacancy(cvInput);
+
+    expect(dbMocks.application.create).toHaveBeenCalledTimes(2); // positive control
+    expect(dbMocks.candidateDocument.create).not.toHaveBeenCalled();
+  });
+
+  it('does not create the application when recording the CV row fails (atomic)', async () => {
+    dbMocks.candidateDocument.create.mockRejectedValue(new Error('db down'));
+    const schedule = vi.fn();
+    const caller = await makeCaller(new Headers(), { runAfterResponse: schedule });
+
+    await expect(caller.portal.applyToVacancy(cvInput)).rejects.toThrow();
+    expect(schedule).not.toHaveBeenCalled();
   });
 
   it('a CV extractor that never settles does not delay the response (scheduler wired)', async () => {

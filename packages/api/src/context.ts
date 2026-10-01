@@ -28,9 +28,9 @@ export interface TRPCContext {
   // no extra round-trip). Read by the CB-2a MFA-enforcement middleware. Absent/null
   // for anonymous requests or when the middleware path did not set it.
   aal?: string | null;
-  // Schedules work to run AFTER the response has been sent (the web route wires this to
-  // Next's `after()`). Optional: when absent, callers fall back to a detached promise.
-  // The task must never throw into the response — callers pass a self-catching task.
+  // Schedules work to run AFTER the response has been sent. The Next route always wires
+  // this to `after()`; it is optional only for non-Next contexts (tests, scripts, server-
+  // side callers), where callers fall back to a detached promise. Tasks must self-catch.
   runAfterResponse?: (task: () => Promise<void>) => void;
   headers: Headers;
 }

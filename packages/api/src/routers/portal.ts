@@ -242,6 +242,16 @@ export const portalRouter = router({
       // a different person from `ana@example.com` and could bypass a withdrawal.
       const email = input.email.trim().toLowerCase();
 
+      // The CV key must belong to THIS org's upload prefix — cvFileKey is client-supplied
+      // and otherwise unvalidated, so without this check a candidate could pass an
+      // arbitrary key and have the server fetch+process another org's S3 object into
+      // their own CandidateDocument row (a cross-tenant leak once a future "download
+      // the CV" feature generates a signed GET from fileUrl). A foreign key is silently
+      // ignored, same non-fatal posture as every other CV failure.
+      const cvFileKey =
+        input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`) ? input.cvFileKey : null;
+      const cvFileName = cvFileKey ? (input.cvFileName ?? cvFileKey.split('/').pop() ?? 'cv') : null;
+
       type ApplyOutcome =
         // `recipient` = who the application-received email goes to: for a REUSED candidate the
         // stored row's email + first name; for a NEW candidate the form's (validated, trimmed,
@@ -362,6 +372,16 @@ export const portalRouter = router({
             },
             select: { id: true },
           });
+
+          // The submitted CV is recorded (unparsed) atomically with the application, so
+          // staff always see the file even if the post-response parse below is lost (#314).
+          // Explicitly org-scoped; S3 fetch, extraction and the AI call happen later.
+          if (cvFileKey && cvFileName) {
+            await tx.candidateDocument.create({
+              data: { organizationId: orgId, candidateId, type: 'cv', fileName: cvFileName, fileUrl: cvFileKey },
+              select: { id: true },
+            });
+          }
           return { kind: 'new' as const, candidateId, recipient };
         });
 
@@ -444,22 +464,15 @@ export const portalRouter = router({
       // withdrawn refusals intentionally skip it, so a resubmit never re-runs S3 fetch +
       // extraction + an AI call. It runs AFTER the transaction commits so a slow S3/AI
       // call never holds a DB transaction open.
-      // The key must belong to THIS org's upload prefix — cvFileKey is client-supplied
-      // and otherwise unvalidated, so without this check a candidate could pass an
-      // arbitrary key and have the server fetch+process another org's S3 object into
-      // their own CandidateDocument row (a cross-tenant leak once a future "download
-      // the CV" feature generates a signed GET from fileUrl). Silently skipped, same
-      // non-fatal posture as every other CV failure.
       // NEVER awaited (#314): S3 fetch + extraction + an AI call (up to 20 s) ran only for a
       // NEW application, so awaiting it made response latency an oracle for "this email
       // already applied / was refused". It is scheduled to run after the response is sent
-      // (Next `after()` via ctx; a detached promise when no scheduler is wired). Trade-off:
-      // if the function is killed first the parse is lost, but the application is already
-      // committed and the CV can be re-parsed later (processCvUpload is idempotent).
-      if (outcome.kind === 'new' && input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`)) {
+      // (Next `after()` via ctx; a detached promise outside Next). Trade-off: if the
+      // function is killed first, the parse is lost — the application and the unparsed
+      // CV row are already committed, and processCvUpload is idempotent, so a future
+      // re-parse job is safe.
+      if (outcome.kind === 'new' && cvFileKey && cvFileName) {
         const { candidateId } = outcome;
-        const cvFileKey = input.cvFileKey;
-        const cvFileName = input.cvFileName ?? cvFileKey.split('/').pop() ?? 'cv';
         // Self-catching (sync throws included): nothing here can reject into the runtime.
         const task = async () => {
           try {
