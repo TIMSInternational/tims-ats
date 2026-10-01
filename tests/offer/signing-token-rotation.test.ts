@@ -6,6 +6,16 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 // The fake below is stateful — lookups by token see what the router actually wrote — so "the old link no
 // longer resolves" is observed through the real public procedures, not inferred from a call shape.
 
+// #312 consent-withdrawal guard: a candidate with ACTIVE consent unless a test says otherwise.
+const consentWithdrawn = vi.hoisted(() => vi.fn(async () => false));
+const bulkWithdrawn = vi.hoisted(() => vi.fn(async (): Promise<Set<string>> => new Set()));
+vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawn,
+    withdrawnCandidateIds: bulkWithdrawn,
+  },
+}));
+
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
 const OFFER_ID = '22222222-2222-2222-2222-222222222222';
 

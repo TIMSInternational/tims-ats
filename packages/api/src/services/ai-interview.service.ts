@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import { consentGuard } from './consent-guard.service';
 import type { Prisma } from '@tims/db';
 import { db } from '@tims/db';
 import { generateInterviewGuide } from '@tims/ai';
@@ -78,6 +79,8 @@ export const aiInterviewService = {
     if (!interview) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
     }
+    // #312: no AI interview (recorded, transcribed, analysed) for a candidate who revoked the authorization.
+    await consentGuard.assertActive(organizationId, interview.candidateId);
 
     const maxDurationSeconds = resolveMaxDurationSeconds(interview.type, config);
 

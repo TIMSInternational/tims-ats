@@ -1,5 +1,6 @@
 import type { Prisma } from '@tims/db';
 import { fitEngineRepository } from '../repositories/fit-engine.repository';
+import { candidateConsentRepository } from '../repositories/candidate-consent.repository';
 
 // ---------------------------------------------------------------------------
 // FIT Engine service — the single writer of FitScore. Deterministic weighted
@@ -277,7 +278,11 @@ export const fitEngineService = {
   },
 
   async computeForVacancy(orgId: string, vacancyId: string) {
-    const candidateIds = await fitEngineRepository.getPipelineCandidateIds(orgId, vacancyId);
+    const pipelineIds = await fitEngineRepository.getPipelineCandidateIds(orgId, vacancyId);
+    // #312: skip candidates whose recruitment consent is withdrawn (no score computed or written); the count is
+    // only the candidates actually scored.
+    const withdrawn = await candidateConsentRepository.withdrawnCandidateIds(orgId, pipelineIds);
+    const candidateIds = pipelineIds.filter((id) => !withdrawn.has(id));
     const results = await Promise.all(
       candidateIds.map((candidateId) => fitEngineService.computeFitScore(orgId, candidateId, vacancyId)),
     );

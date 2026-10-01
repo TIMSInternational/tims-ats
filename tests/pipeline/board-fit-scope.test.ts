@@ -6,6 +6,12 @@ vi.mock('@tims/db', () => ({
   runTenantTransaction: vi.fn(),
 }));
 
+// #312: withdrawn candidates' scores are hidden by an AND'd filter from the consent repository.
+const HIDDEN = { candidateId: { notIn: ['withdrawn-1'] } };
+vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+  candidateConsentRepository: { visibleFitScoreWhere: vi.fn(async () => HIDDEN) },
+}));
+
 import { pipelineRepository } from '../../packages/api/src/repositories/pipeline.repository';
 
 describe('pipeline board FIT scope', () => {
@@ -20,7 +26,7 @@ describe('pipeline board FIT scope', () => {
             candidate: expect.objectContaining({
               select: expect.objectContaining({
                 fitScores: {
-                  where: { organizationId: 'org-1', vacancyId: 'vacancy-1' },
+                  where: { organizationId: 'org-1', vacancyId: 'vacancy-1', AND: [HIDDEN] },
                   take: 1,
                   select: { overallScore: true, isPartial: true },
                 },

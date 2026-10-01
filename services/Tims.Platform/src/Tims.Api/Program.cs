@@ -14,6 +14,9 @@ using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.AccessReview;
 using Tims.Api.AssessmentTypes;
+using Tims.Api.CandidateConsent;
+using Tims.Application.CandidateConsent;
+using Tims.Infrastructure.CandidateConsent;
 using Tims.Application.AssessmentTypes;
 using Tims.Infrastructure.AssessmentTypes;
 using Tims.Api.Fx;
@@ -587,6 +590,23 @@ try
     builder.Services.AddDbContext<AssessmentTypeWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IAssessmentTypeWriteRepository, AssessmentTypeWriteRepository>();
     builder.Services.AddScoped<AssessmentTypeWriteUseCase>();
+
+    // #312/#313: candidate data-processing consent (status + evidence read, staff and self-service withdrawal).
+    // data_consents + data_subject_requests (efcoreStranglerWrite) and audit_logs in ONE context so a withdrawal and
+    // its audit row share a transaction. Runs UNDER TenantScope; dark unless CandidateConsentEnabled.
+    builder.Services.AddDbContext<CandidateConsentDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
+    builder.Services.AddScoped<CandidateConsentUseCase>();
+    // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the
+    // self-service withdrawal requires (mailer_autoconfirm must be false). Singleton: it caches the answer.
+    builder.Services.AddScoped<DataSubjectRequestNotifier>();
+    builder.Services.AddHttpClient(SupabaseAuthSettingsProbe.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(5);
+            client.MaxResponseContentBufferSize = 65536;
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    builder.Services.AddSingleton<IAuthSettingsProbe, SupabaseAuthSettingsProbe>();
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface. Plain read-only context over the
     // Prisma-OWNED surveys/survey_responses/action_plans/leader_commitments/alerts (+ users) — surveys.type/.status,
@@ -1531,6 +1551,18 @@ try
     if (externalOptions.AssessmentTypeWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapAssessmentTypeWriteEndpoints();
+    }
+
+    // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service
+    // withdrawal. Dark unless the flag is on; apply migration 20261001120000_consent_evidence_withdrawal first.
+    if (externalOptions.CandidateConsentEnabled || isOpenApiDocGeneration)
+    {
+        app.MapCandidateConsentEndpoints();
+    }
+    if (!isOpenApiDocGeneration)
+    {
+        CandidateConsentEndpoints.WarnIfSelfServiceUnconfigured(app.Logger, externalOptions.CandidateConsentEnabled,
+            app.Configuration["Invitations:SupabaseUrl"], app.Configuration["Invitations:SupabaseServiceKey"]);
     }
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface (14 reads). Staff-JWT + engagement:read; the

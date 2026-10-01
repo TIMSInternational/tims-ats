@@ -13,7 +13,7 @@ export type NavItem = {
   // The action can() must grant on `module` for this item to show. Defaults to 'read' (every
   // item that omits it). Set only where READING the module is not enough to use the page — e.g.
   // /settings/users is an invite surface, so it needs user:create, not just user:read.
-  readonly action?: 'read' | 'create';
+  readonly action?: 'read' | 'create' | 'update';
   // A deploy-time feature flag the item additionally requires. Items carrying one are HIDDEN unless the
   // caller's `isFeatureOn` says the flag is on (fail-closed) — so a dark surface never shows up as a nav
   // dead end. The real check lives in lib/nav/feature-flags.ts; this module stays env-free and pure.
@@ -21,7 +21,7 @@ export type NavItem = {
   readonly sub?: readonly NavSubItem[];
 };
 /** Deploy-time flags a nav item can depend on (resolved by lib/nav/feature-flags.ts `isNavFeatureOn`). */
-export type NavFeatureFlag = 'tenantInvitations';
+export type NavFeatureFlag = 'tenantInvitations' | 'candidateConsent';
 export type NavSection = { readonly labelKey: string | null; readonly items: readonly NavItem[] };
 export type Shell = 'admin' | 'participant' | 'platform';
 export type RoleManifest = {
@@ -104,11 +104,22 @@ const TEAM_SETTINGS_ITEM: NavItem = {
   action: 'create',
   featureFlag: 'tenantInvitations',
 };
+// /settings/data-requests (#312/#313): the data-subject deletion-request queue. The C# list needs candidate:update
+// at org scope and only exists behind the candidate-consent flag, so the item carries both gates.
+const DATA_REQUESTS_ITEM: NavItem = {
+  href: '/settings/data-requests',
+  labelKey: 'dataSubjectRequests.navLabel',
+  icon: 'clipboard',
+  module: 'candidate',
+  action: 'update',
+  featureFlag: 'candidateConsent',
+};
 const SETTINGS: NavSection = {
   labelKey: null,
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
+    DATA_REQUESTS_ITEM,
     { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
     { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
@@ -148,6 +159,7 @@ const HR_ADMIN_SETTINGS: NavSection = {
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
+    DATA_REQUESTS_ITEM,
   ],
 };
 const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS];

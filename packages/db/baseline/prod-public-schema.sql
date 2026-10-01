@@ -503,6 +503,32 @@ ALTER TABLE ONLY public.api_keys FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.api_keys OWNER TO postgres;
 
 --
+-- Name: application_consent_evidence; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.application_consent_evidence (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    application_id uuid NOT NULL,
+    candidate_id uuid NOT NULL,
+    consent_type character varying(64) NOT NULL,
+    text_version character varying(64) NOT NULL,
+    text_sha256 character varying(64),
+    locale character varying(5),
+    agreed_at timestamp(3) without time zone NOT NULL,
+    ip_hash character varying(64),
+    user_agent character varying(512),
+    captcha_verified boolean,
+    is_backfilled boolean DEFAULT false NOT NULL,
+    created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp(3) without time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.application_consent_evidence FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.application_consent_evidence OWNER TO postgres;
+
+--
 -- Name: applications; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1111,12 +1137,38 @@ CREATE TABLE public.data_consents (
     agreed_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     withdrawn_at timestamp(3) without time zone,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp(3) without time zone NOT NULL
+    updated_at timestamp(3) without time zone NOT NULL,
+    withdrawal_channel character varying(30),
+    withdrawal_reason character varying(500),
+    withdrawn_by_user_id uuid
 );
 
 ALTER TABLE ONLY public.data_consents FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.data_consents OWNER TO postgres;
+
+--
+-- Name: data_subject_requests; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.data_subject_requests (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    candidate_id uuid NOT NULL,
+    request_type character varying(30) NOT NULL,
+    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    source character varying(30) NOT NULL,
+    reason character varying(500),
+    requested_by_user_id uuid,
+    resolved_at timestamp(3) without time zone,
+    resolved_by_user_id uuid,
+    created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp(3) without time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.data_subject_requests FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.data_subject_requests OWNER TO postgres;
 
 --
 -- Name: employee_compensations; Type: TABLE; Schema: public; Owner: postgres
@@ -2956,6 +3008,13 @@ ALTER TABLE ONLY public.api_keys
     ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
 
 --
+-- Name: application_consent_evidence application_consent_evidence_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.application_consent_evidence
+    ADD CONSTRAINT application_consent_evidence_pkey PRIMARY KEY (id);
+
+--
 -- Name: applications applications_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3150,6 +3209,13 @@ ALTER TABLE ONLY public.data_access_logs
 
 ALTER TABLE ONLY public.data_consents
     ADD CONSTRAINT data_consents_pkey PRIMARY KEY (id);
+
+--
+-- Name: data_subject_requests data_subject_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.data_subject_requests
+    ADD CONSTRAINT data_subject_requests_pkey PRIMARY KEY (id);
 
 --
 -- Name: employee_compensations employee_compensations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
@@ -3848,6 +3914,24 @@ CREATE INDEX api_keys_key_hash_idx ON public.api_keys USING btree (key_hash);
 CREATE INDEX api_keys_organization_id_idx ON public.api_keys USING btree (organization_id);
 
 --
+-- Name: application_consent_evidence_application_id_consent_type_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX application_consent_evidence_application_id_consent_type_key ON public.application_consent_evidence USING btree (application_id, consent_type);
+
+--
+-- Name: application_consent_evidence_candidate_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX application_consent_evidence_candidate_id_idx ON public.application_consent_evidence USING btree (candidate_id);
+
+--
+-- Name: application_consent_evidence_organization_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX application_consent_evidence_organization_id_idx ON public.application_consent_evidence USING btree (organization_id);
+
+--
 -- Name: applications_candidate_id_vacancy_id_key; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4314,6 +4398,18 @@ CREATE INDEX data_consents_organization_id_idx ON public.data_consents USING btr
 --
 
 CREATE UNIQUE INDEX data_consents_subject_user_id_consent_type_key ON public.data_consents USING btree (subject_user_id, consent_type);
+
+--
+-- Name: data_subject_requests_candidate_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX data_subject_requests_candidate_id_idx ON public.data_subject_requests USING btree (candidate_id);
+
+--
+-- Name: data_subject_requests_organization_id_status_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX data_subject_requests_organization_id_status_idx ON public.data_subject_requests USING btree (organization_id, status);
 
 --
 -- Name: employee_compensations_band_id_idx; Type: INDEX; Schema: public; Owner: postgres
@@ -6850,6 +6946,12 @@ CREATE POLICY allow_all ON public.platform_owner_emails USING (true);
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: application_consent_evidence; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.application_consent_evidence ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: applications; Type: ROW SECURITY; Schema: public; Owner: postgres
 --
 
@@ -7016,6 +7118,12 @@ ALTER TABLE public.data_access_logs ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.data_consents ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: data_subject_requests; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.data_subject_requests ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: employee_compensations; Type: ROW SECURITY; Schema: public; Owner: postgres
@@ -7420,6 +7528,12 @@ CREATE POLICY tenant_isolation ON public.alerts USING ((organization_id = (NULLI
 CREATE POLICY tenant_isolation ON public.api_keys USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
 
 --
+-- Name: application_consent_evidence tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.application_consent_evidence USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
 -- Name: applications tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
 --
 
@@ -7594,6 +7708,12 @@ CREATE POLICY tenant_isolation ON public.data_access_logs USING ((organization_i
 --
 
 CREATE POLICY tenant_isolation ON public.data_consents USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
+-- Name: data_subject_requests tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.data_subject_requests USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
 
 --
 -- Name: employee_compensations tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
@@ -8134,6 +8254,13 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.api_keys TO app_tenant;
 GRANT SELECT ON TABLE public.api_keys TO ci_readonly;
 
 --
+-- Name: TABLE application_consent_evidence; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT ON TABLE public.application_consent_evidence TO app_tenant;
+GRANT SELECT ON TABLE public.application_consent_evidence TO ci_readonly;
+
+--
 -- Name: TABLE applications; Type: ACL; Schema: public; Owner: postgres
 --
 
@@ -8328,6 +8455,13 @@ GRANT SELECT ON TABLE public.data_access_logs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.data_consents TO app_tenant;
 GRANT SELECT ON TABLE public.data_consents TO ci_readonly;
+
+--
+-- Name: TABLE data_subject_requests; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.data_subject_requests TO app_tenant;
+GRANT SELECT ON TABLE public.data_subject_requests TO ci_readonly;
 
 --
 -- Name: TABLE employee_compensations; Type: ACL; Schema: public; Owner: postgres

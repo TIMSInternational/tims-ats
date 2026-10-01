@@ -660,6 +660,17 @@ public sealed class PlatformOptions
     public bool CandidateInterviewJoinEnabled { get; init; }
 
     /// <summary>
+    /// #312/#313 candidate data-processing consent: <c>GET /tenant/candidates/{id}/consent</c> (candidate:read + org
+    /// scope), <c>POST /tenant/candidates/{id}/consent/withdrawal</c> (candidate:update + org scope, audited) and the
+    /// candidate's self-service <c>POST /portal/consent/withdrawal</c> (Supabase session with a CONFIRMED email,
+    /// re-verified via <c>Invitations:SupabaseUrl</c>/<c>Invitations:SupabaseServiceKey</c>). Writes
+    /// <c>data_consents</c> + <c>data_subject_requests</c> + <c>audit_logs</c> under TenantScope; never deletes data.
+    /// DEFAULT false (dark) — enable with <c>Platform__CandidateConsentEnabled=true</c> AFTER the
+    /// 20261001120000_consent_evidence_withdrawal migration is applied.
+    /// </summary>
+    public bool CandidateConsentEnabled { get; init; }
+
+    /// <summary>
     /// Default-disabled company-admin team invitations (<c>/tenant-invitations</c>): list grantable roles,
     /// list/create/resend/revoke invitations for the CALLER'S OWN organization only. Gated by
     /// <c>user:create</c> at organization scope plus InvitationGrantPolicy (no role above the caller's own).

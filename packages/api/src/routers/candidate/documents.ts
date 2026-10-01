@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { consentGuard } from '../../services/consent-guard.service';
 import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../../trpc';
 import { candidateDocumentsService } from '../../services/candidate-documents.service';
@@ -59,6 +60,8 @@ export const candidateDocumentsRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
         }
       }
+      // #312: no CV parsing for a candidate who revoked the data-processing authorization.
+      await consentGuard.assertActive(ctx.user.organizationId, input.candidateId);
       return candidateAiService.parseCV(ctx.user.organizationId, input.text, input.documentId, input.candidateId);
     }),
 });

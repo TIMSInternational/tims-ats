@@ -50,6 +50,9 @@ export default defineConfig({
       // Keep middleware imports on the same module id so auth-boundary tests can
       // replace Supabase session refresh without opening a network connection.
       '@tims/auth/middleware': resolve(__dirname, 'packages/auth/src/middleware.ts'),
+      // Same module-id unification for server components that read the session (the candidate dashboard's
+      // confirmed-email gate is tested by mocking getUser).
+      '@tims/auth/server': resolve(__dirname, 'packages/auth/src/server.ts'),
       // Component code resolves Next through apps/web while root tests resolve the
       // workspace copy. Unify navigation so useSearchParams mocks are reliable.
       'next/navigation': resolve(__dirname, 'apps/web/node_modules/next/navigation.js'),

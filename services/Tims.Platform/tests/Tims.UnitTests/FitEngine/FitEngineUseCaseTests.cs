@@ -8,6 +8,8 @@ namespace Tims.UnitTests.FitEngine;
 /// <summary>
 /// Use-case unit pins over a recording fake repository — the orchestration behaviors the integration matrix
 /// asserts only end-to-end:
+///   consent guard (#312/#313) — a withdrawn candidate is skipped before ANY per-candidate read, the count is
+///     the number actually scored, and an all-withdrawn pipeline touches nothing (no vacancy, no bootstrap);
 ///   computeForVacancy — NO candidates ⇒ {0} and ZERO further reads (no vacancy fetch, no profile bootstrap —
 ///     the TS empty-map parity); the stored weights are the profile jsonb VERBATIM (extra keys survive — never
 ///     a re-serialization of the parsed dict); the breakdown carries EXACTLY the six keys in TS literal order
@@ -132,6 +134,87 @@ public sealed class FitEngineUseCaseTests
 
         Assert.Equal(2, repo.FitScoreUpserts.Count);
         Assert.Equal(1, repo.VacancyFetches);
+    }
+
+    // ── #312/#313 consent guard ──
+    [Fact]
+    public async Task ComputeForVacancy_WithdrawnCandidate_IsSkipped_OthersScored_CountExcludesSkipped()
+    {
+        var withdrawn = Guid.Parse("ca000000-0000-0000-0000-0000000000d1");
+        var granted = Guid.Parse("ca000000-0000-0000-0000-0000000000d2");
+        var repo = new FakeWriteRepo
+        {
+            PipelineCandidateIds = [withdrawn, CandidateId, granted],
+            WithdrawnCandidateIds = [withdrawn],
+            Vacancy = new VacancyForFitData(null, null),
+            ProfilesByName = { ["Default"] = DefaultProfile() },
+            Candidate = new CandidateForFitData(null, null, null),
+        };
+
+        var result = await new FitEngineWriteUseCase(repo).ComputeForVacancyAsync(
+            OrgId, VacancyId, Now, CancellationToken.None);
+
+        Assert.Equal(2, result.Computed);
+        // The guard sees the WHOLE pipeline once, before any per-candidate work.
+        Assert.Equal([withdrawn, CandidateId, granted], Assert.Single(repo.ConsentChecks));
+        Assert.Equal([CandidateId, granted], repo.FitScoreUpserts.Select(u => u.CandidateId).ToList());
+        // Skipped means skipped: the withdrawn candidate's person data is never even read.
+        Assert.DoesNotContain(withdrawn, repo.CandidateFetches);
+        Assert.Equal(2, repo.CandidateFetches.Count);
+    }
+
+    [Fact]
+    public async Task ComputeForVacancy_WithdrawalCommittedMidRun_RefusedAtWrite_NotCounted()
+    {
+        var lateWithdrawal = Guid.Parse("ca000000-0000-0000-0000-0000000000d3");
+        var repo = new FakeWriteRepo
+        {
+            PipelineCandidateIds = [CandidateId, lateWithdrawal],
+            WithdrawnBeforeWrite = [lateWithdrawal],
+            Vacancy = new VacancyForFitData(null, null),
+            ProfilesByName = { ["Default"] = DefaultProfile() },
+            Candidate = new CandidateForFitData(null, null, null),
+        };
+
+        var result = await new FitEngineWriteUseCase(repo).ComputeForVacancyAsync(
+            OrgId, VacancyId, Now, CancellationToken.None);
+
+        // The pre-loop check passed both; the write-time re-check refused the late one — only one scored/counted.
+        Assert.Equal([CandidateId, lateWithdrawal], Assert.Single(repo.ConsentChecks));
+        Assert.Equal(1, result.Computed);
+        Assert.Equal([CandidateId], repo.FitScoreUpserts.Select(u => u.CandidateId).ToList());
+    }
+
+    [Fact]
+    public async Task ComputeForVacancy_AllWithdrawn_ReturnsZero_NoVacancyRead_NoBootstrap_NoUpsert()
+    {
+        var repo = new FakeWriteRepo
+        {
+            PipelineCandidateIds = [CandidateId],
+            WithdrawnCandidateIds = [CandidateId],
+            Vacancy = new VacancyForFitData("Unknown", null),
+            Candidate = new CandidateForFitData(null, null, null),
+        };
+
+        var result = await new FitEngineWriteUseCase(repo).ComputeForVacancyAsync(
+            OrgId, VacancyId, Now, CancellationToken.None);
+
+        Assert.Equal(0, result.Computed);
+        Assert.Empty(repo.FitScoreUpserts);
+        Assert.Empty(repo.CandidateFetches);
+        Assert.Equal(0, repo.VacancyFetches);
+        Assert.Equal(0, repo.ProfileFinds);
+        Assert.Empty(repo.ProfileUpserts);
+    }
+
+    [Fact]
+    public async Task ComputeForVacancy_NoCandidates_NeverRunsTheConsentQuery()
+    {
+        var repo = new FakeWriteRepo { PipelineCandidateIds = [] };
+
+        await new FitEngineWriteUseCase(repo).ComputeForVacancyAsync(OrgId, VacancyId, Now, CancellationToken.None);
+
+        Assert.Empty(repo.ConsentChecks);
     }
 
     // ── resolveWeightProfile precedence ──
@@ -325,8 +408,11 @@ public sealed class FitEngineUseCaseTests
         public List<ProfileUpsert> ProfileUpserts { get; } = [];
 
         public Task<CandidateForFitData?> GetCandidateForFitAsync(
-            Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
-            Task.FromResult(Candidate);
+            Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
+        {
+            CandidateFetches.Add(candidateId);
+            return Task.FromResult(Candidate);
+        }
 
         public Task<VacancyForFitData?> GetVacancyForFitAsync(
             Guid organizationId, Guid vacancyId, CancellationToken cancellationToken)
@@ -361,17 +447,39 @@ public sealed class FitEngineUseCaseTests
             return Task.FromResult(saved);
         }
 
-        public Task UpsertFitScoreAsync(
+        // #312: candidates whose withdrawal "commits" after the pre-loop check — the per-write re-check refuses them.
+        public HashSet<Guid> WithdrawnBeforeWrite { get; init; } = [];
+
+        public Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
             string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
         {
+            if (WithdrawnBeforeWrite.Contains(candidateId))
+            {
+                return Task.FromResult(false);
+            }
+
             FitScoreUpserts.Add(new FitScoreUpsert(candidateId, overallScore, breakdownJson, weightsJson, isPartial));
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
         public Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
             Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
             Task.FromResult(PipelineCandidateIds);
+
+        public HashSet<Guid> WithdrawnCandidateIds { get; init; } = [];
+
+        public List<IReadOnlyCollection<Guid>> ConsentChecks { get; } = [];
+
+        public List<Guid> CandidateFetches { get; } = [];
+
+        public Task<IReadOnlySet<Guid>> GetConsentWithdrawnCandidateIdsAsync(
+            Guid organizationId, IReadOnlyCollection<Guid> candidateIds, CancellationToken cancellationToken)
+        {
+            ConsentChecks.Add(candidateIds);
+            return Task.FromResult<IReadOnlySet<Guid>>(
+                candidateIds.Where(WithdrawnCandidateIds.Contains).ToHashSet());
+        }
     }
 
     private sealed class FakeReadRepo : IFitEngineReadRepository

@@ -1,5 +1,15 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
+// #312 consent-withdrawal guard: a candidate with ACTIVE consent unless a test says otherwise.
+const consentWithdrawn = vi.hoisted(() => vi.fn(async () => false));
+const bulkWithdrawn = vi.hoisted(() => vi.fn(async (): Promise<Set<string>> => new Set()));
+vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawn,
+    withdrawnCandidateIds: bulkWithdrawn,
+  },
+}));
+
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
 const OFFER_ID = '22222222-2222-2222-2222-222222222222';
 const updatedAt = new Date('2026-09-28T10:00:00Z');
@@ -111,6 +121,28 @@ describe('offer signing-link delivery', () => {
   it('fails before transition if the public app URL is missing', async () => {
     delete process.env.NEXT_PUBLIC_APP_URL;
     await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({ code: 'INTERNAL_SERVER_ERROR' });
+    expect(updateOffer).not.toHaveBeenCalled();
+    expect(sendOffer).not.toHaveBeenCalled();
+  });
+});
+
+describe('offer signing-link delivery — consent withdrawn (#312)', () => {
+  it('refuses before any transition or email when the candidate revoked the authorization', async () => {
+    findOffer.mockResolvedValue({
+      id: OFFER_ID,
+      status: 'approved',
+      settings: {},
+      updatedAt,
+      sentAt: null,
+      expiresAt: null,
+      candidate: { id: 'cand-1', firstName: 'QA', lastName: 'Candidate', email: 'qa@example.test' },
+      vacancy: { title: 'QA role' },
+    });
+    consentWithdrawn.mockResolvedValueOnce(true);
+    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+      code: 'PRECONDITION_FAILED',
+    });
+    expect(consentWithdrawn).toHaveBeenCalledWith(ORG_ID, 'cand-1');
     expect(updateOffer).not.toHaveBeenCalled();
     expect(sendOffer).not.toHaveBeenCalled();
   });
