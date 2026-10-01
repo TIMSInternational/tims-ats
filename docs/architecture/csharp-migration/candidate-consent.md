@@ -39,7 +39,7 @@ backfilled from that row with `is_backfilled = true` and no hash/metadata. Soft 
 - Audits `candidate_consent_withdrawn` in the same transaction (the free-text reason is not copied into the audit).
 - Idempotent, serialized per candidate by a transaction-scoped advisory lock.
 - After it: the public apply flow refuses that email (existing #302 check, uniform response) — a new application
-  needs a fresh authorization the organization re-enables manually; assessment assignment/reminders and offer
+  cannot be re-authorized from the public form (today only a manual database change re-opens it — follow-up); assessment assignment/reminders and offer
   signing links are refused (`PRECONDITION_FAILED`); interview emails skip the candidate (evaluators still get them).
 - **Nothing is deleted automatically.** Retention duties may apply; a human resolves the deletion request.
 - Self-service withdraws every exact, case-insensitive email match in that organization (soft-deleted included,
