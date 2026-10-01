@@ -87,6 +87,9 @@ vi.mock('@tims/db', () => {
     get: (target, prop) => {
       if (typeof prop !== 'string') return undefined;
       if (prop === 'then') return undefined;
+      // candidate.list hides consent-withdrawn candidates (#312) via a raw lookup; no row in these
+      // fixtures has withdrawn, so it resolves to an empty set and paging is unaffected.
+      if (prop === '$queryRaw') return vi.fn().mockResolvedValue([]);
       if (prop.startsWith('$')) return vi.fn();
       target[prop] ??= model();
       return target[prop];

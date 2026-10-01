@@ -7,7 +7,9 @@ namespace Tims.Infrastructure.FitEngine;
 /// here), <c>candidates</c>/<c>vacancies</c> (efcoreReadOnly, subset maps), <c>role_family_weight_profiles</c>
 /// (strangler-write, read here). No navigation properties; every query AsNoTracking under TenantScope. No native
 /// enums touched, so no NpgsqlDataSource is needed. Prisma <c>timestamp(3)</c> columns are pinned
-/// <c>HasColumnType("timestamp")</c> (TRAP 6/11); jsonb pinned <c>jsonb</c>, read as string.
+/// <c>HasColumnType("timestamp")</c> (TRAP 6/11); jsonb pinned <c>jsonb</c>, read as string. #312 adds a SELECT-only
+/// <c>data_consents</c> subset map (+ <c>candidates.organization_id/email</c>) so the reads can HIDE withdrawn
+/// candidates' existing scores.
 /// </summary>
 public sealed class FitEngineReadDbContext(DbContextOptions<FitEngineReadDbContext> options)
     : DbContext(options)
@@ -19,6 +21,8 @@ public sealed class FitEngineReadDbContext(DbContextOptions<FitEngineReadDbConte
     public DbSet<FitVacancyReadEntity> Vacancies => Set<FitVacancyReadEntity>();
 
     public DbSet<WeightProfileReadEntity> WeightProfiles => Set<WeightProfileReadEntity>();
+
+    public DbSet<FitDataConsentReadEntity> DataConsents => Set<FitDataConsentReadEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,6 +45,8 @@ public sealed class FitEngineReadDbContext(DbContextOptions<FitEngineReadDbConte
             entity.ToTable("candidates");
             entity.HasKey(c => c.Id);
             entity.Property(c => c.Id).HasColumnName("id");
+            entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
+            entity.Property(c => c.Email).HasColumnName("email");
             entity.Property(c => c.FirstName).HasColumnName("first_name");
             entity.Property(c => c.LastName).HasColumnName("last_name");
         });
@@ -61,6 +67,18 @@ public sealed class FitEngineReadDbContext(DbContextOptions<FitEngineReadDbConte
             entity.Property(p => p.OrganizationId).HasColumnName("organization_id");
             entity.Property(p => p.Name).HasColumnName("name");
             entity.Property(p => p.Weights).HasColumnName("weights").HasColumnType("jsonb");
+        });
+
+        // #312: SELECT only — the withdrawn-consent filter on every fit_scores read.
+        modelBuilder.Entity<FitDataConsentReadEntity>(entity =>
+        {
+            entity.ToTable("data_consents");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Id).HasColumnName("id");
+            entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
+            entity.Property(c => c.SubjectUserId).HasColumnName("subject_user_id");
+            entity.Property(c => c.ConsentType).HasColumnName("consent_type");
+            entity.Property(c => c.WithdrawnAt).HasColumnName("withdrawn_at").HasColumnType("timestamp");
         });
     }
 }

@@ -7,7 +7,13 @@ import { captchaBypassAllowed } from './portal-helpers';
 import { createCvUploadPresignedPost } from '../lib/s3';
 import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
 import { portalApplicationService } from '../services/portal-application.service';
-import { APPLICATION_CONSENT_TEXT_VERSION, APPLICATION_CONSENT_TYPE, logger } from '@tims/shared';
+import {
+  APPLICATION_CONSENT_LOCALES,
+  APPLICATION_CONSENT_TEXT_VERSION,
+  APPLICATION_CONSENT_TYPE,
+  logger,
+} from '@tims/shared';
+import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/application-consent-evidence';
 import { emailService } from '../services/email.service';
 import { consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
@@ -216,9 +222,11 @@ export const portalRouter = router({
         consentTextVersion: z.literal(APPLICATION_CONSENT_TEXT_VERSION, {
           errorMap: () => ({ message: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.' }),
         }),
+        // Locale the consent text was shown in; the server hashes ITS canonical copy (#313).
+        consentLocale: z.enum(APPLICATION_CONSENT_LOCALES).default('es'),
       }),
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ ctx, input }) => {
       if (!(await verifyCaptcha(input.captchaToken))) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -236,6 +244,9 @@ export const portalRouter = router({
       });
 
       const orgId = vacancy.organizationId;
+      // A configured secret means the token was verified above; without one only a
+      // non-production bypass let the request through (captchaBypassAllowed).
+      const captchaVerified = Boolean(process.env.TURNSTILE_SECRET_KEY);
 
       // Canonical email identity: new candidates are stored trimmed + lowercased, and
       // existing ones are matched case-insensitively within this org (legacy and
@@ -270,6 +281,13 @@ export const portalRouter = router({
           // Exact case-insensitive matches only — never a wildcard neighbour.
           const variants = await findCandidatesByExactEmail(tx, orgId, email);
           const variantIds = variants.map((v) => v.id);
+
+          // Serialize with a concurrent consent withdrawal of the same candidate(s): the C# withdrawal takes
+          // the same transaction-scoped advisory lock (hashtextextended(<candidate id>, 0)), so an application
+          // cannot commit on a consent that is being revoked at that instant. Sorted → no lock-order deadlock.
+          for (const id of [...variantIds].sort()) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 0))`;
+          }
 
           // A withdrawn application consent on ANY case-variant of this email — including
           // a soft-deleted one — blocks further processing: no candidate write, no consent
@@ -362,7 +380,7 @@ export const portalRouter = router({
               })
             ).id;
 
-          await tx.application.create({
+          const application = await tx.application.create({
             data: {
               organizationId: orgId,
               candidateId,
@@ -373,6 +391,24 @@ export const portalRouter = router({
             },
             select: { id: true },
           });
+          // Per-application consent evidence (#313), same transaction: every application carries
+          // proof of the authorization given FOR IT — text version + hash, time, request metadata.
+          // Deploy-safe: behind a savepoint, a MISSING table/column (code deployed before migration
+          // 20261001120000 was applied) is logged and skipped instead of aborting every application.
+          await writeConsentEvidence(
+            tx,
+            buildApplicationConsentEvidence({
+              organizationId: orgId,
+              applicationId: application.id,
+              candidateId,
+              textVersion: input.consentTextVersion,
+              locale: input.consentLocale,
+              controllerName: vacancy.organization?.name ?? '',
+              agreedAt: new Date(),
+              headers: ctx.headers,
+              captchaVerified,
+            }),
+          );
 
           // The submitted CV is recorded (unparsed) atomically with the application, so
           // staff always see the file even if the post-response parse below is lost (#314).

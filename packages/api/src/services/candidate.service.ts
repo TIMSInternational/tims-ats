@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import { consentGuard } from './consent-guard.service';
 import type { Prisma } from '@tims/db';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { takeCursorPage } from '../lib/cursor-page';
@@ -193,6 +194,8 @@ export const candidateService = {
 
   // Apply to vacancy
   async applyToVacancy(orgId: string, candidateId: string, vacancyId: string, source: string) {
+    // #312: a candidate who revoked the authorization cannot be put into a new process by staff either.
+    await consentGuard.assertActive(orgId, candidateId);
     const firstStage = await candidateRepository.findFirstStage(orgId, vacancyId);
     if (!firstStage) {
       throw new TRPCError({

@@ -15,6 +15,8 @@ import {
 } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
 import { emailService } from '../services/email.service';
+import { candidateConsentRepository } from '../repositories/candidate-consent.repository';
+import { consentGuard } from '../services/consent-guard.service';
 import { clientIpFrom } from '../lib/client-ip';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
@@ -144,6 +146,10 @@ export const assessmentRouter = router({
       if (!application) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene una postulacion activa para esta vacante' });
       }
+      // #312: no new processing for a candidate who revoked the data-processing authorization.
+      if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(orgId, input.candidateId)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
+      }
 
       await assessmentQuestionService.assertHasActiveQuestions(orgId, input.assessmentTypeId);
 
@@ -198,6 +204,8 @@ export const assessmentRouter = router({
       if (applicationCount !== uniqueCandidateIds.length) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas candidatos no tienen una postulacion activa para esta vacante' });
       }
+      // #312: refuse the whole batch if any candidate revoked the authorization (message carries the count).
+      await consentGuard.assertAllActive(orgId, uniqueCandidateIds);
 
       await assessmentQuestionService.assertHasActiveQuestions(orgId, input.assessmentTypeId);
 
@@ -426,6 +434,10 @@ export const assessmentRouter = router({
           code: 'NOT_FOUND',
           message: 'Asignacion no encontrada o no reenviar invitaciones para evaluaciones completadas',
         });
+      }
+      // #312: a candidate who revoked their data-processing authorization gets no further emails.
+      if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(ctx.user.organizationId, assignment.candidateId)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
       }
       if (assignment.expiresAt && assignment.expiresAt.getTime() < Date.now()) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });

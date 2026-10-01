@@ -156,7 +156,7 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         return saved;
     }
 
-    public async Task UpsertFitScoreAsync(
+    public async Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
         string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -171,6 +171,21 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
+
+        // #312: the same transaction-scoped advisory lock a withdrawal of this candidate takes
+        // (CandidateConsentRepository.WithdrawOneAsync), then a re-check — a withdrawal that committed after the
+        // pre-loop check (or one waiting on this lock) is seen here, so the score is not written. A withdrawal on a
+        // same-email row takes that row's lock instead; the email-aware re-check still sees it once committed.
+        var lockKey = candidateId.ToString();
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
+        var withdrawn = await QueryWithdrawnAsync(organizationId, [candidateId], cancellationToken)
+            .ConfigureAwait(false);
+        if (withdrawn.Count > 0)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
 
         var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
         var transaction = (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
@@ -188,6 +203,7 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     public async Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
@@ -206,6 +222,68 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return ids;
     }
+
+    public async Task<IReadOnlySet<Guid>> GetConsentWithdrawnCandidateIdsAsync(
+        Guid organizationId, IReadOnlyCollection<Guid> candidateIds, CancellationToken cancellationToken)
+    {
+        var ids = candidateIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new HashSet<Guid>();
+        }
+
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        var withdrawn = await QueryWithdrawnAsync(organizationId, ids, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return withdrawn;
+    }
+
+    // The withdrawn-consent query, run on the caller's open TenantScope transaction (the pre-loop check and the
+    // per-candidate re-check inside the upsert share it).
+    private async Task<HashSet<Guid>> QueryWithdrawnAsync(
+        Guid organizationId, List<Guid> ids, CancellationToken cancellationToken)
+    {
+        var withdrawn = new HashSet<Guid>();
+
+        // (1) Direct: the candidate itself is the withdrawn subject. Independent of the candidates table, so a
+        //     pipeline id with no (or a soft-deleted) candidate row is still caught.
+        var direct = await _db.DataConsents.AsNoTracking()
+            .Where(dc => dc.OrganizationId == organizationId
+                && dc.ConsentType == RecruitmentConsentType
+                && dc.WithdrawnAt != null
+                && ids.Contains(dc.SubjectUserId))
+            .Select(dc => dc.SubjectUserId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        withdrawn.UnionWith(direct);
+
+        // (2) Same person, other row: ANY same-org candidate whose lower(btrim(email)) EQUALS the target's carries a
+        //     withdrawn consent (CandidateConsentRepository.WithdrawByEmailAsync withdraws per row, so a duplicate
+        //     row may hold the only withdrawal). Exact equality — never LIKE, so `_`/`%` are literal. A blank
+        //     normalized email never groups rows (it identifies nobody). Both sides explicitly org-filtered; RLS
+        //     under TenantScope is the second layer.
+        var viaEmail = await (
+                from target in _db.Candidates.AsNoTracking()
+                where target.OrganizationId == organizationId
+                    && ids.Contains(target.Id)
+                    && target.Email.Trim() != string.Empty
+                    && _db.DataConsents.Any(dc => dc.OrganizationId == organizationId
+                        && dc.ConsentType == RecruitmentConsentType
+                        && dc.WithdrawnAt != null
+                        && _db.Candidates.Any(other => other.OrganizationId == organizationId
+                            && other.Id == dc.SubjectUserId
+                            && other.Email.Trim().ToLower() == target.Email.Trim().ToLower()))
+                select target.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        withdrawn.UnionWith(viaEmail);
+        return withdrawn;
+    }
+
+    // data_consents.consent_type for candidate recruitment processing (#312/#313) — mirrors
+    // CandidateConsentConstants.ConsentType; duplicated so FitEngine does not depend on the consent slice.
+    private const string RecruitmentConsentType = "recruitment_data_processing";
 
     // Prisma `timestamp(3) without time zone` stores UTC wall-clock; Npgsql rejects a Kind=Utc DateTime for it,
     // so bind the UTC wall-clock as Unspecified-kind, ms-truncated (what a JS `new Date()` persists) — matches

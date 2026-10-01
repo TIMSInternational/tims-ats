@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
+import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
@@ -53,13 +54,17 @@ export const offerSigningRouter = router({
         },
         select: {
           id: true, status: true, settings: true, updatedAt: true, expiresAt: true, sentAt: true,
-          candidate: { select: { firstName: true, lastName: true, email: true, updatedAt: true } },
+          candidate: { select: { id: true, firstName: true, lastName: true, email: true, updatedAt: true } },
           vacancy: { select: { title: true } },
         },
       });
 
       if (!offer) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Oferta no encontrada' });
+      }
+      // #312: a candidate who revoked their data-processing authorization gets no further emails.
+      if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(ctx.user.organizationId, offer.candidate.id)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
       }
 
       if (offer.status !== 'approved' && offer.status !== 'sent') {

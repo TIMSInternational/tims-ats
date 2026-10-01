@@ -2,6 +2,15 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { hashJoinToken } from '../../packages/api/src/services/interview-join-token';
 import { parseMime } from '../helpers/mime-parse';
 
+// #312 consent guard: active consent unless a test says otherwise.
+const consentWithdrawnMock = vi.hoisted(() => vi.fn(async () => false));
+vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawnMock,
+    withdrawnCandidateIds: vi.fn(async () => new Set<string>()),
+  },
+}));
+
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
 const INTERVIEW_ID = '22222222-2222-2222-2222-222222222222';
 const CANDIDATE_ID = '33333333-3333-3333-3333-333333333333';
@@ -319,5 +328,20 @@ describe('interview.reschedule / cancel', () => {
     await vi.waitFor(() => expect(m.sendPlain).toHaveBeenCalledTimes(2));
     const candidate = m.sendPlain.mock.calls.find((c) => c[0].to === 'ana@example.com')?.[0];
     expect(candidate.html).toContain('/interview/join/');
+  });
+});
+
+describe('interview.schedule — candidate consent withdrawn (#312)', () => {
+  it('tells staff the candidate was not notified', async () => {
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'onsite' }));
+    consentWithdrawnMock.mockResolvedValueOnce(true);
+    const created = await (await caller()).interview.schedule({ ...scheduleInput, type: 'onsite' });
+    expect(created).toMatchObject({ id: INTERVIEW_ID, candidateNotNotifiedReason: 'consent_withdrawn' });
+  });
+
+  it('is null when consent is active', async () => {
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'onsite' }));
+    const created = await (await caller()).interview.schedule({ ...scheduleInput, type: 'onsite' });
+    expect(created).toMatchObject({ candidateNotNotifiedReason: null });
   });
 });

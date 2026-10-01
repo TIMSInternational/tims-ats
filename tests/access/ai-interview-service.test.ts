@@ -3,6 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before imports (vitest hoists vi.mock calls)
 // ---------------------------------------------------------------------------
+// #312 consent guard: active consent unless a test says otherwise.
+const consentWithdrawnMock = vi.hoisted(() => vi.fn(async () => false));
+vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawnMock,
+    withdrawnCandidateIds: vi.fn(async () => new Set<string>()),
+  },
+}));
+
 vi.mock('../../packages/api/src/repositories/ai-interview.repository', () => ({
   aiInterviewRepository: {
     findInterviewWithContext: vi.fn(),
@@ -335,5 +344,18 @@ describe('aiInterviewRepository.findSessionByCandidateToken', () => {
     const result = await aiInterviewRepository.findSessionByCandidateToken('unknown-token');
 
     expect(result).toBeNull();
+  });
+});
+
+describe('createAiInterviewSession — consent withdrawn (#312)', () => {
+  it('refuses before generating a guide or creating a session', async () => {
+    vi.mocked(aiInterviewRepository.findInterviewWithContext).mockResolvedValue(INTERVIEW_CTX as never);
+    consentWithdrawnMock.mockResolvedValueOnce(true);
+    await expect(
+      aiInterviewService.createAiInterviewSession({ interviewId: INTERVIEW_ID, organizationId: ORG, scopeWhere: SCOPE_WHERE }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
+    expect(consentWithdrawnMock).toHaveBeenCalledWith(ORG, (INTERVIEW_CTX as { candidateId: string }).candidateId);
+    expect(generateInterviewGuide).not.toHaveBeenCalled();
+    expect(aiInterviewRepository.createSession).not.toHaveBeenCalled();
   });
 });

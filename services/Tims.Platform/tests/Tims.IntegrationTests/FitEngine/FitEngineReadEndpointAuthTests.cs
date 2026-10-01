@@ -361,6 +361,43 @@ public sealed class FitEngineReadEndpointAuthTests(FitEngineFixture fixture)
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    // ══ #312: withdrawn candidates' existing scores are hidden on every read ══
+    [Fact]
+    public async Task Ranking_And_Simulate_HideWithdrawnSelfAndCaseVariantScores()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Get(
+            client, Ranking(FitEngineFixture.VacConsentRead), Mint(FitEngineFixture.OrgAdminSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var ids = JsonNode.Parse(await response.Content.ReadAsStringAsync())!.AsArray()
+            .Select(r => r!["candidateId"]!.GetValue<string>()).ToList();
+        Assert.Equal([FitEngineFixture.CandWildcard.ToString(), FitEngineFixture.CandGranted.ToString()], ids);
+
+        var simulated = await Get(
+            client, Simulate(FitEngineFixture.VacConsentRead, a: "1", i: "0", e: "0", ed: "0", l: "0"),
+            Mint(FitEngineFixture.OrgAdminSub));
+        Assert.Equal(HttpStatusCode.OK, simulated.StatusCode);
+        var simulatedIds = JsonNode.Parse(await simulated.Content.ReadAsStringAsync())!.AsArray()
+            .Select(r => r!["candidateId"]!.GetValue<string>()).ToHashSet();
+        Assert.Equal(
+            new HashSet<string> { FitEngineFixture.CandWildcard.ToString(), FitEngineFixture.CandGranted.ToString() },
+            simulatedIds);
+    }
+
+    [Fact]
+    public async Task Explain_WithdrawnCaseVariantCandidate_Is404_ScoreHidden()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Get(
+            client, Explain(FitEngineFixture.VacConsentRead, FitEngineFixture.CandWdAlias),
+            Mint(FitEngineFixture.OrgAdminSub));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     // ══ explainFit ══
     [Fact]
     public async Task Explain_ScoreExists_Is501_HonestStub_AfterProbeAndFetch()

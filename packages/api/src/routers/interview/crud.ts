@@ -6,6 +6,7 @@ import { TRPCError } from '@trpc/server';
 import { interviewEmailService } from '../../services/interview-email.service';
 import { clearedJoinTokenColumns, issueJoinToken } from '../../services/interview-join-token';
 import { scopeWhereFor, assertScoped } from '../../access';
+import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { isBlindedViewer, visibleScorecard } from '../../services/scorecard-visibility.service';
 
 export const interviewCrudRouter = router({
@@ -238,7 +239,16 @@ export const interviewCrudRouter = router({
         candidateJoinToken: joinToken.token,
       });
 
-      return interview;
+      // #312: the mailer skips a candidate who revoked the authorization; tell staff so they know the
+      // candidate was NOT notified (evaluators still are).
+      const candidateNotNotifiedReason = (await candidateConsentRepository.isRecruitmentConsentWithdrawn(
+        orgId,
+        interview.candidateId,
+      ))
+        ? ('consent_withdrawn' as const)
+        : null;
+
+      return { ...interview, candidateNotNotifiedReason };
     }),
 
   // 8.4 — Reschedule an interview

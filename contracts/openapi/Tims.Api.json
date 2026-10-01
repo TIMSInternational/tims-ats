@@ -4723,6 +4723,192 @@
         }
       }
     },
+    "/tenant/data-subject-requests": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "DataSubjectRequestsList",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataSubjectRequestListView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/tenant/candidates/{candidateId}/consent": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CandidateConsentGet",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateConsentView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/tenant/candidates/{candidateId}/consent/withdrawal": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CandidateConsentWithdrawByStaff",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffConsentWithdrawalBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateConsentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/portal/consent/withdrawal": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CandidateConsentWithdrawBySubject",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalConsentWithdrawalBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalWithdrawalAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfServiceUnavailableBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/engagement/surveys": {
       "get": {
         "tags": [
@@ -9856,6 +10042,163 @@
           }
         }
       },
+      "CandidateConsentEvidenceItem": {
+        "required": [
+          "applicationId",
+          "textVersion",
+          "textSha256",
+          "locale",
+          "agreedAt",
+          "captchaVerified",
+          "hasRequestMetadata",
+          "isBackfilled"
+        ],
+        "type": "object",
+        "properties": {
+          "applicationId": {
+            "type": "string"
+          },
+          "textVersion": {
+            "type": "string"
+          },
+          "textSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "locale": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "agreedAt": {
+            "type": "string"
+          },
+          "captchaVerified": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "hasRequestMetadata": {
+            "type": "boolean"
+          },
+          "isBackfilled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CandidateConsentStatus": {
+        "required": [
+          "status",
+          "textVersion",
+          "agreedAt",
+          "withdrawnAt",
+          "withdrawalChannel",
+          "withdrawalReason",
+          "withdrawnBy"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "textVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "agreedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "withdrawnAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "withdrawalChannel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "withdrawalReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "withdrawnBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CandidateConsentView": {
+        "required": [
+          "candidateId",
+          "consent",
+          "evidence",
+          "deletionRequest"
+        ],
+        "type": "object",
+        "properties": {
+          "candidateId": {
+            "type": "string"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/CandidateConsentStatus"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateConsentEvidenceItem"
+            }
+          },
+          "deletionRequest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CandidateDeletionRequest"
+              }
+            ]
+          }
+        }
+      },
+      "CandidateDeletionRequest": {
+        "required": [
+          "id",
+          "status",
+          "source",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        }
+      },
       "CandidateJoinResult": {
         "required": [
           "outcome"
@@ -11205,6 +11548,69 @@
               "string"
             ],
             "format": "double"
+          }
+        }
+      },
+      "DataSubjectRequestListItem": {
+        "required": [
+          "id",
+          "candidateId",
+          "candidateFirstName",
+          "candidateLastName",
+          "requestType",
+          "status",
+          "source",
+          "createdAt",
+          "dueAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "candidateFirstName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "candidateLastName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": "string"
+          }
+        }
+      },
+      "DataSubjectRequestListView": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataSubjectRequestListItem"
+            }
           }
         }
       },
@@ -14242,6 +14648,29 @@
           }
         }
       },
+      "PortalConsentWithdrawalBody": {
+        "required": [
+          "organizationSlug"
+        ],
+        "type": "object",
+        "properties": {
+          "organizationSlug": {
+            "maxLength": 100,
+            "type": "string"
+          }
+        }
+      },
+      "PortalWithdrawalAck": {
+        "required": [
+          "received"
+        ],
+        "type": "object",
+        "properties": {
+          "received": {
+            "type": "boolean"
+          }
+        }
+      },
       "PromotionEquityView": {
         "required": [
           "year",
@@ -14816,6 +15245,21 @@
           }
         }
       },
+      "SelfServiceUnavailableBody": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "SentimentView": {
         "required": [
           "positive",
@@ -15099,6 +15543,31 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "StaffConsentWithdrawalBody": {
+        "required": [
+          "channel"
+        ],
+        "type": "object",
+        "properties": {
+          "channel": {
+            "maxLength": 30,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestDeletion": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },

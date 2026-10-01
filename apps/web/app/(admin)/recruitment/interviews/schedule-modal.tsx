@@ -62,7 +62,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
     if (!isStep1Valid || !isStep2Valid || !isStep3Valid) return;
     try {
       const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
-      await createInterview.mutateAsync({
+      const created = await createInterview.mutateAsync({
         candidateId: selectedCandidateId,
         vacancyId: selectedVacancyId,
         type: interviewType,
@@ -73,6 +73,9 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
         evaluatorIds: selectedEvaluatorIds,
       });
       toast(t.interviews.scheduledSuccess, { type: 'success' });
+      if (created.candidateNotNotifiedReason === 'consent_withdrawn') {
+        toast(t.consentGuard.interviewNotNotified, { type: 'warning', duration: 8000 });
+      }
       onSuccess();
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Error al agendar', { type: 'error' });
