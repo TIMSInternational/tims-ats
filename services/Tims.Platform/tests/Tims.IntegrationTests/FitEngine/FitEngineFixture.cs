@@ -53,6 +53,8 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid VacNoApps = Guid.Parse("7ac00000-0000-0000-0000-000000000005");   // zero active applications
     public static readonly Guid VacRead = Guid.Parse("7ac00000-0000-0000-0000-000000000006");     // T1; READ-ONLY rows (compute never targets it)
     public static readonly Guid VacConsent = Guid.Parse("7ac00000-0000-0000-0000-000000000007");  // #312/#313 consent-guard pipeline
+    public static readonly Guid VacConsentRead = Guid.Parse("7ac00000-0000-0000-0000-000000000008"); // #312 hidden-score reads
+    public static readonly Guid VacLate = Guid.Parse("7ac00000-0000-0000-0000-000000000009");        // #312 mid-run re-check writes
     public static readonly Guid VacOrgB = Guid.Parse("7ac00000-0000-0000-0000-0000000000b0");     // OrgB (cross-org → 404)
 
     // Candidates (OrgA)
@@ -75,6 +77,9 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid CandBlankA = Guid.Parse("ca000000-0000-0000-0000-0000000000c9");      // '' vs withdrawn '   '
     public static readonly Guid CandBlankB = Guid.Parse("ca000000-0000-0000-0000-0000000000ca");      // withdrawn, not in pipeline
     public static readonly Guid CandOrgBCross = Guid.Parse("ca000000-0000-0000-0000-0000000000cb");   // OrgB, withdrawn itself
+    public static readonly Guid CandLate = Guid.Parse("ca000000-0000-0000-0000-0000000000cc");        // withdraws MID-RUN (itself)
+    public static readonly Guid CandLateAlias = Guid.Parse("ca000000-0000-0000-0000-0000000000cd");   // 'late2@fit.test'
+    public static readonly Guid CandLateAliasSource = Guid.Parse("ca000000-0000-0000-0000-0000000000ce"); // ' LATE2@Fit.Test ' withdraws MID-RUN
 
     // fit_scores seed rows (READ endpoints)
     public static readonly Guid FsCandFull = Guid.Parse("f5000000-0000-0000-0000-000000000001");  // overall 85
@@ -185,6 +190,23 @@ public sealed class FitEngineFixture : IAsyncLifetime
             "SELECT COUNT(*)::int FROM role_family_weight_profiles WHERE organization_id = @o";
         command.Parameters.AddWithValue("o", organizationId);
         return (int)(await command.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>#312: record a withdrawn recruitment consent for <paramref name="candidateId"/> (superuser — the
+    /// "concurrent withdrawal" committed between the pre-loop check and the write).</summary>
+    public async Task WithdrawConsentAsync(Guid organizationId, Guid candidateId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO data_consents (id, organization_id, subject_user_id, consent_type, text_version, agreed_at, "
+            + "withdrawn_at, updated_at) VALUES (@id, @o, @c, 'recruitment_data_processing', 'v1', "
+            + "'2026-01-01 00:00:00', '2026-03-01 00:00:00', '2026-03-01 00:00:00')";
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("o", organizationId);
+        command.Parameters.AddWithValue("c", candidateId);
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task<int> CountFitScoresForVacancyAsync(Guid vacancyId)
@@ -421,7 +443,23 @@ public sealed class FitEngineFixture : IAsyncLifetime
           ('ca000000-0000-0000-0000-0000000000c8', '11111111-1111-1111-1111-111111111111', 'other@fit.test',    'Otto',  'Type',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
           ('ca000000-0000-0000-0000-0000000000c9', '11111111-1111-1111-1111-111111111111', '',                  'Bea',   'BlankA',   NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
           ('ca000000-0000-0000-0000-0000000000ca', '11111111-1111-1111-1111-111111111111', '   ',               'Ben',   'BlankB',   NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
-          ('ca000000-0000-0000-0000-0000000000cb', '22222222-2222-2222-2222-222222222222', 'cross@fit.test',    'Cora',  'OrgB',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+          ('ca000000-0000-0000-0000-0000000000cb', '22222222-2222-2222-2222-222222222222', 'cross@fit.test',    'Cora',  'OrgB',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000cc', '11111111-1111-1111-1111-111111111111', 'late@fit.test',     'Lara',  'Late',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000cd', '11111111-1111-1111-1111-111111111111', 'late2@fit.test',    'Lou',   'Late',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000ce', '11111111-1111-1111-1111-111111111111', ' LATE2@Fit.Test ',  'Lou',   'Source',   NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+
+        -- #312 hidden-score reads (VacConsentRead): stored scores for WdSelf (withdrawn itself, 95), WdAlias
+        -- (case-variant row withdrawn, 90), Wildcard (LIKE-neighbour of a withdrawn email, 70) and Granted (60).
+        -- Ranking/simulate must return ONLY Wildcard + Granted; explain for WdSelf/WdAlias is null. VacLate is the
+        -- write target of the mid-run re-check tests (starts with no fit_scores).
+        INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+          ('7ac00000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'Consent Read Role', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('7ac00000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'Late Withdrawal Role', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+        INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, weights, is_partial, calculated_at, created_at, updated_at) VALUES
+          ('f5000000-0000-0000-0000-0000000000c1', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c1', '7ac00000-0000-0000-0000-000000000008', 95, '{"assessment":95,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00'),
+          ('f5000000-0000-0000-0000-0000000000c2', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c2', '7ac00000-0000-0000-0000-000000000008', 90, '{"assessment":90,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00'),
+          ('f5000000-0000-0000-0000-0000000000c5', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c5', '7ac00000-0000-0000-0000-000000000008', 70, '{"assessment":70,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00'),
+          ('f5000000-0000-0000-0000-0000000000c7', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c7', '7ac00000-0000-0000-0000-000000000008', 60, '{"assessment":60,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00');
 
         INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
           ('ab000000-0000-0000-0000-0000000000c1', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c1', '7ac00000-0000-0000-0000-000000000007', 'active'),

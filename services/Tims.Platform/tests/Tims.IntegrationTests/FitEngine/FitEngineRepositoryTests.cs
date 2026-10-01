@@ -177,6 +177,95 @@ public sealed class FitEngineRepositoryTests(FitEngineFixture fixture)
             FitEngineFixture.OrgA, [], CancellationToken.None));
     }
 
+    // ── #312 mid-run withdrawal: the per-candidate re-check under the withdrawal's lock ──
+    [Fact]
+    public async Task Upsert_WithdrawalCommittedAfterPreLoopCheck_IsRefused_NoRowWritten()
+    {
+        await using var db = _fixture.NewWriteContext();
+        var repo = new FitEngineWriteRepository(db);
+
+        // The pre-loop check passes…
+        Assert.Empty(await repo.GetConsentWithdrawnCandidateIdsAsync(
+            FitEngineFixture.OrgA, [FitEngineFixture.CandLate], CancellationToken.None));
+        // …then a withdrawal commits before the write.
+        await _fixture.WithdrawConsentAsync(FitEngineFixture.OrgA, FitEngineFixture.CandLate);
+
+        var written = await Upsert(repo, FitEngineFixture.CandLate);
+
+        Assert.False(written);
+        Assert.Null(await _fixture.GetFitScoreAsync(FitEngineFixture.CandLate, FitEngineFixture.VacLate));
+    }
+
+    [Fact]
+    public async Task Upsert_WithdrawalOnCaseVariantRowCommittedMidRun_IsRefused_NoRowWritten()
+    {
+        await using var db = _fixture.NewWriteContext();
+        var repo = new FitEngineWriteRepository(db);
+
+        Assert.Empty(await repo.GetConsentWithdrawnCandidateIdsAsync(
+            FitEngineFixture.OrgA, [FitEngineFixture.CandLateAlias], CancellationToken.None));
+        // ' LATE2@Fit.Test ' withdraws — the same person as 'late2@fit.test' after btrim + lower.
+        await _fixture.WithdrawConsentAsync(FitEngineFixture.OrgA, FitEngineFixture.CandLateAliasSource);
+
+        var written = await Upsert(repo, FitEngineFixture.CandLateAlias);
+
+        Assert.False(written);
+        Assert.Null(await _fixture.GetFitScoreAsync(FitEngineFixture.CandLateAlias, FitEngineFixture.VacLate));
+    }
+
+    [Fact]
+    public async Task Upsert_ActiveConsent_IsWritten_PositiveControl()
+    {
+        await using var db = _fixture.NewWriteContext();
+        var repo = new FitEngineWriteRepository(db);
+
+        var written = await Upsert(repo, FitEngineFixture.CandGranted);
+
+        Assert.True(written);
+        Assert.NotNull(await _fixture.GetFitScoreAsync(FitEngineFixture.CandGranted, FitEngineFixture.VacLate));
+    }
+
+    private static Task<bool> Upsert(FitEngineWriteRepository repo, Guid candidateId) =>
+        repo.UpsertFitScoreUnlessWithdrawnAsync(
+            FitEngineFixture.OrgA, candidateId, FitEngineFixture.VacLate, 50,
+            """{"assessment":50,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}""",
+            """{"assessment":1}""", true, new DateTimeOffset(2026, 3, 2, 0, 0, 0, TimeSpan.Zero), CancellationToken.None);
+
+    // ── #312 read repository hides withdrawn candidates' existing scores (rows are NOT deleted) ──
+    [Fact]
+    public async Task RankingRows_HideWithdrawnSelfAndCaseVariant_KeepTheRest()
+    {
+        await using var db = _fixture.NewReadContext();
+        var repo = new FitEngineReadRepository(db);
+
+        var rows = await repo.GetFitScoresForVacancyAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.VacConsentRead, CancellationToken.None);
+
+        // Count the set: WdSelf (95) and WdAlias (90, withdrawn via '  DUP@Fit.TEST ') are hidden; Wildcard (a LIKE
+        // neighbour, not equal) and Granted stay, in score order.
+        Assert.Equal(
+            [FitEngineFixture.CandWildcard, FitEngineFixture.CandGranted], rows.Select(r => r.CandidateId).ToList());
+        // Hidden, not deleted.
+        Assert.NotNull(await _fixture.GetFitScoreAsync(FitEngineFixture.CandWdSelf, FitEngineFixture.VacConsentRead));
+        Assert.NotNull(await _fixture.GetFitScoreAsync(FitEngineFixture.CandWdAlias, FitEngineFixture.VacConsentRead));
+    }
+
+    [Fact]
+    public async Task ExplainRow_WithdrawnSelfOrCaseVariant_IsNull_ActiveIsReturned()
+    {
+        await using var db = _fixture.NewReadContext();
+        var repo = new FitEngineReadRepository(db);
+
+        Assert.Null(await repo.GetFitScoreForExplainAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.CandWdSelf, FitEngineFixture.VacConsentRead, CancellationToken.None));
+        Assert.Null(await repo.GetFitScoreForExplainAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.CandWdAlias, FitEngineFixture.VacConsentRead, CancellationToken.None));
+        var active = await repo.GetFitScoreForExplainAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.CandGranted, FitEngineFixture.VacConsentRead, CancellationToken.None);
+        Assert.NotNull(active);
+        Assert.Equal(60, active.OverallScore);
+    }
+
     // ── read repository ──
     [Fact]
     public async Task RankingRows_DescWithJoinedNames()

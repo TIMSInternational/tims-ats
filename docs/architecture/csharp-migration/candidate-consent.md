@@ -118,10 +118,15 @@ must be the staff member's `users.id`. `status` is a free `VARCHAR(20)` with no 
 
 - A resolution endpoint/UI for `data_subject_requests` (the queue is read-only; resolving is the SQL runbook above).
 - Holiday-aware `dueAt` (Colombian public holidays) for the queue.
-- Interview scheduling itself is not blocked (only its candidate emails are suppressed, and staff are told). The TS
-  `fit-engine.service.ts` compute path and existing `fit_scores` rows of withdrawn candidates are not yet guarded
-  (the C# FitEngine compute skips them). The automatic CV processing of the public apply flow cannot run for a
-  withdrawn email (the apply is refused first).
+- Interview scheduling itself is not blocked (only its candidate emails are suppressed, and staff are told). The
+  automatic CV processing of the public apply flow cannot run for a withdrawn email (the apply is refused first).
+
+Now guarded (fit scores, #312): both `computeForVacancy` stacks skip withdrawn candidates and count only the
+candidates actually scored; the C# loop also re-checks each candidate under the withdrawal's advisory lock
+immediately before its write, so a withdrawal committed mid-run skips that candidate. Existing `fit_scores` rows of
+withdrawn candidates (self or same-org normalized-email variant) are hidden, never deleted, on every read: TS
+fit-engine ranking / simulate / explain, the hire-time snapshot, candidate list (latest score and the fit-range
+filter), candidate detail, candidate risks and the pipeline board; C# ranking / simulate / explain.
 - OAuth (Microsoft / Entra ID) email-claim trust for self-service withdrawal — residual, not mitigated in code; see
   `../candidate-portal-email-verification.md`.
 - Parity registration of the staff routes (the two withdrawal/read routes are allowlisted, see the parity test; the

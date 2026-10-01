@@ -39,6 +39,8 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
     /// same-org candidate row with the same normalized email) is SKIPPED: no reads, no score computed, no
     /// fit_scores upsert. An existing fit_scores row is left untouched (not deleted) — erasure belongs to the
     /// deletion-request flow, not to scoring. There is no single-candidate scoring path, so nothing returns 412.
+    /// Each write re-checks the candidate's consent under the withdrawal's advisory lock, so a withdrawal that
+    /// commits mid-run also skips that candidate (and it is not counted).
     /// </summary>
     public async Task<ComputeForVacancyResult> ComputeForVacancyAsync(
         Guid organizationId, Guid vacancyId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -67,20 +69,26 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
         // `vacancy?.` chain, not an error.
         var requirements = FitEngineKernels.ParseRequirements(ParseNullableJson(vacancy?.FitRequirements));
 
+        var scored = 0;
         foreach (var candidateId in candidateIds)
         {
-            await ComputeFitScoreAsync(
+            // #312: false ⇒ the candidate withdrew after the pre-loop check (re-checked under the withdrawal's lock
+            // immediately before the write) — nothing written, not counted.
+            if (await ComputeFitScoreAsync(
                     organizationId, candidateId, vacancyId, requirements, vacancy?.RoleFamily, now, cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false))
+            {
+                scored++;
+            }
         }
 
-        return new ComputeForVacancyResult(candidateIds.Count);
+        return new ComputeForVacancyResult(scored);
     }
 
     // TS computeFitScore for one candidate: 4 reads → derive → resolve weights → weighted score → upsert.
     // A null candidate (soft-deleted while still holding an active application — getPipelineCandidateIds does
     // not join candidates) still gets a row: person-dims null, assessment/interview still fetched. TS parity.
-    private async Task ComputeFitScoreAsync(
+    private async Task<bool> ComputeFitScoreAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, FitRequirements requirements, string? roleFamily,
         DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -119,7 +127,7 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
 
         breakdown["llmJudgment"] = null;
 
-        await _repository.UpsertFitScoreAsync(
+        return await _repository.UpsertFitScoreUnlessWithdrawnAsync(
                 organizationId, candidateId, vacancyId, result.OverallScore, breakdown.ToJsonString(), weightsJson,
                 result.IsPartial, now, cancellationToken)
             .ConfigureAwait(false);

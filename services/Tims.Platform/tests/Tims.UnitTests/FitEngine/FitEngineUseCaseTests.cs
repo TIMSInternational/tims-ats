@@ -164,6 +164,28 @@ public sealed class FitEngineUseCaseTests
     }
 
     [Fact]
+    public async Task ComputeForVacancy_WithdrawalCommittedMidRun_RefusedAtWrite_NotCounted()
+    {
+        var lateWithdrawal = Guid.Parse("ca000000-0000-0000-0000-0000000000d3");
+        var repo = new FakeWriteRepo
+        {
+            PipelineCandidateIds = [CandidateId, lateWithdrawal],
+            WithdrawnBeforeWrite = [lateWithdrawal],
+            Vacancy = new VacancyForFitData(null, null),
+            ProfilesByName = { ["Default"] = DefaultProfile() },
+            Candidate = new CandidateForFitData(null, null, null),
+        };
+
+        var result = await new FitEngineWriteUseCase(repo).ComputeForVacancyAsync(
+            OrgId, VacancyId, Now, CancellationToken.None);
+
+        // The pre-loop check passed both; the write-time re-check refused the late one — only one scored/counted.
+        Assert.Equal([CandidateId, lateWithdrawal], Assert.Single(repo.ConsentChecks));
+        Assert.Equal(1, result.Computed);
+        Assert.Equal([CandidateId], repo.FitScoreUpserts.Select(u => u.CandidateId).ToList());
+    }
+
+    [Fact]
     public async Task ComputeForVacancy_AllWithdrawn_ReturnsZero_NoVacancyRead_NoBootstrap_NoUpsert()
     {
         var repo = new FakeWriteRepo
@@ -425,12 +447,20 @@ public sealed class FitEngineUseCaseTests
             return Task.FromResult(saved);
         }
 
-        public Task UpsertFitScoreAsync(
+        // #312: candidates whose withdrawal "commits" after the pre-loop check — the per-write re-check refuses them.
+        public HashSet<Guid> WithdrawnBeforeWrite { get; init; } = [];
+
+        public Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
             string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
         {
+            if (WithdrawnBeforeWrite.Contains(candidateId))
+            {
+                return Task.FromResult(false);
+            }
+
             FitScoreUpserts.Add(new FitScoreUpsert(candidateId, overallScore, breakdownJson, weightsJson, isPartial));
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
         public Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
