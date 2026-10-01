@@ -20,6 +20,9 @@ namespace Tims.IntegrationTests.FitEngine;
 ///     rejected application is excluded); a second compute takes the UPDATE path (id + created_at stable,
 ///     org untouched); zero active applications → {computed:0}, NO Default bootstrap; OrgB (no Default
 ///     profile) → the bootstrap creates it with the verbatim 0.2 weights;
+///   consent guard (#312/#313) — compute on VacConsent skips the withdrawn self + same-email-alias candidates
+///     ({computed:5} of 7, no fit_scores rows for them) and scores the cross-org-twin / LIKE-only / granted /
+///     other-type / blank-email candidates;
 ///   upsertRoleFamilyWeightProfile — <c>fit_engine:update</c>, grant-only; create + update (id stable) paths;
 ///     the 400 matrix runs AFTER auth;
 ///   the action-parameterization bite: ReaderOnly (read@org) is 403 on BOTH writes, and TeamLead
@@ -103,6 +106,32 @@ public sealed class FitEngineWriteEndpointAuthTests(FitEngineFixture fixture)
         };
 
     // ══ computeForVacancy ══
+    [Fact]
+    public async Task Compute_SkipsConsentWithdrawnCandidates_ScoresTheRest_CountsOnlyScored()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Post(
+            client, Compute(FitEngineFixture.VacConsent), null, Mint(FitEngineFixture.OrgAdminSub));
+
+        // 7 active applications, 2 withdrawn (self + same-org normalized-email alias) → 5 scored.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("{\"computed\":5}", await response.Content.ReadAsStringAsync());
+
+        Assert.Null(await _fixture.GetFitScoreAsync(FitEngineFixture.CandWdSelf, FitEngineFixture.VacConsent));
+        Assert.Null(await _fixture.GetFitScoreAsync(FitEngineFixture.CandWdAlias, FitEngineFixture.VacConsent));
+        foreach (var scored in new[]
+                 {
+                     FitEngineFixture.CandCrossOrgTwin, FitEngineFixture.CandWildcard, FitEngineFixture.CandGranted,
+                     FitEngineFixture.CandOtherType, FitEngineFixture.CandBlankA,
+                 })
+        {
+            Assert.NotNull(await _fixture.GetFitScoreAsync(scored, FitEngineFixture.VacConsent));
+        }
+
+        Assert.Equal(5, await _fixture.CountFitScoresForVacancyAsync(FitEngineFixture.VacConsent));
+    }
+
     [Fact]
     public async Task Compute_OrgAdmin_Is200_StoresOracleValues_IncludingGhost_ExcludingInactive()
     {

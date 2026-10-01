@@ -8257,7 +8257,7 @@ GRANT SELECT ON TABLE public.api_keys TO ci_readonly;
 -- Name: TABLE application_consent_evidence; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.application_consent_evidence TO app_tenant;
+GRANT SELECT,INSERT ON TABLE public.application_consent_evidence TO app_tenant;
 GRANT SELECT ON TABLE public.application_consent_evidence TO ci_readonly;
 
 --

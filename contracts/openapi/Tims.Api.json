@@ -4723,6 +4723,44 @@
         }
       }
     },
+    "/tenant/data-subject-requests": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "DataSubjectRequestsList",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataSubjectRequestListView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/tenant/candidates/{candidateId}/consent": {
       "get": {
         "tags": [
@@ -4859,7 +4897,14 @@
             "description": "Too Many Requests"
           },
           "503": {
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfServiceUnavailableBody"
+                }
+              }
+            }
           }
         }
       }
@@ -11506,6 +11551,69 @@
           }
         }
       },
+      "DataSubjectRequestListItem": {
+        "required": [
+          "id",
+          "candidateId",
+          "candidateFirstName",
+          "candidateLastName",
+          "requestType",
+          "status",
+          "source",
+          "createdAt",
+          "dueAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "candidateFirstName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "candidateLastName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": "string"
+          }
+        }
+      },
+      "DataSubjectRequestListView": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataSubjectRequestListItem"
+            }
+          }
+        }
+      },
       "DetailSuccessorRow": {
         "required": [
           "id",
@@ -15134,6 +15242,21 @@
           },
           "updatedAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "SelfServiceUnavailableBody": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },

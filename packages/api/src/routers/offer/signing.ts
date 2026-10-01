@@ -53,10 +53,7 @@ export const offerSigningRouter = router({
       }
       // #312: a candidate who revoked their data-processing authorization gets no further emails.
       if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(ctx.user.organizationId, offer.candidate.id)) {
-        throw new TRPCError({
-          code: 'PRECONDITION_FAILED',
-          message: 'El candidato revocó la autorización de tratamiento de datos; no se le pueden enviar correos',
-        });
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
       }
 
       if (offer.status !== 'approved' && offer.status !== 'sent') {

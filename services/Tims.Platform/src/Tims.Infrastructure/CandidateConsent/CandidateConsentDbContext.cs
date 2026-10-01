@@ -11,6 +11,9 @@ namespace Tims.Infrastructure.CandidateConsent;
 ///   <item><description><c>data_subject_requests</c> — efcoreStranglerWrite: INSERT deletion requests.</description></item>
 ///   <item><description><c>application_consent_evidence</c>, <c>candidates</c>, <c>organizations</c> — read only.</description></item>
 ///   <item><description><c>audit_logs</c> — efcoreAppendOnly, same transaction as the withdrawal.</description></item>
+///   <item><description><c>notifications</c> — efcoreStranglerWrite: INSERT one alert per org admin when a withdrawal
+///   files a NEW data subject request, same transaction.</description></item>
+///   <item><description><c>users</c>, <c>roles</c>, <c>user_roles</c> — read only: the admins to alert.</description></item>
 /// </list>
 /// No navigation properties. Prisma <c>timestamp(3) without time zone</c> columns hold UTC wall-clock values
 /// (TRAP 6/11): the store type is pinned and Kind=Unspecified values are written.
@@ -28,6 +31,14 @@ public sealed class CandidateConsentDbContext(DbContextOptions<CandidateConsentD
     public DbSet<ConsentOrganizationEntity> Organizations => Set<ConsentOrganizationEntity>();
 
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
+
+    public DbSet<ConsentNotificationEntity> Notifications => Set<ConsentNotificationEntity>();
+
+    public DbSet<ConsentUserEntity> Users => Set<ConsentUserEntity>();
+
+    public DbSet<ConsentRoleEntity> Roles => Set<ConsentRoleEntity>();
+
+    public DbSet<ConsentUserRoleEntity> UserRoles => Set<ConsentUserRoleEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -93,7 +104,11 @@ public sealed class CandidateConsentDbContext(DbContextOptions<CandidateConsentD
             entity.Property(c => c.Id).HasColumnName("id");
             entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
             entity.Property(c => c.Email).HasColumnName("email");
+            entity.Property(c => c.FirstName).HasColumnName("first_name");
+            entity.Property(c => c.LastName).HasColumnName("last_name");
         });
+
+        ConfigureAdminAlerts(modelBuilder);
 
         modelBuilder.Entity<ConsentOrganizationEntity>(entity =>
         {
@@ -102,6 +117,56 @@ public sealed class CandidateConsentDbContext(DbContextOptions<CandidateConsentD
             entity.Property(o => o.Id).HasColumnName("id");
             entity.Property(o => o.Slug).HasColumnName("slug");
             entity.Property(o => o.IsActive).HasColumnName("is_active");
+        });
+    }
+
+    private static void ConfigureAdminAlerts(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ConsentNotificationEntity>(entity =>
+        {
+            entity.ToTable("notifications");
+            entity.HasKey(n => n.Id);
+            entity.Property(n => n.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(n => n.OrganizationId).HasColumnName("organization_id");
+            entity.Property(n => n.UserId).HasColumnName("user_id");
+            entity.Property(n => n.Type).HasColumnName("type");
+            entity.Property(n => n.Title).HasColumnName("title");
+            entity.Property(n => n.Message).HasColumnName("message");
+            entity.Property(n => n.Module).HasColumnName("module");
+            entity.Property(n => n.EntityType).HasColumnName("entity_type");
+            entity.Property(n => n.EntityId).HasColumnName("entity_id");
+            entity.Property(n => n.ActionUrl).HasColumnName("action_url");
+        });
+
+        modelBuilder.Entity<ConsentUserEntity>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Id).HasColumnName("id");
+            entity.Property(u => u.OrganizationId).HasColumnName("organization_id");
+            entity.Property(u => u.Email).HasColumnName("email");
+            entity.Property(u => u.FirstName).HasColumnName("first_name");
+            entity.Property(u => u.IsActive).HasColumnName("is_active");
+            entity.Property(u => u.DeletedAt).HasColumnName("deleted_at").HasColumnType("timestamp");
+        });
+
+        modelBuilder.Entity<ConsentRoleEntity>(entity =>
+        {
+            entity.ToTable("roles");
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Id).HasColumnName("id");
+            entity.Property(r => r.OrganizationId).HasColumnName("organization_id");
+            entity.Property(r => r.Slug).HasColumnName("slug");
+            entity.Property(r => r.IsActive).HasColumnName("is_active");
+        });
+
+        modelBuilder.Entity<ConsentUserRoleEntity>(entity =>
+        {
+            entity.ToTable("user_roles");
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Id).HasColumnName("id");
+            entity.Property(r => r.UserId).HasColumnName("user_id");
+            entity.Property(r => r.RoleId).HasColumnName("role_id");
         });
     }
 }
@@ -192,6 +257,10 @@ public sealed class ConsentCandidateEntity
     public Guid OrganizationId { get; set; }
 
     public string Email { get; set; } = string.Empty;
+
+    public string FirstName { get; set; } = string.Empty;
+
+    public string LastName { get; set; } = string.Empty;
 }
 
 public sealed class ConsentOrganizationEntity

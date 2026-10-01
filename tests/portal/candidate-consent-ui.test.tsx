@@ -172,3 +172,32 @@ describe('candidate self-service withdrawal', () => {
     expect(screen.queryByText(p.doneTitle)).not.toBeInTheDocument();
   });
 });
+
+describe('flag combinations and persisted state', () => {
+  it('web flag ON but C# route unmapped (404 without a handler body): the card renders nothing', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    const { container } = renderCard();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
+  it('web flag ON but C# route unmapped: self-service says to contact the organization, not "try again"', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    render(<DashboardPrivacy orgSlug="acme" orgName="Acme" />);
+    fireEvent.click(screen.getByRole('button', { name: p.revokeButton }));
+    fireEvent.click(screen.getByRole('button', { name: p.confirmButton }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(p.errorUnavailable);
+  });
+
+  it('shows the server-persisted withdrawal instead of the revoke button', () => {
+    render(<DashboardPrivacy orgSlug="acme" orgName="Acme" withdrawnAt="2026-10-01T10:00:00.000Z" />);
+    expect(screen.getByText(p.doneTitle)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: p.revokeButton })).not.toBeInTheDocument();
+  });
+
+  it('a withdrawn consent states how re-opening is handled', async () => {
+    fetchMock.mockResolvedValueOnce(json(withdrawnView));
+    renderCard();
+    expect(await screen.findByText(m.reopenHint)).toBeInTheDocument();
+  });
+});

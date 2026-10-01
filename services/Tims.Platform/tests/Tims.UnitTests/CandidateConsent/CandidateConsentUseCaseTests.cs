@@ -128,6 +128,21 @@ public sealed class CandidateConsentUseCaseTests
         Assert.Equal(CandidateConsentConstants.StaffSource, actor.RequestSource);
     }
 
+    [Theory]
+    [InlineData(null, true, null)]
+    [InlineData("", true, null)]
+    [InlineData("pending", true, "pending")]
+    [InlineData("completed", true, "completed")]
+    [InlineData("rejected", true, "rejected")]
+    [InlineData("Pending", false, null)]
+    [InlineData("open", false, null)]
+    [InlineData("pending ", false, null)]
+    public void StatusFilter_IsOptional_AndClosedSet(string? raw, bool ok, string? expected)
+    {
+        Assert.Equal(ok, CandidateConsentUseCase.TryParseStatusFilter(raw, out var status));
+        Assert.Equal(expected, status);
+    }
+
     private sealed class FakeRepository : ICandidateConsentRepository
     {
         public Guid? OrganizationId { get; init; }
@@ -159,5 +174,9 @@ public sealed class CandidateConsentUseCaseTests
             LastActor = actor;
             return Task.FromResult(new PortalWithdrawalResult(true, 1, 1));
         }
+
+        public Task<DataSubjectRequestListView> ListRequestsAsync(
+            Guid organizationId, string? status, CancellationToken cancellationToken) =>
+            Task.FromResult(new DataSubjectRequestListView([]));
     }
 }

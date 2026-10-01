@@ -72,6 +72,8 @@ async function auditSensitiveRead(
   }
 }
 
+const WITHDRAWAL_ONLY_TEXT_VERSION = 'none:withdrawal-only';
+
 export const dataRequestsRouter = router({
   exportSubjectData: platformProcedure
     .input(z.object({ email: z.string().email().max(255) }))
@@ -287,7 +289,15 @@ export const dataRequestsRouter = router({
         identity: { users, candidates },
         recruitment: { applications, interviews, offers, assessments },
         hr: { demographics, compensation },
-        privacy: { consents, consentEvidence, subjectRequests },
+        // A withdrawal-only marker row (a withdrawal recorded for a candidate with no consent on file) carries
+        // no authorization: its agreed_at is the withdrawal time and must not read as a consent date.
+        privacy: {
+          consents: consents.map((c) =>
+            c.textVersion === WITHDRAWAL_ONLY_TEXT_VERSION ? { ...c, agreedAt: null } : c,
+          ),
+          consentEvidence,
+          subjectRequests,
+        },
       };
 
       // Audit the PII access: this is a cross-org, PII-bearing export (salary, DOB,

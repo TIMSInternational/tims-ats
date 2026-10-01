@@ -30,7 +30,9 @@ export function CandidateConsentCard({ candidateId }: { candidateId: string }) {
   if (!isCandidateConsentEnabled()) return null;
   if (consent.isLoading) return <Skeleton className="h-32 w-full rounded-xl" />;
   if (consent.isError) {
-    if (classifyConsentError(consent.error) === 'forbidden') return null;
+    const kind = classifyConsentError(consent.error);
+    // 403 = no org-wide access; 'unavailable' = the C# route is not mapped (web flag on, C# flag off).
+    if (kind === 'forbidden' || kind === 'unavailable') return null;
     return <ErrorState message={m.loadError} onRetry={() => void consent.refetch()} />;
   }
   const view = consent.data;
@@ -118,6 +120,7 @@ export function CandidateConsentCard({ candidateId }: { candidateId: string }) {
         )}
       </div>
 
+      {status.status === 'withdrawn' && <p className="mt-3 text-[11px] text-[#8B8B8B]">{m.reopenHint}</p>}
       {status.status !== 'withdrawn' && (
         <button
           type="button"

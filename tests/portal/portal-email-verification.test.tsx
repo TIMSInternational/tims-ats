@@ -19,6 +19,10 @@ vi.mock('server-only', () => ({}));
 vi.mock('@tims/auth/server', () => ({ getUser: m.getUser }));
 vi.mock('@tims/db', () => ({ db: { organization: { findUnique: m.findOrg } } }));
 vi.mock('@tims/api', () => ({ candidatePortalService: { getDisplayCandidate: m.getDisplayCandidate } }));
+const withdrawnAt = vi.hoisted(() => vi.fn(async (): Promise<string | null> => null));
+vi.mock('../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/consent-status', () => ({
+  findConsentWithdrawnAt: withdrawnAt,
+}));
 vi.mock('next/navigation', () => ({
   redirect: m.redirect,
   notFound: () => {
@@ -54,6 +58,14 @@ describe('candidate dashboard requires a confirmed email', () => {
     expect(element.type).toBe(PortalDashboardShell);
     expect(element.props.hasCandidate).toBe(true);
     expect(m.getDisplayCandidate).toHaveBeenCalledWith('org-1', 'ana@example.com');
+  });
+
+  it('passes the persisted withdrawal time to the dashboard (#312)', async () => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    withdrawnAt.mockResolvedValueOnce('2026-10-01T10:00:00.000Z');
+    const element = (await PortalDashboardPage({ params })) as { props: { consentWithdrawnAt: string | null } };
+    expect(element.props.consentWithdrawnAt).toBe('2026-10-01T10:00:00.000Z');
+    expect(withdrawnAt).toHaveBeenCalledWith('org-1', 'ana@example.com');
   });
 
   it('no session still goes to login', async () => {

@@ -23,7 +23,7 @@ namespace Tims.Infrastructure.CandidateConsent;
 /// <c>SaveChanges</c> inside the scope's transaction. The reason text is NOT copied into the audit metadata (it
 /// may carry personal data); the audit records who, how and whether a reason and a deletion request exist.</para>
 /// </summary>
-public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : ICandidateConsentRepository
+public sealed partial class CandidateConsentRepository(CandidateConsentDbContext db) : ICandidateConsentRepository
 {
     private readonly CandidateConsentDbContext _db = db;
 
@@ -48,9 +48,15 @@ public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : I
             return CandidateConsentResult.NotFound;
         }
 
-        var (withdrawn, requested) = await WithdrawOneAsync(organizationId, candidateId, actor, now, cancellationToken)
+        var (withdrawn, requestId) = await WithdrawOneAsync(organizationId, candidateId, actor, now, cancellationToken)
             .ConfigureAwait(false);
-        var changed = withdrawn || requested;
+        var changed = withdrawn || requestId is not null;
+        DataSubjectRequestNotice? notice = null;
+        if (requestId is { } newRequest)
+        {
+            notice = await StageAdminAlertsAsync(organizationId, [newRequest], now, cancellationToken).ConfigureAwait(false);
+        }
+
         if (changed)
         {
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -62,7 +68,7 @@ public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : I
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        return CandidateConsentResult.Ok(view);
+        return CandidateConsentResult.Ok(view, notice);
     }
 
     public async Task<Guid?> FindActiveOrganizationBySlugAsync(string slug, CancellationToken cancellationToken)
@@ -92,30 +98,39 @@ public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : I
             .ConfigureAwait(false);
 
         var withdrawnCount = 0;
-        var requestCount = 0;
+        var requestIds = new List<Guid>();
         foreach (var candidateId in candidateIds)
         {
-            var (withdrawn, requested) = await WithdrawOneAsync(organizationId, candidateId, actor, now, cancellationToken)
+            var (withdrawn, requestId) = await WithdrawOneAsync(organizationId, candidateId, actor, now, cancellationToken)
                 .ConfigureAwait(false);
             withdrawnCount += withdrawn ? 1 : 0;
-            requestCount += requested ? 1 : 0;
+            if (requestId is { } id)
+            {
+                requestIds.Add(id);
+            }
         }
 
-        if (withdrawnCount > 0 || requestCount > 0)
+        DataSubjectRequestNotice? notice = null;
+        if (requestIds.Count > 0)
+        {
+            notice = await StageAdminAlertsAsync(organizationId, requestIds, now, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (withdrawnCount > 0 || requestIds.Count > 0)
         {
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        return new PortalWithdrawalResult(true, withdrawnCount, requestCount);
+        return new PortalWithdrawalResult(true, withdrawnCount, requestIds.Count, notice);
     }
 
     /// <summary>
     /// Stages (does not save) the withdrawal of one candidate's recruitment consent. Returns whether the consent was
-    /// newly withdrawn and whether a deletion request was newly filed. An already-withdrawn consent is left exactly
+    /// newly withdrawn and the id of the deletion request it newly filed, if any. An already-withdrawn consent is left exactly
     /// as it is; a self-service withdrawal on it still files a deletion request if none is pending.
     /// </summary>
-    private async Task<(bool Withdrawn, bool Requested)> WithdrawOneAsync(
+    private async Task<(bool Withdrawn, Guid? RequestId)> WithdrawOneAsync(
         Guid organizationId, Guid candidateId, WithdrawalActor actor, DateTime now, CancellationToken cancellationToken)
     {
         var timestamp = ToStoreTimestamp(now);
@@ -161,7 +176,7 @@ public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : I
             newlyWithdrawn = true;
         }
 
-        var requested = false;
+        Guid? requestId = null;
         if (actor.RequestDeletion)
         {
             var pending = await _db.SubjectRequests.AsNoTracking()
@@ -173,9 +188,10 @@ public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : I
                 .ConfigureAwait(false);
             if (!pending)
             {
+                requestId = Guid.NewGuid();
                 _db.SubjectRequests.Add(new DataSubjectRequestEntity
                 {
-                    Id = Guid.NewGuid(),
+                    Id = requestId.Value,
                     OrganizationId = organizationId,
                     CandidateId = candidateId,
                     RequestType = CandidateConsentConstants.DeletionRequestType,
@@ -186,10 +202,10 @@ public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : I
                     CreatedAt = timestamp,
                     UpdatedAt = timestamp,
                 });
-                requested = true;
             }
         }
 
+        var requested = requestId is not null;
         if (newlyWithdrawn || requested)
         {
             _db.AuditLogs.Add(new AuditLogEntity
@@ -213,7 +229,7 @@ public sealed class CandidateConsentRepository(CandidateConsentDbContext db) : I
             });
         }
 
-        return (newlyWithdrawn, requested);
+        return (newlyWithdrawn, requestId);
     }
 
     private Task<bool> CandidateExistsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>

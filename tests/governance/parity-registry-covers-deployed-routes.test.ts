@@ -296,11 +296,14 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'Supabase session whose CONFIRMED email the auth service re-verifies — a principal the by-role harness has no ' +
       'role for. Covered by real-PostgreSQL integration tests under production-shaped RLS (cross-tenant 404s, 401/403 ' +
       'incl. a narrow-scope grant, idempotency, a concurrent-withdrawal race, audit, unverified-email 403, exact-email ' +
-      'matching). Register the two staff routes fixture-first BEFORE enabling CandidateConsentEnabled in production.',
+      'matching). The staff list of data subject requests (candidate:update, org scope, closed status filter) is ' +
+      'covered the same way (401/403/narrow, cross-org isolation, status filter, dueAt). Register the three staff ' +
+      'routes fixture-first BEFORE enabling CandidateConsentEnabled in production.',
     routes: [
       'GET /tenant/candidates/{candidateId}/consent',
       'POST /tenant/candidates/{candidateId}/consent/withdrawal',
       'POST /portal/consent/withdrawal',
+      'GET /tenant/data-subject-requests',
     ],
   },
   {
@@ -598,7 +601,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         202 → 205 (#312/#313): the dark candidate consent surface — GET + POST withdrawal under
     //         /tenant/candidates/{candidateId}/consent and the self-service POST /portal/consent/withdrawal,
     //         all allowlisted in the candidate-consent group above. Main 202 (after #310) + 3 = 205.
-    expect(deployed.size).toBe(205);
+    //         205 → 206 (#312 review): the dark staff list GET /tenant/data-subject-requests, allowlisted in the
+    //         same candidate-consent group. 205 + 1 = 206.
+    expect(deployed.size).toBe(206);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -673,7 +678,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 95 → 106 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
     //   Main 95 (after #308) + #310's +11 = 106.
     // 106 → 109 (#312/#313): the candidate consent surface's three dark routes. Main 106 (after #310) + 3 = 109.
-    expect(allowlistNormalised.length).toBe(109);
+    // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
+    //   the group count below is unchanged. 109 + 1 = 110.
+    expect(allowlistNormalised.length).toBe(110);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

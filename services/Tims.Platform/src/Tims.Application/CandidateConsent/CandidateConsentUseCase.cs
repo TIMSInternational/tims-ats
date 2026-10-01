@@ -62,6 +62,31 @@ public sealed partial class CandidateConsentUseCase(ICandidateConsentRepository 
             cancellationToken).ConfigureAwait(false);
     }
 
+    public Task<DataSubjectRequestListView> ListRequestsAsync(
+        Guid organizationId, string? status, CancellationToken cancellationToken) =>
+        _repository.ListRequestsAsync(organizationId, status, cancellationToken);
+
+    /// <summary>
+    /// The optional <c>status</c> query of the staff list: absent/empty → no filter; otherwise exactly one of
+    /// <c>pending|completed|rejected</c> (case-sensitive) or false (→ 400).
+    /// </summary>
+    public static bool TryParseStatusFilter(string? raw, out string? status)
+    {
+        status = null;
+        if (string.IsNullOrEmpty(raw))
+        {
+            return true;
+        }
+
+        if (!CandidateConsentConstants.RequestStatuses.Contains(raw))
+        {
+            return false;
+        }
+
+        status = raw;
+        return true;
+    }
+
     /// <summary>Trimmed, lower-cased — the canonical identity the public apply flow stores and matches on.</summary>
     public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 

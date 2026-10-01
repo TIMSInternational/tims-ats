@@ -5,8 +5,12 @@ import { MATRIX, flattenEntries } from '../../packages/db/prisma/seed-access-mat
 // prove what the production roles can do — not what a hand-written stub allows.
 // #312 consent-withdrawal guard: a candidate with ACTIVE consent unless a test says otherwise.
 const consentWithdrawn = vi.hoisted(() => vi.fn(async () => false));
+const bulkWithdrawn = vi.hoisted(() => vi.fn(async (): Promise<Set<string>> => new Set()));
 vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
-  candidateConsentRepository: { isRecruitmentConsentWithdrawn: consentWithdrawn },
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawn,
+    withdrawnCandidateIds: bulkWithdrawn,
+  },
 }));
 
 function decide(roles: string[], module: string, action: string) {

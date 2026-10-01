@@ -49,4 +49,14 @@ public interface IFitEngineWriteRepository
     /// <summary><c>getPipelineCandidateIds</c>: candidate ids of the vacancy's <c>status = 'active'</c> applications.</summary>
     Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
         Guid organizationId, Guid vacancyId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #312/#313 consent guard: the subset of <paramref name="candidateIds"/> whose recruitment consent is
+    /// WITHDRAWN in this org — a <c>data_consents</c> row (consent_type 'recruitment_data_processing',
+    /// withdrawn_at NOT NULL, same org) whose subject is the candidate itself OR any same-org candidate row whose
+    /// normalized email (<c>lower(btrim(email))</c>, exact equality — never LIKE) equals the candidate's
+    /// non-blank normalized email. Soft-deleted rows count on both sides.
+    /// </summary>
+    Task<IReadOnlySet<Guid>> GetConsentWithdrawnCandidateIdsAsync(
+        Guid organizationId, IReadOnlyCollection<Guid> candidateIds, CancellationToken cancellationToken);
 }

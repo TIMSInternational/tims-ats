@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { Modal } from '../../../../../components';
+import { formatDate } from '../../../../../lib/format-utils';
 import {
   classifyConsentError,
   isCandidateConsentEnabled,
@@ -14,7 +15,16 @@ type Phase = 'idle' | 'confirming' | 'submitting' | 'done';
 // #312 — the candidate's own "Revocar autorización". The identity is the session's VERIFIED email (checked again by
 // the server against the auth service); nothing here sends an email or a candidate id. Dark unless the C# consent
 // surface is enabled.
-export function DashboardPrivacy({ orgSlug, orgName }: { orgSlug: string; orgName: string }) {
+export function DashboardPrivacy({
+  orgSlug,
+  orgName,
+  withdrawnAt = null,
+}: {
+  orgSlug: string;
+  orgName: string;
+  // Server-persisted withdrawal time (dashboard/page.tsx), so a revisit shows the revoked state.
+  withdrawnAt?: string | null;
+}) {
   const { t } = useI18n();
   const m = t.portalConsentWithdrawal;
   const [phase, setPhase] = useState<Phase>('idle');
@@ -31,7 +41,13 @@ export function DashboardPrivacy({ orgSlug, orgName }: { orgSlug: string; orgNam
     } catch (err) {
       const kind = classifyConsentError(err);
       setError(
-        kind === 'not_verified' ? m.errorNotVerified : kind === 'rate_limited' ? m.errorRateLimited : m.errorGeneric,
+        kind === 'not_verified'
+          ? m.errorNotVerified
+          : kind === 'rate_limited'
+            ? m.errorRateLimited
+            : kind === 'unavailable'
+              ? m.errorUnavailable
+              : m.errorGeneric,
       );
       setPhase('confirming');
     }
@@ -42,9 +58,12 @@ export function DashboardPrivacy({ orgSlug, orgName }: { orgSlug: string; orgNam
       <h2 id="portal-privacy-title" className="mb-2 text-[15px] font-semibold text-[#1F114C]">
         {m.title}
       </h2>
-      {phase === 'done' ? (
+      {phase === 'done' || withdrawnAt ? (
         <div role="status">
           <p className="text-[13px] font-semibold text-[#333]">{m.doneTitle}</p>
+          {withdrawnAt && phase !== 'done' && (
+            <p className="mt-1 text-[13px] text-[#585858]">{m.withdrawnOn.replace('{date}', formatDate(withdrawnAt))}</p>
+          )}
           <p className="mt-1 text-[13px] text-[#585858]">{m.doneBody}</p>
         </div>
       ) : (

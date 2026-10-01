@@ -26,7 +26,7 @@ export interface ApplicationConsentTextParts {
 }
 
 // The EXACT text of APPLICATION_CONSENT_TEXT_VERSION, per locale. The portal renders it from
-// the i18n catalogue (`portal.consentCheckbox*`); tests/portal/application-consent-text.test.ts
+// the i18n catalogue (`portal.consentCheckbox*`); tests/portal/application-consent-evidence.test.ts and tests/portal/apply-consent-checkbox-drift.test.tsx
 // fails if these two copies ever drift, so the server-computed evidence hash always
 // identifies the text the candidate was shown.
 export const APPLICATION_CONSENT_TEXT: Record<ApplicationConsentLocale, ApplicationConsentTextParts> = {

@@ -16,6 +16,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // promotion logic (already covered by tests/ai/candidate-ai-parse.test.ts)
 // actually gets invoked from production code.
 
+// #312 consent guard: active consent unless a test says otherwise.
+const consentWithdrawnMock = vi.hoisted(() => vi.fn(async () => false));
+vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawnMock,
+    withdrawnCandidateIds: vi.fn(async () => new Set<string>()),
+  },
+}));
+
 const parseCVMock = vi.fn();
 vi.mock('../../packages/api/src/services/candidate-ai.service', () => ({
   candidateAiService: { parseCV: (...a: unknown[]) => parseCVMock(...a) },
@@ -139,6 +148,19 @@ describe('candidate.parseCV wiring', () => {
     await expect(caller.candidate.parseCV({ candidateId: CANDIDATE_ID, text: 'cv text' })).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
+    expect(parseCVMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('candidate.parseCV — consent withdrawn (#312)', () => {
+  it('refuses with PRECONDITION_FAILED consent_withdrawn and never calls the AI parser', async () => {
+    consentWithdrawnMock.mockResolvedValueOnce(true);
+    const caller = await makeCaller();
+    await expect(caller.candidate.parseCV({ candidateId: CANDIDATE_ID, text: 'cv text' })).rejects.toMatchObject({
+      code: 'PRECONDITION_FAILED',
+      message: 'consent_withdrawn',
+    });
+    expect(consentWithdrawnMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID);
     expect(parseCVMock).not.toHaveBeenCalled();
   });
 });

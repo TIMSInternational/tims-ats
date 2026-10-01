@@ -2,8 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // #312 consent-withdrawal guard: a candidate with ACTIVE consent unless a test says otherwise.
 const consentWithdrawn = vi.hoisted(() => vi.fn(async () => false));
+const bulkWithdrawn = vi.hoisted(() => vi.fn(async (): Promise<Set<string>> => new Set()));
 vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
-  candidateConsentRepository: { isRecruitmentConsentWithdrawn: consentWithdrawn },
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawn,
+    withdrawnCandidateIds: bulkWithdrawn,
+  },
 }));
 
 vi.mock('../../packages/api/src/access', async (importOriginal) => {
@@ -295,5 +299,21 @@ describe('consent withdrawn (#312) — no further processing or email', () => {
     ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
     expect(consentWithdrawn).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID);
     expect(tenantDb.assessmentAssignment.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkAssign — consent withdrawn (#312)', () => {
+  it('refuses the whole batch, naming how many candidates withdrew', async () => {
+    vi.mocked(tenantDb.assessmentQuestion.count).mockResolvedValue(1);
+    vi.mocked(tenantDb.candidate.count).mockResolvedValue(2);
+    vi.mocked(tenantDb.application.count).mockResolvedValue(2);
+    const other = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a09';
+    bulkWithdrawn.mockResolvedValueOnce(new Set([CANDIDATE_ID, other]));
+    const caller = await makeCaller();
+    await expect(
+      caller.assessment.bulkAssign({ candidateIds: [CANDIDATE_ID, other], vacancyId: VACANCY_ID, assessmentTypeId: TYPE_ID }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn:2' });
+    expect(bulkWithdrawn).toHaveBeenCalledWith(ORG_ID, [CANDIDATE_ID, other]);
+    expect(tenantDb.assessmentAssignment.createMany).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ import { db } from '@tims/db';
 import { candidatePortalService } from '@tims/api';
 import { PortalDashboardShell } from './dashboard-shell';
 import { DashboardVerifyEmail } from './dashboard-verify-email';
+import { findConsentWithdrawnAt } from './consent-status';
 
 // Authenticated candidate landing. Server-resolves identity by (Supabase email) ×
 // (org from the route) → Candidate. No staff User / org-membership involved. The
@@ -27,6 +28,7 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
   if (!org || !org.isActive) notFound();
 
   const candidate = await candidatePortalService.getDisplayCandidate(org.id, supabaseUser.email);
+  const consentWithdrawnAt = candidate ? await findConsentWithdrawnAt(org.id, supabaseUser.email) : null;
 
   const displayName = candidate ? `${candidate.firstName} ${candidate.lastName}`.trim() : supabaseUser.email;
 
@@ -36,6 +38,7 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
       orgName={org.name}
       displayName={displayName}
       hasCandidate={candidate !== null}
+      consentWithdrawnAt={consentWithdrawnAt}
     />
   );
 }

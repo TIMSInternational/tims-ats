@@ -12,7 +12,7 @@ import {
   APPLICATION_CONSENT_TYPE,
   logger,
 } from '@tims/shared';
-import { buildApplicationConsentEvidence } from '../lib/application-consent-evidence';
+import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/application-consent-evidence';
 import { emailService } from '../services/email.service';
 import { consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
@@ -271,6 +271,13 @@ export const portalRouter = router({
           const variants = await findCandidatesByExactEmail(tx, orgId, email);
           const variantIds = variants.map((v) => v.id);
 
+          // Serialize with a concurrent consent withdrawal of the same candidate(s): the C# withdrawal takes
+          // the same transaction-scoped advisory lock (hashtextextended(<candidate id>, 0)), so an application
+          // cannot commit on a consent that is being revoked at that instant. Sorted → no lock-order deadlock.
+          for (const id of [...variantIds].sort()) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 0))`;
+          }
+
           // A withdrawn application consent on ANY case-variant of this email — including
           // a soft-deleted one — blocks further processing: no candidate write, no consent
           // write, no application, no CV processing.
@@ -375,8 +382,11 @@ export const portalRouter = router({
           });
           // Per-application consent evidence (#313), same transaction: every application carries
           // proof of the authorization given FOR IT — text version + hash, time, request metadata.
-          await tx.applicationConsentEvidence.create({
-            data: buildApplicationConsentEvidence({
+          // Deploy-safe: behind a savepoint, a MISSING table/column (code deployed before migration
+          // 20261001120000 was applied) is logged and skipped instead of aborting every application.
+          await writeConsentEvidence(
+            tx,
+            buildApplicationConsentEvidence({
               organizationId: orgId,
               applicationId: application.id,
               candidateId,
@@ -387,8 +397,7 @@ export const portalRouter = router({
               headers: ctx.headers,
               captchaVerified,
             }),
-            select: { id: true },
-          });
+          );
           return { kind: 'new' as const, candidateId, recipient };
         });
 

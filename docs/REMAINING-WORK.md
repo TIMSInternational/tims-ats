@@ -101,8 +101,11 @@ Per-application consent evidence is written by the public apply flow (migration
 `20261001120000_consent_evidence_withdrawal`, apply BEFORE merge); DARK C# consent read, staff withdrawal and
 candidate self-service withdrawal (`Platform__CandidateConsentEnabled`, web `NEXT_PUBLIC_CANDIDATE_CONSENT_VIA_CSHARP`);
 withdrawn candidates get no further processing emails; the candidate dashboard requires a confirmed email. Texts
-PENDING LEGAL REVIEW. Remaining: deletion-request resolution UI, parity registration, AI/CV re-processing guard,
-Supabase "Confirm email" ON in prod. See `architecture/csharp-migration/candidate-consent.md` and
+PENDING LEGAL REVIEW. Staff are notified of new deletion requests and see a read-only pending queue
+(`/settings/data-requests`); FitEngine refuses to score withdrawn candidates; self-service withdrawal fails closed
+(503) while Supabase auto-confirms sign-ups. Remaining: deletion-request resolution endpoint/UI (SQL runbook today),
+parity registration, CV/other AI re-processing guard, OAuth (Entra ID) email-claim residual, Supabase "Confirm
+email" ON in prod. See `architecture/csharp-migration/candidate-consent.md` and
 `architecture/candidate-portal-email-verification.md`.
 
 ## Tenant org structure + vacancy-scoped approvers — 2026-09-29 (PR #310, not deployed)

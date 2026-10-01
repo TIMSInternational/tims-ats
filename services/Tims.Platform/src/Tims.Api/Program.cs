@@ -597,6 +597,16 @@ try
     builder.Services.AddDbContext<CandidateConsentDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
     builder.Services.AddScoped<CandidateConsentUseCase>();
+    // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the
+    // self-service withdrawal requires (mailer_autoconfirm must be false). Singleton: it caches the answer.
+    builder.Services.AddScoped<DataSubjectRequestNotifier>();
+    builder.Services.AddHttpClient(SupabaseAuthSettingsProbe.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(5);
+            client.MaxResponseContentBufferSize = 65536;
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    builder.Services.AddSingleton<IAuthSettingsProbe, SupabaseAuthSettingsProbe>();
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface. Plain read-only context over the
     // Prisma-OWNED surveys/survey_responses/action_plans/leader_commitments/alerts (+ users) — surveys.type/.status,
@@ -1528,6 +1538,11 @@ try
     if (externalOptions.CandidateConsentEnabled || isOpenApiDocGeneration)
     {
         app.MapCandidateConsentEndpoints();
+    }
+    if (!isOpenApiDocGeneration)
+    {
+        CandidateConsentEndpoints.WarnIfSelfServiceUnconfigured(app.Logger, externalOptions.CandidateConsentEnabled,
+            app.Configuration["Invitations:SupabaseUrl"], app.Configuration["Invitations:SupabaseServiceKey"]);
     }
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface (14 reads). Staff-JWT + engagement:read; the

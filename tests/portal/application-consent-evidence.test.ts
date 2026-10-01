@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import es from '../../apps/web/lib/i18n/es.json';
 import en from '../../apps/web/lib/i18n/en.json';
@@ -25,6 +25,7 @@ const dbMocks = {
   application: { findFirst: vi.fn(), create: vi.fn() },
   applicationConsentEvidence: { create: vi.fn() },
   pipelineStage: { findFirstOrThrow: vi.fn() },
+  $executeRaw: vi.fn(async (..._args: unknown[]) => 0),
   $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMocks)),
 };
 
@@ -127,16 +128,49 @@ describe('portal.applyToVacancy — per-application consent evidence (#313)', ()
     expect(dbMocks.candidate.findMany).not.toHaveBeenCalled();
   });
 
-  it('stores an org-salted IP hash (never the raw IP) and a bounded, control-free user agent', async () => {
+  it('stores an HMAC of the IP under the server key (never the raw IP) and a bounded, control-free user agent', async () => {
+    vi.stubEnv('CONSENT_EVIDENCE_IP_HMAC_KEY', 'k'.repeat(40));
     const ua = `Mozilla/5.0\u0007 ${'x'.repeat(900)}`;
     await apply(baseInput, new Headers({ 'x-real-ip': '203.0.113.9', 'user-agent': ua }));
     const row = evidenceRow();
 
-    expect(row.ipHash).toBe(sha256(`${ORG_ID}:203.0.113.9`));
+    expect(row.ipHash).toBe(createHmac('sha256', 'k'.repeat(40)).update(`${ORG_ID}:203.0.113.9`).digest('hex'));
+    // Not the unkeyed (enumerable) hash.
+    expect(row.ipHash).not.toBe(sha256(`${ORG_ID}:203.0.113.9`));
     expect(JSON.stringify(row)).not.toContain('203.0.113.9');
-    expect(typeof row.userAgent).toBe('string');
     expect((row.userAgent as string).length).toBe(512);
     expect(row.userAgent as string).not.toContain('\u0007');
+  });
+
+  it('stores NO IP-derived value when the HMAC key is absent or too short', async () => {
+    vi.stubEnv('CONSENT_EVIDENCE_IP_HMAC_KEY', 'short');
+    await apply(baseInput, new Headers({ 'x-real-ip': '203.0.113.9' }));
+    expect(evidenceRow().ipHash).toBeNull();
+  });
+
+  it('a MISSING evidence table (deploy before the migration) is rolled back to a savepoint and the application still commits', async () => {
+    dbMocks.applicationConsentEvidence.create.mockRejectedValue(Object.assign(new Error('table missing'), { code: 'P2021' }));
+    await expect(apply(baseInput)).resolves.toEqual({ received: true });
+    expect(dbMocks.application.create).toHaveBeenCalledOnce();
+    const sql = dbMocks.$executeRaw.mock.calls.map((c) => (c[0] as string[]).join('?'));
+    expect(sql).toContain('SAVEPOINT consent_evidence');
+    expect(sql).toContain('ROLLBACK TO SAVEPOINT consent_evidence');
+    expect(sql).not.toContain('RELEASE SAVEPOINT consent_evidence');
+  });
+
+  it('a missing COLUMN (P2022) is handled the same way', async () => {
+    dbMocks.applicationConsentEvidence.create.mockRejectedValue(Object.assign(new Error('col'), { code: 'P2022' }));
+    await expect(apply(baseInput)).resolves.toEqual({ received: true });
+  });
+
+  it('serializes with a concurrent withdrawal: advisory locks on every existing case variant, sorted', async () => {
+    dbMocks.candidate.findMany.mockResolvedValue([
+      { id: 'b-variant', email: 'ana@example.com', firstName: 'Ana', deletedAt: null },
+      { id: 'a-variant', email: 'ana@example.com', firstName: 'Ana', deletedAt: null },
+    ]);
+    await apply(baseInput);
+    const locks = dbMocks.$executeRaw.mock.calls.filter((c) => (c[0] as string[]).join('?').includes('pg_advisory_xact_lock'));
+    expect(locks.map((c) => c[1])).toEqual(['a-variant', 'b-variant']);
   });
 
   it('leaves the IP hash and user agent null when the request carries neither', async () => {
@@ -149,6 +183,12 @@ describe('portal.applyToVacancy — per-application consent evidence (#313)', ()
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
     await apply({ ...baseInput, captchaToken: 'tok' });
     expect(evidenceRow().captchaVerified).toBe(true);
+  });
+
+  it('releases the savepoint after a successful evidence write', async () => {
+    await apply(baseInput);
+    const sql = dbMocks.$executeRaw.mock.calls.map((c) => (c[0] as string[]).join('?'));
+    expect(sql).toEqual(expect.arrayContaining(['SAVEPOINT consent_evidence', 'RELEASE SAVEPOINT consent_evidence']));
   });
 
   it('writes the evidence inside the application transaction, after the application exists', async () => {
@@ -188,7 +228,7 @@ describe('portal.applyToVacancy — per-application consent evidence (#313)', ()
     expect(dbMocks.applicationConsentEvidence.create).not.toHaveBeenCalled();
   });
 
-  it('an evidence write failure aborts the transaction (no application without its proof)', async () => {
+  it('any OTHER evidence write failure aborts the transaction (no application without its proof)', async () => {
     dbMocks.applicationConsentEvidence.create.mockRejectedValue(new Error('insert failed'));
     await expect(apply(baseInput)).rejects.toThrow();
   });

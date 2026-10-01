@@ -121,14 +121,53 @@ export async function withdrawMyConsent(organizationSlug: string): Promise<void>
   portalAckSchema.parse(await platformPostRaw('/portal/consent/withdrawal', { organizationSlug }));
 }
 
-export type ConsentErrorKind = 'forbidden' | 'not_verified' | 'not_found' | 'rate_limited' | 'other';
+export type ConsentErrorKind = 'forbidden' | 'not_verified' | 'not_found' | 'unavailable' | 'rate_limited' | 'other';
 
 /** Stable classification of a failed consent call, so the UI maps it to a translated message. */
 export function classifyConsentError(error: unknown): ConsentErrorKind {
   if (error instanceof PlatformApiError) {
     if (error.status === 403) return error.code === 'email_not_verified' ? 'not_verified' : 'forbidden';
-    if (error.status === 404) return 'not_found';
+    // A 404 with no handler body = the route is not mapped (C# flag off); with one = the candidate is gone.
+    if (error.status === 404) return error.hasHandlerMessage ? 'not_found' : 'unavailable';
+    if (error.status === 503) return 'unavailable';
     if (error.status === 429) return 'rate_limited';
   }
   return 'other';
+}
+
+// #312/#313 — the staff work queue of data-subject (deletion) requests. dueAt is computed server-side as
+// createdAt + 15 business days (Mon–Fri, Colombian holidays NOT excluded), so it may precede the legal deadline.
+export const DATA_SUBJECT_REQUEST_STATUSES = ['pending', 'completed', 'rejected'] as const;
+export type DataSubjectRequestStatus = (typeof DATA_SUBJECT_REQUEST_STATUSES)[number];
+
+export const dataSubjectRequestItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    candidateId: z.string().uuid(),
+    candidateFirstName: z.string().max(200).nullable(),
+    candidateLastName: z.string().max(200).nullable(),
+    requestType: z.string().max(30),
+    status: z.string().max(20),
+    source: z.string().max(30),
+    createdAt: isoTimestamp,
+    dueAt: isoTimestamp,
+  })
+  .strict();
+
+export const dataSubjectRequestListSchema = z
+  .object({ items: z.array(dataSubjectRequestItemSchema).max(200) })
+  .strict();
+
+export type DataSubjectRequestItem = z.infer<typeof dataSubjectRequestItemSchema>;
+export type DataSubjectRequestList = z.infer<typeof dataSubjectRequestListSchema>;
+
+/** GET /tenant/data-subject-requests?status= (candidate:update, org scope). Disabled unless the flag is on. */
+export function useDataSubjectRequests(status: DataSubjectRequestStatus = 'pending') {
+  return useQuery({
+    queryKey: ['platform', 'data-subject-requests', status] as const,
+    enabled: isCandidateConsentEnabled(),
+    retry: false,
+    queryFn: async (): Promise<DataSubjectRequestList> =>
+      dataSubjectRequestListSchema.parse(await platformGet('/tenant/data-subject-requests', { status })),
+  });
 }

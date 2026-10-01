@@ -12,6 +12,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using Tims.Application.CandidateConsent;
+using Tims.Application.Email;
 using Tims.Application.PlatformInvitations;
 
 namespace Tims.IntegrationTests.CandidateConsent;
@@ -37,13 +39,20 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
 
     private static string Withdraw(Guid candidateId) => $"/tenant/candidates/{candidateId}/consent/withdrawal";
 
-    private WebApplicationFactory<Program> Factory(bool enabled = true, FakeIdentities? identities = null) =>
+    private WebApplicationFactory<Program> Factory(
+        bool enabled = true, FakeIdentities? identities = null, IAuthSettingsProbe? authSettings = null,
+        FakeEmails? emails = null, bool realProbe = false) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
             builder.UseSetting("Platform:CandidateConsentEnabled", enabled ? "true" : "false");
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
+            if (realProbe)
+            {
+                builder.UseSetting("Invitations:SupabaseServiceKey", "REPLACE_ME_OUT_OF_BAND"); // the terraform placeholder
+            }
+
             var publicJwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(
                 new RsaSecurityKey(SigningRsa.ExportParameters(false)) { KeyId = PrivateKey.KeyId });
             builder.ConfigureTestServices(services =>
@@ -55,6 +64,14 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
                 });
                 services.RemoveAll<IInvitationIdentityProvider>();
                 services.AddSingleton<IInvitationIdentityProvider>(identities ?? new FakeIdentities());
+                if (!realProbe)
+                {
+                    services.RemoveAll<IAuthSettingsProbe>();
+                    services.AddSingleton(authSettings ?? new FakeAuthSettings(RequiresConfirmation: true));
+                }
+
+                services.RemoveAll<IEmailSender>();
+                services.AddSingleton<IEmailSender>(emails ?? new FakeEmails());
             });
         });
 
@@ -187,7 +204,8 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
     public async Task Withdraw_Admin_MarksWithdrawn_FilesDeletionRequest_Audits_AndIsIdempotent()
     {
         var target = CandidateConsentFixture.StaffTarget;
-        await using var factory = Factory();
+        var emails = new FakeEmails();
+        await using var factory = Factory(emails: emails);
         using var client = factory.CreateClient();
         var token = Mint(CandidateConsentFixture.AdminSub);
 
@@ -217,6 +235,21 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
         Assert.Equal(CandidateConsentFixture.AdminId, await _fixture.ScalarAsync<Guid>(
             "SELECT actor_id FROM audit_logs WHERE entity_id = @e", ("e", target.ToString())));
 
+        // The org's admins are alerted in the same transaction: the active hr_admin+super_admin user ONCE (deduped),
+        // never the inactive hr_admin nor OrgB's hr_admin; and emailed after commit.
+        Assert.Equal(1, await _fixture.CountAlertsAsync(target));
+        Assert.Equal(CandidateConsentFixture.HrAdminId, await _fixture.ScalarAsync<Guid>(
+            "SELECT n.user_id FROM notifications n JOIN data_subject_requests r ON r.id = n.entity_id WHERE r.candidate_id = @c",
+            ("c", target)));
+        var alert = await _fixture.ScalarAsync<string>(
+            "SELECT n.title || '|' || n.message || '|' || n.action_url || '|' || n.type || '|' || n.organization_id FROM notifications n " +
+            "JOIN data_subject_requests r ON r.id = n.entity_id WHERE r.candidate_id = @c", ("c", target));
+        Assert.Contains("|/settings/data-requests|data_subject_request|" + CandidateConsentFixture.OrgA, alert, StringComparison.Ordinal);
+        Assert.Contains("Un candidato", alert, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sol", alert, StringComparison.Ordinal); // no candidate name
+        Assert.Equal([CandidateConsentFixture.HrAdminEmail], emails.Sent.Select(m => m.To).ToArray());
+        Assert.Contains("https://tims-ats.vercel.app/settings/data-requests", emails.Sent[0].Html, StringComparison.Ordinal);
+
         // Again: nothing new is written.
         var again = await Send(client, HttpMethod.Post, Withdraw(target),
             new { channel = "phone", requestDeletion = true }, token);
@@ -224,6 +257,8 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
         Assert.Equal("email", (await ReadJson(again)).GetProperty("consent").GetProperty("withdrawalChannel").GetString());
         Assert.Equal(1, await _fixture.CountDeletionRequestsAsync(target));
         Assert.Equal(1, await _fixture.CountAuditAsync(target));
+        Assert.Equal(1, await _fixture.CountAlertsAsync(target));
+        Assert.Single(emails.Sent);
     }
 
     [Fact]
@@ -242,6 +277,7 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
         Assert.Equal(JsonValueKind.Null, consent.GetProperty("agreedAt").ValueKind);
         Assert.Equal(1, await _fixture.CountWithdrawnAsync(target));
         Assert.Equal(0, await _fixture.CountDeletionRequestsAsync(target));
+        Assert.Equal(0, await _fixture.CountAlertsAsync(target)); // no new request → no alert
     }
 
     [Fact]
@@ -275,6 +311,8 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
         Assert.Equal(1, await _fixture.CountWithdrawnAsync(target));
         Assert.Equal(1, await _fixture.CountDeletionRequestsAsync(target));
         Assert.Equal(1, await _fixture.CountAuditAsync(target));
+        Assert.Equal(1, await _fixture.CountAlertsAsync(target));
+        Assert.Equal(1, await _fixture.CountAlertsAsync(target));
     }
 
     [Theory]
@@ -335,7 +373,8 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
         var identities = new FakeIdentities();
         var token = Mint(sub);
         identities.Confirmed[token] = new SetupIdentity(sub, "LUZ@example.com");
-        await using var factory = Factory(identities: identities);
+        var emails = new FakeEmails();
+        await using var factory = Factory(identities: identities, emails: emails);
         using var client = factory.CreateClient();
 
         var response = await Send(client, HttpMethod.Post, Portal, new { organizationSlug = "acme" }, token);
@@ -352,7 +391,11 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
             Assert.Equal("candidate_portal", await _fixture.ScalarAsync<string>(
                 "SELECT source FROM data_subject_requests WHERE candidate_id = @c", ("c", variant)));
             Assert.Equal(1, await _fixture.CountAuditAsync(variant));
+            Assert.Equal(1, await _fixture.CountAlertsAsync(variant)); // one alert per new request
         }
+
+        // One email per admin per withdrawal, however many requests it filed.
+        Assert.Equal([CandidateConsentFixture.HrAdminEmail], emails.Sent.Select(m => m.To).ToArray());
 
         // The data subject is the actor: no staff user on the status row or the audit row.
         Assert.Equal(0, await _fixture.CountAsync(
@@ -432,7 +475,54 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
         await using var down = Factory(identities: new FakeIdentities { Unconfigured = true });
         using var downClient = down.CreateClient();
         var response = await Send(downClient, HttpMethod.Post, Portal, new { organizationSlug = "acme" }, Mint("candidate-y"));
+        await AssertSelfServiceUnavailable(response);
+    }
+
+    [Fact]
+    public async Task Portal_AutoconfirmOn_Is503_BeforeTheIdentityIsEvenAsked()
+    {
+        var identities = new FakeIdentities();
+        var token = Mint("candidate-auto");
+        identities.Confirmed[token] = new SetupIdentity("candidate-auto", "luz@example.com");
+        await using var factory = Factory(identities: identities, authSettings: new FakeAuthSettings(RequiresConfirmation: false));
+        using var client = factory.CreateClient();
+        var response = await Send(client, HttpMethod.Post, Portal, new { organizationSlug = "acme" }, token);
+        await AssertSelfServiceUnavailable(response);
+        Assert.Equal(0, identities.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task Portal_AuthSettingsUnreachable_Is503_FailClosed()
+    {
+        // The REAL probe with no usable Invitations:SupabaseUrl/ServiceKey: the settings fetch fails → closed.
+        var identities = new FakeIdentities();
+        var token = Mint("candidate-nofetch");
+        identities.Confirmed[token] = new SetupIdentity("candidate-nofetch", "luz@example.com");
+        await using var factory = Factory(identities: identities, realProbe: true);
+        using var client = factory.CreateClient();
+        var response = await Send(client, HttpMethod.Post, Portal, new { organizationSlug = "acme" }, token);
+        await AssertSelfServiceUnavailable(response);
+    }
+
+    [Fact]
+    public async Task Portal_AutoconfirmOff_Proceeds()
+    {
+        var identities = new FakeIdentities();
+        var token = Mint("candidate-ok");
+        identities.Confirmed[token] = new SetupIdentity("candidate-ok", "nobody-else@example.com");
+        await using var factory = Factory(identities: identities, authSettings: new FakeAuthSettings(RequiresConfirmation: true));
+        using var client = factory.CreateClient();
+        var response = await Send(client, HttpMethod.Post, Portal, new { organizationSlug = "acme" }, token);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
+
+    private static async Task AssertSelfServiceUnavailable(HttpResponseMessage response)
+    {
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var body = await ReadJson(response);
+        Assert.Equal("self_service_unavailable", body.GetProperty("code").GetString());
+        Assert.StartsWith("Esta opción no está disponible en este momento.", body.GetProperty("message").GetString(),
+            StringComparison.Ordinal);
     }
 
     [Theory]
@@ -458,9 +548,35 @@ public sealed class CandidateConsentEndpointTests(CandidateConsentFixture fixtur
 
         public Task<bool> CreateAsync(string email, string password, CancellationToken ct) => Task.FromResult(false);
 
-        public Task<SetupIdentity?> VerifyAsync(string accessToken, CancellationToken ct) =>
-            Unconfigured
+        public int VerifyCalls => _verifyCalls;
+
+        private int _verifyCalls;
+
+        public Task<SetupIdentity?> VerifyAsync(string accessToken, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _verifyCalls);
+            return Unconfigured
                 ? throw new InvalidOperationException("Invitation identity service is not configured")
                 : Task.FromResult(Confirmed.TryGetValue(accessToken, out var identity) ? identity : null);
+        }
+    }
+
+    private sealed record FakeAuthSettings(bool RequiresConfirmation) : IAuthSettingsProbe
+    {
+        public Task<bool> RequiresEmailConfirmationAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(RequiresConfirmation);
+    }
+
+    internal sealed class FakeEmails : IEmailSender
+    {
+        public ConcurrentQueue<(string To, string Subject, string Html)> Queue { get; } = new();
+
+        public List<(string To, string Subject, string Html)> Sent => [.. Queue];
+
+        public Task<bool> SendEmailAsync(string to, string subject, string html, CancellationToken ct)
+        {
+            Queue.Enqueue((to, subject, html));
+            return Task.FromResult(true);
+        }
     }
 }

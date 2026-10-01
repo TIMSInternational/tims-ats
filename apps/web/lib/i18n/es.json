@@ -4130,21 +4130,54 @@
     "loadError": "No se pudo cargar la autorización de tratamiento de datos.",
     "errorForbidden": "No tienes permiso para gestionar la autorización de tratamiento de datos.",
     "errorNotFound": "Candidato no encontrado.",
-    "errorGeneric": "No se pudo completar la acción. Intenta de nuevo."
+    "errorGeneric": "No se pudo completar la acción. Intenta de nuevo.",
+    "reopenHint": "La autorización revocada no se puede restablecer desde aquí: el candidato debe otorgarla de nuevo y la reapertura se gestiona con soporte (cambio auditado según el runbook)."
   },
   "portalConsentWithdrawal": {
     "title": "Privacidad y tus datos personales",
     "desc": "Autorizaste a {org} a tratar tus datos personales para gestionar tu participación en sus procesos de selección. Puedes revocar esta autorización en cualquier momento.",
     "revokeButton": "Revocar autorización",
     "confirmTitle": "¿Revocar tu autorización?",
-    "confirmBody": "Si la revocas, {org} dejará de enviarte correos sobre sus procesos de selección y no recibirá nuevas postulaciones con este correo. También registraremos tu solicitud de supresión de datos, que la organización atenderá conforme a la ley; algunos datos podrán conservarse cuando exista un deber legal o contractual de hacerlo.",
+    "confirmBody": "Si la revocas, {org} dejará de enviarte correos sobre sus procesos de selección, no podrá evaluarte con nuevas pruebas, entrevistas con IA ni análisis automáticos, y no recibirá nuevas postulaciones con este correo. También registraremos tu solicitud de supresión de tus datos y se la notificaremos a la organización, que debe responderla dentro de los plazos legales; algunos datos podrán conservarse cuando exista un deber legal o contractual de hacerlo.",
     "confirmButton": "Sí, revocar",
     "cancel": "Cancelar",
     "submitting": "Revocando...",
     "doneTitle": "Revocaste tu autorización",
-    "doneBody": "Registramos tu revocación y tu solicitud de supresión de datos. Si en el futuro quieres volver a postularte, comunícate con la organización.",
+    "doneBody": "Registramos tu revocación y tu solicitud de supresión de datos, y la notificamos a la organización. Si en el futuro quieres volver a postularte, comunícate con la organización.",
     "errorNotVerified": "Debes verificar tu correo electrónico antes de revocar la autorización.",
     "errorRateLimited": "Demasiados intentos. Espera unos minutos e intenta de nuevo.",
-    "errorGeneric": "No pudimos registrar tu revocación. Intenta de nuevo."
+    "errorGeneric": "No pudimos registrar tu revocación. Intenta de nuevo.",
+    "withdrawnOn": "Revocaste tu autorización el {date}.",
+    "errorUnavailable": "Esta opción no está disponible en este momento. Para revocar tu autorización, comunícate directamente con la organización."
+  },
+  "consentGuard": {
+    "withdrawn": "El candidato revocó la autorización de tratamiento de sus datos personales; no es posible continuar procesándolo ni enviarle comunicaciones.",
+    "withdrawnBulk": "{n} de los candidatos seleccionados revocaron la autorización de tratamiento de sus datos personales. Quítalos de la selección e intenta de nuevo.",
+    "interviewNotNotified": "Entrevista agendada. El candidato NO fue notificado porque revocó la autorización de tratamiento de sus datos; los evaluadores sí."
+  },
+  "dataSubjectRequests": {
+    "navLabel": "Solicitudes de titulares",
+    "unnamedCandidate": "Candidato sin nombre",
+    "title": "Solicitudes de supresión de datos",
+    "subtitle": "Solicitudes de supresión de datos personales presentadas por los titulares, conforme a la Ley 1581 de 2012.",
+    "dueDateNote": "La fecha límite se calcula sumando 15 días hábiles (lunes a viernes) a la fecha de recepción, sin descontar los días festivos. El plazo legal puede ser posterior; verifíquelo antes de responder al titular.",
+    "unavailableTitle": "Esta función no está disponible",
+    "unavailableMessage": "La gestión de solicitudes de titulares aún no está habilitada para su organización.",
+    "noPermissionTitle": "No tiene permiso para ver esta sección",
+    "noPermissionMessage": "Se requiere permiso para actualizar candidatos de toda la organización.",
+    "colCandidate": "Titular",
+    "colRequestType": "Tipo de solicitud",
+    "colSource": "Canal",
+    "colReceived": "Recibida",
+    "colDue": "Fecha límite",
+    "typeDeletion": "Solicitud de supresión",
+    "typeOther": "Otra solicitud",
+    "sourceStaff": "Registrada por el equipo",
+    "sourceCandidatePortal": "Portal del candidato",
+    "sourceOther": "Otro canal",
+    "overdue": "Vencida",
+    "emptyTitle": "No hay solicitudes pendientes",
+    "emptyDescription": "Cuando un titular solicite la supresión de sus datos, la solicitud aparecerá aquí.",
+    "loadError": "No fue posible cargar las solicitudes. Inténtelo de nuevo."
   }
 }

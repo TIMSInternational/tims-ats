@@ -1908,6 +1908,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/data-subject-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DataSubjectRequestsList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/candidates/{candidateId}/consent": {
         parameters: {
             query?: never;
@@ -3873,6 +3889,20 @@ export interface components {
             /** Format: double */
             diversityIndex: number | string;
         };
+        DataSubjectRequestListItem: {
+            id: string;
+            candidateId: string;
+            candidateFirstName: null | string;
+            candidateLastName: null | string;
+            requestType: string;
+            status: string;
+            source: string;
+            createdAt: string;
+            dueAt: string;
+        };
+        DataSubjectRequestListView: {
+            items: components["schemas"]["DataSubjectRequestListItem"][];
+        };
         DetailSuccessorRow: {
             id: string;
             organizationId: string;
@@ -4730,6 +4760,10 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+        };
+        SelfServiceUnavailableBody: {
+            code: string;
+            message: string;
         };
         SentimentView: {
             /** Format: int32 */
@@ -10714,6 +10748,49 @@ export interface operations {
             };
         };
     };
+    DataSubjectRequestsList: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataSubjectRequestListView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     CandidateConsentGet: {
         parameters: {
             query?: never;
@@ -10873,7 +10950,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SelfServiceUnavailableBody"];
+                };
             };
         };
     };

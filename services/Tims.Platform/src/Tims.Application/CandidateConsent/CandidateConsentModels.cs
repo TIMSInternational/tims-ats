@@ -24,6 +24,22 @@ public static class CandidateConsentConstants
 
     public const int MaxReasonLength = 500;
     public const int MaxEvidenceRows = 100;
+    public const int MaxListRows = 200;
+
+    /// <summary>Statuses the staff list may filter on.</summary>
+    public static readonly IReadOnlySet<string> RequestStatuses =
+        new HashSet<string>(StringComparer.Ordinal) { "pending", "completed", "rejected" };
+
+    /// <summary>Role slugs whose ACTIVE holders are told about a new data subject request.</summary>
+    public static readonly IReadOnlyList<string> RequestNotifyRoleSlugs = ["hr_admin", "super_admin"];
+
+    public const string NotificationType = "data_subject_request";
+    public const string NotificationModule = "candidate";
+    public const string NotificationEntityType = "data_subject_request";
+    public const string StaffListPath = "/settings/data-requests";
+    public const string NotificationTitle = "Nueva solicitud de supresión de datos";
+    public const string NotificationMessage =
+        "Un candidato solicitó la supresión de sus datos personales. Debe responderse dentro de 15 días hábiles.";
 
     /// <summary>Channels a STAFF member may record (TS <c>CONSENT_WITHDRAWAL_CHANNELS</c>); <c>portal</c> is self-service only.</summary>
     public static readonly IReadOnlySet<string> StaffChannels =
@@ -73,12 +89,43 @@ public sealed record CandidateConsentView(
     IReadOnlyList<CandidateConsentEvidenceItem> Evidence,
     CandidateDeletionRequest? DeletionRequest);
 
-public sealed record CandidateConsentResult(CandidateConsentOutcome Outcome, CandidateConsentView? View)
+/// <param name="Notice">Set only when this call filed a NEW data subject request: whom to email after commit.</param>
+public sealed record CandidateConsentResult(
+    CandidateConsentOutcome Outcome, CandidateConsentView? View, DataSubjectRequestNotice? Notice = null)
 {
     public static readonly CandidateConsentResult NotFound = new(CandidateConsentOutcome.NotFound, null);
 
-    public static CandidateConsentResult Ok(CandidateConsentView view) => new(CandidateConsentOutcome.Ok, view);
+    public static CandidateConsentResult Ok(CandidateConsentView view, DataSubjectRequestNotice? notice = null) =>
+        new(CandidateConsentOutcome.Ok, view, notice);
 }
 
 /// <summary>Self-service result. The response to the candidate is uniform; the counts are for tests and logs only.</summary>
-public sealed record PortalWithdrawalResult(bool OrganizationFound, int CandidatesWithdrawn, int DeletionRequestsCreated);
+public sealed record PortalWithdrawalResult(
+    bool OrganizationFound, int CandidatesWithdrawn, int DeletionRequestsCreated, DataSubjectRequestNotice? Notice = null);
+
+/// <summary>One org admin (active user holding <c>hr_admin</c> or <c>super_admin</c>) to tell about a new request.</summary>
+public sealed record DataSubjectRequestRecipient(Guid UserId, string Email, string FirstName);
+
+/// <summary>
+/// Returned by the repository AFTER commit when a withdrawal filed at least one NEW data subject request: the
+/// in-app notifications are already written (same transaction); the email to <see cref="Recipients"/> is sent
+/// by the caller. <see cref="DueAt"/> is the earliest response deadline (UTC) of the requests filed.
+/// </summary>
+public sealed record DataSubjectRequestNotice(IReadOnlyList<DataSubjectRequestRecipient> Recipients, DateTime DueAt);
+
+/// <summary>One row of GET /tenant/data-subject-requests. Ids and instants are strings (ISO-8601 UTC, ms).</summary>
+/// <param name="DueAt">createdAt + 15 business days (<see cref="BusinessDays.DueAt"/>), same time of day, ISO-8601 UTC.
+/// Colombian holidays are not excluded, so it can be earlier than the legal deadline, never later.</param>
+public sealed record DataSubjectRequestListItem(
+    string Id,
+    string CandidateId,
+    string? CandidateFirstName,
+    string? CandidateLastName,
+    string RequestType,
+    string Status,
+    string Source,
+    string CreatedAt,
+    string DueAt);
+
+/// <summary>GET /tenant/data-subject-requests — oldest first, at most <see cref="CandidateConsentConstants.MaxListRows"/>.</summary>
+public sealed record DataSubjectRequestListView(IReadOnlyList<DataSubjectRequestListItem> Items);

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { candidateAiService } from '../../services/candidate-ai.service';
 import { assertScoped } from '../../access';
+import { consentGuard } from '../../services/consent-guard.service';
 
 export const candidateAiRouter = router({
   // Screen a candidate against a vacancy via the gated candidate-screener agent
@@ -17,6 +18,8 @@ export const candidateAiRouter = router({
       // arbitrary org candidates/vacancies (AI read + FitScore write) by id.
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // #312: no AI scoring of a candidate who revoked the data-processing authorization.
+      await consentGuard.assertActive(ctx.user.organizationId, input.candidateId);
       return candidateAiService.screenCandidate(ctx.user.organizationId, input.candidateId, input.vacancyId);
     }),
 });

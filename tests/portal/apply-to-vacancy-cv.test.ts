@@ -18,6 +18,7 @@ const dbMocks = {
   application: { findFirst: vi.fn(), create: vi.fn() },
   applicationConsentEvidence: { create: vi.fn() },
   pipelineStage: { findFirstOrThrow: vi.fn() },
+  $executeRaw: vi.fn(async (..._args: unknown[]) => 0),
   // Interactive transaction: the callback receives the same mocked client, so every
   // write made through `tx` is observable on dbMocks.
   $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMocks)),

@@ -1,3 +1,4 @@
+import { isCandidateConsentEnabled } from '../platform-api/candidate-consent';
 import { isTenantInvitationsEnabled } from '../platform-api/tenant-invitations';
 import type { NavFeatureFlag } from './manifest';
 
@@ -6,5 +7,7 @@ export function isNavFeatureOn(flag: NavFeatureFlag): boolean {
   switch (flag) {
     case 'tenantInvitations':
       return isTenantInvitationsEnabled();
+    case 'candidateConsent':
+      return isCandidateConsentEnabled();
   }
 }

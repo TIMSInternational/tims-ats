@@ -20,11 +20,13 @@ export function PortalDashboardShell({
   orgName,
   displayName,
   hasCandidate,
+  consentWithdrawnAt = null,
 }: {
   orgSlug: string;
   orgName: string;
   displayName: string;
   hasCandidate: boolean;
+  consentWithdrawnAt?: string | null;
 }) {
   const router = useRouter();
   const { t } = useI18n();
@@ -64,7 +66,7 @@ export function PortalDashboardShell({
             <DashboardAssessments orgSlug={orgSlug} />
             <DashboardOffer orgSlug={orgSlug} />
             <DashboardFaqChat orgSlug={orgSlug} />
-            <DashboardPrivacy orgSlug={orgSlug} orgName={orgName} />
+            <DashboardPrivacy orgSlug={orgSlug} orgName={orgName} withdrawnAt={consentWithdrawnAt} />
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">

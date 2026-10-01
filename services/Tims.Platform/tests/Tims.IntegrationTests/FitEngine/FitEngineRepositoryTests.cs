@@ -12,6 +12,8 @@ namespace Tims.IntegrationTests.FitEngine;
 ///   getCandidateForFit — soft-deleted → null (deletedAt guard) and cross-org → null (explicit filter + RLS);
 ///   getVacancyForFit — LEFT JOIN job_profiles (a profile-less vacancy still resolves, requirements null);
 ///     soft-deleted vacancy → null;
+///   consent guard (#312/#313) — withdrawn = self OR same-org lower(btrim(email)) alias (soft-deleted rows
+///     count); never cross-org, never LIKE, never a blank email, never another consent type or a granted row;
 ///   getPipelineCandidateIds — status = 'active' only (the ghost candidate IS included; rejected is not);
 ///   read repo — ranking rows DESC with candidate names joined; explain joins names + vacancy title;
 ///     cross-tenant reads return EMPTY under the wrong org (RLS + filter).
@@ -117,6 +119,62 @@ public sealed class FitEngineRepositoryTests(FitEngineFixture fixture)
         Assert.Contains(FitEngineFixture.CandEmpty, ids);
         Assert.Contains(FitEngineFixture.CandGhost, ids);
         Assert.DoesNotContain(FitEngineFixture.CandInactive, ids);
+    }
+
+    // ── #312/#313 consent guard ──
+    private static readonly Guid[] ConsentPipeline =
+    [
+        FitEngineFixture.CandWdSelf, FitEngineFixture.CandWdAlias, FitEngineFixture.CandCrossOrgTwin,
+        FitEngineFixture.CandWildcard, FitEngineFixture.CandGranted, FitEngineFixture.CandOtherType,
+        FitEngineFixture.CandBlankA,
+    ];
+
+    [Fact]
+    public async Task ConsentWithdrawn_ExactlySelfAndSameOrgNormalizedEmailAlias()
+    {
+        await using var db = _fixture.NewWriteContext();
+        var repo = new FitEngineWriteRepository(db);
+
+        var withdrawn = await repo.GetConsentWithdrawnCandidateIdsAsync(
+            FitEngineFixture.OrgA, ConsentPipeline, CancellationToken.None);
+
+        // Count the SET, not membership: WdSelf (own withdrawn row) + WdAlias (its soft-deleted same-org row
+        // '  DUP@Fit.TEST ' is withdrawn; lower(btrim) equality). NOT: CrossOrgTwin (the withdrawn twin is in
+        // OrgB), Wildcard ('axb' vs withdrawn 'a_b' — equality, never LIKE), Granted (withdrawn_at NULL),
+        // OtherType (withdrawn consent of another type), BlankA ('' vs withdrawn '   ' — blank groups nobody).
+        Assert.Equal(
+            new HashSet<Guid> { FitEngineFixture.CandWdSelf, FitEngineFixture.CandWdAlias },
+            withdrawn.ToHashSet());
+    }
+
+    [Fact]
+    public async Task ConsentWithdrawn_IsOrgScoped_BothDirections()
+    {
+        await using var db = _fixture.NewWriteContext();
+        var repo = new FitEngineWriteRepository(db);
+
+        // OrgB's own withdrawn candidate IS found under OrgB (positive control for the next assertion)…
+        var orgB = await repo.GetConsentWithdrawnCandidateIdsAsync(
+            FitEngineFixture.OrgB, [FitEngineFixture.CandOrgBCross], CancellationToken.None);
+        Assert.Equal(new HashSet<Guid> { FitEngineFixture.CandOrgBCross }, orgB.ToHashSet());
+
+        // …and is invisible under OrgA, as are OrgA's withdrawn candidates under OrgB.
+        var wrongOrgA = await repo.GetConsentWithdrawnCandidateIdsAsync(
+            FitEngineFixture.OrgA, [FitEngineFixture.CandOrgBCross], CancellationToken.None);
+        Assert.Empty(wrongOrgA);
+        var wrongOrgB = await repo.GetConsentWithdrawnCandidateIdsAsync(
+            FitEngineFixture.OrgB, ConsentPipeline, CancellationToken.None);
+        Assert.Empty(wrongOrgB);
+    }
+
+    [Fact]
+    public async Task ConsentWithdrawn_EmptyInput_IsEmpty()
+    {
+        await using var db = _fixture.NewWriteContext();
+        var repo = new FitEngineWriteRepository(db);
+
+        Assert.Empty(await repo.GetConsentWithdrawnCandidateIdsAsync(
+            FitEngineFixture.OrgA, [], CancellationToken.None));
     }
 
     // ── read repository ──

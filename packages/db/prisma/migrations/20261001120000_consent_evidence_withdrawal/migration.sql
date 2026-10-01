@@ -79,20 +79,33 @@ CREATE POLICY tenant_isolation ON "data_subject_requests"
     USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
     WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
 
--- Production's ALTER DEFAULT PRIVILEGES already grants these; explicit for any database without them.
+-- Production's ALTER DEFAULT PRIVILEGES grants app_tenant SELECT/INSERT/UPDATE/DELETE on every new table.
+-- application_consent_evidence is PROOF: like audit_logs it is insert-only for the application role, so
+-- UPDATE/DELETE are revoked (also from Supabase's API roles, which never need it). data_subject_requests keeps
+-- UPDATE for resolution.
 DO $$
+DECLARE r text;
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "application_consent_evidence" TO app_tenant;
+    GRANT SELECT, INSERT ON TABLE "application_consent_evidence" TO app_tenant;
+    REVOKE UPDATE, DELETE, TRUNCATE ON TABLE "application_consent_evidence" FROM app_tenant;
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "data_subject_requests" TO app_tenant;
   END IF;
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('REVOKE ALL ON TABLE "application_consent_evidence" FROM %I', r);
+      EXECUTE format('REVOKE ALL ON TABLE "data_subject_requests" FROM %I', r);
+    END IF;
+  END LOOP;
 END
 $$;
 
--- 5. Backfill: one evidence row per EXISTING application whose candidate has the subject-level
---    recruitment consent row, reconstructed from that row and marked is_backfilled. Its text
---    hash, locale and request metadata are unknown (NULL) — the row records only what the
---    subject-level row proves. Re-running inserts nothing new.
+-- 5. Backfill: one evidence row per EXISTING application covered by the candidate's subject-level
+--    recruitment consent, reconstructed from that row and marked is_backfilled. Its text hash, locale
+--    and request metadata are unknown (NULL) — the row records only what the subject-level row proves.
+--    Only applications created at or after the consent was given (an earlier application was not
+--    authorized by it), never from a withdrawal-only marker or a withdrawn consent. Re-running inserts
+--    nothing new.
 INSERT INTO "application_consent_evidence"
     ("id", "organization_id", "application_id", "candidate_id", "consent_type", "text_version",
      "agreed_at", "is_backfilled", "created_at", "updated_at")
@@ -103,4 +116,7 @@ JOIN "data_consents" dc
   ON dc."subject_user_id" = a."candidate_id"
  AND dc."organization_id" = a."organization_id"
  AND dc."consent_type" = 'recruitment_data_processing'
+WHERE dc."text_version" <> 'none:withdrawal-only'
+  AND dc."withdrawn_at" IS NULL
+  AND a."created_at" >= dc."agreed_at"
 ON CONFLICT ("application_id", "consent_type") DO NOTHING;

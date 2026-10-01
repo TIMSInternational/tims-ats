@@ -33,15 +33,31 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
         return new WeightProfileRow(saved.Id.ToString(), saved.Name, JsonNode.Parse(saved.Weights));
     }
 
-    /// <summary><c>computeForVacancy</c> — score every active-pipeline candidate; response is the count only.</summary>
+    /// <summary>
+    /// <c>computeForVacancy</c> — score every active-pipeline candidate whose recruitment consent is NOT withdrawn;
+    /// response is the count actually scored. A withdrawn candidate (#312/#313 — matched on itself or on any
+    /// same-org candidate row with the same normalized email) is SKIPPED: no reads, no score computed, no
+    /// fit_scores upsert. An existing fit_scores row is left untouched (not deleted) — erasure belongs to the
+    /// deletion-request flow, not to scoring. There is no single-candidate scoring path, so nothing returns 412.
+    /// </summary>
     public async Task<ComputeForVacancyResult> ComputeForVacancyAsync(
         Guid organizationId, Guid vacancyId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var candidateIds = await _repository.GetPipelineCandidateIdsAsync(organizationId, vacancyId, cancellationToken)
+        var pipelineIds = await _repository.GetPipelineCandidateIdsAsync(organizationId, vacancyId, cancellationToken)
             .ConfigureAwait(false);
-        if (candidateIds.Count == 0)
+        if (pipelineIds.Count == 0)
         {
             // No candidates ⇒ no reads, no Default-profile bootstrap — TS maps over an empty array the same way.
+            return new ComputeForVacancyResult(0);
+        }
+
+        var withdrawn = await _repository
+            .GetConsentWithdrawnCandidateIdsAsync(organizationId, pipelineIds, cancellationToken)
+            .ConfigureAwait(false);
+        var candidateIds = pipelineIds.Where(id => !withdrawn.Contains(id)).ToList();
+        if (candidateIds.Count == 0)
+        {
+            // Every candidate withdrew ⇒ same shape as the empty pipeline: no vacancy read, no bootstrap.
             return new ComputeForVacancyResult(0);
         }
 

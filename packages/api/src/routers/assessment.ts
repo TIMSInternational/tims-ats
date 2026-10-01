@@ -15,6 +15,7 @@ import {
 import { assessmentQuestionService } from '../services/assessment-question.service';
 import { emailService } from '../services/email.service';
 import { candidateConsentRepository } from '../repositories/candidate-consent.repository';
+import { consentGuard } from '../services/consent-guard.service';
 import { clientIpFrom } from '../lib/client-ip';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
@@ -202,6 +203,8 @@ export const assessmentRouter = router({
       if (applicationCount !== uniqueCandidateIds.length) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas candidatos no tienen una postulacion activa para esta vacante' });
       }
+      // #312: refuse the whole batch if any candidate revoked the authorization (message carries the count).
+      await consentGuard.assertAllActive(orgId, uniqueCandidateIds);
 
       await assessmentQuestionService.assertHasActiveQuestions(orgId, input.assessmentTypeId);
 

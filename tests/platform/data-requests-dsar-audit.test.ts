@@ -401,3 +401,16 @@ describe('DSAR export — consent evidence and data-subject requests (#313, #312
     expect(dataAccessCreateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('DSAR export — withdrawal-only marker rows (#312)', () => {
+  it('never presents a marker row\'s agreedAt as an authorization date', async () => {
+    findMany.dataConsent.mockResolvedValue([
+      { id: 'm1', textVersion: 'none:withdrawal-only', agreedAt: new Date('2026-10-01T10:00:00Z'), withdrawnAt: new Date('2026-10-01T10:00:00Z') },
+      { id: 'c2', textVersion: 'portal-apply-2026-09-29', agreedAt: new Date('2026-09-30T10:00:00Z'), withdrawnAt: null },
+    ]);
+    const out = await caller().exportSubjectData({ email: 'a@b.com' });
+    const consents = (JSON.parse(out.json) as { privacy: { consents: Array<{ id: string; agreedAt: unknown }> } }).privacy.consents;
+    expect(consents.find((c) => c.id === 'm1')?.agreedAt).toBeNull();
+    expect(consents.find((c) => c.id === 'c2')?.agreedAt).toBe('2026-09-30T10:00:00.000Z');
+  });
+});
