@@ -127,6 +127,11 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
     /// <summary>Pure window/status evaluation. Returns null when the interview is joinable right now.</summary>
     public static CandidateJoinResult? Evaluate(CandidateJoinInterview interview, DateTime nowUtc)
     {
+        // #329 item 5: a rejected/withdrawn application or a suspended organization revokes the link immediately,
+        // not at scheduled end + grace. Answered as `cancelled` so the page reveals nothing about WHY (the
+        // candidate must not learn of a rejection, or of the org's account state, from a video link).
+        if (interview.ApplicationClosed || interview.OrganizationInactive)
+            return new(CandidateJoinOutcomes.Cancelled);
         if (interview.Status == "cancelled" || interview.CancelledAt is not null)
             return new(CandidateJoinOutcomes.Cancelled);
         if (interview.Status is "completed" or "no_show" || nowUtc >= ClosesAt(interview))
@@ -181,6 +186,11 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
             if (stored == created.Url) room = created;
         }
         if (!TryDailyRoom(storedUrl, out var roomName) || !IsOwnRoomName(roomName, interview.Id)) return unavailable;
+        // #329 item 1: a legacy name carries only 32 bits of the id, and the old "400 = exists" adoption path let two
+        // interviews (possibly in different tenants) end up storing the SAME room. Such a room is not bound to this
+        // row, so it is refused outright rather than joined; the full-id name cannot collide and is not checked.
+        if (string.Equals(roomName, LegacyRoomNameFor(interview.Id), StringComparison.Ordinal)
+            && await repository.IsRoomSharedAsync(interview.Id, roomName, ct)) return unavailable;
         // Also re-extends a room created earlier by staff with a shorter lifetime; a concurrent writer's room
         // (staff created it first) is joined instead of a second one.
         room ??= await video.EnsureRoomAsync(roomName, closesAt, ct);
