@@ -37,6 +37,8 @@ describe('emailService.sendOfferToCandidate', () => {
     expect(call.to).toBe('qa@example.test');
     expect(call.abortSignal).toBeInstanceOf(AbortSignal);
     expect(call.abortSignal).toBe(timeout.mock.results[0]?.value);
+    const { sesOfferCircuit } = await import('../../packages/api/src/lib/circuit-breaker');
+    expect((call as { breaker?: unknown }).breaker).toBe(sesOfferCircuit);
   });
 
   it('reports an aborted (timed-out) send as unconfirmed rather than hanging', async () => {
