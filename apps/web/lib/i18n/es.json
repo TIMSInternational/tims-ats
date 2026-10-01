@@ -2079,7 +2079,14 @@
     "clearHiringManager": "Quitar",
     "hiringManagerHint": "Queda como responsable asignado de la vacante; si tiene permiso de aprobación, podrá aprobarla.",
     "createVacancySubmit": "Crear vacante",
-    "creatingVacancy": "Creando..."
+    "creatingVacancy": "Creando...",
+    "benefitsLabel": "Beneficios",
+    "summaryTitle": "Resumen",
+    "summaryRoleLabel": "Cargo:",
+    "summaryContractLabel": "Contrato:",
+    "summarySalaryLabel": "Salario:",
+    "positionCountOne": "1 posición",
+    "positionCountMany": "{n} posiciones"
   },
   "dashboard": {
     "recentActivity": "Actividad Reciente",

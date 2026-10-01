@@ -1,7 +1,8 @@
 'use client';
 
-import { CONTRACT_TYPES, inputCls, labelCls, textareaCls } from './create-modal.helpers';
+import { CONTRACT_TYPES, inputCls, labelCls, positionCountLabel, textareaCls } from './create-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
+import { enumLabel, formatPortalSalary, parsePortalSalary } from '../../../(portal)/careers/[orgSlug]/_lib/vacancy-display';
 import { AiGeneratePanel, InclusiveCheckPanel } from './create-modal.ai-panel';
 import { currencyOptions } from '../../../../lib/currency-options';
 
@@ -54,15 +55,15 @@ export function Step1BasicInfo({
         <div>
           <label className={labelCls}>{t.vacancies.contractTypeLabel}</label>
           <select value={contractType} onChange={(e) => setContractType(e.target.value)} className={`${inputCls} bg-white`}>
-            {CONTRACT_TYPES.map((ct) => <option key={ct.value} value={ct.value}>{ct.label}</option>)}
+            {CONTRACT_TYPES.map((value) => <option key={value} value={value}>{t.portal.contractTypes[value]}</option>)}
           </select>
         </div>
         <div>
-          <label className={labelCls}>Posiciones</label>
+          <label className={labelCls}>{t.vacancies.positions}</label>
           <input type="number" value={positions} onChange={(e) => setPositions(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))} min={1} max={100} className={inputCls} />
         </div>
         <div className="col-span-2 md:col-span-1">
-          <label className={labelCls}>Prioridad</label>
+          <label className={labelCls}>{t.vacancies.priority}</label>
           <div className="flex bg-[#F6F6F6] rounded-lg overflow-hidden h-10">
             {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
               <button key={p} type="button" onClick={() => setPriority(p)}
@@ -71,7 +72,7 @@ export function Step1BasicInfo({
                     ? p === 'urgent' ? 'bg-[#DD0C15] text-white' : 'bg-[#1F114C] text-white'
                     : 'text-[#585858]'
                 }`}>
-                {p === 'low' ? 'Baja' : p === 'medium' ? 'Media' : p === 'high' ? 'Alta' : 'Urgente'}
+                {p === 'low' ? t.vacancies.priorityLow : p === 'medium' ? t.vacancies.priorityMedium : p === 'high' ? t.vacancies.priorityHigh : t.vacancies.priorityUrgent}
               </button>
             ))}
           </div>
@@ -139,7 +140,7 @@ export function Step2Description({
         <textarea value={desiredQualifications} onChange={(e) => setDesiredQualifications(e.target.value)} placeholder="- Experiencia con AWS/GCP&#10;- Certificaciones relevantes&#10;- Experiencia en startups" maxLength={2000} rows={2} className={textareaCls} />
       </div>
       <div>
-        <label className={labelCls}>Beneficios</label>
+        <label className={labelCls}>{t.vacancies.benefitsLabel}</label>
         <textarea value={benefits} onChange={(e) => setBenefits(e.target.value)} placeholder="- Plan de salud prepagada&#10;- Horario flexible&#10;- Presupuesto de capacitacion&#10;- Home office stipend" maxLength={1500} rows={3} className={textareaCls} />
       </div>
     </div>
@@ -174,23 +175,33 @@ export function Step3Compensation({
   autoPublish, setAutoPublish, requireApproval, setRequireApproval,
   title, location, remotePolicy, contractType, positions,
 }: Step3Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const currencies = currencyOptions();
+  // Same formatter as the vacancy detail and the careers portal: currency code + period, locale grouping.
+  const salary = parsePortalSalary({
+    min: salaryMin ? Number(salaryMin) : undefined,
+    max: salaryMax ? Number(salaryMax) : undefined,
+    currency,
+    period: salaryPeriod,
+  });
+  const salaryText = salary ? formatPortalSalary(salary, locale, t.portal) : null;
+  const remoteLabel = enumLabel(remotePolicy, t.portal.remotePolicies);
+  const contractLabel = enumLabel(contractType, t.portal.contractTypes);
   return (
     <div className="space-y-5">
       <div>
         <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.vacancies.salaryRange}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <label className={labelCls}>Minimo</label>
+            <label className={labelCls}>{t.vacancies.salaryMin}</label>
             <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder="8,000,000" className={inputCls} />
           </div>
           <div>
-            <label className={labelCls}>Maximo</label>
+            <label className={labelCls}>{t.vacancies.salaryMax}</label>
             <input type="number" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)} placeholder="14,000,000" className={inputCls} />
           </div>
           <div>
-            <label className={labelCls}>Moneda</label>
+            <label className={labelCls}>{t.vacancies.currency}</label>
             <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={`${inputCls} bg-white`}>
               {currencies.map((opt) => (
                 <option key={opt.code} value={opt.code}>{opt.label}</option>
@@ -198,18 +209,14 @@ export function Step3Compensation({
             </select>
           </div>
           <div>
-            <label className={labelCls}>Periodo</label>
+            <label className={labelCls}>{t.vacancies.period}</label>
             <select value={salaryPeriod} onChange={(e) => setSalaryPeriod(e.target.value as 'monthly' | 'yearly')} className={`${inputCls} bg-white`}>
-              <option value="monthly">Mensual</option>
-              <option value="yearly">Anual</option>
+              <option value="monthly">{t.vacancies.monthly}</option>
+              <option value="yearly">{t.vacancies.yearly}</option>
             </select>
           </div>
         </div>
-        {salaryMin && salaryMax && (
-          <p className="text-[11px] text-[#8B8B8B] mt-2">
-            {currency} {parseInt(salaryMin).toLocaleString()} — {parseInt(salaryMax).toLocaleString()} / {salaryPeriod === 'monthly' ? t.vacancies.salaryPerMonth : t.vacancies.salaryPerYear}
-          </p>
-        )}
+        {salaryText && <p className="text-[11px] text-[#8B8B8B] mt-2">{salaryText}</p>}
       </div>
 
       <div className="border-t border-[#EDEDED] pt-4">
@@ -248,24 +255,24 @@ export function Step3Compensation({
 
       {/* Summary preview */}
       <div className="border-t border-[#EDEDED] pt-4">
-        <p className="text-[13px] font-medium text-[#1F114C] mb-2">Resumen</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-2">{t.vacancies.summaryTitle}</p>
         <div className="bg-[#F6F6F6] rounded-lg p-3 space-y-1.5">
           <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Cargo:</span>
+            <span className="text-[12px] text-[#585858]">{t.vacancies.summaryRoleLabel}</span>
             <span className="text-[12px] text-[#333] font-medium">{title}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-[12px] text-[#585858]">{t.vacancies.summaryLocationLabel}</span>
-            <span className="text-[12px] text-[#333]">{location || '—'} ({remotePolicy === 'onsite' ? t.vacancies.onsite : remotePolicy === 'hybrid' ? t.vacancies.hybrid : t.vacancies.remote})</span>
+            <span className="text-[12px] text-[#333]">{location || '—'} ({remoteLabel})</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Contrato:</span>
-            <span className="text-[12px] text-[#333]">{CONTRACT_TYPES.find((c) => c.value === contractType)?.label} · {positions} posición(es)</span>
+            <span className="text-[12px] text-[#585858]">{t.vacancies.summaryContractLabel}</span>
+            <span className="text-[12px] text-[#333]">{contractLabel ?? '—'} · {positionCountLabel(positions, t.vacancies)}</span>
           </div>
-          {(salaryMin || salaryMax) && (
+          {salaryText && (
             <div className="flex justify-between">
-              <span className="text-[12px] text-[#585858]">Salario:</span>
-              <span className="text-[12px] text-[#333]">{currency} {salaryMin ? parseInt(salaryMin).toLocaleString() : '?'} — {salaryMax ? parseInt(salaryMax).toLocaleString() : '?'}</span>
+              <span className="text-[12px] text-[#585858]">{t.vacancies.summarySalaryLabel}</span>
+              <span className="text-[12px] text-[#333]">{salaryText}</span>
             </div>
           )}
         </div>

@@ -2079,7 +2079,14 @@
     "clearHiringManager": "Remove",
     "hiringManagerHint": "Recorded as the vacancy's assignee; if they hold approval rights they can approve it.",
     "createVacancySubmit": "Create vacancy",
-    "creatingVacancy": "Creating..."
+    "creatingVacancy": "Creating...",
+    "benefitsLabel": "Benefits",
+    "summaryTitle": "Summary",
+    "summaryRoleLabel": "Role:",
+    "summaryContractLabel": "Contract:",
+    "summarySalaryLabel": "Salary:",
+    "positionCountOne": "1 position",
+    "positionCountMany": "{n} positions"
   },
   "dashboard": {
     "recentActivity": "Recent Activity",
