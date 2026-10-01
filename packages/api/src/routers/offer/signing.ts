@@ -70,8 +70,9 @@ export const offerSigningRouter = router({
       }
 
       await assertNoRejectedApproval(
-        offer.id,
+        db,
         ctx.user.organizationId,
+        offer.id,
         'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
       );
 
@@ -279,7 +280,7 @@ export const offerSigningRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado y no puede firmarse' });
       }
 
-      await assertNoRejectedApproval(offer.id, offer.organizationId, 'Esta oferta no esta disponible para firma');
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible para firma');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();
@@ -379,7 +380,7 @@ export const offerSigningRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
       }
 
-      await assertNoRejectedApproval(offer.id, offer.organizationId, 'Esta oferta no esta disponible');
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();

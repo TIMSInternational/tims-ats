@@ -76,8 +76,9 @@ export const offerLifecycleRouter = router({
       }
 
       await assertNoRejectedApproval(
-        offer.id,
+        db,
         ctx.user.organizationId,
+        offer.id,
         'Esta oferta fue rechazada en su cadena de aprobacion y no se puede convertir',
       );
 
