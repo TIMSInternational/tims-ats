@@ -39,18 +39,80 @@ model DataAccessLog {
 }
 
 model DataConsent {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
   // soft reference (no FK) — consent evidence must survive user deletion; see 20260612000000 migration
-  subjectUserId  String    @map("subject_user_id") @db.Uuid
-  consentType    String    @map("consent_type")
-  textVersion    String    @map("text_version")
-  agreedAt       DateTime  @default(now()) @map("agreed_at")
-  withdrawnAt    DateTime? @map("withdrawn_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  subjectUserId     String    @map("subject_user_id") @db.Uuid
+  consentType       String    @map("consent_type")
+  textVersion       String    @map("text_version")
+  agreedAt          DateTime  @default(now()) @map("agreed_at")
+  withdrawnAt       DateTime? @map("withdrawn_at")
+  // Withdrawal evidence (#312). Channel: portal (data subject, self-service) | email | phone |
+  // in_person | letter | other (recorded by staff). withdrawnByUserId: the staff User who
+  // recorded it; NULL for the data subject's own self-service withdrawal. Soft reference (no FK).
+  withdrawalChannel String?   @map("withdrawal_channel") @db.VarChar(30)
+  withdrawalReason  String?   @map("withdrawal_reason") @db.VarChar(500)
+  withdrawnByUserId String?   @map("withdrawn_by_user_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@unique([subjectUserId, consentType])
   @@index([organizationId])
   @@map("data_consents")
+}
+
+// Per-application consent evidence (#313): which text, when, and from what request, for EACH
+// application — written in the same transaction as the application. The subject-level
+// DataConsent row stays the CURRENT STATUS (granted / withdrawn); this table is the proof.
+// Soft references (no FK) to the application and candidate, like DataConsent.subjectUserId:
+// evidence of an authorization must survive the erasure of what it authorized.
+// isBackfilled = reconstructed from the subject-level row for applications that predate this
+// table (no request metadata, text hash unknown).
+model ApplicationConsentEvidence {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  applicationId   String   @map("application_id") @db.Uuid
+  candidateId     String   @map("candidate_id") @db.Uuid
+  consentType     String   @map("consent_type") @db.VarChar(64)
+  textVersion     String   @map("text_version") @db.VarChar(64)
+  // SHA-256 (hex) of the exact consent sentence shown (locale + controller name). NULL when backfilled.
+  textSha256      String?  @map("text_sha256") @db.VarChar(64)
+  locale          String?  @db.VarChar(5)
+  agreedAt        DateTime @map("agreed_at")
+  // SHA-256 (hex) of "<organizationId>:<client IP>" — pseudonymous, never the raw IP.
+  ipHash          String?  @map("ip_hash") @db.VarChar(64)
+  userAgent       String?  @map("user_agent") @db.VarChar(512)
+  captchaVerified Boolean? @map("captcha_verified")
+  isBackfilled    Boolean  @default(false) @map("is_backfilled")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([applicationId, consentType])
+  @@index([organizationId])
+  @@index([candidateId])
+  @@map("application_consent_evidence")
+}
+
+// Data-subject requests (Ley 1581 Art. 8 / Habeas Data) that need a human decision — today the
+// deletion (supresión) request a candidate files when revoking their authorization (#312).
+// Nothing is deleted automatically: staff resolve the request (legal retention may apply).
+// requestType: deletion. status: pending | completed | rejected. source: candidate_portal | staff.
+model DataSubjectRequest {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  // Soft reference (no FK): the request must outlive the candidate row it asks to erase.
+  candidateId       String    @map("candidate_id") @db.Uuid
+  requestType       String    @map("request_type") @db.VarChar(30)
+  status            String    @default("pending") @db.VarChar(20)
+  source            String    @db.VarChar(30)
+  reason            String?   @db.VarChar(500)
+  requestedByUserId String?   @map("requested_by_user_id") @db.Uuid
+  resolvedAt        DateTime? @map("resolved_at")
+  resolvedByUserId  String?   @map("resolved_by_user_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, status])
+  @@index([candidateId])
+  @@map("data_subject_requests")
 }
