@@ -25,24 +25,86 @@ export const SYSTEM_FLAG_KEYS = [
 
 export type HealthStatus = 'operational' | 'degraded' | 'down' | 'unmonitored';
 
-export interface HealthService {
-  name: string;
-  status: HealthStatus;
-  metrics: { label: string; value: string; color?: 'green' | 'amber' | 'red' }[];
+/** Stable ids: the web app renders localized names/labels from them (health.services.* / health.metrics.*). */
+export type HealthServiceId = 'api_gateway' | 'database' | 'auth' | 'storage' | 'jobs' | 'ai' | 'email' | 'realtime';
+
+export type HealthMetricId =
+  | 'api_latency'
+  | 'availability'
+  | 'requests_per_min'
+  | 'connectivity'
+  | 'query_time'
+  | 'entity_counts'
+  | 'logins_today'
+  | 'failed_logins_today'
+  | 'enabled_users'
+  | 'storage_used'
+  | 'uploads_today'
+  | 'queue'
+  | 'failed_jobs'
+  | 'processed_today'
+  | 'ai_calls_today'
+  | 'ai_cost'
+  | 'ai_budget'
+  | 'emails_sent_today'
+  | 'bounce_rate'
+  | 'reputation'
+  | 'connections'
+  | 'messages_per_sec'
+  | 'active_channels';
+
+export interface HealthMetric {
+  id: HealthMetricId;
+  /** Locale-invariant value (a number, "12ms", "OK"); null = not measured / unavailable. */
+  value: string | null;
+  color?: 'green' | 'amber' | 'red';
 }
 
-interface SystemHealthInputs {
+export interface HealthService {
+  id: HealthServiceId;
+  status: HealthStatus;
+  metrics: HealthMetric[];
+}
+
+/** A count that could not be read (DB down, or that one query failed) is null — never a guessed 0. */
+export interface SystemHealthCounts {
+  userCount: number | null;
+  orgCount: number | null;
+  loginsToday: number | null;
+  enabledUsers: number | null;
+  auditLogsToday: number | null;
+  vacancyCount: number | null;
+  failedLogins: number | null;
+}
+
+interface SystemHealthInputs extends Omit<SystemHealthCounts, 'auditLogsToday'> {
   dbHealthy: boolean;
   dbLatency: number;
-  orgCount: number;
-  userCount: number;
-  vacancyCount: number;
-  loginsToday: number;
-  failedLogins: number;
-  enabledUsers: number;
 }
 
-/** Only a successful live DB query establishes a service's operational state. */
+const unmeasured = (...ids: HealthMetricId[]): HealthMetric[] => ids.map((id) => ({ id, value: null }));
+const countValue = (count: number | null): string | null => (count === null ? null : String(count));
+
+/**
+ * Reads every count independently: one failing query yields null for that count instead of rejecting the
+ * whole health check. When the SELECT 1 probe already failed, no count is attempted (all null) — the page
+ * must be able to SAY the database is down, not fail with a 500 trying to count rows in it.
+ */
+export async function readSystemHealthCounts(
+  dbHealthy: boolean,
+  queries: { [K in keyof SystemHealthCounts]: () => Promise<number> },
+): Promise<SystemHealthCounts> {
+  const keys = Object.keys(queries) as Array<keyof SystemHealthCounts>;
+  const entries = await Promise.all(
+    keys.map(async (key) => [key, dbHealthy ? await queries[key]().catch(() => null) : null] as const),
+  );
+  return Object.fromEntries(entries) as Record<keyof SystemHealthCounts, number | null>;
+}
+
+/**
+ * Only a successful live DB query establishes a service's operational state. A reachable database whose
+ * counts could not all be read is degraded, not operational.
+ */
 export function buildSystemHealthServices({
   dbHealthy,
   dbLatency,
@@ -53,82 +115,44 @@ export function buildSystemHealthServices({
   failedLogins,
   enabledUsers,
 }: SystemHealthInputs): HealthService[] {
+  const countsComplete = [userCount, orgCount, vacancyCount, loginsToday, failedLogins, enabledUsers].every(
+    (count) => count !== null,
+  );
+  const entityCounts =
+    userCount === null || orgCount === null || vacancyCount === null ? null : `${userCount} / ${orgCount} / ${vacancyCount}`;
   return [
+    { id: 'api_gateway', status: 'unmonitored', metrics: unmeasured('api_latency', 'availability', 'requests_per_min') },
     {
-      name: 'API Gateway',
-      status: 'unmonitored',
+      id: 'database',
+      status: !dbHealthy ? 'down' : countsComplete ? 'operational' : 'degraded',
       metrics: [
-        { label: 'Latencia API', value: 'N/D' },
-        { label: 'Disponibilidad', value: 'N/D' },
-        { label: 'Requests/min', value: 'N/D' },
-      ],
-    },
-    {
-      name: 'Base de Datos',
-      status: dbHealthy ? 'operational' : 'down',
-      metrics: [
-        { label: 'Conectividad', value: dbHealthy ? 'OK' : 'Sin respuesta' },
+        { id: 'connectivity', value: dbHealthy ? 'OK' : null, color: dbHealthy ? undefined : 'red' },
         {
-          label: 'Query time',
-          value: dbHealthy ? `${dbLatency}ms` : 'N/D',
+          id: 'query_time',
+          value: dbHealthy ? `${dbLatency}ms` : null,
           color: dbHealthy ? (dbLatency < 50 ? 'green' : 'amber') : 'red',
         },
-        { label: 'Usuarios / orgs / vacantes', value: `${userCount} / ${orgCount} / ${vacancyCount}` },
+        { id: 'entity_counts', value: entityCounts },
       ],
     },
     {
-      name: 'Autenticacion',
+      id: 'auth',
       status: 'unmonitored',
       metrics: [
-        { label: 'Usuarios con ingreso hoy', value: String(loginsToday) },
-        { label: 'Fallos auditados hoy', value: String(failedLogins), color: failedLogins > 0 ? 'red' : undefined },
-        { label: 'Usuarios habilitados', value: String(enabledUsers) },
+        { id: 'logins_today', value: countValue(loginsToday) },
+        {
+          id: 'failed_logins_today',
+          value: countValue(failedLogins),
+          color: failedLogins !== null && failedLogins > 0 ? 'red' : undefined,
+        },
+        { id: 'enabled_users', value: countValue(enabledUsers) },
       ],
     },
-    {
-      name: 'Almacenamiento',
-      status: 'unmonitored',
-      metrics: [
-        { label: 'Usado', value: 'N/D' },
-        { label: 'Uploads hoy', value: 'N/D' },
-      ],
-    },
-    {
-      name: 'Background Jobs',
-      status: 'unmonitored',
-      metrics: [
-        { label: 'Cola', value: 'N/D' },
-        { label: 'Fallidos', value: 'N/D' },
-        { label: 'Procesados hoy', value: 'N/D' },
-      ],
-    },
-    {
-      name: 'AI (Bedrock)',
-      status: 'unmonitored',
-      metrics: [
-        { label: 'Llamadas hoy', value: 'N/D' },
-        { label: 'Costo', value: 'N/D' },
-        { label: 'Presupuesto', value: 'N/D' },
-      ],
-    },
-    {
-      name: 'Email (SES)',
-      status: 'unmonitored',
-      metrics: [
-        { label: 'Enviados hoy', value: 'N/D' },
-        { label: 'Bounce rate', value: 'N/D' },
-        { label: 'Reputation', value: 'N/D' },
-      ],
-    },
-    {
-      name: 'Realtime',
-      status: 'unmonitored',
-      metrics: [
-        { label: 'Conexiones', value: 'N/D' },
-        { label: 'Mensajes/seg', value: 'N/D' },
-        { label: 'Canales activos', value: 'N/D' },
-      ],
-    },
+    { id: 'storage', status: 'unmonitored', metrics: unmeasured('storage_used', 'uploads_today') },
+    { id: 'jobs', status: 'unmonitored', metrics: unmeasured('queue', 'failed_jobs', 'processed_today') },
+    { id: 'ai', status: 'unmonitored', metrics: unmeasured('ai_calls_today', 'ai_cost', 'ai_budget') },
+    { id: 'email', status: 'unmonitored', metrics: unmeasured('emails_sent_today', 'bounce_rate', 'reputation') },
+    { id: 'realtime', status: 'unmonitored', metrics: unmeasured('connections', 'messages_per_sec', 'active_channels') },
   ];
 }
 
