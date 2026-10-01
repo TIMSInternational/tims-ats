@@ -34,22 +34,42 @@ public sealed class NotificationUseCaseTests
     }
 
     [Fact]
-    public async Task List_ExactlyLimitPlusOne_DropsTheOverflowRow_AndNamesItAsTheCursor()
+    public async Task List_ExactlyLimitPlusOne_DropsTheLookAheadRow_AndNamesTheLastReturnedRowAsTheCursor()
     {
         var repo = new FakeReadRepository([Row("a"), Row("b"), Row("c")]);
         var useCase = new NotificationReadUseCase(repo, new ThrowingWriteRepository());
 
         var result = await useCase.ListAsync(Org, User, 2, null, false, CancellationToken.None);
 
-        // TS: `const next = notifications.pop(); nextCursor = next?.id` — pop() takes the LAST element of a
-        // (limit+1)-length array, so the cursor is the FIRST row of the next page, not the last of this one.
+        // #246: "c" is only the look-ahead row — the first row of the NEXT page. The cursor must be "b", the
+        // last row shown, because the next call pages strictly after the cursor row. Naming "c" (the old,
+        // deliberately reproduced TS defect) made "c" appear on neither page.
         Assert.Equal(["a", "b"], result.Notifications.Select(n => n.Id));
-        Assert.Equal("c", result.NextCursor);
+        Assert.Equal("b", result.NextCursor);
+    }
 
-        // …and "c" is therefore returned by NEITHER page, because the next call passes it as a Prisma cursor
-        // with skip:1. That row loss is a real TS defect, reproduced on purpose and filed separately. This
-        // assertion is what goes red if someone "improves" the port.
-        Assert.DoesNotContain("c", result.Notifications.Select(n => n.Id));
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task List_PagingThroughEveryRow_ShowsEachExactlyOnce(int limit)
+    {
+        // A fake that honours the cursor contract the real repository implements: rows strictly after the
+        // cursor row, limit + 1 of them. Every row must surface exactly once across the pages.
+        var all = Enumerable.Range(0, 7).Select(i => Row($"00000000-0000-4000-8000-{i:D12}")).ToList();
+        var useCase = new NotificationReadUseCase(new PagingReadRepository(all), new ThrowingWriteRepository());
+
+        var seen = new List<string>();
+        Guid? cursor = null;
+        for (var page = 0; page < 20; page++)
+        {
+            var result = await useCase.ListAsync(Org, User, limit, cursor, false, CancellationToken.None);
+            seen.AddRange(result.Notifications.Select(n => n.Id));
+            if (result.NextCursor is null) break;
+            cursor = PagingReadRepository.GuidFor(result.NextCursor);
+        }
+
+        Assert.Equal(all.Select(r => r.Id), seen);
     }
 
     [Fact]
@@ -113,6 +133,31 @@ public sealed class NotificationUseCaseTests
             new FakeReadRepository([]) { UnreadCount = 7 }, new ThrowingWriteRepository());
 
         Assert.Equal(7, (await useCase.UnreadCountAsync(Org, User, CancellationToken.None)).Count);
+    }
+
+    private sealed class PagingReadRepository(IReadOnlyList<NotificationRow> rows) : INotificationReadRepository
+    {
+        public static Guid GuidFor(string id) => Guid.Parse(id);
+
+        public Task<IReadOnlyList<NotificationRow>> ListAsync(
+            Guid? organizationId, Guid userId, int limit, Guid? cursor, bool unreadOnly, CancellationToken cancellationToken)
+        {
+            var start = 0;
+            if (cursor is { } c)
+            {
+                var index = rows.ToList().FindIndex(r => GuidFor(r.Id) == c);
+                if (index < 0) return Task.FromResult<IReadOnlyList<NotificationRow>>([]);
+                start = index + 1;
+            }
+            return Task.FromResult<IReadOnlyList<NotificationRow>>([.. rows.Skip(start).Take(limit + 1)]);
+        }
+
+        public Task<int> CountUnreadAsync(Guid? organizationId, Guid userId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<NotificationPreferencesRow?> GetPreferencesAsync(
+            Guid? organizationId, Guid userId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeReadRepository(IReadOnlyList<NotificationRow> rows) : INotificationReadRepository

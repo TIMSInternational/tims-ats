@@ -5,6 +5,7 @@ import {
   type AuditLogListFilters,
   type AuditAccessReportFilters,
 } from '../repositories/audit.repository';
+import { takeCursorPage } from '../lib/cursor-page';
 
 // ---------------------------------------------------------------------------
 // Audit Service — business logic only, no db imports.
@@ -18,11 +19,7 @@ export const auditService = {
   async listLogs(orgId: string, input: AuditLogListFilters & { take: number; cursor?: string }) {
     const { take, cursor, ...filters } = input;
     const items = await auditRepository.findLogs(orgId, filters, take, cursor);
-    const hasMore = items.length > take;
-    return {
-      items: items.slice(0, take),
-      nextCursor: hasMore ? items[take - 1]!.id : undefined,
-    };
+    return takeCursorPage(items, take);
   },
 
   // Moved verbatim from routers/audit.ts `getLogDetail`.
@@ -40,11 +37,7 @@ export const auditService = {
   async getChangesByEntity(orgId: string, input: { entity: string; entityId: string; take: number; cursor?: string }) {
     const { entity, entityId, take, cursor } = input;
     const items = await auditRepository.findChangesByEntity(orgId, entity, entityId, take, cursor);
-    const hasMore = items.length > take;
-    return {
-      items: items.slice(0, take),
-      nextCursor: hasMore ? items[take - 1]!.id : undefined,
-    };
+    return takeCursorPage(items, take);
   },
 
   async exportLogs(orgId: string, input: AuditExportFilters & { format: 'csv' | 'json' }) {

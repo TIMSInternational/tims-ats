@@ -62,7 +62,8 @@ describe('performance.myRecognitions — own-scoped recognition RECEIVED', () =>
   it('uses an explicit select and a bounded take', () => {
     const b = body();
     expect(b).toMatch(/select:\s*\{/);
-    expect(b).toMatch(/take:/);
+    // `cursorPageArgs(limit, …)` sets `take: limit + 1` (lib/cursor-page.ts); `limit` is zod-bounded.
+    expect(b).toMatch(/take:|cursorPageArgs\(limit,/);
   });
 
   it('only exposes the sender display name (firstName/lastName), no fromUserId/email/avatar leak via select', () => {
@@ -108,6 +109,7 @@ describe('performance.myCommitments — own-scoped employee commitments', () => 
   it('uses an explicit select and a bounded take', () => {
     const b = body();
     expect(b).toMatch(/select:\s*\{/);
-    expect(b).toMatch(/take:/);
+    // `cursorPageArgs(limit, …)` sets `take: limit + 1` (lib/cursor-page.ts); `limit` is zod-bounded.
+    expect(b).toMatch(/take:|cursorPageArgs\(limit,/);
   });
 });

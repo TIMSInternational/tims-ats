@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, assertSubjectInScope } from '../../access';
@@ -35,23 +36,23 @@ export const performanceOkrsRouter = router({
         ],
       };
 
-      const okrs = await db.okr.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          team: { select: { id: true, name: true } },
-          keyResults: true,
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.okr.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.okr.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            include: {
+              user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              team: { select: { id: true, name: true } },
+              keyResults: true,
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (okrs.length > limit) {
-        const nextItem = okrs.pop();
-        nextCursor = nextItem?.id;
-      }
+      const { items: okrs, nextCursor } = takeCursorPage(rows, limit);
 
       return { okrs, nextCursor };
     }),
