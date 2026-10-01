@@ -34,20 +34,25 @@ export const interviewScorecardRepository = {
   },
 
   /**
-   * The interview's job-profile competencies (raw Json), or null when the vacancy
-   * has no job profile. `undefined` when the interview is not in this org.
+   * What a submission needs to know about the interview: its status (a closed
+   * interview refuses scorecards) and its job-profile competencies (raw Json, or
+   * null when the vacancy has no job profile). `undefined` when the interview is
+   * not in this org.
    */
-  async getJobProfileCompetencies(orgId: string, interviewId: string): Promise<Prisma.JsonValue | null | undefined> {
+  async getSubmissionContext(
+    orgId: string,
+    interviewId: string,
+  ): Promise<{ status: string; competencies: Prisma.JsonValue | null } | undefined> {
     const interview = await db.interview.findFirst({
       where: { id: interviewId, organizationId: orgId },
-      select: { vacancyId: true },
+      select: { vacancyId: true, status: true },
     });
     if (!interview) return undefined;
     const profile = await db.jobProfile.findFirst({
       where: { vacancyId: interview.vacancyId, organizationId: orgId },
       select: { competencies: true },
     });
-    return profile?.competencies ?? null;
+    return { status: interview.status, competencies: profile?.competencies ?? null };
   },
 
   /**

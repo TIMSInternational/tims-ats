@@ -49,6 +49,7 @@ const store = vi.hoisted(() => ({
   summary: null as null | { id: string; summary: string },
   jobProfile: null as null | { organizationId: string; vacancyId: string; competencies: unknown },
   audit: [] as Array<Record<string, unknown>>,
+  interviewStatus: 'scheduled',
 }));
 
 type Where = Record<string, unknown>;
@@ -123,6 +124,7 @@ vi.mock('@tims/db', () => {
           id: INTERVIEW,
           organizationId: ORG_A,
           vacancyId: VACANCY,
+          status: store.interviewStatus,
           evaluators: store.panel
             .filter((p) => p.orgId === ORG_A)
             .map((p) => ({ id: p.id, interviewId: p.interviewId, userId: p.userId, user: evaluatorUser(p.userId) })),
@@ -312,6 +314,7 @@ beforeEach(() => {
     ],
   };
   store.audit = [];
+  store.interviewStatus = 'scheduled';
 });
 
 function expectWithheld(sc: ScorecardOut | undefined | null) {
@@ -584,4 +587,39 @@ describe('removeEvaluator — a panel member cannot remove themselves to escape 
     await (await callerAs(RECRUITER)).interview.removeEvaluator({ interviewId: INTERVIEW, userId: ME });
     expect(store.panel.some((p) => p.userId === ME)).toBe(false);
   });
+});
+
+describe('submitScorecard — a closed interview refuses scorecards (#327)', () => {
+  const full = { SQL: 4, Storytelling: 5 };
+
+  it.each(['cancelled', 'no_show'])('refuses a card on a %s interview and writes nothing', async (status) => {
+    store.interviewStatus = status;
+    const caller = await callerAs(ME);
+    await expect(
+      caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(store.cards.some((c) => c.evaluatorId === ME)).toBe(false);
+    expect(store.audit).toEqual([]);
+  });
+
+  it('refuses an UPDATE of an already-submitted card once the interview is cancelled', async () => {
+    store.cards.push(card(ME, true, { ratings: full, recommendation: 'yes' }));
+    store.interviewStatus = 'cancelled';
+    const caller = await callerAs(ME);
+    await expect(
+      caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: { SQL: 1, Storytelling: 1 }, recommendation: 'strong_no' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(store.cards.find((c) => c.evaluatorId === ME)).toMatchObject({ ratings: full, recommendation: 'yes' });
+    expect(store.audit).toEqual([]);
+  });
+
+  it.each(['scheduled', 'rescheduled', 'in_progress', 'completed'])(
+    'accepts a card on a %s interview (scoring after the interview is the normal flow)',
+    async (status) => {
+      store.interviewStatus = status;
+      const caller = await callerAs(ME);
+      await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+      expect(store.cards.find((c) => c.evaluatorId === ME)?.submittedAt).not.toBeNull();
+    },
+  );
 });
