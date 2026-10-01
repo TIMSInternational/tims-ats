@@ -61,11 +61,23 @@ public sealed class TenantAuditCrossRuntimeTests(TenantAuditFixture fixture)
             ["historyMiddle"] = await useCase.HistoryAsync(org, "cross-page", "cross-page", 1, Guid.Parse("d0000000-0000-0000-0000-000000000015"), default),
             ["listLast"] = await useCase.ListAsync(org, new(Entity: "cross-page"), 1, Guid.Parse("d0000000-0000-0000-0000-000000000014"), default),
             ["historyLast"] = await useCase.HistoryAsync(org, "cross-page", "cross-page", 1, Guid.Parse("d0000000-0000-0000-0000-000000000014"), default),
+            // 13, 16 and 17 share created_at 2026-09-01: these pages split that tie (#318).
+            ["listTie"] = await useCase.ListAsync(org, new(Entity: "cross-page"), 2, Guid.Parse("d0000000-0000-0000-0000-000000000014"), default),
+            ["historyTie"] = await useCase.HistoryAsync(org, "cross-page", "cross-page", 2, Guid.Parse("d0000000-0000-0000-0000-000000000014"), default),
+            ["listTieAfter"] = await useCase.ListAsync(org, new(Entity: "cross-page"), 2, Guid.Parse("d0000000-0000-0000-0000-000000000016"), default),
+            ["historyTieAfter"] = await useCase.HistoryAsync(org, "cross-page", "cross-page", 2, Guid.Parse("d0000000-0000-0000-0000-000000000016"), default),
             ["csv"] = await useCase.ExportAsync(org, new(Entity: "csv-probe"), "csv", default),
             ["json"] = await useCase.ExportAsync(org, new(Entity: "csv-probe"), "json", default),
             ["dated"] = await useCase.ExportAsync(org, new(Action: "login_failed", DateFrom: date, DateTo: date), "json", default),
             ["truncated"] = await useCase.ExportAsync(TenantAuditFixture.OrgB, new(Entity: "export-cap"), "json", default),
         };
+        // Pin the tie order itself, not only TS == C#: (created_at DESC, id DESC) → 17 then 16, and 13 after 16.
+        Assert.Equal(
+            ["d0000000-0000-0000-0000-000000000017", "d0000000-0000-0000-0000-000000000016"],
+            ts["listTie"]!["items"]!.AsArray().Select(item => item!["id"]!.GetValue<string>()));
+        Assert.Equal(
+            ["d0000000-0000-0000-0000-000000000013"],
+            ts["listTieAfter"]!["items"]!.AsArray().Select(item => item!["id"]!.GetValue<string>()));
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         foreach (var (name, result) in results)
         {

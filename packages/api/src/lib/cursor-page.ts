@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// Prisma id-cursor pagination — the ONE implementation every `take: limit + 1` list endpoint uses
-// (#318, #246).
+// Prisma id-cursor pagination — the shared helper for `take: limit + 1` list endpoints (#318, #246).
+// `user.list` still implements the same contract inline (fixed separately in #307).
 //
 // Prisma's cursor is INCLUSIVE: `cursor: { id }` positions the page AT that row, and `skip: 1` steps past
 // it. So the cursor handed to the client MUST be the LAST row the client was shown. The defect this

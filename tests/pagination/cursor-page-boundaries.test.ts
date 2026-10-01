@@ -71,6 +71,11 @@ vi.mock('@tims/db', () => {
   const model = () => ({
     findMany: (args: FindManyArgs) => Promise.resolve(prismaFindMany(args)),
     count: () => Promise.resolve(state.rows.length),
+    // The audit repository checks the cursor row is visible under its filters before paging.
+    findFirst: (args: { where: { AND: Array<{ id?: string }> } }) => {
+      const id = args.where.AND.find((clause) => clause.id)?.id;
+      return Promise.resolve(state.rows.find((row) => row.id === id) ? { id } : null);
+    },
   });
   const client = new Proxy({} as Record<string, unknown>, {
     get: (target, prop) => {
@@ -280,7 +285,8 @@ const ENDPOINTS: EndpointCase[] = [
   },
 ];
 
-const NULLABLE_SORT = new Set(['completedAt', 'dueDate']);
+// Only `AssessmentAssignment.completedAt` is nullable among the paged sort keys (`Commitment.dueDate` is NOT NULL).
+const NULLABLE_SORT = new Set(['completedAt']);
 
 /**
  * N rows whose sort key repeats in runs of three (ties straddle every page boundary for limit 2 and 3), with
