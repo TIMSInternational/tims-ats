@@ -86,6 +86,7 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
             TenantPeopleFixture.Recruiter, TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin,
             TenantPeopleFixture.Leader, TenantPeopleFixture.Employee, TenantPeopleFixture.ExternalOnly,
             TenantPeopleFixture.Underscore, TenantPeopleFixture.Hrbp, TenantPeopleFixture.Committee,
+            TenantPeopleFixture.HomeOwner,
         }.Order().ToArray(), Ids(people));
     }
 
@@ -210,10 +211,12 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
 
     // ---- #317: pickers outside recruitment. ----
 
+    // Every active Acme member holding an ACTIVE staff role: NOT Xavi (external-only) and NOT Zed (a platform owner
+    // with a home org but no staff role) — the new purposes are StaffOnly.
     private static readonly Guid[] AllActiveAcme =
     [
         TenantPeopleFixture.Recruiter, TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin,
-        TenantPeopleFixture.Leader, TenantPeopleFixture.Employee, TenantPeopleFixture.ExternalOnly,
+        TenantPeopleFixture.Leader, TenantPeopleFixture.Employee,
         TenantPeopleFixture.Underscore, TenantPeopleFixture.Hrbp, TenantPeopleFixture.Committee,
     ];
 
@@ -224,7 +227,18 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     public async Task Colleague_IsTheWholeDirectory_ForAnyStaffMember(string sub)
     {
         // submitFeedback / giveRecognition are protectedProcedure and cross-team by design (feedback.ts).
-        Assert.Equal(AllActiveAcme.Order().ToArray(), Ids(await People("?purpose=colleague&limit=50", sub)));
+        var people = Ids(await People("?purpose=colleague&limit=50", sub));
+        Assert.Equal(AllActiveAcme.Order().ToArray(), people);
+        // An external-only principal is never enumerated, even though they are an active member of the org.
+        Assert.DoesNotContain(TenantPeopleFixture.ExternalOnly, people);
+    }
+
+    [Fact]
+    public async Task Colleague_ForAPlatformOwnerWithAHomeOrg_IsTheirOrgsStaffDirectory()
+    {
+        // Privileged like super_admin elsewhere; the org-less owner is still 400 (below).
+        Assert.Equal(AllActiveAcme.Order().ToArray(),
+            Ids(await People("?purpose=colleague&limit=50", TenantPeopleFixture.HomeOwnerSub)));
     }
 
     [Fact]
@@ -239,10 +253,9 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [Fact]
     public async Task Colleague_StaysInsideTheCallersTenant()
     {
-        Assert.Equal(new[]
-        {
-            TenantPeopleFixture.OrgBHrAdmin, TenantPeopleFixture.OrgBRecruiter, TenantPeopleFixture.OrgBInactiveRoleLeader,
-        }.Order().ToArray(), Ids(await People("?purpose=colleague&limit=50", TenantPeopleFixture.OrgBRecruiterSub)));
+        // Gil's only role is DEACTIVATED, so he holds no active staff role and is not listed.
+        Assert.Equal(new[] { TenantPeopleFixture.OrgBHrAdmin, TenantPeopleFixture.OrgBRecruiter }.Order().ToArray(),
+            Ids(await People("?purpose=colleague&limit=50", TenantPeopleFixture.OrgBRecruiterSub)));
     }
 
     [Fact]
@@ -286,14 +299,21 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [InlineData(TenantPeopleFixture.LeaderSub, "ninebox_committee_member")]
     [InlineData(TenantPeopleFixture.LeaderSub, "succession_candidate")]
     [InlineData(TenantPeopleFixture.ExternalSub, "performance_subject")]
+    // ninebox:update IS granted to committee, but at TEAM scope: the committee picker is org-wide only.
+    [InlineData(TenantPeopleFixture.CommitteeSub, "ninebox_committee_member")]
     public async Task NewPurposes_WithoutTheMutationPermission_Are403(string sub, string purpose) =>
         Assert.Equal(HttpStatusCode.Forbidden, (await Get($"?purpose={purpose}", sub)).StatusCode);
 
-    [Fact]
-    public async Task OrgStructureMember_IsTheWholeDirectory_ForAUserCreateHolder()
+    [Theory]
+    [InlineData("org_structure_member")]
+    [InlineData("learning_enrollee")]
+    [InlineData("succession_candidate")]
+    [InlineData("evaluation360_participant")]
+    [InlineData("ninebox_committee_member")]
+    public async Task OrgWideHolder_ListsTheWholeStaffDirectory(string purpose)
     {
         Assert.Equal(AllActiveAcme.Order().ToArray(),
-            Ids(await People("?purpose=org_structure_member&limit=50", TenantPeopleFixture.HrAdminSub)));
+            Ids(await People($"?purpose={purpose}&limit=50", TenantPeopleFixture.HrAdminSub)));
     }
 
     [Theory]

@@ -9,6 +9,7 @@ import {
   SYSTEM_FLAG_KEYS,
   buildSystemHealthServices,
   getOverallHealthStatus,
+  logHealthFailure,
   readSystemHealthCounts,
 } from './system.helpers';
 import { cacheInvalidatePrefix } from '../../lib/cache';
@@ -34,8 +35,8 @@ export const systemRouter = router({
       await db.$queryRaw`SELECT 1`;
       dbLatency = Date.now() - start;
       dbHealthy = true;
-    } catch {
-      /* DB down */
+    } catch (error) {
+      logHealthFailure('select1', error);
     }
 
     // Each count is guarded (#323): one failing query degrades the database row instead of turning the whole
@@ -51,6 +52,7 @@ export const systemRouter = router({
       failedLogins: () => db.auditLog.count({ where: { createdAt: { gte: todayStart }, action: 'login_failed' } }),
     });
 
+    // null = the feed could not be read ("unavailable"), distinct from [] = read, nothing matched.
     const recentErrors = dbHealthy
       ? await db.auditLog
           .findMany({
@@ -59,15 +61,18 @@ export const systemRouter = router({
             take: 5,
             select: { id: true, action: true, entity: true, metadata: true, createdAt: true },
           })
-          .catch(() => [])
-      : [];
+          .catch((error: unknown) => {
+            logHealthFailure('recentErrors', error);
+            return null;
+          })
+      : null;
 
     const services = buildSystemHealthServices({ dbHealthy, dbLatency, ...counts });
 
     return {
       services,
       overall: getOverallHealthStatus(services),
-      recentErrors: recentErrors.map((e) => {
+      recentErrors: recentErrors?.map((e) => {
         const meta = e.metadata as Record<string, unknown> | null;
         return {
           id: e.id,
@@ -75,7 +80,7 @@ export const systemRouter = router({
           time: e.createdAt,
           message: (meta?.message as string) || e.action,
         };
-      }),
+      }) ?? null,
       stats: {
         userCount: counts.userCount,
         orgCount: counts.orgCount,

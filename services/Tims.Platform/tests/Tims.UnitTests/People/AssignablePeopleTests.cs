@@ -1,5 +1,6 @@
 using Tims.Application.People;
 using Tims.Domain.Access;
+using Tims.Domain.Identity;
 using Tims.Domain.People;
 
 namespace Tims.UnitTests.People;
@@ -52,23 +53,23 @@ public sealed class AssignablePeopleTests
     public void Rules_ForTheNonRecruitmentPickers_FollowTheMutationEachFeeds()
     {
         // submitFeedback / giveRecognition are protectedProcedure: no caller permission at all.
-        Assert.Equal(new AssignablePurposeRule(null, null, null, null),
+        Assert.Equal(new AssignablePurposeRule(null, null, null, null, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.Colleague));
         // assertSubjectInScope mutations: narrow callers get their subject set instead of a 403.
-        Assert.Equal(new AssignablePurposeRule("performance", "create", null, null, SubjectScoped: true),
+        Assert.Equal(new AssignablePurposeRule("performance", "create", null, null, SubjectScoped: true, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.PerformanceSubject));
-        Assert.Equal(new AssignablePurposeRule("learning", "create", null, null, SubjectScoped: true),
+        Assert.Equal(new AssignablePurposeRule("learning", "create", null, null, SubjectScoped: true, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.LearningEnrollee));
-        Assert.Equal(new AssignablePurposeRule("onboarding", "create", null, null, SubjectScoped: true),
+        Assert.Equal(new AssignablePurposeRule("onboarding", "create", null, null, SubjectScoped: true, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.OnboardingHire));
-        Assert.Equal(new AssignablePurposeRule("succession", "create", null, null, SubjectScoped: true),
+        Assert.Equal(new AssignablePurposeRule("succession", "create", null, null, SubjectScoped: true, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.SuccessionCandidate));
         // Org-scope-only C# gates: the whole directory, org-wide callers only.
-        Assert.Equal(new AssignablePurposeRule("evaluation360", "create", null, null),
+        Assert.Equal(new AssignablePurposeRule("evaluation360", "create", null, null, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.Evaluation360Participant));
-        Assert.Equal(new AssignablePurposeRule("ninebox", "update", null, null),
+        Assert.Equal(new AssignablePurposeRule("ninebox", "update", null, null, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.NineBoxCommitteeMember));
-        Assert.Equal(new AssignablePurposeRule("user", "create", null, null),
+        Assert.Equal(new AssignablePurposeRule("user", "create", null, null, StaffOnly: true),
             AssignablePurposes.RuleFor(AssignablePurpose.OrgStructureMember));
     }
 
@@ -103,14 +104,29 @@ public sealed class AssignablePeopleTests
         Assert.Equal(expected, AssignablePurposes.NeedsSubjectFilter(AssignablePurposes.RuleFor(purpose), scope));
 
     [Theory]
-    [InlineData(new[] { "employee" }, true)]
-    [InlineData(new[] { "leader", "external" }, true)]
-    [InlineData(new[] { "external" }, false)]
-    [InlineData(new[] { "candidate" }, false)]
-    [InlineData(new string[0], false)]
-    [InlineData(new[] { "platform_owner" }, false)]
-    public void Colleague_RequiresAStaffRole(string[] roles, bool expected) =>
-        Assert.Equal(expected, AssignablePurposes.IsAnyStaffMember(roles));
+    [InlineData(PrincipalType.OrgUser, new[] { "employee" }, true)]
+    [InlineData(PrincipalType.OrgUser, new[] { "leader", "external" }, true)]
+    [InlineData(PrincipalType.OrgUser, new[] { "external" }, false)]
+    [InlineData(PrincipalType.OrgUser, new[] { "candidate" }, false)]
+    [InlineData(PrincipalType.OrgUser, new string[0], false)]
+    [InlineData(PrincipalType.OrgUser, new[] { "platform_owner" }, false)]
+    // A real platform owner is privileged (PermissionService); the endpoint still requires a home organization.
+    [InlineData(PrincipalType.PlatformOwner, new[] { "platform_owner" }, true)]
+    [InlineData(PrincipalType.Candidate, new[] { "employee" }, false)]
+    public void Colleague_RequiresAStaffRoleOrAPlatformOwner(PrincipalType type, string[] roles, bool expected) =>
+        Assert.Equal(expected, AssignablePurposes.IsAnyStaffMember(type, roles));
+
+    [Fact]
+    public void RecruitmentPurposes_KeepListingEveryActiveMember_NewOnesListStaffOnly()
+    {
+        foreach (var purpose in Enum.GetValues<AssignablePurpose>())
+        {
+            var rule = AssignablePurposes.RuleFor(purpose);
+            var recruitment = purpose is AssignablePurpose.InterviewEvaluator or AssignablePurpose.VacancyApprover
+                or AssignablePurpose.OfferApprover or AssignablePurpose.VacancyAssignee;
+            Assert.Equal(!recruitment, rule.StaffOnly);
+        }
+    }
 
     [Theory]
     [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Organization, true)]

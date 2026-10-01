@@ -2086,7 +2086,11 @@
     "summaryContractLabel": "Contract:",
     "summarySalaryLabel": "Salary:",
     "positionCountOne": "1 position",
-    "positionCountMany": "{n} positions"
+    "positionCountMany": "{n} positions",
+    "responsibilitiesPlaceholder": "- Design and build scalable solutions\n- Lead code reviews\n- Collaborate with the product team",
+    "requirementsPlaceholder": "- 5+ years of software development experience\n- Computer Science or related degree\n- English B2+",
+    "desiredPlaceholder": "- Experience with AWS/GCP\n- Relevant certifications\n- Startup experience",
+    "benefitsPlaceholder": "- Private health plan\n- Flexible hours\n- Training budget\n- Home office stipend"
   },
   "dashboard": {
     "recentActivity": "Recent Activity",
@@ -2338,6 +2342,8 @@
     "loginsToday": "Users signed in today",
     "eventsToday": "Events today",
     "notAvailable": "N/A",
+    "recentErrorsUnavailable": "Events unavailable: the audit log could not be read.",
+    "organizations": "Organizations",
     "serviceNames": {
       "api_gateway": "API Gateway",
       "database": "Database",

@@ -35,7 +35,10 @@ public enum AssignablePurpose
 /// organization; see <see cref="AssignablePurposes.CallerScopeAllows"/>). <c>SubjectScoped</c> marks a picker
 /// whose mutation runs <c>assertSubjectInScope</c> on the picked person: a narrow-scoped caller is then shown
 /// only their subject set (own → self, team → members of teams they lead, unit → members of their units)
-/// instead of being refused. Eligibility is PERMISSION-based
+/// instead of being refused. <c>StaffOnly</c> lists only people holding at least one ACTIVE staff role in the
+/// organization, so a non-staff principal (external validator) is never enumerated by a whole-directory picker.
+/// The four recruitment purposes predate it and keep listing every active member (interview.schedule and
+/// vacancy.create accept any member). Eligibility is PERMISSION-based
 /// only: it is not scope-aware. A scope-limited approver (e.g. a leader holding offer:approve at team scope)
 /// is listed even for a record outside their scope; the submit step re-checks each approver's scope against
 /// the specific record and rejects the submission with a user-visible error instead of storing an approver
@@ -46,7 +49,8 @@ public sealed record AssignablePurposeRule(
     string? CallerAction,
     string? EligibilityModule,
     string? EligibilityAction,
-    bool SubjectScoped = false);
+    bool SubjectScoped = false,
+    bool StaffOnly = false);
 
 public static class AssignablePurposes
 {
@@ -96,7 +100,8 @@ public static class AssignablePurposes
     ///   purpose is gated on vacancy:update, which a vacancy creator (leader) may lack.</description></item>
     ///   <item><description>colleague → NO permission (<c>performance.submitFeedback</c> / <c>giveRecognition</c> are
     ///   protectedProcedure and deliberately unprobed: peer feedback is company-wide by design, feedback.ts). Any
-    ///   resolved STAFF member may list the directory; a principal with no staff role (external) is refused. Also
+    ///   resolved STAFF member — or a platform owner with a home organization, privileged like super_admin — may list
+    ///   the directory; a principal with no staff role (external) is refused. Also
     ///   used for pickers whose field the mutation accepts as any org member (onboarding buddy, coaching leader).</description></item>
     ///   <item><description>performance_subject → performance:create (createOkr / createCoachingSession / createCommitment,
     ///   each assertSubjectInScope on the employee).</description></item>
@@ -116,14 +121,14 @@ public static class AssignablePurposes
         AssignablePurpose.VacancyApprover => new("vacancy", "update", "vacancy", "approve"),
         AssignablePurpose.OfferApprover => new("offer", "create", "offer", "approve"),
         AssignablePurpose.VacancyAssignee => new("vacancy", "create", null, null),
-        AssignablePurpose.Colleague => new(null, null, null, null),
-        AssignablePurpose.PerformanceSubject => new("performance", "create", null, null, SubjectScoped: true),
-        AssignablePurpose.LearningEnrollee => new("learning", "create", null, null, SubjectScoped: true),
-        AssignablePurpose.OnboardingHire => new("onboarding", "create", null, null, SubjectScoped: true),
-        AssignablePurpose.SuccessionCandidate => new("succession", "create", null, null, SubjectScoped: true),
-        AssignablePurpose.Evaluation360Participant => new("evaluation360", "create", null, null),
-        AssignablePurpose.NineBoxCommitteeMember => new("ninebox", "update", null, null),
-        AssignablePurpose.OrgStructureMember => new("user", "create", null, null),
+        AssignablePurpose.Colleague => new(null, null, null, null, StaffOnly: true),
+        AssignablePurpose.PerformanceSubject => new("performance", "create", null, null, SubjectScoped: true, StaffOnly: true),
+        AssignablePurpose.LearningEnrollee => new("learning", "create", null, null, SubjectScoped: true, StaffOnly: true),
+        AssignablePurpose.OnboardingHire => new("onboarding", "create", null, null, SubjectScoped: true, StaffOnly: true),
+        AssignablePurpose.SuccessionCandidate => new("succession", "create", null, null, SubjectScoped: true, StaffOnly: true),
+        AssignablePurpose.Evaluation360Participant => new("evaluation360", "create", null, null, StaffOnly: true),
+        AssignablePurpose.NineBoxCommitteeMember => new("ninebox", "update", null, null, StaffOnly: true),
+        AssignablePurpose.OrgStructureMember => new("user", "create", null, null, StaffOnly: true),
         _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, null),
     };
 
@@ -146,11 +151,13 @@ public static class AssignablePurposes
         rule.SubjectScoped && !IsOrgWide(callerScope);
 
     /// <summary>
-    /// The gate for a purpose with no caller permission (<see cref="AssignablePurpose.Colleague"/>): the caller must
-    /// hold at least one staff role (<see cref="RoleSlugs.AssignableStaffRoles"/>) — never external/candidate.
+    /// The gate for a purpose with no caller permission (<see cref="AssignablePurpose.Colleague"/>): an org user
+    /// holding at least one staff role (<see cref="RoleSlugs.AssignableStaffRoles"/>) — never external/candidate —
+    /// or a platform owner (privileged everywhere PermissionService decides; the org itself is checked by the caller).
     /// </summary>
-    public static bool IsAnyStaffMember(IEnumerable<string> callerRoles) =>
-        RoleSlugs.FilterStaffRoleSlugs(callerRoles).Count > 0;
+    public static bool IsAnyStaffMember(PrincipalType principalType, IEnumerable<string> callerRoles) =>
+        principalType == PrincipalType.PlatformOwner
+        || (principalType == PrincipalType.OrgUser && RoleSlugs.FilterStaffRoleSlugs(callerRoles).Count > 0);
 
     private static bool IsOrgWide(AccessScope scope) => scope is AccessScope.Organization or AccessScope.Company;
 }

@@ -12,10 +12,11 @@ using Tims.Domain.People;
 namespace Tims.Api.People;
 
 /// <summary>
-/// Tenant "assignable people" directory for pickers (interview evaluators, vacancy approvers, offer
-/// approvers). Replaces the pickers' dependency on tRPC <c>user.list</c>, which requires <c>user:read</c>
-/// — a grant recruiters deliberately do not hold. Authorization follows the action the picker serves, and
-/// the response is the minimal projection a picker renders. Dark unless TenantPeopleDirectoryEnabled.
+/// Tenant "assignable people" directory for every staff picker (see <see cref="AssignablePurposes.RuleFor"/>).
+/// Replaces the pickers' dependency on tRPC <c>user.list</c>, which requires <c>user:read</c> — a grant only
+/// super_admin and hr_admin hold. Authorization follows the mutation the picker feeds, and the response is the
+/// minimal projection a picker renders. Mapped only when TenantPeopleDirectoryEnabled (ON in production since
+/// 2026-10-01).
 /// </summary>
 public static class TenantPeopleEndpoints
 {
@@ -53,11 +54,12 @@ public static class TenantPeopleEndpoints
             if (context is null) return Results.Unauthorized();
             if (rule.CallerModule is null || rule.CallerAction is null)
             {
-                // No caller permission (colleague): any resolved staff member of an organization. An org-less
-                // principal (platform owner) has no directory; a non-staff principal (external) is refused.
+                // No caller permission (colleague): any resolved staff member of an organization, or a platform owner
+                // with a home organization (privileged, as PermissionService treats them). An org-less owner has no
+                // directory (400, like every other purpose); a non-staff principal (external) is refused.
                 if (string.IsNullOrEmpty(context.OrganizationId))
                     return Results.BadRequest(new { error = "organization_required" });
-                if (context.PrincipalType != PrincipalType.OrgUser || !AssignablePurposes.IsAnyStaffMember(context.Roles))
+                if (!AssignablePurposes.IsAnyStaffMember(context.PrincipalType, context.Roles))
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
                 callerScope = AccessScope.Organization;
             }

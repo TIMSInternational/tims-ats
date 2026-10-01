@@ -19,6 +19,7 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     public const string OrgBRecruiterSub = "sub-people-recruiter-b";
     public const string PlatformOwnerSub = "sub-people-platform-owner";
     public const string ExternalSub = "sub-people-external";
+    public const string HomeOwnerSub = "sub-people-owner-home";
 
     public static readonly Guid Recruiter = Guid.Parse("c1000000-0000-0000-0000-000000000001");
     public static readonly Guid Admin = Guid.Parse("c1000000-0000-0000-0000-000000000002");
@@ -31,6 +32,8 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     public static readonly Guid Underscore = Guid.Parse("c1000000-0000-0000-0000-000000000009");
     public static readonly Guid Hrbp = Guid.Parse("c1000000-0000-0000-0000-00000000000a");
     public static readonly Guid Committee = Guid.Parse("c1000000-0000-0000-0000-00000000000b");
+    /// <summary>A platform owner whose users row has a home organization (Acme) and no staff role.</summary>
+    public static readonly Guid HomeOwner = Guid.Parse("c1000000-0000-0000-0000-00000000000c");
     public static readonly Guid OrgBHrAdmin = Guid.Parse("c2000000-0000-0000-0000-000000000001");
     public static readonly Guid OrgBRecruiter = Guid.Parse("c2000000-0000-0000-0000-000000000002");
     public static readonly Guid OrgBInactiveRoleLeader = Guid.Parse("c2000000-0000-0000-0000-000000000003");
@@ -118,8 +121,10 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     //     so Gil — whose only approve grants ride that role — must be absent from both Globex approver lists.
     //  4. b1…010 is a DRIFTED row: Acme's Uma linked to Globex's hr_admin role. It must never make her an Acme
     //     approver (the directory joins roles on the caller's organization, and RLS hides the row).
-    // #317 subject-scoped pickers, also MATRIX rows: performance:create (hr_admin @organization, leader @team,
-    // employee @own), onboarding:create (hr_admin @organization, hrbp @unit), user:create (hr_admin @organization).
+    // #317 pickers, also MATRIX rows: performance:create (hr_admin @organization, leader @team, employee @own),
+    // onboarding:create (hr_admin @organization, hrbp @unit), user/learning/succession/evaluation360:create and
+    // ninebox:update (hr_admin @organization), ninebox:update (committee @team). Zed is a platform owner whose
+    // users row sits in Acme with no staff role: listed by the legacy recruitment directory, never by StaffOnly ones.
     // Org structure: team Ventas (led by Lia, unit Comercial) has members Eli and the INACTIVE Ivan; Pablo (hrbp)
     // is assigned to Comercial, and Uma belongs to it directly (users.business_unit_id). So the leader's subject
     // set is {Lia, Eli}, the hrbp's {Eli, Uma} (+ inactive Ivan, whom the directory drops), the employee's {Eli}.
@@ -142,7 +147,11 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('e1000000-0000-0000-0000-000000000009', 'offer', 'update'),
           ('e1000000-0000-0000-0000-00000000000a', 'performance', 'create'),
           ('e1000000-0000-0000-0000-00000000000b', 'onboarding', 'create'),
-          ('e1000000-0000-0000-0000-00000000000c', 'user', 'create');
+          ('e1000000-0000-0000-0000-00000000000c', 'user', 'create'),
+          ('e1000000-0000-0000-0000-00000000000d', 'learning', 'create'),
+          ('e1000000-0000-0000-0000-00000000000e', 'succession', 'create'),
+          ('e1000000-0000-0000-0000-00000000000f', 'evaluation360', 'create'),
+          ('e1000000-0000-0000-0000-000000000010', 'ninebox', 'update');
         INSERT INTO roles (id, organization_id, slug, is_active) VALUES
           ('a1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'recruiter', true),
           ('a1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'super_admin', true),
@@ -192,6 +201,12 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('f1000000-0000-0000-0000-000000000064', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-00000000000a', 'team'),
           ('f1000000-0000-0000-0000-000000000065', 'a1000000-0000-0000-0000-000000000005', 'e1000000-0000-0000-0000-00000000000a', 'own'),
           ('f1000000-0000-0000-0000-000000000066', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-00000000000b', 'unit'),
+          ('f1000000-0000-0000-0000-000000000067', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000d', 'organization'),
+          ('f1000000-0000-0000-0000-000000000068', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000e', 'organization'),
+          ('f1000000-0000-0000-0000-000000000069', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000f', 'organization'),
+          ('f1000000-0000-0000-0000-00000000006a', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000010', 'organization'),
+          -- committee holds ninebox:update only at TEAM scope (MATRIX): refused by the org-wide-only committee picker
+          ('f1000000-0000-0000-0000-00000000006b', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000010', 'team'),
           -- external: DIVERGENCE 2 (non-staff principal holding approve grants)
           ('f1000000-0000-0000-0000-000000000051', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000004', 'organization'),
           ('f1000000-0000-0000-0000-000000000052', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000005', 'organization'),
@@ -215,6 +230,7 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('c1000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'sub-people-underscore', 'uma@acme.test', 'Uma', 'Under_score', NULL, NULL, false, true, NULL),
           ('c1000000-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'sub-people-hrbp', 'pablo@acme.test', 'Pablo', 'Partner', NULL, NULL, false, true, NULL),
           ('c1000000-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'sub-people-committee', 'tomas@acme.test', 'Tomas', 'Committee', NULL, NULL, false, true, NULL),
+          ('c1000000-0000-0000-0000-00000000000c', '11111111-1111-1111-1111-111111111111', 'sub-people-owner-home', 'zed@tims.test', 'Zed', 'Owner', NULL, NULL, true, true, NULL),
           ('c2000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'sub-people-hr-b', 'foreign-hr@globex.test', 'Fiona', 'Foreign', NULL, NULL, false, true, NULL),
           ('c2000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'sub-people-recruiter-b', 'foreign-rec@globex.test', 'Fabio', 'Foreign', NULL, NULL, false, true, NULL),
           ('c2000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', 'sub-people-leader-b', 'gil@globex.test', 'Gil', 'Gone', NULL, NULL, false, true, NULL),

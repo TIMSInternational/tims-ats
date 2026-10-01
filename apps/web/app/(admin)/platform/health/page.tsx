@@ -54,7 +54,8 @@ export default function PlatformHealthPage() {
 
   const services = data?.services ?? [];
   const overall = data?.overall ?? 'unmonitored';
-  const recentErrors = data?.recentErrors ?? [];
+  // null = the feed could not be read (DB down) — shown as unavailable, never as "no errors".
+  const recentErrors = data?.recentErrors ?? null;
   const stats = data?.stats;
 
   if (isLoading) {
@@ -130,7 +131,7 @@ export default function PlatformHealthPage() {
             </div>
             <div>
               <p className="text-[18px] font-bold text-[#1F114C]">{stats.orgCount ?? '—'}</p>
-              <p className="text-[10px] text-[#8B8B8B]">Organizaciones</p>
+              <p className="text-[10px] text-[#8B8B8B]">{t.health.organizations}</p>
             </div>
           </div>
           <div className="bg-white rounded-xl px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center gap-3">
@@ -246,7 +247,11 @@ export default function PlatformHealthPage() {
             </a>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0 space-y-2.5">
-            {recentErrors.length > 0 ? (
+            {recentErrors === null ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-[12px] text-[#8B8B8B] text-center">{t.health.recentErrorsUnavailable}</p>
+              </div>
+            ) : recentErrors.length > 0 ? (
               recentErrors.map((error) => {
                 return (
                   <div

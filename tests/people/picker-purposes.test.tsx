@@ -20,12 +20,44 @@ function tsxFiles(dir: string): string[] {
   });
 }
 
+/**
+ * The text of a JSX opening tag starting at `start`, scanned to its closing `>` at brace depth 0 — so an
+ * arrow-function prop (`onSelect={(id) => …}`) or a `>` inside a string/expression does not end it early.
+ */
+function openingTag(source: string, start: number): string {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i]!;
+    if (quote) {
+      if (ch === quote && source[i - 1] !== '\\') quote = null;
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+    } else if (ch === '{') {
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+    } else if (ch === '>' && depth === 0) {
+      return source.slice(start, i + 1);
+    }
+  }
+  return source.slice(start);
+}
+
 /** `purpose="…"` for every `<UserPicker` JSX element in a file, in order (null = no purpose prop). */
 function pickerPurposes(source: string): Array<string | null> {
   const purposes: Array<string | null> = [];
-  const opening = /<UserPicker\b([^>]*?)\/?>/gs;
-  for (const match of source.matchAll(opening)) {
-    const prop = /\bpurpose="([a-z0-9_]+)"/.exec(match[1] ?? '');
+  for (const match of source.matchAll(/<UserPicker\b/g)) {
+    const tag = openingTag(source, match.index!);
+    // Only top-level props count: strip nested {…} expressions before looking for purpose="…".
+    let topLevel = '';
+    let depth = 0;
+    for (const ch of tag) {
+      if (ch === '{') depth++;
+      if (depth === 0) topLevel += ch;
+      if (ch === '}') depth--;
+    }
+    const prop = /\bpurpose="([a-z0-9_]+)"/.exec(topLevel);
     purposes.push(prop ? prop[1]! : null);
   }
   return purposes;
@@ -52,6 +84,14 @@ const EXPECTED: Record<string, Array<string>> = {
   '(admin)/recruitment/vacancies/create-modal.org-fields.tsx': ['vacancy_assignee'],
   '(admin)/recruitment/vacancies/[id]/submit-approval-modal.tsx': ['vacancy_approver'],
 };
+
+describe('picker tag scanner', () => {
+  it('reads purpose past arrow-function props and ignores purpose-like text inside expressions', () => {
+    const src = `<UserPicker onSelect={(id) => pick(id > 0 ? 'purpose="x"' : id)} purpose="colleague" />
+      <UserPicker onSelect={() => set({ purpose: 'y' })} disabled={a > b} />`;
+    expect(pickerPurposes(src)).toEqual(['colleague', null]);
+  });
+});
 
 describe('UserPicker call sites (#317)', () => {
   const sites = tsxFiles(APP_DIR)

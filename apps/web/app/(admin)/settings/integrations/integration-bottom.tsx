@@ -2,9 +2,9 @@
 
 import { useI18n } from '../../../../lib/i18n';
 
-// The change-audit feed lives in the platform Audit section, and getSystemHealth
-// is a stub (no real telemetry). Render explicit unavailable states rather than
-// fabricated audit rows / uptime numbers (rule #4).
+// The change-audit feed lives in the platform Audit section, and tenant integration
+// health is not monitored (integration.getSystemHealth reports 'unmonitored', #323).
+// Render explicit unavailable states rather than fabricated audit rows / uptime numbers.
 
 export function AuditTrail() {
   const { t } = useI18n();

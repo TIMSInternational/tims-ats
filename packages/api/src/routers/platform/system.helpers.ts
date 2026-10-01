@@ -1,3 +1,5 @@
+import { logger } from '@tims/shared';
+
 export const auditLogSelect = {
   id: true,
   action: true,
@@ -77,13 +79,21 @@ export interface SystemHealthCounts {
   failedLogins: number | null;
 }
 
-interface SystemHealthInputs extends Omit<SystemHealthCounts, 'auditLogsToday'> {
+interface SystemHealthInputs extends SystemHealthCounts {
   dbHealthy: boolean;
   dbLatency: number;
 }
 
 const unmeasured = (...ids: HealthMetricId[]): HealthMetric[] => ids.map((id) => ({ id, value: null }));
 const countValue = (count: number | null): string | null => (count === null ? null : String(count));
+
+/** Logs a swallowed health-probe failure by error NAME only — never the message (it can carry SQL/PII). */
+export function logHealthFailure(probe: string, error: unknown): void {
+  logger.warn(
+    { module: 'platform_health', probe, error: error instanceof Error ? error.name : typeof error },
+    'system health probe failed',
+  );
+}
 
 /**
  * Reads every count independently: one failing query yields null for that count instead of rejecting the
@@ -96,7 +106,18 @@ export async function readSystemHealthCounts(
 ): Promise<SystemHealthCounts> {
   const keys = Object.keys(queries) as Array<keyof SystemHealthCounts>;
   const entries = await Promise.all(
-    keys.map(async (key) => [key, dbHealthy ? await queries[key]().catch(() => null) : null] as const),
+    keys.map(
+      async (key) =>
+        [
+          key,
+          dbHealthy
+            ? await queries[key]().catch((error: unknown) => {
+                logHealthFailure(`count:${key}`, error);
+                return null;
+              })
+            : null,
+        ] as const,
+    ),
   );
   return Object.fromEntries(entries) as Record<keyof SystemHealthCounts, number | null>;
 }
@@ -114,8 +135,9 @@ export function buildSystemHealthServices({
   loginsToday,
   failedLogins,
   enabledUsers,
+  auditLogsToday,
 }: SystemHealthInputs): HealthService[] {
-  const countsComplete = [userCount, orgCount, vacancyCount, loginsToday, failedLogins, enabledUsers].every(
+  const countsComplete = [userCount, orgCount, vacancyCount, loginsToday, failedLogins, enabledUsers, auditLogsToday].every(
     (count) => count !== null,
   );
   const entityCounts =

@@ -128,20 +128,20 @@ export function Step2Description({
       </div>
       <div>
         <label className={labelCls}>{t.vacancies.keyResponsibilities}</label>
-        <textarea value={responsibilities} onChange={(e) => setResponsibilities(e.target.value)} placeholder="- Disenar y desarrollar soluciones escalables&#10;- Liderar revisiones de codigo&#10;- Colaborar con equipo de producto" maxLength={2000} rows={4} className={textareaCls} />
+        <textarea value={responsibilities} onChange={(e) => setResponsibilities(e.target.value)} placeholder={t.vacancies.responsibilitiesPlaceholder} maxLength={2000} rows={4} className={textareaCls} />
         <p className="text-[10px] text-[#8B8B8B] mt-1">{t.vacancies.oneLinePerResp}</p>
       </div>
       <div>
         <label className={labelCls}>{t.vacancies.minRequirements}</label>
-        <textarea value={requirements} onChange={(e) => setRequirements(e.target.value)} placeholder="- 5+ anos de experiencia en desarrollo de software&#10;- Ingenieria de Sistemas o afines&#10;- Ingles B2+" maxLength={2000} rows={3} className={textareaCls} />
+        <textarea value={requirements} onChange={(e) => setRequirements(e.target.value)} placeholder={t.vacancies.requirementsPlaceholder} maxLength={2000} rows={3} className={textareaCls} />
       </div>
       <div>
         <label className={labelCls}>{t.vacancies.desiredQualifications}</label>
-        <textarea value={desiredQualifications} onChange={(e) => setDesiredQualifications(e.target.value)} placeholder="- Experiencia con AWS/GCP&#10;- Certificaciones relevantes&#10;- Experiencia en startups" maxLength={2000} rows={2} className={textareaCls} />
+        <textarea value={desiredQualifications} onChange={(e) => setDesiredQualifications(e.target.value)} placeholder={t.vacancies.desiredPlaceholder} maxLength={2000} rows={2} className={textareaCls} />
       </div>
       <div>
         <label className={labelCls}>{t.vacancies.benefitsLabel}</label>
-        <textarea value={benefits} onChange={(e) => setBenefits(e.target.value)} placeholder="- Plan de salud prepagada&#10;- Horario flexible&#10;- Presupuesto de capacitacion&#10;- Home office stipend" maxLength={1500} rows={3} className={textareaCls} />
+        <textarea value={benefits} onChange={(e) => setBenefits(e.target.value)} placeholder={t.vacancies.benefitsPlaceholder} maxLength={1500} rows={3} className={textareaCls} />
       </div>
     </div>
   );

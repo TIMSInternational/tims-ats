@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { trpc } from '../trpc';
 import { isPlatformApiEnabled, platformGet, PlatformApiError } from './client';
 
-// Dark cutover: pickers read the C# tenant people directory only when this build-time flag is set;
-// otherwise they keep today's tRPC user.list call (which requires user:read, so recruiters get 403).
+// Build-time cutover flag (ON in production since 2026-10-01): pickers read the C# tenant people directory;
+// with it off they fall back to tRPC user.list, which requires user:read (only super_admin/hr_admin hold it).
 const VIA_CSHARP = process.env.NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP === 'true';
 
 export const ASSIGNABLE_PEOPLE_MAX_LIMIT = 50;

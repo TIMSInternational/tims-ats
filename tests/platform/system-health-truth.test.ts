@@ -16,6 +16,7 @@ const inputs = {
   loginsToday: 4,
   failedLogins: 1,
   enabledUsers: 8,
+  auditLogsToday: 30,
 };
 
 describe('platform health reports only measured states', () => {
@@ -53,6 +54,11 @@ describe('platform health reports only measured states', () => {
       color: undefined,
     });
     expect(getOverallHealthStatus(services)).toBe('degraded');
+  });
+
+  it('counts the audit-log count toward completeness too (a failed auditLogsToday degrades the DB row)', () => {
+    const services = buildSystemHealthServices({ ...inputs, auditLogsToday: null });
+    expect(services.find((service) => service.id === 'database')?.status).toBe('degraded');
   });
 
   it('does not turn account counts into a session-health claim', () => {

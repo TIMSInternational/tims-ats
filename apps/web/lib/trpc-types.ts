@@ -26,7 +26,7 @@ export type AiAgentItem = RouterOutput['platform']['listAiAgents'][number];
 export type SystemHealthData = RouterOutput['platform']['getSystemHealth'];
 export type HealthService = NonNullable<SystemHealthData>['services'][number];
 export type HealthServiceMetric = NonNullable<HealthService['metrics']>[number];
-export type HealthError = NonNullable<SystemHealthData>['recentErrors'][number];
+export type HealthError = NonNullable<NonNullable<SystemHealthData>['recentErrors']>[number];
 
 // Vacancy
 export type VacancyListItem = RouterOutput['vacancy']['list']['items'][number];

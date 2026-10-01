@@ -5,6 +5,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const warn = vi.hoisted(() => vi.fn());
+vi.mock('@tims/shared', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  logger: { warn, info: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ warn, info: vi.fn(), error: vi.fn() }) },
+}));
+
 const dbMock = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   user: { count: vi.fn() },
@@ -37,7 +43,7 @@ async function makeCaller() {
   } as never);
 }
 
-const dbDown = () => Promise.reject(new Error('connect ECONNREFUSED'));
+const dbDown = () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.1:5432 user=alice@acme.test'));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -60,8 +66,12 @@ describe('platform.getSystemHealth (router)', () => {
     expect(health.overall).toBe('down');
     expect(health.services.find((service) => service.id === 'database')?.status).toBe('down');
     expect(health.stats).toEqual({ userCount: null, orgCount: null, loginsToday: null, auditLogsToday: null });
-    expect(health.recentErrors).toEqual([]);
+    // Unavailable (null), not "no errors" ([]).
+    expect(health.recentErrors).toBeNull();
     // Nothing else is queried once the probe failed.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toEqual({ module: 'platform_health', probe: 'select1', error: 'Error' });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('alice');
     expect(dbMock.user.count).not.toHaveBeenCalled();
     expect(dbMock.auditLog.findMany).not.toHaveBeenCalled();
   });
@@ -75,10 +85,19 @@ describe('platform.getSystemHealth (router)', () => {
     expect(health.stats.userCount).toBe(10);
   });
 
+  it('reports recent errors as unavailable (null) when only the audit feed fails, and logs it by name', async () => {
+    dbMock.auditLog.findMany.mockImplementation(dbDown);
+    const health = await (await makeCaller()).platform.getSystemHealth();
+    expect(health.recentErrors).toBeNull();
+    expect(warn).toHaveBeenCalledWith({ module: 'platform_health', probe: 'recentErrors', error: 'Error' }, expect.any(String));
+  });
+
   it('keeps the measured state when everything answers', async () => {
     const health = await (await makeCaller()).platform.getSystemHealth();
     expect(health.services.find((service) => service.id === 'database')?.status).toBe('operational');
     expect(health.stats).toEqual({ userCount: 10, orgCount: 2, loginsToday: 10, auditLogsToday: 3 });
     expect(health.overall).toBe('unmonitored');
+    expect(health.recentErrors).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

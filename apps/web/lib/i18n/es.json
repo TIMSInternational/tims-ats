@@ -2086,7 +2086,11 @@
     "summaryContractLabel": "Contrato:",
     "summarySalaryLabel": "Salario:",
     "positionCountOne": "1 posición",
-    "positionCountMany": "{n} posiciones"
+    "positionCountMany": "{n} posiciones",
+    "responsibilitiesPlaceholder": "- Diseñar y desarrollar soluciones escalables\n- Liderar revisiones de código\n- Colaborar con el equipo de producto",
+    "requirementsPlaceholder": "- 5+ años de experiencia en desarrollo de software\n- Ingeniería de Sistemas o afines\n- Inglés B2+",
+    "desiredPlaceholder": "- Experiencia con AWS/GCP\n- Certificaciones relevantes\n- Experiencia en startups",
+    "benefitsPlaceholder": "- Plan de salud prepagada\n- Horario flexible\n- Presupuesto de capacitación\n- Auxilio para trabajo remoto"
   },
   "dashboard": {
     "recentActivity": "Actividad Reciente",
@@ -2338,6 +2342,8 @@
     "loginsToday": "Usuarios que ingresaron hoy",
     "eventsToday": "Eventos hoy",
     "notAvailable": "N/D",
+    "recentErrorsUnavailable": "Eventos no disponibles: no se pudo leer el registro de auditoría.",
+    "organizations": "Organizaciones",
     "serviceNames": {
       "api_gateway": "API Gateway",
       "database": "Base de datos",
