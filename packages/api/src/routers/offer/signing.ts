@@ -13,6 +13,16 @@ function normaliseRecipient(email: string): string {
   return email.trim().toLowerCase();
 }
 
+// The emailed signing URL is a live bearer token (salary/terms + accept/decline), so in production it
+// must never travel over plain http (#322). http is tolerated outside production, and for a loopback
+// host (a local `next start` runs with NODE_ENV=production; a loopback link never leaves the machine).
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+function isAllowedSigningOrigin(url: URL): boolean {
+  if (url.protocol === 'https:') return true;
+  if (url.protocol !== 'http:') return false;
+  return process.env.NODE_ENV !== 'production' || LOOPBACK_HOSTS.has(url.hostname);
+}
+
 // Public signing-token procedures run with NO tenant in scope (the candidate has no
 // session and the org is unknown until the token resolves an offer), and `db` here is
 // tenantDb, which fails closed without one. The token lookup is cross-tenant by nature,
@@ -106,7 +116,7 @@ export const offerSigningRouter = router({
       } catch {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
       }
-      if (appUrl.protocol !== 'https:' && appUrl.protocol !== 'http:') {
+      if (!isAllowedSigningOrigin(appUrl)) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
       }
 
