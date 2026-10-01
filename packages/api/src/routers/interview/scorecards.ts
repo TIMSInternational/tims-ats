@@ -81,12 +81,19 @@ export const interviewScorecardsRouter = router({
         { ratings: input.ratings, recommendation: input.recommendation, overallNotes: input.overallNotes },
       );
       if (!result.ok) {
-        throw result.reason === 'not_found'
-          ? new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' })
-          : new TRPCError({
-              code: 'BAD_REQUEST',
-              message: 'La evaluacion debe calificar todas las competencias de la entrevista',
-            });
+        if (result.reason === 'not_found') {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
+        }
+        if (result.reason === 'closed') {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'No se puede evaluar una entrevista cancelada o en la que el candidato no se presento',
+          });
+        }
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'La evaluacion debe calificar todas las competencias de la entrevista',
+        });
       }
       return result.scorecard;
     }),
