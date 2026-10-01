@@ -138,6 +138,23 @@ jobs:
             exit 1
           fi
 
+      # #200 — the C# half. EF Core's ExecuteSqlRaw/FromSqlRaw/SqlQueryRaw and an Npgsql command built
+      # from an interpolated string splice values into the SQL text; the …Interpolated / FromSql /
+      # SqlQuery overloads bind them. This grep is the fast, allowlist-free floor (an interpolated literal
+      # passed DIRECTLY to a raw sink); tests/security/csharp-sql-injection.test.ts is the full guard
+      # (concatenation, identifiers traced to their declaration, the reviewed file:line allowlist).
+      - name: No interpolated raw SQL in C#
+        run: |
+          hits=$(grep -rnE '(ExecuteSqlRaw(Async)?|FromSqlRaw|SqlQueryRaw)[[:space:]]*(<[^>()]*>)?[[:space:]]*\([[:space:]]*(\$|@\$)|new[[:space:]]+Npgsql(Batch)?Command[[:space:]]*\([[:space:]]*(\$|@\$)' \
+            services/ --include="*.cs" 2>/dev/null \
+            | grep -vE '/(bin|obj|tests)/' \
+            | grep -vE ':[0-9]+:[[:space:]]*//' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Interpolated string passed to a raw SQL sink in C# — SQL injection risk. Use ExecuteSqlInterpolated/FromSql/SqlQuery or Npgsql parameters."
+            printf '%s\n' "$hits"
+            exit 1
+          fi
+
       - name: No XSS patterns
         run: |
           if grep -rn 'dangerouslySetInnerHTML' apps/web/ --include="*.tsx" --include="*.ts" 2>/dev/null | grep -v node_modules; then
