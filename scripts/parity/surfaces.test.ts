@@ -57,7 +57,76 @@ describe('SURFACES', () => {
       // NEW 2026-09-29 (F8 / PR #307) — the tenant self-serve invitation list, C#-only, registered in the same
       // PR that deployed it dark.
       'tenant-invitations',
+      // NEW 2026-10-01 — PR #310's org structure (2 reads) and PR #304's people directory (1 read), both C#-only,
+      // registered fixture-first before either flag is flipped in production.
+      'tenant-org-structure',
+      'tenant-people',
     ]);
+  });
+
+  it('tenant-org-structure registers BOTH reads, C#-only, hr_admin-probed, with a grant-level deny on each', () => {
+    const s = SURFACES['tenant-org-structure'];
+    expect(s.flag).toBe('Platform__TenantOrgStructureEnabled');
+    expect(s.probeRole).toBe('hr_admin'); // a real organization:read grant, not super_admin's kernel bypass
+    expect(s.roles).toEqual(['super_admin', 'hr_admin', 'hrbp', 'org_admin']);
+    expect(s.endpoints.map((e) => [e.name, e.csharpPath])).toEqual([
+      ['structure', '/tenant/org-structure'],
+      ['options', '/tenant/org-structure/options'],
+    ]);
+    for (const ep of s.endpoints) {
+      expect(ep.tsProcedure, ep.name).toBeUndefined(); // no comparable TS contract
+      expect(ep.globalScope, ep.name).toBeUndefined(); // per-org rows: RLS Mode B must run
+      expect(ep.idScopeKey, ep.name).toBeUndefined();
+      expect(ep.input, ep.name).toEqual({});
+      expect(ep.expectedByRole.org_admin, ep.name).toBe(403); // holds nothing — the grant-level deny
+    }
+    const [structure, options] = s.endpoints;
+    // hrbp holds vacancy:create/update@unit: enough for /options (any-scope OR gate), NOT for the management read.
+    expect(structure.expectedByRole).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 });
+    expect(options.expectedByRole).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 });
+  });
+
+  it('tenant-people registers the directory ONCE, on the unfiltered purpose, with the scope-rule deny', () => {
+    const s = SURFACES['tenant-people'];
+    expect(s.flag).toBe('Platform__TenantPeopleDirectoryEnabled');
+    expect(s.probeRole).toBe('hr_admin');
+    expect(s.endpoints).toHaveLength(1);
+    const [ep] = s.endpoints;
+    expect(ep.tsProcedure).toBeUndefined();
+    expect(ep.globalScope).toBeUndefined();
+    expect(ep.idScopeKey).toBeUndefined();
+    // csharpPath and input go to different consumers; nothing else cross-checks them (#230).
+    const input = ep.input as { purpose: string; limit: number };
+    expect(ep.csharpPath).toBe(`/tenant/people/assignable?purpose=${input.purpose}&limit=${input.limit}`);
+    expect(input).toEqual({ purpose: 'interview_evaluator', limit: 50 });
+    // hrbp's 403 is the whole-directory SCOPE rule (it holds interview:create@unit), org_admin's is grant-level.
+    expect(ep.expectedByRole).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 });
+  });
+
+  it('org-structure + people grant fixtures exist, copy MATRIX scopes, AND are wired into seed() (#166 class)', () => {
+    const seedSrc = readFileSync(fileURLToPath(new URL('./seed.ts', import.meta.url)), 'utf8');
+    expect(seedSrc).toMatch(
+      /if \(roles\.includes\('hr_admin'\) \|\| roles\.includes\('hrbp'\)\) await seedOrgStructureGrants\(db, roleIds\);/,
+    );
+    expect(seedSrc).toMatch(
+      /if \(roles\.includes\('hr_admin'\) \|\| roles\.includes\('hrbp'\)\) await seedTenantPeopleGrants\(db, roleIds\);/,
+    );
+    const body = (name: string) => {
+      const fn = seedSrc.slice(seedSrc.indexOf(`async function ${name}`));
+      return fn.slice(0, fn.indexOf('\n}\n'));
+    };
+    const os = body('seedOrgStructureGrants');
+    expect(os).toContain("upsertPermission(db, 'organization', 'read')");
+    for (const a of ['create', 'update', 'delete']) expect(os).toContain(`upsertPermission(db, 'user', '${a}')`);
+    for (const a of ['create', 'update']) expect(os).toContain(`upsertPermission(db, 'vacancy', '${a}')`);
+    expect(os).toMatch(/upsertRolePermission\(db, hrAdmin, orgRead, 'organization'\)/);
+    expect(os).toMatch(/upsertRolePermission\(db, hrbp, perm, 'unit'\)/);
+    // hr_admin must NOT be granted organization:create/update — its 403 on the structure writes depends on it.
+    expect(os).not.toMatch(/'organization', '(create|update)'/);
+    const people = body('seedTenantPeopleGrants');
+    expect(people).toContain("upsertPermission(db, 'interview', 'create')");
+    expect(people).toMatch(/upsertRolePermission\(db, hrAdmin, interviewCreate, 'organization'\)/);
+    expect(people).toMatch(/upsertRolePermission\(db, hrbp, interviewCreate, 'unit'\)/);
   });
 
   it('tenant-invitations registers only the list, C#-only, with a grant-level deny and a granted probe', () => {

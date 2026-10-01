@@ -1,7 +1,8 @@
 # Tenant people directory for pickers (`GET /tenant/people/assignable`) — PR #304, DARK
 
 **Status:** built, integration-tested against real PostgreSQL under production-shaped RLS, **not deployed,
-not flipped, not parity-registered.** Nothing here is prod-verified.
+not flipped.** Parity-registered 2026-10-01 (`verify tenant-people`), but no verify has ever run — nothing here is
+prod-verified.
 
 ## Why it exists
 
@@ -61,11 +62,16 @@ Flip **C# first**, verify, then the web flag (build-time, so it needs a redeploy
 flag off every picker shows the "unavailable" state — the hook never falls back to tRPC by design. The FE zod
 schema is `.strict()`: web and C# must be on the same side of #304 (both with or both without `roleSlugs`).
 
-**Before flipping in production:** register the surface in `scripts/parity/surfaces.ts` (fixture-first) and
-remove it from the `UNREGISTERED_ALLOWLIST` in `tests/governance/parity-registry-covers-deployed-routes.test.ts`.
-Not done in #304: the parity seed has no `recruiter` role and no interview/vacancy/offer create/update grants, and
-a super_admin/org_admin-only registration would prove only the privileged branch, not the recruiter or scope paths
-this surface exists for.
+**Before flipping in production — parity registration (done 2026-10-01, never run):** registered in
+`scripts/parity/surfaces.ts` as `tenant-people` and removed from the coverage allowlist. A route registers once,
+so it is registered on `purpose=interview_evaluator&limit=50` — the unfiltered whole-org directory, and the purpose
+with the whole-directory scope rule. `seedTenantPeopleGrants` copies MATRIX: hr_admin interview:create@organization
+(the probe — a real grant, the same shape recruiter holds), hrbp interview:create@unit (seeded so its 403 is the
+SCOPE rule firing on a passed grant check, not a missing grant), org_admin nothing (grant-level 403). RLS Mode B
+compares the two parity orgs' directories. Run `verify tenant-people` with `Platform__TenantPeopleDirectoryEnabled=true`
+at canary, before the web flag. Still NOT covered remotely: the approver purposes and `?vacancyId=` (no approver or
+vacancy fixture; `TenantPeopleEndpointTests` covers them) and a seeded `recruiter` role (hr_admin holds the same
+grant shape).
 
 ## Tests
 
