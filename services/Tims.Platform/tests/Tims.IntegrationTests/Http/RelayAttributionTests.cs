@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Tims.Api.Configuration;
 using Tims.Api.Http;
@@ -45,11 +46,15 @@ public sealed class RelayAttributionTests
         return context;
     }
     private static Task Run(HttpContext context, IRelayNonceStore nonces, RequestDelegate next,
-        string? allowWithoutIp = null)
+        string? allowWithoutIp = null, string environment = "Development", string? e2eMarker = null)
     {
         var options = Options.Create(new PlatformOptions
         { ImpersonationSecret = Secret, AllowAnonymousRelayWithoutClientIp = allowWithoutIp });
-        return new TrustedProxyHeaderMiddleware(ctx => new RelayAttributionMiddleware(next).InvokeAsync(ctx, options, nonces))
+        var host = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = environment };
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { [RelayAttributionMiddleware.E2EStackMarker] = e2eMarker }).Build();
+        return new TrustedProxyHeaderMiddleware(ctx =>
+                new RelayAttributionMiddleware(next).InvokeAsync(ctx, options, nonces, host, configuration))
             .InvokeAsync(context, options);
     }
     [Theory]
@@ -213,6 +218,44 @@ public sealed class RelayAttributionTests
         }, "true");
         Assert.True(called);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("true")]
+    [InlineData("0")]
+    [InlineData(" 1")]
+    public async Task InProductionTheOptOutIsRefusedWithoutTheExactE2EMarker(string? marker)
+    {
+        // A stray Platform__AllowAnonymousRelayWithoutClientIp on App Runner (Production host) must not re-open the
+        // shared anonymous bucket: the 503 stands unless the process is explicitly the E2E stack.
+        var context = AnonymousRequest(null, "/invitations/setup/preview");
+        await Run(context, new Nonces(), _ => throw new InvalidOperationException("must not be reached"),
+            "true", environment: "Production", e2eMarker: marker);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InProductionTheOptOutIsHonouredOnlyWithTheE2EMarker()
+    {
+        var context = AnonymousRequest(null, "/invitations/setup/preview");
+        var called = false;
+        await Run(context, new Nonces(), _ => { called = true; return Task.CompletedTask; },
+            "true", environment: "Production", e2eMarker: "1");
+        Assert.True(called);
+    }
+
+    [Theory]
+    [InlineData(null, "Development", null, false)]
+    [InlineData("true", "Development", null, true)]
+    [InlineData("true", "Staging", null, true)]
+    [InlineData("true", "Production", null, false)]
+    [InlineData("true", "production", null, false)]
+    [InlineData("true", "Production", "1", true)]
+    [InlineData("TRUE", "Production", "1", false)]
+    [InlineData(null, "Production", "1", false)] // the marker alone opts nothing out
+    public void OptOutPolicy(string? flag, string environment, string? marker, bool allowed) =>
+        Assert.Equal(allowed, RelayAttributionMiddleware.AllowsAnonymousWithoutClientIp(flag, environment, marker));
 
     [Fact]
     public async Task AnAuthenticatedRelayWithoutAClientIpIsNotRefused()

@@ -799,7 +799,9 @@ public sealed class PlatformOptions
     /// <see cref="Tims.Api.Http.RelayAttributionMiddleware"/>: the web relay only vouches for an IP on Vercel, and
     /// without one every anonymous caller would share the single <c>anonymous</c> rate-limit bucket and write
     /// IP-less audit rows. Set this only on a local stack whose web app runs outside Vercel. Polarity matches
-    /// <see cref="TrustXRealIpHeader"/>: absent or garbled keeps the refusal ON.
+    /// <see cref="TrustXRealIpHeader"/>: absent or garbled keeps the refusal ON. In the Production host environment
+    /// it is additionally REFUSED unless the process also carries <c>TIMS_E2E_STACK=1</c> (the E2E stack's marker),
+    /// so a stray flag on App Runner cannot re-open the shared bucket.
     /// </summary>
     public string? AllowAnonymousRelayWithoutClientIp { get; init; }
 }

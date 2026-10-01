@@ -1160,9 +1160,20 @@ try
     // is set; say so loudly if it is, because in production it re-opens the shared `anonymous` bucket.
     if (string.Equals(pipelineOptions.AllowAnonymousRelayWithoutClientIp, "true", StringComparison.Ordinal))
     {
-        app.Logger.LogWarning(
-            "SECURITY: Platform:AllowAnonymousRelayWithoutClientIp is set — anonymous relayed requests without a "
-            + "vouched client IP are accepted and share one rate-limit bucket. Development stacks only.");
+        if (RelayAttributionMiddleware.AllowsAnonymousWithoutClientIp(pipelineOptions.AllowAnonymousRelayWithoutClientIp,
+                app.Environment.EnvironmentName, app.Configuration[RelayAttributionMiddleware.E2EStackMarker]))
+        {
+            app.Logger.LogWarning(
+                "SECURITY: Platform:AllowAnonymousRelayWithoutClientIp is honoured — anonymous relayed requests without "
+                + "a vouched client IP are accepted and share one rate-limit bucket. Development/E2E stacks only.");
+        }
+        else
+        {
+            app.Logger.LogError(
+                "SECURITY: Platform:AllowAnonymousRelayWithoutClientIp is set in Production without {Marker}=1 and is "
+                + "REFUSED — anonymous relayed requests without a client IP still get 503. Remove the flag.",
+                RelayAttributionMiddleware.E2EStackMarker);
+        }
     }
 
     // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to

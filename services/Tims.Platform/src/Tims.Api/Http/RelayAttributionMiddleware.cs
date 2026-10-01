@@ -15,7 +15,23 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
     public const string HeaderName = "x-tims-relay-attribution";
     private const string Purpose = "tims-platform-relay-attribution-v1\n";
 
-    public async Task InvokeAsync(HttpContext context, IOptions<PlatformOptions> options, IRelayNonceStore nonces)
+    /// <summary>The explicit marker the E2E stack sets on its API container (mirrors the web side's TIMS_E2E_STACK).</summary>
+    public const string E2EStackMarker = "TIMS_E2E_STACK";
+
+    /// <summary>
+    /// #329 item 2 — whether an anonymous relayed request with NO vouched client IP may pass. Only when
+    /// <see cref="PlatformOptions.AllowAnonymousRelayWithoutClientIp"/> is exactly "true", AND the host is not
+    /// Production unless the process also carries <see cref="E2EStackMarker"/> exactly "1". So the flag alone can
+    /// never re-open the shared anonymous bucket on a production deployment: a mis-set flag is refused (the 503
+    /// stays), and Program logs it at ERROR.
+    /// </summary>
+    public static bool AllowsAnonymousWithoutClientIp(string? flag, string environmentName, string? e2eMarker) =>
+        string.Equals(flag, "true", StringComparison.Ordinal)
+        && (!string.Equals(environmentName, Environments.Production, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(e2eMarker, "1", StringComparison.Ordinal));
+
+    public async Task InvokeAsync(HttpContext context, IOptions<PlatformOptions> options, IRelayNonceStore nonces,
+        IHostEnvironment environment, IConfiguration configuration)
     {
         if (!context.Request.Headers.TryGetValue(HeaderName, out var values))
         {
@@ -48,7 +64,8 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
         // anonymous caller (every candidate, every invitee) would collapse into the one shared `anonymous` bucket —
         // one caller can then exhaust it for all — and its audit rows would carry no address. Refuse instead.
         if (anonymousInvitationSetup && metadata.Ip is null
-            && !string.Equals(options.Value.AllowAnonymousRelayWithoutClientIp, "true", StringComparison.Ordinal))
+            && !AllowsAnonymousWithoutClientIp(options.Value.AllowAnonymousRelayWithoutClientIp,
+                environment.EnvironmentName, configuration[E2EStackMarker]))
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             return;
