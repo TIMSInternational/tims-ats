@@ -1,9 +1,12 @@
 # Public-application CV recovery (.NET 10)
 
-Status: implementation contract for #333. The retry schema, .NET lease repository,
-bounded PDF/DOCX extraction and S3 object reader are implemented. The guarded
-Bedrock parser and hosted loop are **not yet deployed**; the S3 reader is not
-registered until those pieces and its IAM grant are verified.
+Status: draft implementation for #333. The retry schema, lease repository,
+bounded PDF/DOCX extraction, ETag-pinned S3 reader, guarded Bedrock Converse
+parser, per-organization budget/usage ledger and API-hosted loop are implemented.
+The loop is **disabled by default and not deployed/activated**. It must remain
+off until the migration, AWS permissions, alert and synthetic production canary
+below are verified. The existing post-response TypeScript parse handles new
+applications first; .NET recovers only visible unparsed rows.
 
 ## Existing boundary
 
@@ -17,20 +20,24 @@ output must not mark the document parsed or enter the cache.
 
 ## Runtime decision
 
-Run the reconciler in the **deployed .NET 10 API host** behind a default-off flag.
+Run the reconciler in the **deployed .NET 10 API host** behind
+`Platform__CvParseRecoveryEnabled=false` by default.
 `Tims.Workers` has a Quartz host in source but no production deployment; registering a
-job there alone cannot close the gap. The host must resolve its own scoped run on each
-tick, catch transient failures without stopping the API and coordinate across App
+job there alone cannot close the gap. The host owns dedicated S3, Bedrock and
+database clients, catches transient failures without stopping the API and coordinates across App
 Runner instances through PostgreSQL leases. Move the loop to `Tims.Workers` only
 after that host is deployed and the API loop is disabled.
 
-The .NET processor must use the S3 reader, bounded PDF/DOCX text extractor and a
-guarded Bedrock CV parser. It must not call an end-user tRPC procedure or mint a staff token.
-Before the flag is enabled, port the current AI door's monthly budget, guardrail,
-bounded prompt, schema validation and usage accounting to a shared .NET AI service.
-Use the existing Haiku inference profile and no raw-CV cache. A malformed response is
-a failed attempt, never an empty success. Keep credentials in the runtime secret
-store and IAM scoped to the CV bucket and Bedrock model/guardrail.
+The .NET processor uses the S3 reader, bounded PDF/DOCX extractor and guarded
+Bedrock Converse parser. It never calls a tRPC procedure or mints a staff token.
+The parser requires an explicit guardrail ID and version, sanitizes the bounded
+prompt, validates every result field, rejects an empty structured response and
+records token usage before accepting output. Invalid or guardrail-blocked output
+is a failed attempt, never an empty success. The existing Haiku 4.5 US inference
+profile is the default; no raw-CV cache exists. The budget defaults to $25 per
+organization per month, matching the TypeScript gate. Because the TS and .NET
+callers can overlap, this pre-call budget check is a conservative control, not
+an atomic cross-runtime spend reservation; measure actual cost at canary.
 
 ## Durable state and concurrency
 
@@ -45,25 +52,67 @@ then commits the claims before doing network work. Claim increments the attempt
 count and sets a unique lease token. Completion or rescheduling requires that token,
 the exact document id and organization id; a stale worker cannot overwrite a newer
 result. Check the candidate is active, the application consent is not withdrawn and
-the S3 key begins `cv-uploads/{organizationId}/` before fetching. Recheck consent
-and `parsed_data IS NULL` in the final transaction. A withdrawn or deleted subject
-is never sent to Bedrock. Preserve the document and staff visibility on failure.
+the S3 key begins `cv-uploads/{organizationId}/` before fetching. Immediately
+before inference, recheck the current lease and consent under the same candidate
+advisory lock used by withdrawal; retain that session lock only through the
+20-second Bedrock call, then release it before the final transaction. Completion
+rechecks consent and `parsed_data IS NULL`. A withdrawn or deleted subject is
+never sent to Bedrock after withdrawal has committed. Preserve the document and
+staff visibility on failure.
 
 Transient failures back off (5, 20, then 60 minutes) with a fixed maximum of four
 recovery attempts. Corrupt/empty files are terminal with a reason code; no raw CV text, email,
 filename or provider error message is stored in retry state or logs. The worker
-emits counts and oldest-age metrics for unparsed, leased, exhausted and successful
-jobs. Alert on an exhausted job or a backlog older than the grace window. Limit
-concurrent Bedrock calls to two initially and measure cost under the 25-candidate
-beta load before raising it.
+logs PII-free claimed/completed/failed/ineligible counts and, every five minutes,
+due/leased/exhausted counts and oldest due age. A stable `CV_RECOVERY_ALERT`
+warning fires when an exhausted document exists or oldest due age exceeds ten
+minutes. Configure a CloudWatch log metric filter and SNS alarm for that warning
+before activation; App Runner 5xx alarms cannot detect a stalled background loop.
+Each API instance runs at most two concurrent Bedrock calls. Measure spend under
+the 25-candidate beta load before raising it.
+
+## Activation order (no production mutation in this PR)
+
+1. Merge prerequisite #356, then apply Prisma migration
+   `20261010180000_cv_parse_retry_leases` to production and verify its five
+   columns and partial index. **Apply before deploying an image built from the
+   updated Prisma model.** Keep the recovery flag off.
+2. Grant the running App Runner instance role `s3:GetObject` only on the CV
+   bucket's `cv-uploads/*` prefix, including a cross-account bucket policy if
+   needed. Alternatively, supply a dedicated least-privilege
+   `CV_UPLOADS_AWS_ACCESS_KEY_ID`/`CV_UPLOADS_AWS_SECRET_ACCESS_KEY` pair from
+   the runtime secret store. The currently configured AWS account does not list
+   the CV bucket, and the instance role currently has no CV S3 policy, so its
+   ownership and access must be confirmed before activation. Grant Bedrock model
+   invocation on the chosen inference profile and all its routed foundation-model
+   Regions, plus the selected guardrail. If Bedrock uses a separate account,
+   store only its dedicated key pair in the runtime secret store. AWS documents the
+   [inference-profile IAM scope](https://docs.aws.amazon.com/bedrock/latest/userguide/geographic-cross-region-inference.html)
+   and [guardrail permissions](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions.html).
+3. Supply `CV_UPLOADS_BUCKET`, `CV_UPLOADS_REGION`, `BEDROCK_AWS_REGION`,
+   `BEDROCK_GUARDRAIL_ID`, and pinned `BEDROCK_GUARDRAIL_VERSION` to App Runner.
+   Optionally supply `AI_DEFAULT_MONTHLY_BUDGET_USD`. The model is pinned to
+   Haiku 4.5 so token metering cannot silently understate another model's price.
+   Verify the guardrail's PII policy, AWS quota and model access in that account.
+4. Add the CloudWatch log metric filter/SNS alarm for `CV_RECOVERY_ALERT`, verify
+   delivery to its confirmed recipient, then enable
+   `Platform__CvParseRecoveryEnabled=true` on a canary instance. Use a clearly
+   synthetic application whose first parse fails; verify the one existing
+   document later gains valid `parsed_data`, one candidate profile is updated,
+   one usage row is charged, and no duplicate application/document is created.
+   Verify malformed output, disabled budget, withdrawn consent and S3 errors
+   retain a visible unparsed document without leaking CV text into logs.
+5. Observe due/exhausted counts and actual Bedrock cost for the 25-candidate
+   beta load. Leave the switch off or roll it back if alerts, cost or latency
+   exceed the agreed beta thresholds.
 
 ## Acceptance
 
-Test against real PostgreSQL with forced RLS and two worker instances: one claim
+Local tests against real PostgreSQL with forced RLS and two worker instances cover one claim
 per document, expired-lease recovery, stale-token rejection, tenant key isolation,
 withdrawal before and after a claim, retry cap and idempotent completion. Test
-PDF/DOCX extraction with small synthetic files, malformed model output, Bedrock
-timeout, budget denial and shutdown between claim and completion. A production
-canary needs an explicitly synthetic application whose first parse fails, whose
-retry later succeeds, and whose candidate/document count remains one. The flag
-stays off until those tests, migration, IAM and operational alert are verified.
+PDF/DOCX extraction with small synthetic files, malformed model output, budget
+denial, withdrawal before inference and during the consent gate, and end-to-end
+synthetic PDF processing. A live Bedrock/S3 canary, model timeout under real AWS,
+and shutdown between claim and completion still require activation-stage testing.
+The flag stays off until migration, IAM, alert and canary are verified.

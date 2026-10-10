@@ -9,7 +9,12 @@ namespace Tims.Infrastructure.CvParsing;
 /// between the HEAD and GET from silently changing the evidence being parsed.
 /// The client must be constructed for CV_UPLOADS_REGION, not the API region.
 /// </summary>
-public sealed class S3CvObjectStore(IAmazonS3 s3, string bucket)
+public interface ICvObjectStore
+{
+    Task<byte[]> FetchAsync(Guid organizationId, string objectKey, CancellationToken ct);
+}
+
+public sealed class S3CvObjectStore(IAmazonS3 s3, string bucket) : ICvObjectStore
 {
     public async Task<byte[]> FetchAsync(Guid organizationId, string objectKey, CancellationToken ct)
     {

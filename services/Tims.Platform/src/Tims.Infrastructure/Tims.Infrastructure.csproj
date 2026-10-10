@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101.8" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.104.2" />
     <PackageReference Include="AWSSDK.SimpleEmail" Version="4.0.100.13" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />

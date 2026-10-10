@@ -671,6 +671,13 @@ public sealed class PlatformOptions
     public bool CandidateConsentEnabled { get; init; }
 
     /// <summary>
+    /// Enables the .NET 10 CV parse recovery loop in the deployed API host.
+    /// Defaults off until the retry DDL, bucket/model IAM, guardrail and canary
+    /// are verified. No candidate document is claimed while disabled.
+    /// </summary>
+    public bool CvParseRecoveryEnabled { get; init; }
+
+    /// <summary>
     /// Default-disabled company-admin team invitations (<c>/tenant-invitations</c>): list grantable roles,
     /// list/create/resend/revoke invitations for the CALLER'S OWN organization only. Gated by
     /// <c>user:create</c> at organization scope plus InvitationGrantPolicy (no role above the caller's own).

@@ -29,14 +29,27 @@ public sealed class CvParseLeaseFixture : IAsyncLifetime
               type text NOT NULL, file_url text NOT NULL, parsed_data jsonb,
               created_at timestamp(3) NOT NULL, updated_at timestamp(3) NOT NULL
             );
+            CREATE TABLE ai_agents (id uuid PRIMARY KEY, slug text NOT NULL UNIQUE, status text NOT NULL);
+            CREATE TABLE ai_agent_org_configs (id uuid PRIMARY KEY, agent_id uuid NOT NULL,
+              organization_id uuid NOT NULL, enabled boolean NOT NULL, monthly_budget double precision);
+            CREATE TABLE ai_agent_usage_logs (id uuid PRIMARY KEY, agent_id uuid NOT NULL,
+              organization_id uuid NOT NULL, input_tokens integer NOT NULL, output_tokens integer NOT NULL,
+              cost_usd double precision NOT NULL, latency_ms integer NOT NULL, cached boolean NOT NULL,
+              created_at timestamp NOT NULL);
             CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS;
             GRANT SELECT, UPDATE ON candidates, data_consents, candidate_documents TO app_tenant;
+            GRANT SELECT ON ai_agents, ai_agent_org_configs TO app_tenant;
+            GRANT SELECT, INSERT ON ai_agent_usage_logs TO app_tenant;
             ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
             ALTER TABLE candidates FORCE ROW LEVEL SECURITY;
             ALTER TABLE data_consents ENABLE ROW LEVEL SECURITY;
             ALTER TABLE data_consents FORCE ROW LEVEL SECURITY;
             ALTER TABLE candidate_documents ENABLE ROW LEVEL SECURITY;
             ALTER TABLE candidate_documents FORCE ROW LEVEL SECURITY;
+            ALTER TABLE ai_agent_org_configs ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE ai_agent_org_configs FORCE ROW LEVEL SECURITY;
+            ALTER TABLE ai_agent_usage_logs ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE ai_agent_usage_logs FORCE ROW LEVEL SECURITY;
             CREATE POLICY tenant_isolation ON candidates
               USING (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid)
               WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid);
@@ -44,6 +57,12 @@ public sealed class CvParseLeaseFixture : IAsyncLifetime
               USING (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid)
               WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid);
             CREATE POLICY tenant_isolation ON candidate_documents
+              USING (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid)
+              WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid);
+            CREATE POLICY tenant_isolation ON ai_agent_org_configs
+              USING (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid)
+              WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid);
+            CREATE POLICY tenant_isolation ON ai_agent_usage_logs
               USING (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid)
               WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id',true),'')::uuid);
             """, connection);
@@ -58,7 +77,7 @@ public sealed class CvParseLeaseFixture : IAsyncLifetime
     public async Task ResetAsync()
     {
         await using var connection = await Source.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand("TRUNCATE candidate_documents, data_consents, candidates", connection);
+        await using var command = new NpgsqlCommand("TRUNCATE candidate_documents, data_consents, candidates, ai_agent_usage_logs, ai_agent_org_configs, ai_agents", connection);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -187,6 +206,25 @@ public sealed class CvParseLeaseTests(CvParseLeaseFixture fixture)
     }
 
     [Fact]
+    public async Task Backlog_snapshot_counts_due_leased_and_exhausted_without_candidate_data()
+    {
+        await fixture.ResetAsync();
+        var org = Guid.NewGuid();
+        await fixture.SeedAsync(org, Now.AddMinutes(-30));
+        await fixture.SeedAsync(org, Now.AddMinutes(-20));
+        await fixture.SeedAsync(org, Now.AddMinutes(-10));
+        var exhausted = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        Assert.True(await _repository.FailAsync(exhausted, CvParseFailureCode.InvalidDocument,
+            Now, CancellationToken.None));
+        _ = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        var stats = await _repository.ReadStatsAsync(Now, CancellationToken.None);
+        Assert.Equal(1, stats.Due);
+        Assert.Equal(1, stats.Leased);
+        Assert.Equal(1, stats.Exhausted);
+        Assert.Equal(600, stats.OldestDueAgeSeconds);
+    }
+
+    [Fact]
     public async Task Completion_writes_document_and_profile_once_then_rejects_replay()
     {
         await fixture.ResetAsync();
@@ -224,6 +262,62 @@ public sealed class CvParseLeaseTests(CvParseLeaseFixture fixture)
         await using var command = new NpgsqlCommand("SELECT parsed_data IS NULL FROM candidate_documents WHERE id=@id", connection);
         command.Parameters.AddWithValue("id", doc);
         Assert.True((bool)(await command.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
+    public async Task Consent_gate_denies_withdrawn_claim_before_model_work()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedAsync(Guid.NewGuid(), Now.AddMinutes(-3));
+        var lease = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        await fixture.WithdrawAsync(lease.CandidateId);
+        var called = false;
+        var result = await _repository.RunWithConsentGateAsync(lease, _ =>
+        {
+            called = true;
+            return Task.FromResult("sent");
+        }, Now, CancellationToken.None);
+        Assert.Null(result);
+        Assert.False(called);
+    }
+
+    [Fact]
+    public async Task Consent_gate_serializes_with_withdrawal_lock_during_inference()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedAsync(Guid.NewGuid(), Now.AddMinutes(-3));
+        var lease = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        var inside = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var processing = _repository.RunWithConsentGateAsync(lease, async _ =>
+        {
+            inside.SetResult();
+            await release.Task;
+            return "sent";
+        }, Now, CancellationToken.None);
+        await inside.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var withdrawing = Task.Run(async () =>
+        {
+            await using var connection = await fixture.Source.OpenConnectionAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+            await using var command = new NpgsqlCommand("""
+                SELECT pg_advisory_xact_lock(hashtextextended(@candidate, 0));
+                UPDATE data_consents SET withdrawn_at = @now WHERE subject_user_id = @id;
+                """, connection, transaction);
+            command.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
+            command.Parameters.AddWithValue("id", lease.CandidateId);
+            command.Parameters.AddWithValue("now", NpgsqlTypes.NpgsqlDbType.Timestamp,
+                DateTime.SpecifyKind(Now, DateTimeKind.Unspecified));
+            await command.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+        });
+        await Task.Delay(100);
+        Assert.False(withdrawing.IsCompleted);
+        release.SetResult();
+        Assert.Equal("sent", await processing.WaitAsync(TimeSpan.FromSeconds(5)));
+        await withdrawing.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(await _repository.CompleteAsync(lease, "{\"parsed\":true}", "[]", "[]", Now,
+            CancellationToken.None));
     }
 
     [Fact]

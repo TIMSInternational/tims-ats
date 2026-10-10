@@ -68,6 +68,14 @@
           "Serilog": "4.0.0"
         }
       },
+      "AWSSDK.BedrockRuntime": {
+        "type": "Transitive",
+        "resolved": "4.0.101.8",
+        "contentHash": "UmGGBapOEgH4086W+BYw8ZTxlt1rG8Ry/fAlNuVJo1tUMAZ61g5TKLhAhhmeH544T9y3O4B2DSU/LMdh7E/afw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.8, 5.0.0)"
+        }
+      },
       "AWSSDK.Core": {
         "type": "Transitive",
         "resolved": "4.0.102.9",
@@ -370,6 +378,7 @@
       "tims.infrastructure": {
         "type": "Project",
         "dependencies": {
+          "AWSSDK.BedrockRuntime": "[4.0.101.8, )",
           "AWSSDK.S3": "[4.0.104.2, )",
           "AWSSDK.SimpleEmail": "[4.0.100.13, )",
           "Microsoft.Extensions.Http.Resilience": "[10.0.0, )",
