@@ -13,7 +13,14 @@ vi.mock('../../packages/ai/src/logger', () => ({ logInvocation: vi.fn() }));
 vi.mock('../../packages/ai/src/registry', () => ({
   resolveAgentId: vi.fn(async () => 'agent-uuid'),
   AGENT_REGISTRY: {
-    'vacancy-writer': { slug: 'vacancy-writer', name: 'VW', model: 'sonnet', category: 'r', batchEligible: false, cacheTtlSeconds: 60 },
+    'vacancy-writer': {
+      slug: 'vacancy-writer',
+      name: 'VW',
+      model: 'sonnet',
+      category: 'r',
+      batchEligible: false,
+      cacheTtlSeconds: 60,
+    },
   },
 }));
 
@@ -50,31 +57,40 @@ describe('invokeAgent (gated path)', () => {
   it('returns a cache hit without calling Bedrock and logs it as cached', async () => {
     vi.mocked(getCached).mockResolvedValue({ description: 'cached' });
     const r = await invokeAgent(params);
-    expect(r).toMatchObject({ cached: true, data: { description: 'cached' } });
+    expect(r).toMatchObject({ cached: true, validated: true, data: { description: 'cached' } });
     expect(bedrockGenerate).not.toHaveBeenCalled();
-    expect(logInvocation).toHaveBeenCalledWith(
-      expect.objectContaining({ cached: true, costUsd: 0, inputTokens: 0 }),
-    );
+    expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ cached: true, costUsd: 0, inputTokens: 0 }));
   });
 
   it('on a real call: validates output, caches it, and logs uncached', async () => {
     vi.mocked(bedrockGenerate).mockResolvedValue({
-      text: 'noise {"description":"hi"} trailing', inputTokens: 10, outputTokens: 5, model: 'sonnet', latencyMs: 100,
+      text: 'noise {"description":"hi"} trailing',
+      inputTokens: 10,
+      outputTokens: 5,
+      model: 'sonnet',
+      latencyMs: 100,
     });
     const r = await invokeAgent(params);
     expect(r.data).toEqual({ description: 'hi' });
     expect(r.cached).toBe(false);
+    expect(r.validated).toBe(true);
     expect(setCached).toHaveBeenCalledTimes(1);
-    expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ cached: false }));
+    expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ cached: false, success: true }));
   });
 
   it('fails SOFT on unparseable output — returns the fallback, still logs the spend', async () => {
     vi.mocked(bedrockGenerate).mockResolvedValue({
-      text: 'totally not json', inputTokens: 10, outputTokens: 5, model: 'sonnet', latencyMs: 1,
+      text: 'totally not json',
+      inputTokens: 10,
+      outputTokens: 5,
+      model: 'sonnet',
+      latencyMs: 1,
     });
     const r = await invokeAgent(params);
     expect(r.data).toEqual({ description: 'fallback:totally not json' });
-    expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ cached: false }));
+    expect(r.validated).toBe(false);
+    expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ cached: false, success: false }));
+    expect(setCached).not.toHaveBeenCalled();
   });
 
   it('checks budget before the cache (budget is the outermost gate)', async () => {
