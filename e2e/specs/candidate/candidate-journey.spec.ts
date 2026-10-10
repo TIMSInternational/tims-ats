@@ -321,6 +321,9 @@ test('candidate signs the offer on the public signing page', async () => {
 test('company admin authorizes the hire; the new employee has an onboarding plan', async () => {
   needs('offerSigningPublic');
   const { page } = admin;
+  // The candidate signed in a different browser context. Refresh this page once so its cached
+  // offer status reflects that external decision before checking the hire action.
+  await page.reload();
   await openOffer(page);
   await page.getByRole('button', { name: /autorizar contrataci[oó]n/i }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirmar ingreso del colaborador' });
