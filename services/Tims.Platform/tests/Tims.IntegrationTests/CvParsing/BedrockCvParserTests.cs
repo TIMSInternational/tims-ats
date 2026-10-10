@@ -21,7 +21,8 @@ public sealed class BedrockCvParserTests
     {
         var client = DispatchProxy.Create<IAmazonBedrockRuntime, BedrockStub>();
         var stub = (BedrockStub)(object)client;
-        stub.Response = Reply(ValidJson);
+        // The live synthetic Haiku smoke returned a fenced JSON block.
+        stub.Response = Reply($"```json\n{ValidJson}\n```");
         var ledger = new LedgerStub();
         var parser = new BedrockCvParser(client, ledger, "test-haiku-profile", "test-guardrail", "1");
         var org = Guid.NewGuid();

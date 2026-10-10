@@ -89,11 +89,16 @@ the 25-candidate beta load before raising it.
    store only its dedicated key pair in the runtime secret store. AWS documents the
    [inference-profile IAM scope](https://docs.aws.amazon.com/bedrock/latest/userguide/geographic-cross-region-inference.html)
    and [guardrail permissions](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions.html).
+   The read-only 2026-10-10 check found only a DRAFT guardrail in the current
+   CLI account; confirm the actual inference account and publish/select an
+   immutable guardrail version before setting the runtime variable.
 3. Supply `CV_UPLOADS_BUCKET`, `CV_UPLOADS_REGION`, `BEDROCK_AWS_REGION`,
    `BEDROCK_GUARDRAIL_ID`, and pinned `BEDROCK_GUARDRAIL_VERSION` to App Runner.
    Optionally supply `AI_DEFAULT_MONTHLY_BUDGET_USD`. The model is pinned to
    Haiku 4.5 so token metering cannot silently understate another model's price.
    Verify the guardrail's PII policy, AWS quota and model access in that account.
+   The 2026-10-10 read-only App Runner check found none of these CV recovery
+   variable names present; add them without replacing its existing env/secret map.
 4. Configure/confirm the alert recipient with `scripts/ops/create-alarms.sh`.
    The existing SNS topic had **zero confirmed subscriptions** in the read-only
    2026-10-10 check. Dry-run `scripts/ops/create-cv-recovery-alarm.sh`, then run
@@ -117,6 +122,11 @@ per document, expired-lease recovery, stale-token rejection, tenant key isolatio
 withdrawal before and after a claim, retry cap and idempotent completion. Test
 PDF/DOCX extraction with small synthetic files, malformed model output, budget
 denial, withdrawal before inference and during the consent gate, and end-to-end
-synthetic PDF processing. A live Bedrock/S3 canary, model timeout under real AWS,
-and shutdown between claim and completion still require activation-stage testing.
+synthetic PDF processing. A 2026-10-10 operator-profile smoke through the real
+Haiku inference profile and DRAFT guardrail returned a valid fenced JSON parse
+for a fictional CV (162 input, 169 output tokens); the .NET parser test accepts
+that fence shape. This proves model/guardrail behavior in that operator account,
+not App Runner IAM or a published guardrail version. A real S3/application canary,
+model timeout under real AWS and shutdown between claim and completion still
+require activation-stage testing.
 The flag stays off until migration, IAM, alert and canary are verified.
