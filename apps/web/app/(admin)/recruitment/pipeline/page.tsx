@@ -26,7 +26,13 @@ export default function PipelinePage() {
   const vacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' });
   const board = trpc.pipeline.getBoard.useQuery(
     { vacancyId: selectedVacancyId!, status: 'active' },
-    { enabled: !!selectedVacancyId },
+    {
+      enabled: !!selectedVacancyId,
+      // Applications arrive from a separate candidate session. Refresh when a recruiter opens
+      // or returns to the board, even if the shared query cache still considers it fresh.
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: 'always',
+    },
   );
 
   const utils = trpc.useUtils();
