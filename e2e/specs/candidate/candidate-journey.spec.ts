@@ -68,11 +68,8 @@ test('careers page lists the published vacancy', async () => {
 
 test('recruiter views the empty pipeline before the candidate applies', async () => {
   const { page } = recruiter;
-  const boardResponse = page.waitForResponse(
-    (response) => response.url().includes('pipeline.getBoard') && response.ok(),
-  );
   await navigateStaff(page, '/recruitment/pipeline');
-  await boardResponse;
+  await expect(page.getByText('Aplicado', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(fullName())).toHaveCount(0);
   await navigateStaff(page, '/dashboard');
 });
