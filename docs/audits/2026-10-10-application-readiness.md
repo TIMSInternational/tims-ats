@@ -49,7 +49,7 @@ cutover (#53) is a separate owner gate, not a first-company beta prerequisite un
 promised.
 
 Other concrete follow-ups: canonicalize candidate email identity with a collision report (#315); validate bearer
-links use HTTPS in production (#343); make the SES abort test non-vacuous (#316); repair the root
+links use HTTPS in production (#343); add a suite-wide AWS test boundary (#316, PR #354; the SES abort test itself is already non-vacuous); repair the root
 `pnpm --filter @tims/db generate` script, which currently cannot locate the multi-file Prisma schema (explicit
 `--schema=prisma/schema` succeeds); fix Next's build-time ESLint configuration, which currently prints
 `Could not find plugin "@typescript-eslint"` but still exits 0; and fix the public vacancy detail's Spanish
