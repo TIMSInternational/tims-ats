@@ -4,7 +4,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
-import { scopeWhereFor, assertScoped, assertSubjectInScope } from '../../access';
+import { scopeWhereFor, assertScoped, assertSubjectInScope, assertUsersInOrg } from '../../access';
 
 export const performanceCoachingRouter = router({
   // 11.6 — List coaching sessions
@@ -68,6 +68,7 @@ export const performanceCoachingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertUsersInOrg(ctx.user.organizationId, [input.employeeId, input.leaderId]);
       // Narrow scopes may only schedule coaching for employees in their subject set.
       await assertSubjectInScope(
         ctx.access,
