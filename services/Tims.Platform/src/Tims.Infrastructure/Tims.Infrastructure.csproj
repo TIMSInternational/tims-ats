@@ -18,6 +18,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="PdfPig" Version="0.1.16" />
     <!-- WP2.6 rate limiter: raw Redis (EVAL of the exact Upstash slidingWindow Lua) so buckets
          are SHARED with the TS @upstash/ratelimit stack. Pinned to the version the Api host
          already carries (3.0.17) for a single resolved graph. -->
