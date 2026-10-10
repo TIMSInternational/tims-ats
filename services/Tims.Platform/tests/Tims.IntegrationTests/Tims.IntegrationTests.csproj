@@ -41,6 +41,10 @@
       <Link>db\quartz\quartz-tables_postgres.sql</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\..\..\..\packages\db\prisma\migrations\20261010180000_cv_parse_retry_leases\migration.sql">
+      <Link>db\cv-parse-retry\migration.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
