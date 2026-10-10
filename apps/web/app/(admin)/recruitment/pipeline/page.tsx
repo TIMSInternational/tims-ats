@@ -29,7 +29,8 @@ export default function PipelinePage() {
     {
       enabled: !!selectedVacancyId,
       // Applications arrive from a separate candidate session. Refresh when a recruiter opens
-      // or returns to the board, even if the shared query cache still considers it fresh.
+      // or returns to the board, including when switching back to a previously viewed vacancy.
+      staleTime: 0,
       refetchOnMount: 'always',
       refetchOnWindowFocus: 'always',
     },
