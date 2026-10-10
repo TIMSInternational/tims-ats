@@ -94,8 +94,12 @@ the 25-candidate beta load before raising it.
    Optionally supply `AI_DEFAULT_MONTHLY_BUDGET_USD`. The model is pinned to
    Haiku 4.5 so token metering cannot silently understate another model's price.
    Verify the guardrail's PII policy, AWS quota and model access in that account.
-4. Add the CloudWatch log metric filter/SNS alarm for `CV_RECOVERY_ALERT`, verify
-   delivery to its confirmed recipient, then enable
+4. Configure/confirm the alert recipient with `scripts/ops/create-alarms.sh`.
+   The existing SNS topic had **zero confirmed subscriptions** in the read-only
+   2026-10-10 check. Dry-run `scripts/ops/create-cv-recovery-alarm.sh`, then run
+   it with `--apply` only after a confirmed subscription exists (the script
+   refuses to mutate otherwise). Verify SNS delivery with a controlled alarm
+   test, then enable
    `Platform__CvParseRecoveryEnabled=true` on a canary instance. Use a clearly
    synthetic application whose first parse fails; verify the one existing
    document later gains valid `parsed_data`, one candidate profile is updated,
