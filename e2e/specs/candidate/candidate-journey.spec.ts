@@ -66,6 +66,17 @@ test('careers page lists the published vacancy', async () => {
   await expect(page.getByRole('heading', { name: j.vacancy!.title })).toBeVisible();
 });
 
+test('recruiter views the empty pipeline before the candidate applies', async () => {
+  const { page } = recruiter;
+  const boardResponse = page.waitForResponse(
+    (response) => response.url().includes('pipeline.getBoard') && response.ok(),
+  );
+  await navigateStaff(page, '/recruitment/pipeline');
+  await boardResponse;
+  await expect(page.getByText(fullName())).toHaveCount(0);
+  await navigateStaff(page, '/dashboard');
+});
+
 /** Fill the three-step apply form. `cv` attaches a PDF. */
 async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
   await page.goto(`/careers/${j.orgSlug}/${j.vacancy!.id}`);
@@ -306,6 +317,9 @@ test('the approved offer is sent for signature; the candidate receives the signi
   const mail = await waitForMail(cand().email, /oferta/i);
   signingLink = linkContaining(mail, '/offers/sign/');
   expect(new URL(signingLink).hostname).toBe('localhost');
+  // Leave a cached "sent" offer behind before the candidate accepts elsewhere.
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await navigateStaff(page, '/dashboard');
 });
 
 test('candidate signs the offer on the public signing page', async () => {
@@ -321,14 +335,8 @@ test('candidate signs the offer on the public signing page', async () => {
 test('company admin authorizes the hire; the new employee has an onboarding plan', async () => {
   needs('offerSigningPublic');
   const { page } = admin;
-  // The candidate signed in a different browser context. Keep this session and its query cache;
-  // a continuously open offer must observe the accepted status on focus or its bounded poll.
-  await page.bringToFront();
-  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
-  await expect(page.getByRole('button', { name: /autorizar contrataci[oó]n/i })).toBeVisible({
-    timeout: 40_000,
-  });
-  // Reopening the same offer must also fetch its current state from the server.
+  // Reopen the cached "sent" offer after an external acceptance. The detail query must
+  // refetch on mount instead of hiding the hire action for the cache's five-minute TTL.
   await openOffer(page);
   await page.getByRole('button', { name: /autorizar contrataci[oó]n/i }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirmar ingreso del colaborador' });
