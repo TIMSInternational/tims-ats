@@ -28,7 +28,15 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const router = useRouter();
   const can = useCan();
   const utils = trpc.useUtils();
-  const offer = trpc.offer.getById.useQuery({ id: offerId });
+  const offer = trpc.offer.getById.useQuery(
+    { id: offerId },
+    {
+      // The candidate signs in another session, so this page's cached "sent" offer would otherwise
+      // hide the hire action until a full reload. Poll only while awaiting that decision.
+      refetchInterval: (query) => (query.state.data?.status === 'sent' ? 30_000 : false),
+      refetchOnWindowFocus: (query) => (query.state.data?.status === 'sent' ? 'always' : false),
+    },
+  );
   const [showLetterModal, setShowLetterModal] = useState(false);
   const [showSigningModal, setShowSigningModal] = useState(false);
   const [signingUrl, setSigningUrl] = useState('');
