@@ -1,8 +1,9 @@
 # Public-application CV recovery (.NET 10)
 
-Status: implementation contract for #333. The retry schema, .NET lease repository
-and bounded PDF/DOCX text extraction are implemented. S3 retrieval, the guarded
-Bedrock parser and hosted loop are **not yet deployed**.
+Status: implementation contract for #333. The retry schema, .NET lease repository,
+bounded PDF/DOCX extraction and S3 object reader are implemented. The guarded
+Bedrock parser and hosted loop are **not yet deployed**; the S3 reader is not
+registered until those pieces and its IAM grant are verified.
 
 ## Existing boundary
 
@@ -23,8 +24,8 @@ tick, catch transient failures without stopping the API and coordinate across Ap
 Runner instances through PostgreSQL leases. Move the loop to `Tims.Workers` only
 after that host is deployed and the API loop is disabled.
 
-The .NET processor must own S3 retrieval, the bounded PDF/DOCX text extractor and
-the Bedrock CV parser. It must not call an end-user tRPC procedure or mint a staff token.
+The .NET processor must use the S3 reader, bounded PDF/DOCX text extractor and a
+guarded Bedrock CV parser. It must not call an end-user tRPC procedure or mint a staff token.
 Before the flag is enabled, port the current AI door's monthly budget, guardrail,
 bounded prompt, schema validation and usage accounting to a shared .NET AI service.
 Use the existing Haiku inference profile and no raw-CV cache. A malformed response is
