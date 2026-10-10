@@ -20,9 +20,8 @@ public enum CvParseFailureCode
 }
 
 /// <summary>
-/// Durable claim boundary for the .NET CV reconciler. This repository is not
-/// registered as a hosted service yet: extraction and the guarded .NET Bedrock
-/// client must be wired before any claim is allowed in production.
+/// Durable claim boundary for the default-off .NET CV reconciler. The hosted
+/// service is registered only when the CV recovery flag is enabled.
 ///
 /// Cross-tenant discovery requires the internal worker's privileged connection;
 /// each returned row carries its organization, and every subsequent mutation
@@ -34,6 +33,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source)
     public const int MaxBatchSize = 10;
     public static readonly TimeSpan GracePeriod = TimeSpan.FromMinutes(2);
     public static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan ConsentGateTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>PII-free backlog snapshot for the hosted loop's health signal.</summary>
     public async Task<CvRecoveryStats> ReadStatsAsync(DateTime nowUtc, CancellationToken ct)
@@ -73,61 +73,55 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source)
 
     /// <summary>
     /// Recheck consent immediately before sending extracted CV text to Bedrock.
-    /// A session advisory lock coordinates with consent withdrawal's candidate
-    /// transaction lock. No transaction remains open during the network call;
-    /// withdrawal waits at most for the bounded inference request. A released or
-    /// superseded lease never runs the callback.
+    /// A transaction advisory lock coordinates with consent withdrawal's
+    /// candidate transaction lock. The transaction stays open through the
+    /// bounded inference request, so this also works through Supavisor's
+    /// transaction pooler. Withdrawal waits at most for that request. A
+    /// released or superseded lease never runs the callback.
     /// </summary>
     public async Task<T?> RunWithConsentGateAsync<T>(CvParseLease lease,
         Func<CancellationToken, Task<T>> work, DateTime nowUtc, CancellationToken ct) where T : class
     {
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
         await using (var acquire = new NpgsqlCommand(
-            "SELECT pg_advisory_lock(hashtextextended(@candidate, 0))", connection))
+            "SELECT pg_advisory_xact_lock(hashtextextended(@candidate, 0))", connection, transaction))
         {
             acquire.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
             await acquire.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
-        try
+        await using (var check = new NpgsqlCommand("""
+            SELECT EXISTS (
+              SELECT 1 FROM candidate_documents d
+              JOIN candidates c ON c.id = d.candidate_id
+                AND c.organization_id = d.organization_id
+              WHERE d.id = @id AND d.organization_id = @org
+                AND d.candidate_id = @candidate AND d.cv_parse_lease_token = @token
+                AND d.cv_parse_lease_until > @now AND d.parsed_data IS NULL
+                AND c.deleted_at IS NULL
+                AND EXISTS (
+                  SELECT 1 FROM data_consents consent
+                  WHERE consent.organization_id = d.organization_id
+                    AND consent.subject_user_id = d.candidate_id
+                    AND consent.consent_type = 'recruitment_data_processing'
+                    AND consent.withdrawn_at IS NULL)
+            )
+            """, connection, transaction))
         {
-            await using (var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false))
-            {
-                await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
-                await using var check = new NpgsqlCommand("""
-                    SELECT EXISTS (
-                      SELECT 1 FROM candidate_documents d
-                      JOIN candidates c ON c.id = d.candidate_id
-                        AND c.organization_id = d.organization_id
-                      WHERE d.id = @id AND d.organization_id = @org
-                        AND d.candidate_id = @candidate AND d.cv_parse_lease_token = @token
-                        AND d.cv_parse_lease_until > @now AND d.parsed_data IS NULL
-                        AND c.deleted_at IS NULL
-                        AND EXISTS (
-                          SELECT 1 FROM data_consents consent
-                          WHERE consent.organization_id = d.organization_id
-                            AND consent.subject_user_id = d.candidate_id
-                            AND consent.consent_type = 'recruitment_data_processing'
-                            AND consent.withdrawn_at IS NULL)
-                    )
-                    """, connection, transaction);
-                check.Parameters.AddWithValue("id", lease.DocumentId);
-                check.Parameters.AddWithValue("org", lease.OrganizationId);
-                check.Parameters.AddWithValue("candidate", lease.CandidateId);
-                check.Parameters.AddWithValue("token", lease.Token);
-                AddTimestamp(check, "now", UtcTimestamp(nowUtc));
-                var active = (bool)(await check.ExecuteScalarAsync(ct).ConfigureAwait(false) ?? false);
-                if (!active) return null;
-                await transaction.CommitAsync(ct).ConfigureAwait(false);
-            }
-            return await work(ct).ConfigureAwait(false);
+            check.Parameters.AddWithValue("id", lease.DocumentId);
+            check.Parameters.AddWithValue("org", lease.OrganizationId);
+            check.Parameters.AddWithValue("candidate", lease.CandidateId);
+            check.Parameters.AddWithValue("token", lease.Token);
+            AddTimestamp(check, "now", UtcTimestamp(nowUtc));
+            var active = (bool)(await check.ExecuteScalarAsync(ct).ConfigureAwait(false) ?? false);
+            if (!active) return null;
         }
-        finally
-        {
-            await using var release = new NpgsqlCommand(
-                "SELECT pg_advisory_unlock(hashtextextended(@candidate, 0))", connection);
-            release.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
-            await release.ExecuteNonQueryAsync(CancellationToken.None).ConfigureAwait(false);
-        }
+        using var workTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        workTimeout.CancelAfter(ConsentGateTimeout);
+        var result = await work(workTimeout.Token).ConfigureAwait(false);
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
+        return result;
     }
 
     public async Task<IReadOnlyList<CvParseLease>> ClaimDueAsync(int limit, DateTime nowUtc, CancellationToken ct)

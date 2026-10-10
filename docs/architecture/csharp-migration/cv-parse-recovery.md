@@ -54,8 +54,11 @@ the exact document id and organization id; a stale worker cannot overwrite a new
 result. Check the candidate is active, the application consent is not withdrawn and
 the S3 key begins `cv-uploads/{organizationId}/` before fetching. Immediately
 before inference, recheck the current lease and consent under the same candidate
-advisory lock used by withdrawal; retain that session lock only through the
-20-second Bedrock call, then release it before the final transaction. Completion
+advisory lock used by withdrawal. Hold a transaction-scoped lock through the
+bounded parse (30 seconds total, including a 20-second Bedrock call) so the
+guarantee survives Supavisor transaction pooling; this reserves one database
+connection per active inference. Verify pool capacity and idle-in-transaction
+timeout before enabling the two-per-instance loop. Completion
 rechecks consent and `parsed_data IS NULL`. A withdrawn or deleted subject is
 never sent to Bedrock after withdrawal has committed. Preserve the document and
 staff visibility on failure.

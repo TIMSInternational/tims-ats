@@ -321,6 +321,26 @@ public sealed class CvParseLeaseTests(CvParseLeaseFixture fixture)
     }
 
     [Fact]
+    public async Task Consent_gate_releases_transaction_lock_when_parser_fails()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedAsync(Guid.NewGuid(), Now.AddMinutes(-3));
+        var lease = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.RunWithConsentGateAsync(lease,
+                _ => Task.FromException<string>(new InvalidOperationException("synthetic parser failure")),
+                Now, CancellationToken.None));
+
+        await using var connection = await fixture.Source.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT pg_try_advisory_xact_lock(hashtextextended(@candidate, 0))", connection, transaction);
+        command.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
+        Assert.True((bool)(await command.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
     public async Task Wrong_organization_cannot_finish_or_release_another_tenants_claim()
     {
         await fixture.ResetAsync();
