@@ -322,8 +322,13 @@ test('company admin authorizes the hire; the new employee has an onboarding plan
   needs('offerSigningPublic');
   const { page } = admin;
   // The candidate signed in a different browser context. Keep this session and its query cache;
-  // closing the signing modal and reopening the offer must fetch the accepted status.
+  // a continuously open offer must observe the accepted status on focus or its bounded poll.
+  await page.bringToFront();
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await expect(page.getByRole('button', { name: /autorizar contrataci[oó]n/i })).toBeVisible({
+    timeout: 40_000,
+  });
+  // Reopening the same offer must also fetch its current state from the server.
   await openOffer(page);
   await page.getByRole('button', { name: /autorizar contrataci[oó]n/i }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirmar ingreso del colaborador' });
