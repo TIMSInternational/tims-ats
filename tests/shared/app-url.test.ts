@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { getAppUrl, DEFAULT_APP_URL } from '../../packages/shared/src/app-url';
 
 // Resolves the public app origin for email links (invites, password resets,
@@ -6,6 +6,7 @@ import { getAppUrl, DEFAULT_APP_URL } from '../../packages/shared/src/app-url';
 
 const ORIGINAL = process.env.NEXT_PUBLIC_APP_URL;
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (ORIGINAL === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
   else process.env.NEXT_PUBLIC_APP_URL = ORIGINAL;
 });
@@ -35,5 +36,39 @@ describe('getAppUrl', () => {
     delete process.env.NEXT_PUBLIC_APP_URL;
     expect(getAppUrl()).not.toContain('timsats.com');
     expect(DEFAULT_APP_URL).not.toContain('timsats.com');
+  });
+
+  it('rejects a public HTTP origin in production before a bearer link can be built', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.NEXT_PUBLIC_APP_URL = 'http://ats.example.test';
+    expect(() => getAppUrl()).toThrow('Invalid public app origin');
+  });
+
+  it.each(['http://localhost:3100', 'http://127.0.0.1:3100', 'http://[::1]:3100'])(
+    'allows a loopback origin for local production-mode testing (%s)',
+    (origin) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      process.env.NEXT_PUBLIC_APP_URL = origin;
+      expect(getAppUrl()).toBe(origin);
+    },
+  );
+
+  it('allows HTTP outside production', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    process.env.NEXT_PUBLIC_APP_URL = 'http://ats.example.test';
+    expect(getAppUrl()).toBe('http://ats.example.test');
+  });
+
+  it.each([
+    'ftp://ats.example.test',
+    'javascript:alert(1)',
+    'https://user:pass@ats.example.test',
+    'https://ats.example.test/path',
+    'https://ats.example.test/?token=secret',
+    'https://ats.example.test/#fragment',
+    'not a url',
+  ])('rejects an invalid or non-origin app URL (%s)', (origin) => {
+    process.env.NEXT_PUBLIC_APP_URL = origin;
+    expect(() => getAppUrl()).toThrow('Invalid public app origin');
   });
 });
