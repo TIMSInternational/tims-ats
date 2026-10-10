@@ -5,13 +5,27 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
 // ---------------------------------------------------------------------------
-// Upstash Redis (production) — falls back to in-memory for local dev
+// Upstash Redis (production) — falls back to in-memory only outside production.
+// Vercel functions do not share process memory. A missing URL/token in production
+// would silently disable auth, AI and application-email limits across instances.
 // ---------------------------------------------------------------------------
+const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const hasUpstashUrl = Boolean(upstashUrl);
+const hasUpstashToken = Boolean(upstashToken);
+
+if (hasUpstashUrl !== hasUpstashToken) {
+  throw new Error('Rate limiting requires both Upstash REST environment variables');
+}
+if (process.env.VERCEL_ENV === 'production' && !hasUpstashUrl) {
+  throw new Error('Production rate limiting requires shared Upstash Redis');
+}
+
 const redis =
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  upstashUrl && upstashToken
     ? new Redis({
-        url: process.env.UPSTASH_REDIS_REST_URL,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN,
+        url: upstashUrl,
+        token: upstashToken,
       })
     : undefined;
 
@@ -122,7 +136,12 @@ export async function checkRateLimit(identifier: string, category: RateLimitCate
   const upstash = upstashLimiters[category];
 
   if (upstash) {
-    const { success, reset } = await upstash.limit(identifier);
+    const { success, reset, reason } = await upstash.limit(identifier);
+    // The SDK can report success when its own timeout expires. Treating that as
+    // a real allowance silently disables shared limits during a Redis outage.
+    if (reason === 'timeout') {
+      throw new TRPCError({ code: 'SERVICE_UNAVAILABLE', message: 'El límite de solicitudes no está disponible.' });
+    }
     if (!success) {
       const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
       throw new TRPCError({
