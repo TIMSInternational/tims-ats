@@ -1,6 +1,7 @@
 # Public-application CV recovery (.NET 10)
 
-Status: implementation contract for #333; the retry worker is **not yet deployed**.
+Status: implementation contract for #333. The retry schema and .NET lease
+repository are implemented; the parser and hosted loop are **not yet deployed**.
 
 ## Existing boundary
 
@@ -31,13 +32,13 @@ store and IAM scoped to the CV bucket and Bedrock model/guardrail.
 
 ## Durable state and concurrency
 
-Add retry metadata to `candidate_documents`: attempt count, next eligible time,
-lease token/expiry and a bounded reason code. Keep `parsed_data` as the success
+The `candidate_documents` migration adds attempt count, next eligible time,
+lease token/expiry and a bounded reason code. `parsed_data` remains the success
 indicator. A partial index on unparsed CV rows eligible for retry avoids scanning
-the entire documents table. Apply the DDL before code that reads the new columns;
-the Prisma model and migration must be updated together.
+the entire documents table. Apply this DDL before deploying code that reads the
+new columns. The Prisma model and migration travel together.
 
-Each tick claims at most 10 CVs older than two minutes with `FOR UPDATE SKIP LOCKED`,
+The repository claims at most 10 CVs older than two minutes with `FOR UPDATE SKIP LOCKED`,
 then commits the claims before doing network work. Claim increments the attempt
 count and sets a unique lease token. Completion or rescheduling requires that token,
 the exact document id and organization id; a stale worker cannot overwrite a newer
@@ -46,8 +47,8 @@ the S3 key begins `cv-uploads/{organizationId}/` before fetching. Recheck consen
 and `parsed_data IS NULL` in the final transaction. A withdrawn or deleted subject
 is never sent to Bedrock. Preserve the document and staff visibility on failure.
 
-Transient failures back off (5, 20, then 60 minutes) with a fixed maximum attempt
-count. Corrupt/empty files are terminal with a reason code; no raw CV text, email,
+Transient failures back off (5, 20, then 60 minutes) with a fixed maximum of four
+recovery attempts. Corrupt/empty files are terminal with a reason code; no raw CV text, email,
 filename or provider error message is stored in retry state or logs. The worker
 emits counts and oldest-age metrics for unparsed, leased, exhausted and successful
 jobs. Alert on an exhausted job or a backlog older than the grace window. Limit
