@@ -80,14 +80,20 @@ describe('fitEngineRepository.getFullFitScoreForSnapshot', () => {
       const actual = await vi.importActual<typeof import('@tims/db')>('@tims/db');
       return { ...actual, tenantDb: { fitScore: { findFirst } } };
     });
+    // #312: a withdrawn candidate's score is hidden from the snapshot read too.
+    const hidden = { candidateId: { notIn: ['withdrawn-1'] } };
+    vi.doMock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+      candidateConsentRepository: { visibleFitScoreWhere: vi.fn(async () => hidden) },
+    }));
     const { fitEngineRepository } = await import('../../packages/api/src/repositories/fit-engine.repository');
 
     await fitEngineRepository.getFullFitScoreForSnapshot('org-1', 'cand-1', 'vac-1');
 
     expect(findFirst).toHaveBeenCalledWith({
-      where: { candidateId: 'cand-1', vacancyId: 'vac-1', organizationId: 'org-1' },
+      where: { candidateId: 'cand-1', vacancyId: 'vac-1', organizationId: 'org-1', AND: [hidden] },
       select: { overallScore: true, breakdown: true, weights: true, isPartial: true, calculatedAt: true },
     });
     vi.doUnmock('@tims/db');
+    vi.doUnmock('../../packages/api/src/repositories/candidate-consent.repository');
   });
 });

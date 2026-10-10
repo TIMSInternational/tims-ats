@@ -52,6 +52,9 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid VacNoProfile = Guid.Parse("7ac00000-0000-0000-0000-000000000004");// no job_profiles row, roleFamily NULL
     public static readonly Guid VacNoApps = Guid.Parse("7ac00000-0000-0000-0000-000000000005");   // zero active applications
     public static readonly Guid VacRead = Guid.Parse("7ac00000-0000-0000-0000-000000000006");     // T1; READ-ONLY rows (compute never targets it)
+    public static readonly Guid VacConsent = Guid.Parse("7ac00000-0000-0000-0000-000000000007");  // #312/#313 consent-guard pipeline
+    public static readonly Guid VacConsentRead = Guid.Parse("7ac00000-0000-0000-0000-000000000008"); // #312 hidden-score reads
+    public static readonly Guid VacLate = Guid.Parse("7ac00000-0000-0000-0000-000000000009");        // #312 mid-run re-check writes
     public static readonly Guid VacOrgB = Guid.Parse("7ac00000-0000-0000-0000-0000000000b0");     // OrgB (cross-org → 404)
 
     // Candidates (OrgA)
@@ -61,6 +64,22 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid CandInactive = Guid.Parse("ca000000-0000-0000-0000-000000000004");// application status 'rejected' → excluded
     public static readonly Guid CandOrder = Guid.Parse("ca000000-0000-0000-0000-000000000005");   // the NULLS-FIRST assessment ordering pin
     public static readonly Guid CandOrgB = Guid.Parse("ca000000-0000-0000-0000-0000000000b1");    // OrgB
+
+    // #312/#313 consent-guard candidates (VacConsent pipeline unless noted — see the seed comment)
+    public static readonly Guid CandWdSelf = Guid.Parse("ca000000-0000-0000-0000-0000000000c1");      // withdrawn itself
+    public static readonly Guid CandWdAlias = Guid.Parse("ca000000-0000-0000-0000-0000000000c2");     // same-email row withdrawn
+    public static readonly Guid CandWdAliasSource = Guid.Parse("ca000000-0000-0000-0000-0000000000c3"); // not in pipeline
+    public static readonly Guid CandCrossOrgTwin = Guid.Parse("ca000000-0000-0000-0000-0000000000c4"); // twin withdrawn in OrgB
+    public static readonly Guid CandWildcard = Guid.Parse("ca000000-0000-0000-0000-0000000000c5");    // 'axb' vs withdrawn 'a_b'
+    public static readonly Guid CandUnderscore = Guid.Parse("ca000000-0000-0000-0000-0000000000c6");  // withdrawn, not in pipeline
+    public static readonly Guid CandGranted = Guid.Parse("ca000000-0000-0000-0000-0000000000c7");     // withdrawn_at NULL
+    public static readonly Guid CandOtherType = Guid.Parse("ca000000-0000-0000-0000-0000000000c8");   // withdrawn 'marketing' only
+    public static readonly Guid CandBlankA = Guid.Parse("ca000000-0000-0000-0000-0000000000c9");      // '' vs withdrawn '   '
+    public static readonly Guid CandBlankB = Guid.Parse("ca000000-0000-0000-0000-0000000000ca");      // withdrawn, not in pipeline
+    public static readonly Guid CandOrgBCross = Guid.Parse("ca000000-0000-0000-0000-0000000000cb");   // OrgB, withdrawn itself
+    public static readonly Guid CandLate = Guid.Parse("ca000000-0000-0000-0000-0000000000cc");        // withdraws MID-RUN (itself)
+    public static readonly Guid CandLateAlias = Guid.Parse("ca000000-0000-0000-0000-0000000000cd");   // 'late2@fit.test'
+    public static readonly Guid CandLateAliasSource = Guid.Parse("ca000000-0000-0000-0000-0000000000ce"); // ' LATE2@Fit.Test ' withdraws MID-RUN
 
     // fit_scores seed rows (READ endpoints)
     public static readonly Guid FsCandFull = Guid.Parse("f5000000-0000-0000-0000-000000000001");  // overall 85
@@ -173,6 +192,23 @@ public sealed class FitEngineFixture : IAsyncLifetime
         return (int)(await command.ExecuteScalarAsync())!;
     }
 
+    /// <summary>#312: record a withdrawn recruitment consent for <paramref name="candidateId"/> (superuser — the
+    /// "concurrent withdrawal" committed between the pre-loop check and the write).</summary>
+    public async Task WithdrawConsentAsync(Guid organizationId, Guid candidateId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO data_consents (id, organization_id, subject_user_id, consent_type, text_version, agreed_at, "
+            + "withdrawn_at, updated_at) VALUES (@id, @o, @c, 'recruitment_data_processing', 'v1', "
+            + "'2026-01-01 00:00:00', '2026-03-01 00:00:00', '2026-03-01 00:00:00')";
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("o", organizationId);
+        command.Parameters.AddWithValue("c", candidateId);
+        await command.ExecuteNonQueryAsync();
+    }
+
     public async Task<int> CountFitScoresForVacancyAsync(Guid vacancyId)
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -218,8 +254,8 @@ public sealed class FitEngineFixture : IAsyncLifetime
             status text NOT NULL DEFAULT 'open', deleted_at timestamp(3) NULL,
             created_at timestamp(3) NOT NULL, updated_at timestamp(3) NOT NULL);
         CREATE TABLE candidates (
-            id uuid PRIMARY KEY, organization_id uuid NOT NULL, first_name text NOT NULL, last_name text NOT NULL,
-            years_experience int NULL, education jsonb NULL, languages jsonb NULL, deleted_at timestamp(3) NULL,
+            id uuid PRIMARY KEY, organization_id uuid NOT NULL, email text NOT NULL, first_name text NOT NULL,
+            last_name text NOT NULL, years_experience int NULL, education jsonb NULL, languages jsonb NULL, deleted_at timestamp(3) NULL,
             created_at timestamp(3) NOT NULL, updated_at timestamp(3) NOT NULL);
         CREATE TABLE applications (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, candidate_id uuid NOT NULL, vacancy_id uuid NOT NULL,
@@ -249,13 +285,24 @@ public sealed class FitEngineFixture : IAsyncLifetime
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, name text NOT NULL, weights jsonb NOT NULL,
             created_at timestamp(3) NOT NULL, updated_at timestamp(3) NOT NULL,
             CONSTRAINT role_family_weight_profiles_organization_id_name_key UNIQUE (organization_id, name));
+
+        -- #312/#313 consent guard — Prisma-shaped data_consents (same DDL as the CandidateConsent fixture).
+        CREATE TABLE data_consents (
+            id uuid NOT NULL PRIMARY KEY, organization_id uuid NOT NULL, subject_user_id uuid NOT NULL,
+            consent_type text NOT NULL, text_version text NOT NULL,
+            agreed_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            withdrawn_at timestamp(3) without time zone,
+            created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            updated_at timestamp(3) without time zone NOT NULL,
+            withdrawal_channel character varying(30), withdrawal_reason character varying(500), withdrawn_by_user_id uuid);
+        CREATE UNIQUE INDEX data_consents_subject_user_id_consent_type_key ON data_consents (subject_user_id, consent_type);
         """;
 
     private const string RlsSql =
         """
         GRANT SELECT ON users, teams, user_teams, user_business_units, business_units,
             vacancies, candidates, applications, job_profiles, assessment_assignments, assessment_results,
-            ai_interview_sessions TO app_tenant;
+            ai_interview_sessions, data_consents TO app_tenant;
         GRANT SELECT, INSERT, UPDATE, DELETE ON fit_scores, role_family_weight_profiles TO app_tenant;
 
         ALTER TABLE users ENABLE ROW LEVEL SECURITY;                 ALTER TABLE users FORCE ROW LEVEL SECURITY;
@@ -272,6 +319,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
         ALTER TABLE ai_interview_sessions ENABLE ROW LEVEL SECURITY; ALTER TABLE ai_interview_sessions FORCE ROW LEVEL SECURITY;
         ALTER TABLE fit_scores ENABLE ROW LEVEL SECURITY;            ALTER TABLE fit_scores FORCE ROW LEVEL SECURITY;
         ALTER TABLE role_family_weight_profiles ENABLE ROW LEVEL SECURITY; ALTER TABLE role_family_weight_profiles FORCE ROW LEVEL SECURITY;
+        ALTER TABLE data_consents ENABLE ROW LEVEL SECURITY;         ALTER TABLE data_consents FORCE ROW LEVEL SECURITY;
 
         CREATE POLICY tenant_isolation ON users                 USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON teams                 USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
@@ -286,6 +334,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
         CREATE POLICY tenant_isolation ON ai_interview_sessions USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON fit_scores            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON role_family_weight_profiles USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        CREATE POLICY tenant_isolation ON data_consents         USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON user_teams            USING (EXISTS (SELECT 1 FROM teams t WHERE t.id = user_teams.team_id));
         """;
 
@@ -357,13 +406,13 @@ public sealed class FitEngineFixture : IAsyncLifetime
 
         -- CandFull: 2y, Licenciatura (bachelor), English (B2) + Spanish. CandGhost is SOFT-DELETED but keeps an
         -- ACTIVE application (getPipelineCandidateIds does not join candidates — the TS-parity ghost row).
-        INSERT INTO candidates (id, organization_id, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
-          ('ca000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Carla', 'Fuentes', 2,    '[{"degree":"Licenciatura en Sistemas"}]', '["English (B2)","Spanish"]', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
-          ('ca000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Emil',  'Vacio',   NULL, NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
-          ('ca000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'Gina',  'Ghost',   5,    NULL,                                      NULL,                        '2026-06-01 00:00:00', '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
-          ('ca000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'Ivan',  'Inactivo', 3,   NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
-          ('ca000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'Omar',  'Orden',   NULL, NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
-          ('ca000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'Bea',   'B1',      1,    NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+        INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+          ('ca000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'cand01@fit.test', 'Carla', 'Fuentes', 2,    '[{"degree":"Licenciatura en Sistemas"}]', '["English (B2)","Spanish"]', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'cand02@fit.test', 'Emil',  'Vacio',   NULL, NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'cand03@fit.test', 'Gina',  'Ghost',   5,    NULL,                                      NULL,                        '2026-06-01 00:00:00', '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'cand04@fit.test', 'Ivan',  'Inactivo', 3,   NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'cand05@fit.test', 'Omar',  'Orden',   NULL, NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'candb1@fit.test', 'Bea',   'B1',      1,    NULL,                                      NULL,                        NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
 
         INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
           ('ab000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-000000000001', '7ac00000-0000-0000-0000-000000000001', 'active'),
@@ -372,6 +421,63 @@ public sealed class FitEngineFixture : IAsyncLifetime
           ('ab000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-000000000004', '7ac00000-0000-0000-0000-000000000001', 'rejected'),
           ('ab000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-000000000005', '7ac00000-0000-0000-0000-000000000004', 'active'),
           ('ab000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'ca000000-0000-0000-0000-0000000000b1', '7ac00000-0000-0000-0000-0000000000b0', 'active');
+
+        -- #312/#313 consent guard seed (OrgA, VacConsent — no team, so only the org admin computes it; no other
+        -- test targets it). Pipeline (7 active applications): WdSelf (withdrawn on ITSELF → skipped); WdAlias
+        -- ('dup@fit.test', not withdrawn itself) whose same-org NON-pipeline row WdAliasSource ('  DUP@Fit.TEST ')
+        -- IS withdrawn → skipped; CrossOrg ('cross@fit.test') whose same-email twin in OrgB is withdrawn → scored;
+        -- Wildcard ('axb@fit.test') vs the withdrawn 'a_b@fit.test' row — a LIKE would match, equality must not →
+        -- scored; Granted (withdrawn_at NULL) → scored; OtherType (a withdrawn NON-recruitment consent) →
+        -- scored; BlankA ('') vs the withdrawn BlankB ('   ') — a blank email identifies nobody → scored.
+        INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+          ('7ac00000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'Consent Guard Role', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+
+        INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+          ('ca000000-0000-0000-0000-0000000000c1', '11111111-1111-1111-1111-111111111111', 'self@fit.test',     'Wanda', 'Self',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c2', '11111111-1111-1111-1111-111111111111', 'dup@fit.test',      'Walt',  'Alias',    NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c3', '11111111-1111-1111-1111-111111111111', '  DUP@Fit.TEST ',   'Walt',  'Source',   NULL, NULL, NULL, '2026-06-01 00:00:00', '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c4', '11111111-1111-1111-1111-111111111111', 'cross@fit.test',    'Cora',  'Cross',    NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c5', '11111111-1111-1111-1111-111111111111', 'axb@fit.test',      'Will',  'Card',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c6', '11111111-1111-1111-1111-111111111111', 'a_b@fit.test',      'Wilma', 'Under',    NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c7', '11111111-1111-1111-1111-111111111111', 'granted@fit.test',  'Gus',   'Granted',  NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c8', '11111111-1111-1111-1111-111111111111', 'other@fit.test',    'Otto',  'Type',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000c9', '11111111-1111-1111-1111-111111111111', '',                  'Bea',   'BlankA',   NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000ca', '11111111-1111-1111-1111-111111111111', '   ',               'Ben',   'BlankB',   NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000cb', '22222222-2222-2222-2222-222222222222', 'cross@fit.test',    'Cora',  'OrgB',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000cc', '11111111-1111-1111-1111-111111111111', 'late@fit.test',     'Lara',  'Late',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000cd', '11111111-1111-1111-1111-111111111111', 'late2@fit.test',    'Lou',   'Late',     NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000ce', '11111111-1111-1111-1111-111111111111', ' LATE2@Fit.Test ',  'Lou',   'Source',   NULL, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+
+        -- #312 hidden-score reads (VacConsentRead): stored scores for WdSelf (withdrawn itself, 95), WdAlias
+        -- (case-variant row withdrawn, 90), Wildcard (LIKE-neighbour of a withdrawn email, 70) and Granted (60).
+        -- Ranking/simulate must return ONLY Wildcard + Granted; explain for WdSelf/WdAlias is null. VacLate is the
+        -- write target of the mid-run re-check tests (starts with no fit_scores).
+        INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+          ('7ac00000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'Consent Read Role', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('7ac00000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'Late Withdrawal Role', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+        INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, weights, is_partial, calculated_at, created_at, updated_at) VALUES
+          ('f5000000-0000-0000-0000-0000000000c1', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c1', '7ac00000-0000-0000-0000-000000000008', 95, '{"assessment":95,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00'),
+          ('f5000000-0000-0000-0000-0000000000c2', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c2', '7ac00000-0000-0000-0000-000000000008', 90, '{"assessment":90,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00'),
+          ('f5000000-0000-0000-0000-0000000000c5', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c5', '7ac00000-0000-0000-0000-000000000008', 70, '{"assessment":70,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00'),
+          ('f5000000-0000-0000-0000-0000000000c7', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c7', '7ac00000-0000-0000-0000-000000000008', 60, '{"assessment":60,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}', '{"assessment":1}', true, '2026-03-01 10:00:00', '2026-03-01 10:00:00', '2026-03-01 10:00:00');
+
+        INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
+          ('ab000000-0000-0000-0000-0000000000c1', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c1', '7ac00000-0000-0000-0000-000000000007', 'active'),
+          ('ab000000-0000-0000-0000-0000000000c2', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c2', '7ac00000-0000-0000-0000-000000000007', 'active'),
+          ('ab000000-0000-0000-0000-0000000000c4', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c4', '7ac00000-0000-0000-0000-000000000007', 'active'),
+          ('ab000000-0000-0000-0000-0000000000c5', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c5', '7ac00000-0000-0000-0000-000000000007', 'active'),
+          ('ab000000-0000-0000-0000-0000000000c7', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c7', '7ac00000-0000-0000-0000-000000000007', 'active'),
+          ('ab000000-0000-0000-0000-0000000000c8', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c8', '7ac00000-0000-0000-0000-000000000007', 'active'),
+          ('ab000000-0000-0000-0000-0000000000c9', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c9', '7ac00000-0000-0000-0000-000000000007', 'active');
+
+        INSERT INTO data_consents (id, organization_id, subject_user_id, consent_type, text_version, agreed_at, withdrawn_at, updated_at) VALUES
+          ('dc000000-0000-0000-0000-0000000000c1', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c1', 'recruitment_data_processing', 'v1', '2026-01-01 00:00:00', '2026-02-01 00:00:00', '2026-02-01 00:00:00'),
+          ('dc000000-0000-0000-0000-0000000000c3', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c3', 'recruitment_data_processing', 'v1', '2026-01-01 00:00:00', '2026-02-01 00:00:00', '2026-02-01 00:00:00'),
+          ('dc000000-0000-0000-0000-0000000000c6', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c6', 'recruitment_data_processing', 'v1', '2026-01-01 00:00:00', '2026-02-01 00:00:00', '2026-02-01 00:00:00'),
+          ('dc000000-0000-0000-0000-0000000000c7', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c7', 'recruitment_data_processing', 'v1', '2026-01-01 00:00:00', NULL,                  '2026-01-01 00:00:00'),
+          ('dc000000-0000-0000-0000-0000000000c8', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000c8', 'marketing',                   'v1', '2026-01-01 00:00:00', '2026-02-01 00:00:00', '2026-02-01 00:00:00'),
+          ('dc000000-0000-0000-0000-0000000000ca', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000ca', 'recruitment_data_processing', 'v1', '2026-01-01 00:00:00', '2026-02-01 00:00:00', '2026-02-01 00:00:00'),
+          ('dc000000-0000-0000-0000-0000000000cb', '22222222-2222-2222-2222-222222222222', 'ca000000-0000-0000-0000-0000000000cb', 'recruitment_data_processing', 'v1', '2026-01-01 00:00:00', '2026-02-01 00:00:00', '2026-02-01 00:00:00');
 
         INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
           ('9f000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-000000000001', '{"minYearsExperience":4,"requiredEducationLevel":"bachelor","requiredLanguages":["English","Spanish"]}');

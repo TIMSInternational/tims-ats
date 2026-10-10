@@ -18,11 +18,13 @@ internal static class RateLimitHttp
             : RateLimitPolicy.CategoryFor(ToDottedPath(request.Path), RequestTypeOf(request.Method));
 
     /// <summary>
-    /// Anonymous capability-token routes get the strict <c>auth</c> tier (IP-keyed), not the default mutation
-    /// tier: the candidate interview join (WP-H). Referenced as a constant so it cannot drift from the route.
+    /// Candidate-facing routes get the strict <c>auth</c> tier (IP-keyed), not the default mutation tier: the
+    /// anonymous candidate interview join (WP-H) and the candidate's self-service consent withdrawal (#312), whose
+    /// caller resolves to no staff principal. Referenced as constants so they cannot drift from the routes.
     /// </summary>
     private static bool IsCapabilityTokenRoute(PathString path) =>
-        Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.IsRoute(path);
+        Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.IsRoute(path)
+        || Tims.Api.CandidateConsent.CandidateConsentEndpoints.IsPortalWithdrawalRoute(path);
 
     /// <summary>Maps a URL path to the dotted-path shape the category rules expect (/candidate/export → candidate.export).</summary>
     public static string ToDottedPath(PathString path) =>

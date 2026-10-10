@@ -1,5 +1,7 @@
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
+import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
+import { candidateConsentRepository } from './candidate-consent.repository';
 
 // ---------------------------------------------------------------------------
 // Explicit select objects — never return full records (CLAUDE.md §4)
@@ -9,7 +11,8 @@ import type { Prisma } from '@tims/db';
 // application-level fragment so a candidate visible via one in-scope application
 // does not surface fit scores / counts from out-of-scope vacancies. {} at org
 // scope → identical to the previous static select.
-const buildCandidateListSelect = (appScopeWhere: Prisma.ApplicationWhereInput) =>
+// #312: `visibleFit` hides withdrawn candidates' existing fit scores (candidateConsentRepository.visibleFitScoreWhere).
+const buildCandidateListSelect = (appScopeWhere: Prisma.ApplicationWhereInput, visibleFit: Prisma.FitScoreWhereInput) =>
   ({
     id: true,
     firstName: true,
@@ -29,7 +32,7 @@ const buildCandidateListSelect = (appScopeWhere: Prisma.ApplicationWhereInput) =
     updatedAt: true,
     tags: { select: { id: true, tag: true, source: true } },
     fitScores: {
-      where: appScopeWhere as Prisma.FitScoreWhereInput,
+      where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
       orderBy: { calculatedAt: 'desc' as const },
       take: 1,
       select: { id: true, overallScore: true, calculatedAt: true },
@@ -81,7 +84,7 @@ const candidateDetailSelect = {
 // FitScore + AssessmentAssignment both relate to Vacancy with the same shape, so
 // the SAME {vacancy: frag} fragment scopes all three. At org/company scope the
 // fragment is {} → no behavior change.
-const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput) =>
+const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput, visibleFit: Prisma.FitScoreWhereInput) =>
   ({
     ...candidateDetailSelect,
     applications: {
@@ -98,7 +101,7 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput)
       },
     },
     fitScores: {
-      where: appScopeWhere as Prisma.FitScoreWhereInput,
+      where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
       orderBy: { calculatedAt: 'desc' as const },
       select: { id: true, overallScore: true, breakdown: true, calculatedAt: true },
     },
@@ -204,6 +207,8 @@ export const candidateRepository = {
     if (skills && skills.length > 0) {
       filterClause.skills = { array_contains: skills };
     }
+    // #312: withdrawn candidates' fit scores are hidden from the list AND from the fit-range filter.
+    const visibleFit = await candidateConsentRepository.visibleFitScoreWhere(orgId);
     if (fitMin !== undefined || fitMax !== undefined) {
       // The fit filter must only consider IN-SCOPE fit scores (codex re-review).
       filterClause.fitScores = {
@@ -216,23 +221,30 @@ export const candidateRepository = {
               },
             },
             appScopeWhere as Prisma.FitScoreWhereInput,
+            visibleFit,
           ],
         },
       };
     }
 
+    const where: Prisma.CandidateWhereInput = {
+      AND: [
+        { organizationId: orgId, isActive: true, deletedAt: null },
+        scopeWhere as Prisma.CandidateWhereInput,
+        filterClause,
+      ],
+    };
+    const cursorLive = await cursorRowMatches(cursor, (id) =>
+      db.candidate.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+    );
+    if (!cursorLive) {
+      return [];
+    }
     return db.candidate.findMany({
-      where: {
-        AND: [
-          { organizationId: orgId, isActive: true, deletedAt: null },
-          scopeWhere as Prisma.CandidateWhereInput,
-          filterClause,
-        ],
-      },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: 'desc' },
-      select: buildCandidateListSelect(appScopeWhere),
+      where,
+      ...cursorPageArgs(limit, cursor),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: buildCandidateListSelect(appScopeWhere, visibleFit),
     });
   },
 
@@ -242,11 +254,13 @@ export const candidateRepository = {
     id: string,
     appScopeWhere: Prisma.ApplicationWhereInput,
   ) {
+    // #312: a withdrawn candidate's existing fit scores are hidden (never deleted).
+    const visibleFit = await candidateConsentRepository.visibleFitScoreWhere(orgId);
     return db.candidate.findFirst({
       where: {
         AND: [{ id, organizationId: orgId, deletedAt: null }, scopeWhere as Prisma.CandidateWhereInput],
       },
-      select: buildCandidateDetailSelect(appScopeWhere),
+      select: buildCandidateDetailSelect(appScopeWhere, visibleFit),
     });
   },
 
@@ -339,6 +353,25 @@ export const candidateRepository = {
     return db.candidateDocument.findFirst({
       where: { id: documentId, organizationId: orgId },
       select: documentSelect,
+    });
+  },
+
+  // The CV document already recorded for this candidate + uploaded object key, if any —
+  // public apply records it unparsed in the application transaction; processing reuses it,
+  // and a retry never duplicates the row or the AI call.
+  async findCvDocumentByKey(orgId: string, candidateId: string, fileUrl: string) {
+    return db.candidateDocument.findFirst({
+      where: { organizationId: orgId, candidateId, type: 'cv', fileUrl },
+      select: { id: true, parsedData: true, fileSize: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  },
+
+  // Backfills the size of a CV row recorded before its object was fetched (public apply).
+  async setDocumentFileSize(orgId: string, documentId: string, fileSize: number) {
+    await db.candidateDocument.updateMany({
+      where: { id: documentId, organizationId: orgId },
+      data: { fileSize },
     });
   },
 
@@ -567,13 +600,15 @@ export const candidateRepository = {
   async getCandidateForRisks(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
     // Codex re-review: risk factors must derive only from IN-SCOPE applications
     // and fit scores. {} at org scope → previous behavior.
+    // #312: a withdrawn candidate's fit score is hidden from the risk factors too.
+    const visibleFit = await candidateConsentRepository.visibleFitScoreWhere(orgId);
     return db.candidate.findFirst({
       where: { id: candidateId, organizationId: orgId, deletedAt: null },
       select: {
         id: true,
         applications: { where: appScopeWhere, select: { status: true } },
         fitScores: {
-          where: appScopeWhere as Prisma.FitScoreWhereInput,
+          where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
           orderBy: { calculatedAt: 'desc' as const },
           take: 1,
           select: { overallScore: true },

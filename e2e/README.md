@@ -38,6 +38,9 @@ LocalStack `4577`.
   one shared `anonymous` bucket of 30 mutations/min. A single run (and a CI retry) fits; **starting a
   fourth run within the same minute fails an invitation acceptance with a 429.** Wait a minute
   between rapid local reruns.
+  Since #329 the API refuses such IP-less anonymous relays with 503; the stack opts out with
+  `Platform__AllowAnonymousRelayWithoutClientIp=true` (`scripts/e2e/api-flags.env`). That flag is
+  refused in a Production host unless `TIMS_E2E_STACK=1` is also set.
 
 ## What the stack is (scripts/e2e/up.sh)
 

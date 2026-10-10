@@ -10,11 +10,9 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Re-measured 2026-10-01: 108 registered endpoints (108 distinct routes)
- * against 202 deployed operations, leaving a gap of 94 — exactly the 94 allowlisted routes. (The
- * 2026-08-18 figure was 92/157/65; the numbers between then and #310 moved only in the pins below.
- * 2026-10-01 registered #310's org structure and #304's people directory: 96→108 registered,
- * 106→94 allowlisted, deployed unchanged at 202.) (The numeric PINS below were updated when slice 23 landed; update
+ * deployed service that is. Re-measured 2026-10-10: 108 registered endpoints against 206 deployed
+ * operations, leaving a gap of 98. The people-directory and org-structure fixtures register 12 routes;
+ * the four newer candidate-consent routes remain allowlisted. (The numeric PINS below were updated when slice 23 landed; update
  * both this prose and the pins, or neither is trustworthy — slice 22 updated only the pins and this
  * line read 50/135/gap-85 for a commit, and slice 23's SECOND PR repeated the mistake: it moved the
  * pins to 147/63 and left every figure in this header at the pre-PR numbers. Slice 23's THIRD PR
@@ -256,6 +254,24 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'GET /tenant-audit/logs',
       'GET /tenant-audit/history',
       'POST /tenant-audit/export',
+    ],
+  },
+  {
+    reason:
+      'CANDIDATE CONSENT LANDED DARK 2026-10-01 (CandidateConsentEnabled, #312/#313). Greenfield C#: there is no tRPC ' +
+      'twin to diff against (TS only writes consent inside portal.applyToVacancy and reads its own consents). The ' +
+      'staff read/withdrawal are candidate:read|update at org scope; the self-service withdrawal is authorized by a ' +
+      'Supabase session whose CONFIRMED email the auth service re-verifies — a principal the by-role harness has no ' +
+      'role for. Covered by real-PostgreSQL integration tests under production-shaped RLS (cross-tenant 404s, 401/403 ' +
+      'incl. a narrow-scope grant, idempotency, a concurrent-withdrawal race, audit, unverified-email 403, exact-email ' +
+      'matching). The staff list of data subject requests (candidate:update, org scope, closed status filter) is ' +
+      'covered the same way (401/403/narrow, cross-org isolation, status filter, dueAt). Register the three staff ' +
+      'routes fixture-first BEFORE enabling CandidateConsentEnabled in production.',
+    routes: [
+      'GET /tenant/candidates/{candidateId}/consent',
+      'POST /tenant/candidates/{candidateId}/consent/withdrawal',
+      'POST /portal/consent/withdrawal',
+      'GET /tenant/data-subject-requests',
     ],
   },
   {
@@ -548,11 +564,16 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         190 → 191 (WP-H / PR #308): POST /interviews/candidate-join, deployed DARK behind
     //         Platform:CandidateInterviewJoinEnabled and allowlisted with the invitation-setup group
     //         (anonymous, capability-token). #308 measured 181 → 182 on its own base; +1 over main's 190.
-    //         191 → 202 (PR #310): the dark tenant org structure — eleven routes, then allowlisted in their
-    //         own group. Main 191 (after #308) + #310's +11 = 202.
-    //         202 UNCHANGED (2026-10-01): registering #310's eleven routes and #304's one route moves them from
-    //         the allowlist into the registry; it deploys nothing.
-    expect(deployed.size).toBe(202);
+    //         191 → 202 (PR #310): the dark tenant org structure — eleven routes, initially allowlisted.
+    //         202 → 205 (#312/#313): the dark candidate consent surface — GET + POST withdrawal under
+    //         /tenant/candidates/{candidateId}/consent and the self-service POST /portal/consent/withdrawal,
+    //         all allowlisted in the candidate-consent group above. Main 202 (after #310) + 3 = 205.
+    //         205 → 206 (#312 review): the dark staff list GET /tenant/data-subject-requests, allowlisted in the
+    //         same candidate-consent group. 205 + 1 = 206.
+    //         Re-derived after merging main: #331/#332/#334/#337/#339 added no deployed routes, so
+    //         main 202 (after #339) + #345's +4 = 206.
+    //         Registering the people directory and org structure moves 12 routes between sets; deployed stays 206.
+    expect(deployed.size).toBe(206);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -565,21 +586,14 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //        side was 2026-08-11: `organization-create` registered POST /platform/organizations, #208.)
     //   92 → 93, 2026-09-29: + tenant-invitations/list (PR #307).
     //   93 → 96 (PR #309): write side 27 → 30, the `assessment-types` surface's three endpoints.
-    //   96 → 108 (2026-10-01): +12, the twelve routes that left the allowlist below —
-    //     read  +3: tenant-org-structure/{structure, options} + tenant-people/assignable-interview-evaluators
-    //     write +9: tenant-org-structure (create/update unit, create team) 3 + tenant-org-people (leader-only
-    //               team PATCH, member PUT/DELETE, unit-assignee PUT/DELETE, home-unit PUT) 6.
-    //   96 + 3 + 9 = 108.
+    //   96 → 108: +3 people/org-structure reads and +9 org-structure writes, all distinct routes.
     expect(registryEndpointCount).toBe(108);
-    //   ...resolving to 92 DISTINCT VERB+path keys. A drop here means two registry entries normalise
+    //   ...resolving to 108 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
     //   (This pin is WHY the deleted reporting registration's second kpis probe at period=90D was not
     //   restored: it normalises onto `GET /reporting/kpis` and would collide here.)
-    //   (108 since 2026-10-01: each of the twelve new entries is a DISTINCT VERB+path — which is why only ONE
-    //   PATCH /tenant/org-structure/teams/{id} form and ONE /tenant/people/assignable purpose are registered.)
     expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(108);
-    //   30 write paths resolved through the Proxy stub, none degenerate (27 → 30: assessment-types;
-    //   30 → 39 on 2026-10-01: the nine org-structure writes, the first registered PUTs).
+    //   39 write paths resolve through the Proxy stub, none degenerate (30 → 39: org structure).
     expect(writePaths.length).toBe(39);
   });
 
@@ -634,10 +648,12 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   EXISTING group, so the group/category count is unchanged.
     // 95 → 106 (PR #310): the dark tenant org structure's eleven routes, pending a remote fixture.
     //   Main 95 (after #308) + #310's +11 = 106.
-    // 106 → 94 (2026-10-01): the fixtures landed — #310's eleven org-structure routes and #304's one people-
-    //   directory route are REGISTERED (seedOrgStructureGrants / seedTenantPeopleGrants +
-    //   seedOrgStructureWritePreconditions). 106 − 11 − 1 = 94; the registry grew by the same 12 (96 → 108).
-    expect(allowlistNormalised.length).toBe(94);
+    // 106 → 109 (#312/#313): the candidate consent surface's three dark routes. Main 106 (after #310) + 3 = 109.
+    // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
+    //   the group count below is unchanged. 109 + 1 = 110.
+    //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
+    // 110 → 98: the people-directory and org-structure fixtures register their twelve routes.
+    expect(allowlistNormalised.length).toBe(98);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -657,8 +673,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 12 → 13 on 2026-09-29: tenant invitations' group (a Mode-B-inexpressible catalogue + email-sending writes).
     // 13 → 14 (PR #304): the tenant people directory is a C#-only picker read with no tRPC twin.
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
-    // 15 → 13 (2026-10-01): BOTH of the last two groups emptied — org structure and the people directory were
-    //   registered — and an empty group is forbidden above, so each group was deleted rather than left hollow.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the thirteen documented gap categories').toBe(13);
+    // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
+    //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
+    // 16 → 14: people directory and org structure no longer need allowlist groups after registration.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the fourteen documented gap categories').toBe(14);
   });
 });

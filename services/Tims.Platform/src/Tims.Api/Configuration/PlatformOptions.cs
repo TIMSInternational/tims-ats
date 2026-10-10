@@ -660,6 +660,17 @@ public sealed class PlatformOptions
     public bool CandidateInterviewJoinEnabled { get; init; }
 
     /// <summary>
+    /// #312/#313 candidate data-processing consent: <c>GET /tenant/candidates/{id}/consent</c> (candidate:read + org
+    /// scope), <c>POST /tenant/candidates/{id}/consent/withdrawal</c> (candidate:update + org scope, audited) and the
+    /// candidate's self-service <c>POST /portal/consent/withdrawal</c> (Supabase session with a CONFIRMED email,
+    /// re-verified via <c>Invitations:SupabaseUrl</c>/<c>Invitations:SupabaseServiceKey</c>). Writes
+    /// <c>data_consents</c> + <c>data_subject_requests</c> + <c>audit_logs</c> under TenantScope; never deletes data.
+    /// DEFAULT false (dark) — enable with <c>Platform__CandidateConsentEnabled=true</c> AFTER the
+    /// 20261001120000_consent_evidence_withdrawal migration is applied.
+    /// </summary>
+    public bool CandidateConsentEnabled { get; init; }
+
+    /// <summary>
     /// Default-disabled company-admin team invitations (<c>/tenant-invitations</c>): list grantable roles,
     /// list/create/resend/revoke invitations for the CALLER'S OWN organization only. Gated by
     /// <c>user:create</c> at organization scope plus InvitationGrantPolicy (no role above the caller's own).
@@ -792,4 +803,16 @@ public sealed class PlatformOptions
     /// log line.</para>
     /// </summary>
     public string? SecurityDenialAuditDisabled { get; init; }
+
+    /// <summary>
+    /// #329 item 2 — DEVELOPMENT escape hatch, exact "true" only. A relayed ANONYMOUS request (invitation setup,
+    /// candidate interview join) whose signed attribution carries no client IP is refused with 503 by
+    /// <see cref="Tims.Api.Http.RelayAttributionMiddleware"/>: the web relay only vouches for an IP on Vercel, and
+    /// without one every anonymous caller would share the single <c>anonymous</c> rate-limit bucket and write
+    /// IP-less audit rows. Set this only on a local stack whose web app runs outside Vercel. Polarity matches
+    /// <see cref="TrustXRealIpHeader"/>: absent or garbled keeps the refusal ON. In the Production host environment
+    /// it is additionally REFUSED unless the process also carries <c>TIMS_E2E_STACK=1</c> (the E2E stack's marker),
+    /// so a stray flag on App Runner cannot re-open the shared bucket.
+    /// </summary>
+    public string? AllowAnonymousRelayWithoutClientIp { get; init; }
 }

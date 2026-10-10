@@ -1,8 +1,10 @@
-# Tenant people directory for pickers (`GET /tenant/people/assignable`) — PR #304, DARK
+# Tenant people directory for pickers (`GET /tenant/people/assignable`) — PR #304, #310, #337
 
-**Status:** built, integration-tested against real PostgreSQL under production-shaped RLS, **not deployed,
-not flipped.** Parity-registered 2026-10-01 (`verify tenant-people`), but no verify has ever run — nothing here is
-prod-verified.
+**Status (2026-10-01):** **LIVE in production.** Both flags were flipped on 2026-10-01
+(`Platform__TenantPeopleDirectoryEnabled` and `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP`). Integration-tested
+against real PostgreSQL under production-shaped RLS. This PR registers `verify tenant-people`, but no live parity
+verification has run, so registration is not production proof. Since #337 every `UserPicker` in the app passes a
+`purpose`, so no picker reads tRPC `user.list` in production.
 
 ## Why it exists
 
@@ -14,12 +16,33 @@ So those pickers 403 for the role that uses them most. This endpoint authorizes 
 
 ## Authorization (the rule, and why)
 
-| `purpose`             | Caller must hold                       | Caller scope needed    | Listed people                                                        |
-| --------------------- | -------------------------------------- | ---------------------- | -------------------------------------------------------------------- |
-| `interview_evaluator` | `interview:create` (`schedule`)        | organization / company | every active, non-deleted member of the org                          |
-| `vacancy_approver`    | `vacancy:update` (`submitForApproval`) | any granted scope      | staff holding `vacancy:approve` via an ACTIVE role, or `super_admin` |
-| `offer_approver`      | `offer:create` (`submitForApproval`)   | any granted scope      | staff holding `offer:approve` via an ACTIVE role, or `super_admin`   |
-| `vacancy_assignee`    | `vacancy:create` (`vacancy.create`)    | organization / company | every active, non-deleted member of the org (PR #310)                |
+| `purpose`                   | Caller must hold                                                  | Caller scope needed    | Listed people                                                        |
+| --------------------------- | ----------------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------- |
+| `interview_evaluator`       | `interview:create` (`schedule`)                                   | organization / company | every active, non-deleted member of the org                          |
+| `vacancy_approver`          | `vacancy:update` (`submitForApproval`)                            | any granted scope      | staff holding `vacancy:approve` via an ACTIVE role, or `super_admin` |
+| `offer_approver`            | `offer:create` (`submitForApproval`)                              | any granted scope      | staff holding `offer:approve` via an ACTIVE role, or `super_admin`   |
+| `vacancy_assignee`          | `vacancy:create` (`vacancy.create`)                               | organization / company | every active, non-deleted member of the org (PR #310)                |
+| `colleague` (#337)          | **nothing** — any staff role, or a platform owner with a home org | n/a                    | active members holding an ACTIVE staff role                          |
+| `performance_subject`       | `performance:create` (OKR / coaching / commitment)                | any (subject-scoped)   | staff; narrow callers: their subject set                             |
+| `learning_enrollee`         | `learning:create` (`enrollUser`)                                  | any (subject-scoped)   | staff; narrow callers: their subject set                             |
+| `onboarding_hire`           | `onboarding:create` (`onboarding.create`)                         | any (subject-scoped)   | staff; narrow callers: their subject set                             |
+| `succession_candidate`      | `succession:create` (add successor)                               | any (subject-scoped)   | staff; narrow callers: their subject set                             |
+| `evaluation360_participant` | `evaluation360:create` (assign raters)                            | organization / company | active members holding an ACTIVE staff role                          |
+| `ninebox_committee_member`  | `ninebox:update` (add committee member)                           | organization / company | active members holding an ACTIVE staff role                          |
+| `org_structure_member`      | `user:create` (team member / unit assignee / user unit)           | organization / company | active members holding an ACTIVE staff role                          |
+
+- **#337 purposes (`StaffOnly`).** Every purpose added in #337 lists only people holding at least one ACTIVE staff
+  role in the organization, so an external-only principal (or a platform owner with no staff role) is never
+  enumerated. The four recruitment purposes above predate this and still list every active member.
+- **Subject-scoped purposes** mirror `assertSubjectInScope` / C# `SubjectInScope`: an org/company-scoped caller
+  sees the whole staff list; a narrower caller sees only their subject set — own → self, team → self + members of
+  the teams they lead, unit → members of their assigned units (direct `users.business_unit_id` or via a team of the
+  unit) — resolved with the same `IAnchorLoader` the mutations use. They get a working picker instead of a 403.
+- **`colleague` (decision accepted by the maintainer, 2026-10-01).** It relaxes the whole-directory scope rule:
+  any staff member may list every active staff colleague (id, name, email, avatar). This matches
+  `submitFeedback` / `giveRecognition`, which are protectedProcedure and accept any org member by design, and is
+  also used for the onboarding buddy and coaching leader pickers. External principals are refused (403); an
+  org-less platform owner gets 400.
 
 - **Whole-directory scope rule.** `interview_evaluator` has no eligibility filter, so it IS the staff directory.
   A team/unit-scoped `interview:create` holder (leader, committee, hrbp) is refused (403) rather than shown people
@@ -53,25 +76,24 @@ So those pickers 403 for the role that uses them most. This endpoint authorizes 
 
 ## Flags and flip order
 
-| Flag                                             | Where          | Default |
-| ------------------------------------------------ | -------------- | ------- |
-| `Platform__TenantPeopleDirectoryEnabled`         | C# App Runner  | false   |
-| `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP` | Vercel (build) | unset   |
+| Flag                                             | Where          | Default | Production (2026-10-01) |
+| ------------------------------------------------ | -------------- | ------- | ----------------------- |
+| `Platform__TenantPeopleDirectoryEnabled`         | C# App Runner  | false   | **true**                |
+| `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP` | Vercel (build) | unset   | **true**                |
 
 Flip **C# first**, verify, then the web flag (build-time, so it needs a redeploy). With the web flag on and the C#
 flag off every picker shows the "unavailable" state — the hook never falls back to tRPC by design. The FE zod
 schema is `.strict()`: web and C# must be on the same side of #304 (both with or both without `roleSlugs`).
 
-**Before flipping in production — parity registration (done 2026-10-01, never run):** registered in
+**Post-flip parity registration (not yet run):** registered in
 `scripts/parity/surfaces.ts` as `tenant-people` and removed from the coverage allowlist. A route registers once,
 so it is registered on `purpose=interview_evaluator&limit=50` — the unfiltered whole-org directory, and the purpose
 with the whole-directory scope rule. `seedTenantPeopleGrants` copies MATRIX: hr_admin interview:create@organization
 (the probe — a real grant, the same shape recruiter holds), hrbp interview:create@unit (seeded so its 403 is the
 SCOPE rule firing on a passed grant check, not a missing grant), org_admin nothing (grant-level 403). RLS Mode B
-compares the two parity orgs' directories. Run `verify tenant-people` with `Platform__TenantPeopleDirectoryEnabled=true`
-at canary, before the web flag. Still NOT covered remotely: the approver purposes and `?vacancyId=` (no approver or
-vacancy fixture; `TenantPeopleEndpointTests` covers them) and a seeded `recruiter` role (hr_admin holds the same
-grant shape).
+compares the two parity orgs' directories. Run `verify tenant-people` against production before treating this as
+verified. Still NOT covered remotely: the approver purposes and `?vacancyId=` (no approver or vacancy fixture;
+`TenantPeopleEndpointTests` covers them) and a seeded `recruiter` role (hr_admin holds the same grant shape).
 
 ## Tests
 

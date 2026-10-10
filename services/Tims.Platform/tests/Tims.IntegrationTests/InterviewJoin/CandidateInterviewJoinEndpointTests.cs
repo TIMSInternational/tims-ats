@@ -24,6 +24,8 @@ public sealed class CandidateInterviewJoinEndpointTests
         public Task<string?> ClaimMeetingUrlAsync(Guid interviewId, Guid organizationId, string roomUrl,
             CancellationToken ct) => Task.FromResult<string?>(roomUrl);
         public Task<bool> RecordAsync(CandidateJoinAudit audit, CancellationToken ct) => Task.FromResult(true);
+        public Task<bool> IsRoomSharedAsync(Guid interviewId, string roomName, CancellationToken ct) =>
+            Task.FromResult(false);
     }
 
     private static WebApplicationFactory<Program> Factory(bool enabled) =>

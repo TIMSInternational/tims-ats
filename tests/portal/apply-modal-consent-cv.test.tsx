@@ -126,6 +126,7 @@ describe('apply modal — explicit consent (F14)', () => {
       vacancyId: VACANCY_ID,
       consentAccepted: true,
       consentTextVersion: APPLICATION_CONSENT_TEXT_VERSION,
+      consentLocale: 'es',
     });
     expect(await screen.findByText(p.applicationSentTitle)).toBeInTheDocument();
   });

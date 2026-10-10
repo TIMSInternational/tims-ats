@@ -35,3 +35,11 @@ export function describeOfferActionError(cause: unknown, labels: OfferActionErro
   if (!message || looksSerialized(message)) return labels.generic;
   return message;
 }
+
+/**
+ * CONFLICT means the server's state moved under a stale screen (e.g. another approver rejected
+ * the offer or vacancy first). Callers refetch so the now-invalid action buttons disappear.
+ */
+export function isStateConflict(cause: unknown): boolean {
+  return errorCode(cause) === 'CONFLICT';
+}

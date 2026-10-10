@@ -3,6 +3,16 @@ import { MATRIX, flattenEntries } from '../../packages/db/prisma/seed-access-mat
 
 // Access decisions come from the REAL canonical role matrix (seed-access-matrix.ts), so these tests
 // prove what the production roles can do — not what a hand-written stub allows.
+// #312 consent-withdrawal guard: a candidate with ACTIVE consent unless a test says otherwise.
+const consentWithdrawn = vi.hoisted(() => vi.fn(async () => false));
+const bulkWithdrawn = vi.hoisted(() => vi.fn(async (): Promise<Set<string>> => new Set()));
+vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+  candidateConsentRepository: {
+    isRecruitmentConsentWithdrawn: consentWithdrawn,
+    withdrawnCandidateIds: bulkWithdrawn,
+  },
+}));
+
 function decide(roles: string[], module: string, action: string) {
   if (roles.includes('super_admin')) return { allowed: true as const, scope: 'organization', roles };
   const grants = roles
@@ -18,10 +28,10 @@ const buildAccessForUserMock = vi.hoisted(() =>
 );
 
 const mockDb = vi.hoisted(() => ({
-  offer: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  offer: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   organization: { findFirst: vi.fn() },
   user: { findMany: vi.fn() },
-  offerApproval: { createMany: vi.fn(), findFirst: vi.fn() },
+  offerApproval: { createMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
 }));
 const runTenantTransactionMock = vi.hoisted(() => vi.fn());
 
@@ -153,6 +163,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = 'https://app.tims.test';
   mockDb.offer.update.mockResolvedValue({ id: OFFER_ID, status: 'pending_approval', approvals: [], settings: {} });
+  mockDb.offer.findFirstOrThrow.mockResolvedValue({ id: OFFER_ID, status: 'pending_approval', approvals: [], settings: {} });
+  mockDb.offerApproval.count.mockResolvedValue(0);
   mockDb.offer.updateMany.mockResolvedValue({ count: 1 });
   sendOfferToCandidateMock.mockResolvedValue(true);
   LED_TEAMS.clear();
@@ -325,6 +337,7 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
     });
     expect(mockDb.offerApproval.createMany).not.toHaveBeenCalled();
     expect(mockDb.offer.update).not.toHaveBeenCalled();
+    expect(mockDb.offer.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects an approver who cannot approve offers instead of leaving the offer stuck', async () => {
@@ -352,9 +365,11 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
     const caller = await makeCaller(['hr_admin']);
     expect(await codeOf(caller.approvals.submitForApproval({ id: OFFER_ID, approverIds: [HR_ADMIN_ID] }))).toBeNull();
     expect(mockDb.offerApproval.createMany).toHaveBeenCalledTimes(1);
-    expect(mockDb.offer.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: OFFER_ID }, data: { status: 'pending_approval' } }),
-    );
+    // The draft -> pending_approval move is a compare-and-set on status='draft'.
+    expect(mockDb.offer.updateMany).toHaveBeenCalledWith({
+      where: { id: OFFER_ID, organizationId: ORG_ID, status: 'draft' },
+      data: { status: 'pending_approval' },
+    });
   });
 
   it('still refuses roles with neither offer:update nor offer:create', async () => {

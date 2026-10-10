@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { trpc } from '../trpc';
 import { isPlatformApiEnabled, platformGet, PlatformApiError } from './client';
 
-// Dark cutover: pickers read the C# tenant people directory only when this build-time flag is set;
-// otherwise they keep today's tRPC user.list call (which requires user:read, so recruiters get 403).
+// Build-time cutover flag (ON in production since 2026-10-01): pickers read the C# tenant people directory;
+// with it off they fall back to tRPC user.list, which requires user:read (only super_admin/hr_admin hold it).
 const VIA_CSHARP = process.env.NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP === 'true';
 
 export const ASSIGNABLE_PEOPLE_MAX_LIMIT = 50;
@@ -17,8 +17,29 @@ export function isAssignablePeopleViaCSharp(): boolean {
 }
 const MAX_SEARCH_LENGTH = 100;
 
-// vacancy_assignee: the wizard's hiring manager (vacancy.create assignedTo) — any active member, org-wide callers only.
-export type AssignablePurpose = 'interview_evaluator' | 'vacancy_approver' | 'offer_approver' | 'vacancy_assignee';
+// Each purpose is gated by C# on the permission of the mutation its picker feeds (AssignablePurposes.RuleFor):
+//   vacancy_assignee           the wizard's hiring manager (vacancy.create assignedTo) — any active member, org-wide callers only.
+//   colleague                  feedback/recognition recipient, onboarding buddy, coaching leader — any staff member may list.
+//   performance_subject        OKR / coaching / commitment employee (performance:create) — narrow callers see their subject set.
+//   learning_enrollee          learning.enrollUser (learning:create) — subject-scoped.
+//   onboarding_hire            onboarding.create new hire (onboarding:create) — subject-scoped.
+//   succession_candidate       succession add successor (succession:create) — subject-scoped.
+//   evaluation360_participant  360 subject / raters (evaluation360:create) — org-wide callers only.
+//   ninebox_committee_member   nine-box committee member (ninebox:update) — org-wide callers only.
+//   org_structure_member       team member / unit assignee / user unit (user:create) — org-wide callers only.
+export type AssignablePurpose =
+  | 'interview_evaluator'
+  | 'vacancy_approver'
+  | 'offer_approver'
+  | 'vacancy_assignee'
+  | 'colleague'
+  | 'performance_subject'
+  | 'learning_enrollee'
+  | 'onboarding_hire'
+  | 'succession_candidate'
+  | 'evaluation360_participant'
+  | 'ninebox_committee_member'
+  | 'org_structure_member';
 
 export interface AssignablePerson {
   id: string;

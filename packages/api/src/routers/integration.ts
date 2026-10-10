@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { randomBytes } from 'crypto';
 import { hashApiKey } from '../lib/api-key';
@@ -147,30 +148,31 @@ export const integrationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const items = await db.connectorSync.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-          connectorId: input.connectorId,
-        },
-        select: {
-          id: true,
-          connectorId: true,
-          status: true,
-          entitiesProcessed: true,
-          duration: true,
-          error: true,
-          startedAt: true,
-          completedAt: true,
-        },
-        take: input.take + 1,
-        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
-        orderBy: { startedAt: 'desc' },
-      });
-      const hasMore = items.length > input.take;
-      return {
-        items: items.slice(0, input.take),
-        nextCursor: hasMore ? items[input.take - 1]!.id : undefined,
+      const where: Prisma.ConnectorSyncWhereInput = {
+        organizationId: ctx.user.organizationId,
+        connectorId: input.connectorId,
       };
+      const cursorLive = await cursorRowMatches(input.cursor, (id) =>
+        db.connectorSync.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const items = !cursorLive
+        ? []
+        : await db.connectorSync.findMany({
+            where,
+            ...cursorPageArgs(input.take, input.cursor),
+            select: {
+              id: true,
+              connectorId: true,
+              status: true,
+              entitiesProcessed: true,
+              duration: true,
+              error: true,
+              startedAt: true,
+              completedAt: true,
+            },
+            orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+          });
+      return takeCursorPage(items, input.take);
     }),
 
   // Org-wide recent sync feed (across all connectors) for the activity panel.
@@ -327,18 +329,18 @@ export const integrationRouter = router({
       if (input.connectorId) where.connectorId = input.connectorId;
       if (input.status) where.status = input.status;
 
-      const items = await db.syncError.findMany({
-        where,
-        take: input.take + 1,
-        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
-        include: { connector: { select: { id: true, name: true, type: true } } },
-        orderBy: { createdAt: 'desc' },
-      });
-      const hasMore = items.length > input.take;
-      return {
-        items: items.slice(0, input.take),
-        nextCursor: hasMore ? items[input.take - 1]!.id : undefined,
-      };
+      const cursorLive = await cursorRowMatches(input.cursor, (id) =>
+        db.syncError.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const items = !cursorLive
+        ? []
+        : await db.syncError.findMany({
+            where,
+            ...cursorPageArgs(input.take, input.cursor),
+            include: { connector: { select: { id: true, name: true, type: true } } },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          });
+      return takeCursorPage(items, input.take);
     }),
 
   retryError: permissionProcedure('integration', 'update')
@@ -353,20 +355,18 @@ export const integrationRouter = router({
 
   // ── System Health & KPIs ────────────────────────────────────
 
+  // Nothing measures tenant integration health, so this reports exactly that (#323, consistent with #295's
+  // platform health): every service 'unmonitored' and no number at all. It used to return a hardcoded
+  // 'healthy' with 99.97% uptime to any holder of integration:read. No web caller reads it.
   getSystemHealth: permissionProcedure('integration', 'read').query(async () => {
-    // Stub — return mock health data
+    const unmonitored = { status: 'unmonitored' as const, latencyMs: null };
     return {
-      status: 'healthy',
-      uptime: 99.97,
-      latencyMs: 42,
-      activeConnections: 3,
-      services: {
-        database: { status: 'healthy', latencyMs: 5 },
-        redis: { status: 'healthy', latencyMs: 2 },
-        storage: { status: 'healthy', latencyMs: 12 },
-        email: { status: 'healthy', latencyMs: 85 },
-      },
-      lastCheckedAt: new Date().toISOString(),
+      status: 'unmonitored' as const,
+      uptime: null,
+      latencyMs: null,
+      activeConnections: null,
+      services: { database: unmonitored, redis: unmonitored, storage: unmonitored, email: unmonitored },
+      lastCheckedAt: null,
     };
   }),
 

@@ -1,11 +1,13 @@
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import { candidateConsentRepository } from './candidate-consent.repository';
 
 // ---------------------------------------------------------------------------
 // Explicit select objects
 // ---------------------------------------------------------------------------
 
-const boardApplicationSelect = (organizationId: string, vacancyId: string) => ({
+// #312: `visibleFit` hides withdrawn candidates' existing fit scores on the board.
+const boardApplicationSelect = (organizationId: string, vacancyId: string, visibleFit: Prisma.FitScoreWhereInput) => ({
   id: true,
   status: true,
   source: true,
@@ -26,7 +28,7 @@ const boardApplicationSelect = (organizationId: string, vacancyId: string) => ({
       currentTitle: true,
       currentCompany: true,
       fitScores: {
-        where: { organizationId, vacancyId },
+        where: { organizationId, vacancyId, AND: [visibleFit] },
         take: 1,
         select: { overallScore: true, isPartial: true },
       },
@@ -85,6 +87,7 @@ export const pipelineRepository = {
       applicationWhere.status = statusFilter;
     }
 
+    const visibleFit = await candidateConsentRepository.visibleFitScoreWhere(orgId); // #312
     return db.pipelineStage.findMany({
       where: { vacancyId, organizationId: orgId },
       orderBy: { order: 'asc' },
@@ -93,7 +96,7 @@ export const pipelineRepository = {
         applications: {
           where: applicationWhere,
           orderBy: { appliedAt: 'desc' as const },
-          select: boardApplicationSelect(orgId, vacancyId),
+          select: boardApplicationSelect(orgId, vacancyId, visibleFit),
         },
       },
     });

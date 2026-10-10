@@ -16,6 +16,8 @@ export default async function AssessmentPlayerPage({
 
   const supabaseUser = await getUser();
   if (!supabaseUser?.email) redirect(`/careers/${orgSlug}/login`);
+  // Unconfirmed email: the dashboard explains how to verify it (see dashboard/page.tsx).
+  if (!supabaseUser.email_confirmed_at) redirect(`/careers/${orgSlug}/dashboard`);
 
   const org = await db.organization.findUnique({
     where: { slug: orgSlug },

@@ -116,6 +116,7 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
 
           {adding && (
             <UserPicker
+              purpose="ninebox_committee_member"
               excludeIds={assignedIds}
               disabled={add.isPending}
               onSelect={(userId) => add.mutate({ sessionId, userId })}

@@ -62,13 +62,34 @@ public sealed class TenantScope : IAsyncDisposable
         return _transaction.CommitAsync(cancellationToken);
     }
 
+    /// <remarks>
+    /// Dispose must never throw over the exception that is already unwinding through the caller's
+    /// <c>await using</c> (#181 review HIGH-1): when the backend is terminated mid-statement, the connection is
+    /// broken and RollbackAsync throws ObjectDisposedException / NpgsqlException, which used to REPLACE the
+    /// original transient fault and make it look deterministic. A transaction on a broken connection is already
+    /// gone server-side, so a failed rollback loses nothing; it is swallowed here.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
         if (!_completed)
         {
-            await _transaction.RollbackAsync();
+            try
+            {
+                await _transaction.RollbackAsync();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or System.Data.Common.DbException)
+            {
+                // see remarks — the original exception keeps propagating
+            }
         }
 
-        await _transaction.DisposeAsync();
+        try
+        {
+            await _transaction.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or System.Data.Common.DbException)
+        {
+            // see remarks
+        }
     }
 }

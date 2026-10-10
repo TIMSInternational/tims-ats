@@ -39,11 +39,11 @@ public sealed class NotificationReadRepository(NotificationDbContext db) : INoti
             filtered = filtered.Where(n => !n.Read);
         }
 
-        var skip = 0;
         if (cursor is { } cursorId)
         {
             // Prisma's cursor is positional: it resolves the cursor row's orderBy value and pages relative to
-            // it, then `skip: 1` steps past the cursor row itself. The boundary lookup is scoped to the
+            // it, then `skip: 1` steps past the cursor row itself. Over the total (createdAt DESC, id DESC)
+            // order that is exactly the strict keyset predicate below — no OFFSET needed. The boundary lookup is scoped to the
             // CALLER'S OWN rows — not to the archived/unreadOnly filters, which would move the boundary for a
             // cursor minted under different filters, and not unscoped, which would turn the cursor into an
             // oracle for another user's notification timestamps. An unknown or foreign cursor yields no
@@ -59,16 +59,17 @@ public sealed class NotificationReadRepository(NotificationDbContext db) : INoti
                 return [];
             }
 
-            // `<=` (not `<`) with OFFSET 1 is Prisma's own shape for a DESC cursor over a NON-UNIQUE column.
-            // It is tie-fragile by construction — rows sharing the boundary timestamp can repeat or vanish
-            // across pages — and that fragility is reproduced rather than repaired. See the slice doc.
-            filtered = filtered.Where(n => n.CreatedAt <= boundary.Value);
-            skip = 1;
+            // #246: TS now orders by (createdAt DESC, id DESC) and pages strictly after the cursor row, so rows
+            // that share the boundary timestamp are neither repeated nor lost. Guid.CompareTo translates to
+            // Postgres uuid ordering (the TenantAuditRepository.List precedent).
+            var boundaryAt = boundary.Value;
+            filtered = filtered.Where(n => n.CreatedAt < boundaryAt
+                || (n.CreatedAt == boundaryAt && n.Id.CompareTo(cursorId) < 0));
         }
 
         var rows = await filtered
             .OrderByDescending(n => n.CreatedAt)
-            .Skip(skip)
+            .ThenByDescending(n => n.Id)
             .Take(limit + 1)
             .Select(n => new NotificationProjection
             {

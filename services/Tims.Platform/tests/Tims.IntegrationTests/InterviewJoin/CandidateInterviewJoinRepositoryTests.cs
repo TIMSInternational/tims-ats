@@ -36,6 +36,87 @@ public sealed class CandidateInterviewJoinRepositoryTests(CandidateInterviewJoin
     }
 
     [Fact]
+    public async Task A_live_interview_with_no_application_is_neither_closed_nor_inactive()
+    {
+        var seeded = await fixture.SeedAsync();
+        var interview = await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default);
+        Assert.Equal((false, false), (interview!.ApplicationClosed, interview.OrganizationInactive));
+    }
+
+    [Theory]
+    [InlineData("UPDATE organizations SET is_active=false WHERE id='{org}'")]
+    [InlineData("UPDATE organizations SET deleted_at=now() WHERE id='{org}'")]
+    [InlineData("DELETE FROM organizations WHERE id='{org}'")]
+    public async Task A_suspended_deleted_or_missing_organization_is_reported_inactive(string mutation)
+    {
+        // #329 item 5 — the same predicate the API-key lockout uses (is_active AND deleted_at IS NULL).
+        var seeded = await fixture.SeedAsync();
+        await fixture.ExecuteAsync(mutation.Replace("{org}", seeded.OrganizationId.ToString()));
+        var interview = await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default);
+        Assert.True(interview!.OrganizationInactive);
+        Assert.False(interview.ApplicationClosed);
+    }
+
+    [Theory]
+    [InlineData("active", false, false)]
+    [InlineData("hired", false, false)]
+    [InlineData("rejected", false, true)]
+    [InlineData("withdrawn", false, true)]
+    [InlineData("active", true, true)] // rejected_at set without the status flip still revokes
+    public async Task A_rejected_or_withdrawn_application_is_reported_closed(string status, bool rejectedAt,
+        bool expectedClosed)
+    {
+        var seeded = await fixture.SeedAsync();
+        var application = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"INSERT INTO applications(id,organization_id,status,rejected_at) VALUES('{application}','{seeded.OrganizationId}','{status}',{(rejectedAt ? "now()" : "NULL")});" +
+            $"UPDATE interviews SET application_id='{application}' WHERE id='{seeded.InterviewId}'");
+        var interview = await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default);
+        Assert.Equal(expectedClosed, interview!.ApplicationClosed);
+    }
+
+    [Fact]
+    public async Task An_application_that_no_longer_resolves_in_the_interviews_org_is_closed_fail_closed()
+    {
+        var seeded = await fixture.SeedAsync();
+        var foreignApplication = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"INSERT INTO applications(id,organization_id) VALUES('{foreignApplication}','{Guid.NewGuid()}');" +
+            $"UPDATE interviews SET application_id='{foreignApplication}' WHERE id='{seeded.InterviewId}'");
+        Assert.True((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ApplicationClosed);
+
+        await fixture.ExecuteAsync($"UPDATE interviews SET application_id='{Guid.NewGuid()}' WHERE id='{seeded.InterviewId}'");
+        Assert.True((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ApplicationClosed);
+    }
+
+    [Fact]
+    public async Task A_legacy_room_stored_by_an_interview_in_another_tenant_is_shared()
+    {
+        // #329 item 1 — the collision is CROSS-tenant, so the check is too.
+        var room = "tims-" + Guid.NewGuid().ToString("N")[..8];
+        var mine = await fixture.SeedAsync();
+        var theirs = await fixture.SeedAsync();
+        await fixture.ExecuteAsync($"UPDATE interviews SET meeting_url='https://tims.daily.co/{room}' WHERE id='{mine.InterviewId}'");
+        Assert.False(await fixture.Repository().IsRoomSharedAsync(mine.InterviewId, room, default));
+
+        // Another tenant's row names the same room, spelled differently (case, query) — still the same room.
+        await fixture.ExecuteAsync($"UPDATE interviews SET meeting_url='https://TIMS.daily.co/{room.ToUpperInvariant()}?x=1' WHERE id='{theirs.InterviewId}'");
+        Assert.NotEqual(mine.OrganizationId, theirs.OrganizationId);
+        Assert.True(await fixture.Repository().IsRoomSharedAsync(mine.InterviewId, room, default));
+        Assert.True(await fixture.Repository().IsRoomSharedAsync(theirs.InterviewId, room, default));
+    }
+
+    [Fact]
+    public async Task A_collision_check_that_cannot_see_the_interviews_own_row_fails_closed()
+    {
+        // If the connection cannot see this interview's own row (e.g. a non-BYPASSRLS login under forced RLS), "no
+        // other row" is a blind answer, so it is reported as shared.
+        var room = "tims-" + Guid.NewGuid().ToString("N")[..8];
+        var seeded = await fixture.SeedAsync();
+        Assert.True(await fixture.Repository().IsRoomSharedAsync(seeded.InterviewId, room, default));
+    }
+
+    [Fact]
     public async Task Meeting_url_claim_is_tenant_filtered_and_first_writer_wins()
     {
         var seeded = await fixture.SeedAsync();
@@ -83,6 +164,26 @@ public sealed class CandidateInterviewJoinRepositoryTests(CandidateInterviewJoin
         Assert.Contains("\"outcome\": \"ready\"", row.Metadata);
         Assert.DoesNotContain(seeded.Token, row.Metadata);
         Assert.DoesNotContain(seeded.Hash, row.Metadata);
+    }
+
+    [Fact]
+    public async Task Join_audit_attribution_is_normalized_like_every_security_audit_row()
+    {
+        var seeded = await fixture.SeedAsync();
+        Assert.True(await fixture.Repository().RecordAsync(new(seeded.InterviewId, seeded.OrganizationId,
+            CandidateJoinOutcomes.Ready, "10.0.0.1, 6.6.6.6", "agent\u2028Forged: line\u202E"), default));
+        Assert.Equal((null, "agentForged: line"), await fixture.AttributionAsync(seeded.InterviewId));
+    }
+
+    [Fact]
+    public async Task A_collision_check_that_throws_anything_fails_closed()
+    {
+        // Review LOW-8: not only NpgsqlException — a disposed data source throws ObjectDisposedException.
+        var dataSource = NpgsqlDataSource.Create(fixture.ConnectionString);
+        await dataSource.DisposeAsync();
+        var repository = new CandidateInterviewJoinRepository(new(dataSource),
+            NullLogger<CandidateInterviewJoinRepository>.Instance);
+        Assert.True(await repository.IsRoomSharedAsync(Guid.NewGuid(), "tims-1234abcd", default));
     }
 
     [Fact]
@@ -137,6 +238,7 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("""
+            INSERT INTO organizations(id) VALUES(@org);
             INSERT INTO candidates(id,organization_id,first_name,last_name) VALUES(@candidate,@org,'Ana','Pérez');
             INSERT INTO interviews(id,organization_id,candidate_id,type,status,scheduled_at,duration,
               candidate_join_token_hash,candidate_join_token_expires_at,updated_at)
@@ -157,6 +259,18 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
         return await command.ExecuteScalarAsync() as string;
     }
 
+    public string ConnectionString => _connectionString;
+
+    public async Task<(string? Ip, string? Ua)> AttributionAsync(Guid interviewId)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT ip_address,user_agent FROM audit_logs WHERE entity_id=@id", connection);
+        command.Parameters.AddWithValue("id", interviewId.ToString());
+        await using var reader = await command.ExecuteReaderAsync(); Assert.True(await reader.ReadAsync());
+        return (reader.IsDBNull(0) ? null : reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+    }
+
     public async Task<(Guid Org, string Action, string Entity, string Metadata)> AuditAsync(Guid interviewId)
     {
         await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync();
@@ -169,9 +283,12 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
 
     private const string Schema = """
         CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; GRANT app_tenant TO postgres;
+        CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean NOT NULL DEFAULT true,deleted_at timestamp(3));
+        CREATE TABLE applications(id uuid PRIMARY KEY,organization_id uuid NOT NULL,status text NOT NULL DEFAULT 'active',
+          rejected_at timestamp(3));
         CREATE TABLE candidates(id uuid PRIMARY KEY,organization_id uuid NOT NULL,first_name text NOT NULL,last_name text NOT NULL,deleted_at timestamp(3));
         CREATE TABLE interviews(id uuid PRIMARY KEY,organization_id uuid NOT NULL,candidate_id uuid NOT NULL REFERENCES candidates(id),
-          type text NOT NULL,status text NOT NULL DEFAULT 'scheduled',scheduled_at timestamp(3) NOT NULL,duration int NOT NULL,
+          application_id uuid,type text NOT NULL,status text NOT NULL DEFAULT 'scheduled',scheduled_at timestamp(3) NOT NULL,duration int NOT NULL,
           meeting_url text,cancelled_at timestamp(3),candidate_join_token_hash varchar(64) UNIQUE,
           candidate_join_token_expires_at timestamp(3),updated_at timestamp(3) NOT NULL);
         CREATE TABLE audit_logs(id uuid PRIMARY KEY,organization_id uuid NOT NULL,user_id uuid,actor_id uuid,action text NOT NULL,

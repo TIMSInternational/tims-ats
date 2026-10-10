@@ -1,6 +1,7 @@
 import { ratingsCoverCompetencySet } from '@tims/shared';
 import {
   interviewScorecardRepository,
+  SCORECARD_CLOSED_STATUSES,
   type ScorecardSubmissionData,
 } from '../repositories/interview-scorecard.repository';
 
@@ -22,11 +23,17 @@ import {
 //     with the previous ratings/recommendation and how many other evaluators had
 //     submitted by then — revising after reading the panel is detectable, not
 //     prevented.
+//   - CLOSED INTERVIEWS REFUSE CARDS (#327): `cancelled` and `no_show` never
+//     took place, so there is nothing to score. `completed` stays OPEN — scoring
+//     after the interview ends is the normal flow, and the room's "Update" edit
+//     must keep working once the interview is marked completed. Checked here
+//     (fast refusal) and again inside the write transaction (the repository
+//     returns null if a cancel landed in between).
 // ---------------------------------------------------------------------------
 
 export type SubmitScorecardResult =
-  | { ok: true; scorecard: Awaited<ReturnType<typeof interviewScorecardRepository.submit>> }
-  | { ok: false; reason: 'not_found' | 'incomplete' };
+  | { ok: true; scorecard: NonNullable<Awaited<ReturnType<typeof interviewScorecardRepository.submit>>> }
+  | { ok: false; reason: 'not_found' | 'incomplete' | 'closed' };
 
 export const scorecardSubmissionService = {
   async submit(
@@ -36,10 +43,12 @@ export const scorecardSubmissionService = {
     actorId: string,
     data: ScorecardSubmissionData,
   ): Promise<SubmitScorecardResult> {
-    const competencies = await interviewScorecardRepository.getJobProfileCompetencies(orgId, interviewId);
-    if (competencies === undefined) return { ok: false, reason: 'not_found' };
-    if (!ratingsCoverCompetencySet(data.ratings, competencies)) return { ok: false, reason: 'incomplete' };
+    const context = await interviewScorecardRepository.getSubmissionContext(orgId, interviewId);
+    if (context === undefined) return { ok: false, reason: 'not_found' };
+    if (SCORECARD_CLOSED_STATUSES.includes(context.status)) return { ok: false, reason: 'closed' };
+    if (!ratingsCoverCompetencySet(data.ratings, context.competencies)) return { ok: false, reason: 'incomplete' };
     const scorecard = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data);
+    if (!scorecard) return { ok: false, reason: 'closed' };
     return { ok: true, scorecard };
   },
 };

@@ -90,11 +90,13 @@ Unscoping it would make the cursor an oracle for another user's notification tim
 
 ## Reproduced faithfully (NOT fixed — "reproduce, don't improve")
 
-- **`list` loses one row per page boundary.** TS pops the `(limit+1)`-th row and uses **its** id as
-  `nextCursor`; the next call passes that id as a Prisma `cursor` with `skip: 1`, which starts _after_ it. The
-  popped row appears on neither page. A pre-existing TS defect, filed as **#246**. Pinned by
-  `List_ExactlyLimitPlusOne_DropsTheOverflowRow_AndNamesItAsTheCursor` and
-  `List_WithCursor_SkipsTheCursorRow_ReproducingTheTsRowLoss`.
+- ~~**`list` loses one row per page boundary.**~~ **FIXED in both stacks (#246, 2026-10-01).** TS used to pop
+  the `(limit+1)`-th row and use **its** id as `nextCursor`, so the next page (Prisma `cursor` + `skip: 1`)
+  started after it and that row appeared on neither page; the port reproduced it. Both now name the last
+  RETURNED row as the cursor and order by `(createdAt DESC, id DESC)` — C# as a strict keyset predicate, so
+  tied timestamps neither repeat nor vanish. Pinned by
+  `List_ExactlyLimitPlusOne_DropsTheLookAheadRow_AndNamesTheLastReturnedRowAsTheCursor`,
+  `List_WithCursor_StartsStrictlyAfterTheCursorRow` and `List_PagingThroughTiedTimestamps_ShowsEveryRowExactlyOnce`.
 - **`markAllAsRead` has no `archived` filter**, so it marks archived-and-unread rows read while `list` and
   `unreadCount` both exclude archived rows — it can report a count larger than the badge the caller can see.
 - **`getPreferences` is a tRPC `query` that INSERTs.** It therefore sits under the READ flag while writing, and

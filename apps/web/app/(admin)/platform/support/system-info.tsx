@@ -70,21 +70,21 @@ export function SystemInfo() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-[#333]">{health.stats.userCount}</div>
+              <div className="text-lg font-bold text-[#333]">{health.stats.userCount ?? '—'}</div>
               <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.users}</div>
             </div>
             <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-[#333]">{health.stats.orgCount}</div>
+              <div className="text-lg font-bold text-[#333]">{health.stats.orgCount ?? '—'}</div>
               <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.orgs}</div>
             </div>
             <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-[#333]">{health.stats.loginsToday}</div>
+              <div className="text-lg font-bold text-[#333]">{health.stats.loginsToday ?? '—'}</div>
               <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.loginsToday}</div>
             </div>
             <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
               <div className="text-lg font-bold text-[#333]">
-                {health.services.find((s) => s.name === 'Base de Datos')?.metrics.find((m) => m.label === 'Query time')
-                  ?.value || '--'}
+                {health.services.find((s) => s.id === 'database')?.metrics.find((m) => m.id === 'query_time')?.value ??
+                  '—'}
               </div>
               <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.dbLatency}</div>
             </div>
@@ -92,9 +92,9 @@ export function SystemInfo() {
           <div className="text-[11px] text-[#8B8B8B] uppercase tracking-wide mb-2">{t.support.services}</div>
           <div className="grid grid-cols-2 gap-2 mb-5">
             {health.services.map((svc) => (
-              <div key={svc.name} className="flex items-center gap-2 border border-[#EDEDED] rounded-lg px-3 py-2">
+              <div key={svc.id} className="flex items-center gap-2 border border-[#EDEDED] rounded-lg px-3 py-2">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColor(svc.status)}`} />
-                <span className="text-xs text-[#585858] font-medium truncate">{svc.name}</span>
+                <span className="text-xs text-[#585858] font-medium truncate">{t.health.serviceNames[svc.id]}</span>
                 <span className="text-[10px] text-[#8B8B8B] ml-auto">{statusLabel(svc.status)}</span>
               </div>
             ))}
