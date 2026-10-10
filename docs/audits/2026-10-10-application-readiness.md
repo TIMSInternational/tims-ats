@@ -51,8 +51,14 @@ promised.
 Other concrete follow-ups: canonicalize candidate email identity with a collision report (#315); validate bearer
 links use HTTPS in production (#343); make the SES abort test non-vacuous (#316); repair the root
 `pnpm --filter @tims/db generate` script, which currently cannot locate the multi-file Prisma schema (explicit
-`--schema=prisma/schema` succeeds); and fix the public vacancy detail's Spanish relative-date grammar and the raw
-`published` status shown in the staff SLA panel.
+`--schema=prisma/schema` succeeds); fix Next's build-time ESLint configuration, which currently prints
+`Could not find plugin "@typescript-eslint"` but still exits 0; and fix the public vacancy detail's Spanish
+relative-date grammar and the raw `published` status shown in the staff SLA panel.
+
+The October 10 PR gate also discovered two new HIGH production dependency advisories:
+`source-map-js` 1.2.1 and `sharp` 0.35.4. PR #349 pins their verified patched releases 1.2.2 and 0.35.5.
+After that change, `pnpm audit --prod --audit-level high` exited 0; 11 lower-severity findings remain for
+normal dependency triage.
 
 ## Exit decision
 
