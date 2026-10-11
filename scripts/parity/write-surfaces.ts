@@ -51,6 +51,13 @@ import {
   WRITE_ASSESSMENT_TYPES,
   WRITE_ASSESSMENT_TYPE_MARKER,
   WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
+  ensureOrgStructureWritePreconditions,
+  resolveOrgStructureWriteResources,
+  WRITE_ORG_STRUCTURE,
+  WRITE_ORG_STRUCTURE_UNIT_NAME,
+  WRITE_ORG_STRUCTURE_TEAM_NAME,
+  WRITE_ORG_STRUCTURE_UNIT_MARKER,
+  WRITE_ORG_STRUCTURE_TEAM_MARKER,
 } from './seed';
 
 // Re-export the write-verify fixtures (defined in seed.ts to keep the seed→registry import
@@ -70,6 +77,11 @@ export {
   WRITE_ASSESSMENT_TYPES,
   WRITE_ASSESSMENT_TYPE_MARKER,
   WRITE_ASSESSMENT_TYPE_SEEDED_DESCRIPTION,
+  WRITE_ORG_STRUCTURE,
+  WRITE_ORG_STRUCTURE_UNIT_NAME,
+  WRITE_ORG_STRUCTURE_TEAM_NAME,
+  WRITE_ORG_STRUCTURE_UNIT_MARKER,
+  WRITE_ORG_STRUCTURE_TEAM_MARKER,
 };
 
 /** A deterministic Z-anchored effective date for create bodies (the C# validator
@@ -105,7 +117,12 @@ export interface WriteExtraProbe<R extends WriteResolvedBase = WriteResolvedBase
 
 export interface WriteEndpointDef<R extends WriteResolvedBase = WriteResolvedBase> {
   name: string;
-  method: 'POST' | 'PATCH' | 'DELETE';
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  /** The status a SUCCESSFUL write answers (default 200). Set 201 for a create that answers
+   *  201 Created and 204 for a delete that answers 204 No Content — the parity and allow-role legs
+   *  require exactly this status. Whatever it is, ANY 2xx on a write that must be denied (IDOR,
+   *  extra probes) is reported as a WRITE LEAK (checks/writes.ts `isWriteSuccess`). */
+  successStatus?: number;
   /** org-A happy-path (probe light-parity + rbac-deny both use this path/body). */
   buildParity: (r: R) => { path: string; body: unknown };
   /** cross-org IDOR probe (org-A token → an org-B resource/subject). OMITTED when the
@@ -1955,6 +1972,537 @@ const assessmentTypesSurface: WriteSurface<AssessmentTypeWriteResolved> = {
   ],
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// tenant org structure (PR #310) — Platform__TenantOrgStructureEnabled
+// TWO write surfaces behind ONE flag, split by the grant that authorizes them:
+//   'tenant-org-structure' — structure writes (organization:create/update; super_admin only in MATRIX)
+//   'tenant-org-people'    — people-assignment writes (user:create/update/delete; super_admin + hr_admin)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for both org-structure write surfaces (seed.ts resolveOrgStructureWriteResources). */
+export interface OrgStructureWriteResolved extends WriteResolvedBase {
+  orgAId: string;
+  orgBId: string;
+  companyAId: string;
+  companyBId: string;
+  userIdByRole: Record<string, string>;
+  /** org-A bare user, in no team/unit and with no home unit — the PUT targets. */
+  putA: string;
+  /** org-A bare user, member of teamA and assignee of unitA — the DELETE targets. */
+  delA: string;
+  /** org-B bare user, member of teamB and assignee of unitB — the cross-org USER vector and DELETE-IDOR target. */
+  userB: string;
+  auditBaseline: Record<string, number>;
+}
+
+/** The renamed unit name update-business-unit writes (distinct from the seeded one, so a no-op cannot pass). */
+export const WRITE_ORG_STRUCTURE_UNIT_RENAMED = 'Parity OS Unit A (renamed)';
+
+const OS = '/tenant/org-structure';
+const auditKey = (role: string, action: string, entityId: string) => `${role}|${action}|${entityId}`;
+
+/** "exactly ONE more audit row than before this run", by (actor, action, entity). See auditBaseline. */
+const auditDelta = (r: OrgStructureWriteResolved, role: string, action: string, entityId: string) => ({
+  sql: `(SELECT count(*)::int FROM audit_logs a
+          WHERE a.organization_id = $1 AND a.actor_id = $2 AND a.action = $3 AND a.entity_id = $4)`,
+  params: [r.orgAId, r.userIdByRole[role], action, entityId],
+  expected: (r.auditBaseline[auditKey(role, action, entityId)] ?? 0) + 1,
+});
+
+const expectObj = (b: unknown, check: (o: Record<string, unknown>) => string | null): string | null => {
+  const o = asObj(b);
+  return o ? check(o) : 'response is not an object';
+};
+const expectField = (o: Record<string, unknown>, key: string, want: unknown): string | null =>
+  o[key] === want ? null : `expected ${key} ${JSON.stringify(want)}, got ${JSON.stringify(o[key])}`;
+const firstError = (...errors: (string | null)[]): string | null => errors.find((e) => e !== null) ?? null;
+
+/** Count of rows a forbidden write must NOT have created. */
+const countIsZero = (sql: string, params: unknown[], what: string): WriteReadback => ({
+  sql,
+  params,
+  expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `${what}: found ${rows[0]?.n} row(s)`),
+});
+/** A row a forbidden DELETE must NOT have removed. */
+const countIsOne = (sql: string, params: unknown[], what: string): WriteReadback => ({
+  sql,
+  params,
+  expect: (rows) => (Number(rows[0]?.n) === 1 ? null : `${what}: expected the row to survive, found ${rows[0]?.n}`),
+});
+
+const memberCount = (teamId: string, userId: string) => ({
+  sql: `SELECT count(*)::int AS n FROM user_teams WHERE team_id = $1 AND user_id = $2`,
+  params: [teamId, userId],
+});
+const assigneeCount = (unitId: string, userId: string) => ({
+  sql: `SELECT count(*)::int AS n FROM user_business_units WHERE business_unit_id = $1 AND user_id = $2`,
+  params: [unitId, userId],
+});
+const markerCount = (table: 'business_units' | 'teams', marker: string) => (r: OrgStructureWriteResolved) => ({
+  sql: `SELECT count(*)::int AS n FROM ${table} WHERE organization_id = ANY($1::uuid[]) AND name = $2`,
+  params: [[r.orgAId, r.orgBId], marker],
+});
+const unitName = (id: string, want: string, what: string): WriteReadback => ({
+  sql: `SELECT name, is_active FROM business_units WHERE id = $1`,
+  params: [id],
+  expect: (rows) =>
+    rows.length !== 1
+      ? `fixture unit ${id} missing`
+      : rows[0].name !== want
+        ? `${what}: name ${JSON.stringify(rows[0].name)} != ${JSON.stringify(want)}`
+        : rows[0].is_active !== true
+          ? `${what}: unit is no longer active`
+          : null,
+});
+const teamLeaderIsNull = (id: string, what: string): WriteReadback => ({
+  sql: `SELECT leader_id FROM teams WHERE id = $1`,
+  params: [id],
+  expect: (rows) =>
+    rows.length !== 1 ? `fixture team ${id} missing` : rows[0].leader_id === null ? null : `${what}: leader_id is ${rows[0].leader_id}`,
+});
+const homeUnitIsNull = (userId: string, what: string): WriteReadback => ({
+  sql: `SELECT business_unit_id FROM users WHERE id = $1`,
+  params: [userId],
+  expect: (rows) =>
+    rows.length !== 1
+      ? `fixture user ${userId} missing`
+      : rows[0].business_unit_id === null
+        ? null
+        : `${what}: business_unit_id is ${rows[0].business_unit_id}`,
+});
+
+// STRUCTURE WRITES. MATRIX grants organization:create/update to super_admin ONLY, so there is no non-privileged
+// role to probe with: the probe is super_admin (privileged in PermissionService — its 200 proves the route, the
+// transaction and the audit, NOT a grant row). What the grant fixture proves here is the DENY: hr_admin holds
+// organization:READ (seedOrgStructureGrants) and nothing else in that module, so its 403 on every structure write
+// is a GRANT-level refusal of exactly the capability the doc says hr_admin must not gain. hrbp holds no
+// organization grant at all.
+//
+// PATCH /teams/{id} is deliberately NOT on this surface: one VERB+path may be registered once
+// (parity-registry-covers-deployed-routes.test.ts pins registry.size === endpoint count), and its LEADER-ONLY
+// form — the one with a gate of its own (organization:update OR user:update) — is registered on
+// 'tenant-org-people' below. The rename form's gate is the same organization:update this surface's
+// update-business-unit already proves hr_admin is denied; the C# integration 403 table covers it per route.
+//
+// ORDERING DEPENDENCY (both creates): cmdVerifyWrite runs idor → extraProbes → rbac → parity per endpoint, so every
+// denied attempt runs BEFORE the probe's create and "0 marker rows" is the correct no-mutation proof — the same
+// dependency assessment-types and organization-create document. The ensure hook deletes last run's markers.
+const orgStructureSurface: WriteSurface<OrgStructureWriteResolved> = {
+  key: 'tenant-org-structure',
+  flag: 'Platform__TenantOrgStructureEnabled',
+  probeRole: 'super_admin',
+  roles: ['super_admin', 'hr_admin', 'hrbp'],
+  ensurePreconditions: ensureOrgStructureWritePreconditions,
+  resolveResources: resolveOrgStructureWriteResources,
+  endpoints: [
+    {
+      name: 'create-business-unit',
+      method: 'POST',
+      successStatus: 201,
+      buildParity: (r) => ({
+        path: `${OS}/business-units`,
+        body: { name: WRITE_ORG_STRUCTURE_UNIT_MARKER, companyId: r.companyAId },
+      }),
+      // Cross-org COMPANY: the only foreign id a unit create accepts. Companies are read with an explicit org
+      // predicate under TenantScope, so org B's company is invisible → 404, and nothing is inserted anywhere.
+      buildIdor: (r) => ({
+        path: `${OS}/business-units`,
+        body: { name: WRITE_ORG_STRUCTURE_UNIT_MARKER, companyId: r.companyBId },
+      }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'deny', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) =>
+        expectObj(b, (o) =>
+          typeof o.id !== 'string' || !UUID_RE.test(o.id)
+            ? `expected a uuid id, got ${JSON.stringify(o.id)}`
+            : firstError(expectField(o, 'name', WRITE_ORG_STRUCTURE_UNIT_MARKER), expectField(o, 'isActive', true)),
+        ),
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT u.id, u.company_id, u.is_active,
+                       (SELECT count(*)::int FROM audit_logs a
+                         WHERE a.organization_id = $1 AND a.entity = 'business_unit' AND a.entity_id = u.id::text
+                           AND a.action = 'business_unit_created' AND a.actor_id = $3) AS audits
+                  FROM business_units u WHERE u.organization_id = $1 AND u.name = $2`,
+          params: [r.orgAId, WRITE_ORG_STRUCTURE_UNIT_MARKER, r.userIdByRole.super_admin],
+          expect: (rows) => {
+            if (rows.length !== 1) return `expected exactly 1 marker unit in org A, found ${rows.length}`;
+            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created row ${rows[0].id}`;
+            if (rows[0].company_id !== r.companyAId) return `unit landed on company ${rows[0].company_id}, not org A's`;
+            if (rows[0].is_active !== true) return 'created unit is not active';
+            if (Number(rows[0].audits) !== 1) return `expected 1 create audit by the probe, found ${rows[0].audits}`;
+            return null;
+          },
+        };
+      },
+      readbackNoMutation: (r) => {
+        const { sql, params } = markerCount('business_units', WRITE_ORG_STRUCTURE_UNIT_MARKER)(r);
+        return countIsZero(sql, params, 'a forbidden unit create still produced a marker unit');
+      },
+    },
+    {
+      name: 'update-business-unit',
+      method: 'PATCH',
+      buildParity: () => ({
+        path: `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitA}`,
+        body: { name: WRITE_ORG_STRUCTURE_UNIT_RENAMED },
+      }),
+      buildIdor: () => ({
+        path: `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitB}`,
+        body: { name: WRITE_ORG_STRUCTURE_UNIT_RENAMED },
+      }),
+      idorDeniedStatuses: [404], // the row lock carries the caller's org: a foreign id is absent, not forbidden
+      expectedByRole: { super_admin: 'allow', hr_admin: 'deny', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) =>
+        expectObj(b, (o) =>
+          firstError(
+            expectField(o, 'id', WRITE_ORG_STRUCTURE.unitA),
+            expectField(o, 'name', WRITE_ORG_STRUCTURE_UNIT_RENAMED),
+            expectField(o, 'isActive', true),
+          ),
+        ),
+      readbackMutated: (r) => {
+        const audit = auditDelta(r, 'super_admin', 'business_unit_updated', WRITE_ORG_STRUCTURE.unitA);
+        return {
+          sql: `SELECT u.name, ${audit.sql} AS audits FROM business_units u WHERE u.id = $5`,
+          params: [...audit.params, WRITE_ORG_STRUCTURE.unitA],
+          expect: (rows) =>
+            rows.length !== 1
+              ? 'fixture unit A missing'
+              : rows[0].name !== WRITE_ORG_STRUCTURE_UNIT_RENAMED
+                ? `rename did not apply: name ${JSON.stringify(rows[0].name)}`
+                : Number(rows[0].audits) !== audit.expected
+                  ? `expected ${audit.expected} business_unit_updated audit(s) by the probe, found ${rows[0].audits}`
+                  : null,
+        };
+      },
+      readbackNoMutation: (_r, target) =>
+        target === 'b'
+          ? unitName(WRITE_ORG_STRUCTURE.unitB, WRITE_ORG_STRUCTURE_UNIT_NAME.b, 'a cross-org rename mutated org B')
+          : unitName(WRITE_ORG_STRUCTURE.unitA, WRITE_ORG_STRUCTURE_UNIT_NAME.a, 'a forbidden rename mutated the unit'),
+    },
+    {
+      name: 'create-team',
+      method: 'POST',
+      successStatus: 201,
+      buildParity: () => ({
+        path: `${OS}/teams`,
+        body: { businessUnitId: WRITE_ORG_STRUCTURE.unitA, name: WRITE_ORG_STRUCTURE_TEAM_MARKER },
+      }),
+      // Cross-org PARENT UNIT → 404 (the unit row lock is org-filtered).
+      buildIdor: () => ({
+        path: `${OS}/teams`,
+        body: { businessUnitId: WRITE_ORG_STRUCTURE.unitB, name: WRITE_ORG_STRUCTURE_TEAM_MARKER },
+      }),
+      idorDeniedStatuses: [404],
+      // Second cross-tenant vector: an org-A unit with an org-B LEADER. A foreign leader would silently widen
+      // leader-scoped approvals across tenants; CheckActiveUserAsync carries the org predicate → 404.
+      extraProbes: [
+        {
+          label: 'cross-org-leader',
+          build: (r) => ({
+            path: `${OS}/teams`,
+            body: { businessUnitId: WRITE_ORG_STRUCTURE.unitA, name: WRITE_ORG_STRUCTURE_TEAM_MARKER, leaderUserId: r.userB },
+          }),
+          deniedStatuses: [404],
+          readbackNoMutation: (r) => {
+            const { sql, params } = markerCount('teams', WRITE_ORG_STRUCTURE_TEAM_MARKER)(r);
+            return countIsZero(sql, params, 'a team with a cross-org leader was created');
+          },
+        },
+      ],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'deny', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) =>
+        expectObj(b, (o) =>
+          typeof o.id !== 'string' || !UUID_RE.test(o.id)
+            ? `expected a uuid id, got ${JSON.stringify(o.id)}`
+            : firstError(
+                expectField(o, 'name', WRITE_ORG_STRUCTURE_TEAM_MARKER),
+                expectField(o, 'businessUnitId', WRITE_ORG_STRUCTURE.unitA),
+                expectField(o, 'leaderUserId', null),
+              ),
+        ),
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT t.id, t.business_unit_id, t.leader_id,
+                       (SELECT count(*)::int FROM audit_logs a
+                         WHERE a.organization_id = $1 AND a.entity = 'team' AND a.entity_id = t.id::text
+                           AND a.action = 'team_created' AND a.actor_id = $3) AS audits
+                  FROM teams t WHERE t.organization_id = $1 AND t.name = $2`,
+          params: [r.orgAId, WRITE_ORG_STRUCTURE_TEAM_MARKER, r.userIdByRole.super_admin],
+          expect: (rows) => {
+            if (rows.length !== 1) return `expected exactly 1 marker team in org A, found ${rows.length}`;
+            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created row ${rows[0].id}`;
+            if (rows[0].business_unit_id !== WRITE_ORG_STRUCTURE.unitA) return `team landed on unit ${rows[0].business_unit_id}`;
+            if (rows[0].leader_id !== null) return `created team has leader ${rows[0].leader_id}`;
+            if (Number(rows[0].audits) !== 1) return `expected 1 create audit by the probe, found ${rows[0].audits}`;
+            return null;
+          },
+        };
+      },
+      readbackNoMutation: (r) => {
+        const { sql, params } = markerCount('teams', WRITE_ORG_STRUCTURE_TEAM_MARKER)(r);
+        return countIsZero(sql, params, 'a forbidden team create still produced a marker team');
+      },
+    },
+  ],
+};
+
+// PEOPLE-ASSIGNMENT WRITES. Gated on the tRPC unit-assignment capabilities (user:create / user:delete; user:update
+// for a home unit; organization:update OR user:update for a LEADER-ONLY team PATCH), which MATRIX gives hr_admin
+// @organization. The probe is therefore hr_admin, NOT super_admin: super_admin never reads role_permissions, so
+// only an hr_admin 200 proves the seeded grant fixture (the assessment-types rationale). hrbp holds no `user` and
+// no `organization` grant → the grant-level DENIED role on every endpoint.
+//
+// Three cross-tenant vectors per assignment write, because the route carries TWO ids: an org-B CONTAINER (team /
+// unit) with an org-A user (buildIdor), and an org-A container with an org-B USER (extraProbes 'cross-org-user').
+// Both must 404 — CheckActiveUserAsync and the row locks each carry the caller's org — and neither may insert.
+// The DELETE routes' IDOR targets are REAL org-B rows (userB in teamB/unitB, seeded by the ensure hook), so a
+// no-mutation read-back that finds them still present is a positive proof, not an absent-row tautology.
+const orgPeopleSurface: WriteSurface<OrgStructureWriteResolved> = {
+  key: 'tenant-org-people',
+  flag: 'Platform__TenantOrgStructureEnabled',
+  probeRole: 'hr_admin',
+  roles: ['hr_admin', 'hrbp'],
+  ensurePreconditions: ensureOrgStructureWritePreconditions,
+  resolveResources: resolveOrgStructureWriteResources,
+  endpoints: [
+    {
+      // FIRST on purpose: cmdVerifyWrite's mounted-route preflight probes endpoints[0] with no token and needs a
+      // 401; a PATCH with a null body reaches RequireAuthorization like any other.
+      name: 'set-team-leader',
+      method: 'PATCH',
+      // ONLY `leaderUserId` in the body — that is what selects the (organization:update OR user:update) gate.
+      // Adding any other key moves the call onto organization:update, which hr_admin does not hold, and the
+      // probe would 403. Pinned in write-surfaces.test.ts.
+      buildParity: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}`, body: { leaderUserId: r.putA } }),
+      buildIdor: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamB}`, body: { leaderUserId: r.putA } }),
+      idorDeniedStatuses: [404],
+      extraProbes: [
+        {
+          label: 'cross-org-user',
+          build: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}`, body: { leaderUserId: r.userB } }),
+          deniedStatuses: [404],
+          readbackNoMutation: () => teamLeaderIsNull(WRITE_ORG_STRUCTURE.teamA, 'an org-B leader was set on an org-A team'),
+        },
+      ],
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) =>
+        expectObj(b, (o) => firstError(expectField(o, 'id', WRITE_ORG_STRUCTURE.teamA), expectField(o, 'isActive', true))),
+      readbackMutated: (r, b) => {
+        const audit = auditDelta(r, 'hr_admin', 'team_updated', WRITE_ORG_STRUCTURE.teamA);
+        const respLeader = asObj(b)?.leaderUserId;
+        return {
+          sql: `SELECT t.leader_id, t.name, ${audit.sql} AS audits FROM teams t WHERE t.id = $5`,
+          params: [...audit.params, WRITE_ORG_STRUCTURE.teamA],
+          expect: (rows) =>
+            rows.length !== 1
+              ? 'fixture team A missing'
+              : rows[0].leader_id !== r.putA
+                ? `leader_id is ${rows[0].leader_id}, expected the target user`
+                : respLeader !== r.putA
+                  ? `response leaderUserId ${JSON.stringify(respLeader)} != the target user`
+                  : rows[0].name !== WRITE_ORG_STRUCTURE_TEAM_NAME.a
+                    ? `a leader-only PATCH changed the team name to ${JSON.stringify(rows[0].name)}`
+                    : Number(rows[0].audits) !== audit.expected
+                      ? `expected ${audit.expected} team_updated audit(s) by hr_admin, found ${rows[0].audits}`
+                      : null,
+        };
+      },
+      readbackNoMutation: (_r, target) =>
+        teamLeaderIsNull(
+          target === 'b' ? WRITE_ORG_STRUCTURE.teamB : WRITE_ORG_STRUCTURE.teamA,
+          target === 'b' ? 'a cross-org leader write mutated org B' : 'a forbidden leader write mutated the team',
+        ),
+    },
+    {
+      name: 'put-team-member',
+      method: 'PUT',
+      buildParity: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}/members/${r.putA}`, body: { role: 'member' } }),
+      buildIdor: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamB}/members/${r.putA}`, body: { role: 'member' } }),
+      idorDeniedStatuses: [404],
+      extraProbes: [
+        {
+          label: 'cross-org-user',
+          build: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}/members/${r.userB}`, body: { role: 'member' } }),
+          deniedStatuses: [404],
+          readbackNoMutation: (r) => {
+            const { sql, params } = memberCount(WRITE_ORG_STRUCTURE.teamA, r.userB);
+            return countIsZero(sql, params, 'an org-B user was added to an org-A team');
+          },
+        },
+      ],
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => expectObj(b, (o) => firstError(expectField(o, 'teamId', WRITE_ORG_STRUCTURE.teamA), expectField(o, 'role', 'member'))),
+      readbackMutated: (r) => {
+        const audit = auditDelta(r, 'hr_admin', 'team_member_added', WRITE_ORG_STRUCTURE.teamA);
+        return {
+          sql: `SELECT ut.role, ${audit.sql} AS audits FROM user_teams ut WHERE ut.team_id = $5 AND ut.user_id = $6`,
+          params: [...audit.params, WRITE_ORG_STRUCTURE.teamA, r.putA],
+          expect: (rows) =>
+            rows.length !== 1
+              ? `expected the membership row, found ${rows.length}`
+              : rows[0].role !== 'member'
+                ? `membership role ${JSON.stringify(rows[0].role)}`
+                : Number(rows[0].audits) !== audit.expected
+                  ? `expected ${audit.expected} team_member_added audit(s) by hr_admin, found ${rows[0].audits}`
+                  : null,
+        };
+      },
+      readbackNoMutation: (r, target) => {
+        const { sql, params } = memberCount(target === 'b' ? WRITE_ORG_STRUCTURE.teamB : WRITE_ORG_STRUCTURE.teamA, r.putA);
+        return countIsZero(sql, params, target === 'b' ? 'a cross-org member write landed in org B' : 'a forbidden member write landed');
+      },
+    },
+    {
+      name: 'delete-team-member',
+      method: 'DELETE',
+      successStatus: 204,
+      buildParity: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}/members/${r.delA}`, body: null }),
+      buildIdor: (r) => ({ path: `${OS}/teams/${WRITE_ORG_STRUCTURE.teamB}/members/${r.userB}`, body: null }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => (b === null ? null : `expected an empty 204 body, got ${JSON.stringify(b).slice(0, 80)}`),
+      readbackMutated: (r) => {
+        const audit = auditDelta(r, 'hr_admin', 'team_member_removed', WRITE_ORG_STRUCTURE.teamA);
+        return {
+          sql: `SELECT (SELECT count(*)::int FROM user_teams WHERE team_id = $5 AND user_id = $6) AS n, ${audit.sql} AS audits`,
+          params: [...audit.params, WRITE_ORG_STRUCTURE.teamA, r.delA],
+          expect: (rows) =>
+            Number(rows[0]?.n) !== 0
+              ? 'the membership row survived the delete'
+              : Number(rows[0]?.audits) !== audit.expected
+                ? `expected ${audit.expected} team_member_removed audit(s) by hr_admin, found ${rows[0]?.audits}`
+                : null,
+        };
+      },
+      readbackNoMutation: (r, target) => {
+        const { sql, params } =
+          target === 'b' ? memberCount(WRITE_ORG_STRUCTURE.teamB, r.userB) : memberCount(WRITE_ORG_STRUCTURE.teamA, r.delA);
+        return countIsOne(sql, params, target === 'b' ? 'a cross-org delete removed an org-B membership' : 'a forbidden delete removed the membership');
+      },
+    },
+    {
+      name: 'put-unit-assignee',
+      method: 'PUT',
+      buildParity: (r) => ({ path: `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitA}/assignees/${r.putA}`, body: null }),
+      buildIdor: (r) => ({ path: `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitB}/assignees/${r.putA}`, body: null }),
+      idorDeniedStatuses: [404],
+      extraProbes: [
+        {
+          label: 'cross-org-user',
+          build: (r) => ({ path: `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitA}/assignees/${r.userB}`, body: null }),
+          deniedStatuses: [404],
+          readbackNoMutation: (r) => {
+            const { sql, params } = assigneeCount(WRITE_ORG_STRUCTURE.unitA, r.userB);
+            return countIsZero(sql, params, 'an org-B user was assigned to an org-A unit');
+          },
+        },
+      ],
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => expectObj(b, (o) => expectField(o, 'businessUnitId', WRITE_ORG_STRUCTURE.unitA)),
+      readbackMutated: (r) => {
+        const audit = auditDelta(r, 'hr_admin', 'business_unit_assignee_added', WRITE_ORG_STRUCTURE.unitA);
+        return {
+          sql: `SELECT uba.organization_id, ${audit.sql} AS audits FROM user_business_units uba
+                 WHERE uba.business_unit_id = $5 AND uba.user_id = $6`,
+          params: [...audit.params, WRITE_ORG_STRUCTURE.unitA, r.putA],
+          expect: (rows) =>
+            rows.length !== 1
+              ? `expected the assignment row, found ${rows.length}`
+              : rows[0].organization_id !== r.orgAId
+                ? `assignment stamped with org ${rows[0].organization_id}`
+                : Number(rows[0].audits) !== audit.expected
+                  ? `expected ${audit.expected} business_unit_assignee_added audit(s) by hr_admin, found ${rows[0].audits}`
+                  : null,
+        };
+      },
+      readbackNoMutation: (r, target) => {
+        const { sql, params } = assigneeCount(target === 'b' ? WRITE_ORG_STRUCTURE.unitB : WRITE_ORG_STRUCTURE.unitA, r.putA);
+        return countIsZero(sql, params, target === 'b' ? 'a cross-org assignment landed in org B' : 'a forbidden assignment landed');
+      },
+    },
+    {
+      name: 'delete-unit-assignee',
+      method: 'DELETE',
+      successStatus: 204,
+      buildParity: (r) => ({ path: `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitA}/assignees/${r.delA}`, body: null }),
+      buildIdor: (r) => ({ path: `${OS}/business-units/${WRITE_ORG_STRUCTURE.unitB}/assignees/${r.userB}`, body: null }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => (b === null ? null : `expected an empty 204 body, got ${JSON.stringify(b).slice(0, 80)}`),
+      readbackMutated: (r) => {
+        const audit = auditDelta(r, 'hr_admin', 'business_unit_assignee_removed', WRITE_ORG_STRUCTURE.unitA);
+        return {
+          sql: `SELECT (SELECT count(*)::int FROM user_business_units WHERE business_unit_id = $5 AND user_id = $6) AS n,
+                       ${audit.sql} AS audits`,
+          params: [...audit.params, WRITE_ORG_STRUCTURE.unitA, r.delA],
+          expect: (rows) =>
+            Number(rows[0]?.n) !== 0
+              ? 'the assignment row survived the delete'
+              : Number(rows[0]?.audits) !== audit.expected
+                ? `expected ${audit.expected} business_unit_assignee_removed audit(s) by hr_admin, found ${rows[0]?.audits}`
+                : null,
+        };
+      },
+      readbackNoMutation: (r, target) => {
+        const { sql, params } =
+          target === 'b' ? assigneeCount(WRITE_ORG_STRUCTURE.unitB, r.userB) : assigneeCount(WRITE_ORG_STRUCTURE.unitA, r.delA);
+        return countIsOne(sql, params, target === 'b' ? 'a cross-org delete removed an org-B assignment' : 'a forbidden delete removed the assignment');
+      },
+    },
+    {
+      name: 'set-user-business-unit',
+      method: 'PUT',
+      buildParity: (r) => ({ path: `${OS}/users/${r.putA}/business-unit`, body: { businessUnitId: WRITE_ORG_STRUCTURE.unitA } }),
+      // org-B USER, org-A unit → the user lookup carries the caller's org → 404.
+      buildIdor: (r) => ({ path: `${OS}/users/${r.userB}/business-unit`, body: { businessUnitId: WRITE_ORG_STRUCTURE.unitA } }),
+      idorDeniedStatuses: [404],
+      extraProbes: [
+        {
+          // org-A user, org-B UNIT → the unit row lock carries the caller's org → 404.
+          label: 'cross-org-unit',
+          build: (r) => ({ path: `${OS}/users/${r.putA}/business-unit`, body: { businessUnitId: WRITE_ORG_STRUCTURE.unitB } }),
+          deniedStatuses: [404],
+          readbackNoMutation: (r) => homeUnitIsNull(r.putA, 'an org-B home unit was set on an org-A user'),
+        },
+      ],
+      expectedByRole: { hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => expectObj(b, (o) => expectField(o, 'businessUnitId', WRITE_ORG_STRUCTURE.unitA)),
+      readbackMutated: (r) => {
+        const audit = auditDelta(r, 'hr_admin', 'user_business_unit_set', r.putA);
+        return {
+          sql: `SELECT u.business_unit_id, ${audit.sql} AS audits FROM users u WHERE u.id = $5`,
+          params: [...audit.params, r.putA],
+          expect: (rows) =>
+            rows.length !== 1
+              ? 'fixture user missing'
+              : rows[0].business_unit_id !== WRITE_ORG_STRUCTURE.unitA
+                ? `business_unit_id is ${rows[0].business_unit_id}, expected unit A`
+                : Number(rows[0].audits) !== audit.expected
+                  ? `expected ${audit.expected} user_business_unit_set audit(s) by hr_admin, found ${rows[0].audits}`
+                  : null,
+        };
+      },
+      readbackNoMutation: (r, target) =>
+        target === 'b'
+          ? homeUnitIsNull(r.userB, 'a cross-org home-unit write mutated an org-B user')
+          : homeUnitIsNull(r.putA, 'a forbidden home-unit write mutated the user'),
+    },
+  ],
+};
+
 export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   compensation: defineWriteSurface(compensationSurface),
   evaluation360: defineWriteSurface(evaluation360Surface),
@@ -1965,4 +2513,6 @@ export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   organization: defineWriteSurface(platformOrganizationsSurface),
   'organization-create': defineWriteSurface(platformOrganizationsCreateSurface),
   'assessment-types': defineWriteSurface(assessmentTypesSurface),
+  'tenant-org-structure': defineWriteSurface(orgStructureSurface),
+  'tenant-org-people': defineWriteSurface(orgPeopleSurface),
 };

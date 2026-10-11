@@ -149,12 +149,17 @@ function makeDbClient(cfg: HarnessConfig): Client {
       'seed: DATABASE_URL is required to write DB rows via direct Postgres (the Data API is locked ' +
         'down for service_role on this project — see the seed()/teardown() comment in seed.ts). ' +
         'Set DATABASE_URL in scripts/parity/.env (Supabase dashboard > Project Settings > Database > ' +
-        'Connection string > URI, "postgres" role).',
+        'Connection string > URI, "postgres" role), or — on a machine without IPv6, where db.<ref>.supabase.co ' +
+        'fails with ENOTFOUND — set PARITY_DATABASE_URL to the SESSION pooler URI instead (it takes precedence; ' +
+        'see resolveDatabaseUrl in scripts/parity/config.ts).',
     );
   }
   // Pin Supabase's own root CA (SUPABASE_ROOT_CA above) rather than disabling verification —
   // db.<ref>.supabase.co's chain isn't in Node's default trust store, but IS a real chain rooted
   // at Supabase's own CA, so full verification (rejectUnauthorized: true, the default) still holds.
+  // The same pinned config applies when cfg.databaseUrl came from PARITY_DATABASE_URL (the IPv4
+  // session pooler): resolveDatabaseUrl refuses an override carrying ssl*/sslmode query params, which
+  // pg would otherwise let REPLACE this object.
   return new Client({ connectionString: cfg.databaseUrl, ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true } });
 }
 
@@ -2140,6 +2145,66 @@ async function seedTenantInvitationGrants(db: Client, roleIds: Map<string, strin
   }
 }
 
+/** Grants for the tenant org-structure READ surface and its two WRITE surfaces (PR #310,
+ *  Platform__TenantOrgStructureEnabled), copied from seed-access-matrix.ts — NOT invented:
+ *    hr_admin  organization:read @organization            (MATRIX hr_admin `organization` read-only)
+ *    hr_admin  user:create/update/delete @organization    (MATRIX hr_admin `user`, all four actions)
+ *    hrbp      vacancy:create/update @unit                (MATRIX hrbp `vacancy` read/create/update@unit)
+ *  super_admin needs no row (privileged in PermissionService). org_admin is absent from MATRIX, so it holds
+ *  nothing — the grant-level DENY role on the read surface.
+ *
+ *  WHAT EACH GRANT PROVES (and why no other grant is seeded):
+ *   - hr_admin organization:read is the probe's 200 on GET /tenant/org-structure. hr_admin deliberately
+ *     gets NO organization:create/update — exactly as in MATRIX — so its 403 on the structure writes
+ *     (POST/PATCH business units, POST teams) is a GRANT-level denial, the stronger assertion.
+ *   - hr_admin user:* is what the people-assignment writes check (members, unit assignees, home unit,
+ *     and the leader-only team PATCH, which accepts organization:update OR user:update). user:create is
+ *     also seeded by seedTenantInvitationGrants; the upsert is idempotent.
+ *   - hrbp vacancy:create/update @unit is the ONLY way hrbp reaches GET /options (organization:read OR
+ *     vacancy:create OR vacancy:update, ANY scope) — so hrbp=200 there proves the any-scope OR path,
+ *     while hrbp=403 on GET /tenant/org-structure proves those vacancy grants do NOT leak into the
+ *     management read. hrbp gets no `user` grant (none in MATRIX), so it is the people-write DENY role.
+ *  Adding these grants changes no other registered surface: no other C# gate the harness probes reads the
+ *  `organization`, `user` (beyond tenant-invitations' create), or vacancy create/update grants —
+ *  ReportingStaffGate checks vacancy:READ only. */
+async function seedOrgStructureGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const orgRead = await upsertPermission(db, 'organization', 'read');
+  const userPerms = [
+    await upsertPermission(db, 'user', 'create'),
+    await upsertPermission(db, 'user', 'update'),
+    await upsertPermission(db, 'user', 'delete'),
+  ];
+  const vacancyWrite = [await upsertPermission(db, 'vacancy', 'create'), await upsertPermission(db, 'vacancy', 'update')];
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, orgRead, 'organization');
+      for (const perm of userPerms) await upsertRolePermission(db, hrAdmin, perm, 'organization');
+    }
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) for (const perm of vacancyWrite) await upsertRolePermission(db, hrbp, perm, 'unit');
+  }
+}
+
+/** Grants for the tenant people directory READ surface (PR #304, Platform__TenantPeopleDirectoryEnabled),
+ *  registered on `purpose=interview_evaluator` — the whole-org directory. From seed-access-matrix.ts:
+ *    hr_admin interview:create @organization   (MATRIX hr_admin `interview`, all four actions)
+ *    hrbp     interview:create @unit           (MATRIX hrbp `interview` read/create@unit)
+ *  hrbp's grant is seeded ON PURPOSE even though hrbp must be refused: the directory's whole-directory
+ *  scope rule (AssignablePurposes.CallerScopeAllows) refuses a team/unit-scoped interview:create holder
+ *  rather than show it people outside its scope. Without the row hrbp would 403 at the grant check and the
+ *  scope rule — the reason this surface exists — would never be exercised. org_admin holds nothing, so its
+ *  403 is the grant-level deny. */
+async function seedTenantPeopleGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const interviewCreate = await upsertPermission(db, 'interview', 'create');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, interviewCreate, 'organization');
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, interviewCreate, 'unit');
+  }
+}
+
 /** Write-verify-only survey + action-plan fixtures (fixed UUIDs). */
 export const WRITE_ENGAGEMENT = {
   activateSurveyA: 'e0000364-0000-4000-8000-000000000001', // activateSurvey from-state (draft, org A)
@@ -2379,6 +2444,207 @@ export async function resolveAssessmentTypeWriteResources(cfg: HarnessConfig): P
         hr_admin: await userIdByEmail(db, 'parity+a-hr_admin@tims.test'),
         hrbp: await userIdByEmail(db, 'parity+a-hrbp@tims.test'),
       },
+    };
+  } finally {
+    await db.end();
+  }
+}
+
+// ── tenant org-structure write-verification preconditions (PR #310) ─────────
+// Two write surfaces share Platform__TenantOrgStructureEnabled (write-surfaces.ts 'tenant-org-structure' and
+// 'tenant-org-people'); this one hook seeds both. EVERYTHING here is write-verify-only and lives on DEDICATED
+// fixed-UUID rows (prefix e0000367…) — never on 'Parity BU (a)' / 'Parity Team A1' and friends, whose shape the
+// team-intel and org-structure READ checks depend on. Three bare users (no Supabase auth — they never log in,
+// they are only write TARGETS) carry no role, so assigning them to a unit or team widens nobody's scope.
+//
+// Idempotent and RE-RUNNABLE WITHOUT A TEARDOWN, deliberately: audit_logs is append-only in production
+// (packages/db/prisma/manual/2026-07-17-audit-logs-immutable.sql, ENABLE ALWAYS), and its organization_id FK
+// is ON DELETE CASCADE / actor_id ON DELETE SET NULL — so once ANY audited verify-write has run in org A, the
+// DELETE of org A or of its users in teardown() is refused by the guard. That is pre-existing and harness-wide
+// (assessment-types, organization and access-review write audits too); this hook's job is to make sure the
+// org-structure surfaces never NEED a teardown between runs. It resets every fixed row to its seeded state,
+// deletes the prior run's create-markers (business_units/teams carry no audit FK — audit rows reference them
+// only through the free-text entity_id), and recreates the DELETE endpoints' preconditions.
+
+/** Fixed-UUID org-structure fixtures (prefix e0000367…). */
+export const WRITE_ORG_STRUCTURE = {
+  unitA: 'e0000367-0000-4000-8000-000000000001', // PATCH/assignee/home-unit/team-parent target (org A)
+  unitB: 'e0000367-0000-4000-8000-000000000002', // IDOR target (org B)
+  teamA: 'e0000367-0000-4000-8000-000000000003', // leader + member target (org A)
+  teamB: 'e0000367-0000-4000-8000-000000000004', // IDOR target (org B)
+} as const;
+
+/** Bare (auth-less) target users: fixed supabase_user_id → idempotent upsert; resolved to ids by email. */
+export const WRITE_ORG_STRUCTURE_USERS = {
+  putA: { supa: '00000000-0000-4000-8000-0000000e0371', email: 'parity.os.put.a@tims.test', last: 'Os Put A', org: 'a' },
+  delA: { supa: '00000000-0000-4000-8000-0000000e0372', email: 'parity.os.del.a@tims.test', last: 'Os Del A', org: 'a' },
+  userB: { supa: '00000000-0000-4000-8000-0000000e0373', email: 'parity.os.b@tims.test', last: 'Os B', org: 'b' },
+} as const;
+
+export const WRITE_ORG_STRUCTURE_UNIT_NAME = { a: 'Parity OS Unit A', b: 'Parity OS Unit B' } as const;
+export const WRITE_ORG_STRUCTURE_TEAM_NAME = { a: 'Parity OS Team A', b: 'Parity OS Team B' } as const;
+/** create-business-unit / create-team marker names — the created row self-locates by (org, marker). */
+export const WRITE_ORG_STRUCTURE_UNIT_MARKER = 'Parity Write OS Unit';
+export const WRITE_ORG_STRUCTURE_TEAM_MARKER = 'Parity Write OS Team';
+
+/** Resets every org-structure write fixture (see the section header). Exported for unit tests of its SQL order. */
+export async function seedOrgStructureWritePreconditions(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  const orgs = { a: orgAId, b: orgBId };
+  // The companies seedTeamIntelData already created ('Parity Co (a|b)'); find-or-create so a standalone run works.
+  const companyA = await findOrCreateCompany(db, orgAId, 'Parity Co (a)');
+  const companyB = await findOrCreateCompany(db, orgBId, 'Parity Co (b)');
+
+  // 1. Prior-run create markers. A marker team may sit under a fixed unit, so teams go first; a marker UNIT's
+  //    own teams cascade with it (teams_business_unit_id_fkey ON DELETE CASCADE).
+  await db.query('DELETE FROM teams WHERE organization_id = ANY($1) AND name = $2', [
+    [orgAId, orgBId],
+    WRITE_ORG_STRUCTURE_TEAM_MARKER,
+  ]);
+  await db.query('DELETE FROM business_units WHERE organization_id = ANY($1) AND name = $2', [
+    [orgAId, orgBId],
+    WRITE_ORG_STRUCTURE_UNIT_MARKER,
+  ]);
+
+  // 2. Fixed units: active, seeded name, no code, on that org's company.
+  for (const [id, key, companyId] of [
+    [WRITE_ORG_STRUCTURE.unitA, 'a', companyA],
+    [WRITE_ORG_STRUCTURE.unitB, 'b', companyB],
+  ] as const) {
+    await db.query(
+      `INSERT INTO business_units (id, organization_id, company_id, name, code, is_active, updated_at)
+       VALUES ($1, $2, $3, $4, NULL, true, now())
+       ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id, company_id = EXCLUDED.company_id,
+         name = EXCLUDED.name, code = NULL, is_active = true, updated_at = now()`,
+      [id, orgs[key], companyId, WRITE_ORG_STRUCTURE_UNIT_NAME[key]],
+    );
+  }
+
+  // 3. Fixed teams: active, seeded name, NO leader (set-team-leader's from-state).
+  for (const [id, key, unitId] of [
+    [WRITE_ORG_STRUCTURE.teamA, 'a', WRITE_ORG_STRUCTURE.unitA],
+    [WRITE_ORG_STRUCTURE.teamB, 'b', WRITE_ORG_STRUCTURE.unitB],
+  ] as const) {
+    await db.query(
+      `INSERT INTO teams (id, organization_id, business_unit_id, name, leader_id, is_active, updated_at)
+       VALUES ($1, $2, $3, $4, NULL, true, now())
+       ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id,
+         business_unit_id = EXCLUDED.business_unit_id, name = EXCLUDED.name, leader_id = NULL, is_active = true,
+         updated_at = now()`,
+      [id, orgs[key], unitId, WRITE_ORG_STRUCTURE_TEAM_NAME[key]],
+    );
+  }
+
+  // 4. Bare target users: active, not deleted, NO home unit (set-user-business-unit's from-state).
+  const userId: Record<string, string> = {};
+  for (const [name, u] of Object.entries(WRITE_ORG_STRUCTURE_USERS)) {
+    const { rows } = await db.query<IdRow>(
+      `INSERT INTO users (id, supabase_user_id, organization_id, email, first_name, last_name, is_active, business_unit_id, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, 'Parity', $4, true, NULL, now())
+       ON CONFLICT (supabase_user_id) DO UPDATE SET organization_id = EXCLUDED.organization_id, email = EXCLUDED.email,
+         is_active = true, deleted_at = NULL, business_unit_id = NULL, updated_at = now()
+       RETURNING id`,
+      [u.supa, orgs[u.org], u.email, u.last],
+    );
+    userId[name] = rows[0].id;
+  }
+
+  // 5. Memberships + unit assignments on the fixed rows: wipe, then recreate ONLY the DELETE endpoints'
+  //    preconditions (delA in org A — the delete targets; userB in org B — the delete-IDOR targets that must
+  //    survive). putA is left in NEITHER, which is the PUT endpoints' from-state.
+  await db.query('DELETE FROM user_teams WHERE team_id = ANY($1)', [[WRITE_ORG_STRUCTURE.teamA, WRITE_ORG_STRUCTURE.teamB]]);
+  await db.query('DELETE FROM user_business_units WHERE business_unit_id = ANY($1)', [
+    [WRITE_ORG_STRUCTURE.unitA, WRITE_ORG_STRUCTURE.unitB],
+  ]);
+  for (const [teamId, uid] of [
+    [WRITE_ORG_STRUCTURE.teamA, userId.delA],
+    [WRITE_ORG_STRUCTURE.teamB, userId.userB],
+  ]) {
+    await db.query(`INSERT INTO user_teams (id, user_id, team_id, role) VALUES (gen_random_uuid(), $1, $2, 'member')`, [
+      uid,
+      teamId,
+    ]);
+  }
+  for (const [unitId, uid, orgId] of [
+    [WRITE_ORG_STRUCTURE.unitA, userId.delA, orgAId],
+    [WRITE_ORG_STRUCTURE.unitB, userId.userB, orgBId],
+  ]) {
+    await db.query(
+      `INSERT INTO user_business_units (id, organization_id, user_id, business_unit_id, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, now())`,
+      [orgId, uid, unitId],
+    );
+  }
+}
+
+/** Resolved-id shape for both org-structure write surfaces (Omit<OrgStructureWriteResolved,'base'>). */
+export interface OrgStructureWriteResources {
+  orgAId: string;
+  orgBId: string;
+  companyAId: string;
+  companyBId: string;
+  /** org-A ids of the seeded role users the readbacks attribute writes to. */
+  userIdByRole: Record<string, string>;
+  putA: string;
+  delA: string;
+  userB: string;
+  /** Pre-run audit counts keyed `${actorRole}|${action}|${entityId}` — see auditBaselineKey. audit_logs is
+   *  append-only, so on a fixed-UUID target a plain "an audit row exists" check is VACUOUS from the second
+   *  run on; the readbacks assert baseline + 1 instead. */
+  auditBaseline: Record<string, number>;
+}
+
+/** The surfaces' ensurePreconditions hook (shared). */
+export async function ensureOrgStructureWritePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    await seedOrgStructureWritePreconditions(db, await orgIdBySlug(db, ORG_SLUGS.a), await orgIdBySlug(db, ORG_SLUGS.b));
+  } finally {
+    await db.end();
+  }
+}
+
+async function companyIdByOrgName(db: Client, orgId: string, name: string): Promise<string> {
+  const { rows } = await db.query<IdRow>('SELECT id FROM companies WHERE organization_id = $1 AND name = $2 LIMIT 1', [
+    orgId,
+    name,
+  ]);
+  if (!rows.length) throw new Error(`resolveResources: no seeded company "${name}" in org ${orgId} — run \`cli.ts seed\` first`);
+  return rows[0].id;
+}
+
+/** The surfaces' resolveResources hook (shared). Captures the audit baseline LAST, after every id is known. */
+export async function resolveOrgStructureWriteResources(cfg: HarnessConfig): Promise<OrgStructureWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgAId = await orgIdBySlug(db, ORG_SLUGS.a);
+    const orgBId = await orgIdBySlug(db, ORG_SLUGS.b);
+    const userIdByRole: Record<string, string> = {};
+    for (const role of ['super_admin', 'hr_admin', 'hrbp']) userIdByRole[role] = await userIdByEmail(db, `parity+a-${role}@tims.test`);
+    const putA = await userIdByEmail(db, WRITE_ORG_STRUCTURE_USERS.putA.email);
+    const auditRows = await db.query<{ actor_id: string; action: string; entity_id: string; n: number }>(
+      `SELECT actor_id::text, action, entity_id, count(*)::int AS n FROM audit_logs
+        WHERE organization_id = $1 AND actor_id = ANY($2::uuid[]) AND entity_id = ANY($3)
+        GROUP BY actor_id, action, entity_id`,
+      [orgAId, Object.values(userIdByRole), [WRITE_ORG_STRUCTURE.unitA, WRITE_ORG_STRUCTURE.teamA, putA]],
+    );
+    const roleByUser = new Map(Object.entries(userIdByRole).map(([role, id]) => [id, role]));
+    const auditBaseline: Record<string, number> = {};
+    for (const row of auditRows.rows) {
+      const role = roleByUser.get(row.actor_id);
+      if (role) auditBaseline[`${role}|${row.action}|${row.entity_id}`] = Number(row.n);
+    }
+    return {
+      orgAId,
+      orgBId,
+      companyAId: await companyIdByOrgName(db, orgAId, 'Parity Co (a)'),
+      companyBId: await companyIdByOrgName(db, orgBId, 'Parity Co (b)'),
+      userIdByRole,
+      putA,
+      delA: await userIdByEmail(db, WRITE_ORG_STRUCTURE_USERS.delA.email),
+      userB: await userIdByEmail(db, WRITE_ORG_STRUCTURE_USERS.userB.email),
+      auditBaseline,
     };
   } finally {
     await db.end();
@@ -2875,6 +3141,12 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedAssessmentTypeGrants(db, roleIds);
     // tenant-invitations grant: hr_admin user:create@organization (seed-access-matrix.ts). hrbp stays ungranted.
     if (roles.includes('hr_admin')) await seedTenantInvitationGrants(db, roleIds);
+    // tenant org-structure grants (PR #310): hr_admin organization:read + user:create/update/delete @organization,
+    // hrbp vacancy:create/update @unit (seed-access-matrix.ts). org_admin stays ungranted (the read deny role).
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedOrgStructureGrants(db, roleIds);
+    // tenant people directory grants (PR #304): interview:create — hr_admin @organization, hrbp @unit (the
+    // scope-rule deny). org_admin stays ungranted.
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedTenantPeopleGrants(db, roleIds);
     // eNPS read data (both orgs, DIFFERENTIATED — see the fixture-rationale comment above
     // seedEngagementEnpsData). Org-independent of `roles`; only needs each org's super_admin id.
     await seedEngagementEnpsData(db, orgIds.a, orgIds.b, userIds);
@@ -2954,6 +3226,9 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // assessment_types — same reason: `organization_id` has NO FK (baseline:654), so the
       // verify-write assessment-types rows would survive the organizations delete as orphans.
       await db.query('DELETE FROM assessment_types WHERE organization_id = ANY($1)', [orgIds]);
+      // user_business_units (org-structure unit assignees, PR #310). Cascades with both business_units and
+      // users, but swept explicitly so a teardown-without-reseed leaves nothing and the order is obvious.
+      await db.query('DELETE FROM user_business_units WHERE organization_id = ANY($1)', [orgIds]);
       const teamRows = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = ANY($1)', [orgIds]);
       const teamIds = teamRows.rows.map((r) => r.id);
       if (teamIds.length) await db.query('DELETE FROM user_teams WHERE team_id = ANY($1)', [teamIds]);
