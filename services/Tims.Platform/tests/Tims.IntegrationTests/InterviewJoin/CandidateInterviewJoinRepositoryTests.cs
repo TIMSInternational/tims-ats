@@ -40,7 +40,48 @@ public sealed class CandidateInterviewJoinRepositoryTests(CandidateInterviewJoin
     {
         var seeded = await fixture.SeedAsync();
         var interview = await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default);
-        Assert.Equal((false, false), (interview!.ApplicationClosed, interview.OrganizationInactive));
+        Assert.Equal((false, false, false),
+            (interview!.ApplicationClosed, interview.OrganizationInactive, interview.ConsentWithdrawn));
+    }
+
+    [Fact]
+    public async Task Withdrawn_recruitment_consent_revokes_the_link_until_reconsent()
+    {
+        var seeded = await fixture.SeedAsync();
+        await fixture.SetConsentAsync(seeded.OrganizationId, seeded.CandidateId,
+            "recruitment_data_processing", withdrawn: true);
+        Assert.True((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ConsentWithdrawn);
+
+        await fixture.SetConsentAsync(seeded.OrganizationId, seeded.CandidateId,
+            "recruitment_data_processing", withdrawn: false);
+        Assert.False((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ConsentWithdrawn);
+    }
+
+    [Fact]
+    public async Task Consent_type_and_organization_bound_the_revocation()
+    {
+        var seeded = await fixture.SeedAsync();
+        await fixture.SetConsentAsync(seeded.OrganizationId, seeded.CandidateId, "marketing", withdrawn: true);
+        Assert.False((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ConsentWithdrawn);
+
+        await fixture.SetConsentAsync(Guid.NewGuid(), seeded.CandidateId,
+            "recruitment_data_processing", withdrawn: true);
+        Assert.False((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ConsentWithdrawn);
+    }
+
+    [Fact]
+    public async Task Withdrawal_on_a_same_org_email_variant_revokes_but_another_org_does_not()
+    {
+        var seeded = await fixture.SeedAsync();
+        var foreignOrg = Guid.NewGuid();
+        var otherOrgCandidate = await fixture.AddCandidateAsync(foreignOrg, seeded.Email.ToUpperInvariant());
+        await fixture.SetConsentAsync(foreignOrg, otherOrgCandidate, "recruitment_data_processing", withdrawn: true);
+        Assert.False((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ConsentWithdrawn);
+
+        var variant = await fixture.AddCandidateAsync(seeded.OrganizationId,
+            "  " + seeded.Email.ToUpperInvariant() + "  ");
+        await fixture.SetConsentAsync(seeded.OrganizationId, variant, "recruitment_data_processing", withdrawn: true);
+        Assert.True((await fixture.Repository().FindByTokenHashAsync(seeded.Hash, default))!.ConsentWithdrawn);
     }
 
     [Theory]
@@ -229,9 +270,10 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
         await command.ExecuteNonQueryAsync();
     }
 
-    public async Task<(Guid InterviewId, Guid OrganizationId, string Token, string Hash)> SeedAsync()
+    public async Task<(Guid InterviewId, Guid OrganizationId, Guid CandidateId, string Email, string Token, string Hash)> SeedAsync()
     {
         var org = Guid.NewGuid(); var candidate = Guid.NewGuid(); var interview = Guid.NewGuid();
+        var email = $"ana+{candidate:N}@example.test";
         var token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var hash = CandidateInterviewJoin.HashToken(token);
@@ -239,16 +281,51 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("""
             INSERT INTO organizations(id) VALUES(@org);
-            INSERT INTO candidates(id,organization_id,first_name,last_name) VALUES(@candidate,@org,'Ana','Pérez');
+            INSERT INTO candidates(id,organization_id,email,first_name,last_name)
+            VALUES(@candidate,@org,@email,'Ana','Pérez');
             INSERT INTO interviews(id,organization_id,candidate_id,type,status,scheduled_at,duration,
               candidate_join_token_hash,candidate_join_token_expires_at,updated_at)
             VALUES(@interview,@org,@candidate,'video','scheduled',now()+interval '1 day',45,@hash,
               now()+interval '1 day 75 minutes',now());
             """, connection);
         command.Parameters.AddWithValue("candidate", candidate); command.Parameters.AddWithValue("org", org);
+        command.Parameters.AddWithValue("email", email);
         command.Parameters.AddWithValue("interview", interview); command.Parameters.AddWithValue("hash", hash);
         await command.ExecuteNonQueryAsync();
-        return (interview, org, token, hash);
+        return (interview, org, candidate, email, token, hash);
+    }
+
+    public async Task<Guid> AddCandidateAsync(Guid organizationId, string email)
+    {
+        var candidateId = Guid.NewGuid();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "INSERT INTO candidates(id,organization_id,email,first_name,last_name) " +
+            "VALUES(@candidate,@org,@email,'Ana','Pérez')", connection);
+        command.Parameters.AddWithValue("candidate", candidateId);
+        command.Parameters.AddWithValue("org", organizationId);
+        command.Parameters.AddWithValue("email", email);
+        await command.ExecuteNonQueryAsync();
+        return candidateId;
+    }
+
+    public async Task SetConsentAsync(Guid organizationId, Guid candidateId, string consentType, bool withdrawn)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO data_consents(id,organization_id,subject_user_id,consent_type,withdrawn_at)
+            VALUES(@id,@org,@candidate,@type,CASE WHEN @withdrawn THEN now() ELSE NULL END)
+            ON CONFLICT (subject_user_id,consent_type) DO UPDATE
+              SET organization_id=EXCLUDED.organization_id,withdrawn_at=EXCLUDED.withdrawn_at
+            """, connection);
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("org", organizationId);
+        command.Parameters.AddWithValue("candidate", candidateId);
+        command.Parameters.AddWithValue("type", consentType);
+        command.Parameters.AddWithValue("withdrawn", withdrawn);
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task<string?> MeetingUrlAsync(Guid interviewId)
@@ -286,7 +363,12 @@ public sealed class CandidateInterviewJoinRepositoryFixture : IAsyncLifetime
         CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean NOT NULL DEFAULT true,deleted_at timestamp(3));
         CREATE TABLE applications(id uuid PRIMARY KEY,organization_id uuid NOT NULL,status text NOT NULL DEFAULT 'active',
           rejected_at timestamp(3));
-        CREATE TABLE candidates(id uuid PRIMARY KEY,organization_id uuid NOT NULL,first_name text NOT NULL,last_name text NOT NULL,deleted_at timestamp(3));
+        CREATE TABLE candidates(id uuid PRIMARY KEY,organization_id uuid NOT NULL,email text NOT NULL,
+          first_name text NOT NULL,last_name text NOT NULL,deleted_at timestamp(3));
+        CREATE TABLE data_consents(id uuid PRIMARY KEY,organization_id uuid NOT NULL,subject_user_id uuid NOT NULL,
+          consent_type text NOT NULL,withdrawn_at timestamp(3));
+        CREATE UNIQUE INDEX data_consents_subject_user_id_consent_type_key
+          ON data_consents(subject_user_id,consent_type);
         CREATE TABLE interviews(id uuid PRIMARY KEY,organization_id uuid NOT NULL,candidate_id uuid NOT NULL REFERENCES candidates(id),
           application_id uuid,type text NOT NULL,status text NOT NULL DEFAULT 'scheduled',scheduled_at timestamp(3) NOT NULL,duration int NOT NULL,
           meeting_url text,cancelled_at timestamp(3),candidate_join_token_hash varchar(64) UNIQUE,
