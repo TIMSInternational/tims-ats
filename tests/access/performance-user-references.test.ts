@@ -5,11 +5,16 @@ const USER_ID = '22222222-2222-4222-8222-222222222222';
 const COLLEAGUE_ID = '33333333-3333-4333-8333-333333333333';
 const FOREIGN_ID = '44444444-4444-4444-8444-444444444444';
 const MISSING_ID = '55555555-5555-4555-8555-555555555555';
+const TEAM_ID = '66666666-6666-4666-8666-666666666666';
+const FOREIGN_TEAM_ID = '77777777-7777-4777-8777-777777777777';
 
 const userCount = vi.fn();
 const createFeedback = vi.fn();
 const createRecognition = vi.fn();
 const createCoachingSession = vi.fn();
+const createCommitment = vi.fn();
+const createOkr = vi.fn();
+const teamCount = vi.fn();
 const assertSubjectInScope = vi.fn();
 
 vi.mock('@tims/db', () => ({
@@ -18,6 +23,9 @@ vi.mock('@tims/db', () => ({
     feedback: { create: createFeedback },
     recognition: { create: createRecognition },
     coachingSession: { create: createCoachingSession },
+    commitment: { create: createCommitment },
+    okr: { create: createOkr },
+    team: { count: teamCount },
   },
   runWithTenant: (_orgId: string, fn: () => unknown) => fn(),
 }));
@@ -43,8 +51,11 @@ async function makeCaller() {
   const { createCallerFactory, mergeRouters, router } = await import('../../packages/api/src/trpc');
   const { performanceFeedbackRouter } = await import('../../packages/api/src/routers/performance/feedback');
   const { performanceCoachingRouter } = await import('../../packages/api/src/routers/performance/coaching');
+  const { performanceOkrsRouter } = await import('../../packages/api/src/routers/performance/okrs');
   return createCallerFactory(
-    router({ performance: mergeRouters(performanceFeedbackRouter, performanceCoachingRouter) }),
+    router({
+      performance: mergeRouters(performanceFeedbackRouter, performanceCoachingRouter, performanceOkrsRouter),
+    }),
   )({
     user: {
       id: USER_ID,
@@ -64,9 +75,16 @@ async function makeCaller() {
 beforeEach(() => {
   vi.clearAllMocks();
   userCount.mockImplementation(
-    async ({ where }: { where: { id: { in: string[] }; organizationId: string } }) =>
-      where.id.in.filter((id) => [USER_ID, COLLEAGUE_ID].includes(id) && where.organizationId === ORG_ID).length,
+    async ({ where }: { where: { id: string | { in: string[] }; organizationId: string } }) =>
+      (typeof where.id === 'string' ? [where.id] : where.id.in).filter(
+        (id) => [USER_ID, COLLEAGUE_ID].includes(id) && where.organizationId === ORG_ID,
+      ).length,
   );
+  teamCount.mockImplementation(async ({ where }: { where: { id: string; organizationId: string } }) =>
+    where.id === TEAM_ID && where.organizationId === ORG_ID ? 1 : 0,
+  );
+  createCommitment.mockResolvedValue({ id: 'commitment' });
+  createOkr.mockResolvedValue({ id: 'okr' });
   createFeedback.mockResolvedValue({ id: 'feedback' });
   createRecognition.mockResolvedValue({ id: 'recognition' });
   createCoachingSession.mockResolvedValue({ id: 'coaching' });
@@ -148,5 +166,51 @@ describe('performance mutation user references', () => {
       where: { id: { in: [COLLEAGUE_ID] }, organizationId: ORG_ID, isActive: true, deletedAt: null },
     });
     expect(createRecognition).not.toHaveBeenCalled();
+  });
+
+  // Review fix (2026-10-12): createCommitment relied only on assertSubjectInScope,
+  // which is a no-op for organization/company scope — the mocked scope here.
+  it.each([FOREIGN_ID, MISSING_ID])(
+    'rejects a commitment for a foreign or nonexistent employee (%s)',
+    async (employeeId) => {
+      const caller = await makeCaller();
+      await expect(
+        caller.performance.createCommitment({
+          employeeId,
+          description: 'Ship the plan',
+          dueDate: new Date('2026-11-01T00:00:00Z'),
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(assertSubjectInScope).not.toHaveBeenCalled();
+      expect(createCommitment).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows a commitment for a same-organization employee', async () => {
+    const caller = await makeCaller();
+    await caller.performance.createCommitment({
+      employeeId: COLLEAGUE_ID,
+      description: 'Ship the plan',
+      dueDate: new Date('2026-11-01T00:00:00Z'),
+    });
+    expect(userCount).toHaveBeenCalledWith({
+      where: { id: { in: [COLLEAGUE_ID] }, organizationId: ORG_ID, isActive: true, deletedAt: null },
+    });
+    expect(createCommitment).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an OKR linked to another organization's team", async () => {
+    const caller = await makeCaller();
+    await expect(
+      caller.performance.createOkr({ userId: COLLEAGUE_ID, teamId: FOREIGN_TEAM_ID, title: 'Grow', period: '2026-Q4' }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(teamCount).toHaveBeenCalledWith({ where: { id: FOREIGN_TEAM_ID, organizationId: ORG_ID } });
+    expect(createOkr).not.toHaveBeenCalled();
+  });
+
+  it('allows an OKR linked to a same-organization team', async () => {
+    const caller = await makeCaller();
+    await caller.performance.createOkr({ userId: COLLEAGUE_ID, teamId: TEAM_ID, title: 'Grow', period: '2026-Q4' });
+    expect(createOkr).toHaveBeenCalledOnce();
   });
 });

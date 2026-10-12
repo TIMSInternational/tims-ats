@@ -227,6 +227,9 @@ export const performanceCoachingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // assertSubjectInScope is a no-op for organization/company scope, so the
+      // employee's tenant membership must be checked explicitly (#344 sibling).
+      await assertUsersInOrg(ctx.user.organizationId, [input.employeeId]);
       // Codex: the committed employee must be in the caller's subject set; an
       // optional parent session must itself be in scope.
       await assertSubjectInScope(ctx.access, ctx.user.id, input.employeeId, 'No puedes crear compromisos para este usuario');
