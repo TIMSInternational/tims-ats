@@ -25,16 +25,19 @@ const baseEnvSchema = z.object({
   // Platform
   PLATFORM_EMAIL_FROM: z.string().email().default('noreply@nexadev.ai'),
   // Public origin for outbound bearer links (invitations, offer signing, interview join, resets).
-  // Blank is treated as absent (getAppUrl() then uses the canonical prod origin). The origin rule
-  // itself (https on Vercel production / NODE_ENV=production except loopback; origin only, a trailing
-  // slash is normalised) is enforced by the superRefine below via the SAME checkAppOrigin that
-  // getAppUrl() uses at runtime, so boot-time and link-time validation cannot drift.
+  // Blank is treated as absent here; getAppUrl() then THROWS in a production build (#50) and falls
+  // back to the canonical prod origin only in development/test. The origin rule itself (https and no
+  // loopback on a Vercel deployment; https under NODE_ENV=production except loopback; origin only, a
+  // trailing slash is normalised) is enforced by the superRefine below via the SAME checkAppOrigin
+  // that getAppUrl() uses at runtime, so boot-time and link-time validation cannot drift.
   NEXT_PUBLIC_APP_URL: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().max(2048).optional(),
   ),
   // Set by Vercel: 'production' | 'preview' | 'development'. Only used to tighten the origin rule.
   VERCEL_ENV: z.string().max(32).optional(),
+  // Client-bundle mirror of VERCEL_ENV (apps/web/next.config.ts). Read for the same origin rule.
+  NEXT_PUBLIC_VERCEL_ENV: z.string().max(32).optional(),
 
   // Daily.co human video interviews. Missing/blank key keeps the room-creation
   // endpoint fail-closed; DAILY_API_URL is optional for tests/proxies.
@@ -105,7 +108,11 @@ const baseEnvSchema = z.object({
 
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
   if (env.NEXT_PUBLIC_APP_URL === undefined) return;
-  const result = checkAppOrigin(env.NEXT_PUBLIC_APP_URL, { NODE_ENV: env.NODE_ENV, VERCEL_ENV: env.VERCEL_ENV });
+  const result = checkAppOrigin(env.NEXT_PUBLIC_APP_URL, {
+    NODE_ENV: env.NODE_ENV,
+    VERCEL_ENV: env.VERCEL_ENV,
+    NEXT_PUBLIC_VERCEL_ENV: env.NEXT_PUBLIC_VERCEL_ENV,
+  });
   if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['NEXT_PUBLIC_APP_URL'], message: result.message });
 });
 

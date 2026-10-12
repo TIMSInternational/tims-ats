@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { getAuthRedirectUrl } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
 
 // Candidate portal login — passwordless magic link. We always show the same
@@ -24,10 +25,19 @@ export default function PortalLoginPage() {
     if (!value || !value.includes('@')) return;
     setBusy(true);
     setError('');
+    // Magic-link email: always the configured app origin (#50).
+    let emailRedirectTo: string;
+    try {
+      emailRedirectTo = getAuthRedirectUrl('/auth/callback', { next: `/careers/${orgSlug}/dashboard` });
+    } catch {
+      setBusy(false);
+      setError(t.portalAuth.errorGeneric);
+      return;
+    }
     const supabase = createSupabaseBrowserClient();
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: value,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/careers/${orgSlug}/dashboard` },
+      options: { emailRedirectTo },
     });
     setBusy(false);
     if (otpError) {

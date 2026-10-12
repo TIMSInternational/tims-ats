@@ -58,7 +58,26 @@ describe('env NEXT_PUBLIC_APP_URL origin rule', () => {
     expect(issues).toEqual([expect.stringMatching(/origin only .* remove the path/)]);
   });
 
-  it('treats blank as absent (getAppUrl falls back to the canonical origin)', () => {
+  // Boot-time validation does not demand the variable; getAppUrl() fails loud at link time instead
+  // (#50 `missing`, covered in tests/shared/app-url.test.ts), so a missing value breaks email links,
+  // not the whole app.
+  it('treats blank as absent at boot (getAppUrl enforces presence at link time)', () => {
     expect(appUrlIssues({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: '   ' })).toEqual([]);
+  });
+
+  it('#50: rejects a loopback https origin on a Vercel deployment (production or preview)', () => {
+    expect(
+      appUrlIssues({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://localhost' }),
+    ).toEqual([expect.stringMatching(/loopback host/)]);
+    expect(
+      appUrlIssues({ NODE_ENV: 'production', VERCEL_ENV: 'preview', NEXT_PUBLIC_APP_URL: 'https://127.0.0.1' }),
+    ).toEqual([expect.stringMatching(/loopback host/)]);
+    expect(
+      appUrlIssues({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_VERCEL_ENV: 'preview',
+        NEXT_PUBLIC_APP_URL: 'https://localhost',
+      }),
+    ).toEqual([expect.stringMatching(/loopback host/)]);
   });
 });

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { getAuthRedirectUrl } from '@tims/shared';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
 
@@ -17,10 +18,18 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     setError('');
 
+    // The link lands on the CONFIGURED app origin (NEXT_PUBLIC_APP_URL), never on
+    // whatever host this page happens to be served from (#50).
+    let redirectTo: string;
+    try {
+      redirectTo = getAuthRedirectUrl('/auth/callback', { recovery: '1' });
+    } catch {
+      setError(t.auth.authEmailLinkUnavailable);
+      setLoading(false);
+      return;
+    }
     const supabase = createSupabaseBrowserClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?recovery=1`,
-    });
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
 
     if (resetError) {
       setError(resetError.message);

@@ -1,5 +1,13 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getAppUrl, checkAppOrigin, AppOriginConfigError, DEFAULT_APP_URL } from '../../packages/shared/src/app-url';
+import {
+  getAppUrl,
+  getAuthRedirectUrl,
+  checkAppOrigin,
+  AppOriginConfigError,
+  AuthRedirectPathError,
+  DEFAULT_APP_URL,
+  type AppOriginIssue,
+} from '../../packages/shared/src/app-url';
 
 // Resolves the public app origin for email links (invites, password resets,
 // auth callbacks). Must NEVER fall back to a domain we don't control.
@@ -7,6 +15,7 @@ import { getAppUrl, checkAppOrigin, AppOriginConfigError, DEFAULT_APP_URL } from
 const ORIGINAL = process.env.NEXT_PUBLIC_APP_URL;
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   if (ORIGINAL === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
   else process.env.NEXT_PUBLIC_APP_URL = ORIGINAL;
 });
@@ -132,5 +141,200 @@ describe('getAppUrl', () => {
   ])('rejects an invalid or non-origin app URL (%s)', (origin) => {
     process.env.NEXT_PUBLIC_APP_URL = origin;
     expect(() => getAppUrl()).toThrow('Invalid public app origin');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// #50 — auth email links: fail loud when unset in a production build, never a loopback origin on
+// a deployed host, and every auth email redirect built from the configured origin. These rules
+// are AppOriginIssue codes on the same checkAppOrigin()/AppOriginConfigError as the #351 rules.
+// ---------------------------------------------------------------------------------------------
+
+function env(values: Record<string, string | undefined>) {
+  vi.stubEnv('VERCEL_ENV', undefined);
+  vi.stubEnv('NEXT_PUBLIC_VERCEL_ENV', undefined);
+  vi.stubEnv('NODE_ENV', 'test');
+  for (const [key, value] of Object.entries(values)) vi.stubEnv(key, value);
+}
+
+function issueOf(fn: () => unknown): AppOriginIssue | undefined {
+  try {
+    fn();
+  } catch (e) {
+    expect(e).toBeInstanceOf(AppOriginConfigError);
+    return (e as AppOriginConfigError).issue;
+  }
+  return undefined;
+}
+
+describe('getAppUrl — #50 production fail-loud', () => {
+  it('throws `missing` in a production build when unset (no guessed host)', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: undefined });
+    expect(issueOf(() => getAppUrl())).toBe('missing');
+  });
+
+  it('throws `missing` in a production build when blank', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: '  ' });
+    expect(() => getAppUrl()).toThrow(/must be set in production/);
+  });
+
+  it('throws `missing` on a Vercel deployment when unset', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: undefined });
+    expect(issueOf(() => getAppUrl())).toBe('missing');
+  });
+
+  it('still falls back to the canonical origin when unset outside production', () => {
+    env({ NEXT_PUBLIC_APP_URL: undefined });
+    expect(getAppUrl()).toBe(DEFAULT_APP_URL);
+  });
+});
+
+describe('getAppUrl — #50 loopback on a deployed host', () => {
+  it.each(['http://localhost:3000', 'https://localhost', 'https://127.0.0.1:3000', 'https://[::1]', 'https://0.0.0.0'])(
+    'rejects loopback origin %s on Vercel production',
+    (value) => {
+      env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: value });
+      expect(() => getAppUrl()).toThrow(AppOriginConfigError);
+    },
+  );
+
+  it('rejects an https loopback origin on Vercel production with the loopback code', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://localhost' });
+    expect(issueOf(() => getAppUrl())).toBe('loopback_on_deployed_host');
+  });
+
+  it('rejects loopback via the client-visible NEXT_PUBLIC_VERCEL_ENV on a preview deployment', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_VERCEL_ENV: 'preview', NEXT_PUBLIC_APP_URL: 'https://localhost' });
+    expect(issueOf(() => getAppUrl())).toBe('loopback_on_deployed_host');
+  });
+
+  it('rejects plain http on a preview deployment, even for loopback', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'preview', NEXT_PUBLIC_APP_URL: 'http://localhost:3000' });
+    expect(issueOf(() => getAppUrl())).toBe('insecure_http');
+  });
+
+  // The client call sites (forgot-password, register, portal magic link, invitation recovery)
+  // run in the browser, where VERCEL_ENV is never defined and NEXT_PUBLIC_VERCEL_ENV only exists
+  // if it was mirrored/exposed. The #50 guard must hold with NEITHER set: a production page
+  // served from a real host must refuse to email a loopback link.
+  it.each(['http://localhost:3000', 'https://localhost', 'http://127.0.0.1:3000'])(
+    'rejects loopback origin %s in a production browser bundle on a real host with no VERCEL_ENV of any kind',
+    (value) => {
+      env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: value });
+      vi.stubGlobal('location', { hostname: 'tims-ats.vercel.app' });
+      expect(issueOf(() => getAppUrl())).toBe('loopback_on_deployed_host');
+      expect(() => getAuthRedirectUrl('/auth/callback', { recovery: '1' })).toThrow(/served from a real host/);
+    },
+  );
+
+  it('still allows a loopback origin for a production bundle served from localhost (CI / local `next start`)', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: 'http://localhost:3000' });
+    vi.stubGlobal('location', { hostname: 'localhost' });
+    expect(getAppUrl()).toBe('http://localhost:3000');
+  });
+
+  it('does not apply the served-host check outside production builds (dev over a LAN IP)', () => {
+    env({ NEXT_PUBLIC_APP_URL: 'http://localhost:3000' });
+    vi.stubGlobal('location', { hostname: '192.168.1.20' });
+    expect(getAppUrl()).toBe('http://localhost:3000');
+  });
+
+  it('accepts the real origin in a production browser bundle with no VERCEL_ENV', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    vi.stubGlobal('location', { hostname: 'tims-ats.vercel.app' });
+    expect(getAppUrl()).toBe('https://tims-ats.vercel.app');
+  });
+
+  it('accepts the prod origin on a deployed production environment', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app/' });
+    expect(getAppUrl()).toBe('https://tims-ats.vercel.app');
+  });
+
+  it('checkAppOrigin reports the #50 codes without throwing', () => {
+    expect(checkAppOrigin('https://localhost', { NODE_ENV: 'production', VERCEL_ENV: 'preview' })).toMatchObject({
+      ok: false,
+      issue: 'loopback_on_deployed_host',
+    });
+    expect(
+      checkAppOrigin('http://127.0.0.1:3000', { NODE_ENV: 'production', servedFromHost: 'ats.example.test' }),
+    ).toMatchObject({ ok: false, issue: 'loopback_on_deployed_host' });
+    expect(checkAppOrigin('http://127.0.0.1:3000', { NODE_ENV: 'production', servedFromHost: '127.0.0.1' })).toEqual({
+      ok: true,
+      origin: 'http://127.0.0.1:3000',
+    });
+  });
+
+  it('the #50 messages never echo the configured value', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://localhost:4443' });
+    expect(() => getAppUrl()).toThrow(AppOriginConfigError);
+    try {
+      getAppUrl();
+    } catch (e) {
+      expect((e as Error).message).not.toContain('4443');
+    }
+  });
+});
+
+describe('getAuthRedirectUrl', () => {
+  it('builds an absolute URL on the configured origin with encoded params', () => {
+    env({ NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    expect(getAuthRedirectUrl('/auth/callback', { recovery: '1' })).toBe(
+      'https://tims-ats.vercel.app/auth/callback?recovery=1',
+    );
+    const url = new URL(getAuthRedirectUrl('/auth/callback', { next: '/careers/acme/dashboard' }));
+    expect(url.origin).toBe('https://tims-ats.vercel.app');
+    expect(url.searchParams.get('next')).toBe('/careers/acme/dashboard');
+  });
+
+  it.each(['//evil.example/x', 'https://evil.example/x', 'auth/callback', '/\\evil.example'])(
+    'rejects non app-relative path %s (no open redirect)',
+    (path) => {
+      env({ NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+      expect(() => getAuthRedirectUrl(path)).toThrow(AuthRedirectPathError);
+    },
+  );
+
+  it('propagates the production fail-loud when the origin is unset', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: undefined });
+    expect(issueOf(() => getAuthRedirectUrl('/auth/callback'))).toBe('missing');
+  });
+
+  it('propagates the #351 origin rules (no path on the origin)', () => {
+    env({ NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app/app' });
+    expect(issueOf(() => getAuthRedirectUrl('/auth/callback'))).toBe('path');
+  });
+});
+
+describe('apps/web/next.config.ts', () => {
+  // Belt and braces for the browser guard above: the deployed-environment checks in getAppUrl()
+  // read NEXT_PUBLIC_VERCEL_ENV on the client, which Vercel only provides when a dashboard setting
+  // is on. next.config.ts mirrors VERCEL_ENV into it at build time so the guard does not hinge on it.
+  it('mirrors VERCEL_ENV into NEXT_PUBLIC_VERCEL_ENV for client bundles', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const source = readFileSync(resolve(__dirname, '../../apps/web/next.config.ts'), 'utf8');
+    expect(source).toMatch(/env:\s*\{[^}]*NEXT_PUBLIC_VERCEL_ENV:\s*process\.env\.VERCEL_ENV\b/);
+  });
+});
+
+describe('packages/shared/src/app-url.ts client-bundle safety', () => {
+  // Next.js inlines only LITERAL `process.env.X` reads into client bundles. getAppUrl() must not
+  // hand `process.env` itself to checkAppOrigin(), or every NODE_ENV/VERCEL_ENV rule switches off
+  // in the browser (where `process.env` is an empty object).
+  it('getAppUrl() validates against literal env reads, not the dynamic process.env object', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const source = readFileSync(resolve(__dirname, '../../packages/shared/src/app-url.ts'), 'utf8');
+    const body = source.slice(
+      source.indexOf('export function getAppUrl'),
+      source.indexOf('export function getAuthRedirectUrl'),
+    );
+    // One-argument call = the default env; a `process.env` argument = dynamic access.
+    expect(body).not.toMatch(/checkAppOrigin\(\s*\w+\s*\)/);
+    expect(body).not.toMatch(/checkAppOrigin\([^)]*process\.env\s*\)/);
+    expect(body).toMatch(/checkAppOrigin\(raw, env\)/);
+    for (const name of ['NODE_ENV', 'VERCEL_ENV', 'NEXT_PUBLIC_VERCEL_ENV']) {
+      expect(source).toContain(`process.env.${name}`);
+    }
   });
 });

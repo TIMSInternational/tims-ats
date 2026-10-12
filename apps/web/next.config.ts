@@ -8,6 +8,13 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // Mirror Vercel's server-only VERCEL_ENV into client bundles so getAppUrl()
+  // (packages/shared/src/app-url.ts) can recognise a deployed environment in the
+  // browser without depending on the project's "Automatically expose System
+  // Environment Variables" setting (#50). Empty string = not a Vercel deployment.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV || "",
+  },
   // Monorepo: trace from the repo root so file tracing can see the pnpm store
   // (workspace packages + the Prisma query-engine binary live two levels up).
   outputFileTracingRoot: path.join(__dirname, "../../"),
