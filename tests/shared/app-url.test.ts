@@ -292,13 +292,50 @@ describe('getAuthRedirectUrl', () => {
     expect(url.searchParams.get('next')).toBe('/careers/acme/dashboard');
   });
 
-  it.each(['//evil.example/x', 'https://evil.example/x', 'auth/callback', '/\\evil.example'])(
-    'rejects non app-relative path %s (no open redirect)',
-    (path) => {
-      env({ NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
-      expect(() => getAuthRedirectUrl(path)).toThrow(AuthRedirectPathError);
-    },
-  );
+  it.each([
+    '//evil.example/x',
+    'https://evil.example/x',
+    'auth/callback',
+    '/\\evil.example',
+    // WHATWG URL parsing strips ASCII tab/LF/CR before resolving, so each of these would
+    // otherwise become '//evil.example' — a protocol-relative URL on another host.
+    '/\t/evil.example/x',
+    '/\n/evil.example',
+    '/\r/evil.example',
+    '/\r\n/evil.example',
+    '\t//evil.example',
+  ])('rejects non app-relative path %j (no open redirect)', (path) => {
+    env({ NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    expect(() => getAuthRedirectUrl(path)).toThrow(AuthRedirectPathError);
+  });
+
+  it('rejects a control character even when it would stay on-origin (no silent stripping)', () => {
+    env({ NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    // Without the filter this resolves to https://tims-ats.vercel.app/authcallback: same origin,
+    // but not the path the caller wrote. Rejecting it keeps the guard independent of the origin check.
+    expect(() => getAuthRedirectUrl('/auth\tcallback')).toThrow(AuthRedirectPathError);
+    expect(() => getAuthRedirectUrl('/auth/callback\u007f')).toThrow(AuthRedirectPathError);
+  });
+
+  it('never returns a URL off the configured origin, whatever the path', () => {
+    env({ NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    // Every 1- and 2-char combination of the characters URL parsing treats specially after a
+    // leading '/' — any one that resolved off-origin would be an open redirect.
+    const specials = ['/', '\\', '\t', '\n', '\r', ' ', '@', ':', '.', '%', '?', '#', '\u0000', '\u001f'];
+    for (const a of specials) {
+      for (const b of ['', ...specials]) {
+        const path = `/${a}${b}evil.example/x`;
+        let result: string | undefined;
+        try {
+          result = getAuthRedirectUrl(path);
+        } catch (error) {
+          expect(error).toBeInstanceOf(AuthRedirectPathError);
+          continue;
+        }
+        expect(new URL(result).origin, JSON.stringify(path)).toBe('https://tims-ats.vercel.app');
+      }
+    }
+  });
 
   it('propagates the production fail-loud when the origin is unset', () => {
     env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: undefined });

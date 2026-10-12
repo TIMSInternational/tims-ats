@@ -171,17 +171,25 @@ export function getAppUrl(): string {
   return result.origin;
 }
 
+// C0 control characters and DEL. WHATWG URL parsing strips ASCII tab/LF/CR anywhere in the input
+// (so '/\t/evil.example' parses as '//evil.example'), and trims other leading/trailing C0 controls.
+// No legitimate app path contains one.
+const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
+
 /**
  * Absolute URL on the configured app origin for an auth email redirect (`redirectTo` /
- * `emailRedirectTo`). `path` must be an app-relative path ("/auth/callback");
- * protocol-relative or absolute inputs are rejected so a caller can never turn this into an
- * open redirect.
+ * `emailRedirectTo`). `path` must be an app-relative path ("/auth/callback"). Rejected with
+ * `AuthRedirectPathError`: protocol-relative or absolute inputs, backslashes, and control
+ * characters; and, as a final check that does not depend on enumerating parser quirks, any
+ * result whose origin is not the configured app origin.
  */
 export function getAuthRedirectUrl(path: string, params?: Record<string, string>): string {
-  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')) {
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\') || CONTROL_CHARS.test(path)) {
     throw new AuthRedirectPathError();
   }
-  const url = new URL(path, `${getAppUrl()}/`);
+  const origin = getAppUrl();
+  const url = new URL(path, `${origin}/`);
+  if (url.origin !== origin) throw new AuthRedirectPathError();
   if (params) {
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   }
