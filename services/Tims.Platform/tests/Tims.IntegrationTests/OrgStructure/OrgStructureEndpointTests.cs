@@ -172,16 +172,29 @@ public sealed class OrgStructureEndpointTests(F fixture)
             Assert.Equal(4, await fixture.CountAsync(
                 $"SELECT (SELECT count(*) FROM user_teams WHERE team_id = '{F.ForeignTeam}') + (SELECT count(*) FROM user_business_units WHERE business_unit_id = '{F.ForeignUnit}')"));
 
-            // hr_admin (the granted user:delete holder) and super_admin (privileged — skips role_permissions, so
-            // only the org predicate stands between it and org B's rows).
-            foreach (var caller in new[] { F.Hr, F.Admin })
+            // Twice: once with the production RLS shape live, and once with RLS switched OFF on both join tables, so
+            // the repository's own org predicate is proven ALONE (with RLS on, removing that predicate still 404s —
+            // mutation-checked — so the first pass alone would not pin the code). hr_admin is the granted
+            // user:delete holder; super_admin is privileged and skips role_permissions entirely.
+            foreach (var rlsOn in new[] { true, false })
             {
-                foreach (var user in new[] { F.ForeignHr, F.Employee })
+                if (!rlsOn)
                 {
-                    Assert.Equal(HttpStatusCode.NotFound,
-                        (await Send(HttpMethod.Delete, $"{Base}/teams/{F.ForeignTeam}/members/{user}", caller)).StatusCode);
-                    Assert.Equal(HttpStatusCode.NotFound,
-                        (await Send(HttpMethod.Delete, $"{Base}/business-units/{F.ForeignUnit}/assignees/{user}", caller)).StatusCode);
+                    await fixture.ScalarAsync("""
+                        ALTER TABLE user_teams NO FORCE ROW LEVEL SECURITY; ALTER TABLE user_teams DISABLE ROW LEVEL SECURITY;
+                        ALTER TABLE user_business_units NO FORCE ROW LEVEL SECURITY; ALTER TABLE user_business_units DISABLE ROW LEVEL SECURITY;
+                        """);
+                }
+
+                foreach (var caller in new[] { F.Hr, F.Admin })
+                {
+                    foreach (var user in new[] { F.ForeignHr, F.Employee })
+                    {
+                        Assert.Equal(HttpStatusCode.NotFound,
+                            (await Send(HttpMethod.Delete, $"{Base}/teams/{F.ForeignTeam}/members/{user}", caller)).StatusCode);
+                        Assert.Equal(HttpStatusCode.NotFound,
+                            (await Send(HttpMethod.Delete, $"{Base}/business-units/{F.ForeignUnit}/assignees/{user}", caller)).StatusCode);
+                    }
                 }
             }
 
@@ -201,6 +214,8 @@ public sealed class OrgStructureEndpointTests(F fixture)
         finally
         {
             await fixture.ScalarAsync($"""
+                ALTER TABLE user_teams ENABLE ROW LEVEL SECURITY; ALTER TABLE user_teams FORCE ROW LEVEL SECURITY;
+                ALTER TABLE user_business_units ENABLE ROW LEVEL SECURITY; ALTER TABLE user_business_units FORCE ROW LEVEL SECURITY;
                 DELETE FROM user_teams WHERE id IN ('{memberB}', '{memberA}');
                 DELETE FROM user_business_units WHERE id IN ('{assigneeB}', '{assigneeA}');
                 """);
