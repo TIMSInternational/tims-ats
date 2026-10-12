@@ -41,8 +41,14 @@ Upstash times out or errors:
 | Everything else (ordinary `query` / `mutation`)                                                                                                                                                           | **Fail open** to the per-instance in-memory limiter |
 | Public application e-mail cap                                                                                                                                                                             | Fail closed: the e-mail is skipped                  |
 
-Login and MFA are performed by Supabase Auth directly from the browser, not through
-tRPC, so this limiter does not govern them; Supabase's own auth rate limits apply.
+Scope caveat: none of the live user-facing credential flows passes through this
+limiter. Login, self-serve password reset (`/forgot-password`) and MFA call Supabase
+Auth directly from the browser (Supabase's own auth limits apply), and the invitation
+accept UI relays to the C# platform API (`/api/invitation-setup/*` →
+`/invitations/setup/*`), outside this limiter (verify the C# side separately). The fail-closed paths above are
+the tRPC procedures that still exist (`platform.acceptInvitation` and
+`platform.getInvitationByToken` have no web caller today; `platform.resetUserPassword`
+is an operator action), and `auth.*` currently has no mutations.
 
 Each degradation logs a structured warning, `event: "ratelimit.shared_store_unavailable"`,
 with `category`, `mode` (`fail_closed` / `fail_open_memory`), `cause` (`timeout` /
@@ -56,10 +62,10 @@ The Upstash REST credentials enable **only the rate limiter**. Two caches could 
 use that store; each needs its own explicit opt-in, because storing their contents at
 the Upstash subprocessor is a separate data decision:
 
-| Flag (Vercel env)                       | Cache                                                           | What would be stored at Upstash                                                       |
-| --------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `AI_CACHE_UPSTASH_ENABLED=true`         | AI response cache, `packages/ai/src/cache.ts`                   | AI agent outputs (may contain candidate-derived text), keyed by a hash of org + input |
-| `PERMISSION_CACHE_UPSTASH_ENABLED=true` | Cache-aside / permission cache, `packages/api/src/lib/cache.ts` | Tenant access decisions (org/user ids, roles, grants)                                 |
+| Flag (Vercel env)                       | Cache                                                           | What would be stored at Upstash                                                                           |
+| --------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `AI_CACHE_UPSTASH_ENABLED=true`         | AI response cache, `packages/ai/src/cache.ts`                   | AI agent outputs (may contain candidate-derived text), keyed by a hash of org + input                     |
+| `PERMISSION_CACHE_UPSTASH_ENABLED=true` | Cache-aside / permission cache, `packages/api/src/lib/cache.ts` | Tenant access decisions (org/user ids, roles, grants), feature-flag and entitlement reads, dashboard KPIs |
 
 Only the exact string `true` enables a flag; any other value, or absence, keeps that
 cache in per-process memory (the behavior production has today, since it has no

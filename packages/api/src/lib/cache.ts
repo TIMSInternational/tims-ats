@@ -15,8 +15,9 @@ import { logger } from '@tims/shared';
 // Backend: per-process memory by default. Upstash Redis is used ONLY when
 // PERMISSION_CACHE_UPSTASH_ENABLED is exactly 'true' AND the Upstash REST credentials
 // are set. The credentials exist for the rate limiter; putting tenant access decisions
-// (org/user ids, roles, permission grants) at the Upstash subprocessor is a separate
-// data decision that must be opted into explicitly. Note the memory backend's
+// (org/user ids, roles, permission grants), feature-flag/entitlement reads and dashboard
+// KPIs at the Upstash subprocessor is a separate data decision that must be opted into
+// explicitly. Note the memory backend's
 // invalidation is per-instance: other instances keep a revoked grant until its TTL.
 // See docs/runbooks/production-rate-limits.md.
 // ---------------------------------------------------------------------------
