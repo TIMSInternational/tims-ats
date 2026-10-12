@@ -165,17 +165,17 @@ export const organizationsRouter = router({
         //
         // WHAT THIS DOES *NOT* CLOSE — corrected 2026-08-11, an earlier version of this comment called
         // `createOrgInvitation` "the OTHER writer" (singular). `organizations.billing_email` has FOUR
-        // writers, and after #207 they carry bounds 254 / 254 / UNBOUNDED / UNBOUNDED:
+        // writers, and after #207 + #213 they carry bounds 254 / 254 / 254 / UNBOUNDED:
         //   1. this procedure                                            — 254
         //   2. `platform/invitations.ts` createOrgInvitation             — 254 (lowered from 255 here)
         //   3. `routers/organization.ts` update, via `updateOrganizationSchema`
-        //      (`packages/shared/src/validators/organization.ts`)         — UNBOUNDED, and behind
-        //      `permissionProcedure('organization','update')`, a LOWER privilege bar than this one.
-        //      Its `domain` is unbounded too, on a @unique column. Filed as #213.
+        //      (`packages/shared/src/validators/organization.ts`)         — 254 since #213 (was
+        //      unbounded, behind `permissionProcedure('organization','update')`, a LOWER privilege bar
+        //      than this one). #213 also bounded its `domain` (@unique) at 253 + a hostname pattern.
         //   4. `apps/web/app/auth/callback/route.ts` self-serve company signup, which writes
         //      `supabaseUser.email` with no Zod schema anywhere in the request path — UNBOUNDED.
-        // So this change narrows the platform-owner paths only. Do not restate it as "one column, one
-        // bound".
+        // So #207 + #213 narrow three of the four writers. Do not restate it as "one column, one
+        // bound" until the signup writer (4) gets its product decision.
         adminEmail: z.string().email().max(254),
         billingEmail: z.string().email().max(254).optional(),
       }),

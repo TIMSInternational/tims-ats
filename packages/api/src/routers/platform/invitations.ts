@@ -89,11 +89,11 @@ export const invitationsRouter = router({
         // `platform_invitations.email`, a different column, and are deliberately untouched.
         //
         // NOT "the only other writer" — corrected 2026-08-11. `organizations.billing_email` has FOUR
-        // writers and TWO are still unbounded: `routers/organization.ts` update (via
-        // `updateOrganizationSchema`, at the lower `organization:update` privilege bar) and the
-        // self-serve signup in `apps/web/app/auth/callback/route.ts`. See the corresponding comment on
-        // `platform.createOrganization` for the full list, and #213 for the fix. #207 bounded the
-        // platform-owner paths only.
+        // writers. #207 bounded the two platform-owner paths; #213 bounded `routers/organization.ts`
+        // update (via `updateOrganizationSchema`, at the lower `organization:update` privilege bar).
+        // The self-serve signup in `apps/web/app/auth/callback/route.ts` is STILL unbounded — it needs
+        // a product decision (reject vs truncate an IdP-supplied email). See the corresponding comment
+        // on `platform.createOrganization` for the full list.
         email: z.string().email().max(254),
         organizationName: z.string().min(2).max(100),
         organizationSlug: z
