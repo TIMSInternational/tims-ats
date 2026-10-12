@@ -122,7 +122,8 @@ public sealed class SupabaseAuthSettingsProbe(
         }
     }
 
-    private static bool TryAuthOrigin(string? value, out Uri origin)
+    /// <summary>Shared with the platform-health auth probe: an https origin with no path, query or credentials.</summary>
+    internal static bool TryAuthOrigin(string? value, out Uri origin)
     {
         origin = null!;
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.UserInfo.Length != 0

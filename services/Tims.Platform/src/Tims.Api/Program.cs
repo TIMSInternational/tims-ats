@@ -43,6 +43,7 @@ using Tims.Api.Reporting;
 using Tims.Api.Succession;
 using Tims.Api.Monitoring;
 using Tims.Api.PlatformDashboard;
+using Tims.Api.PlatformHealth;
 using Tims.Api.PlatformInvitations;
 using Tims.Api.PlatformOrganizations;
 using Tims.Api.TeamIntel;
@@ -69,6 +70,7 @@ using Tims.Application.Reporting;
 using Tims.Application.Succession;
 using Tims.Application.Monitoring;
 using Tims.Application.PlatformDashboard;
+using Tims.Application.PlatformHealth;
 using Tims.Application.PlatformInvitations;
 using Tims.Application.PlatformOrganizations;
 using Tims.Application.TeamIntel;
@@ -101,6 +103,7 @@ using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
 using Tims.Infrastructure.Monitoring;
 using Tims.Infrastructure.PlatformDashboard;
+using Tims.Infrastructure.PlatformHealth;
 using Tims.Infrastructure.PlatformInvitations;
 using Tims.Infrastructure.PlatformOrganizations;
 using Tims.Infrastructure.TeamIntel;
@@ -396,6 +399,12 @@ try
         options.UseNpgsql(sp.GetRequiredService<PlatformDashboardDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IPlatformDashboardReadRepository, PlatformDashboardReadRepository>();
     builder.Services.AddScoped<PlatformDashboardReadUseCase>();
+
+    // Platform Health page dependency probes (GET /platform/health/dependencies). Singleton probes + a cached
+    // use case; the API readiness probe reuses the /ready health checks in-process. Dark unless
+    // PlatformHealthProbesEnabled.
+    builder.Services.AddPlatformHealthProbes(builder.Configuration, databaseConnectionString);
+    builder.Services.AddSingleton<IDependencyProbe, ApiReadinessProbe>();
 
     // PR 2 of 3, same flag and the SAME context/data source: the six remaining FX-free reads
     // (getAttentionItems / getMrrTrend / getMrrForecast / getCustomerHealth / getUpsellOpportunities /
@@ -1423,6 +1432,12 @@ try
         app.MapPlatformDashboardReadEndpoints();
         app.MapPlatformDashboardFxReadEndpoints();
         app.MapPlatformDashboardAiReadEndpoints();
+    }
+
+    // Platform Health page dependency probes — platform-owner only, read-only, cached. Dark unless on.
+    if (externalOptions.PlatformHealthProbesEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformHealthEndpoints();
     }
 
     // Phase-5 slice 20 (#76): PATCH /platform/organizations/{id} + POST /platform/organizations/{id}/suspend.
