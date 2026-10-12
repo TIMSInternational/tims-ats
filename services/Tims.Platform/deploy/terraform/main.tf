@@ -101,7 +101,9 @@ locals {
     # stack and served by the other is the hole #173 closes.
     Platform__MfaEnforced = var.mfa_enforced
   }
-  env = merge(local.base_env, var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
+  # cv_recovery_env (cv-recovery.tf) always pins Platform__CvParseRecoveryEnabled, "false" unless enabled.
+  env = merge(local.base_env, local.cv_recovery_env,
+  var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
 }
 
 # --- ECR repository (the docker build/push in runbook §3 targets this) ----------------------------

@@ -15,6 +15,7 @@ using StackExchange.Redis;
 using Tims.Api.AccessReview;
 using Tims.Api.AssessmentTypes;
 using Tims.Api.CandidateConsent;
+using Tims.Api.CvParsing;
 using Tims.Application.CandidateConsent;
 using Tims.Infrastructure.CandidateConsent;
 using Tims.Application.AssessmentTypes;
@@ -709,6 +710,10 @@ try
     {
         builder.Services.AddHostedService<FxRefreshHostedService>();
     }
+
+    // Recovery is dark until the Prisma migration and AWS permissions are verified.
+    // The extension validates every dependency before registering a hosted loop.
+    builder.Services.AddCvParseRecovery(builder.Configuration, databaseConnectionString);
 
     // Phase-5 Slice 17 (efcoreReadOnly): the cross-org audit-log READ surface. Plain read-only context
     // over the Prisma-OWNED audit_logs (+ context-local users/organizations read entities for the
