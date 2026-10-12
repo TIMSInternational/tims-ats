@@ -1,0 +1,6 @@
+# Local Terraform working files. Never commit state or real variable values (they hold production URLs).
+.terraform/
+.build/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

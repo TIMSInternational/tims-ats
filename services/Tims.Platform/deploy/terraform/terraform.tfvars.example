@@ -82,3 +82,13 @@ mfa_enforced = ""
 
 # Set true only before the billing WRITE cutover (creates + wires Stripe secret containers).
 manage_stripe_secrets = false
+
+# --- External uptime checks (synthetics.tf) — opt-in -------------------------------------------------
+# Real URLs go in terraform.tfvars (git-ignored), never in this example. Both must be https and answer
+# 2xx without a redirect.
+enable_synthetics       = false
+synthetics_web_url      = "" # e.g. "https://<web-host>/careers/<org-slug>"
+synthetics_api_base_url = "" # e.g. the service_url output: "https://<id>.<region>.awsapprunner.com"
+# Point the uptime alarms at the EXISTING platform alarms topic while that topic is managed by
+# scripts/ops/create-alarms.sh rather than by this module. Empty => the alarms.tf topic (enable_alarms).
+synthetics_alarm_topic_arn = ""
