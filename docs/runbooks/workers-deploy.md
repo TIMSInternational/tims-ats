@@ -81,6 +81,21 @@ policy (the jobs call no AWS API). The GitHub deploy role gains: push to the wor
 
 An unhealthy task is replaced by ECS. A DB outage does **not** fail liveness (by design — Quartz retries).
 
+### Fail-closed startup (added with the cherry-pick onto main, 2026-10-12)
+
+- **Unusable DB connection string ⇒ the process exits 1 at boot.** `DatabaseConnectionStringGuard`
+  (`src/Tims.Workers/DatabaseConnectionStringGuard.cs`, wired in `Program.cs` via `ValidateOnStart`) rejects an
+  empty value, the Terraform placeholder `REPLACE_ME_OUT_OF_BAND`, an unparseable string, and — outside
+  Development/Testing — a loopback host. The last case matters: `appsettings.json` ships
+  `Host=localhost`, so a task whose secret injection is missing would otherwise boot "healthy" (lazy DbContexts,
+  DB-free `/health`) and fail every FX/HRIS fire forever. The value is never logged.
+- **Startup failures RETURN 1 instead of rethrowing.** Reproduced locally: with `dotnet` as PID 1 (no init),
+  a rethrown startup exception went through `abort()`, the kernel ignored the SIGABRT for PID 1, and the
+  container stayed `running` (spinning) instead of exiting — so the fail-closed check never stopped the task.
+  The task definition additionally sets `linuxParameters.initProcessEnabled=true` (tini as PID 1) so any other
+  crash also terminates the task and ECS restarts it / the circuit breaker rolls back.
+- **Liveness does not watch the scheduler.** If Quartz stopped while Kestrel kept serving, `/health` would stay 200. The proof of life is the daily `fx refresh` log line and `max(fetched_at)` in `fx_rates` (§Verify).
+
 ## Procedure
 
 Run each block from the repo root on `main` after this PR merges. Wait for each to succeed before the next.

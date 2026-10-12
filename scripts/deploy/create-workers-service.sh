@@ -158,9 +158,11 @@ if [[ "$ONLINE" -eq 1 ]] && "${AWSX[@]}" ecr describe-repositories --repository-
 else
   mutate ecr create-repository --repository-name "$ECR_REPO" \
     --image-tag-mutability IMMUTABLE --image-scanning-configuration scanOnPush=true
-  mutate ecr put-lifecycle-policy --repository-name "$ECR_REPO" --lifecycle-policy-text \
-    '{"rules":[{"rulePriority":1,"description":"keep the last 30 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
 fi
+# put-lifecycle-policy is an upsert: re-assert it on every run, not only on create, so a repo that
+# already existed (or was hand-edited) still ends up with the 30-image retention.
+mutate ecr put-lifecycle-policy --repository-name "$ECR_REPO" --lifecycle-policy-text \
+  '{"rules":[{"rulePriority":1,"description":"keep the last 30 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
 
 # ── 2. Log group (30-day retention — job logs carry no payloads/PII by design) ───────────────────
 say ""
@@ -174,8 +176,9 @@ if [[ "$EXISTING_LG" == "$LOG_GROUP" ]]; then
   ok "exists"
 else
   mutate logs create-log-group --log-group-name "$LOG_GROUP"
-  mutate logs put-retention-policy --log-group-name "$LOG_GROUP" --retention-in-days 30
 fi
+# Re-asserted on every run (idempotent): a pre-existing group defaults to NEVER EXPIRE otherwise.
+mutate logs put-retention-policy --log-group-name "$LOG_GROUP" --retention-in-days 30
 
 # ── 3. The DB secret the API already uses (looked up, never read) ────────────────────────────────
 say ""
@@ -318,6 +321,9 @@ td = {
     # Quartz WaitForJobsToComplete: give an in-flight FX/HRIS fire time to finish on SIGTERM.
     "stopTimeout": 120,
     "readonlyRootFilesystem": False,
+    # tini as PID 1: without it, dotnet IS PID 1 and an abort() (unhandled crash) is ignored by the kernel,
+    # leaving a spinning, never-exiting task. Reproduced locally 2026-10-12 (docker run vs docker run --init).
+    "linuxParameters": {"initProcessEnabled": True},
     "environment": [
       {"name": "ASPNETCORE_ENVIRONMENT", "value": "Production"},
       {"name": "Platform__ServiceName", "value": "$NAME"},
