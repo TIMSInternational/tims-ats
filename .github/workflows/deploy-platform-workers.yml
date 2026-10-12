@@ -242,6 +242,8 @@ jobs:
           aws ecs wait services-stable --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
           # services-stable also returns 0 after a circuit-breaker ROLLBACK (the service is stable again, on the
           # OLD revision). Only a service whose PRIMARY deployment is $NEW_TD with rolloutState COMPLETED passes.
+          # The waiter does not wait for rolloutState, so the verifier polls it (IN_PROGRESS keeps waiting,
+          # FAILED fails with its reason) for up to 15 minutes, then fails loud.
           if ! bash scripts/deploy/workers-verify-roll.sh "$NEW_TD"; then
             {
               echo "### Workers roll to \`$TAG\` FAILED"

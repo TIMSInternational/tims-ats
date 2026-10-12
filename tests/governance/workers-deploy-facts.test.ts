@@ -20,6 +20,12 @@ import { join, resolve } from 'node:path';
 //    new task never gets healthy the breaker rolls back, the service is stable again
 //    on the OLD revision, `aws ecs wait services-stable` returns 0, and the job said
 //    "Workers rolled to <tag>". The roll must be verified against the new revision.
+//
+// 3. Roll timing. `services-stable` waits for runningCount/deployments, NOT for the
+//    deployment's rolloutState, which ECS flips to COMPLETED a little later. A
+//    one-shot check right after the waiter saw IN_PROGRESS and reported a healthy
+//    deploy as FAILED. The verifier must POLL: IN_PROGRESS keeps waiting, COMPLETED
+//    passes, FAILED fails with the reason, and a bounded timeout fails loud.
 
 const ROOT = resolve(__dirname, '../..');
 const STATUS = resolve(ROOT, 'scripts/deploy/workers-service-status.sh');
@@ -39,6 +45,16 @@ beforeAll(() => {
     aws,
     [
       '#!/usr/bin/env bash',
+      // Every call is counted, so a test can prove the verifier polled (or stopped early).
+      'if [ -n "${FAKE_AWS_CALLS:-}" ]; then echo x >> "$FAKE_AWS_CALLS"; fi',
+      // Sequence mode: call N replays $FAKE_AWS_SEQ_DIR/N, and the last file repeats forever.
+      'if [ -n "${FAKE_AWS_SEQ_DIR:-}" ]; then',
+      '  n=$(wc -l < "$FAKE_AWS_CALLS" | tr -d " ")',
+      '  last=$(ls "$FAKE_AWS_SEQ_DIR" | sort -n | tail -1)',
+      '  [ "$n" -gt "$last" ] && n=$last',
+      '  cat "$FAKE_AWS_SEQ_DIR/$n"',
+      '  exit 0',
+      'fi',
       'printf "%s" "${FAKE_AWS_STDOUT:-}"',
       'printf "%s" "${FAKE_AWS_STDERR:-}" >&2',
       'exit "${FAKE_AWS_EXIT:-0}"',
@@ -52,7 +68,10 @@ afterAll(() => rmSync(fakeBin, { recursive: true, force: true }));
 
 type Fake = { stdout?: string; stderr?: string; exit?: number };
 
-function run(script: string, fake: Fake, args: string[] = []) {
+// A verifier poll budget that keeps the constant-response cases fast: two polls, 1s apart.
+const FAST_POLL = { VERIFY_ROLL_TIMEOUT_SECONDS: '1', VERIFY_ROLL_INTERVAL_SECONDS: '1' };
+
+function run(script: string, fake: Fake, args: string[] = [], extraEnv: Record<string, string> = FAST_POLL) {
   const r = spawnSync('bash', [script, ...args], {
     encoding: 'utf8',
     env: {
@@ -64,9 +83,25 @@ function run(script: string, fake: Fake, args: string[] = []) {
       FAKE_AWS_STDOUT: fake.stdout ?? '',
       FAKE_AWS_STDERR: fake.stderr ?? '',
       FAKE_AWS_EXIT: String(fake.exit ?? 0),
+      ...extraEnv,
     },
   });
   return { status: r.status, stdout: r.stdout.trim(), stderr: r.stderr };
+}
+
+/** Run the verifier against a SEQUENCE of describe-services responses; returns the call count too. */
+function runSeq(responses: string[], env: Record<string, string> = FAST_POLL) {
+  const dir = mkdtempSync(join(tmpdir(), 'fake-aws-seq-'));
+  try {
+    responses.forEach((body, i) => writeFileSync(join(dir, String(i + 1)), body));
+    const calls = join(dir, 'calls.log');
+    writeFileSync(calls, '');
+    const r = run(VERIFY, {}, [NEW_TD], { ...env, FAKE_AWS_SEQ_DIR: dir, FAKE_AWS_CALLS: calls });
+    const n = readFileSync(calls, 'utf8').split('\n').filter(Boolean).length;
+    return { ...r, calls: n };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 const svc = (s: Record<string, unknown>) => JSON.stringify({ services: [s], failures: [] });
@@ -175,7 +210,6 @@ describe('workers deploy — a roll is green only when the service runs the NEW 
 
   it.each([
     ['rolloutState FAILED', {}, { rolloutState: 'FAILED' }],
-    ['rolloutState IN_PROGRESS', {}, { rolloutState: 'IN_PROGRESS' }],
     ['service on the new TD but PRIMARY on the old one', {}, { taskDefinition: OLD_TD }],
     ['running below desired', { runningCount: 0 }, {}],
     [
@@ -205,6 +239,80 @@ describe('workers deploy — a roll is green only when the service runs the NEW 
   it('refuses a missing or malformed NEW_TD argument', () => {
     expect(run(VERIFY, { stdout: stable() }, []).status).not.toBe(0);
     expect(run(VERIFY, { stdout: stable() }, ['None']).status).not.toBe(0);
+  });
+});
+
+describe('workers deploy — the verifier POLLS rolloutState instead of judging one snapshot', () => {
+  const inProgress = stable({}, { rolloutState: 'IN_PROGRESS', rolloutStateReason: 'ECS deployment in progress' });
+  // A generous budget: a test that passes or fails EARLY must not be rescued by the timeout.
+  const PATIENT = { VERIFY_ROLL_TIMEOUT_SECONDS: '60', VERIFY_ROLL_INTERVAL_SECONDS: '1' };
+
+  it('IN_PROGRESS right after the waiter, then COMPLETED, is a PASS (the healthy-deploy case)', () => {
+    const r = runSeq([inProgress, inProgress, stable()], PATIENT);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.calls).toBe(3);
+    expect(r.stdout).toContain('rollout COMPLETED');
+  });
+
+  it('IN_PROGRESS then FAILED fails with the rolloutStateReason, without waiting for the timeout', () => {
+    const reason = 'ECS deployment circuit breaker: tasks failed to start.';
+    const r = runSeq([inProgress, stable({}, { rolloutState: 'FAILED', rolloutStateReason: reason })], PATIENT);
+    expect(r.status).not.toBe(0);
+    expect(r.calls).toBe(2);
+    expect(r.stderr).toContain('::error::');
+    expect(r.stderr).toContain(reason);
+  });
+
+  it('a rollback seen mid-poll (PRIMARY moves to the OLD revision) fails at once', () => {
+    const rolledBack = stable(
+      { taskDefinition: OLD_TD },
+      { taskDefinition: OLD_TD, rolloutState: 'IN_PROGRESS', rolloutStateReason: 'circuit breaker: rolling back' },
+    );
+    const r = runSeq([inProgress, rolledBack], PATIENT);
+    expect(r.status).not.toBe(0);
+    expect(r.calls).toBe(2);
+    expect(r.stderr).toContain(OLD_TD);
+  });
+
+  it('IN_PROGRESS forever FAILS LOUD at the timeout, after polling more than once', () => {
+    const r = runSeq([inProgress], { VERIFY_ROLL_TIMEOUT_SECONDS: '2', VERIFY_ROLL_INTERVAL_SECONDS: '1' });
+    expect(r.status).not.toBe(0);
+    expect(r.calls).toBeGreaterThan(1);
+    expect(r.stderr).toContain('::error::');
+    expect(r.stderr).toMatch(/timed out/i);
+    expect(r.stderr).toContain('IN_PROGRESS');
+  });
+
+  it('COMPLETED but not yet settled (old deployment still draining) keeps waiting, then passes', () => {
+    const draining = stable({
+      deployments: [
+        { status: 'PRIMARY', taskDefinition: NEW_TD, rolloutState: 'COMPLETED' },
+        { status: 'ACTIVE', taskDefinition: OLD_TD, rolloutState: 'COMPLETED' },
+      ],
+    });
+    const r = runSeq([draining, stable()], PATIENT);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.calls).toBe(2);
+  });
+
+  it('a describe-services failure mid-poll fails loud (never read as "still in progress")', () => {
+    // Sequence mode cannot express a failing call, so a constant failure stands in: it must fail on call 1.
+    const r = run(VERIFY, { exit: 254, stderr: 'An error occurred (ThrottlingException)' }, [NEW_TD], PATIENT);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('::error::');
+  });
+
+  it.each([
+    ['a non-numeric timeout', { VERIFY_ROLL_TIMEOUT_SECONDS: 'ten', VERIFY_ROLL_INTERVAL_SECONDS: '1' }],
+    [
+      'a zero interval (would busy-loop the AWS API)',
+      { VERIFY_ROLL_TIMEOUT_SECONDS: '10', VERIFY_ROLL_INTERVAL_SECONDS: '0' },
+    ],
+    ['a zero timeout', { VERIFY_ROLL_TIMEOUT_SECONDS: '0', VERIFY_ROLL_INTERVAL_SECONDS: '1' }],
+  ])('refuses %s', (_label, env) => {
+    const r = run(VERIFY, { stdout: stable() }, [NEW_TD], env);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('::error::');
   });
 });
 
