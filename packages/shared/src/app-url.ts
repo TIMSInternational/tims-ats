@@ -4,9 +4,12 @@
 // caller derives an email link from the request Host header or window.location (#50).
 export const DEFAULT_APP_URL = 'https://tims-ats.vercel.app';
 
-// URL.hostname brackets IPv6 ('[::1]'); the bare form is listed for any caller that
-// reports an unbracketed hostname.
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]', '::1']);
+// Hosts for which plain http is tolerated under NODE_ENV=production off Vercel (#351).
+const HTTP_LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+// Hosts that must never be the emailed origin on a deployed host (#50). A superset of the above:
+// 0.0.0.0 is not an http exception, but it is never a valid public origin either. URL.hostname
+// brackets IPv6 ('[::1]'); the bare form covers a caller that reports it unbracketed.
+const LOOPBACK_HOSTS = new Set([...HTTP_LOOPBACK_HOSTS, '0.0.0.0', '::1']);
 
 export type AppOriginIssue =
   | 'invalid_url'
@@ -111,7 +114,7 @@ export function checkAppOrigin(
   const deployed = isDeployedVercelEnv(env);
   if (url.protocol === 'http:') {
     if (deployed) return fail('insecure_http');
-    if (isProductionBuild && !isLoopback) return fail('insecure_http');
+    if (isProductionBuild && !HTTP_LOOPBACK_HOSTS.has(url.hostname)) return fail('insecure_http');
   }
   if (isLoopback) {
     if (deployed) return fail('loopback_on_deployed_host');

@@ -251,6 +251,11 @@ describe('getAppUrl — #50 loopback on a deployed host', () => {
     expect(getAppUrl()).toBe('https://tims-ats.vercel.app');
   });
 
+  it('does not widen the #351 http exception: http://0.0.0.0 is still rejected in a production build', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: 'http://0.0.0.0:3000' });
+    expect(issueOf(() => getAppUrl())).toBe('insecure_http');
+  });
+
   it('checkAppOrigin reports the #50 codes without throwing', () => {
     expect(checkAppOrigin('https://localhost', { NODE_ENV: 'production', VERCEL_ENV: 'preview' })).toMatchObject({
       ok: false,
