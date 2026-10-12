@@ -142,9 +142,9 @@ jobs:
           IMAGE_EXISTS: ${{ steps.image.outputs.exists }}
         run: |
           set -euo pipefail
-          SERVICE_STATUS="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
-                             --services "$ECS_SERVICE" --query 'services[0].status' --output text 2>/dev/null || true)"
-          [ -n "$SERVICE_STATUS" ] && [ "$SERVICE_STATUS" != "None" ] || SERVICE_STATUS="MISSING"
+          # MISSING only for a service/cluster that really does not exist; AccessDenied, throttling, an
+          # expired OIDC session or a network error fail this step (scripts/deploy/workers-service-status.sh).
+          SERVICE_STATUS="$(bash scripts/deploy/workers-service-status.sh)"
           RUNNING_TAG=""
           RUNNING_IS_NEWER="unknown"
           GRAPH_CHANGED="unknown"
@@ -240,6 +240,16 @@ jobs:
             --task-definition "$NEW_TD" --query 'service.serviceName' --output text
           echo "Waiting for the service to stabilise on $NEW_TD…"
           aws ecs wait services-stable --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          # services-stable also returns 0 after a circuit-breaker ROLLBACK (the service is stable again, on the
+          # OLD revision). Only a service whose PRIMARY deployment is $NEW_TD with rolloutState COMPLETED passes.
+          if ! bash scripts/deploy/workers-verify-roll.sh "$NEW_TD"; then
+            {
+              echo "### Workers roll to \`$TAG\` FAILED"
+              echo "- the service did not settle on \`$NEW_TD\`; still running \`$RUNNING_IMAGE\` ($CURRENT_TD) if the circuit breaker rolled back"
+              echo "- inspect: \`aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query 'services[0].events[:10]'\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           {
             echo "### Workers rolled to \`$TAG\`"
             echo "- from: \`$RUNNING_IMAGE\` ($CURRENT_TD)"
