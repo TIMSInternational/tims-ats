@@ -19,18 +19,23 @@ export async function logInvocation(params: {
   cached?: boolean;
   userId?: string;
 }): Promise<void> {
-  await db.aiAgentUsageLog.create({
-    data: {
-      agentId: params.agentId,
-      organizationId: params.organizationId,
-      userId: params.userId ?? null,
-      inputTokens: params.inputTokens,
-      outputTokens: params.outputTokens,
-      costUsd: params.costUsd,
-      latencyMs: params.latencyMs,
-      cached: params.cached ?? false,
-    },
-  }).catch(() => {
-    // Non-critical — don't fail the request if logging fails
-  });
+  await db.aiAgentUsageLog
+    .create({
+      data: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId ?? null,
+        inputTokens: params.inputTokens,
+        outputTokens: params.outputTokens,
+        costUsd: params.costUsd,
+        latencyMs: params.latencyMs,
+        cached: params.cached ?? false,
+        success: params.success,
+      },
+      // Explicit select: Prisma otherwise RETURNs every mapped column.
+      select: { id: true },
+    })
+    .catch(() => {
+      // Non-critical — don't fail the request if logging fails
+    });
 }
