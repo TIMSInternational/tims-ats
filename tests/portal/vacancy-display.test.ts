@@ -64,9 +64,34 @@ describe('portal enum labels', () => {
 
 describe('portal relative dates', () => {
   const now = Date.parse('2026-09-29T12:00:00Z');
-  it('uses accented Spanish copy', () => {
-    expect(formatTimeAgo('2026-09-26T12:00:00Z', es.portal, now)).toBe('Hace 3 días');
-    expect(formatTimeAgo('2026-09-29T08:00:00Z', es.portal, now)).toBe('Hoy');
-    expect(formatTimeAgo('2026-09-15T12:00:00Z', en.portal, now)).toBe('2 weeks ago');
+  it('reads as a sentence after the "Publicada" / "Posted" label (lower-case, locale plurals)', () => {
+    expect(`${es.portal.postedLabel} ${formatTimeAgo('2026-09-26T12:00:00Z', 'ES', { now })}`).toBe(
+      'Publicada hace 3 días',
+    );
+    expect(`${es.portal.postedLabel} ${formatTimeAgo('2026-09-29T08:00:00Z', 'ES', { now })}`).toBe('Publicada hoy');
+    expect(`${en.portal.postedLabel} ${formatTimeAgo('2026-09-28T12:00:00Z', 'EN', { now })}`).toBe(
+      'Posted yesterday',
+    );
+    expect(`${en.portal.postedLabel} ${formatTimeAgo('2026-09-15T12:00:00Z', 'EN', { now })}`).toBe(
+      'Posted 2 weeks ago',
+    );
+  });
+
+  it('uses the singular for a count of one, never "Hace 1 semanas"', () => {
+    expect(formatTimeAgo('2026-09-21T12:00:00Z', 'ES', { now })).toBe('hace 1 semana');
+    expect(formatTimeAgo('2026-09-21T12:00:00Z', 'EN', { now })).toBe('1 week ago');
+    expect(formatTimeAgo('2026-08-29T12:00:00Z', 'ES', { now })).toBe('hace 1 mes');
+    expect(formatTimeAgo('2026-07-29T12:00:00Z', 'ES', { now })).toBe('hace 2 meses');
+    expect(formatTimeAgo('2026-09-28T12:00:00Z', 'ES', { now })).toBe('ayer');
+  });
+
+  it('capitalises a standalone phrase (sidebar) with accented Spanish copy', () => {
+    expect(formatTimeAgo('2026-09-26T12:00:00Z', 'ES', { now, standalone: true })).toBe('Hace 3 días');
+    expect(formatTimeAgo('2026-09-29T08:00:00Z', 'ES', { now, standalone: true })).toBe('Hoy');
+    expect(formatTimeAgo('2026-09-15T12:00:00Z', 'EN', { now, standalone: true })).toBe('2 weeks ago');
+  });
+
+  it('clamps a future date to today', () => {
+    expect(formatTimeAgo('2026-10-05T12:00:00Z', 'EN', { now })).toBe('today');
   });
 });
