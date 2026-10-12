@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getAppUrl, DEFAULT_APP_URL } from '../../packages/shared/src/app-url';
+import { getAppUrl, checkAppOrigin, AppOriginConfigError, DEFAULT_APP_URL } from '../../packages/shared/src/app-url';
 
 // Resolves the public app origin for email links (invites, password resets,
 // auth callbacks). Must NEVER fall back to a domain we don't control.
@@ -57,6 +57,68 @@ describe('getAppUrl', () => {
     vi.stubEnv('NODE_ENV', 'development');
     process.env.NEXT_PUBLIC_APP_URL = 'http://ats.example.test';
     expect(getAppUrl()).toBe('http://ats.example.test');
+  });
+
+  it.each([
+    ['https://ats.example.test/', 'https://ats.example.test'],
+    ['https://ats.example.test//', 'https://ats.example.test'],
+    ['  https://ats.example.test:8443/  ', 'https://ats.example.test:8443'],
+  ])('accepts and normalises a trailing-slash origin (%s)', (raw, expected) => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.NEXT_PUBLIC_APP_URL = raw;
+    expect(getAppUrl()).toBe(expected);
+    expect(`${getAppUrl()}/accept-invitation`).toBe(`${expected}/accept-invitation`);
+  });
+
+  it.each(['https://ats.example.test/app', 'https://ats.example.test/app/'])(
+    'rejects a real path with a clear configuration error that does not echo the value (%s)',
+    (raw) => {
+      process.env.NEXT_PUBLIC_APP_URL = raw;
+      let caught: unknown;
+      try {
+        getAppUrl();
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(AppOriginConfigError);
+      expect((caught as AppOriginConfigError).issue).toBe('path');
+      expect((caught as Error).message).toMatch(/NEXT_PUBLIC_APP_URL must be an origin only .* remove the path/);
+      expect((caught as Error).message).not.toContain('ats.example.test');
+    },
+  );
+
+  it('Vercel production rejects http even for a loopback host', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';
+    expect(() => getAppUrl()).toThrow(/must use https in production/);
+  });
+
+  it('Vercel production accepts an https origin', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    process.env.NEXT_PUBLIC_APP_URL = 'https://tims-ats.vercel.app/';
+    expect(getAppUrl()).toBe('https://tims-ats.vercel.app');
+  });
+
+  it('allows http://localhost in test and development', () => {
+    vi.stubEnv('NODE_ENV', 'test');
+    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';
+    expect(getAppUrl()).toBe('http://localhost:3000');
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(getAppUrl()).toBe('http://localhost:3000');
+  });
+
+  it('checkAppOrigin reports the issue without throwing', () => {
+    expect(checkAppOrigin('http://ats.example.test', { NODE_ENV: 'production' })).toEqual({
+      ok: false,
+      issue: 'insecure_http',
+      message: expect.stringContaining('https'),
+    });
+    expect(checkAppOrigin('https://ats.example.test/', { VERCEL_ENV: 'production' })).toEqual({
+      ok: true,
+      origin: 'https://ats.example.test',
+    });
   });
 
   it.each([

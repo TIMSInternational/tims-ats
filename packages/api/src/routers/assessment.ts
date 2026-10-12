@@ -451,6 +451,10 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
       }
 
+      // Resolve + validate the link origin BEFORE the claim write: inside the delivery try/catch below a
+      // misconfiguration would be swallowed as "delivery unconfirmed" with the cooldown already consumed.
+      const appUrl = getAppUrl();
+
       // Claim before the external call. The conditional update is atomic across
       // concurrent requests and keeps uncertain sends in a short cooldown, while
       // reminderSentAt remains reserved for provider acceptance.
@@ -486,7 +490,7 @@ export const assessmentRouter = router({
           candidateName: assignment.candidate.firstName,
           assessmentName: assignment.assessmentType.name,
           companyName: org.name,
-          assessmentUrl: `${getAppUrl()}/careers/${encodeURIComponent(org.slug)}/dashboard`,
+          assessmentUrl: `${appUrl}/careers/${encodeURIComponent(org.slug)}/dashboard`,
           expiresAt: assignment.expiresAt,
         });
       } catch {

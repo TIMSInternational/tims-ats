@@ -27,6 +27,9 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
       message: 'Servicio de autenticacion no configurado',
     });
   }
+  // Validate the invite-link origin up front, before any lookup/invite/tombstone write, so a
+  // misconfiguration fails before anything is changed (callers create the User row afterwards).
+  const appUrl = getAppUrl();
 
   // 1. Existing Supabase identity for this email? Reuse it. Otherwise invite a new
   //    one (Supabase sends the set-password email).
@@ -42,7 +45,6 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const appUrl = getAppUrl();
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
       // Admin invite links use an implicit-flow URL fragment rather than a PKCE
       // code. The browser page must receive that fragment directly so Supabase can

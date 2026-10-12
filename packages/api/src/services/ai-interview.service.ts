@@ -68,6 +68,9 @@ export const aiInterviewService = {
     scopeWhere: Prisma.InterviewWhereInput;
   }): Promise<{ sessionId: string; candidateLink: string }> {
     const { interviewId, organizationId, scopeWhere } = args;
+    // Validate the link origin before the session (whose candidateToken is a bearer credential) is
+    // created — and before the paid guide generation — so a misconfiguration leaves no orphan session.
+    const appUrl = getAppUrl();
 
     const config = await assertAiInterviewEnabled(organizationId);
 
@@ -108,7 +111,7 @@ export const aiInterviewService = {
 
     // candidateToken is a dedicated random UUID — distinct from the PK (session.id).
     // The PK appears in logs/traces/recruiter UI; the token must not.
-    const candidateLink = `${getAppUrl()}/ai-interview/${session.candidateToken}`;
+    const candidateLink = `${appUrl}/ai-interview/${session.candidateToken}`;
 
     return { sessionId: session.id, candidateLink };
   },
