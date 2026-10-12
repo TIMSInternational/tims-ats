@@ -2,6 +2,7 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { candidateConsentRepository } from './candidate-consent.repository';
+import { canonicalizeEmail, escapeLikePattern } from '../lib/candidate-email';
 
 // ---------------------------------------------------------------------------
 // Explicit select objects — never return full records (CLAUDE.md §4)
@@ -300,6 +301,22 @@ export const candidateRepository = {
       data: data as Prisma.CandidateUpdateInput,
       select: candidateMutationSelect,
     });
+  },
+
+  // #315: ids of the org's non-deleted candidates whose email canonically equals
+  // `canonicalEmail` (already trimmed + lowercased). Escaped case-insensitive `contains`
+  // (also catches legacy whitespace-padded rows), then an exact canonical post-filter.
+  async findIdsByCanonicalEmail(orgId: string, canonicalEmail: string) {
+    const rows = await db.candidate.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        email: { contains: escapeLikePattern(canonicalEmail), mode: 'insensitive' },
+      },
+      select: { id: true, email: true },
+      take: 50,
+    });
+    return rows.filter((r) => canonicalizeEmail(r.email) === canonicalEmail).map((r) => r.id);
   },
 
   async exists(orgId: string, id: string) {

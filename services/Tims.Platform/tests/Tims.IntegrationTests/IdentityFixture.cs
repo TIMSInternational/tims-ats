@@ -70,6 +70,9 @@ public static class IdentityFixture
     public static readonly Guid CandidateInactiveId = Guid.Parse("c0000000-0000-0000-0000-000000000005");
     public static readonly Guid CandidateInSuspendedOrgId = Guid.Parse("c0000000-0000-0000-0000-000000000006");
     public static readonly Guid CandidateInDeletedOrgId = Guid.Parse("c0000000-0000-0000-0000-000000000007");
+    // #315: a legacy row written before email canonicalization (mixed case + padding).
+    public static readonly Guid CandidateLegacyMixedCaseId = Guid.Parse("c0000000-0000-0000-0000-000000000008");
+    public const string LegacyMixedCaseStoredEmail = "  Legacy.Mixed_Case@Tims.Test ";
 
     public static async Task SeedAsync(string connectionString)
     {
@@ -160,7 +163,9 @@ public static class IdentityFixture
                 -- Active, not-deleted candidates whose OWNING ORG is locked out (suspended /
                 -- soft-deleted): they must resolve to NULL via the owning-org gate alone.
                 (@candidateSuspendedOrg, @suspendedOrg, @suspendedOrgCandidateEmail, true, NULL),
-                (@candidateDeletedOrg, @softDeletedOrg, @deletedOrgCandidateEmail, true, NULL);
+                (@candidateDeletedOrg, @softDeletedOrg, @deletedOrgCandidateEmail, true, NULL),
+                -- #315: legacy mixed-case, whitespace-padded email (pre-canonicalization row).
+                (@candidateLegacyMixed, @orgA, @legacyMixedEmail, true, NULL);
             """;
         seed.Parameters.AddWithValue("orgA", OrgA);
         seed.Parameters.AddWithValue("orgB", OrgB);
@@ -183,6 +188,8 @@ public static class IdentityFixture
         seed.Parameters.AddWithValue("candidateInactive", CandidateInactiveId);
         seed.Parameters.AddWithValue("candidateSuspendedOrg", CandidateInSuspendedOrgId);
         seed.Parameters.AddWithValue("candidateDeletedOrg", CandidateInDeletedOrgId);
+        seed.Parameters.AddWithValue("candidateLegacyMixed", CandidateLegacyMixedCaseId);
+        seed.Parameters.AddWithValue("legacyMixedEmail", LegacyMixedCaseStoredEmail);
         seed.Parameters.AddWithValue("candidateEmail", CandidateEmail);
         seed.Parameters.AddWithValue("staffEmail", StaffEmail);
         seed.Parameters.AddWithValue("deletedCandidateEmail", DeletedCandidateEmail);

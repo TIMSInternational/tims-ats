@@ -14,10 +14,11 @@ public interface ICandidateRepository
 {
     /// <summary>
     /// Loads the <see cref="CandidateRow"/> for an ACTIVE, non-deleted candidate matching
-    /// (<paramref name="organizationId"/>, <paramref name="email"/>). Faithful to the TS query
-    /// <c>candidate.findFirst({ where: { organizationId, email, isActive: true, deletedAt: null } })</c>
-    /// — the email match is case-sensitive (Postgres text equality, Prisma's default), and the
-    /// active/not-deleted filters are applied in the database. Returns null when no candidate matches.
+    /// (<paramref name="organizationId"/>, <paramref name="email"/>), mirroring the TS candidate-portal
+    /// lookup (candidate-portal.repository.ts <c>resolveActiveCandidateId</c>): the email match is on
+    /// the canonical form (trim + lowercase, exact equality — #315) so legacy mixed-case rows resolve,
+    /// and the active/not-deleted filters are applied in the database.
+    /// Returns null when no candidate matches.
     /// </summary>
     Task<CandidateRow?> FindByEmailAsync(string email, string organizationId, CancellationToken ct);
 }
