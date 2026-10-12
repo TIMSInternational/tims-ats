@@ -148,6 +148,32 @@ describe('synthetics.tf — uptime canaries', () => {
     expect(alarm).toContain('condition     = local.synthetics_alarm_topic_arn != null');
   });
 
+  it('every managed resource is in the dependency closure of the alarms, so the owner -target apply creates all of them', () => {
+    // The owner apply is `-target=aws_cloudwatch_metric_alarm.synthetics`. -target pulls in only the target
+    // and what it (transitively) depends on — never resources that merely depend on something it uses. A
+    // resource outside this closure (e.g. the bucket lifecycle, which nothing references) would be silently
+    // skipped, and the artifacts would never expire.
+    const headers = [...SYN.matchAll(/^(resource|data) "([a-z0-9_]+)" "([a-z0-9_]+)" \{/gm)];
+    const bodies = new Map<string, string>();
+    for (const [, kind, type, name] of headers) {
+      const addr = kind === 'data' ? `data.${type}.${name}` : `${type}.${name}`;
+      bodies.set(addr, block(SYN, `${kind} "${type}" "${name}" {`));
+    }
+    const refs = (body: string) =>
+      [...bodies.keys()].filter((addr) => new RegExp(`(^|[^a-z0-9_.])${addr.replace(/\./g, '\\.')}\\b`).test(body));
+    const closure = new Set<string>();
+    const queue = ['aws_cloudwatch_metric_alarm.synthetics'];
+    while (queue.length) {
+      const addr = queue.pop()!;
+      if (closure.has(addr)) continue;
+      closure.add(addr);
+      queue.push(...refs(bodies.get(addr)!));
+    }
+    const managed = [...bodies.keys()].filter((a) => !a.startsWith('data.'));
+    expect(managed.length).toBe(10);
+    expect(managed.filter((a) => !closure.has(a))).toEqual([]);
+  });
+
   it('commits no hostname: the URL variables default to empty and the apply refuses empty/non-https', () => {
     expect(variableDefault('synthetics_web_url')).toBe('""');
     expect(variableDefault('synthetics_api_base_url')).toBe('""');

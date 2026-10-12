@@ -288,10 +288,16 @@ resource "aws_synthetics_canary" "uptime" {
     }
   }
 
+  # Every bucket setting is listed, not just the ones the canary needs to write: the owner applies with
+  # -target on the alarms, which creates only the target's dependency closure. Nothing else references the
+  # lifecycle or ownership controls, so without these two the targeted apply would skip them silently
+  # (and the artifacts would never expire).
   depends_on = [
     aws_iam_role_policy.synthetics_canary,
     aws_s3_bucket_policy.synthetics_artifacts,
     aws_s3_bucket_server_side_encryption_configuration.synthetics_artifacts,
+    aws_s3_bucket_lifecycle_configuration.synthetics_artifacts,
+    aws_s3_bucket_ownership_controls.synthetics_artifacts,
   ]
 }
 
