@@ -6,6 +6,7 @@ import { TRPCError } from '@trpc/server';
 import { interviewEmailService } from '../../services/interview-email.service';
 import { clearedJoinTokenColumns, issueJoinToken } from '../../services/interview-join-token';
 import { scopeWhereFor, assertScoped } from '../../access';
+import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { isBlindedViewer, visibleScorecard } from '../../services/scorecard-visibility.service';
 
 export const interviewCrudRouter = router({
@@ -51,7 +52,7 @@ export const interviewCrudRouter = router({
       const [items, total] = await Promise.all([
         db.interview.findMany({
           where,
-          omit: { candidateJoinTokenHash: true },
+          omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
           include: {
             candidate: {
               select: { id: true, firstName: true, lastName: true, email: true, avatar: true },
@@ -85,7 +86,7 @@ export const interviewCrudRouter = router({
 
       const interview = await db.interview.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: {
             select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatar: true },
@@ -218,7 +219,7 @@ export const interviewCrudRouter = router({
             })),
           },
         },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
@@ -238,7 +239,16 @@ export const interviewCrudRouter = router({
         candidateJoinToken: joinToken.token,
       });
 
-      return interview;
+      // #312: the mailer skips a candidate who revoked the authorization; tell staff so they know the
+      // candidate was NOT notified (evaluators still are).
+      const candidateNotNotifiedReason = (await candidateConsentRepository.isRecruitmentConsentWithdrawn(
+        orgId,
+        interview.candidateId,
+      ))
+        ? ('consent_withdrawn' as const)
+        : null;
+
+      return { ...interview, candidateNotNotifiedReason };
     }),
 
   // 8.4 — Reschedule an interview
@@ -291,7 +301,7 @@ export const interviewCrudRouter = router({
           ...joinToken.columns,
           status: 'rescheduled',
         },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },
@@ -391,7 +401,7 @@ export const interviewCrudRouter = router({
           // Revoke the candidate join link.
           ...clearedJoinTokenColumns(),
         },
-        omit: { candidateJoinTokenHash: true },
+        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
         include: {
           candidate: { select: { firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true } },

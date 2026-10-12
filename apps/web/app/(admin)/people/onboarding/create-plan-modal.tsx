@@ -77,6 +77,7 @@ export function CreatePlanModal({ onClose }: CreatePlanModalProps) {
             </div>
           ) : (
             <UserPicker
+              purpose="onboarding_hire"
               onSelect={(_userId, user) => setNewHire(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}
@@ -107,6 +108,7 @@ export function CreatePlanModal({ onClose }: CreatePlanModalProps) {
             </div>
           ) : (
             <UserPicker
+              purpose="colleague"
               onSelect={(_userId, user) => setBuddy(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}

@@ -14,6 +14,9 @@ using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.AccessReview;
 using Tims.Api.AssessmentTypes;
+using Tims.Api.CandidateConsent;
+using Tims.Application.CandidateConsent;
+using Tims.Infrastructure.CandidateConsent;
 using Tims.Application.AssessmentTypes;
 using Tims.Infrastructure.AssessmentTypes;
 using Tims.Api.Fx;
@@ -588,6 +591,23 @@ try
     builder.Services.AddScoped<IAssessmentTypeWriteRepository, AssessmentTypeWriteRepository>();
     builder.Services.AddScoped<AssessmentTypeWriteUseCase>();
 
+    // #312/#313: candidate data-processing consent (status + evidence read, staff and self-service withdrawal).
+    // data_consents + data_subject_requests (efcoreStranglerWrite) and audit_logs in ONE context so a withdrawal and
+    // its audit row share a transaction. Runs UNDER TenantScope; dark unless CandidateConsentEnabled.
+    builder.Services.AddDbContext<CandidateConsentDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
+    builder.Services.AddScoped<CandidateConsentUseCase>();
+    // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the
+    // self-service withdrawal requires (mailer_autoconfirm must be false). Singleton: it caches the answer.
+    builder.Services.AddScoped<DataSubjectRequestNotifier>();
+    builder.Services.AddHttpClient(SupabaseAuthSettingsProbe.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(5);
+            client.MaxResponseContentBufferSize = 65536;
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    builder.Services.AddSingleton<IAuthSettingsProbe, SupabaseAuthSettingsProbe>();
+
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface. Plain read-only context over the
     // Prisma-OWNED surveys/survey_responses/action_plans/leader_commitments/alerts (+ users) — surveys.type/.status,
     // action_plans.status, leader_commitments.status, alerts.* are all plain Strings (NOT native enums), so no
@@ -700,7 +720,7 @@ try
     builder.Services.AddScoped<ITenantAuditRepository, TenantAuditRepository>();
     builder.Services.AddScoped<TenantAuditReadUseCase>();
     // Tenant assignable-people directory (read-only users/user_roles/roles/role_permissions/permissions,
-    // always under TenantScope). Dark unless TenantPeopleDirectoryEnabled.
+    // always under TenantScope). Mapped only when TenantPeopleDirectoryEnabled (ON in production since 2026-10-01).
     builder.Services.AddDbContext<AssignablePeopleDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IAssignablePeopleRepository, AssignablePeopleRepository>();
     builder.Services.AddScoped<AssignablePeopleUseCase>();
@@ -1156,6 +1176,26 @@ try
         app.UseMiddleware<SecurityDenialAuditMiddleware>();
     }
 
+    // #329 item 2 — the null-IP refusal for anonymous relayed requests is ON unless this dev-only escape hatch
+    // is set; say so loudly if it is, because in production it re-opens the shared `anonymous` bucket.
+    if (string.Equals(pipelineOptions.AllowAnonymousRelayWithoutClientIp, "true", StringComparison.Ordinal))
+    {
+        if (RelayAttributionMiddleware.AllowsAnonymousWithoutClientIp(pipelineOptions.AllowAnonymousRelayWithoutClientIp,
+                app.Environment.EnvironmentName, app.Configuration[RelayAttributionMiddleware.E2EStackMarker]))
+        {
+            app.Logger.LogWarning(
+                "SECURITY: Platform:AllowAnonymousRelayWithoutClientIp is honoured — anonymous relayed requests without "
+                + "a vouched client IP are accepted and share one rate-limit bucket. Development/E2E stacks only.");
+        }
+        else
+        {
+            app.Logger.LogError(
+                "SECURITY: Platform:AllowAnonymousRelayWithoutClientIp is set in Production without {Marker}=1 and is "
+                + "REFUSED — anonymous relayed requests without a client IP still get 503. Remove the flag.",
+                RelayAttributionMiddleware.E2EStackMarker);
+        }
+    }
+
     // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to
     // key the bucket) but BEFORE authorization/handlers. Infra + auth-probe paths are exempt inside
     // the middleware; the API-key per-key quota is enforced by ApiKeyRateLimitFilter post-auth.
@@ -1511,6 +1551,18 @@ try
     if (externalOptions.AssessmentTypeWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapAssessmentTypeWriteEndpoints();
+    }
+
+    // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service
+    // withdrawal. Dark unless the flag is on; apply migration 20261001120000_consent_evidence_withdrawal first.
+    if (externalOptions.CandidateConsentEnabled || isOpenApiDocGeneration)
+    {
+        app.MapCandidateConsentEndpoints();
+    }
+    if (!isOpenApiDocGeneration)
+    {
+        CandidateConsentEndpoints.WarnIfSelfServiceUnconfigured(app.Logger, externalOptions.CandidateConsentEnabled,
+            app.Configuration["Invitations:SupabaseUrl"], app.Configuration["Invitations:SupabaseServiceKey"]);
     }
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface (14 reads). Staff-JWT + engagement:read; the

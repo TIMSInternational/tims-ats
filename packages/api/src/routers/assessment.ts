@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import {
@@ -14,6 +15,8 @@ import {
 } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
 import { emailService } from '../services/email.service';
+import { candidateConsentRepository } from '../repositories/candidate-consent.repository';
+import { consentGuard } from '../services/consent-guard.service';
 import { clientIpFrom } from '../lib/client-ip';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
@@ -143,6 +146,10 @@ export const assessmentRouter = router({
       if (!application) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene una postulacion activa para esta vacante' });
       }
+      // #312: no new processing for a candidate who revoked the data-processing authorization.
+      if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(orgId, input.candidateId)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
+      }
 
       await assessmentQuestionService.assertHasActiveQuestions(orgId, input.assessmentTypeId);
 
@@ -197,6 +204,8 @@ export const assessmentRouter = router({
       if (applicationCount !== uniqueCandidateIds.length) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas candidatos no tienen una postulacion activa para esta vacante' });
       }
+      // #312: refuse the whole batch if any candidate revoked the authorization (message carries the count).
+      await consentGuard.assertAllActive(orgId, uniqueCandidateIds);
 
       await assessmentQuestionService.assertHasActiveQuestions(orgId, input.assessmentTypeId);
 
@@ -248,23 +257,23 @@ export const assessmentRouter = router({
         ],
       };
 
-      const items = await db.assessmentAssignment.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { completedAt: 'desc' },
-        include: {
-          candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
-          assessmentType: { select: { id: true, name: true, code: true } },
-          result: { select: resultSelect },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.assessmentAssignment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.assessmentAssignment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+            include: {
+              candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+              assessmentType: { select: { id: true, name: true, code: true } },
+              result: { select: resultSelect },
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (items.length > limit) {
-        const extra = items.pop()!;
-        nextCursor = extra.id;
-      }
+      const { items, nextCursor } = takeCursorPage(rows, limit);
 
       // Audit each returned result BEFORE serialization (Promise.all). For a
       // super_admin (includesRaw) a failed audit write fails-closed and aborts.
@@ -336,22 +345,22 @@ export const assessmentRouter = router({
         ],
       };
 
-      const items = await db.assessmentAssignment.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { assignedAt: 'desc' },
-        include: {
-          candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
-          assessmentType: { select: { id: true, name: true, code: true, duration: true } },
-        },
-      });
+      const cursorLive = await cursorRowMatches(cursor, (id) =>
+        db.assessmentAssignment.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+      );
+      const rows = !cursorLive
+        ? []
+        : await db.assessmentAssignment.findMany({
+            where,
+            ...cursorPageArgs(limit, cursor),
+            orderBy: [{ assignedAt: 'desc' }, { id: 'desc' }],
+            include: {
+              candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+              assessmentType: { select: { id: true, name: true, code: true, duration: true } },
+            },
+          });
 
-      let nextCursor: string | undefined;
-      if (items.length > limit) {
-        const extra = items.pop()!;
-        nextCursor = extra.id;
-      }
+      const { items, nextCursor } = takeCursorPage(rows, limit);
 
       return { items, nextCursor };
     }),
@@ -425,6 +434,10 @@ export const assessmentRouter = router({
           code: 'NOT_FOUND',
           message: 'Asignacion no encontrada o no reenviar invitaciones para evaluaciones completadas',
         });
+      }
+      // #312: a candidate who revoked their data-processing authorization gets no further emails.
+      if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(ctx.user.organizationId, assignment.candidateId)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
       }
       if (assignment.expiresAt && assignment.expiresAt.getTime() < Date.now()) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });

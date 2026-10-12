@@ -56,6 +56,7 @@ const mockDb = vi.hoisted(() => ({
     findFirst: vi.fn(),
     findUniqueOrThrow: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   user: {
     findMany: vi.fn(),
@@ -100,6 +101,7 @@ beforeEach(() => {
   rejectScopeForUserId(null);
 
   mockDb.vacancy.findFirst.mockResolvedValue({ id: '99999999-9999-4999-8999-999999999999' });
+  mockDb.vacancy.updateMany.mockResolvedValue({ count: 1 });
   mockDb.vacancy.findUniqueOrThrow.mockResolvedValue({
     id: '99999999-9999-4999-8999-999999999999',
     title: 'Sales Rep',

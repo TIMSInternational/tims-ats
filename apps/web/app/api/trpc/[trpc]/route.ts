@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { appRouter, verifyImpersonationToken, readImpersonationCookie } from '@tims/api';
 import { createSupabaseServerClient } from '@tims/auth/server';
@@ -104,7 +105,11 @@ const handler = (req: Request) =>
       // Surface the Supabase identity regardless of whether a staff `User` exists.
       // Candidate (portal) sessions never resolve to a `User`, but they ARE
       // authenticated — `candidateProcedure` reads this to resolve a `Candidate`.
-      const supabaseAuth = supabaseUser?.email
+      // Only a CONFIRMED email is an identity a candidate can be resolved by: the
+      // portal matches candidates by email, so an unverified address (a password
+      // sign-up on /register while email confirmation is off, for example) must never
+      // open someone else's application history (docs/architecture/candidate-portal-email-verification.md).
+      const supabaseAuth = supabaseUser?.email && supabaseUser.email_confirmed_at
         ? { email: supabaseUser.email, userId: supabaseUser.id }
         : null;
 
@@ -229,7 +234,10 @@ const handler = (req: Request) =>
       };
       };
       const ctx = await build();
-      return { ...ctx, aal };
+      // Post-response work (e.g. public-apply CV processing, #314): Next's `after()` runs
+      // the task once the response is sent, within this function's maxDuration.
+      const runAfterResponse = (task: () => Promise<void>) => after(task);
+      return { ...ctx, aal, runAfterResponse };
     },
   });
 

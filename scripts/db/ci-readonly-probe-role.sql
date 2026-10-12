@@ -25,6 +25,14 @@
 --   and ci_rls_probe is NOLOGIN, reachable only via SET ROLE from ci_readonly.
 --
 -- Check 17 no longer needs app_tenant membership either: it reads grants from pg_class.relacl.
+--
+-- SUPABASE: the `postgres` role there is NOT a superuser, and only a superuser may name the SUPERUSER or
+--   REPLICATION attributes in CREATE/ALTER ROLE — even to turn them OFF ("permission denied to alter
+--   role"). So the statements below omit NOSUPERUSER and NOREPLICATION; both are the defaults for a new
+--   role, and the assertion block checks rolsuper and rolreplication explicitly instead.
+--
+-- APPLIED TO PRODUCTION on 2026-10-01 via the Supabase connector; post-apply read-back verified
+--   ci_readonly_reaches_app_tenant = false.
 
 BEGIN;
 
@@ -34,13 +42,14 @@ BEGIN
     RAISE EXCEPTION 'role ci_readonly does not exist — wrong database, or provision it first (see nightly-db-controls.yml header)';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
-    CREATE ROLE ci_rls_probe NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    CREATE ROLE ci_rls_probe NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOBYPASSRLS;
   END IF;
 END
 $$;
 
 -- Re-assert attributes every run, so a hand-edited role is brought back to spec.
-ALTER ROLE ci_rls_probe NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+-- (NOSUPERUSER / NOREPLICATION cannot be named here on Supabase — see the header; asserted below.)
+ALTER ROLE ci_rls_probe NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 
 -- Reset, then grant exactly: USAGE on public, SELECT on its tables, and SELECT on future tables.
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ci_rls_probe;
@@ -83,8 +92,8 @@ BEGIN
     RAISE EXCEPTION 'ASSERTION FAILED: ci_readonly cannot SET ROLE ci_rls_probe — check 14 would exit 2';
   END IF;
 
-  IF (SELECT rolbypassrls OR rolsuper OR rolcanlogin FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
-    RAISE EXCEPTION 'ASSERTION FAILED: ci_rls_probe must be NOLOGIN, NOSUPERUSER, NOBYPASSRLS';
+  IF (SELECT rolbypassrls OR rolsuper OR rolreplication OR rolcanlogin FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
+    RAISE EXCEPTION 'ASSERTION FAILED: ci_rls_probe must be NOLOGIN, NOSUPERUSER, NOREPLICATION, NOBYPASSRLS';
   END IF;
 
   IF EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.member WHERE r.rolname = 'ci_rls_probe') THEN
@@ -125,7 +134,7 @@ COMMIT;
 
 -- Post-commit read-back (informational; the DO block above is the gate):
 SELECT r.rolname,
-       r.rolcanlogin, r.rolinherit, r.rolbypassrls,
+       r.rolcanlogin, r.rolinherit, r.rolbypassrls, r.rolsuper, r.rolreplication,
        pg_has_role('ci_readonly', 'app_tenant',   'MEMBER') AS ci_readonly_reaches_app_tenant,
        pg_has_role('ci_readonly', 'ci_rls_probe', 'SET')    AS ci_readonly_can_set_probe
   FROM pg_roles r

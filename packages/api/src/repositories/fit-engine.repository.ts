@@ -1,5 +1,6 @@
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import { candidateConsentRepository } from './candidate-consent.repository';
 
 // ---------------------------------------------------------------------------
 // FIT Engine repository — reads/writes for deterministic candidate<->vacancy
@@ -87,8 +88,10 @@ export const fitEngineRepository = {
   },
 
   async getFitScoresForVacancy(orgId: string, vacancyId: string) {
+    // #312: withdrawn candidates' existing scores are hidden (never deleted).
+    const visible = await candidateConsentRepository.visibleFitScoreWhere(orgId);
     return db.fitScore.findMany({
-      where: { organizationId: orgId, vacancyId },
+      where: { organizationId: orgId, vacancyId, AND: [visible] },
       orderBy: { overallScore: 'desc' },
       select: {
         id: true,
@@ -102,8 +105,10 @@ export const fitEngineRepository = {
   },
 
   async getFitScoreForExplain(orgId: string, candidateId: string, vacancyId: string) {
+    // #312: a withdrawn candidate's existing score is hidden (never deleted).
+    const visible = await candidateConsentRepository.visibleFitScoreWhere(orgId);
     return db.fitScore.findFirst({
-      where: { candidateId, vacancyId, organizationId: orgId },
+      where: { candidateId, vacancyId, organizationId: orgId, AND: [visible] },
       select: {
         overallScore: true,
         breakdown: true,
@@ -118,8 +123,10 @@ export const fitEngineRepository = {
    * Returns null when the candidate has no computed score for this vacancy.
    */
   async getFullFitScoreForSnapshot(orgId: string, candidateId: string, vacancyId: string) {
+    // #312: a withdrawn candidate's existing score is hidden (never deleted).
+    const visible = await candidateConsentRepository.visibleFitScoreWhere(orgId);
     return db.fitScore.findFirst({
-      where: { candidateId, vacancyId, organizationId: orgId },
+      where: { candidateId, vacancyId, organizationId: orgId, AND: [visible] },
       select: {
         overallScore: true,
         breakdown: true,

@@ -58,9 +58,10 @@ describe('candidate module scope wiring', () => {
     // The scoped child relations live in the module-level builder consumed by
     // getById; the behavior test below verifies the wiring end-to-end.
     const builder = blockAt(src, 'const buildCandidateDetailSelect');
-    expect((builder.match(/where:\s*appScopeWhere/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // #312: fitScores wraps the fragment as `{ AND: [appScopeWhere, visibleFit] }`.
+    expect((builder.match(/where:\s*(\{\s*AND:\s*\[\s*)?appScopeWhere/g) ?? []).length).toBeGreaterThanOrEqual(3);
     const getByIdBlock = blockAt(src, 'async getById');
-    expect(getByIdBlock).toMatch(/buildCandidateDetailSelect\(appScopeWhere\)/);
+    expect(getByIdBlock).toMatch(/buildCandidateDetailSelect\(appScopeWhere, visibleFit\)/);
   });
 
   // Codex F1 — timeline child loads must be scope-filtered too.
@@ -97,7 +98,7 @@ describe('candidate module scope wiring', () => {
   it('repository.getCandidateForRisks scopes applications and fitScores', () => {
     const src = read('packages/api/src/repositories/candidate.repository.ts');
     const block = blockAt(src, 'async getCandidateForRisks');
-    expect((block.match(/where:\s*appScopeWhere/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((block.match(/where:\s*(\{\s*AND:\s*\[\s*)?appScopeWhere/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   // Codex F4 — dashboard KPI active-application count must carry the application
@@ -131,14 +132,20 @@ describe('candidate detail child relations — behavior', () => {
         },
       },
     }));
+    // #312: withdrawn candidates' fit scores are hidden by an extra AND'd filter.
+    const hidden = { candidateId: { notIn: ['withdrawn-1'] } };
+    vi.doMock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
+      candidateConsentRepository: { visibleFitScoreWhere: vi.fn(async () => hidden) },
+    }));
     const { candidateRepository } = await import('../../packages/api/src/repositories/candidate.repository');
     const appFrag = { vacancy: { AND: [{ businessUnitId: { in: ['bu1'] } }, { deletedAt: null }] } };
     await candidateRepository.getById('org-1', {}, 'cand-1', appFrag as never);
 
     const select = (captured.args?.select ?? {}) as Record<string, { where?: unknown }>;
     expect(select.applications?.where).toEqual(appFrag);
-    expect(select.fitScores?.where).toEqual(appFrag);
+    expect(select.fitScores?.where).toEqual({ AND: [appFrag, hidden] });
     expect(select.assessmentAssignments?.where).toEqual(appFrag);
     vi.doUnmock('@tims/db');
+    vi.doUnmock('../../packages/api/src/repositories/candidate-consent.repository');
   });
 });

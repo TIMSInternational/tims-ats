@@ -1,6 +1,7 @@
 import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/client-ses';
 import { logger } from '@tims/shared';
 import { sesCircuit, sesRawCircuit } from './circuit-breaker';
+import type { CircuitBreaker } from './circuit-breaker';
 
 const ses = new SESClient({
   region: process.env.AWS_REGION || 'us-east-1',
@@ -13,13 +14,15 @@ interface SendEmailParams {
   subject: string;
   html: string;
   abortSignal?: AbortSignal;
+  /** Failure budget to run under. Defaults to the shared sesCircuit; offer sends pass sesOfferCircuit. */
+  breaker?: CircuitBreaker;
 }
 
-export async function sendEmail({ to, subject, html, abortSignal }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ to, subject, html, abortSignal, breaker }: SendEmailParams): Promise<boolean> {
   const destinations = Array.isArray(to) ? to : [to];
 
   try {
-    return await sesCircuit.execute(async () => {
+    return await (breaker ?? sesCircuit).execute(async () => {
       await ses.send(
         new SendEmailCommand({
           Source: FROM_ADDRESS,

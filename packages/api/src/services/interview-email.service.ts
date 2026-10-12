@@ -144,7 +144,7 @@ export function buildInterviewEmails(
     }
   };
 
-  if (interview.candidate.email) {
+  if (interview.candidate.email && !data.candidateConsentWithdrawn) {
     const joinUrl =
       !cancel && joinApplies && params.candidateJoinToken ? candidateJoinUrl(appUrl, params.candidateJoinToken) : null;
     build(

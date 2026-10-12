@@ -73,6 +73,7 @@ export function TeamMembersModal({ team, abilities, onClose }: TeamMembersModalP
         <div className="mt-4">
           {adding ? (
             <UserPicker
+              purpose="org_structure_member"
               excludeIds={team.members.map((m) => m.userId)}
               disabled={busy}
               onSelect={(userId) => add.mutate({ teamId: team.id, userId, role: 'member' })}

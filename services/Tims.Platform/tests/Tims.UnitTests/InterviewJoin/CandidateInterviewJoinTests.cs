@@ -37,6 +37,12 @@ public sealed class CandidateInterviewJoinTests
 
         public Task<bool> RecordAsync(CandidateJoinAudit audit, CancellationToken ct)
         { Audits.Add(audit); return Task.FromResult(AuditSucceeds); }
+
+        public HashSet<string> SharedRooms { get; } = [];
+        public List<(Guid Id, string Room)> SharedChecks { get; } = [];
+
+        public Task<bool> IsRoomSharedAsync(Guid interviewId, string roomName, CancellationToken ct)
+        { SharedChecks.Add((interviewId, roomName)); return Task.FromResult(SharedRooms.Contains(roomName)); }
     }
 
     private sealed class Video : ICandidateVideoProvider
@@ -211,6 +217,61 @@ public sealed class CandidateInterviewJoinTests
         Assert.Equal($"https://tims.daily.co/{room}?t=guest.token", result.JoinUrl);
         Assert.Empty(repository.Claims);
         Assert.Equal(room, Assert.Single(video.Ensured).Room);
+    }
+
+    [Fact]
+    public async Task A_legacy_room_that_another_interview_also_stores_is_refused()
+    {
+        // #329 item 1: the old "400 = exists" adoption path let two interviews (possibly in two tenants) store the
+        // same 32-bit legacy room. Joining it could seat this candidate in someone else's interview.
+        var (result, repository, video) = await Join(Start, Interview(meetingUrl: "https://tims.daily.co/" + LegacyRoom),
+            (repo, _) => repo.SharedRooms.Add(LegacyRoom));
+        Assert.Equal(CandidateJoinOutcomes.Unavailable, result.Outcome);
+        Assert.Equal((InterviewId, LegacyRoom), Assert.Single(repository.SharedChecks));
+        Assert.Empty(video.Ensured);
+        Assert.Null(video.Minted);
+        Assert.Equal(CandidateJoinOutcomes.Unavailable, Assert.Single(repository.Audits).Outcome);
+    }
+
+    [Fact]
+    public async Task A_full_id_room_needs_no_collision_check()
+    {
+        var (result, repository, _) = await Join(Start, Interview(meetingUrl: "https://tims.daily.co/" + FullRoom),
+            (repo, _) => repo.SharedRooms.Add(FullRoom));
+        Assert.Equal(CandidateJoinOutcomes.Ready, result.Outcome);
+        Assert.Empty(repository.SharedChecks);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task A_closed_application_or_suspended_org_revokes_the_link_inside_its_window(bool applicationClosed,
+        bool organizationInactive)
+    {
+        // #329 item 5: inside the join window, with a perfectly good room — still refused, as `cancelled` (the
+        // candidate must not learn of a rejection or of the org's account state from a video link), and audited.
+        var interview = Interview(meetingUrl: "https://tims.daily.co/" + FullRoom) with
+        {
+            ApplicationClosed = applicationClosed,
+            OrganizationInactive = organizationInactive,
+        };
+        var (result, repository, video) = await Join(Start, interview);
+        Assert.Equal(CandidateJoinOutcomes.Cancelled, result.Outcome);
+        Assert.Null(result.JoinUrl);
+        Assert.Empty(video.Ensured);
+        Assert.Null(video.Minted);
+        Assert.Equal(CandidateJoinOutcomes.Cancelled, Assert.Single(repository.Audits).Outcome);
+    }
+
+    [Fact]
+    public void Revocation_outranks_every_other_window_state()
+    {
+        // Even before the window opens, a revoked link answers cancelled rather than too_early (which would leak
+        // the schedule of an interview the candidate no longer has).
+        var revoked = Interview() with { ApplicationClosed = true };
+        Assert.Equal(CandidateJoinOutcomes.Cancelled,
+            CandidateInterviewJoin.Evaluate(revoked, Start.AddDays(-3))!.Outcome);
     }
 
     [Theory]

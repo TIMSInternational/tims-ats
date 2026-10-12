@@ -9,7 +9,8 @@ namespace Tims.Infrastructure.FitEngine;
 /// the profile find. The two upserts run as raw <c>INSERT … ON CONFLICT DO UPDATE</c> on this context's
 /// TenantScope connection/transaction, so <c>fit_scores</c> carries NO EF map (it is still registered in the
 /// ownership ledger — the strangler writes it). "Dumb" about tenancy: every op runs UNDER
-/// <see cref="TenantScope"/>; RLS isolates the org and WITH CHECK passes on every INSERT/UPDATE. No native enums
+/// <see cref="TenantScope"/>. #312/#313 adds a SELECT-only <c>data_consents</c> subset map (+ <c>candidates.email</c>)
+/// for the withdrawn-consent guard. RLS isolates the org and WITH CHECK passes on every INSERT/UPDATE. No native enums
 /// mapped (TRAP 3 N/A); timestamps pinned <c>timestamp</c>; jsonb pinned <c>jsonb</c> as string.
 /// </summary>
 public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbContext> options)
@@ -31,6 +32,8 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
 
     public DbSet<WeightProfileReadEntity> WeightProfiles => Set<WeightProfileReadEntity>();
 
+    public DbSet<FitDataConsentReadEntity> DataConsents => Set<FitDataConsentReadEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<FitCandidateWriteEntity>(entity =>
@@ -39,6 +42,7 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
             entity.HasKey(c => c.Id);
             entity.Property(c => c.Id).HasColumnName("id");
             entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
+            entity.Property(c => c.Email).HasColumnName("email");
             entity.Property(c => c.YearsExperience).HasColumnName("years_experience");
             entity.Property(c => c.Education).HasColumnName("education").HasColumnType("jsonb");
             entity.Property(c => c.Languages).HasColumnName("languages").HasColumnType("jsonb");
@@ -115,6 +119,17 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
             entity.Property(p => p.OrganizationId).HasColumnName("organization_id");
             entity.Property(p => p.Name).HasColumnName("name");
             entity.Property(p => p.Weights).HasColumnName("weights").HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<FitDataConsentReadEntity>(entity =>
+        {
+            entity.ToTable("data_consents");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Id).HasColumnName("id");
+            entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
+            entity.Property(c => c.SubjectUserId).HasColumnName("subject_user_id");
+            entity.Property(c => c.ConsentType).HasColumnName("consent_type");
+            entity.Property(c => c.WithdrawnAt).HasColumnName("withdrawn_at").HasColumnType("timestamp");
         });
     }
 }
