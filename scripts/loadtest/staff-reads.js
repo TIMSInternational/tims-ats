@@ -56,6 +56,16 @@ export function setup() {
           'candidate:read permission). Re-issue it — see README.',
       );
     }
+    // Pages are fetched without following redirects (a redirect to /login must not score as 200),
+    // so a page that redirects even for a good session would turn every page check red.
+    const page = getPage(`${WEB}/recruitment/candidates`, 'setup_page_check', session);
+    if (page.status !== 200) {
+      abort(
+        `Preflight: session ${i} got HTTP ${page.status} for /recruitment/candidates` +
+          (page.headers.Location ? ` (redirect to ${page.headers.Location.split('?')[0]})` : '') +
+          ': session not accepted for pages, or a step-up (MFA) is required.',
+      );
+    }
   });
 
   const fromEnv = env('STAFF_VACANCY_IDS', '')

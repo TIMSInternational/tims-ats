@@ -29,7 +29,7 @@ const WEB = baseUrl('WEB_BASE_URL', 'http://localhost:3000');
 const PLATFORM = baseUrl('PLATFORM_BASE_URL', `${WEB}/api/platform`);
 assertTargetAllowed([WEB, PLATFORM]);
 
-const DEFAULT_ENDPOINTS = '/whoami,/notifications/unread-count,/reporting/kpis?period=30D,/reporting/funnel';
+const DEFAULT_ENDPOINTS = '/whoami,/reporting/kpis?period=30D,/reporting/funnel,/reporting/source-breakdown?period=30D';
 const ENDPOINTS = env('PLATFORM_ENDPOINTS', DEFAULT_ENDPOINTS)
   .split(',')
   .map((s) => s.trim())
