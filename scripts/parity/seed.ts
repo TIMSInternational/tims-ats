@@ -2487,8 +2487,36 @@ export const WRITE_ORG_STRUCTURE_TEAM_NAME = { a: 'Parity OS Team A', b: 'Parity
 export const WRITE_ORG_STRUCTURE_UNIT_MARKER = 'Parity Write OS Unit';
 export const WRITE_ORG_STRUCTURE_TEAM_MARKER = 'Parity Write OS Team';
 
-/** Resets every org-structure write fixture (see the section header). Exported for unit tests of its SQL order. */
+/**
+ * Resets every org-structure write fixture (see the section header) ATOMICALLY. Exported for unit tests of its
+ * SQL order and its transaction boundary (seed.test.ts).
+ *
+ * ONE TRANSACTION, because the reset is wipe-then-recreate: step 5 DELETEs every membership/assignment on the
+ * fixed rows before re-inserting the DELETE endpoints' preconditions. Run as autocommit statements, a failure
+ * between the wipe and the re-insert (a dropped pooler connection, a statement timeout, an FK surprise) committed
+ * a HALF-RESET fixture — the userB-in-teamB / userB-in-unitB rows that the DELETE IDOR read-backs require to
+ * SURVIVE would be gone, and the next verify-write would report "a cross-org delete removed an org-B membership"
+ * for a deletion the harness itself did. Now any failure rolls the whole reset back and the original error is
+ * re-thrown (a ROLLBACK that itself fails — e.g. on a dead connection — never masks it; the server discards an
+ * uncommitted transaction when the session ends anyway).
+ */
 export async function seedOrgStructureWritePreconditions(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  await db.query('BEGIN');
+  try {
+    await resetOrgStructureWriteFixtures(db, orgAId, orgBId);
+    await db.query('COMMIT');
+  } catch (err) {
+    try {
+      await db.query('ROLLBACK');
+    } catch {
+      // Deliberately swallowed: the reset's own error is the one worth reporting.
+    }
+    throw err;
+  }
+}
+
+/** The reset itself — only ever called inside seedOrgStructureWritePreconditions' transaction. */
+async function resetOrgStructureWriteFixtures(db: Client, orgAId: string, orgBId: string): Promise<void> {
   const orgs = { a: orgAId, b: orgBId };
   // The companies seedTeamIntelData already created ('Parity Co (a|b)'); find-or-create so a standalone run works.
   const companyA = await findOrCreateCompany(db, orgAId, 'Parity Co (a)');
