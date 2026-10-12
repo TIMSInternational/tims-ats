@@ -14,8 +14,9 @@ import { join } from 'node:path';
 //    The denylist itself is NOT in this repo, in any form. An earlier version committed unsalted
 //    SHA-256 hashes of the tokens; those are a confirmation oracle for short guessable names, so they
 //    re-disclosed what they guarded. The plaintext list lives outside the repo and is supplied with
-//    RUNBOOK_PRIVATE_DENYLIST=<path> (one lowercase token per line, `#` comments). Without it the
-//    denylist check is skipped (CI has no copy); the shape checks below always run.
+//    RUNBOOK_PRIVATE_DENYLIST=<path> (one token per line, `#` comments). Tokens are caught even when
+//    embedded in a larger identifier (see containsDenied). Without the file the denylist check is skipped
+//    (CI has no copy); the matcher's own synthetic tests and the shape checks below always run.
 // 2. CLAIMS. Each remaining check pins a statement the runbook must make because the code it describes
 //    would otherwise make the step fail (review findings, fix round 1).
 
@@ -33,16 +34,68 @@ function doc(): string {
   return readFileSync(RUNBOOK, 'utf8');
 }
 
-/** Every token, plus each dot/hyphen-trimmed variant, so `x.com`, `x.com.` and `` `x` `` all match. */
-function tokens(text: string): Set<string> {
-  const out = new Set<string>();
-  for (const raw of text.toLowerCase().split(/[^a-z0-9._@/-]+/)) {
-    for (const part of raw.split('/')) {
-      const t = part.replace(/^[.\-_@]+|[.\-_@]+$/g, '');
-      if (t.length >= 4) out.add(t);
-    }
-  }
+// Denylist matching. A denylisted name must be caught wherever it is EMBEDDED, not only as a standalone
+// token: `<name>-alarms`, `<name>_bucket`, `user@<domain>`, `arn:...:<name>/x`, `<Name>Bucket`, or with the
+// separators inside it changed (`foo-bar` written as `foo_bar`, `foo.bar`, `foo\-bar` or `FooBar`).
+// So both sides are case-folded and stripped of every non-alphanumeric character, and the normalized
+// token is searched for as a SUBSTRING of the normalized text. Substring matching on short tokens would
+// false-positive (and joining adjacent words makes that worse), so a token whose normalized form is
+// shorter than SUBSTRING_MIN instead matches on alphanumeric (and camelCase) boundaries, with any run of
+// separators allowed where the token has one, which still catches `<tok>-x`, `x_<tok>`, `u@<tok>` and
+// `my<Tok>Bucket`.
+const SUBSTRING_MIN = 6;
+
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Parses the private denylist. Throws (fails closed) on a line that normalizes to nothing. */
+function parseDenylist(raw: string): string[] {
+  const out: string[] = [];
+  raw.split('\n').forEach((line, i) => {
+    const t = line.trim().toLowerCase();
+    if (!t || t.startsWith('#')) return;
+    if (!normalize(t)) throw new Error(`denylist line ${i + 1} has no alphanumeric characters`);
+    out.push(t);
+  });
   return out;
+}
+
+/** True when `text` contains `token` anywhere, including embedded in a larger identifier. */
+function containsDenied(text: string, token: string): boolean {
+  const n = normalize(token);
+  if (n.length >= SUBSTRING_MIN) return normalize(text).includes(n);
+  const body = token
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join('[^a-z0-9]*');
+  const split = text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  return new RegExp(`(?<![a-z0-9])${body}(?![a-z0-9])`).test(split);
+}
+
+/** How many denylist entries `text` contains. A count only, never the tokens themselves. */
+function deniedHits(text: string, deny: readonly string[]): number {
+  return deny.filter((t) => containsDenied(text, t)).length;
+}
+
+/** Compound identifiers a real leak would take; every one must be caught for every token. */
+function compoundVariants(token: string): string[] {
+  const camel = token.charAt(0).toUpperCase() + token.slice(1);
+  return [
+    `see ${token} here`,
+    `${token}-alarms`,
+    `${token}_bucket`,
+    `prod.${token}.internal`,
+    `ops@${token}`,
+    `user@${token}.example`,
+    `arn:aws:s3:::${token}/key`,
+    `\`${token.toUpperCase()}\``,
+    `my${camel}Bucket`,
+    token.replace(/[^a-z0-9]/g, '_'),
+    token.replace(/[^a-z0-9]/g, ''),
+    token.replace(/[^a-z0-9]/g, '\\$&'),
+  ];
 }
 
 /** Asserts on a boolean so a failure never dumps the whole runbook into (public) CI logs. */
@@ -66,21 +119,34 @@ describe('Account migration runbook — public-repo disclosure', () => {
     const path = DENYLIST_PATH as string;
     // Fail closed: a set-but-wrong path must not silently pass.
     expect(existsSync(path), 'RUNBOOK_PRIVATE_DENYLIST is set but the file does not exist').toBe(true);
-    const deny = new Set(
-      readFileSync(path, 'utf8')
-        .split('\n')
-        .map((l) => l.trim().toLowerCase())
-        .filter((l) => l && !l.startsWith('#')),
-    );
-    expect(deny.size, 'private denylist is empty').toBeGreaterThan(0);
+    const deny = parseDenylist(readFileSync(path, 'utf8'));
+    expect(deny.length, 'private denylist is empty').toBeGreaterThan(0);
+    // The matcher must catch every REAL token in compound form, or a pass below means nothing.
+    const missed = deny.filter((t) => compoundVariants(t).some((v) => !containsDenied(v, t))).length;
+    expect(missed, `matcher misses compound forms of ${missed} denylisted token(s)`).toBe(0);
     for (const [name, text] of [
       ['runbook', doc()],
       ['this test', readFileSync(SELF, 'utf8')],
     ] as const) {
-      const hits = [...tokens(text)].filter((t) => deny.has(t)).length;
+      const hits = deniedHits(text, deny);
       // Report a count only, never the tokens, so a failure cannot leak them into (public) CI logs.
       expect(hits, `${name} re-discloses ${hits} privately denylisted token(s)`).toBe(0);
     }
+  });
+
+  it('denylist matcher catches tokens embedded in identifiers (synthetic tokens, always runs)', () => {
+    // Synthetic stand-ins only: real tokens never appear in this public file.
+    for (const tok of ['zqxacmewidgets', 'zqx-acme.example', 'zqxa', 'zq-x']) {
+      for (const v of compoundVariants(tok)) {
+        expect(containsDenied(v, tok), `missed a compound form of synthetic token "${tok}": ${v}`).toBe(true);
+      }
+    }
+    // Short tokens match on boundaries only, so they do not fire inside unrelated words.
+    expect(containsDenied('a zqxab b', 'zqxa')).toBe(false);
+    expect(containsDenied('zqxa-alarms', 'zqxa')).toBe(true);
+    expect(deniedHits('nothing to see here', ['zqxacmewidgets', 'zqxa'])).toBe(0);
+    expect(() => parseDenylist('# c\n\n---\n')).toThrow(/no alphanumeric/);
+    expect(parseDenylist('# c\n Foo-Bar \n\n')).toEqual(['foo-bar']);
   });
 
   it('does not overstate the redaction: names the files that already disclosed other products', () => {
