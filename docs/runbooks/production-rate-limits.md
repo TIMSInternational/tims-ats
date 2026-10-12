@@ -24,9 +24,48 @@ Store the token as sensitive. Do not print either credential in CI logs or a PR.
    expected `TOO_MANY_REQUESTS` response after the tier limit and that normal
    requests resume after the window. Keep test volume below the service plan's
    budget and avoid account-lockout paths.
-5. Check Vercel error rate and Redis request/latency metrics. A Redis failure or
-   limiter timeout now returns `SERVICE_UNAVAILABLE` for tRPC requests. The
-   public application email cap also fails closed, skipping the email.
+5. Check Vercel error rate and Redis request/latency metrics, and confirm no
+   `ratelimit.shared_store_unavailable` warnings appear in the function logs
+   (see "Outage behavior" below).
+
+## Outage behavior
+
+Every shared-limiter call is bounded to `SHARED_LIMIT_TIMEOUT_MS` (1 s,
+`packages/api/src/middleware/rate-limit.ts`) instead of the SDK's 5 s default. When
+Upstash times out or errors:
+
+| Traffic                                                                                                                                                                                                   | Behavior                                            |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `auth` tier, `ai` tier, `export` tier                                                                                                                                                                     | **Fail closed**: `SERVICE_UNAVAILABLE`              |
+| Credential-like paths in `FAIL_CLOSED_PATHS` (`platform.acceptInvitation`, `platform.getInvitationByToken`, `platform.resetUserPassword`, `offer.acceptByToken` / `declineByToken` / `getBySigningToken`) | **Fail closed**: `SERVICE_UNAVAILABLE`              |
+| Everything else (ordinary `query` / `mutation`)                                                                                                                                                           | **Fail open** to the per-instance in-memory limiter |
+| Public application e-mail cap                                                                                                                                                                             | Fail closed: the e-mail is skipped                  |
+
+Login and MFA are performed by Supabase Auth directly from the browser, not through
+tRPC, so this limiter does not govern them; Supabase's own auth rate limits apply.
+
+Each degradation logs a structured warning, `event: "ratelimit.shared_store_unavailable"`,
+with `category`, `mode` (`fail_closed` / `fail_open_memory`), `cause` (`timeout` /
+`error`), the error class name and a `suppressedSinceLast` count. At most one line per
+category and mode is written every 10 s. The identifier (user id or client IP), the
+request, and the raw error message are never logged. Alert on this event.
+
+## Caches that can also use Upstash (off by default)
+
+The Upstash REST credentials enable **only the rate limiter**. Two caches could also
+use that store; each needs its own explicit opt-in, because storing their contents at
+the Upstash subprocessor is a separate data decision:
+
+| Flag (Vercel env)                       | Cache                                                           | What would be stored at Upstash                                                       |
+| --------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `AI_CACHE_UPSTASH_ENABLED=true`         | AI response cache, `packages/ai/src/cache.ts`                   | AI agent outputs (may contain candidate-derived text), keyed by a hash of org + input |
+| `PERMISSION_CACHE_UPSTASH_ENABLED=true` | Cache-aside / permission cache, `packages/api/src/lib/cache.ts` | Tenant access decisions (org/user ids, roles, grants)                                 |
+
+Only the exact string `true` enables a flag; any other value, or absence, keeps that
+cache in per-process memory (the behavior production has today, since it has no
+Upstash credentials). With the memory backend, permission-cache invalidation is
+per instance: another instance can serve a revoked grant until its TTL expires.
+Record the subprocessor decision (cf. #40) before setting either flag.
 
 ## Rollback
 

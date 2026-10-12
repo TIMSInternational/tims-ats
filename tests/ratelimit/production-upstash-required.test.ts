@@ -32,6 +32,15 @@ describe('rate-limit store configuration', () => {
     );
   });
 
+  it('does not break previews: a Vercel preview with no Upstash store loads and uses memory', async () => {
+    vi.resetModules();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', '');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '');
+    const { checkRateLimit } = await import('../../packages/api/src/middleware/rate-limit');
+    await expect(checkRateLimit('synthetic-id', 'auth')).resolves.toBeUndefined();
+  });
+
   it('allows local fallback and a fully configured production store', async () => {
     vi.resetModules();
     vi.stubEnv('VERCEL_ENV', 'development');

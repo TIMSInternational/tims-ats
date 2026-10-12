@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { logger } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // Upstash Redis (production) — falls back to in-memory only outside production.
@@ -40,7 +41,96 @@ const LIMITS = {
   export: { requests: 5, window: '5m' as const }, // 5 exports/5min
 } as const;
 
-type RateLimitCategory = keyof typeof LIMITS;
+export type RateLimitCategory = keyof typeof LIMITS;
+
+// ---------------------------------------------------------------------------
+// Outage policy. Every shared-store call is bounded to SHARED_LIMIT_TIMEOUT_MS so a
+// slow or unreachable Upstash cannot stall every request (the SDK default is 5s,
+// which turned an Upstash outage into a whole-app 503 after ~5s per request).
+//
+// When the shared store is unavailable (timeout or error):
+//  - FAIL CLOSED (SERVICE_UNAVAILABLE) for the tiers where an unlimited burst is the
+//    attack or the cost: `auth`, `ai`, `export`, and any credential-like path the
+//    router marks failClosed (invitation token, password reset, offer-signing token —
+//    see FAIL_CLOSED_PATHS). Login and MFA are performed by Supabase Auth directly,
+//    not through tRPC, so they are not governed by this limiter at all.
+//  - FAIL OPEN to the per-instance in-memory limiter for everything else
+//    (ordinary `query` / `mutation`), with a structured warning so the degradation
+//    is observable. The per-instance limiter still bounds a single instance.
+// ---------------------------------------------------------------------------
+export const SHARED_LIMIT_TIMEOUT_MS = 1_000;
+
+const FAIL_CLOSED_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set(['auth', 'ai', 'export']);
+
+// Lower-cased full tRPC paths of credential-like procedures that live outside `auth.*`.
+// Their tier (and therefore their limit) is unchanged; only the outage policy differs.
+const FAIL_CLOSED_PATHS: ReadonlySet<string> = new Set([
+  'platform.acceptinvitation',
+  'platform.getinvitationbytoken',
+  'platform.resetuserpassword',
+  'offer.acceptbytoken',
+  'offer.declinebytoken',
+  'offer.getbysigningtoken',
+]);
+
+/** True when a shared-store outage must reject this path instead of degrading. */
+export function isFailClosedPath(path: string): boolean {
+  return FAIL_CLOSED_PATHS.has(path.toLowerCase());
+}
+
+class SharedLimiterTimeoutError extends Error {
+  constructor() {
+    super('Shared rate limiter timed out');
+    this.name = 'SharedLimiterTimeoutError';
+  }
+}
+
+/** Races a limiter call against a hard deadline; the timer never outlives the call. */
+async function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new SharedLimiterTimeoutError()), ms);
+  });
+  try {
+    return await Promise.race([promise, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// One warning per category+mode per interval, with a count of the suppressed ones, so an
+// outage is visible without one log line per request. Never logs the identifier (user id
+// or client IP), the request, or the raw error message (it can echo the Redis URL).
+const OUTAGE_LOG_INTERVAL_MS = 10_000;
+const outageLog = new Map<string, { lastAt: number; suppressed: number }>();
+
+function logSharedLimiterOutage(
+  category: RateLimitCategory,
+  failClosed: boolean,
+  cause: 'timeout' | 'error',
+  err: unknown,
+): void {
+  const mode = failClosed ? 'fail_closed' : 'fail_open_memory';
+  const key = `${category}:${mode}`;
+  const now = Date.now();
+  const state = outageLog.get(key);
+  if (state && now - state.lastAt < OUTAGE_LOG_INTERVAL_MS) {
+    state.suppressed++;
+    return;
+  }
+  logger.warn(
+    {
+      event: 'ratelimit.shared_store_unavailable',
+      category,
+      mode,
+      cause,
+      errorName: err instanceof Error ? err.name : typeof err,
+      suppressedSinceLast: state?.suppressed ?? 0,
+    },
+    'Shared rate-limit store unavailable',
+  );
+  outageLog.set(key, { lastAt: now, suppressed: 0 });
+}
 
 // ---------------------------------------------------------------------------
 // Upstash limiters (one per category, created lazily)
@@ -52,6 +142,7 @@ function createUpstashLimiter(category: RateLimitCategory): Ratelimit | null {
     redis,
     limiter: Ratelimit.slidingWindow(requests, window),
     prefix: `tims:ratelimit:${category}`,
+    timeout: SHARED_LIMIT_TIMEOUT_MS,
   });
 }
 
@@ -132,16 +223,38 @@ function checkMemoryRateLimit(identifier: string, category: RateLimitCategory): 
 // Public API — same interface as before, no changes needed in trpc.ts
 // ---------------------------------------------------------------------------
 
-export async function checkRateLimit(identifier: string, category: RateLimitCategory = 'query'): Promise<void> {
+export async function checkRateLimit(
+  identifier: string,
+  category: RateLimitCategory = 'query',
+  options: { failClosed?: boolean } = {},
+): Promise<void> {
   const upstash = upstashLimiters[category];
 
   if (upstash) {
-    const { success, reset, reason } = await upstash.limit(identifier);
-    // The SDK can report success when its own timeout expires. Treating that as
-    // a real allowance silently disables shared limits during a Redis outage.
-    if (reason === 'timeout') {
-      throw new TRPCError({ code: 'SERVICE_UNAVAILABLE', message: 'El límite de solicitudes no está disponible.' });
+    let result: Awaited<ReturnType<Ratelimit['limit']>> | undefined;
+    let outage: { cause: 'timeout' | 'error'; err: unknown } | undefined;
+    try {
+      result = await withDeadline(upstash.limit(identifier), SHARED_LIMIT_TIMEOUT_MS);
+      // The SDK reports success with reason 'timeout' when its own deadline expires.
+      // That is NOT an allowance — it means the shared store did not answer.
+      if (result.reason === 'timeout') outage = { cause: 'timeout', err: new SharedLimiterTimeoutError() };
+    } catch (err) {
+      outage = { cause: err instanceof SharedLimiterTimeoutError ? 'timeout' : 'error', err };
     }
+
+    if (outage || !result) {
+      outage ??= { cause: 'error', err: undefined };
+      const failClosed = options.failClosed === true || FAIL_CLOSED_CATEGORIES.has(category);
+      logSharedLimiterOutage(category, failClosed, outage.cause, outage.err);
+      if (failClosed) {
+        throw new TRPCError({ code: 'SERVICE_UNAVAILABLE', message: 'El límite de solicitudes no está disponible.' });
+      }
+      // Fail open to the per-instance limiter: still bounded per function instance.
+      checkMemoryRateLimit(identifier, category);
+      return;
+    }
+
+    const { success, reset } = result;
     if (!success) {
       const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
       throw new TRPCError({
@@ -173,6 +286,7 @@ const applicationEmailLimiter = redis
       redis,
       limiter: Ratelimit.fixedWindow(1, '24 h'),
       prefix: 'tims:ratelimit:application-email',
+      timeout: SHARED_LIMIT_TIMEOUT_MS,
     })
   : null;
 
@@ -181,7 +295,7 @@ const applicationEmailMemory = new Map<string, number>();
 export async function consumeApplicationEmailQuota(recipientEmail: string): Promise<boolean> {
   const key = createHash('sha256').update(recipientEmail.trim().toLowerCase()).digest('hex');
   if (applicationEmailLimiter) {
-    const { success, reason } = await applicationEmailLimiter.limit(key);
+    const { success, reason } = await withDeadline(applicationEmailLimiter.limit(key), SHARED_LIMIT_TIMEOUT_MS);
     return success && reason !== 'timeout';
   }
   // Fallback: in-memory (local dev / tests) — per-process, same 1-per-24h semantics.

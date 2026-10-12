@@ -33,6 +33,13 @@ const baseEnvSchema = z.object({
   // Upstash Redis (rate limiting — optional for local dev)
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+  // The Upstash credentials above enable ONLY the rate limiter. Each cache that could
+  // also use that store needs its own explicit opt-in ('true'); default off = per-process
+  // memory. See docs/runbooks/production-rate-limits.md before enabling either.
+  // Only the exact string 'true' enables; any other value is OFF. Deliberately not a strict
+  // enum: a typo in an optional cache opt-in must not fail production env validation.
+  AI_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
+  PERMISSION_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
 
   // Cloudflare Turnstile (CAPTCHA on public apply form — optional; enforced only
   // when both keys are set)
