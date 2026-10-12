@@ -4,6 +4,11 @@ import { parseMarkdownLite, type MdInline } from '../lib/markdown-lite';
 interface MarkdownTextProps {
   source: string;
   className?: string;
+  /**
+   * HTML level for a `#` heading (`##` and `###` follow). Defaults to 3 — the text sits under a
+   * card/page heading. A standalone document whose page owns no other headings can pass 1.
+   */
+  headingBase?: 1 | 3;
 }
 
 function renderInline(nodes: MdInline[], keyPrefix: string): ReactNode[] {
@@ -31,14 +36,14 @@ const HEADING_CLASS = {
  * Renders the small Markdown subset from `lib/markdown-lite` as React elements.
  * No HTML string is ever produced, so markup inside the source renders as literal text.
  */
-export function MarkdownText({ source, className }: MarkdownTextProps) {
+export function MarkdownText({ source, className, headingBase = 3 }: MarkdownTextProps) {
   const blocks = parseMarkdownLite(source);
   return (
     <div className={className}>
       {blocks.map((block, index) => {
         const key = `b${index}`;
         if (block.type === 'heading') {
-          const Tag = block.level === 1 ? 'h3' : block.level === 2 ? 'h4' : 'h5';
+          const Tag = `h${headingBase + block.level - 1}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5';
           return (
             <Tag key={key} className={HEADING_CLASS[block.level]}>
               {renderInline(block.content, key)}

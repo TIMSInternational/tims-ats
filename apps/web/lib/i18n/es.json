@@ -4228,5 +4228,23 @@
     "emptyTitle": "No hay solicitudes pendientes",
     "emptyDescription": "Cuando un titular solicite la supresión de sus datos, la solicitud aparecerá aquí.",
     "loadError": "No fue posible cargar las solicitudes. Inténtelo de nuevo."
+  },
+  "legal": {
+    "draftBanner": "BORRADOR: texto pendiente de revisión legal. No constituye un compromiso contractual.",
+    "languageLabel": "Idioma",
+    "navLabel": "Documentos legales",
+    "termsLink": "Términos del servicio",
+    "privacyLink": "Aviso de privacidad",
+    "subprocessorsLink": "Subencargados",
+    "aiProcessingLink": "Tratamiento con IA",
+    "consentLinksPrefix": "Consulta también:",
+    "subprocessorVendor": "Proveedor",
+    "subprocessorService": "Servicio",
+    "subprocessorPurpose": "Finalidad",
+    "subprocessorData": "Categorías de datos",
+    "subprocessorCondition": "Cuándo se usa",
+    "conditionAlways": "Siempre",
+    "conditionConfigured": "Solo si está configurado",
+    "conditionCustomerEnabled": "Solo si la organización cliente lo habilita"
   }
 }

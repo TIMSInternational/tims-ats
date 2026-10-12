@@ -1,5 +1,6 @@
 'use client';
 
+import { LegalFooterLinks } from '../../components/legal/legal-footer-links';
 import { useI18n } from '../../lib/i18n';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -61,6 +62,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <span className="text-[12px] font-medium text-[#585858]">NexaDev</span>
           <span className="text-[7px] text-[#8B8B8B] align-super -ml-0.5">TM</span>
         </div>
+        <LegalFooterLinks className="-mt-3 pb-6" />
       </div>
     </div>
   );
