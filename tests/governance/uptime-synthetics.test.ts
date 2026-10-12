@@ -159,7 +159,7 @@ describe('synthetics.tf — uptime canaries', () => {
       expect(src).not.toMatch(/https?:\/\/[a-z0-9-]+\.[a-z0-9.-]+/i);
       expect(src).not.toMatch(/awsapprunner\.com|vercel\.app|\b\d{12}\b/);
     }
-    expect(GITIGNORE).toMatch(/^terraform\.tfvars$/m);
+    expect(GITIGNORE).toMatch(/^\*\.tfvars$/m);
     expect(GITIGNORE).toMatch(/^\*\.tfstate$/m);
     expect(GITIGNORE).toMatch(/^\.build\/$/m);
   });

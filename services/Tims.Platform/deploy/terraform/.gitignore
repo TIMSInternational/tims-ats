@@ -3,4 +3,5 @@
 .build/
 *.tfstate
 *.tfstate.*
-terraform.tfvars
+*.tfvars
+*.tfplan

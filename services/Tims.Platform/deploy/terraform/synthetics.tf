@@ -85,6 +85,8 @@ data "archive_file" "synthetics_uptime" {
 resource "aws_s3_bucket" "synthetics_artifacts" {
   count  = local.synthetics_enabled ? 1 : 0
   bucket = local.synthetics_bucket_name
+  # Holds only expiring run artifacts, so removing the canaries must not stall on a non-empty bucket.
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_ownership_controls" "synthetics_artifacts" {
