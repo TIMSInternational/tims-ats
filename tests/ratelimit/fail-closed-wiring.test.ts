@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// PR #358 review fix: the tRPC rate-limit middleware must pass the credential-path
-// outage policy through to checkRateLimit. Exercised through a real tRPC caller so a
-// regression in trpc.ts (dropping `failClosed`) fails here, not only in the unit tests.
+// PR #358 review fix: the tRPC rate-limit middleware must pass the procedure path to
+// checkRateLimit, which decides the credential-path outage policy from it. Exercised
+// through a real tRPC caller so a regression in trpc.ts (dropping `path`) fails here,
+// not only in the unit tests.
 
 const checkRateLimit = vi.fn().mockResolvedValue(undefined);
 
@@ -23,8 +24,8 @@ vi.mock('../../packages/api/src/middleware/rate-limit', async (importOriginal) =
   return { ...actual, checkRateLimit: (...args: unknown[]) => checkRateLimit(...args) };
 });
 
-describe('withRateLimit passes the fail-closed policy for credential-like paths', () => {
-  it('marks platform.acceptInvitation / resetUserPassword failClosed and ordinary paths not', async () => {
+describe('withRateLimit passes the procedure path so credential-like paths fail closed', () => {
+  it('forwards the full tRPC path for every procedure', async () => {
     const { router, publicProcedure, createCallerFactory } = await import('../../packages/api/src/trpc');
     const appRouter = router({
       platform: router({
@@ -45,9 +46,9 @@ describe('withRateLimit passes the fail-closed policy for credential-like paths'
     await caller.candidate.list();
 
     expect(checkRateLimit.mock.calls).toEqual([
-      [expect.any(String), 'mutation', { failClosed: true }],
-      [expect.any(String), 'mutation', { failClosed: true }],
-      [expect.any(String), 'query', { failClosed: false }],
+      [expect.any(String), 'mutation', { path: 'platform.acceptInvitation' }],
+      [expect.any(String), 'mutation', { path: 'platform.resetUserPassword' }],
+      [expect.any(String), 'query', { path: 'candidate.list' }],
     ]);
   });
 });

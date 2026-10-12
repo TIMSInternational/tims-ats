@@ -50,9 +50,9 @@ export type RateLimitCategory = keyof typeof LIMITS;
 //
 // When the shared store is unavailable (timeout or error):
 //  - FAIL CLOSED (SERVICE_UNAVAILABLE) for the tiers where an unlimited burst is the
-//    attack or the cost: `auth`, `ai`, `export`, and any credential-like path the
-//    router marks failClosed (invitation token, password reset, offer-signing token —
-//    see FAIL_CLOSED_PATHS). Login and MFA are performed by Supabase Auth directly,
+//    attack or the cost: `auth`, `ai`, `export`, and the credential-like paths in
+//    FAIL_CLOSED_PATHS (invitation token, password reset, offer-signing token), which
+//    the tRPC middleware identifies by passing the procedure `path`. Login and MFA are performed by Supabase Auth directly,
 //    not through tRPC, so they are not governed by this limiter at all.
 //  - FAIL OPEN to the per-instance in-memory limiter for everything else
 //    (ordinary `query` / `mutation`), with a structured warning so the degradation
@@ -226,7 +226,7 @@ function checkMemoryRateLimit(identifier: string, category: RateLimitCategory): 
 export async function checkRateLimit(
   identifier: string,
   category: RateLimitCategory = 'query',
-  options: { failClosed?: boolean } = {},
+  options: { path?: string } = {},
 ): Promise<void> {
   const upstash = upstashLimiters[category];
 
@@ -244,7 +244,8 @@ export async function checkRateLimit(
 
     if (outage || !result) {
       outage ??= { cause: 'error', err: undefined };
-      const failClosed = options.failClosed === true || FAIL_CLOSED_CATEGORIES.has(category);
+      const failClosed =
+        FAIL_CLOSED_CATEGORIES.has(category) || (options.path !== undefined && isFailClosedPath(options.path));
       logSharedLimiterOutage(category, failClosed, outage.cause, outage.err);
       if (failClosed) {
         throw new TRPCError({ code: 'SERVICE_UNAVAILABLE', message: 'El límite de solicitudes no está disponible.' });

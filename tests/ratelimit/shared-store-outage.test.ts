@@ -116,7 +116,7 @@ describe.each([
     vi.useFakeTimers();
     const { mod } = await loadWithFakeUpstash(limit);
     expect(mod.isFailClosedPath('platform.acceptInvitation')).toBe(true);
-    const p = mod.checkRateLimit('ip:203.0.113.9', 'mutation', { failClosed: true });
+    const p = mod.checkRateLimit('ip:203.0.113.9', 'mutation', { path: 'platform.acceptInvitation' });
     const assertion = expect(p).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
     await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS);
     await assertion;
