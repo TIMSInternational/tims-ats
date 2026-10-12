@@ -22,8 +22,9 @@ const ORG = 'org-1';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  m.findMany.mockResolvedValue([]);
-  m.findFirst.mockResolvedValue(null);
+  // mockReset also drops any unconsumed *Once values, so a test can never leak into the next.
+  m.findMany.mockReset().mockResolvedValue([]);
+  m.findFirst.mockReset().mockResolvedValue(null);
 });
 
 describe('canonicalizeEmail / escapeLikePattern', () => {

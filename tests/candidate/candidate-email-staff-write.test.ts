@@ -30,8 +30,9 @@ const base = { firstName: 'Ana', lastName: 'P', source: 'manual', poolType: 'act
 
 beforeEach(() => {
   vi.clearAllMocks();
-  m.findIdsByCanonicalEmail.mockResolvedValue([]);
-  m.exists.mockResolvedValue({ id: 'c1' });
+  // mockReset also drops any unconsumed *Once values, so a test can never leak into the next.
+  m.findIdsByCanonicalEmail.mockReset().mockResolvedValue([]);
+  m.exists.mockReset().mockResolvedValue({ id: 'c1' });
 });
 
 describe('candidateService.create (#315)', () => {
