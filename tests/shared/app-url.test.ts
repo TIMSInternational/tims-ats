@@ -8,6 +8,7 @@ import {
   DEFAULT_APP_URL,
   type AppOriginIssue,
 } from '../../packages/shared/src/app-url';
+import { blockAt } from '../helpers/source-blocks';
 
 // Resolves the public app origin for email links (invites, password resets,
 // auth callbacks). Must NEVER fall back to a domain we don't control.
@@ -325,10 +326,7 @@ describe('packages/shared/src/app-url.ts client-bundle safety', () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const source = readFileSync(resolve(__dirname, '../../packages/shared/src/app-url.ts'), 'utf8');
-    const body = source.slice(
-      source.indexOf('export function getAppUrl'),
-      source.indexOf('export function getAuthRedirectUrl'),
-    );
+    const body = blockAt(source, 'export function getAppUrl', { minLines: 8 });
     // One-argument call = the default env; a `process.env` argument = dynamic access.
     expect(body).not.toMatch(/checkAppOrigin\(\s*\w+\s*\)/);
     expect(body).not.toMatch(/checkAppOrigin\([^)]*process\.env\s*\)/);
