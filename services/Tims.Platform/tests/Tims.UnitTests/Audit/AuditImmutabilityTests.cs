@@ -24,6 +24,9 @@ public sealed class AuditImmutabilityTests
         Assert.Contains("insufficient_privilege", sql, StringComparison.Ordinal);
         // Table-agnostic message (shared function across tables) — must use TG_TABLE_NAME, not a baked literal.
         Assert.Contains("TG_TABLE_NAME", sql, StringComparison.Ordinal);
+        // search_path pinned INSIDE the CREATE OR REPLACE (Supabase lint 0011). A CREATE OR REPLACE without a
+        // SET clause resets proconfig, so a pin applied only by ALTER would be undone on the next re-apply.
+        Assert.Contains("$$ LANGUAGE plpgsql SET search_path = '';", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("'data_access_logs is append-only", sql, StringComparison.Ordinal);
         // 3) row-level UPDATE/DELETE guard + statement-level TRUNCATE guard, with FULLY-QUOTED trigger names
         // (the truncate trigger name must be quoted as a whole — a `"name"_truncate` split is a syntax error).
