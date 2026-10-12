@@ -42,6 +42,19 @@ LocalStack `4577`.
   `Platform__AllowAnonymousRelayWithoutClientIp=true` (`scripts/e2e/api-flags.env`). That flag is
   refused in a Production host unless `TIMS_E2E_STACK=1` is also set.
 
+**The per-user tRPC budget is part of the journey's design (#330).** The company admin, recruiter and
+hiring leader are created by the company journey and reused by the candidate journey, and a whole run
+finishes inside one rate-limit window. The recruiter is the heaviest user: about 85 of its 100
+procedures per run (measured locally; each procedure in a batched request counts). Every full page load
+(`page.goto`, `reload`) re-fetches the app shell (session, impersonation, notifications) plus the
+page's own queries, so the specs skip loads that change nothing (already on the page) and open a
+section with an in-app navigation when this persona holds no cached data for it. Before that, the
+recruiter's reload of the offers list was refused with `TOO_MANY_REQUESTS` on every first attempt, and
+the step timed out waiting for an offer that existed. A retry passed only because the window had
+rolled over. `expectNotRateLimited` (`lib/persona.ts`) now runs after every test and fails it with the
+persona and the refused procedures. **Adding a step for the recruiter? Prefer acting on the page it is
+already on.**
+
 ## What the stack is (scripts/e2e/up.sh)
 
 Supabase CLI (auth + Postgres) → the committed **production schema baseline** + `seed.ts` +

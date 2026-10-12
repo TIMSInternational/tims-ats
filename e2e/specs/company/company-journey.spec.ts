@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { provisionRunOwner, runOwnerCredentials } from '../../lib/owner';
 import { readStack } from '../../lib/stack';
 import { newJourney, saveJourney, type JourneyState } from '../../lib/journey';
-import { newPersona, signIn, closePersona, type Persona } from '../../lib/persona';
+import { newPersona, signIn, closePersona, expectNotRateLimited, type Persona } from '../../lib/persona';
 import { waitForMail, linkContaining } from '../../lib/mail';
 import { needs, supersededBy, PENDING } from '../../lib/pending';
 
@@ -29,11 +29,13 @@ test.beforeAll(async ({ browser }, testInfo) => {
   saveJourney(j);
   // Precondition, not under test: this attempt's own platform owner (lib/owner.ts explains why).
   await provisionRunOwner(readStack(), j.runId);
-  owner = await newPersona(browser);
-  admin = await newPersona(browser);
-  recruiter = await newPersona(browser);
-  leader = await newPersona(browser);
+  owner = await newPersona(browser, 'platform owner');
+  admin = await newPersona(browser, 'company admin');
+  recruiter = await newPersona(browser, 'recruiter');
+  leader = await newPersona(browser, 'hiring leader');
 });
+
+test.afterEach(() => expectNotRateLimited(owner, admin, recruiter, leader));
 
 test.afterAll(async () => {
   await Promise.all([owner, admin, recruiter, leader].map(closePersona));
@@ -217,7 +219,10 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
 
 /** Open the vacancy and submit it for approval to `approverName`. */
 async function submitForApproval(page: Page, approverName: string): Promise<void> {
-  await page.goto(`/recruitment/vacancies/${j.vacancy!.id}`);
+  // The recruiter is already on the vacancy it just created; reloading it would only re-spend its per-user
+  // query budget, which the candidate journey needs too (#330).
+  const vacancyPath = `/recruitment/vacancies/${j.vacancy!.id}`;
+  if (new URL(page.url()).pathname !== vacancyPath) await page.goto(vacancyPath);
   await page.getByRole('button', { name: 'Enviar para aprobación' }).click();
   const dialog = page.getByRole('dialog', { name: 'Enviar para aprobación' });
   await dialog.getByPlaceholder('Buscar usuario...').fill(approverName.split(' ')[0]);

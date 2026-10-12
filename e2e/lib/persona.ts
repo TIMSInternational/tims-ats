@@ -1,4 +1,4 @@
-import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type Browser, type BrowserContext, type Page, type Response } from '@playwright/test';
 import type { Credentials } from './stack';
 
 /**
@@ -8,6 +8,12 @@ import type { Credentials } from './stack';
 export interface Persona {
   context: BrowserContext;
   page: Page;
+  /** Which persona this is, for failure messages (e.g. 'recruiter'). */
+  label: string;
+  /** tRPC procedures this persona has sent (each procedure in a batched request counts once). */
+  trpcCalls: number;
+  /** tRPC procedures the app's per-user rate limiter refused (TOO_MANY_REQUESTS). */
+  rateLimited: string[];
 }
 
 // Third-party services the BROWSER must never reach: video (Daily), voice AI (ElevenLabs/LiveKit).
@@ -18,14 +24,69 @@ export interface Persona {
 // if one happened, would go out unauthenticated and fail.
 const BLOCKED = /(^|\.)(daily\.co|dailywebrtc\.(com|net)|elevenlabs\.io|livekit\.cloud)$/;
 
-export async function newPersona(browser: Browser): Promise<Persona> {
+const TRPC_PATH = '/api/trpc/';
+
+/** The procedure names of a (possibly batched) tRPC request URL. */
+function trpcProcedures(url: string): string[] {
+  const { pathname } = new URL(url);
+  const at = pathname.indexOf(TRPC_PATH);
+  return at < 0 ? [] : decodeURIComponent(pathname.slice(at + TRPC_PATH.length)).split(',');
+}
+
+/**
+ * Record rate-limit refusals. The app's real limiters stay on in E2E (e2e/README.md), and the tRPC one
+ * is per USER: the company journey and the candidate journey drive the same recruiter, admin and leader.
+ * When a journey spends a user's budget, the refused queries surface only as a list that never fills
+ * (#330: a 20 s wait for an offer that was there all along) — so make the cause impossible to miss.
+ */
+async function recordRateLimit(persona: Persona, response: Response): Promise<void> {
+  const procedures = trpcProcedures(response.url());
+  if (procedures.length === 0) return;
+  const status = response.status();
+  if (status === 429) {
+    persona.rateLimited.push(...procedures);
+    return;
+  }
+  // A batch where only some procedures were refused answers 207 with a per-procedure result array.
+  if (status !== 207) return;
+  const body = await response.json().catch(() => null);
+  if (!Array.isArray(body)) return;
+  body.forEach((result: unknown, i) => {
+    const code = (result as { error?: { json?: { data?: { code?: unknown } } } } | null)?.error?.json?.data?.code;
+    if (code === 'TOO_MANY_REQUESTS') persona.rateLimited.push(procedures[i] ?? '?');
+  });
+}
+
+export async function newPersona(browser: Browser, label: string): Promise<Persona> {
   const context = await browser.newContext();
   await context.route(
     (url) => BLOCKED.test(url.hostname),
     (route) => route.abort('blockedbyclient'),
   );
   const page = await context.newPage();
-  return { context, page };
+  const persona: Persona = { context, page, label, trpcCalls: 0, rateLimited: [] };
+  context.on('request', (request) => {
+    persona.trpcCalls += trpcProcedures(request.url()).length;
+  });
+  context.on('response', (response) => void recordRateLimit(persona, response));
+  return persona;
+}
+
+/**
+ * Fail the current test if any persona was rate limited. Call from `test.afterEach`: a refused query
+ * does not fail the step that made it — it fails a later one, as a timeout on data that never renders.
+ */
+export function expectNotRateLimited(...personas: (Persona | undefined)[]): void {
+  for (const p of personas) {
+    if (!p || p.rateLimited.length === 0) continue;
+    const refused = [...new Set(p.rateLimited)].join(', ');
+    p.rateLimited.length = 0; // report once, on the test where it happened
+    throw new Error(
+      `[e2e] the ${p.label} persona hit the app's per-user tRPC rate limit (TOO_MANY_REQUESTS on ${refused}; ` +
+        `${p.trpcCalls} procedures sent by this persona so far). The journey is spending more of one user's ` +
+        `per-minute query budget than the product allows — cut redundant full page loads rather than retrying.`,
+    );
+  }
 }
 
 /** Sign in through the real /login form (Supabase password auth). */
