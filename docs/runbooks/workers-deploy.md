@@ -115,6 +115,23 @@ bash scripts/deploy/bootstrap-github-oidc-role.sh
 
 **3. Enable the workflow and push the first image.**
 
+A manual dispatch deploys **main's tip** and refuses unless `.NET Platform CI` has a successful
+**push-triggered** run on that exact commit. That CI's push trigger is path-filtered, so if the last merge
+to `main` was web-only or docs-only the tip was never tested and the dispatch fails with
+".NET Platform CI has no successful push run". Check first — this prints a number:
+
+```bash
+gh api "repos/TIMSInternational/tims-ats/actions/workflows/dotnet-platform.yml/runs?head_sha=$(gh api repos/TIMSInternational/tims-ats/commits/main --jq .sha)&event=push&status=success&per_page=1" --jq .total_count
+```
+
+`1` (or more): go ahead. `0`: either .NET CI is still running on the tip (wait for it to finish green and
+re-check) or it never ran there. In the second case land any commit on `main` that touches a path in
+`.NET Platform CI`'s push filter (`services/Tims.Platform/**`, `scripts/**`, `packages/db/**`, ... — see
+`.github/workflows/dotnet-platform.yml`), wait for that CI run to pass, re-check, then dispatch.
+`.NET Platform CI` has no `workflow_dispatch` trigger, and a non-push run would not count anyway. While the
+service does not exist yet, the automatic post-CI run pushes **nothing** (only a manual dispatch seeds the
+first image), so the dispatch below is always needed for the first image.
+
 ```bash
 gh variable set PLATFORM_WORKERS_DEPLOY_ENABLED --body true --repo TIMSInternational/tims-ats
 gh workflow run 'Deploy platform workers' --ref main -f reason='first workers image' --repo TIMSInternational/tims-ats
@@ -131,6 +148,12 @@ bash scripts/deploy/create-workers-service.sh --apply --image-tag abc1234
 
 From now on every merge that passes `.NET Platform CI` and changes the workers project graph rolls the
 service automatically (image swap only; env/secrets carried over from the live revision).
+
+**Image retention.** ECR keeps the last 30 images. The workflow decides **before** building
+(`scripts/deploy/workers-deploy-decide.sh`) and pushes only an image it is about to roll onto (or, with no
+service yet, the manually-dispatched seed). A CI run that changes nothing under the workers graph, or that
+is older than what runs, pushes nothing — so the running image and the previous ~29 rollback targets are
+always the 30 newest images and are never expired underneath a running service.
 
 ## Verify
 

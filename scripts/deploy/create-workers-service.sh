@@ -161,6 +161,8 @@ else
 fi
 # put-lifecycle-policy is an upsert: re-assert it on every run, not only on create, so a repo that
 # already existed (or was hand-edited) still ends up with the 30-image retention.
+# Count-based expiry is safe ONLY because deploy-platform-workers.yml pushes an image just before rolling
+# onto it (scripts/deploy/workers-deploy-decide.sh), so the running image is always among the newest 30.
 mutate ecr put-lifecycle-policy --repository-name "$ECR_REPO" --lifecycle-policy-text \
   '{"rules":[{"rulePriority":1,"description":"keep the last 30 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
 

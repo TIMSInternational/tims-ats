@@ -8,8 +8,14 @@ name: Deploy platform workers
 # Nothing here exists in AWS yet: the ECR repo, the cluster/service, the task roles and the IAM grant are
 # created by the owner-run `scripts/deploy/create-workers-service.sh --apply` and
 # `scripts/deploy/bootstrap-github-oidc-role.sh`. Until then every run is a no-op, gated on the repo
-# variable PLATFORM_WORKERS_DEPLOY_ENABLED == 'true' (set it only after both scripts ran). A pushed image
-# with no service yet is reported, not an error — the first service creation is the script's job.
+# variable PLATFORM_WORKERS_DEPLOY_ENABLED == 'true' (set it only after both scripts ran). Before the
+# service exists, only a MANUAL dispatch pushes (it seeds the first image for the owner's script);
+# automatic runs push nothing until there is a service to roll.
+#
+# ── IMAGES ARE PUSHED ONLY WHEN THEY WILL RUN ──────────────────────────────────────────────────────
+# ECR keeps the last 30 images. The `decide` step (scripts/deploy/workers-deploy-decide.sh) runs
+# BEFORE the build, so a CI run that will not roll pushes nothing and cannot age the running image
+# out of the repository. Pinned by tests/governance/workers-deploy-decide.test.ts.
 # Full procedure: docs/runbooks/workers-deploy.md.
 #
 # ── WHY ECS (not App Runner) ──────────────────────────────────────────────────────────────────────
@@ -76,7 +82,7 @@ jobs:
             N="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/dotnet-platform.yml/runs?head_sha=$SHA&event=push&status=success&per_page=1" --jq '.total_count')" \
               || { echo "::error::Cannot query .NET Platform CI runs for $SHA; refusing to deploy untested."; exit 1; }
             [ "${N:-0}" -gt 0 ] 2>/dev/null \
-              || { echo "::error::.NET Platform CI has no successful push run on $SHA."; exit 1; }
+              || { echo "::error::.NET Platform CI has no successful push run on main's tip $SHA (its push trigger is path-filtered, so a web/docs-only merge on top leaves the tip untested). Land a commit that .NET Platform CI runs on (any path in its push filter), wait for that run to pass, then dispatch again. See docs/runbooks/workers-deploy.md step 3."; exit 1; }
           else
             SHA="$TESTED_SHA"
           fi
@@ -121,8 +127,68 @@ jobs:
             exit 1
           fi
 
+      # DECIDE BEFORE BUILDING. The ECR lifecycle keeps the last 30 images of any tag, so an image must be
+      # pushed only when it is about to become the running one (or a manual dispatch seeds the first image
+      # before the service exists). Pushing first and deciding "nothing to roll" afterwards expired the
+      # RUNNING image after ~30 CI-path merges -> CannotPullContainerError on the next task replacement.
+      # The decision itself is scripts/deploy/workers-deploy-decide.sh (pure, unit-tested); this step only
+      # gathers the facts.
+      - name: Decide whether to push and roll
+        id: decide
+        env:
+          TAG: ${{ steps.sha.outputs.short }}
+          SHA: ${{ steps.target.outputs.sha }}
+          EVENT: ${{ github.event_name }}
+          IMAGE_EXISTS: ${{ steps.image.outputs.exists }}
+        run: |
+          set -euo pipefail
+          SERVICE_STATUS="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
+                             --services "$ECS_SERVICE" --query 'services[0].status' --output text 2>/dev/null || true)"
+          [ -n "$SERVICE_STATUS" ] && [ "$SERVICE_STATUS" != "None" ] || SERVICE_STATUS="MISSING"
+          RUNNING_TAG=""
+          RUNNING_IS_NEWER="unknown"
+          GRAPH_CHANGED="unknown"
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            CURRENT_TD="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
+                           --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
+            aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$CURRENT_TD" \
+              --query 'taskDefinition' > current-td.json
+            RUNNING_IMAGE="$(jq -r --arg n "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$n) | .image' current-td.json)"
+            RUNNING_TAG="${RUNNING_IMAGE##*:}"
+            echo "running image: $RUNNING_IMAGE"
+            RUNNING_SHA=""
+            if echo "$RUNNING_TAG" | grep -Eq '^[0-9a-f]{7,40}$'; then
+              RUNNING_SHA="$(git rev-parse --verify --quiet "${RUNNING_TAG}^{commit}" || true)"
+            fi
+            if [ -n "$RUNNING_SHA" ]; then
+              if git merge-base --is-ancestor "$SHA" "$RUNNING_SHA"; then RUNNING_IS_NEWER=true; else RUNNING_IS_NEWER=false; fi
+              if git diff --quiet "$RUNNING_SHA" "$SHA" -- \
+                   services/Tims.Platform/src/Tims.Workers \
+                   services/Tims.Platform/src/Tims.Application \
+                   services/Tims.Platform/src/Tims.Infrastructure \
+                   services/Tims.Platform/src/Tims.Domain \
+                   services/Tims.Platform/Directory.Build.props \
+                   .github/workflows/deploy-platform-workers.yml; then
+                GRAPH_CHANGED=false
+              else
+                GRAPH_CHANGED=true
+              fi
+            fi
+          fi
+          SERVICE_STATUS="$SERVICE_STATUS" RUNNING_TAG="$RUNNING_TAG" RUNNING_IS_NEWER="$RUNNING_IS_NEWER" \
+            GRAPH_CHANGED="$GRAPH_CHANGED" bash scripts/deploy/workers-deploy-decide.sh > decision.txt
+          cat decision.txt
+          grep -E '^(push|roll)=(true|false)$' decision.txt >> "$GITHUB_OUTPUT"
+          REASON_LINE="$(grep -E '^reason=' decision.txt | head -1)"
+          {
+            echo "### Workers deploy decision for \`$TAG\`"
+            echo "- ${REASON_LINE#reason=}"
+            echo "- running: \`${RUNNING_TAG:-none}\` (service $SERVICE_STATUS)"
+            grep -E '^(push|roll)=' decision.txt | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build and push the workers image
-        if: steps.image.outputs.exists == 'false'
+        if: steps.decide.outputs.push == 'true'
         working-directory: services/Tims.Platform
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -133,56 +199,33 @@ jobs:
             -f src/Tims.Workers/Dockerfile \
             -t "$REGISTRY/$ECR_REPO:$TAG" .
           docker push "$REGISTRY/$ECR_REPO:$TAG"
+          echo "- pushed \`$ECR_REPO:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Roll the service onto the new image (if the service exists)
+      - name: Report the seeded image (no ECS service yet)
+        if: steps.decide.outputs.push == 'true' && steps.decide.outputs.roll != 'true'
+        env:
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          {
+            echo "### Workers image pushed; no ECS service yet"
+            echo "- image: \`$ECR_REPO:$TAG\`"
+            echo "- create the service: \`bash scripts/deploy/create-workers-service.sh --apply --image-tag $TAG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Roll the service onto the new image
+        if: steps.decide.outputs.roll == 'true'
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           TAG: ${{ steps.sha.outputs.short }}
-          SHA: ${{ steps.target.outputs.sha }}
-          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          STATUS="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
-                     --services "$ECS_SERVICE" --query 'services[0].status' --output text 2>/dev/null || true)"
-          if [ "$STATUS" != "ACTIVE" ]; then
-            {
-              echo "### Workers image pushed; no ECS service yet"
-              echo "- image: \`$ECR_REPO:$TAG\`"
-              echo "- create the service: \`bash scripts/deploy/create-workers-service.sh --apply --image-tag $TAG\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
+          # Re-read the live revision (the owner script may have registered one while the image built).
           CURRENT_TD="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
                          --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
           aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$CURRENT_TD" \
             --query 'taskDefinition' > current-td.json
           RUNNING_IMAGE="$(jq -r --arg n "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$n) | .image' current-td.json)"
           RUNNING_TAG="${RUNNING_IMAGE##*:}"
-          echo "running image: $RUNNING_IMAGE"
-          if [ "$RUNNING_TAG" = "$TAG" ]; then
-            echo "### Workers already run \`$TAG\` — nothing to roll" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          RUNNING_SHA=""
-          if echo "$RUNNING_TAG" | grep -Eq '^[0-9a-f]{7,40}$'; then
-            RUNNING_SHA="$(git rev-parse --verify --quiet "${RUNNING_TAG}^{commit}" || true)"
-          fi
-          if [ -n "$RUNNING_SHA" ] && [ "$EVENT" != "workflow_dispatch" ]; then
-            if git merge-base --is-ancestor "$SHA" "$RUNNING_SHA"; then
-              echo "### Workers run \`$RUNNING_TAG\`, which is NEWER — not regressing" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            if git diff --quiet "$RUNNING_SHA" "$SHA" -- \
-                 services/Tims.Platform/src/Tims.Workers \
-                 services/Tims.Platform/src/Tims.Application \
-                 services/Tims.Platform/src/Tims.Infrastructure \
-                 services/Tims.Platform/src/Tims.Domain \
-                 services/Tims.Platform/Directory.Build.props \
-                 .github/workflows/deploy-platform-workers.yml; then
-              echo "### No change under the workers project graph since \`$RUNNING_TAG\` — not restarting the scheduler" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-          fi
           # Swap ONLY the image of the workers container; every env var, secret ref, health check, role and
           # size is carried over verbatim from the live revision. Read-only fields are stripped for re-register.
           jq --arg n "$CONTAINER_NAME" --arg img "$REGISTRY/$ECR_REPO:$TAG" '
