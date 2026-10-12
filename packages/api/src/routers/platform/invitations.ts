@@ -91,9 +91,10 @@ export const invitationsRouter = router({
         // NOT "the only other writer" — corrected 2026-08-11. `organizations.billing_email` has FOUR
         // writers. #207 bounded the two platform-owner paths; #213 bounded `routers/organization.ts`
         // update (via `updateOrganizationSchema`, at the lower `organization:update` privilege bar).
-        // The self-serve signup in `apps/web/app/auth/callback/route.ts` is STILL unbounded — it needs
-        // a product decision (reject vs truncate an IdP-supplied email). See the corresponding comment
-        // on `platform.createOrganization` for the full list.
+        // The self-serve signup in `apps/web/app/auth/callback/route.ts` now REJECTS (never truncates) an
+        // identity-provider email over 254 or with a non-hostname domain, before any write (#213,
+        // `apps/web/lib/signup-email.ts`). See the corresponding comment on `platform.createOrganization`
+        // for the full list.
         email: z.string().email().max(254),
         organizationName: z.string().min(2).max(100),
         organizationSlug: z
