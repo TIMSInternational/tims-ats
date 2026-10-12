@@ -5,55 +5,20 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../lib/format-utils';
 import { ErrorState } from '../../../../components';
 import { HealthStatusBanner } from './health-status-banner';
-
-type ServiceStatus = 'operational' | 'degraded' | 'down' | 'unmonitored';
-
-const METRIC_COLORS: Record<string, string> = {
-  green: 'text-green-600',
-  red: 'text-[#DD0C15]',
-  amber: 'text-amber-600',
-};
+import { HealthServiceGrid } from './health-service-grid';
+import { mergeHealthServices, overallHealthStatus } from './merge-health';
+import { usePlatformDependencyHealth } from '../../../../lib/platform-api/platform-health';
 
 export default function PlatformHealthPage() {
   const { t } = useI18n();
   const { data, isLoading, isError, refetch, dataUpdatedAt } = trpc.platform.getSystemHealth.useQuery(undefined, {
     refetchInterval: 30000,
   });
+  const dependencyHealth = usePlatformDependencyHealth();
 
-  const statusConfig: Record<
-    ServiceStatus,
-    { dot: string; badge: string; badgeText: string; label: string; ring?: string }
-  > = {
-    operational: {
-      dot: 'bg-green-500',
-      badge: 'bg-green-100',
-      badgeText: 'text-green-700',
-      label: t.health.statusOperational,
-    },
-    degraded: {
-      dot: 'bg-amber-500',
-      badge: 'bg-amber-100',
-      badgeText: 'text-amber-700',
-      label: t.health.statusDegraded,
-      ring: 'ring-1 ring-amber-200',
-    },
-    down: {
-      dot: 'bg-red-500',
-      badge: 'bg-red-100',
-      badgeText: 'text-red-700',
-      label: t.health.statusDown,
-      ring: 'ring-1 ring-red-200',
-    },
-    unmonitored: {
-      dot: 'bg-slate-400',
-      badge: 'bg-slate-100',
-      badgeText: 'text-slate-700',
-      label: t.health.statusUnmonitored,
-    },
-  };
-
-  const services = data?.services ?? [];
-  const overall = data?.overall ?? 'unmonitored';
+  // The database row comes from tRPC (a live SELECT 1); the other seven from the C# dependency probes.
+  const services = mergeHealthServices(data?.services ?? [], dependencyHealth.state);
+  const overall = overallHealthStatus(services);
   // null = the feed could not be read (DB down) — shown as unavailable, never as "no errors".
   const recentErrors = data?.recentErrors ?? null;
   const stats = data?.stats;
@@ -94,7 +59,10 @@ export default function PlatformHealthPage() {
         overall={overall}
         services={services}
         dataUpdatedAt={dataUpdatedAt}
-        onRefresh={() => refetch()}
+        onRefresh={() => {
+          refetch();
+          dependencyHealth.refetch();
+        }}
       />
 
       {/* Quick Platform Stats */}
@@ -171,42 +139,7 @@ export default function PlatformHealthPage() {
         </div>
       )}
 
-      {/* Service Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 shrink-0">
-        {services.map((service) => {
-          const config = statusConfig[service.status as ServiceStatus] || statusConfig.unmonitored;
-          return (
-            <div
-              key={service.id}
-              className={`bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] ${config.ring || ''}`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${config.dot}`} />
-                  <span className="text-[13px] font-semibold text-[#1F114C]">{t.health.serviceNames[service.id]}</span>
-                </div>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[9px] font-semibold ${config.badge} ${config.badgeText}`}
-                >
-                  {config.label}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {service.metrics?.map((metric, idx) => (
-                  <div key={idx} className="flex justify-between">
-                    <span className="text-[11px] text-[#8B8B8B]">{t.health.metricLabels[metric.id]}</span>
-                    <span
-                      className={`text-[12px] font-medium ${'color' in metric && metric.color ? METRIC_COLORS[metric.color] || 'text-[#1F114C]' : 'text-[#1F114C]'}`}
-                    >
-                      {metric.value ?? t.health.notAvailable}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <HealthServiceGrid services={services} />
 
       {/* Bottom Row: Chart + Errors — fills remaining space */}
       <div className="grid grid-cols-2 gap-3 flex-1 min-h-[260px]">

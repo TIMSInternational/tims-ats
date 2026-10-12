@@ -1,13 +1,11 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
-import type { SystemHealthData } from '../../../../lib/trpc-types';
-
-type HealthData = NonNullable<SystemHealthData>;
+import type { DisplayService, OverallStatus } from './merge-health';
 
 interface HealthStatusBannerProps {
-  overall: HealthData['overall'];
-  services: HealthData['services'];
+  overall: OverallStatus;
+  services: DisplayService[];
   dataUpdatedAt: number;
   onRefresh: () => void;
 }
@@ -15,7 +13,11 @@ interface HealthStatusBannerProps {
 export function HealthStatusBanner({ overall, services, dataUpdatedAt, onRefresh }: HealthStatusBannerProps) {
   const { t } = useI18n();
   const operationalCount = services.filter((service) => service.status === 'operational').length;
-  const unmonitoredCount = services.filter((service) => service.status === 'unmonitored').length;
+  // A dependency the platform does not use is neither verified nor a monitoring gap.
+  const unmonitoredCount = services.filter(
+    (service) =>
+      service.status === 'not_configured' || (service.status === 'not_monitored' && service.reason !== 'not_used'),
+  ).length;
   const degradedCount = services.filter((service) => service.status === 'degraded').length;
   const downCount = services.filter((service) => service.status === 'down').length;
   const bannerStyle =
