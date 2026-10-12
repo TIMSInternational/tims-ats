@@ -2259,11 +2259,30 @@ const orgStructureSurface: WriteSurface<OrgStructureWriteResolved> = {
 // only an hr_admin 200 proves the seeded grant fixture (the assessment-types rationale). hrbp holds no `user` and
 // no `organization` grant → the grant-level DENIED role on every endpoint.
 //
-// Three cross-tenant vectors per assignment write, because the route carries TWO ids: an org-B CONTAINER (team /
-// unit) with an org-A user (buildIdor), and an org-A container with an org-B USER (extraProbes 'cross-org-user').
-// Both must 404 — CheckActiveUserAsync and the row locks each carry the caller's org — and neither may insert.
-// The DELETE routes' IDOR targets are REAL org-B rows (userB in teamB/unitB, seeded by the ensure hook), so a
-// no-mutation read-back that finds them still present is a positive proof, not an absent-row tautology.
+// Cross-tenant vectors differ between the WRITE-type and the DELETE-type assignment routes (corrected 2026-10-12,
+// PR #341 review MED-1 — this header used to claim "three vectors per assignment write", and the PR body / doc /
+// cutover row "both vectors on every assignment write"; the two DELETEs never carried the second one):
+//
+//   PUT / PATCH (set-team-leader, put-team-member, put-unit-assignee, set-user-business-unit) — TWO vectors,
+//   because each route resolves TWO ids: an org-B CONTAINER with an org-A user (buildIdor), and an org-A container
+//   with an org-B USER (extraProbes). Both must 404 — CheckActiveUserAsync and the row locks each carry the
+//   caller's org — and neither may insert.
+//
+//   DELETE (delete-team-member, delete-unit-assignee) — ONE vector, the IDOR, and it is REAL: it targets an
+//   existing org-B row (userB in teamB / unitB, recreated by the ensure hook every run), must 404, and the
+//   no-mutation read-back asserts that row is STILL PRESENT (count = 1) — a positive proof that fails if the
+//   delete leaked, not an absent-row tautology. There is deliberately NO 'cross-org-user' extraProbe on a DELETE:
+//   the delete never resolves the user (OrgStructureRepository.Teams/People DELETE by (container, user) under an
+//   org predicate on teams.organization_id / user_business_units.organization_id — the user's own org is never
+//   read), so DELETE <org-A container>/<org-B user> targets a row the fixture never holds; its 404 and its
+//   "still zero rows" read-back would both be vacuous (and were such a row seeded, org A removing a row under its
+//   OWN container is not a cross-tenant mutation, so there is no deny to assert). The shape that IS a distinct
+//   cross-tenant DELETE — an org-B container holding an org-A user, which a guard on the USER's org instead of the
+//   container's would wrongly delete — needs an anomalous cross-tenant row in the live DB (an org-A user listed
+//   among org B's unit assignees / team members), so it is not seeded there; it is covered instead by the C#
+//   integration test CrossTenantDeletes_Are404_AndTheForeignRowsSurvive (OrgStructureEndpointTests), against
+//   real rows in a Testcontainers database.
+//   write-surfaces.test.ts pins all of this, so adding a vacuous DELETE extraProbe later is a deliberate change.
 const orgPeopleSurface: WriteSurface<OrgStructureWriteResolved> = {
   key: 'tenant-org-people',
   flag: 'Platform__TenantOrgStructureEnabled',

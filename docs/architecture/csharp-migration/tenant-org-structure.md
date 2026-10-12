@@ -49,8 +49,12 @@ fixture-first and off the coverage allowlist, as three harness surfaces behind t
 
 Grants come from `seedOrgStructureGrants` (MATRIX scopes, not invented); write fixtures are dedicated fixed-UUID
 rows (`WRITE_ORG_STRUCTURE`, prefix `e0000367…`) reset by `seedOrgStructureWritePreconditions` before every
-`verify-write`, so re-runs need no teardown. Every assignment write probes BOTH cross-tenant vectors (org-B
-container + org-A user, and org-A container + org-B user) and must get 404 with no row written. Run the read verify
+`verify-write`, so re-runs need no teardown. Every PUT/PATCH assignment write probes BOTH cross-tenant vectors (org-B
+container + org-A user, and org-A container + org-B user) and must get 404 with no row written. The two DELETEs probe
+ONE vector — an existing org-B row (org-B container + org-B user) that must 404 and must still exist afterwards; the
+org-A-container + org-B-user shape would target a row that cannot exist (vacuous), and the org-B-container +
+org-A-user shape is covered by the C# integration test `CrossTenantDeletes_Are404_AndTheForeignRowsSurvive`
+instead of a cross-tenant row seeded into the live DB. Run the read verify
 and both write verifies with `Platform__TenantOrgStructureEnabled=true` at canary, BEFORE the web flag. Not covered
 remotely: the PATCH-team RENAME form (one VERB+path registers once; the leader-only form is the registered one) and
 a narrow-scope organization grant — both are in `OrgStructureEndpointTests`' 403 table. ⚠️ `seed --teardown` after

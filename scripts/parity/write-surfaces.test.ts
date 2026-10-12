@@ -1016,7 +1016,7 @@ describe('WRITE_SURFACES tenant org structure (PR #310)', () => {
     expect(people.endpoints[0]).toBe(e);
   });
 
-  it('every assignment write probes BOTH cross-tenant vectors: org-B container, and org-B user/unit', () => {
+  it('every PUT/PATCH assignment write probes BOTH cross-tenant vectors: org-B container, and org-B user/unit', () => {
     const vectors: Record<string, [string, string]> = {
       'put-team-member': [`${OS}/teams/${WRITE_ORG_STRUCTURE.teamB}/members/PUT_A`, `${OS}/teams/${WRITE_ORG_STRUCTURE.teamA}/members/USER_B`],
       'put-unit-assignee': [
@@ -1037,6 +1037,32 @@ describe('WRITE_SURFACES tenant org structure (PR #310)', () => {
       WRITE_ORG_STRUCTURE.unitB,
     );
     expect((sp(people, 'set-team-leader').extraProbes![0].build(r).body as { leaderUserId: string }).leaderUserId).toBe('USER_B');
+  });
+
+  it('the two DELETEs carry exactly ONE cross-tenant vector — the real-row IDOR — and NO vacuous extraProbe (MED-1)', () => {
+    // PR #341 review MED-1: the header, the doc and the cutover row claimed "both vectors on every assignment
+    // write"; the DELETEs never had the org-A-container + org-B-user probe. Such a probe would be VACUOUS (the
+    // DELETE never resolves the user, so it would target a row that does not exist and "still 0 rows" proves
+    // nothing). The claim was corrected instead; this pins it so a vacuous probe cannot be added unnoticed.
+    const deletes = people.endpoints.filter((e) => e.method === 'DELETE');
+    expect(deletes.map((e) => e.name)).toEqual(['delete-team-member', 'delete-unit-assignee']);
+    for (const e of deletes) {
+      expect(e.extraProbes, e.name).toBeUndefined();
+      expect(e.buildIdor, e.name).toBeDefined();
+      // The IDOR's container AND user are both org B — the row the ensure hook seeds and the read-back counts.
+      const path = e.buildIdor!(r).path;
+      expect(path, e.name).toMatch(new RegExp(`(${WRITE_ORG_STRUCTURE.teamB}|${WRITE_ORG_STRUCTURE.unitB})/(members|assignees)/USER_B$`));
+      const b = e.readbackNoMutation(r, 'b');
+      expect(b.params, e.name).toEqual([path.includes(WRITE_ORG_STRUCTURE.teamB) ? WRITE_ORG_STRUCTURE.teamB : WRITE_ORG_STRUCTURE.unitB, 'USER_B']);
+    }
+    // Every non-DELETE assignment write keeps its second vector.
+    for (const e of people.endpoints.filter((x) => x.method !== 'DELETE')) expect(e.extraProbes, e.name).toHaveLength(1);
+  });
+
+  it('the surface header no longer claims a vector count the DELETEs do not have', () => {
+    const src = readFileSync(join(__dirname, 'write-surfaces.ts'), 'utf8');
+    expect(src).not.toMatch(/Three cross-tenant vectors per assignment write/);
+    expect(src).toMatch(/DELETE \(delete-team-member, delete-unit-assignee\) — ONE vector, the IDOR/);
   });
 
   it('DELETE IDORs aim at REAL org-B rows and assert they SURVIVE (a positive proof, not an absent-row tautology)', () => {
