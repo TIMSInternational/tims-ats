@@ -36,7 +36,7 @@ type Inputs = {
 };
 
 function decide(i: Inputs): { status: number | null; out: Record<string, string>; stderr: string } {
-  const r = spawnSync('bash', [SCRIPT], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', ...i } });
+  const r = spawnSync('bash', [SCRIPT], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...i } });
   const out: Record<string, string> = {};
   for (const line of r.stdout.split('\n')) {
     const m = line.match(/^(push|roll|reason)=(.*)$/);

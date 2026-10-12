@@ -57,6 +57,7 @@ function run(script: string, fake: Fake, args: string[] = []) {
     encoding: 'utf8',
     env: {
       PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
+      NODE_ENV: 'test',
       AWS_REGION: 'us-west-2',
       ECS_CLUSTER: 'tims-platform',
       ECS_SERVICE: 'tims-platform-workers',
