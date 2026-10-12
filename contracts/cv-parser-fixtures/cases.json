@@ -1,0 +1,639 @@
+{
+  "description": "Shared cv-parser output contract. Generated from the TypeScript Zod schema; asserted by tests/ai/cv-parser-contract.test.ts (TS) and CvParserContractTests (.NET). Synthetic data only.",
+  "cases": [
+    {
+      "name": "full_object",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": true,
+      "parsedData": {
+        "name": "Synthetic Candidate",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "markdown_fence",
+      "modelText": "```json\n{\n  \"name\": \"Synthetic Candidate\",\n  \"email\": \"synthetic@example.test\",\n  \"phone\": \"+57 300 000 0000\",\n  \"skills\": [\n    \"C#\",\n    \"SQL\"\n  ],\n  \"experience\": [\n    {\n      \"company\": \"Example Corp\",\n      \"title\": \"Engineer\",\n      \"startYear\": 2019,\n      \"endYear\": null,\n      \"description\": \"Built things\"\n    }\n  ],\n  \"education\": [\n    {\n      \"institution\": \"Example University\",\n      \"degree\": \"BSc\",\n      \"year\": 2018\n    }\n  ],\n  \"languages\": [\n    \"Spanish (Native)\",\n    \"English (B2)\"\n  ],\n  \"summary\": \"Synthetic profile for contract tests.\"\n}\n```",
+      "valid": true,
+      "parsedData": {
+        "name": "Synthetic Candidate",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "prose_around_object",
+      "modelText": "Here is the parsed CV:\n{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}\nLet me know if you need more.",
+      "valid": true,
+      "parsedData": {
+        "name": "Synthetic Candidate",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "all_empty_is_valid",
+      "modelText": "{\"name\":null,\"email\":null,\"phone\":null,\"skills\":[],\"experience\":[],\"education\":[],\"languages\":[],\"summary\":null}",
+      "valid": true,
+      "parsedData": {
+        "name": null,
+        "email": null,
+        "phone": null,
+        "skills": [],
+        "experience": [],
+        "education": [],
+        "languages": [],
+        "summary": null,
+        "confidence": 0,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "empty_strings_are_valid",
+      "modelText": "{\"name\":\"\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"\"],\"experience\":[{\"company\":\"\",\"title\":\"\",\"startYear\":null,\"endYear\":null,\"description\":\"\"}],\"education\":[{\"institution\":\"\",\"degree\":\"\",\"year\":null}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": true,
+      "parsedData": {
+        "name": "",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          ""
+        ],
+        "experience": [
+          {
+            "company": "",
+            "title": "",
+            "startYear": null,
+            "endYear": null,
+            "description": ""
+          }
+        ],
+        "education": [
+          {
+            "institution": "",
+            "degree": "",
+            "year": null
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "unknown_keys_are_stripped",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\",\"location\":\"Remote\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018,\"gpa\":4}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\",\"age\":30,\"notes\":{\"nested\":true}}",
+      "valid": true,
+      "parsedData": {
+        "name": "Synthetic Candidate",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "any_number_is_a_year",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"A\",\"title\":\"B\",\"startYear\":2020.5,\"endYear\":-1,\"description\":null}],\"education\":[{\"institution\":\"C\",\"degree\":\"D\",\"year\":1800}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": true,
+      "parsedData": {
+        "name": "Synthetic Candidate",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "A",
+            "title": "B",
+            "startYear": 2020.5,
+            "endYear": -1,
+            "description": null
+          }
+        ],
+        "education": [
+          {
+            "institution": "C",
+            "degree": "D",
+            "year": 1800
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "unbounded_lengths",
+      "modelText": "{\"name\":\"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"skill-0\",\"skill-1\",\"skill-2\",\"skill-3\",\"skill-4\",\"skill-5\",\"skill-6\",\"skill-7\",\"skill-8\",\"skill-9\",\"skill-10\",\"skill-11\",\"skill-12\",\"skill-13\",\"skill-14\",\"skill-15\",\"skill-16\",\"skill-17\",\"skill-18\",\"skill-19\",\"skill-20\",\"skill-21\",\"skill-22\",\"skill-23\",\"skill-24\",\"skill-25\",\"skill-26\",\"skill-27\",\"skill-28\",\"skill-29\",\"skill-30\",\"skill-31\",\"skill-32\",\"skill-33\",\"skill-34\",\"skill-35\",\"skill-36\",\"skill-37\",\"skill-38\",\"skill-39\",\"skill-40\",\"skill-41\",\"skill-42\",\"skill-43\",\"skill-44\",\"skill-45\",\"skill-46\",\"skill-47\",\"skill-48\",\"skill-49\",\"skill-50\",\"skill-51\",\"skill-52\",\"skill-53\",\"skill-54\",\"skill-55\",\"skill-56\",\"skill-57\",\"skill-58\",\"skill-59\",\"skill-60\",\"skill-61\",\"skill-62\",\"skill-63\",\"skill-64\",\"skill-65\",\"skill-66\",\"skill-67\",\"skill-68\",\"skill-69\",\"skill-70\",\"skill-71\",\"skill-72\",\"skill-73\",\"skill-74\",\"skill-75\",\"skill-76\",\"skill-77\",\"skill-78\",\"skill-79\",\"skill-80\",\"skill-81\",\"skill-82\",\"skill-83\",\"skill-84\",\"skill-85\",\"skill-86\",\"skill-87\",\"skill-88\",\"skill-89\",\"skill-90\",\"skill-91\",\"skill-92\",\"skill-93\",\"skill-94\",\"skill-95\",\"skill-96\",\"skill-97\",\"skill-98\",\"skill-99\",\"skill-100\",\"skill-101\",\"skill-102\",\"skill-103\",\"skill-104\",\"skill-105\",\"skill-106\",\"skill-107\",\"skill-108\",\"skill-109\",\"skill-110\",\"skill-111\",\"skill-112\",\"skill-113\",\"skill-114\",\"skill-115\",\"skill-116\",\"skill-117\",\"skill-118\",\"skill-119\",\"skill-120\",\"skill-121\",\"skill-122\",\"skill-123\",\"skill-124\",\"skill-125\",\"skill-126\",\"skill-127\",\"skill-128\",\"skill-129\",\"skill-130\",\"skill-131\",\"skill-132\",\"skill-133\",\"skill-134\",\"skill-135\",\"skill-136\",\"skill-137\",\"skill-138\",\"skill-139\",\"skill-140\",\"skill-141\",\"skill-142\",\"skill-143\",\"skill-144\",\"skill-145\",\"skill-146\",\"skill-147\",\"skill-148\",\"skill-149\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS\"}",
+      "valid": true,
+      "parsedData": {
+        "name": "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "skill-0",
+          "skill-1",
+          "skill-2",
+          "skill-3",
+          "skill-4",
+          "skill-5",
+          "skill-6",
+          "skill-7",
+          "skill-8",
+          "skill-9",
+          "skill-10",
+          "skill-11",
+          "skill-12",
+          "skill-13",
+          "skill-14",
+          "skill-15",
+          "skill-16",
+          "skill-17",
+          "skill-18",
+          "skill-19",
+          "skill-20",
+          "skill-21",
+          "skill-22",
+          "skill-23",
+          "skill-24",
+          "skill-25",
+          "skill-26",
+          "skill-27",
+          "skill-28",
+          "skill-29",
+          "skill-30",
+          "skill-31",
+          "skill-32",
+          "skill-33",
+          "skill-34",
+          "skill-35",
+          "skill-36",
+          "skill-37",
+          "skill-38",
+          "skill-39",
+          "skill-40",
+          "skill-41",
+          "skill-42",
+          "skill-43",
+          "skill-44",
+          "skill-45",
+          "skill-46",
+          "skill-47",
+          "skill-48",
+          "skill-49",
+          "skill-50",
+          "skill-51",
+          "skill-52",
+          "skill-53",
+          "skill-54",
+          "skill-55",
+          "skill-56",
+          "skill-57",
+          "skill-58",
+          "skill-59",
+          "skill-60",
+          "skill-61",
+          "skill-62",
+          "skill-63",
+          "skill-64",
+          "skill-65",
+          "skill-66",
+          "skill-67",
+          "skill-68",
+          "skill-69",
+          "skill-70",
+          "skill-71",
+          "skill-72",
+          "skill-73",
+          "skill-74",
+          "skill-75",
+          "skill-76",
+          "skill-77",
+          "skill-78",
+          "skill-79",
+          "skill-80",
+          "skill-81",
+          "skill-82",
+          "skill-83",
+          "skill-84",
+          "skill-85",
+          "skill-86",
+          "skill-87",
+          "skill-88",
+          "skill-89",
+          "skill-90",
+          "skill-91",
+          "skill-92",
+          "skill-93",
+          "skill-94",
+          "skill-95",
+          "skill-96",
+          "skill-97",
+          "skill-98",
+          "skill-99",
+          "skill-100",
+          "skill-101",
+          "skill-102",
+          "skill-103",
+          "skill-104",
+          "skill-105",
+          "skill-106",
+          "skill-107",
+          "skill-108",
+          "skill-109",
+          "skill-110",
+          "skill-111",
+          "skill-112",
+          "skill-113",
+          "skill-114",
+          "skill-115",
+          "skill-116",
+          "skill-117",
+          "skill-118",
+          "skill-119",
+          "skill-120",
+          "skill-121",
+          "skill-122",
+          "skill-123",
+          "skill-124",
+          "skill-125",
+          "skill-126",
+          "skill-127",
+          "skill-128",
+          "skill-129",
+          "skill-130",
+          "skill-131",
+          "skill-132",
+          "skill-133",
+          "skill-134",
+          "skill-135",
+          "skill-136",
+          "skill-137",
+          "skill-138",
+          "skill-139",
+          "skill-140",
+          "skill-141",
+          "skill-142",
+          "skill-143",
+          "skill-144",
+          "skill-145",
+          "skill-146",
+          "skill-147",
+          "skill-148",
+          "skill-149"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "duplicate_key_last_wins",
+      "modelText": "{\"name\":\"First\",\"name\":\"Second\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": true,
+      "parsedData": {
+        "name": "Second",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "non_ascii_text",
+      "modelText": "{\"name\":\"José Peña Núñez\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Español (Nativo)\"],\"summary\":\"Ingeniería — “quotes” <tag> & ampersand\"}",
+      "valid": true,
+      "parsedData": {
+        "name": "José Peña Núñez",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Español (Nativo)"
+        ],
+        "summary": "Ingeniería — “quotes” <tag> & ampersand",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "escaped_key_names",
+      "modelText": "{\"n\\u0061me\":\"Escaped\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": true,
+      "parsedData": {
+        "name": "Escaped",
+        "email": "synthetic@example.test",
+        "phone": "+57 300 000 0000",
+        "skills": [
+          "C#",
+          "SQL"
+        ],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 2019,
+            "endYear": null,
+            "description": "Built things"
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [
+          "Spanish (Native)",
+          "English (B2)"
+        ],
+        "summary": "Synthetic profile for contract tests.",
+        "confidence": 1,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
+    },
+    {
+      "name": "missing_summary_key",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"]}",
+      "valid": false
+    },
+    {
+      "name": "missing_skills_key",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "skills_as_string",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":\"C#, SQL\",\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "skills_null",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":null,\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "skill_number",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",3],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "year_as_string",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"C\",\"degree\":\"D\",\"year\":\"2020\"}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "experience_missing_title",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"A\",\"startYear\":null,\"endYear\":null,\"description\":null}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "experience_missing_description",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"A\",\"title\":\"B\",\"startYear\":null,\"endYear\":null}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "company_null",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":null,\"title\":\"B\",\"startYear\":null,\"endYear\":null,\"description\":null}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "education_item_string",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[\"Example University\"],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "experience_item_null",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[null],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "name_boolean",
+      "modelText": "{\"name\":true,\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "no_json_at_all",
+      "modelText": "I could not read this CV.",
+      "valid": false
+    },
+    {
+      "name": "empty_text",
+      "modelText": "",
+      "valid": false
+    },
+    {
+      "name": "array_root",
+      "modelText": "[1,2,3]",
+      "valid": false
+    },
+    {
+      "name": "trailing_comma",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\",}",
+      "valid": false
+    },
+    {
+      "name": "two_objects",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}\n{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":2019,\"endYear\":null,\"description\":\"Built things\"}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2018}],\"languages\":[\"Spanish (Native)\",\"English (B2)\"],\"summary\":\"Synthetic profile for contract tests.\"}",
+      "valid": false
+    },
+    {
+      "name": "truncated_json",
+      "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experie",
+      "valid": false
+    }
+  ]
+}

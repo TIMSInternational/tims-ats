@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101.8" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.104.2" />
     <PackageReference Include="AWSSDK.SimpleEmail" Version="4.0.100.13" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- WP3.1 HRIS: design-time EF tooling so `dotnet ef migrations` can build HrisDbContext (the
@@ -18,6 +20,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="PdfPig" Version="0.1.16" />
     <!-- WP2.6 rate limiter: raw Redis (EVAL of the exact Upstash slidingWindow Lua) so buckets
          are SHARED with the TS @upstash/ratelimit stack. Pinned to the version the Api host
          already carries (3.0.17) for a single resolved graph. -->

@@ -27,7 +27,11 @@ Rules:
 - If information is not available, use null
 - Parse dates as years (not full dates)`;
 
-const outputSchema = z.object({
+// The cv-parser output CONTRACT. The .NET 10 recovery parser
+// (services/Tims.Platform/src/Tims.Infrastructure/CvParsing/CvParsedResult.cs) must accept and
+// reject exactly what this schema does; both sides run contracts/cv-parser-fixtures/cases.json.
+// Changing this schema without regenerating those fixtures fails tests/ai/cv-parser-contract.test.ts.
+export const cvParserOutputSchema = z.object({
   name: z.string().nullable(),
   email: z.string().nullable(),
   phone: z.string().nullable(),
@@ -52,7 +56,7 @@ const outputSchema = z.object({
   summary: z.string().nullable(),
 });
 
-export type ParsedCVData = z.infer<typeof outputSchema>;
+export type ParsedCVData = z.infer<typeof cvParserOutputSchema>;
 
 const EMPTY_CV: ParsedCVData = {
   name: null,
@@ -78,7 +82,7 @@ export async function parseCV(
     systemPrompt: SYSTEM_PROMPT,
     buildUserMessage: ({ cvText }) =>
       `${wrapAsData('cv_text', cvText)}\n\nParse this CV and extract structured data. Return JSON only.`,
-    schema: outputSchema,
+    schema: cvParserOutputSchema,
     fallback: () => EMPTY_CV,
     maxTokens: 2048,
   });
