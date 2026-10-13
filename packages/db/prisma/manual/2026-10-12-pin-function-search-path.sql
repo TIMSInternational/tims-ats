@@ -33,6 +33,11 @@
 --    WHERE n.nspname = 'public' AND p.proname IN ('current_org_id', 'tims_append_only_guard');
 -- THEN re-capture the baseline (proconfig is part of it, so check 16 WILL diff until you do):
 --   bash scripts/db/schema-baseline.sh capture
+-- AND regenerate every services/Tims.Platform/db/flip-ddl/*.sql from its own `-- Regenerate:` line, adding
+-- `--out <that file>`: each embeds the baseline's capture timestamp, so a re-capture alone fails
+-- tests/db/extract-table-ddl.test.ts (byte-identity). Commit the baseline and all flip-DDL files together.
+-- Expect the baseline diff to hold the `-- Captured:` line, the two `SET search_path TO ''` lines, and any
+-- other prod drift since the last capture; review every hunk before committing.
 -- ============================================================================================
 
 BEGIN;
