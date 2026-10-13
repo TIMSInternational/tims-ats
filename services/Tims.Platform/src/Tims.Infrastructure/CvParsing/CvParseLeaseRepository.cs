@@ -8,7 +8,9 @@ public sealed record CvParseLease(Guid DocumentId, Guid OrganizationId, Guid Can
     string FileKey, Guid Token, int Attempt);
 
 /// <summary>
-/// PII-free backlog snapshot. <see cref="Exhausted"/> is the all-time total (for
+/// PII-free backlog snapshot. <see cref="OldestDueAgeSeconds"/> is measured from
+/// each due document's due time, COALESCE(next_at, created_at), the same key the
+/// claim order uses. <see cref="Exhausted"/> is the all-time total (for
 /// dashboards); <see cref="ExhaustedRecent"/> counts only documents that became
 /// terminal inside the alert window, so an old terminal document cannot hold the
 /// alarm in ALARM forever. <see cref="Deferred"/> counts budget/config deferrals.
@@ -71,7 +73,10 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                 AND d.cv_parse_failure_code IS NOT NULL AND d.updated_at >= @recent),
               count(*) FILTER (WHERE d.cv_parse_attempts < @max_attempts
                 AND d.cv_parse_failure_code = 'budget_denied' AND d.cv_parse_next_at > @now),
-              COALESCE(EXTRACT(EPOCH FROM @now - min(d.created_at) FILTER (
+              -- Age since the document became due, using the claim order's due time:
+              -- a deferral (e.g. to the next month start) restarts the clock, so a
+              -- deferred burst returning together does not read as weeks overdue.
+              COALESCE(EXTRACT(EPOCH FROM @now - min(COALESCE(d.cv_parse_next_at, d.created_at)) FILTER (
                 WHERE d.cv_parse_attempts < @max_attempts
                   AND (d.cv_parse_next_at IS NULL OR d.cv_parse_next_at <= @now)
                   AND (d.cv_parse_lease_until IS NULL OR d.cv_parse_lease_until <= @now))), 0)

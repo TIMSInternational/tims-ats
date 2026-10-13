@@ -177,6 +177,35 @@ public sealed class CvParseLeaseTests(CvParseLeaseFixture fixture)
     }
 
     [Fact]
+    public async Task Oldest_due_age_counts_from_when_a_deferred_document_became_due_again()
+    {
+        await fixture.ResetAsync();
+        var org = Guid.NewGuid();
+        // A burst of CVs uploaded weeks ago, all deferred to one shared instant (as a
+        // spent monthly budget defers to the next month start). When they come due
+        // together they have waited one minute, not weeks: the alert age must match
+        // the claim order, COALESCE(next_at, created_at), or every month start pages.
+        var resumeAt = Now.AddDays(21);
+        for (var i = 0; i < 5; i++)
+        {
+            await fixture.SeedAsync(org, Now.AddDays(-20).AddMinutes(i));
+            var claim = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+            Assert.True(await _repository.DeferAsync(claim, CvParseFailureCode.BudgetDenied,
+                resumeAt - Now, Now, CancellationToken.None));
+        }
+
+        var stats = await _repository.ReadStatsAsync(resumeAt.AddMinutes(1), CancellationToken.None);
+        Assert.Equal(5, stats.Due);
+        Assert.Equal(60, stats.OldestDueAgeSeconds);
+
+        // A never-deferred document still ages from its upload.
+        await fixture.SeedAsync(org, resumeAt.AddMinutes(-30));
+        var withFresh = await _repository.ReadStatsAsync(resumeAt.AddMinutes(1), CancellationToken.None);
+        Assert.Equal(6, withFresh.Due);
+        Assert.Equal(31 * 60, withFresh.OldestDueAgeSeconds);
+    }
+
+    [Fact]
     public async Task Deferral_can_reach_the_next_month_but_not_beyond_the_cap()
     {
         await fixture.ResetAsync();
