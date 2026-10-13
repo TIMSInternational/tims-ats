@@ -116,8 +116,11 @@ provider message is stored in retry state or logs.
 
 Every five minutes the loop logs `CV_RECOVERY_HEARTBEAT` with due, leased, deferred
 and exhausted counts and the oldest due age. `CV_RECOVERY_ALERT` is logged only while
-a problem is current: a document became terminal in the last 15 minutes, the oldest
-due document is older than ten minutes, or extractions are stuck. Two CloudWatch log
+a problem is current: a document became terminal in the last 15 minutes, a document
+has been due for more than ten minutes, or extractions are stuck. "Due for" is measured
+from the same due time the claim order uses, `COALESCE(cv_parse_next_at, created_at)`,
+so documents deferred to the next month start do not read as weeks overdue when they
+all come due together. Two CloudWatch log
 alarms (`scripts/ops/create-cv-recovery-alarm.sh`, mirrored in
 `deploy/terraform/cv-recovery.tf`):
 
