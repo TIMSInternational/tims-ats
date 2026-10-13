@@ -62,7 +62,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
     {
         var now = UtcTimestamp(nowUtc);
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand($"""
+        await using var command = new NpgsqlCommand("""
             SELECT
               count(*) FILTER (WHERE d.cv_parse_attempts < @max_attempts
                 AND (d.cv_parse_next_at IS NULL OR d.cv_parse_next_at <= @now)
@@ -85,7 +85,13 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
             WHERE d.type = 'cv' AND d.parsed_data IS NULL AND d.created_at <= @cutoff
               AND d.created_at >= @created_after
               AND c.deleted_at IS NULL
-              AND {NotOptedOut}
+              -- A tenant that turned cv-parser off is never counted (kept identical to ClaimDueAsync).
+              AND NOT EXISTS (
+                SELECT 1 FROM ai_agent_org_configs opt_out
+                JOIN ai_agents agent ON agent.id = opt_out.agent_id
+                WHERE agent.slug = 'cv-parser'
+                  AND opt_out.organization_id = d.organization_id
+                  AND opt_out.enabled = false)
               AND d.file_url ~ ('^cv-uploads/' || d.organization_id::text || @key_suffix)
               AND EXISTS (SELECT 1 FROM data_consents consent
                 WHERE consent.organization_id = d.organization_id
@@ -162,7 +168,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         if (limit is < 1 or > MaxBatchSize) throw new ArgumentOutOfRangeException(nameof(limit));
         var now = UtcTimestamp(nowUtc);
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand($"""
+        await using var command = new NpgsqlCommand("""
             WITH due AS (
               SELECT d.id
               FROM candidate_documents d
@@ -174,7 +180,17 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                 AND (d.cv_parse_lease_until IS NULL OR d.cv_parse_lease_until <= @now)
                 AND d.created_at >= @created_after
                 AND c.deleted_at IS NULL
-                AND {NotOptedOut}
+                -- A tenant that turned cv-parser off is never claimed: its CVs are not
+                -- recovery work, so they cannot re-enter the queue every hour (an S3 GET
+                -- and a decode each time), starve recovery for other tenants, or hold the
+                -- backlog alarm. Re-enabling the agent makes them eligible again.
+                -- Kept identical to the predicate in ReadStatsAsync.
+                AND NOT EXISTS (
+                  SELECT 1 FROM ai_agent_org_configs opt_out
+                  JOIN ai_agents agent ON agent.id = opt_out.agent_id
+                  WHERE agent.slug = 'cv-parser'
+                    AND opt_out.organization_id = d.organization_id
+                    AND opt_out.enabled = false)
                 AND d.file_url ~ ('^cv-uploads/' || d.organization_id::text || @key_suffix)
                 AND EXISTS (
                   SELECT 1 FROM data_consents consent
@@ -396,21 +412,6 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         if (value.Kind != DateTimeKind.Utc) throw new ArgumentException("UTC time required", nameof(value));
         return DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
     }
-
-    /// <summary>
-    /// A tenant that turned cv-parser off is never claimed or counted: its CVs are
-    /// not recovery work, so they cannot re-enter the queue every hour (an S3 GET
-    /// and a decode each time), starve other tenants' recovery, or hold the
-    /// backlog alarm. Re-enabling the agent makes them eligible again.
-    /// </summary>
-    private const string NotOptedOut = """
-        NOT EXISTS (
-                  SELECT 1 FROM ai_agent_org_configs opt_out
-                  JOIN ai_agents agent ON agent.id = opt_out.agent_id
-                  WHERE agent.slug = 'cv-parser'
-                    AND opt_out.organization_id = d.organization_id
-                    AND opt_out.enabled = false)
-        """;
 
     private void AddEligibility(NpgsqlCommand command)
     {
