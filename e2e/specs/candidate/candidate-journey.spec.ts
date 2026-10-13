@@ -34,16 +34,9 @@ const cand = () => ({
 });
 const fullName = () => `${cand().firstName} ${cand().lastName}`;
 
-/**
- * Open a sidebar section with an in-app navigation, the way a signed-in user does, instead of a full
- * page load. A full load re-fetches the whole app shell (session, impersonation, notifications) on top
- * of the page's own queries, and the staff personas share each user's per-minute tRPC query budget
- * across BOTH journeys (#330). Only for a section whose data this persona has not fetched yet in this
- * attempt: the app caches query results for five minutes (apps/web/lib/trpc-provider.tsx), so entering a
- * section this way can show what an earlier page already loaded — the dashboard, for one, prefetches the
- * pipeline board.
- */
-async function openSection(page: Page, path: string): Promise<void> {
+/** Follow the staff navigation that a signed-in user uses, retaining the app's query cache. */
+async function navigateStaff(page: Page, path: string): Promise<void> {
+  if (new URL(page.url()).pathname === path) return;
   await page.locator(`nav a[href="${path}"]`).first().click();
   await expect(page).toHaveURL(new RegExp(`${path}$`));
 }
@@ -126,9 +119,9 @@ test('candidate receives the "application received" email', async () => {
 
 test('recruiter sees the application in the pipeline and opens the candidate', async () => {
   const { page } = recruiter;
-  // A full load on purpose: the recruiter's dashboard (opened at sign-in, BEFORE the candidate applied)
-  // already fetched and cached this vacancy's board, so an in-app navigation would show it without the
-  // new application.
+  // A full load on purpose, not navigateStaff: the recruiter's dashboard (opened at sign-in, BEFORE the
+  // candidate applied) already fetched and cached this vacancy's board for the app's five-minute
+  // staleTime, so an in-app navigation would show it without the new application.
   await page.goto('/recruitment/pipeline');
   await page.getByText(fullName()).first().click();
   await expect(page).toHaveURL(/\/recruitment\/candidates\/[0-9a-f-]{36}/);
@@ -138,8 +131,6 @@ test('recruiter sees the application in the pipeline and opens the candidate', a
 
 /** On the candidate profile: move the (only) application to `stage`. */
 async function moveStage(page: Page, stage: string): Promise<void> {
-  // Only load the profile when not already on it: a stage move keeps the page there and refetches the
-  // candidate itself, and every full page load re-spends the recruiter's per-user query budget (#330).
   if (page.url() !== profileUrl) await page.goto(profileUrl);
   await page.getByRole('button', { name: 'Mover Etapa' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Mover Etapa' });
@@ -157,7 +148,7 @@ test('recruiter moves the candidate through screening to the HR interview stage'
 
 /** Schedule an in-person interview (never video — no Daily in E2E) with the leader as evaluator. */
 async function scheduleInterview(page: Page): Promise<void> {
-  await openSection(page, '/recruitment/interviews');
+  await navigateStaff(page, '/recruitment/interviews');
   await page
     .getByRole('button', { name: /programar entrevista/i })
     .first()
