@@ -62,10 +62,11 @@ A partial index on unparsed CV rows eligible for retry avoids scanning the entir
 documents table. Apply this DDL before deploying code that reads the new columns.
 
 The repository claims at most 10 CVs older than two minutes with `FOR UPDATE SKIP
-LOCKED`, then commits the claims before doing network work. Claim increments the
-attempt count and sets a unique lease token. Completion, failure or deferral requires
-that token, the exact document id and organization id; a stale worker cannot
-overwrite a newer result.
+LOCKED`, oldest **due** time first (a document returning from a deferral queues behind
+work that became due before it), then commits the claims before doing network work.
+Claim increments the attempt count and sets a unique lease token. Completion, failure
+or deferral requires that token, the exact document id and organization id; a stale
+worker cannot overwrite a newer result.
 
 Eligibility, enforced in SQL and again before any S3 call:
 
@@ -76,7 +77,11 @@ Eligibility, enforced in SQL and again before any S3 call:
 - the document was created after the **activation cut-off**
   (`CV_RECOVERY_CREATED_AFTER`, ISO-8601 UTC; default host start minus one hour).
   Enabling the loop therefore never sweeps the historical backlog. Set the variable
-  explicitly at activation so a redeploy does not move it.
+  explicitly at activation so a redeploy does not move it;
+- the organization has not turned `cv-parser` off
+  (`ai_agent_org_configs.enabled = false`). An opted-out tenant's CVs are neither
+  claimed nor counted in the backlog signals; re-enabling the agent makes them
+  eligible again.
 
 Immediately before inference, the lease and consent are rechecked under the same
 candidate advisory lock used by withdrawal, held through the bounded parse.
@@ -85,14 +90,21 @@ is never sent to Bedrock after withdrawal has committed.
 
 ## Failure handling
 
-| Failure                                               | Effect                                                       |
-| ----------------------------------------------------- | ------------------------------------------------------------ |
-| Invalid document (bad key, size, unreadable, no text) | terminal, `invalid_document`                                 |
-| S3 fetch error                                        | retry with backoff, consumes an attempt                      |
-| Extraction over its 15 s wall-clock budget            | retry with backoff (`extraction_error`), consumes an attempt |
-| Two earlier extractions still overrunning             | **deferred 10 min, attempt refunded**; alert raised          |
-| Budget exhausted or `cv-parser` agent disabled        | **deferred 1 h, attempt refunded** (`budget_denied`)         |
-| Model error / invalid output                          | retry with backoff, consumes an attempt                      |
+| Failure                                               | Effect                                                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------ |
+| Invalid document (bad key, size, unreadable, no text) | terminal, `invalid_document`                                       |
+| S3 fetch error                                        | retry with backoff, consumes an attempt                            |
+| Extraction over its 15 s wall-clock budget            | retry with backoff (`extraction_error`), consumes an attempt       |
+| Two earlier extractions still overrunning             | **deferred 10 min, attempt refunded**; alert raised                |
+| Monthly budget spent                                  | **deferred to next UTC month, attempt refunded** (`budget_denied`) |
+| Agent inactive, or tenant opted out after the claim   | **deferred 1 h, attempt refunded** (`budget_denied`)               |
+| Model error / invalid output                          | retry with backoff, consumes an attempt                            |
+
+The budget gate runs before the CV is fetched or decoded, so a denied tenant costs one
+query, not an S3 GET and a decode; the parser re-checks immediately before the model
+call. A spent budget cannot recover before the ledger's monthly reset, so it is not
+re-claimed sooner. Raising a tenant's budget mid-month therefore does not resume its
+deferred CVs until the 1st (UTC) unless their `cv_parse_next_at` is cleared.
 
 Backoff is 5, 20, then 60 minutes with a maximum of four attempts. PDF/DOCX decoding
 runs off the hosted loop; the caller stops waiting at the deadline. A decoder stuck
@@ -135,8 +147,10 @@ baseline (`packages/db/baseline/prod-public-schema.sql`), followed by the
 post-baseline migrations. They cover one claim per document across two workers,
 expired-lease recovery, stale-token rejection, tenant key isolation, withdrawal before
 and after a claim and during inference, the retry cap, idempotent completion, budget
-deferral without attempt consumption, extraction timeout and saturation, the
-activation cut-off, strict key shapes, recent-only alerting, the published-guardrail
-requirement and the shared output contract. A real S3/application canary, model
+deferral without attempt consumption (gate before fetch, next-month deferral for a spent
+budget), opted-out tenants excluded from claims and stats, due-time claim order,
+extraction timeout and saturation, the activation cut-off, strict key shapes,
+recent-only alerting, the published-guardrail requirement and the shared output
+contract. A real S3/application canary, model
 timeout under real AWS and shutdown between claim and completion still require
 activation-stage testing.
