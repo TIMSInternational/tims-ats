@@ -43,6 +43,8 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
     public static readonly TimeSpan ConsentGateTimeout = TimeSpan.FromSeconds(30);
     /// <summary>A document that became terminal this recently raises the recovery alert.</summary>
     public static readonly TimeSpan RecentExhaustionWindow = TimeSpan.FromMinutes(15);
+    /// <summary>Longest deferral: a spent monthly budget waits for the next UTC month.</summary>
+    public static readonly TimeSpan MaxDeferral = TimeSpan.FromDays(32);
 
     /// <summary>
     /// Activation cut-off: documents created before it are never claimed or
@@ -58,7 +60,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
     {
         var now = UtcTimestamp(nowUtc);
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("""
+        await using var command = new NpgsqlCommand($"""
             SELECT
               count(*) FILTER (WHERE d.cv_parse_attempts < @max_attempts
                 AND (d.cv_parse_next_at IS NULL OR d.cv_parse_next_at <= @now)
@@ -78,6 +80,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
             WHERE d.type = 'cv' AND d.parsed_data IS NULL AND d.created_at <= @cutoff
               AND d.created_at >= @created_after
               AND c.deleted_at IS NULL
+              AND {NotOptedOut}
               AND d.file_url ~ ('^cv-uploads/' || d.organization_id::text || @key_suffix)
               AND EXISTS (SELECT 1 FROM data_consents consent
                 WHERE consent.organization_id = d.organization_id
@@ -154,7 +157,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         if (limit is < 1 or > MaxBatchSize) throw new ArgumentOutOfRangeException(nameof(limit));
         var now = UtcTimestamp(nowUtc);
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("""
+        await using var command = new NpgsqlCommand($"""
             WITH due AS (
               SELECT d.id
               FROM candidate_documents d
@@ -166,6 +169,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                 AND (d.cv_parse_lease_until IS NULL OR d.cv_parse_lease_until <= @now)
                 AND d.created_at >= @created_after
                 AND c.deleted_at IS NULL
+                AND {NotOptedOut}
                 AND d.file_url ~ ('^cv-uploads/' || d.organization_id::text || @key_suffix)
                 AND EXISTS (
                   SELECT 1 FROM data_consents consent
@@ -174,7 +178,9 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                     AND consent.consent_type = 'recruitment_data_processing'
                     AND consent.withdrawn_at IS NULL
                 )
-              ORDER BY d.created_at, d.id
+              -- Oldest DUE first, not oldest created: a document coming back from a
+              -- deferral queues behind work that became due before it.
+              ORDER BY COALESCE(d.cv_parse_next_at, d.created_at), d.id
               LIMIT @limit
               FOR UPDATE OF d SKIP LOCKED
             )
@@ -257,7 +263,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
     public async Task<bool> DeferAsync(CvParseLease lease, CvParseFailureCode code, TimeSpan delay,
         DateTime nowUtc, CancellationToken ct)
     {
-        if (delay <= TimeSpan.Zero || delay > TimeSpan.FromDays(1))
+        if (delay <= TimeSpan.Zero || delay > MaxDeferral)
             throw new ArgumentOutOfRangeException(nameof(delay));
         var now = UtcTimestamp(nowUtc);
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
@@ -385,6 +391,21 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         if (value.Kind != DateTimeKind.Utc) throw new ArgumentException("UTC time required", nameof(value));
         return DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
     }
+
+    /// <summary>
+    /// A tenant that turned cv-parser off is never claimed or counted: its CVs are
+    /// not recovery work, so they cannot re-enter the queue every hour (an S3 GET
+    /// and a decode each time), starve other tenants' recovery, or hold the
+    /// backlog alarm. Re-enabling the agent makes them eligible again.
+    /// </summary>
+    private const string NotOptedOut = """
+        NOT EXISTS (
+                  SELECT 1 FROM ai_agent_org_configs opt_out
+                  JOIN ai_agents agent ON agent.id = opt_out.agent_id
+                  WHERE agent.slug = 'cv-parser'
+                    AND opt_out.organization_id = d.organization_id
+                    AND opt_out.enabled = false)
+        """;
 
     private void AddEligibility(NpgsqlCommand command)
     {

@@ -127,6 +127,71 @@ public sealed class CvParseLeaseTests(CvParseLeaseFixture fixture)
     }
 
     [Fact]
+    public async Task Tenant_that_opted_out_of_cv_parser_is_never_claimed_or_counted()
+    {
+        await fixture.ResetAsync();
+        var agent = Guid.NewGuid();
+        var optedOut = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        await fixture.SeedAgentAsync(agent);
+        await fixture.SeedOrgConfigAsync(agent, optedOut, enabled: false, monthlyBudget: 25);
+        await fixture.SeedOrgConfigAsync(agent, other, enabled: true, monthlyBudget: 25);
+        // The opted-out tenant's CVs are older, so age ordering alone would serve them first.
+        for (var i = 0; i < 3; i++) await fixture.SeedAsync(optedOut, Now.AddMinutes(-30 + i));
+        var wanted = await fixture.SeedAsync(other, Now.AddMinutes(-3));
+
+        var stats = await _repository.ReadStatsAsync(Now, CancellationToken.None);
+        Assert.Equal(1, stats.Due);
+        Assert.InRange(stats.OldestDueAgeSeconds, 170, 190);
+        var claims = await _repository.ClaimDueAsync(10, Now, CancellationToken.None);
+        Assert.Equal(wanted, Assert.Single(claims).DocumentId);
+
+        // Re-enabling makes the tenant's CVs recovery work again.
+        await using (var connection = await fixture.Source.OpenConnectionAsync())
+        await using (var enable = new NpgsqlCommand(
+            "UPDATE ai_agent_org_configs SET enabled = true WHERE organization_id = @org", connection))
+        {
+            enable.Parameters.AddWithValue("org", optedOut);
+            await enable.ExecuteNonQueryAsync();
+        }
+        Assert.Equal(3, (await _repository.ClaimDueAsync(10, Now, CancellationToken.None)).Count);
+    }
+
+    [Fact]
+    public async Task Deferred_documents_queue_behind_work_that_became_due_before_them()
+    {
+        await fixture.ResetAsync();
+        var org = Guid.NewGuid();
+        var old = await fixture.SeedAsync(org, Now.AddMinutes(-30));
+        var deferred = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        Assert.Equal(old, deferred.DocumentId);
+        Assert.True(await _repository.DeferAsync(deferred, CvParseFailureCode.BudgetDenied,
+            TimeSpan.FromHours(1), Now, CancellationToken.None));
+        // Uploaded after the deferral started, due long before the deferral ends.
+        var fresh = await fixture.SeedAsync(org, Now.AddMinutes(5));
+
+        var first = Assert.Single(await _repository.ClaimDueAsync(1, Now.AddHours(2), CancellationToken.None));
+        Assert.Equal(fresh, first.DocumentId);
+        var second = Assert.Single(await _repository.ClaimDueAsync(1, Now.AddHours(2), CancellationToken.None));
+        Assert.Equal(old, second.DocumentId);
+    }
+
+    [Fact]
+    public async Task Deferral_can_reach_the_next_month_but_not_beyond_the_cap()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedAsync(Guid.NewGuid(), Now.AddMinutes(-3));
+        var claim = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => _repository.DeferAsync(claim,
+            CvParseFailureCode.BudgetDenied, CvParseLeaseRepository.MaxDeferral + TimeSpan.FromSeconds(1),
+            Now, CancellationToken.None));
+        Assert.True(await _repository.DeferAsync(claim, CvParseFailureCode.BudgetDenied,
+            TimeSpan.FromDays(31), Now, CancellationToken.None));
+        Assert.Empty(await _repository.ClaimDueAsync(1, Now.AddDays(30), CancellationToken.None));
+        Assert.Single(await _repository.ClaimDueAsync(1, Now.AddDays(31), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Stale_owner_cannot_defer_a_reclaimed_document()
     {
         await fixture.ResetAsync();
