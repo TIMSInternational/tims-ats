@@ -95,13 +95,24 @@ locals {
     # Q0b slice 2 (#172): the cross-org alert-metric surface. Enabling it WITHOUT populating the
     # alert_metrics_cron secret above is inert, not open — the gate refuses everything.
     Platform__AlertMetricsCronReadEnabled = tostring(var.feature_flags.alert_metrics_cron_read)
+    # Health page live dependency probes (Tims.Api/PlatformHealth). Platform-owner only, read-only. Enable only
+    # once the instance role carries the reads in health_probes.tf, or the AWS rows report access_denied.
+    Platform__PlatformHealthProbesEnabled = tostring(var.feature_flags.platform_health_probes)
     # #173. A STRING, not a bool: Tims.Domain.Identity.MfaGate.IsEnforced treats ONLY the exact "true" as
     # enabling, so a garbled value fails OPEN and cannot lock privileged operators out. Also never wired
     # when it shipped. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one
     # stack and served by the other is the hole #173 closes.
     Platform__MfaEnforced = var.mfa_enforced
   }
-  env = merge(local.base_env, var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
+  # Only non-empty probe identifiers are emitted; an unset one makes its probe report not_configured.
+  health_probe_env = { for k, v in {
+    PlatformHealth__CvUploadsBucket         = var.health_probe.cv_uploads_bucket
+    PlatformHealth__CvUploadsRegion         = var.health_probe.cv_uploads_region
+    PlatformHealth__BedrockGuardrailId      = var.health_probe.bedrock_guardrail_id
+    PlatformHealth__BedrockGuardrailVersion = var.health_probe.bedrock_guardrail_version
+    PlatformHealth__BedrockRegion           = var.health_probe.bedrock_region
+  } : k => v if v != "" }
+  env = merge(local.base_env, local.health_probe_env, var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
 }
 
 # --- ECR repository (the docker build/push in runbook §3 targets this) ----------------------------

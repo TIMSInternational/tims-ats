@@ -523,6 +523,16 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'POST /tenant-invitations/{id}/revoke',
     ],
   },
+  {
+    reason:
+      'PLATFORM HEALTH DEPENDENCY PROBES ARE LIVE INFRASTRUCTURE READS, NOT TENANT DATA. GET /platform/health/dependencies ' +
+      'is greenfield and C#-only (no tRPC twin — new logic does not go into packages/api), platform-owner only, and returns ' +
+      'status codes for live external dependencies (Supabase Auth, S3, SES, Bedrock control plane, the Quartz heartbeat). ' +
+      'There is nothing to compare against, its payload changes between any two runs by design, and it carries no ' +
+      'per-org rows for RLS Mode B to separate. Covered by Tims.IntegrationTests PlatformHealthEndpointTests (owner 200, ' +
+      'org-user 403, 401, dark 404, exact payload over the real SDK pipelines) and WorkerHeartbeatProbeTests.',
+    routes: ['GET /platform/health/dependencies'],
+  },
 ];
 
 const allowlistNormalised = UNREGISTERED_ALLOWLIST.flatMap((g) =>
@@ -605,7 +615,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         same candidate-consent group. 205 + 1 = 206.
     //         Re-derived after merging main: #331/#332/#334/#337/#339 added no deployed routes, so
     //         main 202 (after #339) + #345's +4 = 206.
-    expect(deployed.size).toBe(206);
+    //         206 → 207: the dark platform-owner GET /platform/health/dependencies, allowlisted in its own group.
+    expect(deployed.size).toBe(207);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -683,7 +694,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
     //   the group count below is unchanged. 109 + 1 = 110.
     //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
-    expect(allowlistNormalised.length).toBe(110);
+    //   110 → 111: GET /platform/health/dependencies (its own group — live infrastructure reads).
+    expect(allowlistNormalised.length).toBe(111);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -705,6 +717,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
     // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
     //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the sixteen documented gap categories').toBe(16);
+    // 16 → 17: platform health dependency probes — live infrastructure reads with no comparable twin and no tenant rows.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the seventeen documented gap categories').toBe(17);
   });
 });

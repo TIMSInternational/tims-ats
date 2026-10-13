@@ -242,8 +242,8 @@ describe('cross-stack pin — the web app translates every reason code the C# pr
       resolve(__dirname, '../../services/Tims.Platform/src/Tims.Application/PlatformHealth/DependencyHealthModels.cs'),
       'utf8',
     );
-    const reasonBlock = source.slice(source.indexOf('public static class DependencyReason'));
-    const block = reasonBlock.slice(0, reasonBlock.indexOf('}'));
+    // A bounded regex capture of the one class body (no open-ended slice — see no-hollow-source-slices).
+    const block = /public static class DependencyReason\s*\{([^}]*)\}/.exec(source)?.[1] ?? '';
     const codes = [...block.matchAll(/public const string \w+ = "([a-z_]+)";/g)].map((m) => m[1]!);
 
     expect(codes.length).toBeGreaterThanOrEqual(15);
