@@ -14,18 +14,44 @@ public sealed class CvParseRecoveryProcessor(
     ICvTextExtractor? extractor = null)
 {
     /// <summary>
-    /// A budget/configuration denial is a property of the tenant (monthly budget
-    /// spent, agent disabled), not of the CV. The claim is released WITHOUT
-    /// consuming an attempt and retried hourly, so a month-end budget cap can
-    /// never push a candidate's CV into the terminal exhausted state.
+    /// A budget/configuration denial is a property of the tenant or platform, not
+    /// of the CV, so the claim is always released WITHOUT consuming an attempt and
+    /// a budget cap can never push a candidate's CV into the terminal exhausted
+    /// state. The deferral length depends on why it was denied (see
+    /// <see cref="BudgetDeferralUntil"/>): a spent monthly budget cannot recover
+    /// before the next UTC month, so re-claiming it sooner only burns claim
+    /// throughput that other tenants' CVs need. Tenants that opted out are never
+    /// claimed at all (see <see cref="CvParseLeaseRepository.ClaimDueAsync"/>).
     /// </summary>
-    public static readonly TimeSpan BudgetDeferral = TimeSpan.FromHours(1);
+    public static readonly TimeSpan ConfigurationDeferral = TimeSpan.FromHours(1);
     public static readonly TimeSpan ExtractorSaturatedDeferral = TimeSpan.FromMinutes(10);
     private readonly ICvTextExtractor _extractor =
         extractor ?? new BoundedCvTextExtractor(BoundedCvTextExtractor.DefaultTimeout);
 
+    /// <summary>When a denied document becomes due again.</summary>
+    public static DateTime BudgetDeferralUntil(CvAiBudgetDenial reason, DateTime nowUtc) => reason switch
+    {
+        // The ledger sums spend from date_trunc('month', now) in UTC: nothing frees
+        // budget before the first instant of next month.
+        CvAiBudgetDenial.MonthlyBudgetSpent =>
+            new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1),
+        // Opt-out set after the claim (the claim itself skips opted-out tenants), or
+        // the catalog agent is not active: re-check hourly.
+        _ => nowUtc + ConfigurationDeferral
+    };
+
     public async Task<CvRecoveryOutcome> RunOneAsync(CvParseLease lease, CancellationToken ct)
     {
+        // Budget first: a denied tenant must not cost an S3 GET and a document decode.
+        try { await parser.AuthorizeAsync(lease.OrganizationId, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CvAiBudgetDeniedException denied) { return await DeferForBudgetAsync(lease, denied, ct).ConfigureAwait(false); }
+        catch (Exception)
+        {
+            await leases.FailAsync(lease, CvParseFailureCode.InferenceError, DateTime.UtcNow, ct).ConfigureAwait(false);
+            return CvRecoveryOutcome.Failed;
+        }
+
         byte[] bytes;
         try
         {
@@ -75,11 +101,9 @@ public sealed class CvParseRecoveryProcessor(
                 DateTime.UtcNow, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (CvAiBudgetDeniedException)
+        catch (CvAiBudgetDeniedException denied)
         {
-            await leases.DeferAsync(lease, CvParseFailureCode.BudgetDenied, BudgetDeferral,
-                DateTime.UtcNow, ct).ConfigureAwait(false);
-            return CvRecoveryOutcome.Deferred;
+            return await DeferForBudgetAsync(lease, denied, ct).ConfigureAwait(false);
         }
         catch (CvInvalidOutputException)
         {
@@ -96,5 +120,14 @@ public sealed class CvParseRecoveryProcessor(
         return await leases.CompleteAsync(lease, parsed.ParsedJson, parsed.EducationJson,
             parsed.LanguagesJson, DateTime.UtcNow, ct).ConfigureAwait(false)
             ? CvRecoveryOutcome.Completed : CvRecoveryOutcome.Ineligible;
+    }
+
+    private async Task<CvRecoveryOutcome> DeferForBudgetAsync(CvParseLease lease,
+        CvAiBudgetDeniedException denied, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        await leases.DeferAsync(lease, CvParseFailureCode.BudgetDenied,
+            BudgetDeferralUntil(denied.Reason, now) - now, now, ct).ConfigureAwait(false);
+        return CvRecoveryOutcome.Deferred;
     }
 }

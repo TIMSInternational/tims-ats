@@ -22,6 +22,13 @@ public sealed class CvInvalidOutputException : Exception
 /// </summary>
 public interface ICvParser
 {
+    /// <summary>
+    /// Cheap budget/configuration gate, run BEFORE the CV is fetched or decoded so a
+    /// denied tenant costs one query instead of an S3 GET and a PDF/DOCX decode.
+    /// Throws <see cref="CvAiBudgetDeniedException"/>. <see cref="ParseAsync"/> re-checks
+    /// immediately before spending, because the budget can move in between.
+    /// </summary>
+    Task AuthorizeAsync(Guid organizationId, CancellationToken ct);
     Task<CvParsedResult> ParseAsync(Guid organizationId, string cvText, CancellationToken ct);
 }
 
@@ -72,6 +79,9 @@ public sealed class BedrockCvParser(
     public static bool IsPublishedGuardrailVersion(string? version) =>
         version is { Length: >= 1 and <= 8 } && version[0] is >= '1' and <= '9' &&
         version.All(char.IsAsciiDigit);
+
+    public Task AuthorizeAsync(Guid organizationId, CancellationToken ct) =>
+        ledger.AuthorizeAsync(organizationId, DateTime.UtcNow, ct);
 
     public async Task<CvParsedResult> ParseAsync(Guid organizationId, string cvText, CancellationToken ct)
     {

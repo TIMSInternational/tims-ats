@@ -23,10 +23,12 @@ public sealed class CvAiBudgetLedgerTests(CvParseLeaseFixture fixture)
         Assert.Equal(agent, await ledger.AuthorizeAsync(firstOrg, Now, CancellationToken.None));
         await ledger.RecordAsync(agent, firstOrg, 800, 100, 300, true, Now, CancellationToken.None);
         // 0.0008 + 0.0005 = 0.0013: over the configured $0.001 budget.
-        await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
+        var spent = await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
             ledger.AuthorizeAsync(firstOrg, Now.AddSeconds(1), CancellationToken.None));
-        await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
+        Assert.Equal(CvAiBudgetDenial.MonthlyBudgetSpent, spent.Reason);
+        var disabled = await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
             ledger.AuthorizeAsync(secondOrg, Now, CancellationToken.None));
+        Assert.Equal(CvAiBudgetDenial.DisabledByTenant, disabled.Reason);
 
         await using var verify = await fixture.Source.OpenConnectionAsync();
         await using var check = new NpgsqlCommand("""
@@ -50,7 +52,8 @@ public sealed class CvAiBudgetLedgerTests(CvParseLeaseFixture fixture)
         await fixture.ResetAsync();
         var agent = Guid.NewGuid();
         await fixture.SeedAgentAsync(agent, status: "stub");
-        await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
+        var denied = await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
             new CvAiBudgetLedger(fixture.Source).AuthorizeAsync(Guid.NewGuid(), Now, CancellationToken.None));
+        Assert.Equal(CvAiBudgetDenial.AgentUnavailable, denied.Reason);
     }
 }

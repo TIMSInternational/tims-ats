@@ -77,7 +77,7 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
     }
 
     [Fact]
-    public async Task Budget_denial_defers_without_consuming_an_attempt()
+    public async Task Configuration_denial_defers_hourly_without_consuming_an_attempt()
     {
         await fixture.ResetAsync();
         var now = DateTime.UtcNow;
@@ -85,7 +85,7 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
         var leases = new CvParseLeaseRepository(fixture.Source);
         var lease = Assert.Single(await leases.ClaimDueAsync(2, now, CancellationToken.None));
         var processor = new CvParseRecoveryProcessor(leases, new ObjectStub(SyntheticPdf()),
-            new ParserStub { Throw = new CvAiBudgetDeniedException() });
+            new ParserStub { Throw = new CvAiBudgetDeniedException(CvAiBudgetDenial.AgentUnavailable) });
 
         Assert.Equal(CvRecoveryOutcome.Deferred, await processor.RunOneAsync(lease, CancellationToken.None));
 
@@ -94,6 +94,46 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
         Assert.Equal("budget_denied", code);
         Assert.False(leased);
         Assert.InRange(nextAt!.Value, now.AddMinutes(59), now.AddMinutes(61));
+    }
+
+    [Fact]
+    public async Task Spent_budget_is_denied_before_any_fetch_or_decode_and_waits_for_next_month()
+    {
+        await fixture.ResetAsync();
+        var now = DateTime.UtcNow;
+        var documentId = await fixture.SeedAsync(Guid.NewGuid(), now.AddMinutes(-3));
+        var leases = new CvParseLeaseRepository(fixture.Source);
+        var lease = Assert.Single(await leases.ClaimDueAsync(2, now, CancellationToken.None));
+        var store = new ObjectStub(SyntheticPdf());
+        var extractor = new CountingExtractor();
+        var parser = new ParserStub { DenyAuthorize = CvAiBudgetDenial.MonthlyBudgetSpent };
+        var processor = new CvParseRecoveryProcessor(leases, store, parser, extractor);
+
+        Assert.Equal(CvRecoveryOutcome.Deferred, await processor.RunOneAsync(lease, CancellationToken.None));
+
+        Assert.Equal(0, store.Fetches);
+        Assert.Equal(0, extractor.Calls);
+        Assert.Equal(0, parser.Calls);
+        var (attempts, code, nextAt, leased) = await ReadRetryStateAsync(documentId);
+        Assert.Equal(0, attempts);
+        Assert.Equal("budget_denied", code);
+        Assert.False(leased);
+        var nextMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        Assert.InRange(nextAt!.Value, nextMonth.AddSeconds(-1), nextMonth.AddSeconds(1));
+    }
+
+    [Theory]
+    [InlineData(CvAiBudgetDenial.MonthlyBudgetSpent, "2026-11-01T00:00:00Z")]
+    [InlineData(CvAiBudgetDenial.DisabledByTenant, "2026-10-31T23:59:59Z")]
+    [InlineData(CvAiBudgetDenial.AgentUnavailable, "2026-10-31T23:59:59Z")]
+    public void Deferral_length_follows_the_denial_reason(CvAiBudgetDenial reason, string expected)
+    {
+        var now = new DateTime(2026, 10, 31, 22, 59, 59, DateTimeKind.Utc);
+        Assert.Equal(DateTime.Parse(expected, null, System.Globalization.DateTimeStyles.AdjustToUniversal),
+            CvParseRecoveryProcessor.BudgetDeferralUntil(reason, now));
+        Assert.Equal(new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            CvParseRecoveryProcessor.BudgetDeferralUntil(CvAiBudgetDenial.MonthlyBudgetSpent,
+                new DateTime(2026, 12, 31, 23, 0, 0, DateTimeKind.Utc)));
     }
 
     [Fact]
@@ -185,11 +225,26 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
 
     private sealed class ObjectStub(byte[] bytes, Func<Task>? onFetch = null) : ICvObjectStore
     {
+        public int Fetches { get; private set; }
+
         public async Task<byte[]> FetchAsync(Guid organizationId, string objectKey, CancellationToken ct)
         {
+            Fetches++;
             Assert.StartsWith($"cv-uploads/{organizationId}/", objectKey);
             if (onFetch is not null) await onFetch();
             return bytes;
+        }
+    }
+
+    private sealed class CountingExtractor : ICvTextExtractor
+    {
+        public int Calls { get; private set; }
+        public int AbandonedExtractions => 0;
+
+        public Task<string> ExtractAsync(ReadOnlyMemory<byte> bytes, string objectKey, CancellationToken ct)
+        {
+            Calls++;
+            return Task.FromResult("Synthetic Candidate");
         }
     }
 
@@ -198,6 +253,13 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
         public int Calls { get; private set; }
         public string? LastText { get; private set; }
         public Exception? Throw { get; init; }
+        public CvAiBudgetDenial? DenyAuthorize { get; init; }
+
+        public Task AuthorizeAsync(Guid organizationId, CancellationToken ct) =>
+            DenyAuthorize is { } reason
+                ? Task.FromException(new CvAiBudgetDeniedException(reason))
+                : Task.CompletedTask;
+
         public Task<CvParsedResult> ParseAsync(Guid organizationId, string cvText, CancellationToken ct)
         {
             if (Throw is not null) return Task.FromException<CvParsedResult>(Throw);

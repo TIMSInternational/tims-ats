@@ -3,9 +3,21 @@ using NpgsqlTypes;
 
 namespace Tims.Infrastructure.CvParsing;
 
-public sealed class CvAiBudgetDeniedException : Exception
+/// <summary>Why the cv-parser budget gate refused a call. Each maps to a different retry policy.</summary>
+public enum CvAiBudgetDenial
 {
-    public CvAiBudgetDeniedException() : base("CV AI budget or configuration denied") { }
+    /// <summary>The catalog cv-parser agent is missing or not active: a platform condition.</summary>
+    AgentUnavailable,
+    /// <summary>The tenant turned cv-parser off (<c>ai_agent_org_configs.enabled = false</c>).</summary>
+    DisabledByTenant,
+    /// <summary>This calendar month's (UTC) spend has reached the tenant's budget.</summary>
+    MonthlyBudgetSpent
+}
+
+public sealed class CvAiBudgetDeniedException(CvAiBudgetDenial reason = CvAiBudgetDenial.AgentUnavailable)
+    : Exception("CV AI budget or configuration denied")
+{
+    public CvAiBudgetDenial Reason { get; } = reason;
 }
 
 /// <summary>
@@ -48,12 +60,14 @@ public sealed class CvAiBudgetLedger(NpgsqlDataSource source, double defaultMont
         command.Parameters.AddWithValue("now", NpgsqlDbType.Timestamp,
             DateTime.SpecifyKind(nowUtc, DateTimeKind.Unspecified));
         await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
-        if (!await reader.ReadAsync(ct).ConfigureAwait(false)) throw new CvAiBudgetDeniedException();
+        if (!await reader.ReadAsync(ct).ConfigureAwait(false))
+            throw new CvAiBudgetDeniedException(CvAiBudgetDenial.AgentUnavailable);
+        if (!reader.GetBoolean(1)) throw new CvAiBudgetDeniedException(CvAiBudgetDenial.DisabledByTenant);
         var budget = reader.GetDouble(2);
         var spent = reader.GetDouble(3);
-        if (!reader.GetBoolean(1) || !double.IsFinite(budget) || budget <= 0 ||
+        if (!double.IsFinite(budget) || budget <= 0 ||
             !double.IsFinite(spent) || spent < 0 || spent >= budget)
-            throw new CvAiBudgetDeniedException();
+            throw new CvAiBudgetDeniedException(CvAiBudgetDenial.MonthlyBudgetSpent);
         var agentId = reader.GetGuid(0);
         await reader.DisposeAsync().ConfigureAwait(false);
         await transaction.CommitAsync(ct).ConfigureAwait(false);
