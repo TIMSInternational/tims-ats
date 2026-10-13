@@ -66,6 +66,11 @@ const NPM_DEPENDENCIES: Record<string, Classification> = {
 
 const NUGET_PACKAGES: Record<string, Classification> = {
   'AWSSDK.SimpleEmail': 'aws-ses',
+  // C# CV pipeline: Converse calls for CV parsing and reads of uploaded CV objects.
+  'AWSSDK.BedrockRuntime': 'aws-bedrock',
+  'AWSSDK.S3': 'aws-s3',
+  // Platform health check: Bedrock control-plane reachability probe (no personal data sent).
+  'AWSSDK.Bedrock': 'aws-bedrock',
   'Stripe.net': 'stripe',
   // Program.cs: the C# rate limiter shares the Upstash Redis instance over its TCP endpoint.
   'StackExchange.Redis': 'upstash',
@@ -82,6 +87,7 @@ const NUGET_PACKAGES: Record<string, Classification> = {
   'Microsoft.Extensions.Http.Resilience': lib(),
   'Microsoft.Extensions.Logging.Console': lib(),
   'Microsoft.OpenApi': lib(),
+  PdfPig: lib('in-process PDF text extraction for CV parsing'),
   Quartz: lib(),
   'Quartz.Extensions.Hosting': lib(),
   'Quartz.Serialization.SystemTextJson': lib(),

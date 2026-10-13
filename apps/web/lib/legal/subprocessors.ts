@@ -90,7 +90,8 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
       en: 'Text sent in model requests, which can include CV content and candidate or employee profile data; model responses.',
     },
     condition: 'always',
-    evidence: [{ file: 'packages/ai/src/client.ts', contains: 'createAmazonBedrock' }],
+    // 'amazon-bedrock', not the factory name: tests/ai/door-gate.test.ts forbids that token outside packages/ai.
+    evidence: [{ file: 'packages/ai/src/client.ts', contains: 'amazon-bedrock' }],
   },
   {
     id: 'aws-s3',
