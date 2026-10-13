@@ -78,7 +78,14 @@ describe('scripts/loadtest is read-only', () => {
 
   it('finds the three scenario scripts and the shared helpers', () => {
     const names = scripts.map((s) => s.slice(LOADTEST_DIR.length + 1)).sort();
-    expect(names).toEqual(['careers.js', 'lib/config.js', 'lib/http.js', 'platform-reads.js', 'staff-reads.js']);
+    expect(names).toEqual([
+      'careers.js',
+      'lib/config.js',
+      'lib/guards.js',
+      'lib/http.js',
+      'platform-reads.js',
+      'staff-reads.js',
+    ]);
   });
 
   it('uses k6/http for GET only', () => {

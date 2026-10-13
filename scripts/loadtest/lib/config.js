@@ -5,6 +5,7 @@
 // This file runs inside k6 (goja), not Node: no npm imports, only k6 built-ins.
 
 import exec from 'k6/execution';
+import { parseBaseUrl, peakVus, sessionShortfall, targetRefusal } from './guards.js';
 
 /** Read an env var; empty string counts as unset. */
 export function env(name, fallback) {
@@ -36,46 +37,31 @@ export function requireEnv(name, hint) {
   return value;
 }
 
-/** Strip a trailing slash and validate the URL shape. */
+/** Strip a trailing slash and validate the URL shape (no userinfo; see guards.js). */
 export function baseUrl(name, fallback) {
   const raw = env(name, fallback);
   if (raw === undefined) throw new Error(`${name} is required (e.g. http://localhost:3000)`);
-  if (!/^https?:\/\/[^/?#\s]+(\/[^?#\s]*)?$/.test(raw)) throw new Error(`${name} is not an http(s) URL: "${raw}"`);
-  return raw.replace(/\/+$/, '');
-}
-
-function hostOf(url) {
-  return url
-    .replace(/^https?:\/\//, '')
-    .split('/')[0]
-    .split(':')[0]
-    .toLowerCase();
-}
-
-function isLoopback(host) {
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+  return parseBaseUrl(name, raw).url;
 }
 
 /**
  * Safety interlock. Any non-loopback target must be named, exactly, in LOADTEST_ALLOW_HOSTS
  * (comma-separated hostnames). A copy-pasted command therefore cannot silently point load at a
- * host the operator did not explicitly opt into for THIS run.
+ * host the operator did not explicitly opt into for THIS run. Hosts are parsed strictly
+ * (guards.js): a URL with userinfo is refused outright rather than misread as loopback.
  */
 export function assertTargetAllowed(urls) {
-  const allowed = env('LOADTEST_ALLOW_HOSTS', '')
-    .split(',')
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean);
-  for (const url of urls) {
-    const host = hostOf(url);
-    if (isLoopback(host)) continue;
-    if (!allowed.includes(host)) {
-      throw new Error(
-        `Refusing to target "${host}": not loopback and not listed in LOADTEST_ALLOW_HOSTS. ` +
-          'Read scripts/loadtest/README.md before pointing load at a deployed environment.',
-      );
-    }
-  }
+  const refusal = targetRefusal(urls, env('LOADTEST_ALLOW_HOSTS', '').split(','));
+  if (refusal) throw new Error(refusal);
+}
+
+/**
+ * Authenticated scenarios: refuse to start with fewer pre-issued sessions than peak VUs, unless
+ * LOADTEST_SHARED_SESSIONS=1. One user per VU keeps the run under the per-user rate limit.
+ */
+export function assertSessionsCoverVus(sessionCount, stageList) {
+  const refusal = sessionShortfall(sessionCount, peakVus(stageList), env('LOADTEST_SHARED_SESSIONS', '') === '1');
+  if (refusal) throw new Error(refusal);
 }
 
 /**

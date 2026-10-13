@@ -24,8 +24,14 @@ dependency: install it with `brew install k6` (macOS) or from the k6 releases pa
 
 ## Safety rails built into the scripts
 
-- **Host interlock.** Any target that is not `localhost`/`127.0.0.1` must be named exactly in
-  `LOADTEST_ALLOW_HOSTS` (comma-separated hostnames) or the run refuses to start.
+- **Host interlock.** Any target that is not `localhost`/`127.0.0.1`/`[::1]` must be named exactly
+  in `LOADTEST_ALLOW_HOSTS` (comma-separated hostnames) or the run refuses to start. Base URLs with
+  userinfo (`http://user@host`) are refused outright, so the interlock cannot be fooled about which
+  host k6 will connect to.
+- **One synthetic user per VU.** `staff-reads.js` and `platform-reads.js` refuse to start when peak
+  `VUS` exceeds the number of sessions, because one user's rate-limit budget is smaller than what
+  several VUs ask for (see "Rate limits"). `LOADTEST_SHARED_SESSIONS=1` overrides this, for the
+  local mock only.
 - **Small by default.** `PROFILE=smoke` (the default) is 1 VU for ~30 s. `VUS` above 50 refuses to
   start unless `LOADTEST_HIGH_LOAD=1`.
 - **Preflight.** `setup()` makes one request per session/endpoint and aborts on anything but success
@@ -59,6 +65,7 @@ dependency: install it with `brew install k6` (macOS) or from the k6 releases pa
 | `SESSION_COOKIE`                     | —                                                                                             | Full `Cookie` header value of a logged-in synthetic staff user (`staff-reads.js`)                     |
 | `ACCESS_TOKEN`                       | from `SESSION_COOKIE`                                                                         | Bearer token for `platform-reads.js`; read from the session cookie when unset                         |
 | `SESSIONS_FILE`                      | —                                                                                             | JSON array `[{"cookie": "...", "accessToken": "..."}]` (token optional), one entry per synthetic user |
+| `LOADTEST_SHARED_SESSIONS`           | (unset)                                                                                       | `1` lets VUs share sessions when `VUS` > sessions (local mock only)                                   |
 | `STAFF_VACANCY_IDS`                  | discovered                                                                                    | Vacancy uuids for the pipeline board                                                                  |
 | `PLATFORM_ENDPOINTS`                 | `/whoami,/reporting/kpis?period=30D,/reporting/funnel,/reporting/source-breakdown?period=30D` | C# GET paths                                                                                          |
 
@@ -79,18 +86,22 @@ error (107), so the scripts can gate a pipeline.
    ```
    In a second terminal, run any script with `WEB_BASE_URL=http://127.0.0.1:4310` and dummy
    `CAREERS_*` values (the mock accepts any session-shaped cookie and any bearer token; see the
-   header of `dev/mock-target.mjs`). Stopping the mock prints the request count by method; any
+   header of `dev/mock-target.mjs`). The mock has no rate limiter, so `LOADTEST_SHARED_SESSIONS=1`
+   is fine there for a multi-VU run with one dummy session. Stopping the mock prints the request count by method; any
    non-GET makes it exit 1.
 4. **Issue a session by hand, right before the run.** Sign in as the synthetic user in a private
    browser window. From the developer tools, copy the request `Cookie` header of any app page into
    `SESSION_COOKIE` (one value: the scripts read the access token for the C# scenario out of the
-   Supabase auth cookie inside it; `ACCESS_TOKEN` overrides that). For several users, put one
-   `{"cookie": "..."}` entry per user in a `SESSIONS_FILE`. Keep these values in your shell or in a
+   Supabase auth cookie inside it; `ACCESS_TOKEN` overrides that). A single `SESSION_COOKIE` is
+   enough for the 1-VU smoke only. For any ramp, sign in **one synthetic user per VU** (separate
+   private windows or browser profiles) and put one `{"cookie": "..."}` entry per user in a
+   `SESSIONS_FILE`; the authenticated scripts refuse to start with fewer sessions than `VUS`. Keep these values in your shell or in a
    file **outside the repository**; never paste them into a ticket, a PR or chat, and never run k6
    with `--http-debug=full` (it prints headers, including the cookie). Sign the browser session out
    after the run.
 5. **Start tiny.** `PROFILE=smoke` first, then `PROFILE=ramp` with `VUS=5`, then double while every
-   threshold stays green. Stop at the first red threshold and read the hosting dashboards before
+   threshold stays green. Each doubling of an authenticated ramp needs as many synthetic users in
+   `SESSIONS_FILE` as `VUS`. Stop at the first red threshold and read the hosting dashboards before
    going further.
    ```bash
    WEB_BASE_URL=https://<host> LOADTEST_ALLOW_HOSTS=<host> \
@@ -99,12 +110,17 @@ error (107), so the scripts can gate a pipeline.
    ```
    ```bash
    WEB_BASE_URL=https://<host> LOADTEST_ALLOW_HOSTS=<host> SESSION_COOKIE="$SESSION_COOKIE" \
+   PROFILE=smoke k6 run scripts/loadtest/staff-reads.js
+   ```
+   ```bash
+   WEB_BASE_URL=https://<host> LOADTEST_ALLOW_HOSTS=<host> SESSIONS_FILE="$HOME/<private-dir>/sessions-5.json" \
    PROFILE=ramp VUS=5 k6 run scripts/loadtest/staff-reads.js
    ```
    ```bash
-   WEB_BASE_URL=https://<host> LOADTEST_ALLOW_HOSTS=<host> SESSION_COOKIE="$SESSION_COOKIE" \
+   WEB_BASE_URL=https://<host> LOADTEST_ALLOW_HOSTS=<host> SESSIONS_FILE="$HOME/<private-dir>/sessions-5.json" \
    PROFILE=ramp VUS=5 k6 run scripts/loadtest/platform-reads.js
    ```
+   `sessions-5.json` holds five entries, one per synthetic user, and lives outside the repository.
 6. **Keep the evidence.** `k6 run --summary-export <file>.json ...` writes the end-of-test summary;
    store it outside the repository with the date, commit and profile used.
 
@@ -126,8 +142,10 @@ calls per minute at the time of writing; each procedure in a tRPC batch counts).
 
 Rough sizing: with the default 1–3 s think time, one VU makes 4 tRPC procedure calls per iteration
 of about 4 s in `careers.js` and `staff-reads.js`, and about one C# call every 2 s in
-`platform-reads.js` — on the order of 30–60 calls a minute either way. Plan **one synthetic user per
-VU** for the authenticated scenarios, and note that a user's tRPC and C# calls may share one budget.
+`platform-reads.js` — on the order of 30–60 calls a minute either way. The authenticated scenarios
+therefore require **one synthetic user per VU** (they refuse to start otherwise), and a user's tRPC
+and C# calls may share one budget, so do not run `staff-reads.js` and `platform-reads.js` at the
+same time with the same users.
 
 ## Reading the results
 

@@ -14,6 +14,7 @@
 import { sleep } from 'k6';
 import {
   abort,
+  assertSessionsCoverVus,
   assertTargetAllowed,
   baseUrl,
   env,
@@ -29,6 +30,7 @@ assertTargetAllowed([WEB]);
 
 const STAGES = stages();
 const SESSIONS = loadSessions({ cookie: true, accessToken: false });
+assertSessionsCoverVus(SESSIONS.length, STAGES);
 
 export const options = {
   scenarios: {
