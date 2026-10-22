@@ -155,4 +155,54 @@ public sealed class CvParseLeaseConsentVariantTests(CvParseLeaseFixture fixture)
         Assert.True(await _repository.CompleteAsync(lease, "{\"parsed\":true}", "[]", "[]", Now.AddSeconds(31),
             CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Concurrent_gates_and_completions_for_two_rows_of_one_person_never_deadlock()
+    {
+        // Tier-1 round 2: locking "own row first, then the sorted variants" let gate(A) hold A and wait
+        // for B while gate(B) held B and waited for A. Both now take the whole set in id order.
+        for (var round = 0; round < 15; round++)
+        {
+            await fixture.ResetAsync();
+            var org = Guid.NewGuid();
+            var docA = await fixture.SeedAsync(org, Now.AddMinutes(-4));
+            var docB = await fixture.SeedAsync(org, Now.AddMinutes(-3));
+            await using (var connection = await fixture.Source.OpenConnectionAsync())
+            await using (var same = new NpgsqlCommand("""
+                UPDATE candidates b SET email = upper(a.email)
+                FROM candidate_documents da, candidate_documents db, candidates a
+                WHERE da.id = @a AND db.id = @b AND a.id = da.candidate_id AND b.id = db.candidate_id
+                """, connection))
+            {
+                same.Parameters.AddWithValue("a", docA);
+                same.Parameters.AddWithValue("b", docB);
+                Assert.Equal(1, await same.ExecuteNonQueryAsync());
+            }
+            var leases = await _repository.ClaimDueAsync(2, Now, CancellationToken.None);
+            Assert.Equal(2, leases.Count);
+
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var work = leases.SelectMany(lease => new[]
+            {
+                Task.Run(async () =>
+                {
+                    await start.Task;
+                    return await _repository.RunWithConsentGateAsync(lease, async t =>
+                    {
+                        await Task.Delay(5, t);
+                        return "sent";
+                    }, Now, CancellationToken.None);
+                }),
+                Task.Run(async () =>
+                {
+                    await start.Task;
+                    await _repository.CompleteAsync(lease, "{\"parsed\":true}", "[]", "[]", Now, CancellationToken.None);
+                    return (string?)"done";
+                }),
+            }).ToArray();
+            start.SetResult();
+            // A deadlock surfaces as a PostgresException (40P01) from one of the tasks.
+            await Task.WhenAll(work).WaitAsync(TimeSpan.FromSeconds(30));
+        }
+    }
 }

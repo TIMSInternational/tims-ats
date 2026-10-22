@@ -136,24 +136,25 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
         await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
-        await using (var acquire = new NpgsqlCommand(
-            "SELECT pg_advisory_xact_lock(hashtextextended(@candidate, 0))", connection, transaction))
-        {
-            acquire.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
-            await acquire.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        }
-        // Also take the withdrawal lock of every same-email variant row (sorted, so two
-        // gates cannot deadlock): a withdrawal recorded on ANOTHER row for the same person
-        // then serializes with this request exactly like a withdrawal on this row does.
+        // The withdrawal lock (the same candidate-id advisory lock consent withdrawal takes) of
+        // this candidate AND of every same-email variant row, acquired in ONE statement in id
+        // order. A withdrawal recorded on another row for the same person then serializes with
+        // this request exactly like one on this row. One sorted acquisition, never "own row
+        // first, then the rest": two such requests (or a request and a multi-row withdrawal)
+        // locking in different orders could deadlock (tier-1 review). The candidate's own id is
+        // included even when its row is not visible, so the lock never silently disappears.
         await using (var variants = new NpgsqlCommand("""
             SELECT count(pg_advisory_xact_lock(hashtextextended(v.id::text, 0)))
             FROM (
-              SELECT variant.id FROM candidates variant
-              JOIN candidates self ON self.id = @candidate AND self.organization_id = @org
-              WHERE variant.organization_id = @org
-                AND (variant.id = self.id
-                  OR (btrim(self.email) <> '' AND lower(btrim(variant.email)) = lower(btrim(self.email))))
-              ORDER BY variant.id) v
+              SELECT ids.id FROM (
+                SELECT @candidate::uuid AS id
+                UNION
+                SELECT variant.id FROM candidates variant
+                JOIN candidates self ON self.id = @candidate AND self.organization_id = @org
+                WHERE variant.organization_id = @org
+                  AND btrim(self.email) <> ''
+                  AND lower(btrim(variant.email)) = lower(btrim(self.email))) ids
+              ORDER BY ids.id) v
             """, connection, transaction))
         {
             variants.Parameters.AddWithValue("candidate", lease.CandidateId);
@@ -410,24 +411,25 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
         await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
-        await using (var guard = new NpgsqlCommand(
-            "SELECT pg_advisory_xact_lock(hashtextextended(@candidate, 0))", connection, transaction))
-        {
-            guard.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
-            await guard.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        }
-        // Also take the withdrawal lock of every same-email variant row (sorted, so two
-        // gates cannot deadlock): a withdrawal recorded on ANOTHER row for the same person
-        // then serializes with this request exactly like a withdrawal on this row does.
+        // The withdrawal lock (the same candidate-id advisory lock consent withdrawal takes) of
+        // this candidate AND of every same-email variant row, acquired in ONE statement in id
+        // order. A withdrawal recorded on another row for the same person then serializes with
+        // this request exactly like one on this row. One sorted acquisition, never "own row
+        // first, then the rest": two such requests (or a request and a multi-row withdrawal)
+        // locking in different orders could deadlock (tier-1 review). The candidate's own id is
+        // included even when its row is not visible, so the lock never silently disappears.
         await using (var variants = new NpgsqlCommand("""
             SELECT count(pg_advisory_xact_lock(hashtextextended(v.id::text, 0)))
             FROM (
-              SELECT variant.id FROM candidates variant
-              JOIN candidates self ON self.id = @candidate AND self.organization_id = @org
-              WHERE variant.organization_id = @org
-                AND (variant.id = self.id
-                  OR (btrim(self.email) <> '' AND lower(btrim(variant.email)) = lower(btrim(self.email))))
-              ORDER BY variant.id) v
+              SELECT ids.id FROM (
+                SELECT @candidate::uuid AS id
+                UNION
+                SELECT variant.id FROM candidates variant
+                JOIN candidates self ON self.id = @candidate AND self.organization_id = @org
+                WHERE variant.organization_id = @org
+                  AND btrim(self.email) <> ''
+                  AND lower(btrim(variant.email)) = lower(btrim(self.email))) ids
+              ORDER BY ids.id) v
             """, connection, transaction))
         {
             variants.Parameters.AddWithValue("candidate", lease.CandidateId);
