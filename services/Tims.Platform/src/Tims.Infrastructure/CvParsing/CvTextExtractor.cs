@@ -134,46 +134,93 @@ public interface ICvTextExtractor
 /// caller stops waiting at the deadline and gets a RETRYABLE
 /// <see cref="CvExtractionTimeoutException"/>. Cancellation is also checked
 /// between pages/paragraphs, but a decoder stuck inside one page cannot be
-/// interrupted in-process, so at most <c>maxAbandoned</c> overrun extractions
-/// may still be burning CPU at once; beyond that new extractions are refused
-/// with <see cref="CvExtractorSaturatedException"/> instead of piling up threads.
+/// interrupted in-process.
+///
+/// The resource bound is on decoder THREADS, not on how many have already timed
+/// out: a slot is reserved atomically BEFORE a decoder starts and released only
+/// when that decoder actually ends, whether it finished, timed out, or its caller
+/// was cancelled. So at most <c>maxDecoders</c> decoders (and therefore at most
+/// that many overrunning ones) burn CPU in the API process at once; a call beyond
+/// that is refused with <see cref="CvExtractorSaturatedException"/> (deferred by
+/// the processor without spending an attempt). The earlier check counted only
+/// decoders that had ALREADY timed out, so concurrent callers could all be
+/// admitted and leave more overrunning threads than the stated limit (tier-1 review).
 /// </summary>
 public sealed class BoundedCvTextExtractor(
     TimeSpan timeout,
     Func<ReadOnlyMemory<byte>, string, CancellationToken, string>? decode = null,
-    int maxAbandoned = 2) : ICvTextExtractor
+    int maxDecoders = 2) : ICvTextExtractor
 {
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
     private readonly Func<ReadOnlyMemory<byte>, string, CancellationToken, string> _decode =
         decode ?? CvTextExtractor.Extract;
+    private int _live;
     private int _abandoned;
 
+    /// <summary>Decoders whose caller stopped waiting (deadline or cancellation) but which still run.</summary>
     public int AbandonedExtractions => Volatile.Read(ref _abandoned);
+
+    /// <summary>Decoder threads alive right now (normal and abandoned).</summary>
+    public int LiveDecoders => Volatile.Read(ref _live);
 
     public async Task<string> ExtractAsync(ReadOnlyMemory<byte> bytes, string objectKey, CancellationToken ct)
     {
         if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
-        if (Volatile.Read(ref _abandoned) >= maxAbandoned) throw new CvExtractorSaturatedException();
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (maxDecoders < 1) throw new ArgumentOutOfRangeException(nameof(maxDecoders));
+        if (Interlocked.Increment(ref _live) > maxDecoders)
+        {
+            Interlocked.Decrement(ref _live);
+            throw new CvExtractorSaturatedException();
+        }
+        var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = deadline.Token;
-        var work = Task.Factory.StartNew(() => _decode(bytes, objectKey, token), CancellationToken.None,
-            TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
+        Task<string> work;
+        try
+        {
+            work = Task.Factory.StartNew(() => _decode(bytes, objectKey, token), CancellationToken.None,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
+        }
+        catch
+        {
+            Interlocked.Decrement(ref _live);
+            deadline.Dispose();
+            throw;
+        }
+        // The slot (and the token source the decoder reads) is released only when the decoder ends.
+        _ = work.ContinueWith(static (_, state) =>
+        {
+            var (self, source) = ((BoundedCvTextExtractor, CancellationTokenSource))state!;
+            Interlocked.Decrement(ref self._live);
+            source.Dispose();
+        }, (this, deadline), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         try
         {
             return await work.WaitAsync(timeout, ct).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
-            deadline.Cancel();
-            Interlocked.Increment(ref _abandoned);
-            _ = work.ContinueWith(static (_, state) =>
-                Interlocked.Decrement(ref ((BoundedCvTextExtractor)state!)._abandoned), this,
-                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            Abandon(work, deadline);
             throw new CvExtractionTimeoutException();
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             throw new CvExtractionTimeoutException();
         }
+        catch (OperationCanceledException)
+        {
+            // The caller was cancelled; the decoder may keep running. Count it until it ends.
+            Abandon(work, deadline);
+            throw;
+        }
+    }
+
+    private void Abandon(Task work, CancellationTokenSource deadline)
+    {
+        try { deadline.Cancel(); } catch (ObjectDisposedException) { /* the decoder already ended */ }
+        if (work.IsCompleted) return;
+        Interlocked.Increment(ref _abandoned);
+        _ = work.ContinueWith(static (_, state) =>
+            Interlocked.Decrement(ref ((BoundedCvTextExtractor)state!)._abandoned), this,
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 }

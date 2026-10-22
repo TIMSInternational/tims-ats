@@ -209,7 +209,7 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
         {
             release.Wait(TimeSpan.FromSeconds(30));
             return "never used";
-        }, maxAbandoned: 1);
+        }, maxDecoders: 1);
         var processor = new CvParseRecoveryProcessor(leases, new ObjectStub(SyntheticPdf()), new ParserStub(), extractor);
 
         Assert.Equal(CvRecoveryOutcome.Failed, await processor.RunOneAsync(claims[0], CancellationToken.None));
