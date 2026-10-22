@@ -98,6 +98,18 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                   AND consent.subject_user_id = d.candidate_id
                   AND consent.consent_type = 'recruitment_data_processing'
                   AND consent.withdrawn_at IS NULL)
+              -- A withdrawal on this candidate OR on another row of the same organization with the
+              -- same nonblank normalized email covers this CV too (the TS consent guard and the C#
+              -- interview-join rule; tier-1 review). Kept identical in all four predicates.
+              AND NOT EXISTS (
+                SELECT 1 FROM data_consents withdrawn
+                JOIN candidates variant ON variant.id = withdrawn.subject_user_id
+                  AND variant.organization_id = d.organization_id
+                WHERE withdrawn.organization_id = d.organization_id
+                  AND withdrawn.consent_type = 'recruitment_data_processing'
+                  AND withdrawn.withdrawn_at IS NOT NULL
+                  AND (variant.id = d.candidate_id
+                    OR (btrim(c.email) <> '' AND lower(btrim(variant.email)) = lower(btrim(c.email)))))
             """, connection);
         command.Parameters.AddWithValue("max_attempts", MaxAttempts);
         AddTimestamp(command, "now", now);
@@ -121,14 +133,35 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
     public async Task<T?> RunWithConsentGateAsync<T>(CvParseLease lease,
         Func<CancellationToken, Task<T>> work, DateTime nowUtc, CancellationToken ct) where T : class
     {
+        // From method ENTRY: pool acquisition, transaction setup and the lock wait all spend lease time.
+        var lockWait = System.Diagnostics.Stopwatch.StartNew();
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
         await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
-        await using (var acquire = new NpgsqlCommand(
-            "SELECT pg_advisory_xact_lock(hashtextextended(@candidate, 0))", connection, transaction))
+        // The withdrawal lock (the same candidate-id advisory lock consent withdrawal takes) of
+        // this candidate AND of every same-email variant row, acquired in ONE statement in id
+        // order. A withdrawal recorded on another row for the same person then serializes with
+        // this request exactly like one on this row. One sorted acquisition, never "own row
+        // first, then the rest": two such requests (or a request and a multi-row withdrawal)
+        // locking in different orders could deadlock (tier-1 review). The candidate's own id is
+        // included even when its row is not visible, so the lock never silently disappears.
+        await using (var variants = new NpgsqlCommand("""
+            SELECT count(pg_advisory_xact_lock(hashtextextended(v.id::text, 0)))
+            FROM (
+              SELECT ids.id FROM (
+                SELECT @candidate::uuid AS id
+                UNION
+                SELECT variant.id FROM candidates variant
+                JOIN candidates self ON self.id = @candidate AND self.organization_id = @org
+                WHERE variant.organization_id = @org
+                  AND btrim(self.email) <> ''
+                  AND lower(btrim(variant.email)) = lower(btrim(self.email))) ids
+              ORDER BY ids.id) v
+            """, connection, transaction))
         {
-            acquire.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
-            await acquire.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            variants.Parameters.AddWithValue("candidate", lease.CandidateId);
+            variants.Parameters.AddWithValue("org", lease.OrganizationId);
+            await variants.ExecuteScalarAsync(ct).ConfigureAwait(false);
         }
         await using (var check = new NpgsqlCommand("""
             SELECT EXISTS (
@@ -145,6 +178,18 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                     AND consent.subject_user_id = d.candidate_id
                     AND consent.consent_type = 'recruitment_data_processing'
                     AND consent.withdrawn_at IS NULL)
+                -- A withdrawal on this candidate OR on another row of the same organization with the
+                -- same nonblank normalized email covers this CV too (the TS consent guard and the C#
+                -- interview-join rule; tier-1 review). Kept identical in all four predicates.
+                AND NOT EXISTS (
+                  SELECT 1 FROM data_consents withdrawn
+                  JOIN candidates variant ON variant.id = withdrawn.subject_user_id
+                    AND variant.organization_id = d.organization_id
+                  WHERE withdrawn.organization_id = d.organization_id
+                    AND withdrawn.consent_type = 'recruitment_data_processing'
+                    AND withdrawn.withdrawn_at IS NOT NULL
+                    AND (variant.id = d.candidate_id
+                      OR (btrim(c.email) <> '' AND lower(btrim(variant.email)) = lower(btrim(c.email)))))
             )
             """, connection, transaction))
         {
@@ -152,7 +197,14 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
             check.Parameters.AddWithValue("org", lease.OrganizationId);
             check.Parameters.AddWithValue("candidate", lease.CandidateId);
             check.Parameters.AddWithValue("token", lease.Token);
-            AddTimestamp(check, "now", UtcTimestamp(nowUtc));
+            // The lease must still be held when the bounded callback can last end: the caller's
+            // time plus everything spent since entering this method (connection, setup, lock
+            // wait), plus the callback's own timeout. The eligibility query's own latency is not
+            // included; it is a single indexed lookup, and a result that loses its lease anyway
+            // is still rejected by the token check at completion.
+            // Otherwise a gate that waited on a variant's lock past expiry ran inference on a
+            // lease another worker could reclaim mid-call (tier-1 review).
+            AddTimestamp(check, "now", UtcTimestamp(nowUtc) + lockWait.Elapsed + ConsentGateTimeout);
             var active = (bool)(await check.ExecuteScalarAsync(ct).ConfigureAwait(false) ?? false);
             if (!active) return null;
         }
@@ -199,6 +251,18 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                     AND consent.consent_type = 'recruitment_data_processing'
                     AND consent.withdrawn_at IS NULL
                 )
+                -- A withdrawal on this candidate OR on another row of the same organization with the
+                -- same nonblank normalized email covers this CV too (the TS consent guard and the C#
+                -- interview-join rule; tier-1 review). Kept identical in all four predicates.
+                AND NOT EXISTS (
+                  SELECT 1 FROM data_consents withdrawn
+                  JOIN candidates variant ON variant.id = withdrawn.subject_user_id
+                    AND variant.organization_id = d.organization_id
+                  WHERE withdrawn.organization_id = d.organization_id
+                    AND withdrawn.consent_type = 'recruitment_data_processing'
+                    AND withdrawn.withdrawn_at IS NOT NULL
+                    AND (variant.id = d.candidate_id
+                      OR (btrim(c.email) <> '' AND lower(btrim(variant.email)) = lower(btrim(c.email)))))
               -- Oldest DUE first, not oldest created: a document coming back from a
               -- deferral queues behind work that became due before it.
               ORDER BY COALESCE(d.cv_parse_next_at, d.created_at), d.id
@@ -223,6 +287,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         command.Parameters.AddWithValue("limit", limit);
         AddEligibility(command);
 
+        await FinalizeExpiredFinalLeasesAsync(connection, now, ct).ConfigureAwait(false);
         var leases = new List<CvParseLease>(limit);
         await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -231,6 +296,43 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
                 reader.GetString(3), reader.GetGuid(4), reader.GetInt32(5)));
         }
         return leases;
+    }
+
+    /// <summary>
+    /// A worker that dies after claiming the LAST attempt leaves attempts at the cap, a null
+    /// failure code and an expired lease: never claimable again (attempts must be below the cap)
+    /// and invisible to the recent-exhaustion alert (it needs a failure code). Each claim tick
+    /// first moves such documents into an explicit terminal state, `lease_expired`, stamped now,
+    /// so the alert sees them (tier-1 review). Runs on the claim's privileged connection.
+    /// </summary>
+    private async Task FinalizeExpiredFinalLeasesAsync(NpgsqlConnection connection, DateTime now,
+        CancellationToken ct)
+    {
+        // Bounded and SKIP LOCKED: a row some other transaction holds must never make the
+        // claim (and therefore recovery for every tenant) wait behind it (tier-1 review).
+        await using var finalize = new NpgsqlCommand("""
+            WITH stuck AS (
+              SELECT d.id FROM candidate_documents d
+              WHERE d.type = 'cv' AND d.parsed_data IS NULL
+                AND d.cv_parse_attempts >= @max_attempts
+                AND d.cv_parse_lease_token IS NOT NULL
+                AND d.cv_parse_lease_until <= @now
+                AND d.created_at >= @created_after
+              ORDER BY d.cv_parse_lease_until, d.id
+              LIMIT 100
+              FOR UPDATE OF d SKIP LOCKED
+            )
+            UPDATE candidate_documents d
+            SET cv_parse_lease_token = NULL,
+                cv_parse_lease_until = NULL,
+                cv_parse_failure_code = 'lease_expired',
+                updated_at = @now
+            FROM stuck WHERE d.id = stuck.id
+            """, connection);
+        AddTimestamp(finalize, "now", now);
+        AddTimestamp(finalize, "created_after", _createdAfter);
+        finalize.Parameters.AddWithValue("max_attempts", MaxAttempts);
+        await finalize.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Release a failed claim. Only its current owner can move the retry clock.</summary>
@@ -327,11 +429,30 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
         await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
-        await using (var guard = new NpgsqlCommand(
-            "SELECT pg_advisory_xact_lock(hashtextextended(@candidate, 0))", connection, transaction))
+        // The withdrawal lock (the same candidate-id advisory lock consent withdrawal takes) of
+        // this candidate AND of every same-email variant row, acquired in ONE statement in id
+        // order. A withdrawal recorded on another row for the same person then serializes with
+        // this request exactly like one on this row. One sorted acquisition, never "own row
+        // first, then the rest": two such requests (or a request and a multi-row withdrawal)
+        // locking in different orders could deadlock (tier-1 review). The candidate's own id is
+        // included even when its row is not visible, so the lock never silently disappears.
+        await using (var variants = new NpgsqlCommand("""
+            SELECT count(pg_advisory_xact_lock(hashtextextended(v.id::text, 0)))
+            FROM (
+              SELECT ids.id FROM (
+                SELECT @candidate::uuid AS id
+                UNION
+                SELECT variant.id FROM candidates variant
+                JOIN candidates self ON self.id = @candidate AND self.organization_id = @org
+                WHERE variant.organization_id = @org
+                  AND btrim(self.email) <> ''
+                  AND lower(btrim(variant.email)) = lower(btrim(self.email))) ids
+              ORDER BY ids.id) v
+            """, connection, transaction))
         {
-            guard.Parameters.AddWithValue("candidate", lease.CandidateId.ToString());
-            await guard.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            variants.Parameters.AddWithValue("candidate", lease.CandidateId);
+            variants.Parameters.AddWithValue("org", lease.OrganizationId);
+            await variants.ExecuteScalarAsync(ct).ConfigureAwait(false);
         }
 
         await using (var document = new NpgsqlCommand("""
@@ -339,13 +460,23 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
             SET parsed_data = @parsed, cv_parse_lease_token = NULL,
                 cv_parse_lease_until = NULL, cv_parse_next_at = NULL,
                 cv_parse_failure_code = NULL, updated_at = @now
+            FROM candidates c
             WHERE d.id = @id AND d.organization_id = @org AND d.candidate_id = @candidate
               AND d.cv_parse_lease_token = @token AND d.parsed_data IS NULL
-              AND EXISTS (
-                SELECT 1 FROM candidates c
-                WHERE c.id = d.candidate_id AND c.organization_id = d.organization_id
-                  AND c.deleted_at IS NULL
-              )
+              AND c.id = d.candidate_id AND c.organization_id = d.organization_id
+              AND c.deleted_at IS NULL
+              -- A withdrawal on this candidate OR on another row of the same organization with the
+              -- same nonblank normalized email covers this CV too (the TS consent guard and the C#
+              -- interview-join rule; tier-1 review). Kept identical in all four predicates.
+              AND NOT EXISTS (
+                SELECT 1 FROM data_consents withdrawn
+                JOIN candidates variant ON variant.id = withdrawn.subject_user_id
+                  AND variant.organization_id = d.organization_id
+                WHERE withdrawn.organization_id = d.organization_id
+                  AND withdrawn.consent_type = 'recruitment_data_processing'
+                  AND withdrawn.withdrawn_at IS NOT NULL
+                  AND (variant.id = d.candidate_id
+                    OR (btrim(c.email) <> '' AND lower(btrim(variant.email)) = lower(btrim(c.email)))))
               AND EXISTS (
                 SELECT 1 FROM data_consents consent
                 WHERE consent.organization_id = d.organization_id
