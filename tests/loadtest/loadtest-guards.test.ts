@@ -68,6 +68,12 @@ describe('loadtest sessions vs VUs', () => {
   });
 
   // Tier-1 (Codex) review: entries were counted, not users.
+  it('the scenario guard applies the distinct-user check, not only the entry count', () => {
+    const config = readFileSync(join(LOADTEST_DIR, 'lib', 'config.js'), 'utf8');
+    const fn = /export function assertSessionsCoverVus\([^]*?\n\}\n/.exec(config)?.[0] ?? '';
+    expect(fn).toMatch(/distinctUserShortfall\(subjects, vus, shared\)/);
+  });
+
   it('refuses duplicated sessions of one user, and sessions whose user cannot be read', () => {
     expect(distinctUserShortfall(['u1', 'u1', 'u1', 'u1', 'u1'], 5, false)).toMatch(/only 1 distinct user/);
     expect(distinctUserShortfall(['u1', 'u2', 'u3', 'u4', undefined], 5, false)).toMatch(/no readable user id/);
