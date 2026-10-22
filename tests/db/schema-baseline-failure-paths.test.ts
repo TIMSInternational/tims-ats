@@ -479,6 +479,28 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
     expect(out).not.toMatch(/SYNTHETIC_IN_COMMENT_42/);
   });
 
+  it("an apostrophe inside a double-quoted identifier does not desynchronise the parser (tier-1 round 3)", () => {
+    const root = makeTree('objects-only-dq-ident');
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);
+    const hostile = [
+      ...V1,
+      `CREATE FUNCTION public."o'clock"() RETURNS void`,
+      '    LANGUAGE plpgsql',
+      '    AS $$',
+      "BEGIN -- don't",
+      'CREATE TABLE "SYNTHETIC_SECRET_DQ_1234" (x int);',
+      'END',
+      '$$;',
+    ];
+    const { code, out } = run(root, ['check'], {
+      DIRECT_URL: FAKE_URL,
+      PG_DUMP: stub(root, 'v5', hostile),
+      SCHEMA_DRIFT_OBJECTS_ONLY: '1',
+    });
+    expect(code).toBe(1);
+    expect(out).not.toMatch(/SYNTHETIC_SECRET_DQ_1234/);
+  });
+
   it('a body-only change is reported by its enclosing object, never by its text (tier-1 round 2)', () => {
     const root = makeTree('objects-only-body-change');
     const fn = (ret: string) => [

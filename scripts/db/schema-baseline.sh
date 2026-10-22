@@ -121,7 +121,7 @@ OBJ_MARK='@@obj@@ '
 # object_summary except the strict object names.
 annotate_statements() {
   awk '
-    BEGIN { inq = 0; indol = 0; tag = ""; obj = "?" }
+    BEGIN { inq = 0; indq = 0; indol = 0; tag = ""; obj = "?" }
     {
       line = $0
       body = (inq || indol)
@@ -137,6 +137,14 @@ annotate_statements() {
           if (p == 0) break
           indol = 0; i += p - 1 + length(tag); continue
         }
+        if (indq) {
+          # Inside a double-quoted identifier: an apostrophe or a $ here is part of the name.
+          p = index(substr(line, i), "\042")
+          if (p == 0) { i = L + 1; break }
+          i += p
+          if (substr(line, i, 1) == "\042") { i++; continue }
+          indq = 0; continue
+        }
         if (inq) {
           p = index(substr(line, i), "\047")
           if (p == 0) break
@@ -146,6 +154,7 @@ annotate_statements() {
         }
         c = substr(line, i, 1)
         if (c == "\047") { inq = 1; i++; continue }
+        if (c == "\042") { indq = 1; i++; continue }
         if (c == "-" && substr(line, i + 1, 1) == "-") break
         if (c == "$") {
           rest = substr(line, i)
