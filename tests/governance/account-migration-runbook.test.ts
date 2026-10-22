@@ -232,5 +232,15 @@ describe('account migration runbook: tier-1 review claims', () => {
     expect(text).toMatch(/ses:SendEmail/);
     expect(text).toMatch(/s3:PutObject` \+ `s3:GetObject/);
   });
+
+  it('round 2: no rotation before the rollback window closes; real job flags; raw email grant', () => {
+    const text = doc();
+    expect(text).not.toMatch(/\*\*rotate while moving\*\*/i);
+    expect(text).toMatch(/AFTER blue is paused and the step 10 rollback window has closed/);
+    expect(text).toMatch(/It does NOT turn scheduling off/);
+    expect(text).toMatch(/Platform__FxRefreshEnabled/);
+    expect(text).toMatch(/ses:SendEmail` and `ses:SendRawEmail/);
+    expect(text).toMatch(/interview invitation arrives with its `\.ics` attachment/);
+  });
 });
 
