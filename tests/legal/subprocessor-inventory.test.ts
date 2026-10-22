@@ -7,8 +7,11 @@ import { SUBPROCESSORS } from '../../apps/web/lib/legal/subprocessors';
 // keeps that list honest in BOTH directions:
 //   1. every listed vendor's evidence still exists in the code (no stale entries);
 //   2. every runtime dependency, .NET package and outbound host in the code is classified —
-//      either as a listed vendor or as an explicit, reasoned non-vendor — so adding a new SDK or
-//      API host without updating the list fails here.
+//      either as a listed vendor or as an explicit, reasoned non-vendor — so adding a new SDK, or an
+//      API host written as a LITERAL https/wss URL in source, without updating the list fails here.
+//   NOT covered (tier-1 review): an endpoint whose URL comes only from configuration (an env var or a
+//   secret) is invisible to a source scan. Such a vendor needs its activating variable in `activatedBy`
+//   and a reviewer; the "configured" check below only proves listed variables are still read.
 
 const ROOT = resolve(__dirname, '../..');
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -201,6 +204,12 @@ function referencedHosts(): Map<string, string> {
 // Comment-only documentation links are not data flows.
 const DOC_HOSTS = new Set(['docs.daily.co', 'nextjs.org', 'github.com', 'www.postgresql.org']);
 
+// Exact placeholder hosts (RFC 2606/6761-style examples). An exact list, never a substring rule: the old
+// `includes('domain')` exempted real vendors such as api.domainr.com (tier-1 review).
+const PLACEHOLDER_HOSTS = new Set(['example.com']);
+const isPlaceholderHost = (h: string) =>
+  PLACEHOLDER_HOSTS.has(h) || h.endsWith('.example.com') || h.endsWith('.example') || h.endsWith('.test') || h.endsWith('.invalid');
+
 function unclassified(found: Map<string, string>, classify: (key: string) => Classification | undefined) {
   return [...found]
     .filter(([key]) => classify(key) === undefined)
@@ -254,8 +263,16 @@ describe('subprocessor list (apps/web/lib/legal/subprocessors.ts)', () => {
   it('every https/wss host referenced in source is classified', () => {
     const hosts = referencedHosts();
     for (const doc of DOC_HOSTS) hosts.delete(doc);
-    const placeholder = (h: string) => h.includes('domain') || h === 'example.com';
-    expect(unclassified(hosts, (h) => (placeholder(h) ? { notAVendor: 'placeholder' } : classifyHost(h)))).toEqual([]);
+    expect(unclassified(hosts, (h) => (isPlaceholderHost(h) ? { notAVendor: 'placeholder' } : classifyHost(h)))).toEqual([]);
+  });
+
+  it('only reserved example hosts count as placeholders, never a real vendor that merely contains a word', () => {
+    for (const real of ['api.domainr.com', 'domain.com', 'mydomain.io', 'example.com.evil.net']) {
+      expect(isPlaceholderHost(real), real).toBe(false);
+    }
+    for (const reserved of ['example.com', 'app.example.com', 'tenant.example', 'ats.example.test', 'x.invalid']) {
+      expect(isPlaceholderHost(reserved), reserved).toBe(true);
+    }
   });
 
   it('every vendor named by a classification exists in the list, and every listed vendor is detected', () => {
