@@ -84,11 +84,19 @@ const PINNED = /\bSET\s+search_path\s*(?:=|TO)\s*/i;
  * quoted option value (`SET search_path = ''`) survives because only `AS '...'` bodies are stripped.
  */
 function optionsOf(stmt: string): string {
-  return stmt
+  let text = stmt
     .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' ')
-    .replace(/\bAS\s+'(?:[^']|'')*'/gi, ' AS ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/--[^\n]*/g, ' ');
+    .replace(/\bAS\s+'(?:[^']|'')*'/gi, ' AS ');
+  // PostgreSQL block comments nest: remove innermost ones until none remain (tier-1 review, round 3).
+  for (let prev = ''; prev !== text; ) {
+    prev = text;
+    text = text.replace(/\/\*(?:(?!\/\*|\*\/)[\s\S])*\*\//g, ' ');
+  }
+  text = text.replace(/--[^\n]*/g, ' ');
+  // The function statement ends at its first ';' once bodies and comments are gone: anything after it
+  // (a session `SET search_path`, an unrelated ALTER FUNCTION) is not this function's option.
+  const end = text.indexOf(';');
+  return end < 0 ? text : text.slice(0, end);
 }
 
 describe('governance — committed function DDL pins search_path', () => {
@@ -122,6 +130,9 @@ describe('governance — committed function DDL pins search_path', () => {
       "CREATE FUNCTION f() RETURNS int\n-- SET search_path = ''\nAS $$ SELECT 1 $$ LANGUAGE sql;",
       "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1 /* SET search_path = x */';",
       "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$\nLANGUAGE sql /* SET search_path = '' */;",
+      "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql /* outer /* inner */ SET search_path = '' */;",
+      "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1'; SET search_path = public;",
+      "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';\nALTER FUNCTION g() SET search_path = '';",
     ]) {
       const [stmt] = functionStatements(fake);
       expect(PINNED.test(optionsOf(stmt ?? fake)), fake).toBe(false);
