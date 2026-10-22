@@ -41,14 +41,18 @@ Upstash times out or errors:
 | Everything else (ordinary `query` / `mutation`)                                                                                                                                                           | **Fail open** to the per-instance in-memory limiter |
 | Public application e-mail cap                                                                                                                                                                             | Fail closed: the e-mail is skipped                  |
 
-Scope caveat: none of the live user-facing credential flows passes through this
-limiter. Login, self-serve password reset (`/forgot-password`) and MFA call Supabase
-Auth directly from the browser (Supabase's own auth limits apply), and the invitation
-accept UI relays to the C# platform API (`/api/invitation-setup/*` →
-`/invitations/setup/*`), outside this limiter (verify the C# side separately). The fail-closed paths above are
-the tRPC procedures that still exist (`platform.acceptInvitation` and
-`platform.getInvitationByToken` have no web caller today; `platform.resetUserPassword`
-is an operator action), and `auth.*` currently has no mutations.
+Scope caveat: ONE live candidate-facing credential flow does pass through this limiter, and
+fails closed during an Upstash outage: **offer signing**. The public page
+`/offers/sign/[token]` (`apps/web/app/offers/sign/[token]/page.tsx`) calls
+`offer.getBySigningToken`, `offer.acceptByToken` and `offer.declineByToken`, all in the
+fail-closed set, so while Upstash is down a candidate can neither view nor answer an offer
+(`SERVICE_UNAVAILABLE`); tell recruiters to resend or wait. The other credential flows are
+outside it: login, self-serve password reset (`/forgot-password`) and MFA call Supabase Auth
+directly from the browser (Supabase's own auth limits apply), and the invitation accept UI
+relays to the C# platform API (`/api/invitation-setup/*` → `/invitations/setup/*`), outside
+this limiter (verify the C# side separately). Of the remaining fail-closed paths,
+`platform.acceptInvitation` and `platform.getInvitationByToken` have no web caller today,
+`platform.resetUserPassword` is an operator action, and `auth.*` currently has no mutations.
 
 Each degradation logs a structured warning, `event: "ratelimit.shared_store_unavailable"`,
 with `category`, `mode` (`fail_closed` / `fail_open_memory`), `cause` (`timeout` /
