@@ -279,6 +279,13 @@ describe('expired dependency results are never shown as a current state (tier-1 
     expect(healthMeasuredAt(NOW.getTime(), { kind: 'loading' })).toBe(NOW.getTime());
   });
 
+  it('the page re-evaluates expiry on a clock, so a stalled poll cannot keep a result green', () => {
+    // Source-level: the page needs trpc + react-query mocks to mount; the merge rule itself is tested above.
+    const page = readFileSync(resolve(__dirname, '../../apps/web/app/(admin)/platform/health/page.tsx'), 'utf8');
+    expect(page).toMatch(/setInterval\(\(\) => setNow\(new Date\(\)\), 15_000\)/);
+    expect(page).toMatch(/mergeHealthServices\(data\?\.services \?\? \[\], dependencyHealth\.state, now\)/);
+  });
+
   it('the dependency query re-probes on every visit instead of serving the 5-minute provider cache', () => {
     const src = readFileSync(resolve(__dirname, '../../apps/web/lib/platform-api/platform-health.ts'), 'utf8');
     expect(src).toMatch(/staleTime: 0,/);

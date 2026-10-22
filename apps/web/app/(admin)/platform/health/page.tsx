@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../lib/format-utils';
@@ -18,9 +19,16 @@ export default function PlatformHealthPage() {
     refetchOnMount: 'always',
   });
   const dependencyHealth = usePlatformDependencyHealth();
+  // Re-render on a clock, not only on new data: when polling stalls (offline, paused fetch) the last
+  // result must still expire on screen instead of staying green (tier-1 review).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(tick);
+  }, []);
 
   // The database row comes from tRPC (a live SELECT 1); the other seven from the C# dependency probes.
-  const services = mergeHealthServices(data?.services ?? [], dependencyHealth.state);
+  const services = mergeHealthServices(data?.services ?? [], dependencyHealth.state, now);
   const overall = overallHealthStatus(services);
   // null = the feed could not be read (DB down) — shown as unavailable, never as "no errors".
   const recentErrors = data?.recentErrors ?? null;
