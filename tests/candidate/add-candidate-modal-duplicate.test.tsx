@@ -125,5 +125,12 @@ describe('add-candidate-modal helpers (#315)', () => {
     expect(pickExistingCandidateId(rows, 'ana@ACME.test ')).toBe(EXISTING);
     expect(pickExistingCandidateId([rows[0]], 'ana@acme.test')).toBeNull();
     expect(pickExistingCandidateId(rows, '   ')).toBeNull();
+    // Tier-1 review: with case-variant duplicates, the row stored canonically (the one the portal
+    // resolves) wins over a more recently updated variant listed first.
+    const dupes = [
+      { id: 'upper-recent', email: 'ANA@acme.test' },
+      { id: 'canonical', email: 'ana@acme.test' },
+    ];
+    expect(pickExistingCandidateId(dupes, ' Ana@ACME.test ')).toBe('canonical');
   });
 });

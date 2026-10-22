@@ -52,11 +52,19 @@ export function isDuplicateCandidateError(err: unknown): boolean {
 // candidate.search is a case-insensitive CONTAINS over name/email/title/company, so its top hit
 // for "ana@x.com" can be "juana@x.com". Only reuse a row whose email canonically equals the one
 // typed; never fall back to "first result".
+//
+// When legacy case/padding duplicates of one person exist (`ANA@x.com` and `ana@x.com`), prefer the
+// row stored in CANONICAL form, which is the row the careers portal resolves for that person
+// (pickCanonicalEmailMatch: byte-identical to the lowercase session email, then canonical). Picking
+// the first variant in search order (most recently updated) could attach the application to a row
+// the candidate's own dashboard never shows (tier-1 review). With no canonical row, the portal picks
+// the OLDEST variant; search rows carry no createdAt, so that last tier is not reproduced here.
 export function pickExistingCandidateId(
   rows: readonly { id: string; email: string }[],
   typedEmail: string,
 ): string | null {
   const canonical = typedEmail.trim().toLowerCase();
   if (canonical.length === 0) return null;
-  return rows.find((r) => r.email.trim().toLowerCase() === canonical)?.id ?? null;
+  const matches = rows.filter((r) => r.email.trim().toLowerCase() === canonical);
+  return (matches.find((r) => r.email === canonical) ?? matches[0])?.id ?? null;
 }
