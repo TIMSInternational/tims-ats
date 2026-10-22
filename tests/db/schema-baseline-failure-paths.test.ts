@@ -451,6 +451,55 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
     expect(out).not.toMatch(/SYNTHETIC_TOKEN_ABCDEFGH/);
   });
 
+  it('DDL text that STARTS a line inside a dollar-quoted body is never printed (tier-1 round 2)', () => {
+    const root = makeTree('objects-only-body-ddl');
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);
+    const hostile = [
+      ...V1,
+      'CREATE FUNCTION public.g() RETURNS void',
+      '    LANGUAGE plpgsql',
+      '    AS $_$',
+      'BEGIN',
+      `CREATE TABLE "${'gh' + 'p_'}SYNTHETIC_CREDENTIAL_1234567890" (x int);`,
+      "  PERFORM 'Bearer SYNTHETIC_BODY_TOKEN_99';",
+      'END',
+      '$_$;',
+      "COMMENT ON TABLE public.t IS 'line one",
+      `CREATE TABLE SYNTHETIC_IN_COMMENT_42 (y int)';`,
+    ];
+    const { code, out } = run(root, ['check'], {
+      DIRECT_URL: FAKE_URL,
+      PG_DUMP: stub(root, 'v4', hostile),
+      SCHEMA_DRIFT_OBJECTS_ONLY: '1',
+    });
+    expect(code).toBe(1);
+    expect(out).toMatch(/CREATE FUNCTION public\.g/);
+    expect(out).not.toMatch(/SYNTHETIC_CREDENTIAL_1234567890/);
+    expect(out).not.toMatch(/SYNTHETIC_BODY_TOKEN_99/);
+    expect(out).not.toMatch(/SYNTHETIC_IN_COMMENT_42/);
+  });
+
+  it('a body-only change is reported by its enclosing object, never by its text (tier-1 round 2)', () => {
+    const root = makeTree('objects-only-body-change');
+    const fn = (ret: string) => [
+      ...V1,
+      'CREATE FUNCTION public.answer() RETURNS integer',
+      '    LANGUAGE sql',
+      '    AS $$',
+      `  SELECT ${ret}`,
+      '$$;',
+    ];
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'f1', fn('41')) }).code).toBe(0);
+    const { code, out } = run(root, ['check'], {
+      DIRECT_URL: FAKE_URL,
+      PG_DUMP: stub(root, 'f2', fn('424242')),
+      SCHEMA_DRIFT_OBJECTS_ONLY: '1',
+    });
+    expect(code).toBe(1);
+    expect(out).toMatch(/~ FUNCTION public\.answer\(\) \(body changed\)|~ FUNCTION public\.answer \(body changed\)/);
+    expect(out).not.toMatch(/424242/);
+  });
+
   it('positive control: locally (no CI env) check still prints the verbatim diff', () => {
     const root = makeTree('objects-only-local');
     expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);

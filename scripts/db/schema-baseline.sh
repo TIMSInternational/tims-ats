@@ -115,9 +115,84 @@ OBJECTS_ONLY=0
 if [ "${SCHEMA_DRIFT_OBJECTS_ONLY:-}" = "1" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then OBJECTS_ONLY=1; fi
 
 OBJ_MARK='@@obj@@ '
+# annotate_statements FILE → each line prefixed "T|" (top-level statement text) or "B|<object>|" (inside a
+# single-quoted literal or a dollar-quoted body that began on an earlier line), where <object> is the most
+# recent top-level CREATE <kind> <name> (identifier characters only). POSIX awk; nothing here is printed by
+# object_summary except the strict object names.
+annotate_statements() {
+  awk '
+    BEGIN { inq = 0; indol = 0; tag = ""; obj = "?" }
+    {
+      line = $0
+      body = (inq || indol)
+      if (!body && match(line, /^[[:space:]]*CREATE (OR REPLACE )?(UNIQUE )?(FUNCTION|PROCEDURE|TRIGGER|VIEW|MATERIALIZED VIEW|TABLE|INDEX|POLICY|RULE|TYPE|DOMAIN|AGGREGATE) [A-Za-z0-9_."]+/)) {
+        head = substr(line, RSTART, RLENGTH)
+        sub(/^[[:space:]]*CREATE /, "", head); sub(/^OR REPLACE /, "", head); sub(/^UNIQUE /, "", head)
+        obj = substr(head, 1, 160)
+      }
+      i = 1; L = length(line)
+      while (i <= L) {
+        if (indol) {
+          p = index(substr(line, i), tag)
+          if (p == 0) break
+          indol = 0; i += p - 1 + length(tag); continue
+        }
+        if (inq) {
+          p = index(substr(line, i), "\047")
+          if (p == 0) break
+          i += p
+          if (substr(line, i, 1) == "\047") { i++; continue }
+          inq = 0; continue
+        }
+        c = substr(line, i, 1)
+        if (c == "\047") { inq = 1; i++; continue }
+        if (c == "-" && substr(line, i + 1, 1) == "-") break
+        if (c == "$") {
+          rest = substr(line, i)
+          if (match(rest, /^\$[A-Za-z_]*\$/)) { tag = substr(rest, 1, RLENGTH); indol = 1; i += RLENGTH; continue }
+        }
+        i++
+      }
+      if (body) print "B|" obj "|" line; else print "T|" line
+    }' "$1"
+}
+
 # object_summary OLD NEW → one "± <object>" line per changed object line; in OBJECTS_ONLY mode other
 # changed lines are dropped and only counted.
 object_summary() {
+  if [ "$OBJECTS_ONLY" = "1" ]; then
+    # Statement-aware (tier-1 review): every dump line is first classified by annotate_statements as
+    # top-level (T|) or as text INSIDE a quoted literal / dollar-quoted body (B|<enclosing object>|). Only
+    # top-level lines are mapped to object names; a body line is never printed, even if it starts with
+    # "CREATE TABLE ...", and a body-only change is reported by its enclosing object's name.
+    local d names bodies total shown
+    d="$(diff -U0 <(annotate_statements "$1") <(annotate_statements "$2") | grep -E '^[+-][^+-]' || true)"
+    names="$(printf '%s\n' "$d" | sed -nE \
+      -e "s/^([+-])T\\|[[:space:]]*(CREATE TABLE [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(CREATE POLICY [a-zA-Z0-9_.\"]+ ON [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(ALTER TABLE [a-zA-Z0-9_.\"]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_.\"]+ TO [a-zA-Z0-9_\"]+).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(ADD CONSTRAINT [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(CREATE FUNCTION [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(CREATE TRIGGER [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
+      -e 't' \
+      -e "s/^([+-])T\\|[[:space:]]*(ALTER TABLE (ONLY )?[a-zA-Z0-9_.\"]+).*/\1 \2 (altered)/p" || true)"
+    bodies="$(printf '%s\n' "$d" | sed -nE 's/^[+-]B\|([^|]*)\|.*/~ \1 (body changed)/p' | sort -u || true)"
+    [ -n "$names" ] && printf '%s\n' "$names" | head -60
+    [ -n "$bodies" ] && printf '%s\n' "$bodies" | head -60
+    total="$(printf '%s\n' "$d" | grep -c . || true)"
+    shown="$(printf '%s\n' "$names" | grep -c . || true)"
+    echo "  (+ $((total - shown)) changed line(s) inside object bodies — not printed: objects-only mode)"
+    return 0
+  fi
   local mapped
   mapped="$(diff -U0 "$1" "$2" \
     | grep -E '^[+-][^+-]' \
@@ -138,19 +213,7 @@ object_summary() {
               s/^([+-])[[:space:]]*(CREATE TRIGGER [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
               t
               s/^([+-])[[:space:]]*(ALTER TABLE (ONLY )?[a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2 (altered)/" || true)"
-  if [ "$OBJECTS_ONLY" = "1" ]; then
-    # Only lines the mapping ABOVE produced: they start with the marker. Matching the marker anywhere
-    # (grep -F) let a changed body line that merely CONTAINS it be printed verbatim (tier-1 review).
-    # The patterns are anchored at the start of the dumped statement for the same reason: a body line with
-    # "... CREATE TABLE <token>" in the middle is not an object and must not be summarised.
-    printf '%s\n' "$mapped" | grep -E "^${OBJ_MARK}" | sed "s/^${OBJ_MARK}//" | head -60 || true
-    local other
-    other="$(printf '%s\n' "$mapped" | grep -cvE "^${OBJ_MARK}" || true)"
-    [ -n "$mapped" ] || other=0
-    echo "  (+ $other changed line(s) inside object bodies — not printed: objects-only mode)"
-  else
     printf '%s\n' "$mapped" | sed "s/^${OBJ_MARK}//" | head -60
-  fi
 }
 
 # NOTE ON CREDENTIAL EXPOSURE: pg_dump takes its connection string as an argv, so the URL — password
