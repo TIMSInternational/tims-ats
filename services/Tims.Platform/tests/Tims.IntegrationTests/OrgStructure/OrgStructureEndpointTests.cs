@@ -172,9 +172,11 @@ public sealed class OrgStructureEndpointTests(F fixture)
             Assert.Equal(4, await fixture.CountAsync(
                 $"SELECT (SELECT count(*) FROM user_teams WHERE team_id = '{F.ForeignTeam}') + (SELECT count(*) FROM user_business_units WHERE business_unit_id = '{F.ForeignUnit}')"));
 
-            // Twice: once with the production RLS shape live, and once with RLS switched OFF on both join tables, so
-            // the repository's own org predicate is proven ALONE (with RLS on, removing that predicate still 404s —
-            // mutation-checked — so the first pass alone would not pin the code). hr_admin is the granted
+            // Twice: once with the production RLS shape live, and once with RLS switched OFF on both join tables AND
+            // on `teams`, so the repository's own org predicate is proven ALONE. The team DELETE's org predicate sits
+            // inside an EXISTS over `teams`; with `teams` RLS left on, its tenant policy hid the foreign team and the
+            // test passed with that predicate removed (tier-1 review). Mutation-checked: removing
+            // `t.organization_id = {org}` from DeleteTeamMemberAsync now turns this test red. hr_admin is the granted
             // user:delete holder; super_admin is privileged and skips role_permissions entirely.
             foreach (var rlsOn in new[] { true, false })
             {
@@ -183,6 +185,7 @@ public sealed class OrgStructureEndpointTests(F fixture)
                     await fixture.ScalarAsync("""
                         ALTER TABLE user_teams NO FORCE ROW LEVEL SECURITY; ALTER TABLE user_teams DISABLE ROW LEVEL SECURITY;
                         ALTER TABLE user_business_units NO FORCE ROW LEVEL SECURITY; ALTER TABLE user_business_units DISABLE ROW LEVEL SECURITY;
+                        ALTER TABLE teams NO FORCE ROW LEVEL SECURITY; ALTER TABLE teams DISABLE ROW LEVEL SECURITY;
                         """);
                 }
 
@@ -216,6 +219,7 @@ public sealed class OrgStructureEndpointTests(F fixture)
             await fixture.ScalarAsync($"""
                 ALTER TABLE user_teams ENABLE ROW LEVEL SECURITY; ALTER TABLE user_teams FORCE ROW LEVEL SECURITY;
                 ALTER TABLE user_business_units ENABLE ROW LEVEL SECURITY; ALTER TABLE user_business_units FORCE ROW LEVEL SECURITY;
+                ALTER TABLE teams ENABLE ROW LEVEL SECURITY; ALTER TABLE teams FORCE ROW LEVEL SECURITY;
                 DELETE FROM user_teams WHERE id IN ('{memberB}', '{memberA}');
                 DELETE FROM user_business_units WHERE id IN ('{assigneeB}', '{assigneeA}');
                 """);
