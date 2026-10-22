@@ -634,6 +634,38 @@
       "name": "truncated_json",
       "modelText": "{\"name\":\"Synthetic Candidate\",\"email\":\"synthetic@example.test\",\"phone\":\"+57 300 000 0000\",\"skills\":[\"C#\",\"SQL\"],\"experie",
       "valid": false
+    },
+    {
+      "name": "numbers_follow_javascript_semantics",
+      "modelText": "{\"name\":null,\"email\":null,\"phone\":null,\"skills\":[],\"experience\":[{\"company\":\"Example Corp\",\"title\":\"Engineer\",\"startYear\":9007199254740993,\"endYear\":2.50,\"description\":null}],\"education\":[{\"institution\":\"Example University\",\"degree\":\"BSc\",\"year\":2.018e3}],\"languages\":[],\"summary\":null}",
+      "valid": true,
+      "parsedData": {
+        "name": null,
+        "email": null,
+        "phone": null,
+        "skills": [],
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Engineer",
+            "startYear": 9007199254740992,
+            "endYear": 2.5,
+            "description": null
+          }
+        ],
+        "education": [
+          {
+            "institution": "Example University",
+            "degree": "BSc",
+            "year": 2018
+          }
+        ],
+        "languages": [],
+        "summary": null,
+        "confidence": 0.25,
+        "modelVersion": "haiku",
+        "parsed": true
+      }
     }
   ]
 }
