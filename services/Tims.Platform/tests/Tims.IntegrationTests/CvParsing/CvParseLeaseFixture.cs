@@ -181,6 +181,31 @@ public sealed class CvParseLeaseFixture : IAsyncLifetime
         await _container.DisposeAsync();
     }
 
+    /// <summary>
+    /// A second candidate row in <paramref name="org"/> for the same person as
+    /// <paramref name="documentCandidateId"/> (same email, different case and padding),
+    /// with a recruitment consent that is withdrawn when <paramref name="withdrawn"/>.
+    /// </summary>
+    public async Task<Guid> SeedEmailVariantAsync(Guid org, Guid documentCandidateId, bool withdrawn)
+    {
+        var variant = Guid.NewGuid();
+        await using var connection = await Source.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO candidates(id, organization_id, first_name, last_name, email, source, pool_type, updated_at)
+              VALUES (@variant, @org, 'Synthetic', 'Variant', @email, 'portal', 'external', now());
+            INSERT INTO data_consents(id, organization_id, subject_user_id, consent_type, text_version,
+              agreed_at, withdrawn_at, created_at, updated_at)
+              VALUES (gen_random_uuid(), @org, @variant, 'recruitment_data_processing', 'v1',
+                now(), CASE WHEN @withdrawn THEN now() ELSE NULL END, now(), now());
+            """, connection);
+        command.Parameters.AddWithValue("variant", variant);
+        command.Parameters.AddWithValue("org", org);
+        command.Parameters.AddWithValue("email", $"  {documentCandidateId.ToString().ToUpperInvariant()}@EXAMPLE.TEST ");
+        command.Parameters.AddWithValue("withdrawn", withdrawn);
+        await command.ExecuteNonQueryAsync();
+        return variant;
+    }
+
     public async Task WithdrawAsync(Guid candidateId)
     {
         await using var connection = await Source.OpenConnectionAsync();
