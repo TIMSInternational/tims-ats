@@ -80,12 +80,27 @@ public sealed class BedrockCvParserTests
         stub.Response = Reply(ValidJson);
         var ledger = new LedgerStub();
         Assert.False(BedrockCvParser.IsPublishedGuardrailVersion(version));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<CvParserConfigurationException>(() =>
             new BedrockCvParser(client, ledger, "test-model", "test-guardrail", version)
                 .ParseAsync(Guid.NewGuid(), "Synthetic resume", CancellationToken.None));
         Assert.Equal(0, stub.Calls);
         Assert.Equal(0, ledger.Records);
         Assert.True(BedrockCvParser.IsPublishedGuardrailVersion("12"));
+    }
+
+    [Theory]
+    [InlineData("", "test-guardrail", "1")]
+    [InlineData("test-model", "", "1")]
+    [InlineData("test-model", "test-guardrail", "DRAFT")]
+    public async Task Authorize_refuses_an_incomplete_configuration_before_any_fetch(string model, string guardrail,
+        string version)
+    {
+        // The processor calls AuthorizeAsync BEFORE fetching the CV, and defers on this exception without
+        // consuming an attempt (tier-1 review). It must therefore surface here, not only in ParseAsync.
+        var client = DispatchProxy.Create<IAmazonBedrockRuntime, BedrockStub>();
+        await Assert.ThrowsAsync<CvParserConfigurationException>(() =>
+            new BedrockCvParser(client, new LedgerStub(), model, guardrail, version)
+                .AuthorizeAsync(Guid.NewGuid(), CancellationToken.None));
     }
 
     [Fact]
@@ -97,7 +112,7 @@ public sealed class BedrockCvParserTests
         await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
             new BedrockCvParser(client, denied, "test-model", "test-guardrail", "1")
                 .ParseAsync(Guid.NewGuid(), "Synthetic resume", CancellationToken.None));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<CvParserConfigurationException>(() =>
             new BedrockCvParser(client, new LedgerStub(), "test-model", "", "1")
                 .ParseAsync(Guid.NewGuid(), "Synthetic resume", CancellationToken.None));
         Assert.Equal(0, stub.Calls);

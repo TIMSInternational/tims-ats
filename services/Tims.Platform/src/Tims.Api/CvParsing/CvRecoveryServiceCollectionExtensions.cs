@@ -62,8 +62,8 @@ public static class CvRecoveryServiceCollectionExtensions
             NpgsqlDataSource.Create(databaseConnectionString)));
         services.AddSingleton(sp => new CvParseLeaseRepository(
             sp.GetRequiredService<CvParseDataSourceHolder>().DataSource, createdAfter));
-        services.AddSingleton<ICvTextExtractor>(_ =>
-            new BoundedCvTextExtractor(BoundedCvTextExtractor.DefaultTimeout));
+        // The process-wide decoder budget (one set of slot counters for the whole API host).
+        services.AddSingleton<ICvTextExtractor>(_ => CvParseRecoveryProcessor.SharedExtractor);
         services.AddSingleton<ICvAiBudgetLedger>(sp => new CvAiBudgetLedger(
             sp.GetRequiredService<CvParseDataSourceHolder>().DataSource, defaultBudget));
         services.AddSingleton<IAmazonS3>(_ =>

@@ -129,4 +129,62 @@ public sealed class BoundedCvTextExtractorTests
             bad.ExtractAsync(new byte[] { 1 }, "x.pdf", CancellationToken.None));
         Assert.Equal(0, bad.AbandonedExtractions);
     }
+
+    [Fact]
+    public async Task Concurrent_callers_cannot_exceed_the_decoder_limit_before_any_timeout()
+    {
+        // Tier-1 review: admission counted only decoders that had ALREADY timed out, so two callers
+        // arriving together were both admitted next to an overrunning decoder.
+        using var release = new ManualResetEventSlim();
+        var extractor = new BoundedCvTextExtractor(TimeSpan.FromSeconds(10), (_, _, _) =>
+        {
+            release.Wait(TimeSpan.FromSeconds(30));
+            return "late";
+        }, maxDecoders: 2);
+        var first = extractor.ExtractAsync(new byte[] { 1 }, "a.pdf", CancellationToken.None);
+        var second = extractor.ExtractAsync(new byte[] { 1 }, "b.pdf", CancellationToken.None);
+        Assert.Equal(2, extractor.LiveDecoders);
+        await Assert.ThrowsAsync<CvExtractorSaturatedException>(() =>
+            extractor.ExtractAsync(new byte[] { 1 }, "c.pdf", CancellationToken.None));
+        release.Set();
+        Assert.Equal("late", await first);
+        Assert.Equal("late", await second);
+        for (var i = 0; i < 100 && extractor.LiveDecoders != 0; i++) await Task.Delay(20);
+        Assert.Equal(0, extractor.LiveDecoders);
+    }
+
+    [Fact]
+    public async Task A_cancelled_caller_keeps_its_decoder_counted_until_the_decoder_ends()
+    {
+        using var release = new ManualResetEventSlim();
+        var extractor = new BoundedCvTextExtractor(TimeSpan.FromSeconds(10), (_, _, _) =>
+        {
+            release.Wait(TimeSpan.FromSeconds(30));
+            return "late";
+        }, maxDecoders: 1);
+        using var cancel = new CancellationTokenSource();
+        var call = extractor.ExtractAsync(new byte[] { 1 }, "a.pdf", cancel.Token);
+        cancel.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call);
+        Assert.Equal(1, extractor.AbandonedExtractions);
+        await Assert.ThrowsAsync<CvExtractorSaturatedException>(() =>
+            extractor.ExtractAsync(new byte[] { 1 }, "b.pdf", CancellationToken.None));
+        release.Set();
+        for (var i = 0; i < 100 && extractor.LiveDecoders != 0; i++) await Task.Delay(20);
+        Assert.Equal(0, extractor.LiveDecoders);
+        Assert.Equal(0, extractor.AbandonedExtractions);
+        // The slot came back: the same extractor admits the next document.
+        Assert.Equal("late", await extractor.ExtractAsync(new byte[] { 1 }, "c.pdf", CancellationToken.None));
+    }
+
+    [Fact]
+    public void Every_processor_created_without_an_extractor_shares_one_decoder_budget()
+    {
+        var first = new CvParseRecoveryProcessor(null!, null!, null!);
+        var second = new CvParseRecoveryProcessor(null!, null!, null!);
+        var field = typeof(CvParseRecoveryProcessor).GetField("_extractor",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.Same(CvParseRecoveryProcessor.SharedExtractor, field.GetValue(first));
+        Assert.Same(field.GetValue(first), field.GetValue(second));
+    }
 }

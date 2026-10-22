@@ -49,6 +49,18 @@ public sealed class CvParserContractTests
         Assert.True(cases.Count(c => !c["valid"]!.GetValue<bool>()) >= 5);
     }
 
+    [Fact]
+    public void A_number_that_overflows_a_double_is_stored_as_null_like_the_typescript_path()
+    {
+        // TS: JSON.parse gives Infinity, Zod's z.number() accepts it, JSON.stringify writes null. Not in the
+        // shared fixture file, because the TS test compares the in-memory object (Infinity, not null).
+        const string model = "{\"name\":null,\"email\":null,\"phone\":null,\"skills\":[],\"experience\":[]," +
+            "\"education\":[{\"institution\":\"U\",\"degree\":\"BSc\",\"year\":1e400}],\"languages\":[],\"summary\":null}";
+        Assert.True(CvParsedResult.TryParse(model, out var result));
+        var year = JsonNode.Parse(result!.EducationJson)![0]!["year"];
+        Assert.Null(year);
+    }
+
     private static void AssertJsonEqual(JsonNode? expected, JsonNode? actual) =>
         Assert.True(JsonNode.DeepEquals(expected, actual),
             $"expected {expected?.ToJsonString()} but got {actual?.ToJsonString()}");

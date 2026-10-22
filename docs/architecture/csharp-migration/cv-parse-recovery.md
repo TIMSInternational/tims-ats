@@ -61,6 +61,21 @@ token/expiry and a bounded reason code. `parsed_data` remains the success indica
 A partial index on unparsed CV rows eligible for retry avoids scanning the entire
 documents table. Apply this DDL before deploying code that reads the new columns.
 
+**Deploy order: apply migration `20261010180000_cv_parse_retry_leases` to production
+BEFORE merging CV recovery 1/4.** Merging to `main` deploys the web app on Vercel, and
+that build regenerates the Prisma client with the five new `candidate_documents` fields,
+so the TypeScript side does NOT simply ignore them (tier-1 review). Verified on
+2026-10-22 against a pre-migration table with the regenerated client: EVERY
+`candidateDocument.create()` sends `cv_parse_attempts` explicitly (even with
+`select: { id: true }`), and `candidateDocument.delete()` without a `select`
+(`candidate.repository.ts` `deleteDocument`) returns every column; both fail with
+"column `cv_parse_attempts` does not exist". On the public apply path
+(`portal.ts`, CV row created inside the application transaction) that rolls back the
+whole application. The migration is additive and idempotent, so applying
+it early is safe for the current code. Verify with
+`SELECT column_name FROM information_schema.columns WHERE table_name =
+'candidate_documents' AND column_name LIKE 'cv_parse_%';` (five rows) before merging.
+
 The repository claims at most 10 CVs older than two minutes with `FOR UPDATE SKIP
 LOCKED`, oldest **due** time first (a document returning from a deferral queues behind
 work that became due before it), then commits the claims before doing network work.

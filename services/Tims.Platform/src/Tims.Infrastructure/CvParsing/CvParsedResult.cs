@@ -176,6 +176,21 @@ public sealed class CvParsedResult
         writer.WriteEndArray();
     }
 
+    /// <summary>
+    /// JavaScript number semantics, as the TypeScript path applies them (JSON.parse to a double, then
+    /// JSON.stringify): the literal is rounded to the nearest IEEE-754 double (9007199254740993 becomes
+    /// 9007199254740992), and an overflow to Infinity is written as null. Writing the original literal
+    /// instead persisted different data than the TS parser and could hand PostgreSQL a number it cannot
+    /// store (tier-1 review).
+    /// </summary>
+    private static void WriteJsNumber(Utf8JsonWriter writer, JsonElement value)
+    {
+        var number = double.Parse(value.GetRawText(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture);
+        if (double.IsFinite(number)) writer.WriteNumberValue(number == 0 ? 0 : number);
+        else writer.WriteNullValue();
+    }
+
     /// <summary>Zod strip mode: only the schema's keys survive, in schema order.</summary>
     private static void WriteObjects(Utf8JsonWriter writer, JsonElement array, string[] keys)
     {
@@ -186,7 +201,9 @@ public sealed class CvParsedResult
             foreach (var key in keys)
             {
                 writer.WritePropertyName(key);
-                Property(item, key).WriteTo(writer);
+                var value = Property(item, key);
+                if (value.ValueKind == JsonValueKind.Number) WriteJsNumber(writer, value);
+                else value.WriteTo(writer);
             }
             writer.WriteEndObject();
         }
