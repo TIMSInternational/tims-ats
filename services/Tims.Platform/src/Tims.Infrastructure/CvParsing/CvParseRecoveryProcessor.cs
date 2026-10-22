@@ -46,6 +46,7 @@ public sealed class CvParseRecoveryProcessor(
         try { await parser.AuthorizeAsync(lease.OrganizationId, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (CvAiBudgetDeniedException denied) { return await DeferForBudgetAsync(lease, denied, ct).ConfigureAwait(false); }
+        catch (CvParserConfigurationException) { return await DeferForConfigurationAsync(lease, ct).ConfigureAwait(false); }
         catch (Exception)
         {
             await leases.FailAsync(lease, CvParseFailureCode.InferenceError, DateTime.UtcNow, ct).ConfigureAwait(false);
@@ -105,6 +106,10 @@ public sealed class CvParseRecoveryProcessor(
         {
             return await DeferForBudgetAsync(lease, denied, ct).ConfigureAwait(false);
         }
+        catch (CvParserConfigurationException)
+        {
+            return await DeferForConfigurationAsync(lease, ct).ConfigureAwait(false);
+        }
         catch (CvInvalidOutputException)
         {
             await leases.FailAsync(lease, CvParseFailureCode.InvalidOutput, DateTime.UtcNow, ct).ConfigureAwait(false);
@@ -120,6 +125,18 @@ public sealed class CvParseRecoveryProcessor(
         return await leases.CompleteAsync(lease, parsed.ParsedJson, parsed.EducationJson,
             parsed.LanguagesJson, DateTime.UtcNow, ct).ConfigureAwait(false)
             ? CvRecoveryOutcome.Completed : CvRecoveryOutcome.Ineligible;
+    }
+
+    /// <summary>
+    /// Missing or unpublished model/guardrail configuration: deferred hourly WITHOUT
+    /// consuming an attempt, so correcting the configuration recovers the document instead
+    /// of finding it exhausted (tier-1 review).
+    /// </summary>
+    private async Task<CvRecoveryOutcome> DeferForConfigurationAsync(CvParseLease lease, CancellationToken ct)
+    {
+        await leases.DeferAsync(lease, CvParseFailureCode.ConfigurationError, ConfigurationDeferral,
+            DateTime.UtcNow, ct).ConfigureAwait(false);
+        return CvRecoveryOutcome.Deferred;
     }
 
     private async Task<CvRecoveryOutcome> DeferForBudgetAsync(CvParseLease lease,

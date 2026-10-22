@@ -96,6 +96,35 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
         Assert.InRange(nextAt!.Value, now.AddMinutes(59), now.AddMinutes(61));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Missing_model_or_guardrail_configuration_defers_without_consuming_an_attempt(bool atAuthorize)
+    {
+        // Tier-1 review: a configuration error used to be an inference failure, so four runs
+        // exhausted every affected CV and correcting the configuration could not recover them.
+        await fixture.ResetAsync();
+        var now = DateTime.UtcNow;
+        var documentId = await fixture.SeedAsync(Guid.NewGuid(), now.AddMinutes(-3));
+        var leases = new CvParseLeaseRepository(fixture.Source);
+        var lease = Assert.Single(await leases.ClaimDueAsync(2, now, CancellationToken.None));
+        var objects = new ObjectStub(SyntheticPdf());
+        var parser = atAuthorize
+            ? new ParserStub { AuthorizeThrow = new CvParserConfigurationException() }
+            : new ParserStub { Throw = new CvParserConfigurationException() };
+        var processor = new CvParseRecoveryProcessor(leases, objects, parser);
+
+        Assert.Equal(CvRecoveryOutcome.Deferred, await processor.RunOneAsync(lease, CancellationToken.None));
+
+        var (attempts, code, nextAt, leased) = await ReadRetryStateAsync(documentId);
+        Assert.Equal(0, attempts);
+        Assert.Equal("configuration_error", code);
+        Assert.False(leased);
+        Assert.InRange(nextAt!.Value, now.AddMinutes(59), now.AddMinutes(61));
+        Assert.Equal(atAuthorize ? 0 : 1, objects.Fetches);
+        Assert.Equal(1, (await leases.ReadStatsAsync(now, CancellationToken.None)).Deferred);
+    }
+
     [Fact]
     public async Task Spent_budget_is_denied_before_any_fetch_or_decode_and_waits_for_next_month()
     {
@@ -254,8 +283,10 @@ public sealed class CvParseRecoveryProcessorTests(CvParseLeaseFixture fixture)
         public string? LastText { get; private set; }
         public Exception? Throw { get; init; }
         public CvAiBudgetDenial? DenyAuthorize { get; init; }
+        public Exception? AuthorizeThrow { get; init; }
 
         public Task AuthorizeAsync(Guid organizationId, CancellationToken ct) =>
+            AuthorizeThrow is not null ? Task.FromException(AuthorizeThrow) :
             DenyAuthorize is { } reason
                 ? Task.FromException(new CvAiBudgetDeniedException(reason))
                 : Task.CompletedTask;

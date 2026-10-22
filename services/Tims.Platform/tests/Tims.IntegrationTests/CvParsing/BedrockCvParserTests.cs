@@ -80,7 +80,7 @@ public sealed class BedrockCvParserTests
         stub.Response = Reply(ValidJson);
         var ledger = new LedgerStub();
         Assert.False(BedrockCvParser.IsPublishedGuardrailVersion(version));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<CvParserConfigurationException>(() =>
             new BedrockCvParser(client, ledger, "test-model", "test-guardrail", version)
                 .ParseAsync(Guid.NewGuid(), "Synthetic resume", CancellationToken.None));
         Assert.Equal(0, stub.Calls);
@@ -97,7 +97,7 @@ public sealed class BedrockCvParserTests
         await Assert.ThrowsAsync<CvAiBudgetDeniedException>(() =>
             new BedrockCvParser(client, denied, "test-model", "test-guardrail", "1")
                 .ParseAsync(Guid.NewGuid(), "Synthetic resume", CancellationToken.None));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<CvParserConfigurationException>(() =>
             new BedrockCvParser(client, new LedgerStub(), "test-model", "", "1")
                 .ParseAsync(Guid.NewGuid(), "Synthetic resume", CancellationToken.None));
         Assert.Equal(0, stub.Calls);

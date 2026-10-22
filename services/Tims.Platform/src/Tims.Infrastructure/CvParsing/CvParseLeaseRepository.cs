@@ -25,7 +25,8 @@ public enum CvParseFailureCode
     InvalidDocument,
     BudgetDenied,
     InferenceError,
-    InvalidOutput
+    InvalidOutput,
+    ConfigurationError
 }
 
 /// <summary>
@@ -72,7 +73,8 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
               count(*) FILTER (WHERE d.cv_parse_attempts >= @max_attempts
                 AND d.cv_parse_failure_code IS NOT NULL AND d.updated_at >= @recent),
               count(*) FILTER (WHERE d.cv_parse_attempts < @max_attempts
-                AND d.cv_parse_failure_code = 'budget_denied' AND d.cv_parse_next_at > @now),
+                AND d.cv_parse_failure_code IN ('budget_denied', 'configuration_error')
+                AND d.cv_parse_next_at > @now),
               -- Age since the document became due, using the claim order's due time:
               -- a deferral (e.g. to the next month start) restarts the clock, so a
               -- deferred burst returning together does not read as weeks overdue.
@@ -535,6 +537,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         CvParseFailureCode.BudgetDenied => "budget_denied",
         CvParseFailureCode.InferenceError => "inference_error",
         CvParseFailureCode.InvalidOutput => "invalid_output",
+        CvParseFailureCode.ConfigurationError => "configuration_error",
         _ => throw new ArgumentOutOfRangeException(nameof(code))
     };
 

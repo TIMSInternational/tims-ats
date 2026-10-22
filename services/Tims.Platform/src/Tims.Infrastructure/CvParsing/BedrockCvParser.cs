@@ -15,6 +15,18 @@ public sealed class CvInvalidOutputException : Exception
 }
 
 /// <summary>
+/// The platform's CV inference configuration is incomplete (no model, no guardrail, or a
+/// DRAFT/malformed guardrail version). A property of the deployment, not of the CV: the
+/// recovery processor defers WITHOUT consuming an attempt, so fixing the configuration
+/// recovers every affected document (tier-1 review: it used to exhaust them).
+/// </summary>
+public sealed class CvParserConfigurationException : Exception
+{
+    public CvParserConfigurationException()
+        : base("CV Bedrock model and a published guardrail version are required") { }
+}
+
+/// <summary>
 /// One guarded .NET AI door for CV retries. The response is metered before it
 /// is inspected, so malformed/blocked output never becomes a free successful
 /// parse. Raw CV text, model output and provider exception messages are never
@@ -80,14 +92,23 @@ public sealed class BedrockCvParser(
         version is { Length: >= 1 and <= 8 } && version[0] is >= '1' and <= '9' &&
         version.All(char.IsAsciiDigit);
 
-    public Task AuthorizeAsync(Guid organizationId, CancellationToken ct) =>
-        ledger.AuthorizeAsync(organizationId, DateTime.UtcNow, ct);
+    public Task AuthorizeAsync(Guid organizationId, CancellationToken ct)
+    {
+        // Configuration first: a misconfigured platform must not cost an S3 GET and a decode either.
+        EnsureConfigured();
+        return ledger.AuthorizeAsync(organizationId, DateTime.UtcNow, ct);
+    }
 
-    public async Task<CvParsedResult> ParseAsync(Guid organizationId, string cvText, CancellationToken ct)
+    private void EnsureConfigured()
     {
         if (string.IsNullOrWhiteSpace(modelId) || string.IsNullOrWhiteSpace(guardrailId) ||
             !IsPublishedGuardrailVersion(guardrailVersion))
-            throw new InvalidOperationException("CV Bedrock model and a published guardrail version are required");
+            throw new CvParserConfigurationException();
+    }
+
+    public async Task<CvParsedResult> ParseAsync(Guid organizationId, string cvText, CancellationToken ct)
+    {
+        EnsureConfigured();
         if (string.IsNullOrWhiteSpace(cvText)) throw new CvDocumentException();
         var agentId = await ledger.AuthorizeAsync(organizationId, DateTime.UtcNow, ct).ConfigureAwait(false);
         var safeText = Sanitize(cvText[..Math.Min(cvText.Length, CvTextExtractor.MaxTextCharacters)]);
