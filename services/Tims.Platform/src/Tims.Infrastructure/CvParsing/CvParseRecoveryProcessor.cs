@@ -25,8 +25,13 @@ public sealed class CvParseRecoveryProcessor(
     /// </summary>
     public static readonly TimeSpan ConfigurationDeferral = TimeSpan.FromHours(1);
     public static readonly TimeSpan ExtractorSaturatedDeferral = TimeSpan.FromMinutes(10);
-    private readonly ICvTextExtractor _extractor =
-        extractor ?? new BoundedCvTextExtractor(BoundedCvTextExtractor.DefaultTimeout);
+    /// <summary>
+    /// ONE extractor for the whole process: its decoder-slot counters are what bound decoder
+    /// threads, so a per-processor default would reset the bound every time a processor is
+    /// created while earlier abandoned decoders are still running (tier-1 review).
+    /// </summary>
+    public static readonly BoundedCvTextExtractor SharedExtractor = new(BoundedCvTextExtractor.DefaultTimeout);
+    private readonly ICvTextExtractor _extractor = extractor ?? SharedExtractor;
 
     /// <summary>When a denied document becomes due again.</summary>
     public static DateTime BudgetDeferralUntil(CvAiBudgetDenial reason, DateTime nowUtc) => reason switch

@@ -176,4 +176,15 @@ public sealed class BoundedCvTextExtractorTests
         // The slot came back: the same extractor admits the next document.
         Assert.Equal("late", await extractor.ExtractAsync(new byte[] { 1 }, "c.pdf", CancellationToken.None));
     }
+
+    [Fact]
+    public void Every_processor_created_without_an_extractor_shares_one_decoder_budget()
+    {
+        var first = new CvParseRecoveryProcessor(null!, null!, null!);
+        var second = new CvParseRecoveryProcessor(null!, null!, null!);
+        var field = typeof(CvParseRecoveryProcessor).GetField("_extractor",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.Same(CvParseRecoveryProcessor.SharedExtractor, field.GetValue(first));
+        Assert.Same(field.GetValue(first), field.GetValue(second));
+    }
 }
