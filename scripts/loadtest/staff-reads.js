@@ -23,7 +23,15 @@ import {
   thinkSeconds,
   thresholds,
 } from './lib/config.js';
-import { assertSessionsOutlastRun, getPage, loadSessions, sessionForVu, trpcQuery, sessionSubject } from './lib/http.js';
+import {
+  assertSessionsOutlastRun,
+  getPage,
+  loadSessions,
+  sessionForVu,
+  sessionIndexForVu,
+  sessionSubject,
+  trpcQuery,
+} from './lib/http.js';
 
 const WEB = baseUrl('WEB_BASE_URL', 'http://localhost:3000');
 assertTargetAllowed([WEB]);
@@ -76,15 +84,33 @@ export function setup() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (fromEnv.length > 0) {
-    if (!fromEnv.every((id) => /^[0-9a-f-]{36}$/i.test(id))) abort('STAFF_VACANCY_IDS must be uuids');
-    return { vacancyIds: fromEnv };
-  }
-  const [vacancies] = trpcQuery(WEB, [PUBLISHED_VACANCIES], 'setup_list_vacancies', SESSIONS[0]);
-  const items = vacancies && Array.isArray(vacancies.items) ? vacancies.items : [];
-  const ids = items.map((v) => v.id).filter(Boolean);
-  if (ids.length === 0) abort('Preflight: no published vacancies visible to session 0 on the SYNTHETIC tenant.');
-  return { vacancyIds: ids };
+  if (fromEnv.length > 0 && !fromEnv.every((id) => /^[0-9a-f-]{36}$/i.test(id))) abort('STAFF_VACANCY_IDS must be uuids');
+
+  // Vacancies are discovered PER SESSION and the pipeline reads the run makes are probed with each session
+  // (tier-1 review, round 2): discovering with session 0 only let a user without pipeline:read, or scoped
+  // away from session 0's vacancies, pass setup and then fail every request under load.
+  const vacancyIdsBySession = SESSIONS.map((session, i) => {
+    let ids = fromEnv;
+    if (ids.length === 0) {
+      const [vacancies] = trpcQuery(WEB, [PUBLISHED_VACANCIES], 'setup_list_vacancies', session);
+      const items = vacancies && Array.isArray(vacancies.items) ? vacancies.items : [];
+      ids = items.map((v) => v.id).filter(Boolean);
+      if (ids.length === 0) abort(`Preflight: no published vacancies visible to session ${i} on the SYNTHETIC tenant.`);
+    }
+    const [board] = trpcQuery(
+      WEB,
+      [{ path: 'pipeline.getBoard', input: { vacancyId: ids[0], status: 'active' } }],
+      'setup_pipeline_check',
+      session,
+    );
+    if (board === undefined) {
+      abort(`Preflight: session ${i} could not read pipeline.getBoard (missing pipeline:read, or vacancy out of scope).`);
+    }
+    const pipelinePage = getPage(`${WEB}/recruitment/pipeline`, 'setup_pipeline_page_check', session);
+    if (pipelinePage.status !== 200) abort(`Preflight: session ${i} got HTTP ${pipelinePage.status} for /recruitment/pipeline.`);
+    return ids;
+  });
+  return { vacancyIdsBySession };
 }
 
 export default function (data) {
@@ -104,7 +130,8 @@ export default function (data) {
 
   getPage(`${WEB}/recruitment/pipeline`, 'staff_pipeline_page', session);
   trpcQuery(WEB, [PUBLISHED_VACANCIES], 'staff_pipeline_vacancies_trpc', session);
-  const vacancyId = data.vacancyIds[Math.floor(Math.random() * data.vacancyIds.length)];
+  const vacancyIds = data.vacancyIdsBySession[sessionIndexForVu(SESSIONS)];
+  const vacancyId = vacancyIds[Math.floor(Math.random() * vacancyIds.length)];
   trpcQuery(
     WEB,
     [{ path: 'pipeline.getBoard', input: { vacancyId, status: 'active' } }],

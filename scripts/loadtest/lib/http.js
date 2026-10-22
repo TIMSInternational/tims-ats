@@ -69,7 +69,7 @@ export function loadSessions(need) {
 
 /** The session this VU uses (round-robin by VU id, stable for the VU's lifetime). */
 export function sessionForVu(sessions) {
-  return sessions[(exec.vu.idInTest - 1) % sessions.length];
+  return sessions[sessionIndexForVu(sessions)];
 }
 
 function decodeJwtPayload(token) {
@@ -83,11 +83,26 @@ function decodeJwtPayload(token) {
   }
 }
 
-/** The session's user id (JWT `sub`), from the access token or the Supabase cookie; undefined if unreadable. */
-export function sessionSubject(session) {
-  const token = session.accessToken || (session.cookie && (decodeCookieSession(session.cookie) || {}).access_token);
+function subjectOf(token) {
   const payload = typeof token === 'string' ? decodeJwtPayload(token) : undefined;
-  return payload && typeof payload.sub === 'string' ? payload.sub : undefined;
+  return payload && typeof payload.sub === 'string' && payload.sub !== '' ? payload.sub : undefined;
+}
+
+/**
+ * The session's user id (JWT `sub`), undefined if unreadable. The COOKIE identity wins when there is a
+ * cookie, because staff requests authenticate with it; a cookie and an explicit access token that belong to
+ * different users make the session ambiguous and are refused (tier-1 review, round 2).
+ */
+export function sessionSubject(session) {
+  const cookieSub = session.cookie ? subjectOf((decodeCookieSession(session.cookie) || {}).access_token) : undefined;
+  const tokenSub = session.accessToken ? subjectOf(session.accessToken) : undefined;
+  if (cookieSub && tokenSub && cookieSub !== tokenSub) return undefined;
+  return cookieSub || tokenSub;
+}
+
+/** Index of the session this VU uses (same round-robin as sessionForVu). */
+export function sessionIndexForVu(sessions) {
+  return (exec.vu.idInTest - 1) % sessions.length;
 }
 
 function decodeJwtExp(token) {

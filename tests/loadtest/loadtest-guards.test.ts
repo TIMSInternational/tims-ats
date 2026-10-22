@@ -75,10 +75,13 @@ describe('loadtest sessions vs VUs', () => {
   });
 
   it('refuses duplicated sessions of one user, and sessions whose user cannot be read', () => {
-    expect(distinctUserShortfall(['u1', 'u1', 'u1', 'u1', 'u1'], 5, false)).toMatch(/only 1 distinct user/);
+    expect(distinctUserShortfall(['u1', 'u1', 'u1', 'u1', 'u1'], 5, false)).toMatch(/duplicate user/);
+    expect(distinctUserShortfall(['u1', 'u2'], 5, false)).toMatch(/only 2 distinct user/);
     expect(distinctUserShortfall(['u1', 'u2', 'u3', 'u4', undefined], 5, false)).toMatch(/no readable user id/);
     expect(distinctUserShortfall(['u1', 'u2', 'u3', 'u4', 'u5'], 5, false)).toBeUndefined();
     expect(distinctUserShortfall(['u1', 'u1'], 2, true)).toBeUndefined();
+    // Round 2: spare sessions do not excuse a duplicate (VUs take sessions in order).
+    expect(distinctUserShortfall(['u1', 'u1', 'u2', 'u3', 'u4', 'u5'], 5, false)).toMatch(/duplicate user/);
   });
 });
 
@@ -97,6 +100,14 @@ describe('loadtest never follows redirects (tier-1 review)', () => {
       expect(body, fn).toMatch(/redirects(:|\s*=)\s*0/);
       expect(body, fn).not.toMatch(/if \(session && session\.cookie\) \{[^}]*redirects/);
     }
+  });
+
+  it('the staff preflight probes the pipeline reads with EVERY session, on that session\'s own vacancies', () => {
+    const src = readFileSync(join(LOADTEST_DIR, 'staff-reads.js'), 'utf8');
+    expect(src).toMatch(/const vacancyIdsBySession = SESSIONS\.map\(\(session, i\) => \{/);
+    expect(src).toMatch(/'setup_pipeline_check',\s*session,/);
+    expect(src).toMatch(/data\.vacancyIdsBySession\[sessionIndexForVu\(SESSIONS\)\]/);
+    expect(src).not.toMatch(/SESSIONS\[0\]/);
   });
 
   it('the C# preflight probes EVERY session, not just the first', () => {

@@ -100,6 +100,14 @@ export function distinctUserShortfall(subjects, vus, allowShared) {
     );
   }
   const distinct = new Set(subjects).size;
+  // ANY duplicate is refused, not only a shortfall: VUs take sessions round-robin from the start of the
+  // list, so [u1, u1, u2, u3, u4, u5] would give two of five VUs the same user (tier-1 review, round 2).
+  if (distinct < subjects.length) {
+    return (
+      `The sessions contain ${subjects.length - distinct} duplicate user(s). VUs take sessions in order, so a ` +
+      'duplicate shares one per-user rate limit even when there are spare sessions. Keep one entry per user.'
+    );
+  }
   if (distinct >= vus) return undefined;
   return (
     `Peak VUS=${vus} but the sessions belong to only ${distinct} distinct user(s). Each VU needs its OWN ` +
