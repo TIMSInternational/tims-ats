@@ -33,6 +33,8 @@ if (!/^[0-9a-f-]{36}$/i.test(ORG_ID)) throw new Error('CAREERS_ORG_ID must be a 
 assertTargetAllowed([WEB]);
 
 export const options = {
+  // Never follow redirects: they could carry load to a host outside LOADTEST_ALLOW_HOSTS (tier-1 review).
+  maxRedirects: 0,
   scenarios: {
     careers: { executor: 'ramping-vus', startVUs: 0, stages: stages(), gracefulRampDown: '10s' },
   },

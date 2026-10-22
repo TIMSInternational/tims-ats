@@ -8,7 +8,7 @@
 //
 // GET only. Endpoints come from PLATFORM_ENDPOINTS (comma-separated paths, query string allowed).
 // Many C# read surfaces are behind per-surface flags and answer 404 while dark, so setup() probes
-// each endpoint once and ABORTS on anything but 200 rather than timing a 404.
+// each endpoint once PER SESSION and ABORTS on anything but 200 rather than timing a 404.
 //
 // Required: an access token (ACCESS_TOKEN, SESSIONS_FILE[].accessToken, or derived from SESSION_COOKIE).
 
@@ -24,7 +24,7 @@ import {
   thinkSeconds,
   thresholds,
 } from './lib/config.js';
-import { assertSessionsOutlastRun, loadSessions, platformGet, sessionForVu } from './lib/http.js';
+import { assertSessionsOutlastRun, loadSessions, platformGet, sessionForVu, sessionSubject } from './lib/http.js';
 
 const WEB = baseUrl('WEB_BASE_URL', 'http://localhost:3000');
 const PLATFORM = baseUrl('PLATFORM_BASE_URL', `${WEB}/api/platform`);
@@ -51,9 +51,11 @@ const NAMES = ENDPOINTS.map(
 
 const STAGES = stages();
 const SESSIONS = loadSessions({ cookie: false, accessToken: true });
-assertSessionsCoverVus(SESSIONS.length, STAGES);
+assertSessionsCoverVus(SESSIONS.map(sessionSubject), STAGES);
 
 export const options = {
+  // Never follow redirects: they could carry load to a host outside LOADTEST_ALLOW_HOSTS (tier-1 review).
+  maxRedirects: 0,
   scenarios: {
     platform_reads: { executor: 'ramping-vus', startVUs: 0, stages: STAGES, gracefulRampDown: '10s' },
   },
@@ -67,10 +69,14 @@ export function setup() {
   } catch (e) {
     abort(`Preflight: ${e.message}`);
   }
+  // EVERY session against every endpoint it will call (tier-1 review: only the first session was probed, so a dead
+  // or under-privileged later session started the run anyway).
   const failures = [];
-  ENDPOINTS.forEach((path, i) => {
-    const res = platformGet(PLATFORM, path, `setup_${NAMES[i]}`, SESSIONS[0]);
-    if (res.status !== 200) failures.push(`${path} -> HTTP ${res.status}`);
+  SESSIONS.forEach((session, s) => {
+    ENDPOINTS.forEach((path, i) => {
+      const res = platformGet(PLATFORM, path, `setup_${NAMES[i]}`, session);
+      if (res.status !== 200) failures.push(`session ${s}: ${path} -> HTTP ${res.status}`);
+    });
   });
   if (failures.length > 0) {
     abort(

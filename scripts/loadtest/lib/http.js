@@ -72,6 +72,24 @@ export function sessionForVu(sessions) {
   return sessions[(exec.vu.idInTest - 1) % sessions.length];
 }
 
+function decodeJwtPayload(token) {
+  const parts = token.split('.');
+  if (parts.length !== 3) return undefined;
+  try {
+    const payload = JSON.parse(encoding.b64decode(parts[1], 'rawurl', 's'));
+    return payload && typeof payload === 'object' ? payload : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The session's user id (JWT `sub`), from the access token or the Supabase cookie; undefined if unreadable. */
+export function sessionSubject(session) {
+  const token = session.accessToken || (session.cookie && (decodeCookieSession(session.cookie) || {}).access_token);
+  const payload = typeof token === 'string' ? decodeJwtPayload(token) : undefined;
+  return payload && typeof payload.sub === 'string' ? payload.sub : undefined;
+}
+
 function decodeJwtExp(token) {
   const parts = token.split('.');
   if (parts.length !== 3) return undefined;
@@ -168,9 +186,11 @@ export function getPage(url, name, session) {
   // refreshed Set-Cookie from leaking into later requests of this VU.
   if (session && session.cookie) {
     params.jar = new http.CookieJar();
-    // A dead session redirects to /login, which would otherwise be followed and scored as a 200.
-    params.redirects = 0;
   }
+  // Never follow a redirect (tier-1 review): an allowed host could redirect sustained load to a host that is
+  // NOT in LOADTEST_ALLOW_HOSTS, and a dead session would redirect to /login and score as a 200. Every
+  // scenario also sets the global `maxRedirects: 0`.
+  params.redirects = 0;
   const res = http.get(url, params);
   const isRateLimited = res.status === 429;
   const ok = check(res, {
@@ -198,6 +218,7 @@ export function trpcQuery(webBase, calls, name, session) {
     tags: { name, kind: 'api' },
   };
   if (session && session.cookie) params.jar = new http.CookieJar();
+  params.redirects = 0;
   const res = http.get(url, params);
 
   let body;
@@ -233,6 +254,7 @@ export function platformGet(platformBase, path, name, session) {
     },
     tags: { name, kind: 'api' },
     jar: new http.CookieJar(),
+    redirects: 0,
   };
   const res = http.get(`${platformBase}${path}`, params);
   const ok = check(res, {

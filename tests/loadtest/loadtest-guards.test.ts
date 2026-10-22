@@ -7,6 +7,7 @@ import {
   parseBaseUrl,
   peakVus,
   sessionShortfall,
+  distinctUserShortfall,
   targetRefusal,
 } from '../../scripts/loadtest/lib/guards.js';
 
@@ -62,7 +63,39 @@ describe('loadtest sessions vs VUs', () => {
   it('is enforced by both authenticated scenarios', () => {
     for (const script of ['staff-reads.js', 'platform-reads.js']) {
       const src = readFileSync(join(LOADTEST_DIR, script), 'utf8');
-      expect(src, script).toMatch(/^assertSessionsCoverVus\(SESSIONS\.length, STAGES\);$/m);
+      expect(src, script).toMatch(/^assertSessionsCoverVus\(SESSIONS\.map\(sessionSubject\), STAGES\);$/m);
     }
+  });
+
+  // Tier-1 (Codex) review: entries were counted, not users.
+  it('refuses duplicated sessions of one user, and sessions whose user cannot be read', () => {
+    expect(distinctUserShortfall(['u1', 'u1', 'u1', 'u1', 'u1'], 5, false)).toMatch(/only 1 distinct user/);
+    expect(distinctUserShortfall(['u1', 'u2', 'u3', 'u4', undefined], 5, false)).toMatch(/no readable user id/);
+    expect(distinctUserShortfall(['u1', 'u2', 'u3', 'u4', 'u5'], 5, false)).toBeUndefined();
+    expect(distinctUserShortfall(['u1', 'u1'], 2, true)).toBeUndefined();
+  });
+});
+
+describe('loadtest never follows redirects (tier-1 review)', () => {
+  it('every scenario disables redirects globally', () => {
+    for (const script of ['careers.js', 'staff-reads.js', 'platform-reads.js']) {
+      const src = readFileSync(join(LOADTEST_DIR, script), 'utf8');
+      expect(src, script).toMatch(/export const options = \{\n[^]*?maxRedirects: 0,/);
+    }
+  });
+
+  it('every request helper sets redirects: 0 unconditionally', () => {
+    const lib = readFileSync(join(LOADTEST_DIR, 'lib', 'http.js'), 'utf8');
+    for (const fn of ['getPage', 'trpcQuery', 'platformGet']) {
+      const body = new RegExp(`export function ${fn}\\([^]*?\\n\\}\\n`).exec(lib)?.[0] ?? '';
+      expect(body, fn).toMatch(/redirects(:|\s*=)\s*0/);
+      expect(body, fn).not.toMatch(/if \(session && session\.cookie\) \{[^}]*redirects/);
+    }
+  });
+
+  it('the C# preflight probes EVERY session, not just the first', () => {
+    const src = readFileSync(join(LOADTEST_DIR, 'platform-reads.js'), 'utf8');
+    expect(src).toMatch(/SESSIONS\.forEach\(\(session, s\) => \{\s*ENDPOINTS\.forEach/);
+    expect(src).not.toMatch(/SESSIONS\[0\]/);
   });
 });

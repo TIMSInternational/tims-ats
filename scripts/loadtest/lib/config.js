@@ -5,7 +5,7 @@
 // This file runs inside k6 (goja), not Node: no npm imports, only k6 built-ins.
 
 import exec from 'k6/execution';
-import { parseBaseUrl, peakVus, sessionShortfall, targetRefusal } from './guards.js';
+import { distinctUserShortfall, parseBaseUrl, peakVus, sessionShortfall, targetRefusal } from './guards.js';
 
 /** Read an env var; empty string counts as unset. */
 export function env(name, fallback) {
@@ -59,8 +59,10 @@ export function assertTargetAllowed(urls) {
  * Authenticated scenarios: refuse to start with fewer pre-issued sessions than peak VUs, unless
  * LOADTEST_SHARED_SESSIONS=1. One user per VU keeps the run under the per-user rate limit.
  */
-export function assertSessionsCoverVus(sessionCount, stageList) {
-  const refusal = sessionShortfall(sessionCount, peakVus(stageList), env('LOADTEST_SHARED_SESSIONS', '') === '1');
+export function assertSessionsCoverVus(subjects, stageList) {
+  const vus = peakVus(stageList);
+  const shared = env('LOADTEST_SHARED_SESSIONS', '') === '1';
+  const refusal = sessionShortfall(subjects.length, vus, shared) || distinctUserShortfall(subjects, vus, shared);
   if (refusal) throw new Error(refusal);
 }
 

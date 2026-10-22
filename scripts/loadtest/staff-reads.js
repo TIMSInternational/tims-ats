@@ -23,16 +23,18 @@ import {
   thinkSeconds,
   thresholds,
 } from './lib/config.js';
-import { assertSessionsOutlastRun, getPage, loadSessions, sessionForVu, trpcQuery } from './lib/http.js';
+import { assertSessionsOutlastRun, getPage, loadSessions, sessionForVu, trpcQuery, sessionSubject } from './lib/http.js';
 
 const WEB = baseUrl('WEB_BASE_URL', 'http://localhost:3000');
 assertTargetAllowed([WEB]);
 
 const STAGES = stages();
 const SESSIONS = loadSessions({ cookie: true, accessToken: false });
-assertSessionsCoverVus(SESSIONS.length, STAGES);
+assertSessionsCoverVus(SESSIONS.map(sessionSubject), STAGES);
 
 export const options = {
+  // Never follow redirects: they could carry load to a host outside LOADTEST_ALLOW_HOSTS (tier-1 review).
+  maxRedirects: 0,
   scenarios: {
     staff_reads: { executor: 'ramping-vus', startVUs: 0, stages: STAGES, gracefulRampDown: '10s' },
   },

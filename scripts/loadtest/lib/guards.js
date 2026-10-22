@@ -83,3 +83,26 @@ export function sessionShortfall(sessionCount, vus, allowShared) {
     'the local mock). See README "Rate limits".'
   );
 }
+
+/**
+ * One user per VU means one DISTINCT user, not one array entry: five copies of one cookie, or five sessions
+ * of one account, share that user's rate-limit budget and measure the limiter (tier-1 review). `subjects`
+ * holds each session's user id (JWT `sub`), or undefined when it could not be read. Returns a refusal
+ * message, or undefined. Unreadable subjects are refused unless sharing was explicitly allowed.
+ */
+export function distinctUserShortfall(subjects, vus, allowShared) {
+  if (allowShared) return undefined;
+  const unknown = subjects.filter((s) => typeof s !== 'string' || s === '').length;
+  if (unknown > 0) {
+    return (
+      `${unknown} session(s) carry no readable user id (JWT sub), so one-user-per-VU cannot be verified. ` +
+      'Re-copy the sessions, or set LOADTEST_SHARED_SESSIONS=1 to share knowingly. See README "Rate limits".'
+    );
+  }
+  const distinct = new Set(subjects).size;
+  if (distinct >= vus) return undefined;
+  return (
+    `Peak VUS=${vus} but the sessions belong to only ${distinct} distinct user(s). Each VU needs its OWN ` +
+    'synthetic user; duplicated sessions share one per-user rate limit. See README "Rate limits".'
+  );
+}
