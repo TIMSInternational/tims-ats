@@ -320,8 +320,11 @@ TD_FILE="$WORK/task-definition.json"
 # from defaults, or a rollback would re-enable a disabled job and drop custom env and secret references.
 LIVE_TD=""
 if [[ "$ONLINE" -eq 1 ]]; then
-  LIVE_STATUS="$("${AWSX[@]}" ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
-    --query 'services[0].status' --output text 2>/dev/null || true)"
+  # Fail closed: only a service that positively does not exist may fall back to defaults. A throttled,
+  # denied or failed lookup must stop the run, never be read as "no service" (that would rebuild the
+  # definition from defaults and update the EXISTING service with it).
+  LIVE_STATUS="$(AWS_PROFILE="$PROFILE" AWS_REGION="$REGION" ECS_CLUSTER="$CLUSTER" ECS_SERVICE="$SERVICE" \
+    bash "$SCRIPT_DIR/workers-service-status.sh")" || die "cannot tell whether $SERVICE exists; refusing to build a task definition from defaults"
   if [[ "$LIVE_STATUS" == "ACTIVE" ]]; then
     LIVE_TD="$("${AWSX[@]}" ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
       --query 'services[0].taskDefinition' --output text)" || die "cannot read the live task definition of $SERVICE"

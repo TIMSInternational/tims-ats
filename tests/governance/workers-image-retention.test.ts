@@ -230,4 +230,13 @@ describe('workers-next-td.py: a manual deploy or rollback copies the LIVE revisi
     expect(CREATE.indexOf('if [[ -n "$LIVE_TD" ]]; then')).toBeLessThan(copy);
     expect(CREATE).toMatch(/\[\[ "\$FX_SET" -eq 1 \]\] && OVERRIDES\+=/);
   });
+
+  it('the live-revision lookup fails closed: a failed status call stops the run, never means "no service"', () => {
+    // Bounded on BOTH ends: from the lookup's start to the overrides that follow it.
+    const lookup = /\nLIVE_TD=""\n([\s\S]*?)\nOVERRIDES=\(\)\n/.exec(CREATE)?.[1] ?? '';
+    expect(lookup.split('\n').length).toBeGreaterThanOrEqual(8);
+    expect(lookup).toMatch(/bash "\$SCRIPT_DIR\/workers-service-status\.sh"\)" \|\| die /);
+    expect(lookup).not.toMatch(/\|\| true/);
+    expect(lookup).not.toMatch(/2>\/dev\/null/);
+  });
 });
