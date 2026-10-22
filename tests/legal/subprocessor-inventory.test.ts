@@ -121,14 +121,12 @@ const HOSTS: Array<[suffix: string, classification: Classification]> = [
   ['sentry.io', 'sentry'],
   ['amazonaws.com', 'aws-s3'],
   ['api.bamboohr.com', 'bamboohr'],
-  ['vercel.app', 'vercel'],
   ['accounts.google.com', { notAVendor: 'sign-in identity provider chosen by the user (counsel TODO on the page)' }],
   [
     'login.microsoftonline.com',
     { notAVendor: 'sign-in identity provider chosen by the user (counsel TODO on the page)' },
   ],
   ['googleusercontent.com', { notAVendor: 'img-src allowance for identity-provider profile pictures' }],
-  ['cloudfront.net', { notAVendor: 'img-src allowance only; the browser fetches images, no data is sent' }],
   ['fonts.googleapis.com', { notAVendor: 'CSP allowance only; next/font self-hosts fonts at build time' }],
   ['fonts.gstatic.com', { notAVendor: 'CSP allowance only; next/font self-hosts fonts at build time' }],
   ['open.er-api.com', { notAVendor: 'public exchange-rate feed; no personal data is sent' }],
@@ -138,8 +136,21 @@ const HOSTS: Array<[suffix: string, classification: Classification]> = [
   ['storage.tims.app', { notAVendor: 'mock URL string in a stub service' }],
 ];
 
+// Shared hosting domains: ANYONE can run a service under them, so a suffix rule would classify a third
+// party's endpoint (`resume-parser.vendor.vercel.app`) as our own vendor (tier-1 review). Exact hosts only,
+// each one reviewed.
+const EXACT_HOSTS = new Map<string, Classification>([
+  ['tims-ats.vercel.app', 'vercel'],
+  // The literal CSP wildcard string, not a host anything is sent to.
+  ['*.cloudfront.net', { notAVendor: 'img-src allowance only; the browser fetches images, no data is sent' }],
+]);
+const SHARED_HOSTING_SUFFIXES = ['vercel.app', 'cloudfront.net'];
+
 function classifyHost(host: string): Classification | undefined {
+  const exact = EXACT_HOSTS.get(host);
+  if (exact !== undefined) return exact;
   const bare = host.replace(/^\*\./, '');
+  if (SHARED_HOSTING_SUFFIXES.some((suffix) => bare === suffix || bare.endsWith(`.${suffix}`))) return undefined;
   return HOSTS.find(([suffix]) => bare === suffix || bare.endsWith(`.${suffix}`))?.[1];
 }
 
@@ -264,6 +275,13 @@ describe('subprocessor list (apps/web/lib/legal/subprocessors.ts)', () => {
     const hosts = referencedHosts();
     for (const doc of DOC_HOSTS) hosts.delete(doc);
     expect(unclassified(hosts, (h) => (isPlaceholderHost(h) ? { notAVendor: 'placeholder' } : classifyHost(h)))).toEqual([]);
+  });
+
+  it('a third party on shared hosting is never classified as one of our vendors', () => {
+    for (const foreign of ['resume-parser.vendor-example.vercel.app', 'd111111abcdef8.cloudfront.net', 'vercel.app']) {
+      expect(classifyHost(foreign), foreign).toBeUndefined();
+    }
+    expect(classifyHost('tims-ats.vercel.app')).toBe('vercel');
   });
 
   it('only reserved example hosts count as placeholders, never a real vendor that merely contains a word', () => {
