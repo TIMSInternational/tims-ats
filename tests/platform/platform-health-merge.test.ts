@@ -2,6 +2,8 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
+  healthMeasuredAt,
+  isExpiredProbeResult,
   mergeHealthServices,
   overallHealthStatus,
   PROBED_SERVICE_IDS,
@@ -49,9 +51,12 @@ const allOperational: DependencyHealthState = {
 
 const byId = (services: ReturnType<typeof mergeHealthServices>) => new Map(services.map((s) => [s.id, s]));
 
+// 30 s after the fixtures' checkedAt: inside DEPENDENCY_HEALTH_MAX_AGE_MS.
+const NOW = new Date('2026-10-12T12:00:30Z');
+
 describe('mergeHealthServices — the database row stays on tRPC, the other seven come from the probes', () => {
   it('keeps the tRPC database row verbatim and overlays every probed row', () => {
-    const services = byId(mergeHealthServices(trpcServices, allOperational));
+    const services = byId(mergeHealthServices(trpcServices, allOperational, NOW));
 
     expect([...services.keys()]).toEqual([
       'api_gateway',
@@ -79,7 +84,7 @@ describe('mergeHealthServices — the database row stays on tRPC, the other seve
   });
 
   it('is operational overall when everything verifiable is, and a not_used row is not a gap', () => {
-    expect(overallHealthStatus(mergeHealthServices(trpcServices, allOperational))).toBe('operational');
+    expect(overallHealthStatus(mergeHealthServices(trpcServices, allOperational, NOW))).toBe('operational');
   });
 
   it('reports not_deployed workers and unconfigured services as incomplete — never operational', () => {
@@ -93,7 +98,7 @@ describe('mergeHealthServices — the database row stays on tRPC, the other seve
             : d,
       ),
     };
-    const services = mergeHealthServices(trpcServices, state);
+    const services = mergeHealthServices(trpcServices, state, NOW);
 
     expect(byId(services).get('jobs')).toMatchObject({ status: 'not_monitored', reason: 'not_deployed' });
     expect(overallHealthStatus(services)).toBe('incomplete');
@@ -106,7 +111,7 @@ describe('mergeHealthServices — the database row stays on tRPC, the other seve
         d.id === 'email' ? dep('email', 'degraded', 'quota_near_limit') : d,
       ),
     };
-    expect(overallHealthStatus(mergeHealthServices(trpcServices, degraded))).toBe('degraded');
+    expect(overallHealthStatus(mergeHealthServices(trpcServices, degraded, NOW))).toBe('degraded');
 
     const down: DependencyHealthState = {
       ...degraded,
@@ -115,11 +120,11 @@ describe('mergeHealthServices — the database row stays on tRPC, the other seve
           ? degraded.dependencies.map((d) => (d.id === 'storage' ? dep('storage', 'down', 'not_found') : d))
           : [],
     };
-    expect(overallHealthStatus(mergeHealthServices(trpcServices, down))).toBe('down');
+    expect(overallHealthStatus(mergeHealthServices(trpcServices, down, NOW))).toBe('down');
   });
 
   it('an unreachable platform API marks the API row DOWN and claims nothing about the rest', () => {
-    const services = byId(mergeHealthServices(trpcServices, { kind: 'unavailable', reason: 'unreachable' }));
+    const services = byId(mergeHealthServices(trpcServices, { kind: 'unavailable', reason: 'unreachable' }, NOW));
 
     expect(services.get('api_gateway')).toMatchObject({ status: 'down', reason: 'unreachable' });
     for (const id of ['auth', 'storage', 'jobs', 'ai', 'email', 'realtime']) {
@@ -130,7 +135,7 @@ describe('mergeHealthServices — the database row stays on tRPC, the other seve
 
   it('a dark C# flag (404) or a refused credential is not_monitored everywhere, including the API row', () => {
     for (const reason of ['probes_disabled', 'access_denied'] as const) {
-      const services = mergeHealthServices(trpcServices, { kind: 'unavailable', reason });
+      const services = mergeHealthServices(trpcServices, { kind: 'unavailable', reason }, NOW);
       for (const service of services.filter((s) => s.id !== 'database')) {
         expect(service).toMatchObject({ status: 'not_monitored', reason });
       }
@@ -139,7 +144,7 @@ describe('mergeHealthServices — the database row stays on tRPC, the other seve
   });
 
   it('no platform API at all: the API row is not_configured and nothing is guessed', () => {
-    const services = byId(mergeHealthServices(trpcServices, { kind: 'disabled' }));
+    const services = byId(mergeHealthServices(trpcServices, { kind: 'disabled' }, NOW));
 
     expect(services.get('api_gateway')).toMatchObject({
       status: 'not_configured',
@@ -150,7 +155,7 @@ describe('mergeHealthServices — the database row stays on tRPC, the other seve
 
   it('a probe missing from an ok response is not_monitored / probe_failed, not silently dropped', () => {
     const state: DependencyHealthState = { ...allOperational, dependencies: [dep('api_gateway', 'operational')] };
-    expect(byId(mergeHealthServices(trpcServices, state)).get('ai')).toMatchObject({
+    expect(byId(mergeHealthServices(trpcServices, state, NOW)).get('ai')).toMatchObject({
       status: 'not_monitored',
       reason: 'probe_failed',
     });
@@ -251,5 +256,32 @@ describe('cross-stack pin — the web app translates every reason code the C# pr
       expect((es.health.reasons as Record<string, string>)[code], `es reason ${code}`).toBeTruthy();
       expect((en.health.reasons as Record<string, string>)[code], `en reason ${code}`).toBeTruthy();
     }
+  });
+});
+
+describe('expired dependency results are never shown as a current state (tier-1 review)', () => {
+  const okAt = (checkedAt: Date) => ({ ...allOperational, checkedAt }) as typeof allOperational;
+
+  it('a result older than the max age makes every probed row unverified, not green', () => {
+    const old = okAt(new Date(NOW.getTime() - 121_000));
+    const services = byId(mergeHealthServices(trpcServices, old, NOW));
+    for (const id of ['api_gateway', 'auth', 'storage', 'jobs', 'ai', 'email', 'realtime']) {
+      expect(services.get(id)).toMatchObject({ status: 'not_monitored', reason: 'stale_result' });
+    }
+    expect(overallHealthStatus(mergeHealthServices(trpcServices, old, NOW))).toBe('incomplete');
+    expect(isExpiredProbeResult(new Date(Number.NaN), NOW)).toBe(true);
+  });
+
+  it('the banner shows the OLDER of the two measurements', () => {
+    const probedAt = new Date(NOW.getTime() - 50_000);
+    expect(healthMeasuredAt(NOW.getTime(), okAt(probedAt))).toBe(probedAt.getTime());
+    expect(healthMeasuredAt(NOW.getTime() - 90_000, okAt(probedAt))).toBe(NOW.getTime() - 90_000);
+    expect(healthMeasuredAt(NOW.getTime(), { kind: 'loading' })).toBe(NOW.getTime());
+  });
+
+  it('the dependency query re-probes on every visit instead of serving the 5-minute provider cache', () => {
+    const src = readFileSync(resolve(__dirname, '../../apps/web/lib/platform-api/platform-health.ts'), 'utf8');
+    expect(src).toMatch(/staleTime: 0,/);
+    expect(src).toMatch(/refetchOnMount: 'always',/);
   });
 });

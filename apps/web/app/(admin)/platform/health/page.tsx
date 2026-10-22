@@ -6,13 +6,16 @@ import { formatRelativeTime } from '../../../../lib/format-utils';
 import { ErrorState } from '../../../../components';
 import { HealthStatusBanner } from './health-status-banner';
 import { HealthServiceGrid } from './health-service-grid';
-import { mergeHealthServices, overallHealthStatus } from './merge-health';
+import { healthMeasuredAt, mergeHealthServices, overallHealthStatus } from './merge-health';
 import { usePlatformDependencyHealth } from '../../../../lib/platform-api/platform-health';
 
 export default function PlatformHealthPage() {
   const { t } = useI18n();
   const { data, isLoading, isError, refetch, dataUpdatedAt } = trpc.platform.getSystemHealth.useQuery(undefined, {
     refetchInterval: 30000,
+    // A health page must not show the provider's 5-minute cache as the current state.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
   const dependencyHealth = usePlatformDependencyHealth();
 
@@ -58,7 +61,7 @@ export default function PlatformHealthPage() {
       <HealthStatusBanner
         overall={overall}
         services={services}
-        dataUpdatedAt={dataUpdatedAt}
+        dataUpdatedAt={healthMeasuredAt(dataUpdatedAt, dependencyHealth.state)}
         onRefresh={() => {
           refetch();
           dependencyHealth.refetch();

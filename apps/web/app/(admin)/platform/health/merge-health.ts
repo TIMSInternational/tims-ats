@@ -5,7 +5,11 @@
 // The rule: a row is only operational/degraded/down when a probe established it just now. Anything the page
 // could not verify is `not_configured` or `not_monitored`, with a reason code the UI renders as text.
 
-import type { DependencyHealthState, DependencyStatus } from '../../../../lib/platform-api/platform-health';
+import {
+  DEPENDENCY_HEALTH_MAX_AGE_MS,
+  type DependencyHealthState,
+  type DependencyStatus,
+} from '../../../../lib/platform-api/platform-health';
 import type { HealthService } from '../../../../lib/trpc-types';
 
 export type DisplayStatus = DependencyStatus;
@@ -45,7 +49,27 @@ function unavailableRow(id: string, reason: string, apiStatus: DisplayStatus, tr
   };
 }
 
-export function mergeHealthServices(trpcServices: HealthService[], probes: DependencyHealthState): DisplayService[] {
+/** True when a dependency result is too old (or undated) to be shown as a current state. */
+export function isExpiredProbeResult(checkedAt: Date, now: Date): boolean {
+  const at = checkedAt.getTime();
+  return !Number.isFinite(at) || now.getTime() - at > DEPENDENCY_HEALTH_MAX_AGE_MS;
+}
+
+/**
+ * The time the banner shows: the OLDER of the two measurements, so a fresh tRPC refresh never makes an older
+ * dependency result look new (tier-1 review: the banner used the tRPC refresh time for both sources).
+ */
+export function healthMeasuredAt(trpcUpdatedAt: number, probes: DependencyHealthState): number {
+  if (probes.kind !== 'ok') return trpcUpdatedAt;
+  const at = probes.checkedAt.getTime();
+  return Number.isFinite(at) && at > 0 ? Math.min(trpcUpdatedAt, at) : trpcUpdatedAt;
+}
+
+export function mergeHealthServices(
+  trpcServices: HealthService[],
+  probes: DependencyHealthState,
+  now: Date = new Date(),
+): DisplayService[] {
   const trpcById = new Map(trpcServices.map((service) => [service.id as string, service]));
   const ids: string[] = trpcServices.map((service) => service.id);
   for (const id of PROBED_SERVICE_IDS) if (!ids.includes(id)) ids.push(id);
@@ -74,6 +98,7 @@ export function mergeHealthServices(trpcServices: HealthService[], probes: Depen
           trpc,
         );
       case 'ok': {
+        if (isExpiredProbeResult(probes.checkedAt, now)) return unavailableRow(id, 'stale_result', 'not_monitored', trpc);
         const probe = probes.dependencies.find((dependency) => dependency.id === id);
         if (!probe) return unavailableRow(id, 'probe_failed', 'not_monitored', trpc);
         const metrics: DisplayMetric[] = [];

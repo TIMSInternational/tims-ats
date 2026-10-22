@@ -44,6 +44,12 @@ export type DependencyHealthState =
 
 /** The page polls every 30s; the server caches 30–60s, so this never fans out to the dependencies. */
 export const DEPENDENCY_HEALTH_REFETCH_MS = 30_000;
+/**
+ * Oldest dependency measurement the page still presents as a state: one refetch interval, plus the server's
+ * 30–60s cache, plus margin. Anything older is shown as unverified (tier-1 review: cached green results were
+ * displayed as current).
+ */
+export const DEPENDENCY_HEALTH_MAX_AGE_MS = 120_000;
 /** The relay itself waits up to 30s on the upstream; the page gives up sooner and says so. */
 export const DEPENDENCY_HEALTH_CLIENT_TIMEOUT_MS = 8_000;
 
@@ -120,6 +126,10 @@ export function usePlatformDependencyHealth(): { state: DependencyHealthState; r
     queryFn: fetchDependencyHealth,
     enabled,
     refetchInterval: DEPENDENCY_HEALTH_REFETCH_MS,
+    // Never serve the provider's 5-minute cache as a health result: re-probe on every visit and focus.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     retry: false,
   });
   const state: DependencyHealthState = !enabled ? { kind: 'disabled' } : (query.data ?? { kind: 'loading' });

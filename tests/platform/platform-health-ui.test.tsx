@@ -21,7 +21,8 @@ vi.mock('@tims/auth/client', () => ({
 }));
 
 const payload = {
-  checkedAt: '2026-10-12T12:00:00+00:00',
+  // A fresh measurement: results older than DEPENDENCY_HEALTH_MAX_AGE_MS render as unverified.
+  checkedAt: new Date().toISOString(),
   cacheSeconds: 30,
   dependencies: [
     {

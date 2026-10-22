@@ -2408,6 +2408,7 @@
       "not_deployed": "No hay latido de workers registrado: no están desplegados o se ejecutan sin el almacén en clúster.",
       "not_used": "La plataforma no usa este servicio.",
       "probe_failed": "La comprobación no pudo determinar un estado.",
+      "stale_result": "Sin estado: la última verificación es demasiado antigua; actualizando.",
       "checking": "Comprobando…",
       "platform_api_not_configured": "La API de la plataforma no está configurada en este despliegue.",
       "platform_api_unreachable": "Sin comprobar: no se pudo contactar la API de la plataforma.",
