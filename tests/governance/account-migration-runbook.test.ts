@@ -212,3 +212,25 @@ describe('Account migration runbook — claims that the code makes true', () => 
     expectMatch(text, true, undefined, /before step 11/i);
   });
 });
+
+// Tier-1 (Codex) review, 2026-10-22: claims the runbook must make so the rebuild does not fail late.
+describe('account migration runbook: tier-1 review claims', () => {
+  it('flags App Runner closure to new customers as a blocking decision before Phase E', () => {
+    const text = doc();
+    expect(text).toMatch(/App Runner is closed to new customers/);
+    expect(text).not.toMatch(/AWS has announced no change/);
+  });
+
+  it('populates secrets before the service is created (or redeploys before smoke)', () => {
+    expect(doc()).toMatch(/Secrets first, then the service/);
+    expect(doc()).toMatch(/apprunner start-deployment/);
+  });
+
+  it('covers the TypeScript sender variable and the TS identity grants', () => {
+    const text = doc();
+    expect(text).toMatch(/PLATFORM_EMAIL_FROM/);
+    expect(text).toMatch(/ses:SendEmail/);
+    expect(text).toMatch(/s3:PutObject` \+ `s3:GetObject/);
+  });
+});
+
