@@ -242,6 +242,19 @@ describe('workers deploy — a roll is green only when the service runs the NEW 
   });
 });
 
+describe('workers deploy — a stopped service is never a successful roll (tier-1 review)', () => {
+  it('FAILS when desired and running are both 0 (after --stop), even with the new revision COMPLETED', () => {
+    const r = run(VERIFY, { stdout: stable({ runningCount: 0, desiredCount: 0 }) }, [NEW_TD]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/desired count is 0/);
+  });
+
+  it('FAILS when more than one worker is desired (two schedulers)', () => {
+    const r = run(VERIFY, { stdout: stable({ runningCount: 2, desiredCount: 2 }) }, [NEW_TD]);
+    expect(r.status).toBe(1);
+  });
+});
+
 describe('workers deploy — the verifier POLLS rolloutState instead of judging one snapshot', () => {
   const inProgress = stable({}, { rolloutState: 'IN_PROGRESS', rolloutStateReason: 'ECS deployment in progress' });
   // A generous budget: a test that passes or fails EARLY must not be rescued by the timeout.

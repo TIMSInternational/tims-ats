@@ -27,8 +27,11 @@
 #
 # ── IDEMPOTENT ────────────────────────────────────────────────────────────────────────────────────
 # Every create is preceded by a read-only lookup and skipped when the resource exists. Re-running with a
-# different --image-tag registers a new task-definition revision (copying the env/secrets of THIS script,
-# not of the live revision) and points the service at it — that is the manual deploy AND rollback path.
+# different --image-tag registers a new task-definition revision and points the service at it — that is
+# the manual deploy AND rollback path. When the service already exists, the new revision is a COPY of the
+# live one with only the image swapped (scripts/deploy/workers-next-td.py), plus --fx-refresh/--hris-sync
+# when passed explicitly; a rollback never resets the live env, cron settings or secret references to this
+# script's defaults. The defaults below apply only to the FIRST revision of a new service.
 #
 # Nothing here reads a secret VALUE. The DB connection string is injected by ECS from the EXISTING
 # Secrets Manager secret the API already uses (tims-platform-api/DatabaseConnectionString).
@@ -55,6 +58,8 @@ MEMORY="${WORKERS_MEMORY:-512}"
 IMAGE_TAG=""
 FX_REFRESH="true"
 HRIS_SYNC="false"
+FX_SET=0
+HRIS_SET=0
 APPLY=0
 STOP=0
 
@@ -76,10 +81,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --fx-refresh)
       FX_REFRESH="${2:-}"
+      FX_SET=1
       shift
       ;;
     --hris-sync)
       HRIS_SYNC="${2:-}"
+      HRIS_SET=1
       shift
       ;;
     --profile)
@@ -309,6 +316,29 @@ if [[ "$ONLINE" -eq 1 ]]; then
 fi
 IMAGE="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}"
 TD_FILE="$WORK/task-definition.json"
+# An existing service: copy its LIVE revision and swap only the image (+ explicit overrides). Never rebuild
+# from defaults, or a rollback would re-enable a disabled job and drop custom env and secret references.
+LIVE_TD=""
+if [[ "$ONLINE" -eq 1 ]]; then
+  LIVE_STATUS="$("${AWSX[@]}" ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+    --query 'services[0].status' --output text 2>/dev/null || true)"
+  if [[ "$LIVE_STATUS" == "ACTIVE" ]]; then
+    LIVE_TD="$("${AWSX[@]}" ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+      --query 'services[0].taskDefinition' --output text)" || die "cannot read the live task definition of $SERVICE"
+    [[ "$LIVE_TD" == arn:aws:ecs:* ]] || die "unexpected live task definition '$LIVE_TD' for $SERVICE"
+  fi
+fi
+OVERRIDES=()
+[[ "$FX_SET" -eq 1 ]] && OVERRIDES+=("Workers__FxRefreshEnabled=$FX_REFRESH")
+[[ "$HRIS_SET" -eq 1 ]] && OVERRIDES+=("Workers__HrisSyncEnabled=$HRIS_SYNC")
+if [[ -n "$LIVE_TD" ]]; then
+  "${AWSX[@]}" ecs describe-task-definition --task-definition "$LIVE_TD" --query 'taskDefinition' \
+    --output json > "$WORK/live-td.json" || die "cannot read $LIVE_TD"
+  python3 "$SCRIPT_DIR/workers-next-td.py" "$WORK/live-td.json" "$TD_FILE" "$CONTAINER" "$IMAGE" ${OVERRIDES[@]+"${OVERRIDES[@]}"} \
+    || die "could not derive the next task definition from $LIVE_TD"
+  say "  copying the live revision $LIVE_TD: image -> $IMAGE_TAG; overrides: ${OVERRIDES[*]:-none}"
+else
+[[ "$ONLINE" -eq 1 ]] || warn "offline: if the service already exists, --apply copies its LIVE revision instead of the definition below"
 python3 - "$TD_FILE" <<PY
 import json, sys
 td = {
@@ -357,7 +387,8 @@ td = {
 }
 json.dump(td, open(sys.argv[1], "w"), indent=2)
 PY
-say "  env: Workers__FxRefreshEnabled=$FX_REFRESH Workers__HrisSyncEnabled=$HRIS_SYNC ClusteredScheduler=false  cpu=$CPU mem=$MEMORY"
+say "  new service, first revision — env: Workers__FxRefreshEnabled=$FX_REFRESH Workers__HrisSyncEnabled=$HRIS_SYNC ClusteredScheduler=false  cpu=$CPU mem=$MEMORY"
+fi
 TD_ARN="<task-definition-arn>"
 if [[ "$APPLY" -eq 1 ]]; then
   TD_ARN="$("${AWSX[@]}" ecs register-task-definition --cli-input-json "file://$TD_FILE" \

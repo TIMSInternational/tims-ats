@@ -159,3 +159,75 @@ describe('both deploy paths protect before rolling and verify after', () => {
     expect(success).toBeGreaterThan(verify);
   });
 });
+
+// Tier-1 round 2: the manual rollback rebuilt the task definition from the script's DEFAULTS, so rolling
+// back re-enabled a disabled FX job and dropped custom env and secret references.
+describe('workers-next-td.py: a manual deploy or rollback copies the LIVE revision', () => {
+  const NEXT_TD = resolve(ROOT, 'scripts/deploy/workers-next-td.py');
+  const IMAGE = '747814092517.dkr.ecr.us-west-2.amazonaws.com/tims-platform-workers:def5678';
+  const LIVE = {
+    taskDefinitionArn: 'arn:aws:ecs:us-west-2:747814092517:task-definition/tims-platform-workers:9',
+    revision: 9,
+    status: 'ACTIVE',
+    registeredAt: '2026-10-01T00:00:00Z',
+    family: 'tims-platform-workers',
+    cpu: '512',
+    containerDefinitions: [
+      {
+        name: 'tims-platform-workers',
+        image: '747814092517.dkr.ecr.us-west-2.amazonaws.com/tims-platform-workers:abc1234',
+        environment: [
+          { name: 'Workers__FxRefreshEnabled', value: 'false' },
+          { name: 'Workers__HrisSyncEnabled', value: 'true' },
+          { name: 'Workers__FxRefreshCron', value: '0 0 6 * * ?' },
+        ],
+        secrets: [{ name: 'Hris__ApiKey', valueFrom: 'arn:aws:secretsmanager:us-west-2:747814092517:secret:hris' }],
+      },
+    ],
+  };
+
+  function next(args: string[], live: unknown = LIVE) {
+    const dir = mkdtempSync(join(tmpdir(), 'next-td-'));
+    try {
+      writeFileSync(join(dir, 'live.json'), JSON.stringify(live));
+      const r = spawnSync('python3', ['-I', NEXT_TD, join(dir, 'live.json'), join(dir, 'out.json'), 'tims-platform-workers', IMAGE, ...args], { encoding: 'utf8' });
+      const out = r.status === 0 ? (JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')) as typeof LIVE) : undefined;
+      return { status: r.status, stderr: r.stderr, out };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('swaps only the image: disabled jobs stay disabled, custom env and secret references survive', () => {
+    const r = next([]);
+    expect(r.status, r.stderr).toBe(0);
+    const c = r.out?.containerDefinitions[0];
+    expect(c?.image).toBe(IMAGE);
+    expect(c?.environment).toEqual(LIVE.containerDefinitions[0]?.environment);
+    expect(c?.secrets).toEqual(LIVE.containerDefinitions[0]?.secrets);
+    expect(r.out?.cpu).toBe('512');
+    expect(r.out).not.toHaveProperty('taskDefinitionArn');
+    expect(r.out).not.toHaveProperty('revision');
+  });
+
+  it('applies only the overrides passed explicitly', () => {
+    const r = next(['Workers__FxRefreshEnabled=true']);
+    expect(r.status, r.stderr).toBe(0);
+    const env = r.out?.containerDefinitions[0]?.environment ?? [];
+    expect(env).toContainEqual({ name: 'Workers__FxRefreshEnabled', value: 'true' });
+    expect(env).toContainEqual({ name: 'Workers__HrisSyncEnabled', value: 'true' });
+  });
+
+  it('refuses an override outside the two job switches, and a live revision without the container', () => {
+    expect(next(['Platform__DatabaseConnectionString=x']).status).toBe(2);
+    expect(next(['Workers__FxRefreshEnabled=yes']).status).toBe(2);
+    expect(next([], { ...LIVE, containerDefinitions: [] }).status).toBe(1);
+  });
+
+  it('create-workers-service.sh copies the live revision whenever the service is ACTIVE', () => {
+    const copy = CREATE.indexOf('python3 "$SCRIPT_DIR/workers-next-td.py" "$WORK/live-td.json" "$TD_FILE"');
+    expect(copy).toBeGreaterThan(-1);
+    expect(CREATE.indexOf('if [[ -n "$LIVE_TD" ]]; then')).toBeLessThan(copy);
+    expect(CREATE).toMatch(/\[\[ "\$FX_SET" -eq 1 \]\] && OVERRIDES\+=/);
+  });
+});

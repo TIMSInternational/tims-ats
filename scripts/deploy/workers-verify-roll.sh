@@ -14,7 +14,9 @@
 #
 # Each poll of describe-services is classified:
 #   PASS  (exit 0)  services[0].taskDefinition == NEW_TD, exactly one deployment, it is PRIMARY with
-#                   taskDefinition == NEW_TD and rolloutState == COMPLETED, and runningCount == desiredCount.
+#                   taskDefinition == NEW_TD and rolloutState == COMPLETED, and runningCount == desiredCount == 1.
+#   STOPPED (exit 1) desiredCount is not 1 — e.g. 0 after `create-workers-service.sh --stop`. Without this,
+#                   0 == 0 passed and the job reported "Workers rolled" with no worker running (tier-1 review).
 #   WAIT            the PRIMARY deployment is NEW_TD and rolloutState is IN_PROGRESS, or it is COMPLETED but
 #                   not settled yet (an old deployment still draining, or running < desired).
 #   FAIL  (exit 1)  rolloutState FAILED (rolloutStateReason is printed); the service or its PRIMARY deployment
@@ -63,6 +65,7 @@ poll() {
       }
     | .verdict = (
         if .serviceTd != $td or .primaryTd != $td then "FAIL"
+        elif .desired != 1 then "STOPPED"
         elif $rs == "COMPLETED" and .deployments == 1 and .running == .desired then "PASS"
         elif $rs == "COMPLETED" or $rs == "IN_PROGRESS" then "WAIT"
         else "FAIL" end)' <<<"$out" 2>/dev/null \
@@ -77,6 +80,8 @@ while :; do
       echo "verified: service runs $NEW_TD, rollout COMPLETED"
       exit 0 ;;
     WAIT) ;;
+    STOPPED)
+      die "the service's desired count is $(jq -r '.desired' <<<"$SUMMARY"), not 1: $NEW_TD is registered but no worker runs it (was the service stopped with --stop?). This is not a deploy. Observed: $SUMMARY" ;;
     *)
       if [ "$(jq -r '.rolloutState' <<<"$SUMMARY")" = "FAILED" ]; then
         die "the rollout of $NEW_TD FAILED: $(jq -r '.rolloutReason // "no rolloutStateReason given"' <<<"$SUMMARY"). Observed: $SUMMARY"
