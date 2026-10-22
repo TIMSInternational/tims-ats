@@ -468,3 +468,32 @@ describe('getCanonicalAuthFlowUrl (#50 tier-1)', () => {
     expect(getCanonicalAuthFlowUrl(at('https://tims-ats.vercel.app'))).toBeNull();
   });
 });
+
+// Tier-1 round 2: in development with NEXT_PUBLIC_APP_URL unset, the page is (correctly) not moved,
+// so the emailed link must come back to the SAME host or the PKCE verifier is on the wrong one.
+describe('development with no configured origin keeps navigation and email destination together (#50 tier-1 r2)', () => {
+  it('a browser flow on localhost is neither moved nor emailed a prod link', () => {
+    env({ NODE_ENV: 'development', NEXT_PUBLIC_APP_URL: '' });
+    vi.stubGlobal('location', { origin: 'http://localhost:3000', hostname: 'localhost' });
+    const page = { origin: 'http://localhost:3000', pathname: '/forgot-password', search: '', hash: '' };
+    expect(getCanonicalAuthFlowUrl(page)).toBeNull();
+    expect(getAuthRedirectUrl('/auth/callback', { recovery: '1' })).toBe('http://localhost:3000/auth/callback?recovery=1');
+  });
+
+  it('a production build with the origin unset still fails closed, whatever host the page is on', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: '' });
+    vi.stubGlobal('location', { origin: 'https://tims-ats.vercel.app', hostname: 'tims-ats.vercel.app' });
+    expect(issueOf(() => getAuthRedirectUrl('/auth/callback'))).toBe('missing');
+  });
+
+  it('a configured origin always wins over the served host', () => {
+    env({ NODE_ENV: 'development', NEXT_PUBLIC_APP_URL: 'http://localhost:3100' });
+    vi.stubGlobal('location', { origin: 'http://localhost:3000', hostname: 'localhost' });
+    expect(getAuthRedirectUrl('/auth/callback')).toBe('http://localhost:3100/auth/callback');
+  });
+
+  it('server callers (no location) keep the canonical fallback outside production', () => {
+    env({ NODE_ENV: 'development', NEXT_PUBLIC_APP_URL: '' });
+    expect(getAuthRedirectUrl('/auth/callback')).toBe(`${DEFAULT_APP_URL}/auth/callback`);
+  });
+});

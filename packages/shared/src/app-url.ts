@@ -198,6 +198,27 @@ export function getAppUrl(): string {
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 
 /**
+ * The origin an auth email redirect is built on. Normally `getAppUrl()`. One exception, and only
+ * outside a production build: with NEXT_PUBLIC_APP_URL unset, a BROWSER caller uses the origin the
+ * page is served from. getAppUrl()'s development fallback is the prod origin, and a PKCE flow
+ * started on localhost cannot complete there — its verifier cookie stays on localhost (#50 tier-1,
+ * round 2). getCanonicalAuthFlowUrl() never moves an unset-origin page, so this keeps the flow and
+ * the callback on one host. A production build with the value unset still throws `missing`, and
+ * server callers (no `location`) are unchanged.
+ */
+function authFlowOrigin(): string {
+  const env = runtimeOriginEnv();
+  if (env.NODE_ENV !== 'production' && !process.env.NEXT_PUBLIC_APP_URL?.trim()) {
+    const here = (globalThis as { location?: { origin?: unknown } }).location?.origin;
+    if (typeof here === 'string' && here !== '') {
+      const result = checkAppOrigin(here, env);
+      if (result.ok) return result.origin;
+    }
+  }
+  return getAppUrl();
+}
+
+/**
  * Absolute URL on the configured app origin for an auth email redirect (`redirectTo` /
  * `emailRedirectTo`). `path` must be an app-relative path ("/auth/callback"). Rejected with
  * `AuthRedirectPathError`: protocol-relative or absolute inputs, backslashes, and control
@@ -208,7 +229,7 @@ export function getAuthRedirectUrl(path: string, params?: Record<string, string>
   if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\') || CONTROL_CHARS.test(path)) {
     throw new AuthRedirectPathError();
   }
-  const origin = getAppUrl();
+  const origin = authFlowOrigin();
   const url = new URL(path, `${origin}/`);
   if (url.origin !== origin) throw new AuthRedirectPathError();
   if (params) {

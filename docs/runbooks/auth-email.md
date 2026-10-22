@@ -46,6 +46,15 @@ code sends. That is step 1 below.
 OAuth (`signInWithOAuth`) redirects intentionally still use `window.location.origin`: they send no email,
 and the PKCE verifier lives in a cookie on the _current_ origin, so redirecting elsewhere would break login.
 
+**The same verifier rule applies to the four emailed flows.** Their link lands on `NEXT_PUBLIC_APP_URL`, so
+the flow must also START there. The four pages (forgot-password, register, portal login, accept-invitation)
+therefore move the browser to the configured origin, keeping path, query and fragment, before the flow can
+start: on mount, and again on submit (`apps/web/lib/auth/canonical-auth-origin.ts`,
+`getCanonicalAuthFlowUrl()` in `packages/shared/src/app-url.ts`). A user who opens one of these pages on a
+deployment alias or a preview URL is moved to the configured host. With `NEXT_PUBLIC_APP_URL` unset (local
+development only, because a production build refuses to send), nothing moves and the link is built on the
+host the page is served from.
+
 ### The landing pages (verified to exist)
 
 - `/auth/callback` (`apps/web/app/auth/callback/route.ts`) exchanges the PKCE `code` for a session; with
