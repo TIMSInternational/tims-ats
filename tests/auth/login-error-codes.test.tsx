@@ -48,6 +48,7 @@ describe('login page explains callback errors', () => {
       expect(m.authCallbackFailed.length).toBeGreaterThan(10);
     }
   });
+});
 
 describe('the callback error follows a locale restored after mount (tier-1 r2)', () => {
   it('re-renders in English once the provider switches locale', () => {
