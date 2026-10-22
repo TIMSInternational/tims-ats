@@ -241,6 +241,9 @@ describe('account migration runbook: tier-1 review claims', () => {
     expect(text).toMatch(/Platform__FxRefreshEnabled/);
     expect(text).toMatch(/ses:SendEmail` and `ses:SendRawEmail/);
     expect(text).toMatch(/interview invitation arrives with its `\.ics` attachment/);
+    // Round 3: a skipped (deploy=false) run is not CD verification.
+    expect(text).not.toMatch(/Run a no-op deploy/);
+    expect(text).toMatch(/Prove CD with a REAL deployment/);
   });
 });
 
