@@ -18,7 +18,13 @@ import { logger } from '@tims/shared';
 // no Upstash env falls back to an in-memory Map with TTL expiry.
 // ---------------------------------------------------------------------------
 
-const KEY_PREFIX = 'tims:ai:cache';
+// v2 (2026-10-22): before #356 every response was cached, INCLUDING the agent's degraded fallback for a
+// malformed model output. invokeAgent now caches only validated output and reports every cache hit as
+// `validated: true` / `success: true`, so a legacy entry under the old namespace would be certified as
+// validated for the rest of its TTL (30 days for vacancy-writer). Versioning the namespace makes every
+// legacy entry unreachable; they expire on their own TTL. Bump it again whenever the meaning of a
+// cached value changes.
+const KEY_PREFIX = 'tims:ai:cache:v2';
 
 const redis =
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
