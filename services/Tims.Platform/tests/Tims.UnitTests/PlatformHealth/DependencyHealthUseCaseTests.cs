@@ -61,6 +61,21 @@ public sealed class DependencyHealthUseCaseTests
     }
 
     [Fact]
+    public async Task ASynchronouslyBlockingProbe_IsBoundedByTheDeadline_AndCannotReportOperational()
+    {
+        // Tier-1 review: the deadline was attached only after ProbeAsync returned its task.
+        var useCase = Build([new SynchronouslyBlockingProbe(DependencyIds.Storage), new StubProbe(DependencyIds.Auth)]);
+
+        var started = DateTime.UtcNow;
+        var view = await useCase.GetAsync(CancellationToken.None);
+
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(1.5), "the deadline must bound the synchronous prefix");
+        var storage = view.Dependencies.Single(d => d.Id == DependencyIds.Storage);
+        Assert.Equal(DependencyStatus.Down, storage.Status);
+        Assert.Equal(DependencyReason.Timeout, storage.Reason);
+    }
+
+    [Fact]
     public async Task AProbeThatThrows_IsNotMonitored_AndOnlyTheExceptionTypeIsReported()
     {
         var telemetry = new RecordingTelemetry();
@@ -157,6 +172,18 @@ public sealed class DependencyHealthUseCaseTests
             }
 
             return DependencyProbeResult.Of(reportedId ?? id, status);
+        }
+    }
+
+    private sealed class SynchronouslyBlockingProbe(string id) : IDependencyProbe
+    {
+        public string Id => id;
+
+        // Blocks BEFORE returning a task (no await at all), then reports a healthy result.
+        public Task<DependencyProbeResult> ProbeAsync(CancellationToken cancellationToken)
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+            return Task.FromResult(DependencyProbeResult.Of(id, DependencyStatus.Operational));
         }
     }
 

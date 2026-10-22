@@ -16,6 +16,13 @@ namespace Tims.Infrastructure.PlatformHealth;
 /// </summary>
 public sealed class WorkerHeartbeatProbe(string connectionString, TimeProvider clock) : IDependencyProbe
 {
+    /// <summary>
+    /// Tims.Workers' Quartz scheduler name (<c>QuartzScheduleBuilder.ClusteredSchedulerName</c>; pinned equal by
+    /// WorkerHeartbeatProbeTests). Only TIMS nodes count: a fresh row from any other scheduler sharing the
+    /// database must not make dead TIMS workers look operational (tier-1 review).
+    /// </summary>
+    public const string SchedulerName = "TimsWorkersScheduler";
+
     public string Id => DependencyIds.Jobs;
 
     public async Task<DependencyProbeResult> ProbeAsync(CancellationToken cancellationToken)
@@ -42,14 +49,30 @@ public sealed class WorkerHeartbeatProbe(string connectionString, TimeProvider c
             }
 
             await using var command = connection.CreateCommand();
-            command.CommandText =
-                "SELECT count(*)::int, max(last_checkin_time), max(checkin_interval) FROM qrtz_scheduler_state";
+            // Freshness is judged PER NODE: the node whose own staleness deadline
+            // (last check-in + max(3 x its interval, the minimum)) is latest is the one that decides. Taking
+            // max(last_checkin_time) and max(checkin_interval) from DIFFERENT rows let two stale nodes add up
+            // to an operational result (tier-1 review).
+            command.CommandText = """
+                SELECT count(*) OVER ()::int, last_checkin_time, checkin_interval
+                FROM qrtz_scheduler_state
+                WHERE sched_name = @sched
+                ORDER BY last_checkin_time + greatest(3 * checkin_interval, @min_ms) DESC
+                LIMIT 1
+                """;
+            command.Parameters.AddWithValue("sched", SchedulerName);
+            command.Parameters.AddWithValue("min_ms", (long)DependencyHealthClassifier.MinimumHeartbeatStaleness.TotalMilliseconds);
             command.CommandTimeout = 2;
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-            var nodes = reader.GetInt32(0);
-            long? last = reader.IsDBNull(1) ? null : reader.GetInt64(1);
-            long? interval = reader.IsDBNull(2) ? null : reader.GetInt64(2);
+            var nodes = 0;
+            long? last = null;
+            long? interval = null;
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                nodes = reader.GetInt32(0);
+                last = reader.IsDBNull(1) ? null : reader.GetInt64(1);
+                interval = reader.IsDBNull(2) ? null : reader.GetInt64(2);
+            }
             return DependencyHealthClassifier.ClassifyWorkerHeartbeat(true, nodes, last, interval, clock.GetUtcNow(), stopwatch.ElapsedMilliseconds);
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.InsufficientPrivilege)

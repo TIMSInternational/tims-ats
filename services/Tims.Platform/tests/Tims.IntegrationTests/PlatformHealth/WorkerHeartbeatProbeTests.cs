@@ -74,8 +74,8 @@ public sealed class WorkerHeartbeatProbeTests : IAsyncLifetime
 
         // Two nodes; the freshest checked in 5s ago with a 10s interval → operational.
         await Exec(
-            $"INSERT INTO qrtz_scheduler_state VALUES ('S','node-a',{Now.AddSeconds(-5).ToUnixTimeMilliseconds()},10000)," +
-            $"('S','node-b',{Now.AddMinutes(-30).ToUnixTimeMilliseconds()},10000);");
+            $"INSERT INTO qrtz_scheduler_state VALUES ('{T}','node-a',{Now.AddSeconds(-5).ToUnixTimeMilliseconds()},10000)," +
+            $"('{T}','node-b',{Now.AddMinutes(-30).ToUnixTimeMilliseconds()},10000);");
         var fresh = await Probe(_quartz).ProbeAsync(CancellationToken.None);
         Assert.Equal(DependencyStatus.Operational, fresh.Status);
         Assert.Contains(fresh.Metrics, m => m is { Id: "worker_nodes", Value: "2" });
@@ -86,6 +86,45 @@ public sealed class WorkerHeartbeatProbeTests : IAsyncLifetime
         var stale = await Probe(_quartz).ProbeAsync(CancellationToken.None);
         Assert.Equal(DependencyStatus.Down, stale.Status);
         Assert.Equal(DependencyReason.HeartbeatStale, stale.Reason);
+    }
+
+    private const string T = WorkerHeartbeatProbe.SchedulerName;
+
+    [Fact]
+    public void TheProbeReadsTheSchedulerNameTimsWorkersActuallyUses()
+    {
+        Assert.Equal(Tims.Workers.Scheduling.QuartzScheduleBuilder.ClusteredSchedulerName, WorkerHeartbeatProbe.SchedulerName);
+    }
+
+    [Fact]
+    public async Task TwoStaleNodesWithDifferentIntervals_AreDown_NotAddedUpToOperational()
+    {
+        // Tier-1 review: max(last) from one node and max(interval) from another read as fresh.
+        // node-a: seen 120 s ago, 10 s interval (stale after 60 s); node-b: seen 1800 s ago, 300 s interval
+        // (stale after 900 s). Both are stale on their own terms.
+        await Exec("DELETE FROM qrtz_scheduler_state;");
+        await Exec(
+            $"INSERT INTO qrtz_scheduler_state VALUES ('{T}','node-a',{Now.AddSeconds(-120).ToUnixTimeMilliseconds()},10000)," +
+            $"('{T}','node-b',{Now.AddSeconds(-1800).ToUnixTimeMilliseconds()},300000);");
+        var result = await Probe(_quartz).ProbeAsync(CancellationToken.None);
+        Assert.Equal(DependencyStatus.Down, result.Status);
+        Assert.Equal(DependencyReason.HeartbeatStale, result.Reason);
+    }
+
+    [Fact]
+    public async Task AFreshUnrelatedScheduler_CannotMaskStaleTimsWorkers()
+    {
+        await Exec("DELETE FROM qrtz_scheduler_state;");
+        await Exec(
+            $"INSERT INTO qrtz_scheduler_state VALUES ('{T}','tims-node',{Now.AddMinutes(-30).ToUnixTimeMilliseconds()},10000)," +
+            $"('OtherScheduler','other-node',{Now.AddSeconds(-1).ToUnixTimeMilliseconds()},10000);");
+        var result = await Probe(_quartz).ProbeAsync(CancellationToken.None);
+        Assert.Equal(DependencyStatus.Down, result.Status);
+        Assert.Contains(result.Metrics, m => m is { Id: "worker_nodes", Value: "1" });
+
+        await Exec($"DELETE FROM qrtz_scheduler_state WHERE sched_name = '{T}';");
+        var none = await Probe(_quartz).ProbeAsync(CancellationToken.None);
+        Assert.Equal(DependencyReason.NotDeployed, none.Reason);
     }
 
     [Fact]

@@ -64,7 +64,11 @@ public sealed class DependencyHealthUseCase(
         deadline.CancelAfter(settings.ProbeTimeout);
         try
         {
-            var result = await probe.ProbeAsync(deadline.Token)
+            // Task.Run: the deadline must bound the probe's SYNCHRONOUS prefix too (lazy SDK client construction,
+            // a blocking call before the first await). Calling ProbeAsync directly ran that prefix before
+            // WaitAsync was attached, so it could delay sibling probes or report operational after the deadline.
+            var token = deadline.Token;
+            var result = await Task.Run(() => probe.ProbeAsync(token), token)
                 .WaitAsync(settings.ProbeTimeout, clock, cancellationToken)
                 .ConfigureAwait(false);
             return Sanitize(probe.Id, result);
