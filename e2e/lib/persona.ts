@@ -14,6 +14,11 @@ export interface Persona {
   trpcCalls: number;
   /** tRPC procedures the app's per-user rate limiter refused (TOO_MANY_REQUESTS). */
   rateLimited: string[];
+  /**
+   * Response recorders still reading a body. A 207 batch is classified only after its JSON arrives, so
+   * a check that does not wait for these can pass before a refusal is recorded (tier-1 review, #330).
+   */
+  pending: Set<Promise<void>>;
 }
 
 // Third-party services the BROWSER must never reach: video (Daily), voice AI (ElevenLabs/LiveKit).
@@ -64,19 +69,35 @@ export async function newPersona(browser: Browser, label: string): Promise<Perso
     (route) => route.abort('blockedbyclient'),
   );
   const page = await context.newPage();
-  const persona: Persona = { context, page, label, trpcCalls: 0, rateLimited: [] };
+  const persona: Persona = { context, page, label, trpcCalls: 0, rateLimited: [], pending: new Set() };
   context.on('request', (request) => {
     persona.trpcCalls += trpcProcedures(request.url()).length;
   });
-  context.on('response', (response) => void recordRateLimit(persona, response));
+  context.on('response', (response) => {
+    const done: Promise<void> = recordRateLimit(persona, response)
+      .catch(() => undefined)
+      .then(() => {
+        persona.pending.delete(done);
+      });
+    persona.pending.add(done);
+  });
   return persona;
 }
 
+/** Wait until every response seen so far has been classified (including ones that arrive meanwhile). */
+export async function settleRecorders(...personas: (Persona | undefined)[]): Promise<void> {
+  for (const p of personas) {
+    while (p && p.pending.size > 0) await Promise.all([...p.pending]);
+  }
+}
+
 /**
- * Fail the current test if any persona was rate limited. Call from `test.afterEach`: a refused query
- * does not fail the step that made it — it fails a later one, as a timeout on data that never renders.
+ * Fail the current test if any persona was rate limited. Call (and await) from `test.afterEach`: a refused
+ * query does not fail the step that made it — it fails a later one, as a timeout on data that never renders.
+ * It first waits for in-flight recorders, so a 207 whose body is still being read is not missed.
  */
-export function expectNotRateLimited(...personas: (Persona | undefined)[]): void {
+export async function expectNotRateLimited(...personas: (Persona | undefined)[]): Promise<void> {
+  await settleRecorders(...personas);
   for (const p of personas) {
     if (!p || p.rateLimited.length === 0) continue;
     const refused = [...new Set(p.rateLimited)].join(', ');
@@ -98,6 +119,12 @@ export async function signIn(page: Page, creds: Credentials): Promise<void> {
   await expect(page).not.toHaveURL(/\/login(\?|$)/, { timeout: 45_000 });
 }
 
+/**
+ * Close a persona's browser. Responses that were still being read when the last test's afterEach ran are
+ * settled first and then checked, so a refusal at the very end of a journey cannot escape every check.
+ */
 export async function closePersona(p: Persona | undefined): Promise<void> {
+  await settleRecorders(p).catch(() => undefined);
   await p?.context.close().catch(() => undefined);
+  await expectNotRateLimited(p);
 }
