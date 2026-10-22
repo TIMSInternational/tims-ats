@@ -88,6 +88,21 @@ public sealed class BedrockCvParserTests
         Assert.True(BedrockCvParser.IsPublishedGuardrailVersion("12"));
     }
 
+    [Theory]
+    [InlineData("", "test-guardrail", "1")]
+    [InlineData("test-model", "", "1")]
+    [InlineData("test-model", "test-guardrail", "DRAFT")]
+    public async Task Authorize_refuses_an_incomplete_configuration_before_any_fetch(string model, string guardrail,
+        string version)
+    {
+        // The processor calls AuthorizeAsync BEFORE fetching the CV, and defers on this exception without
+        // consuming an attempt (tier-1 review). It must therefore surface here, not only in ParseAsync.
+        var client = DispatchProxy.Create<IAmazonBedrockRuntime, BedrockStub>();
+        await Assert.ThrowsAsync<CvParserConfigurationException>(() =>
+            new BedrockCvParser(client, new LedgerStub(), model, guardrail, version)
+                .AuthorizeAsync(Guid.NewGuid(), CancellationToken.None));
+    }
+
     [Fact]
     public async Task Budget_and_configuration_fail_before_sending_a_cv()
     {
