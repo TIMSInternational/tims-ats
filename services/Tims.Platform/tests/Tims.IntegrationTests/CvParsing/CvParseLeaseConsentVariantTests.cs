@@ -205,4 +205,85 @@ public sealed class CvParseLeaseConsentVariantTests(CvParseLeaseFixture fixture)
             await Task.WhenAll(work).WaitAsync(TimeSpan.FromSeconds(30));
         }
     }
+
+    [Fact]
+    public async Task The_gate_refuses_a_lease_that_could_expire_during_inference()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedAsync(Guid.NewGuid(), Now.AddMinutes(-3));
+        var lease = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        // 100 s into a 120 s lease the 30 s callback could outlive it.
+        var called = false;
+        var result = await _repository.RunWithConsentGateAsync(lease, _ =>
+        {
+            called = true;
+            return Task.FromResult("sent");
+        }, Now.AddSeconds(100), CancellationToken.None);
+        Assert.Null(result);
+        Assert.False(called);
+    }
+
+    [Fact]
+    public async Task Time_spent_waiting_for_a_variant_lock_counts_against_the_lease()
+    {
+        await fixture.ResetAsync();
+        var org = Guid.NewGuid();
+        await fixture.SeedAsync(org, Now.AddMinutes(-3));
+        var lease = Assert.Single(await _repository.ClaimDueAsync(1, Now, CancellationToken.None));
+        var variant = await fixture.SeedEmailVariantAsync(org, lease.CandidateId, withdrawn: false);
+
+        // Hold the variant's withdrawal lock for 2 s. At 89 s the gate alone would pass (89 + 30 < 120);
+        // after waiting ~2 s for the lock it must not (91 + 30 > 120).
+        await using var holder = await fixture.Source.OpenConnectionAsync();
+        await using var holding = await holder.BeginTransactionAsync();
+        await using (var take = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(hashtextextended(@variant, 0))", holder, holding))
+        {
+            take.Parameters.AddWithValue("variant", variant.ToString());
+            await take.ExecuteNonQueryAsync();
+        }
+        var called = false;
+        var gate = _repository.RunWithConsentGateAsync(lease, _ =>
+        {
+            called = true;
+            return Task.FromResult("sent");
+        }, Now.AddSeconds(89), CancellationToken.None);
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        await holding.CommitAsync();
+        Assert.Null(await gate.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.False(called);
+    }
+
+    [Fact]
+    public async Task A_locked_stuck_document_never_blocks_another_tenants_claim()
+    {
+        await fixture.ResetAsync();
+        var stuck = await fixture.SeedAsync(Guid.NewGuid(), Now.AddMinutes(-10));
+        await using (var connection = await fixture.Source.OpenConnectionAsync())
+        await using (var setup = new NpgsqlCommand("""
+            UPDATE candidate_documents SET cv_parse_attempts = @max, cv_parse_lease_token = gen_random_uuid(),
+              cv_parse_lease_until = @expired WHERE id = @id
+            """, connection))
+        {
+            setup.Parameters.AddWithValue("max", CvParseLeaseRepository.MaxAttempts);
+            setup.Parameters.AddWithValue("expired", NpgsqlTypes.NpgsqlDbType.Timestamp,
+                DateTime.SpecifyKind(Now.AddMinutes(-1), DateTimeKind.Unspecified));
+            setup.Parameters.AddWithValue("id", stuck);
+            await setup.ExecuteNonQueryAsync();
+        }
+        var wanted = await fixture.SeedAsync(Guid.NewGuid(), Now.AddMinutes(-3));
+
+        await using var holder = await fixture.Source.OpenConnectionAsync();
+        await using var holding = await holder.BeginTransactionAsync();
+        await using (var rowLock = new NpgsqlCommand(
+            "SELECT 1 FROM candidate_documents WHERE id=@id FOR UPDATE", holder, holding))
+        {
+            rowLock.Parameters.AddWithValue("id", stuck);
+            await rowLock.ExecuteNonQueryAsync();
+        }
+        var lease = Assert.Single(await _repository.ClaimDueAsync(5, Now, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(wanted, lease.DocumentId);
+        await holding.RollbackAsync();
+    }
 }

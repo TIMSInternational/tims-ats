@@ -136,6 +136,7 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
         await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
+        var lockWait = System.Diagnostics.Stopwatch.StartNew();
         // The withdrawal lock (the same candidate-id advisory lock consent withdrawal takes) of
         // this candidate AND of every same-email variant row, acquired in ONE statement in id
         // order. A withdrawal recorded on another row for the same person then serializes with
@@ -195,7 +196,11 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
             check.Parameters.AddWithValue("org", lease.OrganizationId);
             check.Parameters.AddWithValue("candidate", lease.CandidateId);
             check.Parameters.AddWithValue("token", lease.Token);
-            AddTimestamp(check, "now", UtcTimestamp(nowUtc));
+            // The lease must still be held when the bounded callback can last end: the caller's
+            // time plus however long the lock wait took, plus the callback's own timeout.
+            // Otherwise a gate that waited on a variant's lock past expiry ran inference on a
+            // lease another worker could reclaim mid-call (tier-1 review).
+            AddTimestamp(check, "now", UtcTimestamp(nowUtc) + lockWait.Elapsed + ConsentGateTimeout);
             var active = (bool)(await check.ExecuteScalarAsync(ct).ConfigureAwait(false) ?? false);
             if (!active) return null;
         }
@@ -299,17 +304,26 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
     private async Task FinalizeExpiredFinalLeasesAsync(NpgsqlConnection connection, DateTime now,
         CancellationToken ct)
     {
+        // Bounded and SKIP LOCKED: a row some other transaction holds must never make the
+        // claim (and therefore recovery for every tenant) wait behind it (tier-1 review).
         await using var finalize = new NpgsqlCommand("""
+            WITH stuck AS (
+              SELECT d.id FROM candidate_documents d
+              WHERE d.type = 'cv' AND d.parsed_data IS NULL
+                AND d.cv_parse_attempts >= @max_attempts
+                AND d.cv_parse_lease_token IS NOT NULL
+                AND d.cv_parse_lease_until <= @now
+                AND d.created_at >= @created_after
+              ORDER BY d.cv_parse_lease_until, d.id
+              LIMIT 100
+              FOR UPDATE OF d SKIP LOCKED
+            )
             UPDATE candidate_documents d
             SET cv_parse_lease_token = NULL,
                 cv_parse_lease_until = NULL,
                 cv_parse_failure_code = 'lease_expired',
                 updated_at = @now
-            WHERE d.type = 'cv' AND d.parsed_data IS NULL
-              AND d.cv_parse_attempts >= @max_attempts
-              AND d.cv_parse_lease_token IS NOT NULL
-              AND d.cv_parse_lease_until <= @now
-              AND d.created_at >= @created_after
+            FROM stuck WHERE d.id = stuck.id
             """, connection);
         AddTimestamp(finalize, "now", now);
         AddTimestamp(finalize, "created_after", _createdAfter);
