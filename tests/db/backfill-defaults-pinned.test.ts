@@ -184,7 +184,8 @@ describe('#319 eligibility: the dry run and the apply select complementary sets'
 
   it('every apply PLAN_IN_WINDOW is the complement (>=) of the same expression, with v_now = now (UTC)', () => {
     const blocks = markedBlocks(SQL_319, 'PLAN_IN_WINDOW');
-    expect(blocks).toHaveLength(3);
+    // empty plans, the task-row lock (tier-1 review), the undated snapshot, the post-check.
+    expect(blocks).toHaveLength(4);
     for (const block of blocks) expect(squash(block)).toBe(IN_WINDOW);
     expect(SQL_319).toContain("v_now           timestamp := now() AT TIME ZONE 'UTC';");
     const lhs = (s: string) => s.match(/p\.start_date \+ interval '90 days' (<|>=)/)?.[1];
