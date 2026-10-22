@@ -7,7 +7,10 @@ import en from '../../apps/web/lib/i18n/en.json';
 // but the login page never read the query, so the user saw a bare login form with no explanation.
 
 let query = new URLSearchParams();
-vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: es, locale: 'ES' }) }));
+let locale: 'ES' | 'EN' = 'ES';
+vi.mock('../../apps/web/lib/i18n', () => ({
+  useI18n: () => ({ t: locale === 'EN' ? en : es, locale }),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => query,
@@ -44,5 +47,18 @@ describe('login page explains callback errors', () => {
       expect(m.signupEmailInvalid.length).toBeGreaterThan(10);
       expect(m.authCallbackFailed.length).toBeGreaterThan(10);
     }
+  });
+
+describe('the callback error follows a locale restored after mount (tier-1 r2)', () => {
+  it('re-renders in English once the provider switches locale', () => {
+    locale = 'ES';
+    query = new URLSearchParams({ error: SIGNUP_EMAIL_REJECTED_ERROR });
+    const { rerender } = render(<LoginPage />);
+    expect(screen.getByText(es.auth.signupEmailInvalid)).toBeInTheDocument();
+    locale = 'EN';
+    rerender(<LoginPage />);
+    expect(screen.getByText(en.auth.signupEmailInvalid)).toBeInTheDocument();
+    expect(screen.queryByText(es.auth.signupEmailInvalid)).toBeNull();
+    locale = 'ES';
   });
 });
