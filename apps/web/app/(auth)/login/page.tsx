@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { loginErrorMessage } from '../../../lib/auth/login-error-message';
 
 export default function LoginPage() {
   return (
@@ -24,7 +25,8 @@ function LoginForm() {
   const redirect = /^\/(?!\/)/.test(rawRedirect) ? rawRedirect : '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  // A callback redirect (?error=<code>) explains itself instead of showing a bare form (#213).
+  const [error, setError] = useState(() => loginErrorMessage(searchParams.get('error'), t.auth));
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
