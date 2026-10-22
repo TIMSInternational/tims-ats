@@ -121,27 +121,31 @@ object_summary() {
   local mapped
   mapped="$(diff -U0 "$1" "$2" \
     | grep -E '^[+-][^+-]' \
-    | sed -E "s/^([+-]).*(CREATE TABLE [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+    | sed -E "s/^([+-])[[:space:]]*(CREATE TABLE [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              s/^([+-])[[:space:]]*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(CREATE POLICY [a-zA-Z0-9_.\"]+ ON [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              s/^([+-])[[:space:]]*(CREATE POLICY [a-zA-Z0-9_.\"]+ ON [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(ALTER TABLE [a-zA-Z0-9_.\"]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/${OBJ_MARK}\1 \2/;
+              s/^([+-])[[:space:]]*(ALTER TABLE [a-zA-Z0-9_.\"]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_.\"]+ TO [a-zA-Z0-9_\"]+).*/${OBJ_MARK}\1 \2/;
+              s/^([+-])[[:space:]]*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_.\"]+ TO [a-zA-Z0-9_\"]+).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(ADD CONSTRAINT [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              s/^([+-])[[:space:]]*(ADD CONSTRAINT [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(CREATE FUNCTION [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              s/^([+-])[[:space:]]*(CREATE FUNCTION [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(CREATE TRIGGER [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
+              s/^([+-])[[:space:]]*(CREATE TRIGGER [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
               t
-              s/^([+-]).*(ALTER TABLE (ONLY )?[a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2 (altered)/" || true)"
+              s/^([+-])[[:space:]]*(ALTER TABLE (ONLY )?[a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2 (altered)/" || true)"
   if [ "$OBJECTS_ONLY" = "1" ]; then
-    printf '%s\n' "$mapped" | grep -F "$OBJ_MARK" | sed "s/^${OBJ_MARK}//" | head -60 || true
+    # Only lines the mapping ABOVE produced: they start with the marker. Matching the marker anywhere
+    # (grep -F) let a changed body line that merely CONTAINS it be printed verbatim (tier-1 review).
+    # The patterns are anchored at the start of the dumped statement for the same reason: a body line with
+    # "... CREATE TABLE <token>" in the middle is not an object and must not be summarised.
+    printf '%s\n' "$mapped" | grep -E "^${OBJ_MARK}" | sed "s/^${OBJ_MARK}//" | head -60 || true
     local other
-    other="$(printf '%s\n' "$mapped" | grep -cvF "$OBJ_MARK" || true)"
+    other="$(printf '%s\n' "$mapped" | grep -cvE "^${OBJ_MARK}" || true)"
     [ -n "$mapped" ] || other=0
     echo "  (+ $other changed line(s) inside object bodies — not printed: objects-only mode)"
   else

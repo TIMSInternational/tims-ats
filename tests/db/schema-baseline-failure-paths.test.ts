@@ -431,6 +431,26 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
     expect(out).not.toMatch(/tok_SECRET_BODY_123/);
   });
 
+  it('a body line that merely CONTAINS the marker or a DDL keyword is never printed (tier-1 review)', () => {
+    const root = makeTree('objects-only-marker');
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);
+    const hostile = [
+      ...V1,
+      'CREATE FUNCTION public.f() RETURNS text',
+      "    AS $$ SELECT '@@obj@@ Bearer SYNTHETIC_SECRET_12345678' $$;",
+      "    -- note: CREATE TABLE SYNTHETIC_TOKEN_ABCDEFGH",
+    ];
+    const { code, out } = run(root, ['check'], {
+      DIRECT_URL: FAKE_URL,
+      PG_DUMP: stub(root, 'v3', hostile),
+      SCHEMA_DRIFT_OBJECTS_ONLY: '1',
+    });
+    expect(code).toBe(1);
+    expect(out).toMatch(/CREATE FUNCTION public\.f/);
+    expect(out).not.toMatch(/SYNTHETIC_SECRET_12345678/);
+    expect(out).not.toMatch(/SYNTHETIC_TOKEN_ABCDEFGH/);
+  });
+
   it('positive control: locally (no CI env) check still prints the verbatim diff', () => {
     const root = makeTree('objects-only-local');
     expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub(root, 'v1', V1) }).code).toBe(0);

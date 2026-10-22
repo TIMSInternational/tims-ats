@@ -53,6 +53,10 @@ describe('scan-for-credentials.sh', () => {
     ['conn string', `dblink('${'postgresql'}://u:${'pw'}@db.example.com:5432/postgres')`],
     ['private key', `-----BEGIN RSA ${'PRIVATE'} KEY-----`],
     ['aws key', `v := '${'AK' + 'IA'}ABCDEFGHIJKLMNOP';`],
+    // Tier-1 review: both slipped through the original list.
+    ['JSON password', `v := '{"${'pass' + 'word'}":"hunter2"}';`],
+    ['GitHub token', `v := '${'gh' + 'p_'}${'A1b2C3d4E5'.repeat(4)}';`],
+    ['GitHub fine-grained token', `v := '${'github' + '_pat_'}11ABCDEFG0123456789_abcdefghij';`],
   ];
   for (const [label, line] of SECRETS) {
     it(`exits 1 on a ${label} and never prints the matching text`, () => {

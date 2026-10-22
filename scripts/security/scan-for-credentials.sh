@@ -8,6 +8,12 @@
 #
 # Prints only FILE NAMES and the pattern class that matched, never the matching text.
 #
+# LIMITS (tier-1 review): this is a DENYLIST TRIPWIRE, not proof that a dump is safe to publish. It catches the
+# credential shapes listed below; a secret in any other shape passes. On this public repository an uploaded
+# artifact is downloadable by any signed-in GitHub user for its retention period. A publication path that is
+# private by construction (for example encrypting the artifact to an owner-held key) is an owner decision,
+# tracked separately.
+#
 # USAGE   bash scripts/security/scan-for-credentials.sh <dir-or-file>...
 # EXIT    0 = clean · 1 = a credential-shaped string was found · 2 = could not run (missing/empty input)
 set -uo pipefail
@@ -34,6 +40,15 @@ PATTERNS=(
   '(^|[^A-Za-z0-9_])sk_(live|test)?_?[A-Za-z0-9]{8,}'
   'service_role'
   'password[[:space:]]*[:=]'
+  # JSON / quoted keys: the closing quote sits between the word and the colon ({"password":"x"}).
+  '["'"'"'](password|passwd|secret|client_secret|access_token|refresh_token|auth_token|private_key)["'"'"'][[:space:]]*[:=]'
+  # GitHub tokens (classic and fine-grained), Slack, Google API keys, OpenAI-style keys, Stripe restricted keys.
+  '(^|[^A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{30,}'
+  'github_pat_[A-Za-z0-9_]{20,}'
+  'xox[abprs]-[A-Za-z0-9-]{10,}'
+  'AIza[0-9A-Za-z_-]{35}'
+  '(^|[^A-Za-z0-9_])sk-[A-Za-z0-9_-]{20,}'
+  '(^|[^A-Za-z0-9_])rk_(live|test)_[A-Za-z0-9]{8,}'
   'api_?key[[:space:]]*[:=]'
   'apikey'
   'postgres(ql)?://[^[:space:]/]*:[^[:space:]/@]*@'
