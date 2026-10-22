@@ -244,6 +244,10 @@ describe('account migration runbook: tier-1 review claims', () => {
     // Round 3: a skipped (deploy=false) run is not CD verification.
     expect(text).not.toMatch(/Run a no-op deploy/);
     expect(text).toMatch(/Prove CD with a REAL deployment/);
+    expect(text).not.toMatch(/docs-only commit on main after the cutover\)/);
+    expect(text).toMatch(/touches a path `\.NET Platform CI` watches/);
+    expect(text).not.toMatch(/proves DB login \+ JWKS/);
+    expect(text).toMatch(/`\/ready` \(proves the database connection\)/);
   });
 });
 
