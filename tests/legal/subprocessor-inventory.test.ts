@@ -298,6 +298,7 @@ describe('subprocessor list (apps/web/lib/legal/subprocessors.ts)', () => {
       ...vendorIds(Object.values(NPM_DEPENDENCIES)),
       ...vendorIds(Object.values(NUGET_PACKAGES)),
       ...vendorIds(HOSTS.map(([, c]) => c)),
+      ...vendorIds(EXACT_HOSTS.values()),
     ]);
     expect([...named].filter((id) => !ids.has(id))).toEqual([]);
     // Infrastructure-only vendors are detected through their evidence files instead of an SDK/host.
