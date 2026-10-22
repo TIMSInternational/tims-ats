@@ -59,9 +59,14 @@ export function isExpiredProbeResult(checkedAt: Date, now: Date): boolean {
  * The time the banner shows: the OLDER of the two measurements, so a fresh tRPC refresh never makes an older
  * dependency result look new (tier-1 review: the banner used the tRPC refresh time for both sources).
  */
+/** The local-clock time a probe result applies from: receipt time when known (skew-free), else checkedAt. */
+export function probeResultTime(probes: Extract<DependencyHealthState, { kind: 'ok' }>): Date {
+  return probes.receivedAt !== undefined ? new Date(probes.receivedAt) : probes.checkedAt;
+}
+
 export function healthMeasuredAt(trpcUpdatedAt: number, probes: DependencyHealthState): number {
   if (probes.kind !== 'ok') return trpcUpdatedAt;
-  const at = probes.checkedAt.getTime();
+  const at = probeResultTime(probes).getTime();
   return Number.isFinite(at) && at > 0 ? Math.min(trpcUpdatedAt, at) : trpcUpdatedAt;
 }
 
@@ -104,7 +109,7 @@ export function mergeHealthServices(
           trpc,
         );
       case 'ok': {
-        if (isExpiredProbeResult(probes.checkedAt, now)) return unavailableRow(id, 'stale_result', 'not_monitored', trpc);
+        if (isExpiredProbeResult(probeResultTime(probes), now)) return unavailableRow(id, 'stale_result', 'not_monitored', trpc);
         const probe = probes.dependencies.find((dependency) => dependency.id === id);
         if (!probe) return unavailableRow(id, 'probe_failed', 'not_monitored', trpc);
         const metrics: DisplayMetric[] = [];

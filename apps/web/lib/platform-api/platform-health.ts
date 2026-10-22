@@ -39,7 +39,12 @@ export type DependencyUnavailableReason = 'unreachable' | 'probes_disabled' | 'a
 export type DependencyHealthState =
   | { kind: 'disabled' }
   | { kind: 'loading' }
-  | { kind: 'ok'; checkedAt: Date; dependencies: DependencyResult[] }
+  /**
+   * `receivedAt` is the BROWSER's clock at receipt. Expiry and the banner use it, never the server's
+   * `checkedAt`, because comparing a server timestamp with the browser clock breaks under clock skew
+   * (tier-1 review). The server's own cache adds at most 60 s on top.
+   */
+  | { kind: 'ok'; checkedAt: Date; receivedAt?: number; dependencies: DependencyResult[] }
   | { kind: 'unavailable'; reason: DependencyUnavailableReason };
 
 /** The page polls every 30s; the server caches 30–60s, so this never fans out to the dependencies. */
@@ -111,7 +116,7 @@ async function fetchDependencyHealth(): Promise<DependencyHealthState> {
         timer = setTimeout(() => reject(new Error('dependency health timed out')), DEPENDENCY_HEALTH_CLIENT_TIMEOUT_MS);
       }),
     ]);
-    return { kind: 'ok', ...mapDependencyHealth(raw) };
+    return { kind: 'ok', ...mapDependencyHealth(raw), receivedAt: Date.now() };
   } catch (error) {
     return { kind: 'unavailable', reason: classifyDependencyHealthError(error) };
   } finally {

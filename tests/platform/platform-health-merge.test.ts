@@ -272,6 +272,18 @@ describe('expired dependency results are never shown as a current state (tier-1 
     expect(isExpiredProbeResult(new Date(Number.NaN), NOW)).toBe(true);
   });
 
+  it('expiry uses the browser receipt time, so server/browser clock skew cannot keep or kill a result (tier-1 r4)', () => {
+    // Server clock 10 minutes AHEAD of the browser (checkedAt in the browser's future), received just now.
+    const ahead = { ...okAt(new Date(NOW.getTime() + 600_000)), receivedAt: NOW.getTime() - 5_000 };
+    expect(byId(mergeHealthServices(trpcServices, ahead, NOW)).get('ai')?.reason).not.toBe('stale_result');
+    // Server clock 10 minutes BEHIND, received just now: still current.
+    const behind = { ...okAt(new Date(NOW.getTime() - 600_000)), receivedAt: NOW.getTime() - 5_000 };
+    expect(byId(mergeHealthServices(trpcServices, behind, NOW)).get('ai')?.reason).not.toBe('stale_result');
+    // Received 3 minutes ago (polling stalled): expired whatever the server's timestamp says.
+    const oldReceipt = { ...okAt(new Date(NOW.getTime() + 600_000)), receivedAt: NOW.getTime() - 180_000 };
+    expect(byId(mergeHealthServices(trpcServices, oldReceipt, NOW)).get('ai')?.reason).toBe('stale_result');
+  });
+
   it('an old tRPC measurement makes the database row unverified too (tier-1 r3)', () => {
     const fresh = okAt(new Date(NOW.getTime() - 10_000));
     const stale = byId(mergeHealthServices(trpcServices, fresh, NOW, NOW.getTime() - 121_000));
