@@ -54,9 +54,11 @@ const CREATE_FN = /\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/gi;
  */
 function functionStatements(sql: string): string[] {
   const out: string[] = [];
-  for (const m of sql.matchAll(CREATE_FN)) {
-    const start = m.index ?? 0;
-    const rest = sql.slice(start);
+  const starts = [...sql.matchAll(CREATE_FN)].map((m) => m.index ?? 0);
+  for (const [n, start] of starts.entries()) {
+    // Never past the NEXT function: a single-quoted body has no dollar quote, and searching on would
+    // borrow the next function's body and pin (tier-1 review).
+    const rest = sql.slice(start, starts[n + 1] ?? sql.length);
     const open = /\$([A-Za-z_]*)\$/.exec(rest);
     if (!open) {
       out.push(rest);
@@ -85,6 +87,7 @@ function optionsOf(stmt: string): string {
   return stmt
     .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' ')
     .replace(/\bAS\s+'(?:[^']|'')*'/gi, ' AS ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/--[^\n]*/g, ' ');
 }
 
@@ -118,10 +121,18 @@ describe('governance — committed function DDL pins search_path', () => {
       "CREATE FUNCTION f() RETURNS void AS $fn$ BEGIN EXECUTE 'SET search_path = public'; END $fn$ LANGUAGE plpgsql;",
       "CREATE FUNCTION f() RETURNS int\n-- SET search_path = ''\nAS $$ SELECT 1 $$ LANGUAGE sql;",
       "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1 /* SET search_path = x */';",
+      "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$\nLANGUAGE sql /* SET search_path = '' */;",
     ]) {
       const [stmt] = functionStatements(fake);
       expect(PINNED.test(optionsOf(stmt ?? fake)), fake).toBe(false);
     }
+    // A single-quoted-body function followed by a pinned one must not borrow the second one's pin.
+    const [first, second] = functionStatements(
+      "CREATE FUNCTION a() RETURNS int LANGUAGE sql AS 'SELECT 1';\n" +
+        "CREATE FUNCTION b() RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 2 $$;",
+    );
+    expect(PINNED.test(optionsOf(first ?? ''))).toBe(false);
+    expect(PINNED.test(optionsOf(second ?? ''))).toBe(true);
     const [real] = functionStatements(
       "CREATE OR REPLACE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 1 $$;",
     );
