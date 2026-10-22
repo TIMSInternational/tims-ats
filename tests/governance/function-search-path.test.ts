@@ -76,6 +76,18 @@ function functionStatements(sql: string): string[] {
 
 const PINNED = /\bSET\s+search_path\s*(?:=|TO)\s*/i;
 
+/**
+ * The function's OPTION text only: dollar-quoted and single-quoted bodies and `--` comments removed, so a
+ * `SET search_path` that appears inside the body or a comment cannot satisfy the check (tier-1 review). A
+ * quoted option value (`SET search_path = ''`) survives because only `AS '...'` bodies are stripped.
+ */
+function optionsOf(stmt: string): string {
+  return stmt
+    .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' ')
+    .replace(/\bAS\s+'(?:[^']|'')*'/gi, ' AS ')
+    .replace(/--[^\n]*/g, ' ');
+}
+
 describe('governance — committed function DDL pins search_path', () => {
   const files = SCAN_ROOTS.flatMap((r) => sqlFilesUnder(join(ROOT, r))).filter((f) => !EXCLUDED.has(relative(ROOT, f)));
   const statements = files.flatMap((f) =>
@@ -90,7 +102,7 @@ describe('governance — committed function DDL pins search_path', () => {
 
   it('every CREATE [OR REPLACE] FUNCTION carries SET search_path', () => {
     const offenders = statements
-      .filter(({ stmt }) => !PINNED.test(stmt))
+      .filter(({ stmt }) => !PINNED.test(optionsOf(stmt)))
       .map(({ file, stmt }) => `${file}: ${stmt.split('\n')[0]}`);
     expect(
       offenders,
@@ -98,6 +110,33 @@ describe('governance — committed function DDL pins search_path', () => {
         'REPLACE without it RESETS any pin applied earlier by ALTER FUNCTION (Supabase lint 0011).\nOffenders:\n' +
         offenders.join('\n'),
     ).toEqual([]);
+  });
+
+  it('a SET search_path inside the body or a comment does not count as a pin (tier-1 review)', () => {
+    for (const fake of [
+      "CREATE FUNCTION f() RETURNS int AS $$\n  SELECT 1; -- SET search_path = ''\n$$ LANGUAGE sql;",
+      "CREATE FUNCTION f() RETURNS void AS $fn$ BEGIN EXECUTE 'SET search_path = public'; END $fn$ LANGUAGE plpgsql;",
+      "CREATE FUNCTION f() RETURNS int\n-- SET search_path = ''\nAS $$ SELECT 1 $$ LANGUAGE sql;",
+      "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1 /* SET search_path = x */';",
+    ]) {
+      const [stmt] = functionStatements(fake);
+      expect(PINNED.test(optionsOf(stmt ?? fake)), fake).toBe(false);
+    }
+    const [real] = functionStatements(
+      "CREATE OR REPLACE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 1 $$;",
+    );
+    expect(PINNED.test(optionsOf(real ?? ''))).toBe(true);
+  });
+
+  it('both the apply and the ROLLBACK instructions require regenerating the flip-DDL after re-capture (tier-1 review)', () => {
+    for (const f of [
+      'packages/db/prisma/manual/2026-10-12-pin-function-search-path.sql',
+      'packages/db/prisma/manual/2026-10-12-pin-function-search-path.ROLLBACK.sql',
+    ]) {
+      const text = readFileSync(join(ROOT, f), 'utf8');
+      expect(text, f).toMatch(/schema-baseline\.sh capture/);
+      expect(text, f).toMatch(/regenerate every services\/Tims\.Platform\/db\/flip-ddl\/\*\.sql/);
+    }
   });
 
   it('the statement splitter really sees an unpinned function (the check can fail)', () => {

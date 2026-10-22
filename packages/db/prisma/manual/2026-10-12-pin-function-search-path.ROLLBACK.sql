@@ -18,6 +18,9 @@
 --   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f packages/db/prisma/manual/2026-10-12-pin-function-search-path.ROLLBACK.sql
 -- THEN re-capture the baseline:
 --   bash scripts/db/schema-baseline.sh capture
+-- AND regenerate every services/Tims.Platform/db/flip-ddl/*.sql from its own `-- Regenerate:` line, adding
+-- `--out <that file>`: each embeds the baseline's capture timestamp, so a re-capture alone fails tests/db/extract-table-ddl.test.ts
+-- (byte-identity). Commit the baseline and all flip-DDL files together, exactly as for the forward script.
 -- ============================================================================================
 
 BEGIN;
