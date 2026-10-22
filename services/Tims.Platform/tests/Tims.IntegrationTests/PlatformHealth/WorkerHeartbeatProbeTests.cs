@@ -111,6 +111,24 @@ public sealed class WorkerHeartbeatProbeTests : IAsyncLifetime
         Assert.Equal(DependencyReason.HeartbeatStale, result.Reason);
     }
 
+    [Theory]
+    // A slow-interval node that is fresh on ITS terms keeps the scheduler up while a fast node went stale
+    // (the newest check-in alone would say down).
+    [InlineData(-70, 10, -100, 60, true)]
+    // A fresh fast node is operational even if another node has a longer interval (the longest interval
+    // alone would pick the 30-minute-silent node and say down).
+    [InlineData(-5, 10, -1800, 300, true)]
+    public async Task TheNodeWithTheLatestOwnStalenessDeadlineDecides(int aAgoS, int aIntervalS, int bAgoS, int bIntervalS,
+        bool operational)
+    {
+        await Exec("DELETE FROM qrtz_scheduler_state;");
+        await Exec(
+            $"INSERT INTO qrtz_scheduler_state VALUES ('{T}','node-a',{Now.AddSeconds(aAgoS).ToUnixTimeMilliseconds()},{aIntervalS * 1000})," +
+            $"('{T}','node-b',{Now.AddSeconds(bAgoS).ToUnixTimeMilliseconds()},{bIntervalS * 1000});");
+        var result = await Probe(_quartz).ProbeAsync(CancellationToken.None);
+        Assert.Equal(operational ? DependencyStatus.Operational : DependencyStatus.Down, result.Status);
+    }
+
     [Fact]
     public async Task AFreshUnrelatedScheduler_CannotMaskStaleTimsWorkers()
     {
