@@ -106,6 +106,7 @@ done
 [[ "$STOP" -eq 0 || -z "$IMAGE_TAG" ]] || die "--stop and --image-tag are mutually exclusive"
 command -v aws >/dev/null || die "aws CLI not on PATH"
 command -v python3 >/dev/null || die "python3 not on PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 AWSX=(aws --profile "$PROFILE" --region "$REGION")
 WORK="$(mktemp -d)"
@@ -160,11 +161,14 @@ else
     --image-tag-mutability IMMUTABLE --image-scanning-configuration scanOnPush=true
 fi
 # put-lifecycle-policy is an upsert: re-assert it on every run, not only on create, so a repo that
-# already existed (or was hand-edited) still ends up with the 30-image retention.
-# Count-based expiry is safe ONLY because deploy-platform-workers.yml pushes an image just before rolling
-# onto it (scripts/deploy/workers-deploy-decide.sh), so the running image is always among the newest 30.
+# already existed (or was hand-edited) still ends up with this retention.
+# ECR counts by PUSH time, so "keep the last 30" alone can expire the RUNNING image: failed rolls leave
+# newer images behind, and a rollback restores an older image without refreshing its push time. So every
+# image a deploy rolls onto or away from is tagged `deployed-<tag>` (scripts/deploy/workers-protect-image.sh),
+# and rule 1 selects that prefix. ECR never lets a lower-priority rule expire an image that a higher-priority
+# rule selected, so deployed images are kept (for 3650 days) and only never-deployed builds age out at 30.
 mutate ecr put-lifecycle-policy --repository-name "$ECR_REPO" --lifecycle-policy-text \
-  '{"rules":[{"rulePriority":1,"description":"keep the last 30 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
+  '{"rules":[{"rulePriority":1,"description":"never expire an image that was deployed (running or rollback target)","selection":{"tagStatus":"tagged","tagPrefixList":["deployed-"],"countType":"sinceImagePushed","countUnit":"days","countNumber":3650},"action":{"type":"expire"}},{"rulePriority":2,"description":"keep the last 30 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
 
 # ── 2. Log group (30-day retention — job logs carry no payloads/PII by design) ───────────────────
 say ""
@@ -374,6 +378,16 @@ if [[ "$ONLINE" -eq 1 ]]; then
 fi
 DEPLOY_CFG='maximumPercent=100,minimumHealthyPercent=0,deploymentCircuitBreaker={enable=true,rollback=true}'
 NET_CFG="awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SG_ID}],assignPublicIp=ENABLED}"
+# Protect the image BEFORE the service points at it, so the running image (and, on a rollback, the image
+# being restored) can never be aged out by the 30-image count.
+if [[ "$APPLY" -eq 1 ]]; then
+  command -v jq >/dev/null || die "jq not on PATH (needed to protect the image and to verify the roll)"
+  AWS_PROFILE="$PROFILE" AWS_REGION="$REGION" ECR_REPO="$ECR_REPO" \
+    bash "$SCRIPT_DIR/workers-protect-image.sh" "$IMAGE_TAG" \
+    || die "could not protect $ECR_REPO:$IMAGE_TAG from expiry; not rolling onto it"
+else
+  say "  would run: scripts/deploy/workers-protect-image.sh $IMAGE_TAG   (adds tag deployed-$IMAGE_TAG)"
+fi
 if [[ "$SERVICE_STATUS" == "ACTIVE" ]]; then
   mutate ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition "$TD_ARN" \
     --desired-count 1 --deployment-configuration "$DEPLOY_CFG"
@@ -387,7 +401,13 @@ if [[ "$APPLY" -eq 1 ]]; then
   say "  waiting for the service to stabilise…"
   "${AWSX[@]}" ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE" \
     || die "service did not stabilise — check: aws ecs describe-services --cluster $CLUSTER --services $SERVICE"
-  ok "service $SERVICE runs $IMAGE_TAG"
+  # services-stable ALSO returns 0 after a circuit-breaker rollback (stable again, on the OLD revision), so
+  # the waiter alone cannot say the requested image runs. Same verifier as the workflow: it polls until the
+  # PRIMARY deployment is $TD_ARN with rolloutState COMPLETED, and fails loud on a rollback or FAILED.
+  AWS_PROFILE="$PROFILE" AWS_REGION="$REGION" ECS_CLUSTER="$CLUSTER" ECS_SERVICE="$SERVICE" \
+    bash "$SCRIPT_DIR/workers-verify-roll.sh" "$TD_ARN" \
+    || die "service $SERVICE did NOT settle on $TD_ARN ($IMAGE_TAG); if the circuit breaker rolled back, the previous revision still runs. Check: aws ecs describe-services --cluster $CLUSTER --services $SERVICE --query 'services[0].events[:10]'"
+  ok "service $SERVICE runs $IMAGE_TAG ($TD_ARN, rollout COMPLETED)"
   say ""
   say "Verify (docs/runbooks/workers-deploy.md §Verify): the first log lines in $LOG_GROUP, then the next"
   say "05:00 UTC 'fx refresh' line, BEFORE turning the API's Platform__FxRefreshEnabled off."

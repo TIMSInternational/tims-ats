@@ -14,8 +14,11 @@ name: Deploy platform workers
 #
 # ── IMAGES ARE PUSHED ONLY WHEN THEY WILL RUN ──────────────────────────────────────────────────────
 # ECR keeps the last 30 images. The `decide` step (scripts/deploy/workers-deploy-decide.sh) runs
-# BEFORE the build, so a CI run that will not roll pushes nothing and cannot age the running image
-# out of the repository. Pinned by tests/governance/workers-deploy-decide.test.ts.
+# BEFORE the build, so a CI run that will not roll pushes nothing (pinned by
+# tests/governance/workers-deploy-decide.test.ts). That alone does NOT keep the running image: ECR counts
+# by push time, and failed rolls or rollbacks break the ordering. So the roll step also tags the new and
+# the previous image `deployed-<tag>`, which the lifecycle policy never expires
+# (scripts/deploy/workers-protect-image.sh, tests/governance/workers-image-retention.test.ts).
 # Full procedure: docs/runbooks/workers-deploy.md.
 #
 # ── WHY ECS (not App Runner) ──────────────────────────────────────────────────────────────────────
@@ -234,6 +237,11 @@ jobs:
                   .registeredAt, .registeredBy, .deregisteredAt)' current-td.json > next-td.json
           test "$(jq -r --arg n "$CONTAINER_NAME" '[.containerDefinitions[] | select(.name==$n)] | length' next-td.json)" = "1" \
             || { echo "::error::Container $CONTAINER_NAME not found exactly once in $CURRENT_TD"; exit 1; }
+          # Protect the image we roll onto, and the one we roll away from (the rollback target), from the ECR
+          # 30-image count BEFORE the service points at the new one (scripts/deploy/workers-protect-image.sh).
+          bash scripts/deploy/workers-protect-image.sh "$TAG"
+          bash scripts/deploy/workers-protect-image.sh "$RUNNING_TAG" \
+            || echo "::warning::could not protect the previous image $RUNNING_IMAGE; it may age out of ECR, so roll back soon or re-tag it by hand"
           NEW_TD="$(aws ecs register-task-definition --region "$AWS_REGION" \
                      --cli-input-json file://next-td.json --query 'taskDefinition.taskDefinitionArn' --output text)"
           aws ecs update-service --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
