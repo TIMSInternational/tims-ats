@@ -61,6 +61,34 @@ describe('e2e persona rate-limit recorder', () => {
     await expect(closePersona(persona)).rejects.toThrow(/rate limit/);
   });
 
+  it('a request whose response has not even arrived when teardown starts is still checked (tier-1 r2)', async () => {
+    const { browser, emit } = fakeBrowser();
+    const persona = await newPersona(browser as never, 'recruiter');
+    const request = { url: () => 'http://localhost:3000/api/trpc/offer.list,offer.kpis' };
+    emit('request', request);
+    const closing = closePersona(persona);
+    const { response, release } = slowRefusal();
+    setTimeout(() => {
+      emit('response', response);
+      release();
+      setTimeout(() => emit('requestfinished', request), 10);
+    }, 30);
+    await expect(closing).rejects.toThrow(/TOO_MANY_REQUESTS on offer\.kpis/);
+  });
+
+  it('a 207 whose body cannot be read is surfaced, never accepted silently (tier-1 r2)', async () => {
+    const { browser, emit } = fakeBrowser();
+    const persona = await newPersona(browser as never, 'recruiter');
+    emit('response', {
+      url: () => 'http://localhost:3000/api/trpc/offer.list,offer.kpis',
+      status: () => 207,
+      json: async () => {
+        throw new Error('Target page, context or browser has been closed');
+      },
+    });
+    await expect(expectNotRateLimited(persona)).rejects.toThrow(/could not be read/);
+  });
+
   it('no refusal: the check passes', async () => {
     const { browser, emit } = fakeBrowser();
     const persona = await newPersona(browser as never, 'recruiter');
