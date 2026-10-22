@@ -296,10 +296,25 @@ BEGIN
     AND NOT EXISTS (SELECT 1 FROM onboarding_tasks t WHERE t.plan_id = p.id);
   GET DIAGNOSTICS v_plans = ROW_COUNT;
 
+  -- Lock the undated tasks of those plans too. Plan locks do not stop updateTask from editing an
+  -- EXISTING task's phase or title, and the due date below is computed from both; without this, an
+  -- edit committed between this snapshot and the UPDATE got a deadline from the old phase (tier-1
+  -- review). The UPDATE also re-checks phase and title, so a change can never be written silently.
+  PERFORM 1
+  FROM onboarding_tasks t
+  JOIN onboarding_plans p ON p.id = t.plan_id
+  WHERE p.status = 'active'
+-- BEGIN PLAN_IN_WINDOW
+    AND (v_include_past OR p.start_date + interval '90 days' >= v_now)
+-- END PLAN_IN_WINDOW
+    AND t.due_date IS NULL
+  ORDER BY t.id
+  FOR UPDATE OF t;
+
   CREATE TEMP TABLE backfill319_undated ON COMMIT DROP AS
-  SELECT task_id, start_date + make_interval(days => offset_days) AS new_due_date
+  SELECT task_id, task_phase, task_title, start_date + make_interval(days => offset_days) AS new_due_date
   FROM (
-    SELECT t.id AS task_id, p.start_date,
+    SELECT t.id AS task_id, t.phase AS task_phase, t.title AS task_title, p.start_date,
 -- BEGIN DUE_OFFSET_RULE
          CASE
            WHEN t.phase IN ('day1_30', 'day31_60', 'day61_90') THEN
@@ -354,7 +369,8 @@ BEGIN
   UPDATE onboarding_tasks t
   SET due_date = u.new_due_date, updated_at = v_now
   FROM backfill319_undated u
-  WHERE t.id = u.task_id AND t.due_date IS NULL;
+  WHERE t.id = u.task_id AND t.due_date IS NULL
+    AND t.phase IS NOT DISTINCT FROM u.task_phase AND t.title IS NOT DISTINCT FROM u.task_title;
   GET DIAGNOSTICS v_updated = ROW_COUNT;
   IF v_updated <> v_undated THEN
     RAISE EXCEPTION '#319: dated % tasks, expected %', v_updated, v_undated;

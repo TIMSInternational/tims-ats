@@ -98,10 +98,20 @@ WHERE o.deleted_at IS NULL
                         AND t.leader_id IS NULL;
   IF v_n <> v_orgs THEN RAISE EXCEPTION '#320: read-back chained % of % targets', v_n, v_orgs; END IF;
 
+  -- Scoped to the TARGET set. An organization that already has a unit or team but no company is
+  -- deliberately excluded by TARGET_PREDICATE (partial structure is the owner's to repair), so an
+  -- all-organizations assertion here rolled back every valid target because of it (tier-1 review).
+  -- Such organizations are reported instead.
+  SELECT count(*) INTO v_left
+  FROM backfill320_targets tg
+  WHERE NOT EXISTS (SELECT 1 FROM companies x WHERE x.organization_id = tg.organization_id);
+  IF v_left <> 0 THEN RAISE EXCEPTION '#320: % target organizations still have no company', v_left; END IF;
   SELECT count(*) INTO v_left
   FROM organizations o
   WHERE o.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM companies x WHERE x.organization_id = o.id);
-  IF v_left <> 0 THEN RAISE EXCEPTION '#320: % non-deleted organizations still have no company', v_left; END IF;
+  IF v_left <> 0 THEN
+    RAISE NOTICE '#320: % non-deleted organizations with partial structure (a unit or team but no company) were left untouched; repair them by hand', v_left;
+  END IF;
 
   RAISE NOTICE '#320 applied: % organizations provisioned (company + % + %), 0 leaders assigned', v_orgs, c_unit, c_team;
 END

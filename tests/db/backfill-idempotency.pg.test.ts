@@ -565,6 +565,26 @@ suite('#320 org-structure backfill against a real cluster', () => {
     expect(snapshot(db, TABLES)).toBe(after);
   });
 
+  it('an excluded partial org with a unit but NO company does not roll back the valid targets (tier-1 review)', () => {
+    const db = freshDb(
+      'bf320p',
+      `${SEED}
+      INSERT INTO organizations (id, name, slug, updated_at, deleted_at) VALUES
+        ('00000000-0000-0000-0000-0000000000e6', 'Unit Only', 'e6', ${NOW}, NULL);
+      INSERT INTO business_units (id, organization_id, company_id, name, updated_at) VALUES
+        ('00000000-0000-0000-0000-0000000001f6', '00000000-0000-0000-0000-0000000000e6', '00000000-0000-0000-0000-0000000000f3', 'Orphan', ${NOW});`,
+    );
+    const dry = runScript(db, SCRIPT[320]);
+    expect(resultRow(dry.out, 'expected_orgs').expected_orgs).toBe(2);
+    const apply = runScript(db, SCRIPT[320], { apply: 'true', expected_orgs: '2' });
+    expect(apply.code, apply.out).toBe(0);
+    expect(apply.out).toMatch(/1 non-deleted organizations with partial structure/);
+    expect(
+      sql(db, `SELECT count(*) FROM companies WHERE organization_id IN ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000e2')`),
+    ).toBe('2');
+    expect(sql(db, `SELECT count(*) FROM companies WHERE organization_id = '00000000-0000-0000-0000-0000000000e6'`)).toBe('0');
+  });
+
   it('a connector render with the fixture total applies once, then aborts with no write', () => {
     const db = freshDb('bf320c', SEED);
     const file = join(dir, '320-connector.sql');
