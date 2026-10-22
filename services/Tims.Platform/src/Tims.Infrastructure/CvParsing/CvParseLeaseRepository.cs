@@ -133,10 +133,11 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
     public async Task<T?> RunWithConsentGateAsync<T>(CvParseLease lease,
         Func<CancellationToken, Task<T>> work, DateTime nowUtc, CancellationToken ct) where T : class
     {
+        // From method ENTRY: pool acquisition, transaction setup and the lock wait all spend lease time.
+        var lockWait = System.Diagnostics.Stopwatch.StartNew();
         await using var connection = await source.OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
         await SetTenantScopeAsync(connection, transaction, lease.OrganizationId, ct).ConfigureAwait(false);
-        var lockWait = System.Diagnostics.Stopwatch.StartNew();
         // The withdrawal lock (the same candidate-id advisory lock consent withdrawal takes) of
         // this candidate AND of every same-email variant row, acquired in ONE statement in id
         // order. A withdrawal recorded on another row for the same person then serializes with
@@ -197,7 +198,10 @@ public sealed class CvParseLeaseRepository(NpgsqlDataSource source, DateTime? cr
             check.Parameters.AddWithValue("candidate", lease.CandidateId);
             check.Parameters.AddWithValue("token", lease.Token);
             // The lease must still be held when the bounded callback can last end: the caller's
-            // time plus however long the lock wait took, plus the callback's own timeout.
+            // time plus everything spent since entering this method (connection, setup, lock
+            // wait), plus the callback's own timeout. The eligibility query's own latency is not
+            // included; it is a single indexed lookup, and a result that loses its lease anyway
+            // is still rejected by the token check at completion.
             // Otherwise a gate that waited on a variant's lock past expiry ran inference on a
             // lease another worker could reclaim mid-call (tier-1 review).
             AddTimestamp(check, "now", UtcTimestamp(nowUtc) + lockWait.Elapsed + ConsentGateTimeout);
