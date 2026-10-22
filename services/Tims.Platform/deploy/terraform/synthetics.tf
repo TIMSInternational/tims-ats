@@ -323,6 +323,13 @@ resource "aws_cloudwatch_metric_alarm" "synthetics" {
   alarm_actions       = [local.synthetics_alarm_topic_arn]
   ok_actions          = [local.synthetics_alarm_topic_arn]
 
+  # The owner applies with -target on these alarms, which creates only their dependency closure. The
+  # topic is in it (alarm_actions), but the EMAIL SUBSCRIPTION is not: nothing references it. Without
+  # this, the targeted apply created alarms that publish to a topic nobody subscribes to, and no
+  # confirmation email was ever sent (tier-1 review). With synthetics_alarm_topic_arn set, the
+  # subscription has count 0 and the existing topic's subscribers must be checked by hand (README).
+  depends_on = [aws_sns_topic_subscription.alarm_email]
+
   lifecycle {
     precondition {
       condition     = local.synthetics_alarm_topic_arn != null

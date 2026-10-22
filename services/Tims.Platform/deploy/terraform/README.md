@@ -96,6 +96,12 @@ canary stops reporting, and publishes to the platform alarms SNS topic.
 - **Topic.** By default the alarms use the topic `alarms.tf` creates (needs `enable_alarms = true`).
   While the live topic is the one `scripts/ops/create-alarms.sh` made, set
   `synthetics_alarm_topic_arn` to it instead of letting Terraform create a second one.
+- **Recipients.** With the default topic, the alarms depend on `aws_sns_topic_subscription.alarm_email`,
+  so a `-target` apply on the alarms also creates the email subscription; nothing is delivered until
+  the recipient clicks the AWS confirmation link. With `synthetics_alarm_topic_arn` set, Terraform
+  creates no subscription: before relying on the canaries, check that the existing topic has a
+  **Confirmed** subscriber (`aws sns list-subscriptions-by-topic --topic-arn <arn>`; a
+  `PendingConfirmation` ARN or an empty list means the alarms page no one).
 - **Runtime** is pinned (`local.synthetics_runtime_version`); upgrading it is a reviewed change.
   AWS deprecates Synthetics runtimes on a schedule — check the runtime list before each upgrade.
 - **Artifacts** go to a private, SSE-S3-encrypted bucket with all Block Public Access flags, TLS-only

@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 const ROOT = resolve(__dirname, '../..');
 const TF_DIR = join(ROOT, 'services/Tims.Platform/deploy/terraform');
 const SYN = readFileSync(join(TF_DIR, 'synthetics.tf'), 'utf8');
+const ALARMS_TF = readFileSync(join(TF_DIR, 'alarms.tf'), 'utf8');
 const VARS = readFileSync(join(TF_DIR, 'variables.tf'), 'utf8');
 const VERSIONS = readFileSync(join(TF_DIR, 'versions.tf'), 'utf8');
 const GITIGNORE = readFileSync(join(TF_DIR, '.gitignore'), 'utf8');
@@ -172,6 +173,34 @@ describe('synthetics.tf — uptime canaries', () => {
     const managed = [...bodies.keys()].filter((a) => !a.startsWith('data.'));
     expect(managed.length).toBe(10);
     expect(managed.filter((a) => !closure.has(a))).toEqual([]);
+  });
+
+  it('the targeted apply on the alarms also creates the email subscription, not just the topic (tier-1 review)', () => {
+    // Same closure walk, across synthetics.tf AND alarms.tf. The topic was always in it (alarm_actions);
+    // the subscription is referenced by nothing, so -target skipped it and the alarms paged no one.
+    const all = SYN + '\n' + ALARMS_TF;
+    const headers = [...all.matchAll(/^(resource|data) "([a-z0-9_]+)" "([a-z0-9_]+)" \{/gm)];
+    const bodies = new Map<string, string>();
+    for (const [, kind, type, name] of headers) {
+      const addr = kind === 'data' ? `data.${type}.${name}` : `${type}.${name}`;
+      bodies.set(addr, block(all, `${kind} "${type}" "${name}" {`));
+    }
+    // Locals are resolved too: the alarm reaches the topic through local.synthetics_alarm_topic_arn.
+    const locals = block(SYN, 'locals {');
+    const refs = (body: string) =>
+      [...bodies.keys()].filter((addr) =>
+        new RegExp(`(^|[^a-z0-9_.])${addr.replace(/\./g, '\\.')}\\b`).test(body.includes('local.') ? body + locals : body),
+      );
+    const closure = new Set<string>();
+    const queue = ['aws_cloudwatch_metric_alarm.synthetics'];
+    while (queue.length) {
+      const addr = queue.pop()!;
+      if (closure.has(addr)) continue;
+      closure.add(addr);
+      queue.push(...refs(bodies.get(addr)!));
+    }
+    expect(closure.has('aws_sns_topic.alarms')).toBe(true);
+    expect(closure.has('aws_sns_topic_subscription.alarm_email')).toBe(true);
   });
 
   it('commits no hostname: the URL variables default to empty and the apply refuses empty/non-https', () => {
