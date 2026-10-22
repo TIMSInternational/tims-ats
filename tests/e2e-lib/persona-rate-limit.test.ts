@@ -89,6 +89,21 @@ describe('e2e persona rate-limit recorder', () => {
     await expect(expectNotRateLimited(persona)).rejects.toThrow(/could not be read/);
   });
 
+  it('a stalled body cannot hold the check past the settle deadline (tier-1 r3)', async () => {
+    process.env.E2E_SETTLE_TIMEOUT_MS = '150';
+    try {
+      const { browser, emit } = fakeBrowser();
+      const persona = await newPersona(browser as never, 'recruiter');
+      const { response } = slowRefusal(); // never released
+      emit('response', response);
+      const started = Date.now();
+      await expect(closePersona(persona)).rejects.toThrow(/outcome is unknown/);
+      expect(Date.now() - started).toBeLessThan(2_000);
+    } finally {
+      delete process.env.E2E_SETTLE_TIMEOUT_MS;
+    }
+  });
+
   it('no refusal: the check passes', async () => {
     const { browser, emit } = fakeBrowser();
     const persona = await newPersona(browser as never, 'recruiter');

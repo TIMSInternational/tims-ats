@@ -98,7 +98,11 @@ export async function newPersona(browser: Browser, label: string): Promise<Perso
   return persona;
 }
 
-const SETTLE_TIMEOUT_MS = 15_000;
+/** Upper bound for settling, overridable for the unit tests of this file. */
+function settleTimeoutMs(): number {
+  const raw = Number(process.env.E2E_SETTLE_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 15_000;
+}
 
 /**
  * Wait until every tRPC request this persona sent has FINISHED (or failed) and every response has been
@@ -106,15 +110,19 @@ const SETTLE_TIMEOUT_MS = 15_000;
  * a teardown (tier-1 review). Throws if requests are still outstanding after SETTLE_TIMEOUT_MS.
  */
 export async function settleRecorders(...personas: (Persona | undefined)[]): Promise<void> {
-  const deadline = Date.now() + SETTLE_TIMEOUT_MS;
+  const deadline = Date.now() + settleTimeoutMs();
   for (const p of personas) {
     while (p && (p.pending.size > 0 || p.inFlight.size > 0)) {
-      if (Date.now() > deadline) {
-        throw new Error(`[e2e] the ${p.label} persona still has ${p.inFlight.size} tRPC request(s) in flight; ` +
-          'their rate-limit outcome is unknown, so this check refuses to pass.');
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        throw new Error(`[e2e] the ${p.label} persona still has ${p.inFlight.size} tRPC request(s) in flight and ` +
+          `${p.pending.size} response(s) unread; their rate-limit outcome is unknown, so this check refuses to pass.`);
       }
-      if (p.pending.size > 0) await Promise.all([...p.pending]);
-      else await new Promise((r) => setTimeout(r, 25));
+      // Every wait is raced against the deadline: a stalled body must not hold the check (or teardown) forever.
+      const step = p.pending.size > 0 ? Promise.all([...p.pending]) : new Promise((r) => setTimeout(r, 25));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([step, new Promise((r) => { timer = setTimeout(r, Math.min(left, 1_000)); })]);
+      clearTimeout(timer);
     }
   }
 }
