@@ -272,6 +272,14 @@ describe('expired dependency results are never shown as a current state (tier-1 
     expect(isExpiredProbeResult(new Date(Number.NaN), NOW)).toBe(true);
   });
 
+  it('an old tRPC measurement makes the database row unverified too (tier-1 r3)', () => {
+    const fresh = okAt(new Date(NOW.getTime() - 10_000));
+    const stale = byId(mergeHealthServices(trpcServices, fresh, NOW, NOW.getTime() - 121_000));
+    expect(stale.get('database')).toMatchObject({ status: 'not_monitored', reason: 'stale_result' });
+    const current = byId(mergeHealthServices(trpcServices, fresh, NOW, NOW.getTime() - 10_000));
+    expect(current.get('database')?.status).toBe('operational');
+  });
+
   it('the banner shows the OLDER of the two measurements', () => {
     const probedAt = new Date(NOW.getTime() - 50_000);
     expect(healthMeasuredAt(NOW.getTime(), okAt(probedAt))).toBe(probedAt.getTime());
@@ -283,7 +291,7 @@ describe('expired dependency results are never shown as a current state (tier-1 
     // Source-level: the page needs trpc + react-query mocks to mount; the merge rule itself is tested above.
     const page = readFileSync(resolve(__dirname, '../../apps/web/app/(admin)/platform/health/page.tsx'), 'utf8');
     expect(page).toMatch(/setInterval\(\(\) => setNow\(new Date\(\)\), 15_000\)/);
-    expect(page).toMatch(/mergeHealthServices\(data\?\.services \?\? \[\], dependencyHealth\.state, now\)/);
+    expect(page).toMatch(/mergeHealthServices\(data\?\.services \?\? \[\], dependencyHealth\.state, now, dataUpdatedAt\)/);
   });
 
   it('the dependency query re-probes on every visit instead of serving the 5-minute provider cache', () => {

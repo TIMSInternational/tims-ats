@@ -69,7 +69,12 @@ export function mergeHealthServices(
   trpcServices: HealthService[],
   probes: DependencyHealthState,
   now: Date = new Date(),
+  /** When the tRPC rows were measured (react-query dataUpdatedAt); omitted = treated as current. */
+  trpcUpdatedAt: number = now.getTime(),
 ): DisplayService[] {
+  // The tRPC rows (the database row) expire by the same rule as the probes: a stalled tRPC poll must not
+  // keep an arbitrarily old green database row on screen (tier-1 review).
+  const trpcExpired = isExpiredProbeResult(new Date(trpcUpdatedAt), now);
   const trpcById = new Map(trpcServices.map((service) => [service.id as string, service]));
   const ids: string[] = trpcServices.map((service) => service.id);
   for (const id of PROBED_SERVICE_IDS) if (!ids.includes(id)) ids.push(id);
@@ -77,6 +82,7 @@ export function mergeHealthServices(
   return ids.map((id): DisplayService => {
     const trpc = trpcById.get(id);
     if (!PROBED.has(id)) {
+      if (trpc && trpcExpired) return { id, status: 'not_monitored', reason: 'stale_result', metrics: [] };
       return {
         id,
         status: trpc ? fromTrpcStatus(trpc.status) : 'not_monitored',

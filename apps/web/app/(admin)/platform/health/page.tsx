@@ -28,7 +28,7 @@ export default function PlatformHealthPage() {
   }, []);
 
   // The database row comes from tRPC (a live SELECT 1); the other seven from the C# dependency probes.
-  const services = mergeHealthServices(data?.services ?? [], dependencyHealth.state, now);
+  const services = mergeHealthServices(data?.services ?? [], dependencyHealth.state, now, dataUpdatedAt);
   const overall = overallHealthStatus(services);
   // null = the feed could not be read (DB down) — shown as unavailable, never as "no errors".
   const recentErrors = data?.recentErrors ?? null;
