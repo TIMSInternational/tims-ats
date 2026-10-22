@@ -20,12 +20,19 @@ public sealed class CvParseRecoveryHostedService(
     ILogger<CvParseRecoveryHostedService> logger) : BackgroundService
 {
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(30);
-    public const int HealthEveryTicks = 10; // 5 minutes
+    /// <summary>
+    /// Health is reported by ELAPSED time, not by loop count: a loop iteration is a whole batch
+    /// (fetch, extraction and consent-gated inference, ~65 s worst case) plus the 30 s tick, so
+    /// "every 10 iterations" could stretch past the 15-minute heartbeat alarm while the loop was
+    /// busy and healthy (tier-1 review). Worst-case spacing is now this interval plus one batch
+    /// and one tick, well inside 15 minutes.
+    /// </summary>
+    public static readonly TimeSpan HealthInterval = TimeSpan.FromMinutes(5);
     public const long OldestDueAlertSeconds = 600;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var ticks = 0;
+        DateTime? lastHealth = null;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -41,9 +48,11 @@ public sealed class CvParseRecoveryHostedService(
                         outcomes.Count(x => x == CvRecoveryOutcome.Deferred),
                         outcomes.Count(x => x == CvRecoveryOutcome.Ineligible));
                 }
-                // First tick reports immediately, then every five minutes.
-                if (ticks++ % HealthEveryTicks == 0)
+                // First iteration reports immediately, then once HealthInterval has elapsed.
+                var now = DateTime.UtcNow;
+                if (IsHealthDue(lastHealth, now))
                 {
+                    lastHealth = now;
                     var stats = await leases.ReadStatsAsync(DateTime.UtcNow, stoppingToken).ConfigureAwait(false);
                     ReportHealth(logger, stats, extractor.AbandonedExtractions);
                 }
@@ -59,6 +68,10 @@ public sealed class CvParseRecoveryHostedService(
             catch (OperationCanceledException) { return; }
         }
     }
+
+    /// <summary>True on the first report and whenever <see cref="HealthInterval"/> has elapsed since the last.</summary>
+    public static bool IsHealthDue(DateTime? lastHealthUtc, DateTime nowUtc) =>
+        lastHealthUtc is not { } last || nowUtc - last >= HealthInterval;
 
     /// <summary>Returns true when the alert line was emitted.</summary>
     public static bool ReportHealth(ILogger logger, CvRecoveryStats stats, int abandonedExtractions)

@@ -51,4 +51,25 @@ public sealed class CvRecoveryHealthTests
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter) => Lines.Add(formatter(state, exception));
     }
+
+    [Fact]
+    public void Health_is_scheduled_by_elapsed_time_not_by_loop_count()
+    {
+        // Tier-1 review: counting 10 loop iterations let slow (busy, healthy) batches stretch the
+        // heartbeat past the 15-minute alarm. Ten slow iterations of ~95 s each are ~16 minutes.
+        var start = new DateTime(2026, 10, 22, 12, 0, 0, DateTimeKind.Utc);
+        Assert.True(CvParseRecoveryHostedService.IsHealthDue(null, start));
+        Assert.False(CvParseRecoveryHostedService.IsHealthDue(start, start.AddMinutes(4).AddSeconds(59)));
+        Assert.True(CvParseRecoveryHostedService.IsHealthDue(start, start.AddMinutes(5)));
+        DateTime? last = null;
+        var reports = 0;
+        for (var t = start; t < start.AddMinutes(16); t = t.AddSeconds(95))
+        {
+            if (!CvParseRecoveryHostedService.IsHealthDue(last, t)) continue;
+            last = t;
+            reports++;
+        }
+        // The old 10-iteration rule gives 2 here (t = 0 and t = 950 s); elapsed time gives 3.
+        Assert.True(reports >= 3, $"only {reports} heartbeats in 16 minutes of slow batches");
+    }
 }
