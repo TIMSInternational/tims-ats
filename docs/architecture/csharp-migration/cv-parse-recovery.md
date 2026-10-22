@@ -40,12 +40,14 @@ the Prisma model and migration must be updated together.
 **Deploy order: apply migration `20261010180000_cv_parse_retry_leases` to production
 BEFORE merging CV recovery 1/4.** Merging to `main` deploys the web app on Vercel, and
 that build regenerates the Prisma client with the five new `candidate_documents` fields,
-so the TypeScript side does NOT simply ignore them (tier-1 review). Any query that
-returns the whole row, for example `candidateDocument.delete()` without a `select`
-(`candidate.repository.ts` `deleteDocument`, which returns every scalar column), and
-any insert for which the client supplies the `cv_parse_attempts` default, fails with a
-missing-column error against the pre-migration table; on the public apply path that
-rolls back the whole application. The migration is additive and idempotent, so applying
+so the TypeScript side does NOT simply ignore them (tier-1 review). Verified on
+2026-10-22 against a pre-migration table with the regenerated client: EVERY
+`candidateDocument.create()` sends `cv_parse_attempts` explicitly (even with
+`select: { id: true }`), and `candidateDocument.delete()` without a `select`
+(`candidate.repository.ts` `deleteDocument`) returns every column; both fail with
+"column `cv_parse_attempts` does not exist". On the public apply path
+(`portal.ts`, CV row created inside the application transaction) that rolls back the
+whole application. The migration is additive and idempotent, so applying
 it early is safe for the current code. Verify with
 `SELECT column_name FROM information_schema.columns WHERE table_name =
 'candidate_documents' AND column_name LIKE 'cv_parse_%';` (five rows) before merging.
