@@ -52,7 +52,19 @@ const CREATE_FN = /\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/gi;
  * a statement whose body cannot be delimited is returned whole to the end of the file,
  * so it can only fail the check, never slip past it.
  */
-function functionStatements(sql: string): string[] {
+/** SQL with `--` line comments and (nested) block comments removed, so prose cannot start a statement. */
+function stripSqlComments(sql: string): string {
+  let text = sql;
+  for (let prev = ''; prev !== text; ) {
+    prev = text;
+    text = text.replace(/\/\*(?:(?!\/\*|\*\/)[\s\S])*\*\//g, ' ');
+  }
+  return text.replace(/--[^\n]*/g, '');
+}
+
+function functionStatements(rawSql: string): string[] {
+  // Comments first: a comment that merely mentions "CREATE FUNCTION" must not open a statement.
+  const sql = stripSqlComments(rawSql);
   const out: string[] = [];
   const starts = [...sql.matchAll(CREATE_FN)].map((m) => m.index ?? 0);
   for (const [n, start] of starts.entries()) {
