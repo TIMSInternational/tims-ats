@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ensureCanonicalAuthOrigin } from '../../apps/web/lib/auth/canonical-auth-origin';
+import { blockAt } from '../helpers/source-blocks';
 
 // #50, tier-1 (Codex) review: an emailed PKCE flow keeps its code verifier in a cookie on the host
 // that STARTED it, while the emailed link lands on the configured origin. A flow started on a
@@ -65,7 +66,7 @@ describe('every page that starts an emailed PKCE flow uses the guard', () => {
   it('invitation recovery: the page moves on mount and the sender refuses off-origin', () => {
     expect(read('apps/web/app/accept-invitation/page.tsx')).toMatch(/useCanonicalAuthOrigin\(\);/);
     const api = read('apps/web/app/accept-invitation/invitation-setup-api.ts');
-    const body = api.slice(api.indexOf('export async function invitationRecovery'));
+    const body = blockAt(api, 'export async function invitationRecovery', { minLines: 4 });
     expect(body.indexOf('ensureCanonicalAuthOrigin()')).toBeGreaterThan(-1);
     expect(body.indexOf('ensureCanonicalAuthOrigin()')).toBeLessThan(body.indexOf('resetPasswordForEmail('));
   });
