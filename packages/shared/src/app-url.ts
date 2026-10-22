@@ -4,12 +4,33 @@
 // caller derives an email link from the request Host header or window.location (#50).
 export const DEFAULT_APP_URL = 'https://tims-ats.vercel.app';
 
-// Hosts for which plain http is tolerated under NODE_ENV=production off Vercel (#351).
+// Hosts for which plain http is tolerated under NODE_ENV=production off Vercel (#351). Deliberately an
+// exact list: the http exception stays narrow even though the loopback REJECTION below is broad.
 const HTTP_LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-// Hosts that must never be the emailed origin on a deployed host (#50). A superset of the above:
-// 0.0.0.0 is not an http exception, but it is never a valid public origin either. URL.hostname
-// brackets IPv6 ('[::1]'); the bare form covers a caller that reports it unbracketed.
-const LOOPBACK_HOSTS = new Set([...HTTP_LOOPBACK_HOSTS, '0.0.0.0', '::1']);
+
+/**
+ * True for any hostname that resolves to the local machine, so it must never be the emailed origin on
+ * a deployed host (#50). Broader than an exact list, because `new URL()` accepts many spellings of
+ * loopback that an exact-match set lets through (tier-1 review): a trailing dot (`localhost.`),
+ * the whole 127.0.0.0/8 block (`127.0.0.2`), `*.localhost` (RFC 6761), the unspecified addresses,
+ * and IPv4-mapped / IPv4-compatible IPv6 (`[::ffff:127.0.0.1]`, which URL normalises to
+ * `[::ffff:7f00:1]`). URL.hostname brackets IPv6; the bare form covers a caller that reports it
+ * unbracketed (window.location.hostname does bracket it).
+ */
+export function isLoopbackHostname(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase().replace(/\.+$/, '');
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (h === '0.0.0.0' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  const v6 = h.startsWith('[') && h.endsWith(']') ? h.slice(1, -1) : h;
+  if (!v6.includes(':')) return false;
+  if (v6 === '::1' || v6 === '::') return true;
+  // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d), in dotted or normalised hex form.
+  const embedded = /^::(?:ffff:)?(?:(\d{1,3})\.\d{1,3}\.\d{1,3}\.\d{1,3}|([0-9a-f]{1,4}):[0-9a-f]{1,4})$/.exec(v6);
+  if (!embedded) return false;
+  if (embedded[1] !== undefined) return embedded[1] === '127' || /^::(?:ffff:)?0\.0\.0\.0$/.test(v6);
+  const high = parseInt(embedded[2] ?? '', 16);
+  return (high >> 8) === 0x7f || /^::(?:ffff:)?0:0$/.test(v6);
+}
 
 export type AppOriginIssue =
   | 'invalid_url'
@@ -109,7 +130,7 @@ export function checkAppOrigin(
   if (url.pathname !== '/') return fail('path');
   if (url.search || url.hash) return fail('query_or_fragment');
 
-  const isLoopback = LOOPBACK_HOSTS.has(url.hostname);
+  const isLoopback = isLoopbackHostname(url.hostname);
   const isProductionBuild = env.NODE_ENV === 'production';
   const deployed = isDeployedVercelEnv(env);
   if (url.protocol === 'http:') {
@@ -119,7 +140,7 @@ export function checkAppOrigin(
   if (isLoopback) {
     if (deployed) return fail('loopback_on_deployed_host');
     const served = env.servedFromHost;
-    if (isProductionBuild && typeof served === 'string' && served !== '' && !LOOPBACK_HOSTS.has(served)) {
+    if (isProductionBuild && typeof served === 'string' && served !== '' && !isLoopbackHostname(served)) {
       return fail('loopback_on_deployed_host');
     }
   }
@@ -193,5 +214,43 @@ export function getAuthRedirectUrl(path: string, params?: Record<string, string>
   if (params) {
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   }
+  return url.toString();
+}
+
+/** The parts of `window.location` that `getCanonicalAuthFlowUrl()` reads. */
+export type AuthFlowLocation = { origin: string; pathname: string; search: string; hash: string };
+
+/**
+ * Browser only, for pages that START an emailed PKCE flow (password reset, sign-up confirmation,
+ * portal magic link, invitation recovery). Returns the same path, query and fragment on the
+ * configured app origin when the page is being served from a DIFFERENT origin, else null.
+ *
+ * Why (#50, tier-1 review): the emailed link always lands on the configured origin, but the
+ * Supabase browser client stores the PKCE code verifier in a cookie on the host that started the
+ * flow. A flow started on a deployment alias or preview host therefore fails at /auth/callback even
+ * in the same browser. Moving the user to the configured origin BEFORE the flow starts keeps the
+ * verifier and the callback on one host.
+ *
+ * Returns null (never moves the user) when NEXT_PUBLIC_APP_URL is unset: outside production that
+ * means the canonical prod fallback, and bouncing local development to production would be worse
+ * than the bug. In a production build an unset value already makes the flow fail closed via
+ * getAuthRedirectUrl(). Returns null as well when the origin is invalid, for the same reason.
+ * The result is always on the configured origin: the path is assigned, never parsed as a URL, so a
+ * page served at `//evil.example/x` cannot turn this into an open redirect.
+ */
+export function getCanonicalAuthFlowUrl(location: AuthFlowLocation): string | null {
+  if (!process.env.NEXT_PUBLIC_APP_URL?.trim()) return null;
+  let origin: string;
+  try {
+    origin = getAppUrl();
+  } catch {
+    return null;
+  }
+  if (location.origin === origin) return null;
+  const url = new URL(`${origin}/`);
+  url.pathname = location.pathname || '/';
+  url.search = location.search;
+  url.hash = location.hash;
+  if (url.origin !== origin) return null;
   return url.toString();
 }

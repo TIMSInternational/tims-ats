@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { getAuthRedirectUrl } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
+import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../../../lib/auth/canonical-auth-origin';
 
 // Candidate portal login — passwordless magic link. We always show the same
 // "check your email" confirmation regardless of whether the email maps to a
@@ -18,9 +19,11 @@ export default function PortalLoginPage() {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useCanonicalAuthOrigin();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ensureCanonicalAuthOrigin()) return;
     const value = email.trim();
     if (!value || !value.includes('@')) return;
     setBusy(true);

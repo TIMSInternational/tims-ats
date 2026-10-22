@@ -6,6 +6,8 @@ import {
   AppOriginConfigError,
   AuthRedirectPathError,
   DEFAULT_APP_URL,
+  getCanonicalAuthFlowUrl,
+  isLoopbackHostname,
   type AppOriginIssue,
 } from '../../packages/shared/src/app-url';
 import { blockAt } from '../helpers/source-blocks';
@@ -376,5 +378,93 @@ describe('packages/shared/src/app-url.ts client-bundle safety', () => {
     for (const name of ['NODE_ENV', 'VERCEL_ENV', 'NEXT_PUBLIC_VERCEL_ENV']) {
       expect(source).toContain(`process.env.${name}`);
     }
+  });
+});
+
+// Tier-1 (Codex) review of #50: an exact-match loopback set let `https://127.0.0.2`, `https://localhost.`
+// and `https://[::ffff:127.0.0.1]` through checkAppOrigin() on a deployed host.
+describe('loopback variants are rejected on a deployed host (#50 tier-1)', () => {
+  it.each([
+    'https://127.0.0.2',
+    'https://127.255.255.254:8443',
+    'https://localhost.',
+    'https://LOCALHOST..',
+    'https://app.localhost',
+    'https://[::ffff:127.0.0.1]',
+    'https://[::127.0.0.1]',
+    'https://[0:0:0:0:0:0:0:1]',
+    'https://[::]',
+    'https://[::ffff:0.0.0.0]',
+    'https://0x7f.1',
+    'https://2130706433',
+  ])('rejects %s on Vercel production with the loopback code', (value) => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: value });
+    expect(issueOf(() => getAppUrl())).toBe('loopback_on_deployed_host');
+  });
+
+  it.each([
+    'https://tims-ats.vercel.app',
+    'https://127.example.com',
+    'https://localhost.example.com',
+    'https://[::ffff:8.8.8.8]',
+    'https://[2001:db8::1]',
+    'https://128.0.0.1',
+  ])('still accepts the non-loopback origin %s on Vercel production', (value) => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: value });
+    expect(() => getAppUrl()).not.toThrow();
+  });
+
+  it('applies the same normalisation to the served-from host', () => {
+    expect(checkAppOrigin('http://localhost:3000', { NODE_ENV: 'production', servedFromHost: 'localhost.' })).toEqual({
+      ok: true,
+      origin: 'http://localhost:3000',
+    });
+    expect(isLoopbackHostname('[::ffff:7f00:1]')).toBe(true);
+    expect(isLoopbackHostname('::1')).toBe(true);
+    expect(isLoopbackHostname('ats.example.test')).toBe(false);
+  });
+
+  it('keeps the #351 http exception exact: http://127.0.0.2 and http://localhost. stay rejected in a production build', () => {
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: 'http://127.0.0.2:3000' });
+    expect(issueOf(() => getAppUrl())).toBe('insecure_http');
+    env({ NODE_ENV: 'production', NEXT_PUBLIC_APP_URL: 'http://localhost.:3000' });
+    expect(issueOf(() => getAppUrl())).toBe('insecure_http');
+  });
+});
+
+// Tier-1 (Codex) review of #50: the PKCE verifier lives on the host that STARTS the flow, so a reset
+// started on an alias or preview host failed at the canonical /auth/callback. Pages now move the user
+// to the configured origin first.
+describe('getCanonicalAuthFlowUrl (#50 tier-1)', () => {
+  const at = (origin: string, pathname = '/forgot-password', search = '', hash = '') => ({ origin, pathname, search, hash });
+
+  it('returns null on the configured origin, so the flow starts here', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    expect(getCanonicalAuthFlowUrl(at('https://tims-ats.vercel.app'))).toBeNull();
+  });
+
+  it('moves a page served from another host to the same path, query and fragment on the configured origin', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'preview', NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    expect(
+      getCanonicalAuthFlowUrl(at('https://tims-ats-git-x.vercel.app', '/accept-invitation', '?token=abc', '#top')),
+    ).toBe('https://tims-ats.vercel.app/accept-invitation?token=abc#top');
+  });
+
+  it('can never leave the configured origin, whatever the served path', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://tims-ats.vercel.app' });
+    for (const pathname of ['//evil.example/x', '/\\evil.example', '/%2F%2Fevil.example', '']) {
+      const target = getCanonicalAuthFlowUrl(at('https://alias.example.test', pathname));
+      expect(target === null || new URL(target).origin === 'https://tims-ats.vercel.app').toBe(true);
+    }
+  });
+
+  it('never bounces local development to the prod fallback when NEXT_PUBLIC_APP_URL is unset', () => {
+    env({ NEXT_PUBLIC_APP_URL: '' });
+    expect(getCanonicalAuthFlowUrl(at('http://localhost:3000'))).toBeNull();
+  });
+
+  it('returns null for a misconfigured origin (the flow itself then fails closed)', () => {
+    env({ NODE_ENV: 'production', VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://localhost' });
+    expect(getCanonicalAuthFlowUrl(at('https://tims-ats.vercel.app'))).toBeNull();
   });
 });

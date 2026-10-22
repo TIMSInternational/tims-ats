@@ -1,5 +1,6 @@
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { getAuthRedirectUrl } from '@tims/shared';
+import { ensureCanonicalAuthOrigin } from '../../lib/auth/canonical-auth-origin';
 import { z } from 'zod';
 
 export const invitationSchema = z.object({
@@ -64,6 +65,8 @@ export function invitationRecoveryRedirect(token: string) {
 }
 
 export async function invitationRecovery(email: string, token: string) {
+  // Never start the PKCE flow off the configured origin; the page is navigating there instead (#50).
+  if (!ensureCanonicalAuthOrigin()) return new Promise<never>(() => {});
   return createSupabaseBrowserClient().auth.resetPasswordForEmail(email, {
     redirectTo: invitationRecoveryRedirect(token),
   });
