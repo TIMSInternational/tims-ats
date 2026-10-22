@@ -70,8 +70,8 @@ export function parseInline(text: string): MdInline[] {
     });
 }
 
-export function parseMarkdownLite(source: string): MdBlock[] {
-  const lines = source.slice(0, MARKDOWN_LITE_MAX_LENGTH).replace(/\r\n?/g, '\n').split('\n');
+export function parseMarkdownLite(source: string, maxLength: number = MARKDOWN_LITE_MAX_LENGTH): MdBlock[] {
+  const lines = source.slice(0, maxLength).replace(/\r\n?/g, '\n').split('\n');
   const blocks: MdBlock[] = [];
   const open: { paragraph: MdInline[][] | null; list: { ordered: boolean; items: MdInline[][] } | null } = {
     paragraph: null,

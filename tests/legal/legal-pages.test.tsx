@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import LegalDocumentPage, { generateMetadata } from '../../apps/web/app/legal/[doc]/page';
 import LegalLayout from '../../apps/web/app/legal/layout';
-import { LEGAL_DOCUMENT_SLUGS, LEGAL_DRAFT_MARKER, type LegalDocumentSlug } from '../../apps/web/lib/legal/documents';
+import {
+  LEGAL_DOCUMENT_SLUGS,
+  LEGAL_DRAFT_MARKER,
+  LEGAL_MAX_CONTENT_CHARS,
+  type LegalDocumentSlug,
+} from '../../apps/web/lib/legal/documents';
 import { SUBPROCESSORS } from '../../apps/web/lib/legal/subprocessors';
 import es from '../../apps/web/lib/i18n/es.json';
 import en from '../../apps/web/lib/i18n/en.json';
@@ -66,7 +71,7 @@ describe('legal pages — flag on', () => {
   ]);
 
   it.each(cases)(
-    '/legal/$slug renders the $locale content file with a DRAFT banner',
+    '/legal/$slug renders the $locale content file, with a DRAFT banner exactly while it is a draft',
     async ({ slug, locale, stored, t }) => {
       vi.stubEnv('NEXT_PUBLIC_LEGAL_PAGES_ENABLED', 'true');
       localStorage.setItem('tims-locale', stored);
@@ -78,9 +83,14 @@ describe('legal pages — flag on', () => {
       expect(await screen.findByRole('heading', { level: 1, name: titleOf(md) })).toBeInTheDocument();
       expect(container.querySelector('main')?.getAttribute('lang')).toBe(locale);
       expect([...container.querySelectorAll('main h2')].map((h) => h.textContent)).toEqual(sectionHeadings(md));
-      expect(screen.getByRole('note')).toHaveTextContent(t.legal.draftBanner);
-      // The marker is shown verbatim (draft text is visible as draft, never hidden).
-      expect(container.textContent).toContain(LEGAL_DRAFT_MARKER);
+      // Draft-agnostic (tier-1 review): finalised counsel text must not break CI. The banner follows the file.
+      if (md.includes(LEGAL_DRAFT_MARKER)) {
+        expect(screen.getByRole('note')).toHaveTextContent(t.legal.draftBanner);
+        // The marker is shown verbatim (draft text is visible as draft, never hidden).
+        expect(container.textContent).toContain(LEGAL_DRAFT_MARKER);
+      } else {
+        expect(screen.queryByRole('note')).toBeNull();
+      }
       // Navigation offers every legal document, current one marked.
       const nav = screen.getByRole('navigation', { name: t.legal.navLabel });
       expect(
@@ -113,26 +123,33 @@ describe('legal pages — flag on', () => {
     expect(container.querySelector('table')).toBeNull();
   });
 
-  it('marks draft pages noindex', async () => {
+  it.each(LEGAL_DOCUMENT_SLUGS)('%s is noindex exactly while either language is a draft', async (slug) => {
     vi.stubEnv('NEXT_PUBLIC_LEGAL_PAGES_ENABLED', 'true');
-    const meta = await generateMetadata(params('ai-processing'));
-    expect(meta.title).toBe(titleOf(source('es', 'ai-processing')));
-    expect(meta.robots).toEqual({ index: false, follow: false });
+    const meta = await generateMetadata(params(slug));
+    expect(meta.title).toBe(titleOf(source('es', slug)));
+    const draft = source('es', slug).includes(LEGAL_DRAFT_MARKER) || source('en', slug).includes(LEGAL_DRAFT_MARKER);
+    expect(meta.robots).toEqual(draft ? { index: false, follow: false } : undefined);
   });
 });
 
 describe('legal content files', () => {
-  it.each(LEGAL_DOCUMENT_SLUGS)('%s: es and en are drafts with matching structure and no HTML', (slug) => {
+  // Draft-agnostic (tier-1 review): these hold for counsel's final text as well as for the drafts, so
+  // following the README (replace the text, remove the markers) cannot break CI.
+  it.each(LEGAL_DOCUMENT_SLUGS)('%s: es and en have a title, matching structure, no HTML, and fit the limit', (slug) => {
     const esMd = source('es', slug);
     const enMd = source('en', slug);
     for (const md of [esMd, enMd]) {
       expect(titleOf(md)).not.toBe('');
-      expect(md).toContain(LEGAL_DRAFT_MARKER);
       expect(md).not.toMatch(/<[a-z!/]/i);
+      expect(md.length).toBeLessThanOrEqual(LEGAL_MAX_CONTENT_CHARS);
     }
-    expect(esMd).toContain('BORRADOR');
-    expect(enMd).toContain('DRAFT');
     expect(sectionHeadings(esMd).length).toBe(sectionHeadings(enMd).length);
-    expect(esMd.split(LEGAL_DRAFT_MARKER).length).toBe(enMd.split(LEGAL_DRAFT_MARKER).length);
+    // Both languages move from draft to final together.
+    expect(esMd.includes(LEGAL_DRAFT_MARKER)).toBe(enMd.includes(LEGAL_DRAFT_MARKER));
+    if (esMd.includes(LEGAL_DRAFT_MARKER)) {
+      expect(esMd).toContain('BORRADOR');
+      expect(enMd).toContain('DRAFT');
+      expect(esMd.split(LEGAL_DRAFT_MARKER).length).toBe(enMd.split(LEGAL_DRAFT_MARKER).length);
+    }
   });
 });

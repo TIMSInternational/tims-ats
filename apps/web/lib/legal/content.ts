@@ -2,7 +2,7 @@ import 'server-only';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { LEGAL_DRAFT_MARKER, type LegalDocumentSlug, type LegalLocale } from './documents';
+import { LEGAL_DRAFT_MARKER, LEGAL_MAX_CONTENT_CHARS, type LegalDocumentSlug, type LegalLocale } from './documents';
 
 export interface LegalDocumentContent {
   /** Raw Markdown (rendered by `MarkdownText`, which never emits HTML). */
@@ -15,8 +15,12 @@ export interface LegalDocumentContent {
 
 export type LegalDocumentBundle = Record<LegalLocale, LegalDocumentContent>;
 
-/** Hard cap on a content file: legal text is long, but this is far above any real document. */
-const MAX_CONTENT_BYTES = 200_000;
+export class LegalContentTooLongError extends Error {
+  constructor(slug: string, locale: string) {
+    super(`legal content ${locale}/${slug}.md exceeds ${LEGAL_MAX_CONTENT_CHARS} characters`);
+    this.name = 'LegalContentTooLongError';
+  }
+}
 
 // `next start` / Vercel run with cwd = apps/web; vitest runs from the repo root. The files are
 // shipped with the serverless function via `outputFileTracingIncludes` in next.config.ts.
@@ -35,7 +39,8 @@ async function loadOne(slug: LegalDocumentSlug, locale: LegalLocale): Promise<Le
   // `slug` and `locale` are both narrowed to closed allow-lists by the type system and by the
   // page's `isLegalDocumentSlug` check, so no request-controlled string reaches the path.
   const raw = await readFile(path.join(contentRoot(), locale, `${slug}.md`), 'utf8');
-  const source = raw.slice(0, MAX_CONTENT_BYTES).replace(/\r\n?/g, '\n');
+  const source = raw.replace(/\r\n?/g, '\n');
+  if (source.length > LEGAL_MAX_CONTENT_CHARS) throw new LegalContentTooLongError(slug, locale);
   return { source, title: extractTitle(source), isDraft: source.includes(LEGAL_DRAFT_MARKER) };
 }
 

@@ -35,3 +35,11 @@ export function isLegalPagesEnabled(): boolean {
 
 /** Marker every draft content file carries; the page shows a DRAFT banner while it is present. */
 export const LEGAL_DRAFT_MARKER = 'TODO (counsel)';
+
+/**
+ * Hard cap on a legal content file, in characters: legal text is long, but this is far above any real
+ * document. The loader REFUSES a longer file (never truncates it) and the renderer is given this same limit,
+ * so a silently shortened document can never publish incomplete terms (tier-1 review: the renderer used to
+ * stop at 20,000). Lives here, not in the server-only loader, because the client view needs it too.
+ */
+export const LEGAL_MAX_CONTENT_CHARS = 200_000;

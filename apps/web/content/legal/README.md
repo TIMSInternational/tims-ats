@@ -15,7 +15,9 @@ is marked `noindex`.
 
 ## Editing
 
-Replace the text and remove each `TODO (counsel)` marker; no code change is needed. The
+Replace the text and remove each `TODO (counsel)` marker; no code change is needed. Replace both languages
+together (a test requires es and en to be both draft or both final, with the same `##` sections). A file
+may be up to 200,000 characters (`LEGAL_MAX_CONTENT_CHARS`); a longer one is refused, never truncated. The
 renderer (`apps/web/lib/markdown-lite.ts`) supports a deliberately small subset:
 
 - `#` (page title, first one only), `##`, `###` headings

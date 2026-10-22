@@ -9,6 +9,11 @@ interface MarkdownTextProps {
    * card/page heading. A standalone document whose page owns no other headings can pass 1.
    */
   headingBase?: 1 | 3;
+  /**
+   * Parse bound. Defaults to MARKDOWN_LITE_MAX_LENGTH (user-authored descriptions). Repo-owned long documents
+   * (the legal pages) pass their own, larger, explicitly enforced limit instead of being silently cut.
+   */
+  maxLength?: number;
 }
 
 function renderInline(nodes: MdInline[], keyPrefix: string): ReactNode[] {
@@ -36,8 +41,8 @@ const HEADING_CLASS = {
  * Renders the small Markdown subset from `lib/markdown-lite` as React elements.
  * No HTML string is ever produced, so markup inside the source renders as literal text.
  */
-export function MarkdownText({ source, className, headingBase = 3 }: MarkdownTextProps) {
-  const blocks = parseMarkdownLite(source);
+export function MarkdownText({ source, className, headingBase = 3, maxLength }: MarkdownTextProps) {
+  const blocks = parseMarkdownLite(source, maxLength);
   return (
     <div className={className}>
       {blocks.map((block, index) => {

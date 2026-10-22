@@ -2,7 +2,12 @@
 
 import Link from 'next/link';
 import { useI18n } from '../../lib/i18n';
-import { LEGAL_DOCUMENT_SLUGS, type LegalDocumentSlug, type LegalLocale } from '../../lib/legal/documents';
+import {
+  LEGAL_DOCUMENT_SLUGS,
+  LEGAL_MAX_CONTENT_CHARS,
+  type LegalDocumentSlug,
+  type LegalLocale,
+} from '../../lib/legal/documents';
 import type { LegalDocumentBundle } from '../../lib/legal/content';
 import { MarkdownText } from '../markdown-text';
 import { SubprocessorTable } from './subprocessor-table';
@@ -69,6 +74,7 @@ export function LegalDocumentView({ slug, content }: LegalDocumentViewProps) {
       <MarkdownText
         source={bodyWithoutTitle(doc.source)}
         headingBase={1}
+        maxLength={LEGAL_MAX_CONTENT_CHARS}
         className="mt-4 space-y-3 text-[13px] leading-relaxed text-[#585858]"
       />
       {slug === 'subprocessors' && <SubprocessorTable locale={lang} />}
