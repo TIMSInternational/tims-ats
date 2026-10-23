@@ -58,7 +58,11 @@ export function MarkdownText({ source, className, headingBase = 3, maxLength }: 
         if (block.type === 'list') {
           const ListTag = block.ordered ? 'ol' : 'ul';
           return (
-            <ListTag key={key} className={`space-y-1 pl-5 ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
+            <ListTag
+              key={key}
+              start={block.ordered && block.start !== 1 ? block.start : undefined}
+              className={`space-y-1 pl-5 ${block.ordered ? 'list-decimal' : 'list-disc'}`}
+            >
               {block.items.map((item, itemIndex) => (
                 <li key={`${key}-${itemIndex}`}>{renderInline(item, `${key}-${itemIndex}`)}</li>
               ))}
