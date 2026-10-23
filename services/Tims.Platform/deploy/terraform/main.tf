@@ -37,8 +37,9 @@ locals {
   # Secret CONTAINERS created here; VALUES populated out-of-band (never in TF state).
   # key => the env var name the .NET service reads (Platform:X binds from Platform__X).
   # `redis` is kept for the ROLLBACK WINDOW ONLY: images before the DynamoDB rate limiter read this (Upstash)
-  # secret, and a rollback swaps only the image. The current image ignores it. Remove it, its binding and the
-  # Upstash database only once no pre-DynamoDB image can be rolled back to.
+  # secret, and a rollback swaps only the image. The current image uses it only to claim relay nonces under the
+  # old key too (LegacyRelayNonceBridge), so a nonce is single-use across versions. Remove it, its binding and
+  # the Upstash database only once no pre-DynamoDB image can be rolled back to.
   base_secrets = {
     db            = "Platform__DatabaseConnectionString"
     redis         = "Platform__RedisConnectionString"

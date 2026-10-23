@@ -138,7 +138,10 @@ settings and the role policy (owner kit `c12-ratelimit-dynamodb.sh --apply`) **b
 an image that contains this change; a deploy without them fails and the previous version keeps
 serving. Keep App Runner's `Platform__RedisConnectionString` secret binding and the Upstash
 database until no image from before this change can be rolled back to: a rollback swaps only the
-image, and those images still rate-limit and check relay nonces through Upstash. The C# relay
-nonce (`relay#sha256(nonce)`, 90 s) lives in the same table. The frozen
+image, and those images still rate-limit and check relay nonces through Upstash. While that
+setting is present the new image also claims each relay nonce under the old Redis key
+(`LegacyRelayNonceBridge`), so a nonce is single-use across both versions during a rolling deploy
+or a rollback; relayed requests then depend on Upstash as well, exactly as on the old images. The
+C# relay nonce itself (`relay#sha256(nonce)`, 90 s) lives in the same table. The frozen
 cross-stack contract is `contracts/ratelimit-fixtures/key-layout.md` + `dynamodb.json`, and the
 E2E suite (`e2e/specs/platform/shared-rate-limit.spec.ts`) proves the two stacks exhaust one budget.

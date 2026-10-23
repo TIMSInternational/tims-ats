@@ -920,6 +920,21 @@ try
         builder.Services.AddSingleton<DynamoDbSlidingWindowRateLimiter>();
     }
 
+    // Rollback-window relay-nonce bridge (Http/LegacyRelayNonceBridge.cs): registered only while the Upstash
+    // connection string pre-DynamoDB images read is still configured. AbortOnConnectFail=false: an outage
+    // surfaces per call (that nonce is rejected) instead of crashing the host.
+    var legacyRedis = platformSection[nameof(PlatformOptions.RedisConnectionString)];
+    if (!string.IsNullOrWhiteSpace(legacyRedis))
+    {
+        builder.Services.AddSingleton(_ =>
+        {
+            var config = StackExchange.Redis.ConfigurationOptions.Parse(legacyRedis);
+            config.AbortOnConnectFail = false;
+            config.ConnectTimeout = (int)LegacyRelayNonceBridge.Timeout.TotalMilliseconds;
+            return new LegacyRelayNonceBridge(StackExchange.Redis.ConnectionMultiplexer.Connect(config));
+        });
+    }
+
     builder.Services.AddSingleton<InMemorySlidingWindowRateLimiter>();
     builder.Services.AddSingleton<RateLimitGuard>(sp => new RateLimitGuard(
         sp.GetService<DynamoDbSlidingWindowRateLimiter>(),

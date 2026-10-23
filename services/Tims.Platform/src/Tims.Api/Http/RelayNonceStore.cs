@@ -13,6 +13,8 @@ public interface IRelayNonceStore
 /// Atomic single-use nonce across App Runner instances, held in the shared DynamoDB store as a 90 s claim
 /// on <c>relay#{sha256(nonce)}</c> (the raw nonce never reaches the table). No production fail-open: a
 /// missing store or any store error/timeout rejects the nonce, even in Development once a store exists.
+/// During the rollback window the nonce is also claimed in the pre-DynamoDB images' Redis key
+/// (<see cref="LegacyRelayNonceBridge"/>), so it is single-use across both versions.
 /// </summary>
 public sealed class RelayNonceStore(IServiceProvider services, IHostEnvironment environment) : IRelayNonceStore
 {
@@ -28,7 +30,13 @@ public sealed class RelayNonceStore(IServiceProvider services, IHostEnvironment 
         {
             try
             {
-                return await store.ClaimOnceAsync(PartitionKey(nonce), NonceLifetime).ConfigureAwait(false);
+                if (!await store.ClaimOnceAsync(PartitionKey(nonce), NonceLifetime).ConfigureAwait(false))
+                {
+                    return false;
+                }
+
+                var bridge = services.GetService<LegacyRelayNonceBridge>();
+                return bridge is null || await bridge.TryClaimAsync(nonce, NonceLifetime).ConfigureAwait(false);
             }
             catch { return false; }
         }

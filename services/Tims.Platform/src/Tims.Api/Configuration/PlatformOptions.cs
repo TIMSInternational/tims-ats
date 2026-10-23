@@ -25,10 +25,18 @@ public sealed class PlatformOptions
     public string DatabaseConnectionString { get; init; } = string.Empty;
 
     /// <summary>
+    /// ROLLBACK WINDOW ONLY: the Upstash Redis connection string pre-DynamoDB images used. When set, relay
+    /// nonces are also claimed in their Redis key (<c>LegacyRelayNonceBridge</c>) so a nonce is single-use
+    /// across old and new images. Nothing else reads it. Unset it once no such image can be rolled back to.
+    /// </summary>
+    public string? RedisConnectionString { get; init; }
+
+    /// <summary>
     /// The shared rate-limit DynamoDB table (same table as the web app's
-    /// <c>RATE_LIMIT_DYNAMODB_TABLE</c>). Required together with <see cref="RateLimitDynamoDbRegion"/>;
-    /// when both are absent the readiness probe reports the store as "not configured" (Degraded) and
-    /// the limiter is Development-only in-memory. See <c>RateLimitStoreSettings</c>.
+    /// <c>RATE_LIMIT_DYNAMODB_TABLE</c>). Required together with <see cref="RateLimitDynamoDbRegion"/>.
+    /// Outside Development the host refuses to start without both; in Development, when both are absent,
+    /// the limiter is in-memory and readiness reports the store as "not configured" (Degraded). See
+    /// <c>RateLimitStoreSettings</c>.
     /// </summary>
     public string? RateLimitDynamoDbTable { get; init; }
 
