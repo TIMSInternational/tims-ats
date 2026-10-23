@@ -25,13 +25,19 @@ Credentials come from the default AWS chain, i.e. the same `AWS_ACCESS_KEY_ID` /
 | Point-in-time       | Off                                                        | Counters are ephemeral; restoring them has no use                                                                                                                                      |
 | Region              | Same region as the Vercel functions (`pdx1` = `us-west-2`) | Each check is two sequential round trips                                                                                                                                               |
 
-**What is stored:** `rl#<tier>#sha256(identifier)#<window>` → a count, and
-`ae#sha256(lowercased recipient address)` → a claim. Raw user ids, client IPs, API-key ids and
-e-mail addresses never reach the table.
+**What is stored:** one item per tier and identifier, `rl#<tier>#sha256(identifier)`, holding a
+counter per window (`w<window index>`; the store removes counters older than the previous
+window), and one item per recipient for the e-mail cap, `ae#sha256(lowercased address)`.
+Raw user ids, client IPs, API-key ids and e-mail addresses never reach the table.
 
 The algorithm is the sliding window `@upstash/ratelimit` used before: the previous window's
-count is weighted by its remaining overlap, and a denied request is not counted. The
-application-email cap is a rolling 24 h claim per recipient.
+count is weighted by its remaining overlap, and a denied request is not counted. Admission is
+atomic, as Upstash's single Lua script was: one conditional write checks that the current
+window has room, that the previous window is exactly what was weighed, and that no later
+window has started. If a request in flight across a window boundary lands late, that write
+is rejected and the request is re-decided at the current time (at most 3 attempts; then it
+takes the outage path). Concurrent requests inside one window never conflict with each
+other. The application-email cap is a rolling 24 h claim per recipient.
 
 ## Activation order
 

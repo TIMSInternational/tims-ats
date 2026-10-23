@@ -32,7 +32,12 @@ describe('rate-limit store configuration', () => {
 
   it.each([
     ['a table name with a space', 'tims ats', 'us-west-2', 'RATE_LIMIT_DYNAMODB_TABLE is not a valid'],
-    ['an ARN instead of a name', 'arn:aws:dynamodb:us-west-2:1:table/x', 'us-west-2', 'RATE_LIMIT_DYNAMODB_TABLE is not a valid'],
+    [
+      'an ARN instead of a name',
+      'arn:aws:dynamodb:us-west-2:1:table/x',
+      'us-west-2',
+      'RATE_LIMIT_DYNAMODB_TABLE is not a valid',
+    ],
     ['a region typo', 'tims-ats-ratelimit', 'us-west2', 'RATE_LIMIT_DYNAMODB_REGION is not a valid'],
   ])('rejects %s at boot instead of failing every request', async (_label, table, region, message) => {
     vi.resetModules();

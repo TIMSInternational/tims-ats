@@ -17,18 +17,16 @@ type Input = {
   TableName: string;
   Key?: { pk: AttrValue };
   Item?: { pk: AttrValue; expiresAt: AttrValue };
-  ExpressionAttributeValues?: Record<string, AttrValue>;
+  UpdateExpression?: string;
   ConditionExpression?: string;
+  ExpressionAttributeNames?: Record<string, string>;
+  ExpressionAttributeValues?: Record<string, AttrValue>;
   ConsistentRead?: boolean;
 };
 
-// Only the exact condition strings the store sends are enforced; a missing or different
-// condition is treated as "no condition", so a store that stops sending one is caught.
-const UPDATE_CONDITION = 'attribute_not_exists(#c) OR #c < :max';
-const PUT_CONDITION = 'attribute_not_exists(pk) OR #e <= :now';
-
 export interface FakeDynamo {
-  items: Map<string, { c?: number; expiresAt?: number }>;
+  /** pk -> attribute name -> number (window counters `w<index>` and `expiresAt`). */
+  items: Map<string, Record<string, number>>;
   calls: Array<{ op: string; input: Input; hasAbortSignal: boolean }>;
   clientConfigs: Array<Record<string, unknown>>;
   /** In-flight requests whose abort signal fired. */
@@ -38,6 +36,9 @@ export interface FakeDynamo {
    * legitimately return just after a write. A correct store must not depend on it.
    */
   staleEventualReads: boolean;
+  /** When true, UpdateItem calls are queued and only take effect on releaseHeld(). */
+  holdUpdates: boolean;
+  releaseHeld(): Promise<void>;
   mode: FakeMode;
 }
 
@@ -47,8 +48,60 @@ function conditionalFailure(): Error {
   return err;
 }
 
+// Evaluates the condition clauses the store sends. A clause the store stops sending is simply
+// not enforced (so its removal is caught by a test); an unknown clause fails the test loudly.
+function conditionHolds(input: Input, item: Record<string, number> | undefined): boolean {
+  const cond = input.ConditionExpression;
+  if (!cond) return true;
+  const n = input.ExpressionAttributeNames ?? {};
+  const v = input.ExpressionAttributeValues ?? {};
+  const attr = (ref: string) => item?.[n[ref] ?? ref];
+  return cond.split(' AND ').every((clause) => {
+    switch (clause) {
+      case '(attribute_not_exists(#cur) OR #cur < :max)':
+        return attr('#cur') === undefined || attr('#cur')! < Number(v[':max']!.N);
+      case '#prev = :prevSeen':
+        return attr('#prev') === Number(v[':prevSeen']!.N);
+      case 'attribute_not_exists(#prev)':
+        return attr('#prev') === undefined;
+      case 'attribute_not_exists(#next)':
+        return attr('#next') === undefined;
+      case 'attribute_not_exists(pk) OR #e <= :now':
+        return item === undefined || item.expiresAt! <= Number(v[':now']!.N);
+      default:
+        throw new Error(`fake-dynamodb: unsupported condition clause "${clause}"`);
+    }
+  });
+}
+
+function applyUpdate(input: Input, item: Record<string, number>): void {
+  const n = input.ExpressionAttributeNames ?? {};
+  const v = input.ExpressionAttributeValues ?? {};
+  const expr = input.UpdateExpression ?? '';
+  const add = /ADD (#\w+) (:\w+)/.exec(expr);
+  if (add) item[n[add[1]!]!] = (item[n[add[1]!]!] ?? 0) + Number(v[add[2]!]!.N);
+  const set = /SET (#\w+) = (:\w+)/.exec(expr);
+  if (set) item[n[set[1]!]!] = Number(v[set[2]!]!.N);
+  const remove = /REMOVE (.+)$/.exec(expr);
+  if (remove) for (const ref of remove[1]!.split(', ')) delete item[n[ref.trim()]!];
+}
+
 export function installFakeDynamo(mode: FakeMode = 'ok'): FakeDynamo {
-  const fake: FakeDynamo = { items: new Map(), calls: [], clientConfigs: [], aborted: 0, staleEventualReads: false, mode };
+  const held: Array<() => void> = [];
+  const fake: FakeDynamo = {
+    items: new Map(),
+    calls: [],
+    clientConfigs: [],
+    aborted: 0,
+    staleEventualReads: false,
+    holdUpdates: false,
+    async releaseHeld() {
+      for (const run of held.splice(0)) run();
+      // Let the store's continuations (re-read, retry) run.
+      for (let i = 0; i < 50; i++) await Promise.resolve();
+    },
+    mode,
+  };
 
   vi.doMock(DYNAMODB_SDK, () => {
     class Command {
@@ -93,31 +146,31 @@ export function installFakeDynamo(mode: FakeMode = 'ok'): FakeDynamo {
           err.name = 'ProvisionedThroughputExceededException';
           return Promise.reject(err);
         }
-        const values = cmd.input.ExpressionAttributeValues ?? {};
         if (cmd.op === 'GetItem') {
           if (fake.staleEventualReads && cmd.input.ConsistentRead !== true) return Promise.resolve({});
-          const item = fake.items.get(cmd.input.Key!.pk.S!);
-          return Promise.resolve({ Item: item?.c !== undefined ? { c: { N: String(item.c) } } : undefined });
+          const pk = cmd.input.Key!.pk.S!;
+          const item = fake.items.get(pk);
+          if (!item) return Promise.resolve({});
+          const Item: Record<string, AttrValue> = { pk: { S: pk } };
+          for (const [k, val] of Object.entries(item)) Item[k] = { N: String(val) };
+          return Promise.resolve({ Item });
         }
         if (cmd.op === 'UpdateItem') {
-          const pk = cmd.input.Key!.pk.S!;
-          const item = fake.items.get(pk) ?? {};
-          if (cmd.input.ConditionExpression === UPDATE_CONDITION) {
-            const max = Number(values[':max']!.N);
-            if (item.c !== undefined && !(item.c < max)) return Promise.reject(conditionalFailure());
-          }
-          item.c = (item.c ?? 0) + 1;
-          item.expiresAt ??= Number(values[':exp']!.N);
-          fake.items.set(pk, item);
-          return Promise.resolve({});
+          const commit = (): Promise<unknown> => {
+            const pk = cmd.input.Key!.pk.S!;
+            const item = fake.items.get(pk);
+            if (!conditionHolds(cmd.input, item)) return Promise.reject(conditionalFailure());
+            const next = { ...(item ?? {}) };
+            applyUpdate(cmd.input, next);
+            fake.items.set(pk, next);
+            return Promise.resolve({});
+          };
+          if (!fake.holdUpdates) return commit();
+          return new Promise((res, rej) => held.push(() => void commit().then(res, rej)));
         }
         // PutItem
         const pk = cmd.input.Item!.pk.S!;
-        const existing = fake.items.get(pk);
-        if (cmd.input.ConditionExpression === PUT_CONDITION) {
-          const now = Number(values[':now']!.N);
-          if (existing && !(existing.expiresAt! <= now)) return Promise.reject(conditionalFailure());
-        }
+        if (!conditionHolds(cmd.input, fake.items.get(pk))) return Promise.reject(conditionalFailure());
         fake.items.set(pk, { expiresAt: Number(cmd.input.Item!.expiresAt.N) });
         return Promise.resolve({});
       }

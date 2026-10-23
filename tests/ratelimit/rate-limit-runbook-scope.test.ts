@@ -22,7 +22,9 @@ function filesUnder(dir: string): string[] {
 const failClosedPaths = [
   ...(/const FAIL_CLOSED_PATHS[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/.exec(LIMITER)?.[1] ?? '').matchAll(/'([a-z.]+)'/g),
 ].map((m) => m[1]!);
-const webSource = filesUnder(join(ROOT, 'apps/web')).map((f) => readFileSync(f, 'utf8').toLowerCase()).join('\n');
+const webSource = filesUnder(join(ROOT, 'apps/web'))
+  .map((f) => readFileSync(f, 'utf8').toLowerCase())
+  .join('\n');
 
 describe('production-rate-limits runbook scope caveat', () => {
   it('reads a non-empty fail-closed set (non-vacuity)', () => {

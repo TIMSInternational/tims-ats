@@ -73,6 +73,26 @@ function hashIdentifier(identifier: string): string {
   return createHash('sha256').update(identifier).digest('hex');
 }
 
+/** Bounded re-reads when the windows move under a request; contention never loops forever. */
+const SLIDING_WINDOW_ATTEMPTS = 3;
+
+export class SharedLimiterContentionError extends Error {
+  constructor() {
+    super('Shared rate limiter could not settle the window');
+    this.name = 'SharedLimiterContentionError';
+  }
+}
+
+/** Window index -> count, from an item's `w<index>` attributes. */
+function windowCounts(item: Record<string, { N?: string }> | undefined): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const [name, value] of Object.entries(item ?? {})) {
+    const m = /^w(\d+)$/.exec(name);
+    if (m && value.N !== undefined) counts.set(Number(m[1]), Number(value.N));
+  }
+  return counts;
+}
+
 export interface SlidingWindowResult {
   success: boolean;
   /** Epoch ms when the current window ends. */
@@ -83,7 +103,9 @@ export interface SharedStore {
   /**
    * Sliding-window limit, same algorithm as @upstash/ratelimit's slidingWindow: the
    * previous window's count is weighted by how much of it still overlaps, and a denied
-   * request is NOT counted. Rejects on timeout or any store error.
+   * request is NOT counted. Like Upstash's single Lua script, admission is atomic: both
+   * windows live on one item and one conditional write checks them together. Rejects on
+   * timeout, on any store error, or if the windows keep moving (SharedLimiterContentionError).
    */
   slidingWindow(prefix: string, identifier: string, limit: number, windowMs: number): Promise<SlidingWindowResult>;
   /**
@@ -107,50 +129,70 @@ export function createSharedStore(config: SharedStoreConfig): SharedStore {
   return {
     slidingWindow(prefix, identifier, limit, windowMs) {
       return withDeadline(async (abortSignal) => {
-        const now = Date.now();
-        const current = Math.floor(now / windowMs);
-        const base = `${prefix}#${hashIdentifier(identifier)}#`;
-        const reset = (current + 1) * windowMs;
+        const Key = { pk: { S: `${prefix}#${hashIdentifier(identifier)}` } };
+        for (let attempt = 0; attempt < SLIDING_WINDOW_ATTEMPTS; attempt++) {
+          const read = await client.send(new GetItemCommand({ TableName, Key, ConsistentRead: true }), { abortSignal });
+          const counts = windowCounts(read.Item);
+          const now = Date.now();
+          let current = Math.floor(now / windowMs);
+          let overlap = 1 - (now % windowMs) / windowMs;
+          // Another instance's clock is ahead and already opened a later window: adopt it, and
+          // count the previous window in full (we cannot know how far into it we are).
+          const newest = Math.max(-Infinity, ...counts.keys());
+          if (newest > current) {
+            current = newest;
+            overlap = 1;
+          }
+          const reset = (current + 1) * windowMs;
+          const previousCount = counts.get(current - 1) ?? 0;
+          const currentCount = counts.get(current) ?? 0;
+          const allowedInCurrent = limit - Math.floor(previousCount * overlap);
+          if (currentCount >= allowedInCurrent) return { success: false, reset };
 
-        const previous = await client.send(
-          new GetItemCommand({
-            TableName,
-            Key: { pk: { S: `${base}${current - 1}` } },
-            // Strongly consistent: just after a window boundary an eventually consistent read
-            // can miss the previous window's latest increments and roughly double the quota.
-            ConsistentRead: true,
-            ProjectionExpression: '#c',
-            ExpressionAttributeNames: { '#c': 'c' },
-          }),
-          { abortSignal },
-        );
-        const previousCount = Number(previous.Item?.c?.N ?? '0');
-        const overlap = 1 - (now % windowMs) / windowMs;
-        const allowedInCurrent = limit - Math.floor(previousCount * overlap);
-        if (allowedInCurrent <= 0) return { success: false, reset };
-
-        try {
-          await client.send(
-            new UpdateItemCommand({
-              TableName,
-              Key: { pk: { S: `${base}${current}` } },
-              // The item must outlive the NEXT window too: it is that window's "previous".
-              UpdateExpression: 'ADD #c :one SET #e = if_not_exists(#e, :exp)',
-              ConditionExpression: 'attribute_not_exists(#c) OR #c < :max',
-              ExpressionAttributeNames: { '#c': 'c', '#e': 'expiresAt' },
-              ExpressionAttributeValues: {
-                ':one': { N: '1' },
-                ':max': { N: String(allowedInCurrent) },
-                ':exp': { N: String(Math.ceil(((current + 2) * windowMs) / 1000) + 60) },
-              },
-            }),
-            { abortSignal },
-          );
-          return { success: true, reset };
-        } catch (err) {
-          if (isConditionalCheckFailed(err)) return { success: false, reset };
-          throw err;
+          const names: Record<string, string> = {
+            '#cur': `w${current}`,
+            '#prev': `w${current - 1}`,
+            '#next': `w${current + 1}`,
+            '#e': 'expiresAt',
+          };
+          const stale = [...counts.keys()].filter((w) => w < current - 1);
+          stale.forEach((w, i) => (names[`#old${i}`] = `w${w}`));
+          const values: Record<string, { N: string }> = {
+            ':one': { N: '1' },
+            ':max': { N: String(allowedInCurrent) },
+            // The item must outlive the NEXT window too: this window is that one's "previous".
+            ':exp': { N: String(Math.ceil(((current + 2) * windowMs) / 1000) + 60) },
+          };
+          if (previousCount > 0) values[':prevSeen'] = { N: String(previousCount) };
+          try {
+            await client.send(
+              new UpdateItemCommand({
+                TableName,
+                Key,
+                UpdateExpression:
+                  'ADD #cur :one SET #e = :exp' +
+                  (stale.length ? ` REMOVE ${stale.map((_, i) => `#old${i}`).join(', ')}` : ''),
+                // One atomic check over both windows of ONE item:
+                //  - room left in the current window (concurrent requests in it never conflict);
+                //  - the previous window is exactly what we weighed (a late write landed → re-read);
+                //  - no later window has started (a request computed before a boundary that
+                //    commits after it must not add to the closed window → re-read at the new time).
+                ConditionExpression:
+                  '(attribute_not_exists(#cur) OR #cur < :max) AND ' +
+                  (previousCount > 0 ? '#prev = :prevSeen' : 'attribute_not_exists(#prev)') +
+                  ' AND attribute_not_exists(#next)',
+                ExpressionAttributeNames: names,
+                ExpressionAttributeValues: values,
+              }),
+              { abortSignal },
+            );
+            return { success: true, reset };
+          } catch (err) {
+            if (!isConditionalCheckFailed(err)) throw err;
+            // Full, or the windows moved under us: re-read and decide again.
+          }
         }
+        throw new SharedLimiterContentionError();
       }, SHARED_LIMIT_TIMEOUT_MS);
     },
 
