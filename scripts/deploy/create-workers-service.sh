@@ -219,34 +219,20 @@ fi
 say ""
 say "4. IAM roles $EXECUTION_ROLE / $TASK_ROLE"
 TRUST='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ecs-tasks.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"'"$ACCOUNT"'"}}}]}'
-EXEC_POLICY="$(
-  cat <<JSON
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    { "Sid": "EcrAuthTokenIsAccountWide", "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*" },
-    {
-      "Sid": "PullOnlyTheWorkersImage",
-      "Effect": "Allow",
-      "Action": ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
-      "Resource": "arn:aws:ecr:${REGION}:${ACCOUNT}:repository/${ECR_REPO}"
-    },
-    {
-      "Sid": "WriteOnlyTheWorkersLogs",
-      "Effect": "Allow",
-      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
-      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT}:log-group:${LOG_GROUP}:*"
-    },
-    {
-      "Sid": "InjectOnlyTheDbConnectionString",
-      "Effect": "Allow",
-      "Action": "secretsmanager:GetSecretValue",
-      "Resource": "${DB_SECRET_ARN}"
-    }
-  ]
-}
-JSON
-)"
+# Never shrink the live policy: a roll or rollback must not strip grants the owner added for secrets the task
+# definition still references (scripts/deploy/workers-exec-policy.py). Unreadable live policy = stop.
+LIVE_EXEC_POLICY=""
+if [[ "$ONLINE" -eq 1 ]]; then
+  if POLICY_OUT="$("${AWSX[@]}" iam get-role-policy --role-name "$EXECUTION_ROLE" --policy-name "${NAME}-execution" \
+    --query PolicyDocument --output json 2>&1)"; then
+    printf '%s' "$POLICY_OUT" >"$WORK/live-exec-policy.json"
+    LIVE_EXEC_POLICY="$WORK/live-exec-policy.json"
+  elif ! grep -q NoSuchEntity <<<"$POLICY_OUT"; then
+    die "cannot read $EXECUTION_ROLE's policy; refusing to overwrite it blind: $POLICY_OUT"
+  fi
+fi
+EXEC_POLICY="$(python3 "$SCRIPT_DIR/workers-exec-policy.py" "$REGION" "$ACCOUNT" "$ECR_REPO" "$LOG_GROUP" \
+  "$DB_SECRET_ARN" ${LIVE_EXEC_POLICY:+"$LIVE_EXEC_POLICY"})" || die "could not build the execution role policy"
 python3 -c 'import json,sys; json.loads(sys.argv[1]); json.loads(sys.argv[2])' "$TRUST" "$EXEC_POLICY" \
   || die "generated IAM JSON does not parse"
 for ROLE in "$EXECUTION_ROLE" "$TASK_ROLE"; do
@@ -345,6 +331,9 @@ fi
 OVERRIDES=()
 [[ "$FX_SET" -eq 1 ]] && OVERRIDES+=("Workers__FxRefreshEnabled=$FX_REFRESH")
 [[ "$HRIS_SET" -eq 1 ]] && OVERRIDES+=("Workers__HrisSyncEnabled=$HRIS_SYNC")
+# Sizing applies to an existing service only when set explicitly; otherwise the live size is kept.
+[[ -n "${WORKERS_CPU:-}" ]] && OVERRIDES+=("task.cpu=$CPU")
+[[ -n "${WORKERS_MEMORY:-}" ]] && OVERRIDES+=("task.memory=$MEMORY")
 if [[ -n "$LIVE_TD" ]]; then
   "${AWSX[@]}" ecs describe-task-definition --task-definition "$LIVE_TD" --query 'taskDefinition' \
     --output json > "$WORK/live-td.json" || die "cannot read $LIVE_TD"

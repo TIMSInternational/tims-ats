@@ -30,7 +30,9 @@ The workers serve no traffic; the HTTP listener exists only for `/health` and `/
    before starting the new one**, so a trigger can never fire from two replicas. Deployment circuit breaker
    with rollback is on.
 
-Shape: one Fargate task, 0.25 vCPU / 0.5 GB (`WORKERS_CPU`/`WORKERS_MEMORY` to change), default VPC public
+Shape: one Fargate task, 0.25 vCPU / 0.5 GB. To resize, run step 4 with `WORKERS_CPU=<units>
+WORKERS_MEMORY=<MiB>` and the current tag: an existing service keeps its live size unless these are set, and ECS
+rejects an invalid pair before anything changes (e.g. `WORKERS_MEMORY=1024` after an OOM). Default VPC public
 subnets with a public IP and an **egress-only** security group (no inbound rule, no NAT gateway). Roughly
 $9–10/month. Logs: CloudWatch `/ecs/tims-platform-workers`, 30-day retention.
 

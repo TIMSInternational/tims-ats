@@ -5,7 +5,8 @@ Used by create-workers-service.sh when the service already exists (the manual de
 Rebuilding the definition from the script's defaults instead (FX on, HRIS off, no extra env or secret
 references) meant a rollback silently re-enabled a job the owner had disabled and dropped any custom
 cron setting or HRIS secret reference (tier-1 review). Only the overrides the caller passed EXPLICITLY
-(--fx-refresh / --hris-sync) are applied on top of the live configuration.
+(--fx-refresh / --hris-sync, and task.cpu / task.memory from WORKERS_CPU / WORKERS_MEMORY) are applied on
+top of the live configuration; anything not passed keeps its live value.
 
 Usage: workers-next-td.py <live-td.json> <out.json> <container> <image> [NAME=VALUE ...]
 Tested by tests/governance/workers-image-retention.test.ts.
@@ -18,6 +19,9 @@ READ_ONLY = (
     "registeredAt", "registeredBy", "deregisteredAt",
 )
 ALLOWED_OVERRIDES = {"Workers__FxRefreshEnabled", "Workers__HrisSyncEnabled"}
+# Task-level sizing (Fargate units: cpu 256..16384, memory MiB). ECS rejects an invalid cpu/memory pair at
+# registration, before anything changes, so only the shape is checked here.
+TASK_OVERRIDES = {"task.cpu": "cpu", "task.memory": "memory"}
 
 
 def main(argv: list[str]) -> int:
@@ -38,6 +42,12 @@ def main(argv: list[str]) -> int:
     env = c.setdefault("environment", [])
     for item in overrides:
         name, sep, value = item.partition("=")
+        if sep and name in TASK_OVERRIDES:
+            if not value.isdigit() or not 128 <= int(value) <= 122880:
+                print(f"refusing override '{item}'", file=sys.stderr)
+                return 2
+            td[TASK_OVERRIDES[name]] = value
+            continue
         if not sep or name not in ALLOWED_OVERRIDES or value not in ("true", "false"):
             print(f"refusing override '{item}'", file=sys.stderr)
             return 2

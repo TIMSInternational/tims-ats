@@ -218,6 +218,18 @@ describe('workers-next-td.py: a manual deploy or rollback copies the LIVE revisi
     expect(env).toContainEqual({ name: 'Workers__HrisSyncEnabled', value: 'true' });
   });
 
+  it('resizes only when WORKERS_CPU / WORKERS_MEMORY are passed, and keeps the live size otherwise', () => {
+    // Tier-1 review: the runbook said to set these after an OOM, but a roll copied the live size unchanged.
+    const resized = next(['task.cpu=1024', 'task.memory=2048']);
+    expect(resized.status, resized.stderr).toBe(0);
+    expect(resized.out).toMatchObject({ cpu: '1024', memory: '2048' });
+    expect(next([]).out?.cpu).toBe('512');
+    expect(next(['task.memory=abc']).status).toBe(2);
+    expect(next(['task.cpu=0']).status).toBe(2);
+    expect(CREATE).toContain('[[ -n "${WORKERS_CPU:-}" ]] && OVERRIDES+=("task.cpu=$CPU")');
+    expect(CREATE).toContain('[[ -n "${WORKERS_MEMORY:-}" ]] && OVERRIDES+=("task.memory=$MEMORY")');
+  });
+
   it('refuses an override outside the two job switches, and a live revision without the container', () => {
     expect(next(['Platform__DatabaseConnectionString=x']).status).toBe(2);
     expect(next(['Workers__FxRefreshEnabled=yes']).status).toBe(2);
