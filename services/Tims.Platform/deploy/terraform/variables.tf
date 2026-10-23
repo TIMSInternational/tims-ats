@@ -73,6 +73,12 @@ variable "supabase_jwks_metadata_address" {
   type        = string
 }
 
+variable "rate_limit_dynamodb_table" {
+  description = "Platform:RateLimitDynamoDbTable — the shared rate-limit table (same one the web app uses). Created out-of-band, on-demand."
+  type        = string
+  default     = "tims-ats-ratelimit"
+}
+
 variable "otlp_endpoint" {
   description = "Platform:OtlpEndpoint — optional OpenTelemetry OTLP collector endpoint. Empty ⇒ unset."
   type        = string

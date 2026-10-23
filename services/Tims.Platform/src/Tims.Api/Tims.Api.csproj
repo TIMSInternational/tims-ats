@@ -32,6 +32,7 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <!-- Rollback-window relay-nonce bridge only (Http/LegacyRelayNonceBridge.cs); remove with Upstash. -->
     <PackageReference Include="StackExchange.Redis" Version="3.0.17" />
   </ItemGroup>
 

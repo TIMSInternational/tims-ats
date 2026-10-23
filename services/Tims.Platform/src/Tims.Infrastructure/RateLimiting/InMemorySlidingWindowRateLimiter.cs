@@ -7,7 +7,7 @@ namespace Tims.Infrastructure.RateLimiting;
 /// <summary>
 /// The process-local fallback limiter — a faithful port of the TS <c>checkMemoryRateLimit</c>
 /// in-memory path (fixed-window count keyed <c>{category}:{identifier}</c>, with the same
-/// 5-minute cleanup of expired entries). In TS this is the fallback whenever the Upstash env
+/// 5-minute cleanup of expired entries). In TS this is the fallback whenever the shared-store env
 /// vars are absent; in the C# port it is engaged ONLY in Development (the
 /// <c>RateLimitGuard</c> gates it) — never in production, a deliberate documented divergence.
 ///

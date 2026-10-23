@@ -1,0 +1,71 @@
+{
+  "$comment": "Frozen cross-stack contract for the shared DynamoDB rate-limit store. Both stacks test against this file: packages/api/src/middleware/rate-limit-store.ts (TS) and Tims.Infrastructure.RateLimiting.DynamoDbRateLimitStore (C#). Change it only in lockstep on both stacks.",
+  "table": {
+    "partitionKey": "pk",
+    "ttlAttribute": "expiresAt"
+  },
+  "slidingWindow": {
+    "partitionKeyFormat": "rl#{category}#{lowercase hex sha256(utf8 identifier)}",
+    "windowAttributeFormat": "w{bucket}",
+    "bucket": "floor(nowMs / windowMs)",
+    "expiresAtSeconds": "ceil((bucket + 2) * windowMs / 1000) + 60",
+    "updateExpression": "ADD #cur :one SET #e = :exp",
+    "removeClauseFormat": " REMOVE #old0, #old1, ...",
+    "conditionWithPrevious": "(attribute_not_exists(#cur) OR #cur < :max) AND #prev = :prevSeen AND attribute_not_exists(#next)",
+    "conditionWithoutPrevious": "(attribute_not_exists(#cur) OR #cur < :max) AND attribute_not_exists(#prev) AND attribute_not_exists(#next)",
+    "attempts": 3,
+    "contentionRetryMs": 1000
+  },
+  "budgets": {
+    "$comment": "Tokens per sliding window, per category. Both stacks must use the same numbers or one caller would get a different budget from each. query was raised from 100 to 300 on 2026-10-23, when the shared limit first applied across all instances and both stacks.",
+    "mutation": { "tokens": 30, "windowMs": 60000 },
+    "query": { "tokens": 300, "windowMs": 60000 },
+    "auth": { "tokens": 10, "windowMs": 300000 },
+    "ai": { "tokens": 10, "windowMs": 60000 },
+    "export": { "tokens": 5, "windowMs": 300000 }
+  },
+  "claim": {
+    "conditionExpression": "attribute_not_exists(pk) OR #e <= :now",
+    "prefixes": {
+      "applicationEmail": "ae#",
+      "relayNonce": "relay#"
+    }
+  },
+  "partitionKeys": [
+    {
+      "category": "query",
+      "identifier": "00000000-0000-4000-8000-000000000001",
+      "pk": "rl#query#11e594f481958c10e3015d0bf0447a22f068a8a647f475df15ce2c7ab4b8f3f1"
+    },
+    {
+      "category": "ai",
+      "identifier": "org:00000000-0000-4000-8000-0000000000aa",
+      "pk": "rl#ai#473ad8dcad6cf6c724c0a0f1bd3abe8b74a9b556e291103a2cc006dd6f01ded4"
+    },
+    {
+      "category": "auth",
+      "identifier": "ip:198.51.100.23",
+      "pk": "rl#auth#2fa8284e7ed6d4f59fcea679df05c1c8e7ee6ec73ff7b28d1e9423c9a800f170"
+    },
+    {
+      "category": "export",
+      "identifier": "apikey:00000000-0000-4000-8000-0000000000bb",
+      "pk": "rl#export#95a67b5b6ceea1203d191df55bdef941c34d16deedea343191935844fe71160a"
+    },
+    {
+      "category": "mutation",
+      "identifier": "anonymous",
+      "pk": "rl#mutation#2f183a4e64493af3f377f745eda502363cd3e7ef6e4d266d444758de0a85fcc8"
+    },
+    {
+      "category": "query",
+      "identifier": "ip:2001:db8::1",
+      "pk": "rl#query#9a4ebbd642253f573956f453f20a3965e540df3425f239a330d9d6817ac86865"
+    },
+    {
+      "category": "query",
+      "identifier": "üser-ñ",
+      "pk": "rl#query#dba19c5e43f2b282410327a3ba90e6b596bdce548674cbc7852225e4e43fd631"
+    }
+  ]
+}
