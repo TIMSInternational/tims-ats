@@ -1,38 +1,61 @@
 # Production web rate limits
 
-The Next.js/tRPC app uses `@upstash/ratelimit`. A Vercel function's process memory is
-not shared with other instances, so its in-memory fallback is suitable only for
-local development and previews. Production requires both
-`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in the **Vercel Production**
-environment. These are the Upstash **REST** endpoint and token; the Redis RESP
-connection string used by the C# App Runner service is not a drop-in replacement.
-Store the token as sensitive. Do not print either credential in CI logs or a PR.
+The Next.js/tRPC limiter (`packages/api/src/middleware/rate-limit.ts`) keeps its counters in
+one **DynamoDB** table (`packages/api/src/middleware/rate-limit-store.ts`). A Vercel
+function's process memory is not shared with other instances, so the in-memory fallback is
+suitable only for local development and previews. Production requires both
+`RATE_LIMIT_DYNAMODB_TABLE` and `RATE_LIMIT_DYNAMODB_REGION` in the **Vercel Production**
+environment; a production build without them refuses to start. There is deliberately no
+`AWS_REGION` fallback: on Vercel that is the function's own region and is also used for SES.
+
+Credentials come from the default AWS chain, i.e. the same `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` the S3 and SES clients use. That IAM user needs exactly
+`dynamodb:GetItem`, `dynamodb:UpdateItem` and `dynamodb:PutItem` on the table, nothing else.
+
+## Table settings
+
+| Setting             | Value                                                      | Why                                                                                                                                                                                    |
+| ------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key                 | partition key `pk` (String), no sort key                   | One item per identifier per window                                                                                                                                                     |
+| Billing             | On-demand                                                  | No capacity to size; each check is 1 write unit + 0.5 read unit (eventually consistent read)                                                                                           |
+| Max throughput      | 4,000 write and 4,000 read units/s                         | The throughput a new on-demand table serves without scaling. Caps a flood at ≈ US$10/h; reaching it throttles, and throttling makes the fail-closed tiers return `SERVICE_UNAVAILABLE` |
+| TTL                 | attribute `expiresAt` (epoch seconds)                      | Counters delete themselves; DynamoDB TTL is lazy, so the code never trusts an expired item                                                                                             |
+| Deletion protection | On                                                         | Deleting the table while the guard is deployed fails closed (see below)                                                                                                                |
+| Encryption          | AWS-owned key (default)                                    | No KMS cost; contents are hashes and counters                                                                                                                                          |
+| Point-in-time       | Off                                                        | Counters are ephemeral; restoring them has no use                                                                                                                                      |
+| Region              | Same region as the Vercel functions (`pdx1` = `us-west-2`) | Each check is two sequential round trips                                                                                                                                               |
+
+**What is stored:** `rl#<tier>#sha256(identifier)#<window>` → a count, and
+`ae#sha256(lowercased recipient address)` → a claim. Raw user ids, client IPs, API-key ids and
+e-mail addresses never reach the table.
+
+The algorithm is the sliding window `@upstash/ratelimit` used before: the previous window's
+count is weighted by its remaining overlap, and a denied request is not counted. The
+application-email cap is a rolling 24 h claim per recipient.
 
 ## Activation order
 
-1. Verify that the selected Upstash REST credential can read and write one
-   disposable key, and delete that key. Check the database/region and expected
-   monthly request budget. Do not use a read-only token.
-2. Add both values to the Vercel **Production** environment. Confirm their names
-   appear there, without reading their values back. Adding variables alone does
+1. Create the table and grant the IAM user (owner kit). Prove a disposable item can be
+   written, read and deleted, then delete it.
+2. Add both values to the Vercel **Production** environment. Adding variables alone does
    not change an existing deployment.
-3. Merge the production guard only after step 2, then deploy or redeploy a build
-   that includes both variables. A build without them must fail rather than
-   silently use per-instance counters.
-4. From two independent sessions, exercise a harmless bounded endpoint against
-   the production alias and verify the same Redis counter advances. Verify the
-   expected `TOO_MANY_REQUESTS` response after the tier limit and that normal
-   requests resume after the window. Keep test volume below the service plan's
-   budget and avoid account-lockout paths.
-5. Check Vercel error rate and Redis request/latency metrics, and confirm no
-   `ratelimit.shared_store_unavailable` warnings appear in the function logs
-   (see "Outage behavior" below).
+3. Merge the production guard only after step 2, then deploy or redeploy. A build without
+   the variables must fail rather than silently use per-instance counters.
+4. From two independent sessions, exercise a harmless bounded endpoint against the
+   production alias and verify the same counter advances (the table's item count / the
+   `ConsumedWriteCapacityUnits` metric). Verify the expected `TOO_MANY_REQUESTS` response
+   after the tier limit and that normal requests resume after the window. Avoid
+   account-lockout paths.
+5. Check the Vercel error rate and the table's `ThrottledRequests` / `SystemErrors`
+   metrics (the owner kit also alarms on sustained write volume far above normal), and confirm no `ratelimit.shared_store_unavailable` warnings appear in the
+   function logs (see "Outage behavior" below).
 
 ## Outage behavior
 
 Every shared-limiter call is bounded to `SHARED_LIMIT_TIMEOUT_MS` (1 s,
-`packages/api/src/middleware/rate-limit.ts`) instead of the SDK's 5 s default. When
-Upstash times out or errors:
+`packages/api/src/middleware/rate-limit-store.ts`); at the deadline the in-flight request is
+aborted. When DynamoDB times out or errors (throttling, access denied, missing table,
+network):
 
 | Traffic                                                                                                                                                                                                   | Behavior                                            |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
@@ -42,10 +65,10 @@ Upstash times out or errors:
 | Public application e-mail cap                                                                                                                                                                             | Fail closed: the e-mail is skipped                  |
 
 Scope caveat: ONE live candidate-facing credential flow does pass through this limiter, and
-fails closed during an Upstash outage: **offer signing**. The public page
+fails closed during a shared-store outage: **offer signing**. The public page
 `/offers/sign/[token]` (`apps/web/app/offers/sign/[token]/page.tsx`) calls
 `offer.getBySigningToken`, `offer.acceptByToken` and `offer.declineByToken`, all in the
-fail-closed set, so while Upstash is down a candidate can neither view nor answer an offer
+fail-closed set, so while the store is down a candidate can neither view nor answer an offer
 (`SERVICE_UNAVAILABLE`); tell recruiters to resend or wait. The other credential flows are
 outside it: login, self-serve password reset (`/forgot-password`) and MFA call Supabase Auth
 directly from the browser (Supabase's own auth limits apply), and the invitation accept UI
@@ -62,9 +85,10 @@ request, and the raw error message are never logged. Alert on this event.
 
 ## Caches that can also use Upstash (off by default)
 
-The Upstash REST credentials enable **only the rate limiter**. Two caches could also
-use that store; each needs its own explicit opt-in, because storing their contents at
-the Upstash subprocessor is a separate data decision:
+The rate limiter does **not** use Upstash. Two caches can, if Upstash REST credentials
+(`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`) are ever added, and each needs its own
+explicit opt-in, because storing their contents at the Upstash subprocessor is a separate
+data decision:
 
 | Flag (Vercel env)                       | Cache                                                           | What would be stored at Upstash                                                                           |
 | --------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -72,18 +96,18 @@ the Upstash subprocessor is a separate data decision:
 | `PERMISSION_CACHE_UPSTASH_ENABLED=true` | Cache-aside / permission cache, `packages/api/src/lib/cache.ts` | Tenant access decisions (org/user ids, roles, grants), feature-flag and entitlement reads, dashboard KPIs |
 
 Only the exact string `true` enables a flag; any other value, or absence, keeps that
-cache in per-process memory (the behavior production has today, since it has no
-Upstash credentials). With the memory backend, permission-cache invalidation is
-per instance: another instance can serve a revoked grant until its TTL expires.
-Record the subprocessor decision (cf. #40) before setting either flag.
+cache in per-process memory (the behavior production has today). With the memory backend,
+permission-cache invalidation is per instance: another instance can serve a revoked grant
+until its TTL expires. Record the subprocessor decision (cf. #40) before setting either flag.
 
 ## Rollback
 
 If the web deployment fails after the configuration change, restore the previous
-working deployment while retaining the Redis variables, then investigate the
-error. Do not remove either variable while the production guard is deployed:
-that would prevent tRPC from starting. Rotate a compromised REST token in Upstash
-and Vercel together, then redeploy and verify the shared counter again.
+working deployment while retaining the two variables, then investigate the error. Do not
+remove either variable, or delete the table, while the production guard is deployed: the
+first stops tRPC from starting, the second makes the auth, AI and export tiers fail closed.
+If the IAM key is compromised, rotate it (owner kit `c0-web-iam.sh`) and redeploy; the table
+holds no secrets.
 
-This runbook covers the web tRPC limiter. The C# platform API uses its own Redis
-connection setting and must be verified separately.
+This runbook covers the web tRPC limiter. The C# platform API uses its own rate-limit
+configuration and must be verified separately.

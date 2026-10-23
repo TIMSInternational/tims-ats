@@ -30,12 +30,15 @@ const baseEnvSchema = z.object({
   DAILY_API_KEY: optionalSecret(),
   DAILY_API_URL: optionalUrl(),
 
-  // Upstash Redis (rate limiting — optional for local dev)
+  // Shared rate-limit store (DynamoDB). Required together; required in Vercel production
+  // (packages/api/src/middleware/rate-limit-store.ts validates and enforces both).
+  RATE_LIMIT_DYNAMODB_TABLE: z.string().max(255).optional(),
+  RATE_LIMIT_DYNAMODB_REGION: z.string().max(32).optional(),
+  // Upstash Redis — NOT used by the rate limiter. Only the two optional caches below can
+  // use it, each behind its own explicit opt-in ('true'); default off = per-process memory.
+  // See docs/runbooks/production-rate-limits.md before enabling either.
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
-  // The Upstash credentials above enable ONLY the rate limiter. Each cache that could
-  // also use that store needs its own explicit opt-in ('true'); default off = per-process
-  // memory. See docs/runbooks/production-rate-limits.md before enabling either.
   // Only the exact string 'true' enables; any other value is OFF. Deliberately not a strict
   // enum: a typo in an optional cache opt-in must not fail production env validation.
   AI_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),

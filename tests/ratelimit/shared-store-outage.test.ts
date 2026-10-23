@@ -1,92 +1,76 @@
-import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-// PR #358 review fix: an Upstash outage must not take the whole app down. Each shared
-// limiter call is bounded to ~1s; on timeout/error the auth, AI and export tiers (and
-// credential-like paths) fail CLOSED, every other tier fails OPEN to the per-instance
-// memory limiter with a structured, PII-free warning.
+import { DYNAMODB_SDK, type FakeMode, installFakeDynamo, stubSharedStoreEnv } from './fake-dynamodb';
+
+// PR #358 review fix: a shared-store outage must not take the whole app down. Each shared
+// limiter call is bounded to ~1s (the in-flight request is aborted); on timeout/error the
+// auth, AI and export tiers (and credential-like paths) fail CLOSED, every other tier fails
+// OPEN to the per-instance memory limiter with a structured, PII-free warning.
 
 const RATE_LIMIT = '../../packages/api/src/middleware/rate-limit';
-const UPSTASH_RATELIMIT = resolve(__dirname, '../../packages/api/node_modules/@upstash/ratelimit');
-const UPSTASH_REDIS = resolve(__dirname, '../../packages/api/node_modules/@upstash/redis');
-
-type LimitFn = (id: string) => Promise<{ success: boolean; reason?: string; reset?: number }>;
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  vi.doUnmock(UPSTASH_RATELIMIT);
-  vi.doUnmock(UPSTASH_REDIS);
+  vi.doUnmock(DYNAMODB_SDK);
   vi.resetModules();
 });
 
-async function loadWithFakeUpstash(limit: LimitFn) {
+async function loadWithFakeDynamo(mode: FakeMode) {
   vi.resetModules();
-  vi.stubEnv('VERCEL_ENV', 'production');
-  vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://fake.upstash.test');
-  vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'synthetic-test-token');
-  const timeouts: Array<number | undefined> = [];
-  vi.doMock(UPSTASH_REDIS, () => ({ Redis: class {} }));
-  vi.doMock(UPSTASH_RATELIMIT, () => {
-    class Ratelimit {
-      constructor(opts: { timeout?: number }) {
-        timeouts.push(opts.timeout);
-      }
-      limit(id: string) {
-        return limit(id);
-      }
-      static slidingWindow() {
-        return {};
-      }
-      static fixedWindow() {
-        return {};
-      }
-    }
-    return { Ratelimit };
-  });
+  stubSharedStoreEnv('production');
+  const fake = installFakeDynamo(mode);
   const mod = await import(RATE_LIMIT);
   // Same module graph as rate-limit.ts after resetModules, so this is the logger it uses.
   const { logger } = await import('@tims/shared');
   const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
-  return { mod, warn, timeouts };
+  return { mod, warn, fake };
 }
 
-const never: LimitFn = () => new Promise(() => {});
-const sdkTimeout: LimitFn = () => Promise.resolve({ success: true, reason: 'timeout', reset: Date.now() + 1000 });
-const redisDown: LimitFn = () => Promise.reject(new Error('fetch failed https://fake.upstash.test'));
-
 describe('shared limiter is bounded', () => {
-  it('passes a ~1s timeout to every Upstash limiter instead of the 5s SDK default', async () => {
-    const { mod, timeouts } = await loadWithFakeUpstash(never);
+  it('configures the client to stay inside the ~1s deadline and passes an abort signal on every call', async () => {
+    const { mod, fake } = await loadWithFakeDynamo('ok');
     expect(mod.SHARED_LIMIT_TIMEOUT_MS).toBeLessThanOrEqual(1_000);
-    expect(timeouts.length).toBeGreaterThanOrEqual(6); // 5 tiers + application-email cap
-    for (const t of timeouts) expect(t).toBe(mod.SHARED_LIMIT_TIMEOUT_MS);
+    expect(fake.clientConfigs).toHaveLength(1);
+    const config = fake.clientConfigs[0]!;
+    expect(config.region).toBe('us-west-2');
+    expect(config.maxAttempts).toBeLessThanOrEqual(2);
+    expect(config.requestHandler).toMatchObject({ requestTimeout: mod.SHARED_LIMIT_TIMEOUT_MS });
+    await mod.checkRateLimit('user-1', 'query');
+    await mod.consumeApplicationEmailQuota('ana@example.com');
+    expect(fake.calls.length).toBeGreaterThanOrEqual(3);
+    for (const call of fake.calls) {
+      expect(call.hasAbortSignal).toBe(true);
+      expect(call.input.TableName).toBe('tims-ats-ratelimit');
+    }
   });
 
-  it('settles a hanging Redis call within the deadline (not after 5s)', async () => {
+  it('settles (and aborts) a hanging store call within the deadline', async () => {
     vi.useFakeTimers();
-    const { mod } = await loadWithFakeUpstash(never);
+    const { mod, fake } = await loadWithFakeDynamo('hang');
     let settled = false;
     const p = mod.checkRateLimit('user-1', 'query').then(() => {
       settled = true;
     });
     await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS - 1);
     expect(settled).toBe(false);
+    expect(fake.aborted).toBe(0);
     await vi.advanceTimersByTimeAsync(1);
     await p;
     expect(settled).toBe(true);
+    // The deadline must release the socket, not just stop waiting for it.
+    expect(fake.aborted).toBe(1);
   });
 });
 
 describe.each([
-  ['hanging call (own deadline)', never],
-  ['SDK timeout fallback', sdkTimeout],
-  ['Redis error', redisDown],
-] as const)('outage: %s', (_label, limit) => {
+  ['hanging call (own deadline)', 'hang'],
+  ['store error', 'error'],
+] as const)('outage: %s', (_label, mode) => {
   it.each(['auth', 'ai', 'export'] as const)('fails CLOSED for the %s tier', async (category) => {
     vi.useFakeTimers();
-    const { mod, warn } = await loadWithFakeUpstash(limit);
+    const { mod, warn } = await loadWithFakeDynamo(mode);
     const p = mod.checkRateLimit('user-1', category);
     const assertion = expect(p).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
     await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS);
@@ -101,7 +85,7 @@ describe.each([
     'fails OPEN to the per-instance limiter for the %s tier',
     async (category) => {
       vi.useFakeTimers();
-      const { mod, warn } = await loadWithFakeUpstash(limit);
+      const { mod, warn } = await loadWithFakeDynamo(mode);
       const p = mod.checkRateLimit('user-1', category);
       await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS);
       await expect(p).resolves.toBeUndefined();
@@ -114,7 +98,7 @@ describe.each([
 
   it('fails CLOSED for a credential-like path even in an ordinary tier', async () => {
     vi.useFakeTimers();
-    const { mod } = await loadWithFakeUpstash(limit);
+    const { mod } = await loadWithFakeDynamo(mode);
     expect(mod.isFailClosedPath('platform.acceptInvitation')).toBe(true);
     const p = mod.checkRateLimit('ip:203.0.113.9', 'mutation', { path: 'platform.acceptInvitation' });
     const assertion = expect(p).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
@@ -125,7 +109,7 @@ describe.each([
 
 describe('fail-open still limits per instance', () => {
   it('enforces the in-memory query limit while the shared store is down', async () => {
-    const { mod } = await loadWithFakeUpstash(redisDown);
+    const { mod } = await loadWithFakeDynamo('error');
     for (let i = 0; i < 100; i++) await mod.checkRateLimit('user-flood', 'query');
     await expect(mod.checkRateLimit('user-flood', 'query')).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' });
   });
@@ -133,7 +117,7 @@ describe('fail-open still limits per instance', () => {
 
 describe('outage log is observable but carries no PII and does not flood', () => {
   it('never logs the identifier or the raw error message, and throttles repeats', async () => {
-    const { mod, warn } = await loadWithFakeUpstash(redisDown);
+    const { mod, warn } = await loadWithFakeDynamo('error');
     await mod.checkRateLimit('user-secret-id', 'query');
     await mod.checkRateLimit('user-secret-id', 'query');
     await mod.checkRateLimit('ip:198.51.100.7', 'query');
@@ -141,27 +125,29 @@ describe('outage log is observable but carries no PII and does not flood', () =>
     const logged = JSON.stringify(warn.mock.calls);
     expect(logged).not.toContain('user-secret-id');
     expect(logged).not.toContain('198.51.100.7');
-    expect(logged).not.toContain('fake.upstash.test');
-    expect(warn.mock.calls[0]![0]).toMatchObject({ cause: 'error', errorName: 'Error' });
+    expect(logged).not.toContain('dynamodb.us-west-2');
+    expect(logged).not.toContain('747814092517');
+    expect(warn.mock.calls[0]![0]).toMatchObject({
+      cause: 'error',
+      errorName: 'ProvisionedThroughputExceededException',
+    });
   });
 });
 
 describe('healthy shared store is unchanged', () => {
-  it('allows on success and returns TOO_MANY_REQUESTS on a real deny', async () => {
-    const limit = vi
-      .fn<LimitFn>()
-      .mockResolvedValueOnce({ success: true, reset: Date.now() + 1000 })
-      .mockResolvedValueOnce({ success: false, reset: Date.now() + 30_000 });
-    const { mod, warn } = await loadWithFakeUpstash(limit);
-    await expect(mod.checkRateLimit('user-1', 'auth')).resolves.toBeUndefined();
+  it('allows up to the tier limit and returns TOO_MANY_REQUESTS on a real deny', async () => {
+    const { mod, warn } = await loadWithFakeDynamo('ok');
+    for (let i = 0; i < 10; i++) await expect(mod.checkRateLimit('user-1', 'auth')).resolves.toBeUndefined();
     await expect(mod.checkRateLimit('user-1', 'auth')).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' });
+    // Another identifier has its own budget.
+    await expect(mod.checkRateLimit('user-2', 'auth')).resolves.toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
   });
 });
 
 describe('isFailClosedPath', () => {
   it('covers invitation, password-reset and offer-signing token paths, case-insensitively', async () => {
-    const { mod } = await loadWithFakeUpstash(never);
+    const { mod } = await loadWithFakeDynamo('hang');
     for (const p of [
       'platform.acceptInvitation',
       'platform.getInvitationByToken',

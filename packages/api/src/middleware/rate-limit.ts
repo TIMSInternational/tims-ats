@@ -1,34 +1,29 @@
 import { createHash } from 'node:crypto';
 
 import { TRPCError } from '@trpc/server';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { logger } from '@tims/shared';
 
+import {
+  SHARED_LIMIT_TIMEOUT_MS,
+  SharedLimiterTimeoutError,
+  createSharedStore,
+  readSharedStoreConfig,
+} from './rate-limit-store';
+
+export { SHARED_LIMIT_TIMEOUT_MS };
+
 // ---------------------------------------------------------------------------
-// Upstash Redis (production) — falls back to in-memory only outside production.
-// Vercel functions do not share process memory. A missing URL/token in production
+// Shared store (DynamoDB, see rate-limit-store.ts) — falls back to in-memory only outside
+// production. Vercel functions do not share process memory. A missing table in production
 // would silently disable auth, AI and application-email limits across instances.
 // ---------------------------------------------------------------------------
-const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
-const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-const hasUpstashUrl = Boolean(upstashUrl);
-const hasUpstashToken = Boolean(upstashToken);
+const sharedStoreConfig = readSharedStoreConfig(process.env);
 
-if (hasUpstashUrl !== hasUpstashToken) {
-  throw new Error('Rate limiting requires both Upstash REST environment variables');
-}
-if (process.env.VERCEL_ENV === 'production' && !hasUpstashUrl) {
-  throw new Error('Production rate limiting requires shared Upstash Redis');
+if (process.env.VERCEL_ENV === 'production' && !sharedStoreConfig) {
+  throw new Error('Production rate limiting requires the shared DynamoDB table (RATE_LIMIT_DYNAMODB_TABLE)');
 }
 
-const redis =
-  upstashUrl && upstashToken
-    ? new Redis({
-        url: upstashUrl,
-        token: upstashToken,
-      })
-    : undefined;
+const sharedStore = sharedStoreConfig ? createSharedStore(sharedStoreConfig) : undefined;
 
 // ---------------------------------------------------------------------------
 // Rate-limit definitions per category
@@ -44,9 +39,8 @@ const LIMITS = {
 export type RateLimitCategory = keyof typeof LIMITS;
 
 // ---------------------------------------------------------------------------
-// Outage policy. Every shared-store call is bounded to SHARED_LIMIT_TIMEOUT_MS so a
-// slow or unreachable Upstash cannot stall every request (the SDK default is 5s,
-// which turned an Upstash outage into a whole-app 503 after ~5s per request).
+// Outage policy. Every shared-store call is bounded to SHARED_LIMIT_TIMEOUT_MS (the in-flight
+// request is aborted at the deadline) so a slow or unreachable store cannot stall every request.
 //
 // When the shared store is unavailable (timeout or error):
 //  - FAIL CLOSED (SERVICE_UNAVAILABLE) for the tiers where an unlimited burst is the
@@ -58,8 +52,6 @@ export type RateLimitCategory = keyof typeof LIMITS;
 //    (ordinary `query` / `mutation`), with a structured warning so the degradation
 //    is observable. The per-instance limiter still bounds a single instance.
 // ---------------------------------------------------------------------------
-export const SHARED_LIMIT_TIMEOUT_MS = 1_000;
-
 const FAIL_CLOSED_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set(['auth', 'ai', 'export']);
 
 // Lower-cased full tRPC paths of credential-like procedures that live outside `auth.*`.
@@ -78,29 +70,9 @@ export function isFailClosedPath(path: string): boolean {
   return FAIL_CLOSED_PATHS.has(path.toLowerCase());
 }
 
-class SharedLimiterTimeoutError extends Error {
-  constructor() {
-    super('Shared rate limiter timed out');
-    this.name = 'SharedLimiterTimeoutError';
-  }
-}
-
-/** Races a limiter call against a hard deadline; the timer never outlives the call. */
-async function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new SharedLimiterTimeoutError()), ms);
-  });
-  try {
-    return await Promise.race([promise, deadline]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 // One warning per category+mode per interval, with a count of the suppressed ones, so an
 // outage is visible without one log line per request. Never logs the identifier (user id
-// or client IP), the request, or the raw error message (it can echo the Redis URL).
+// or client IP), the request, or the raw error message (it can echo the table ARN or account).
 const OUTAGE_LOG_INTERVAL_MS = 10_000;
 const outageLog = new Map<string, { lastAt: number; suppressed: number }>();
 
@@ -131,28 +103,6 @@ function logSharedLimiterOutage(
   );
   outageLog.set(key, { lastAt: now, suppressed: 0 });
 }
-
-// ---------------------------------------------------------------------------
-// Upstash limiters (one per category, created lazily)
-// ---------------------------------------------------------------------------
-function createUpstashLimiter(category: RateLimitCategory): Ratelimit | null {
-  if (!redis) return null;
-  const { requests, window } = LIMITS[category];
-  return new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(requests, window),
-    prefix: `tims:ratelimit:${category}`,
-    timeout: SHARED_LIMIT_TIMEOUT_MS,
-  });
-}
-
-const upstashLimiters: Record<RateLimitCategory, Ratelimit | null> = {
-  mutation: createUpstashLimiter('mutation'),
-  query: createUpstashLimiter('query'),
-  auth: createUpstashLimiter('auth'),
-  ai: createUpstashLimiter('ai'),
-  export: createUpstashLimiter('export'),
-};
 
 // ---------------------------------------------------------------------------
 // In-memory fallback (local dev / missing env vars)
@@ -228,16 +178,12 @@ export async function checkRateLimit(
   category: RateLimitCategory = 'query',
   options: { path?: string } = {},
 ): Promise<void> {
-  const upstash = upstashLimiters[category];
-
-  if (upstash) {
-    let result: Awaited<ReturnType<Ratelimit['limit']>> | undefined;
+  if (sharedStore) {
+    const { requests, window } = LIMITS[category];
+    let result: { success: boolean; reset: number } | undefined;
     let outage: { cause: 'timeout' | 'error'; err: unknown } | undefined;
     try {
-      result = await withDeadline(upstash.limit(identifier), SHARED_LIMIT_TIMEOUT_MS);
-      // The SDK reports success with reason 'timeout' when its own deadline expires.
-      // That is NOT an allowance — it means the shared store did not answer.
-      if (result.reason === 'timeout') outage = { cause: 'timeout', err: new SharedLimiterTimeoutError() };
+      result = await sharedStore.slidingWindow(`rl#${category}`, identifier, requests, windowToMs(window));
     } catch (err) {
       outage = { cause: err instanceof SharedLimiterTimeoutError ? 'timeout' : 'error', err };
     }
@@ -274,31 +220,18 @@ export async function checkRateLimit(
 // Per-RECIPIENT cap for the unauthenticated "application received" email (#308).
 // The public apply form chooses the recipient address, so without a cap it could make
 // the platform mail any inbox repeatedly via our SES identity. At most ONE such email per
-// address per 24h, platform-wide. The key is sha256(lowercased address) — the raw
-// address never reaches Redis or memory keys.
-// Returns true only when a send is allowed. An Upstash timeout (the library then reports
-// success with reason 'timeout') is treated as NOT allowed; an Upstash error propagates
-// and the caller must treat it as NOT allowed too (fail closed — skip the email).
+// address per 24h (rolling), platform-wide. The key is sha256(lowercased address) — the raw
+// address never reaches the shared store or memory keys.
+// Returns true only when a send is allowed. A shared-store timeout or error propagates and
+// the caller must treat it as NOT allowed (fail closed — skip the email).
 // ---------------------------------------------------------------------------
 const APPLICATION_EMAIL_WINDOW_MS = 86_400_000;
-
-const applicationEmailLimiter = redis
-  ? new Ratelimit({
-      redis,
-      limiter: Ratelimit.fixedWindow(1, '24 h'),
-      prefix: 'tims:ratelimit:application-email',
-      timeout: SHARED_LIMIT_TIMEOUT_MS,
-    })
-  : null;
 
 const applicationEmailMemory = new Map<string, number>();
 
 export async function consumeApplicationEmailQuota(recipientEmail: string): Promise<boolean> {
   const key = createHash('sha256').update(recipientEmail.trim().toLowerCase()).digest('hex');
-  if (applicationEmailLimiter) {
-    const { success, reason } = await withDeadline(applicationEmailLimiter.limit(key), SHARED_LIMIT_TIMEOUT_MS);
-    return success && reason !== 'timeout';
-  }
+  if (sharedStore) return sharedStore.claimOnce('ae', key, APPLICATION_EMAIL_WINDOW_MS);
   // Fallback: in-memory (local dev / tests) — per-process, same 1-per-24h semantics.
   const now = Date.now();
   const until = applicationEmailMemory.get(key);

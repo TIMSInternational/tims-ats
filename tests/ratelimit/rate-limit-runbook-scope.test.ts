@@ -20,7 +20,7 @@ function filesUnder(dir: string): string[] {
 }
 
 const failClosedPaths = [
-  ...(/FAIL_CLOSED_PATHS[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/.exec(LIMITER)?.[1] ?? '').matchAll(/'([a-z.]+)'/g),
+  ...(/const FAIL_CLOSED_PATHS[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/.exec(LIMITER)?.[1] ?? '').matchAll(/'([a-z.]+)'/g),
 ].map((m) => m[1]!);
 const webSource = filesUnder(join(ROOT, 'apps/web')).map((f) => readFileSync(f, 'utf8').toLowerCase()).join('\n');
 
