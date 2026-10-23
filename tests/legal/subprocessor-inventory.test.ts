@@ -109,7 +109,6 @@ const NUGET_PACKAGES: Record<string, Classification> = {
 
 // Host suffix -> classification. Matched against every https/wss host referenced in source.
 const HOSTS: Array<[suffix: string, classification: Classification]> = [
-  ['supabase.co', 'supabase'],
   ['daily.co', 'daily'],
   ['dailywebrtc.com', 'daily'],
   ['dailywebrtc.net', 'daily'],
@@ -119,7 +118,6 @@ const HOSTS: Array<[suffix: string, classification: Classification]> = [
   ['livekit.cloud', 'elevenlabs'],
   ['challenges.cloudflare.com', 'cloudflare-turnstile'],
   ['sentry.io', 'sentry'],
-  ['amazonaws.com', 'aws-s3'],
   ['api.bamboohr.com', 'bamboohr'],
   ['accounts.google.com', { notAVendor: 'sign-in identity provider chosen by the user (counsel TODO on the page)' }],
   [
@@ -141,10 +139,16 @@ const HOSTS: Array<[suffix: string, classification: Classification]> = [
 // each one reviewed.
 const EXACT_HOSTS = new Map<string, Classification>([
   ['tims-ats.vercel.app', 'vercel'],
+  // The CV bucket (apps/web/lib/security/csp.ts). Any other *.amazonaws.com endpoint, an API Gateway or
+  // another account's bucket, could be a different processor and must be reviewed.
+  ['tims-cv.s3.us-west-2.amazonaws.com', 'aws-s3'],
+  // The literal CSP wildcard for our Supabase project (its URL comes from NEXT_PUBLIC_SUPABASE_URL), not a
+  // host anything is sent to. A literal https://<other-project>.supabase.co is a different tenant.
+  ['*.supabase.co', 'supabase'],
   // The literal CSP wildcard string, not a host anything is sent to.
   ['*.cloudfront.net', { notAVendor: 'img-src allowance only; the browser fetches images, no data is sent' }],
 ]);
-const SHARED_HOSTING_SUFFIXES = ['vercel.app', 'cloudfront.net'];
+const SHARED_HOSTING_SUFFIXES = ['vercel.app', 'cloudfront.net', 'amazonaws.com', 'supabase.co'];
 
 function classifyHost(host: string): Classification | undefined {
   const exact = EXACT_HOSTS.get(host);
@@ -278,10 +282,23 @@ describe('subprocessor list (apps/web/lib/legal/subprocessors.ts)', () => {
   });
 
   it('a third party on shared hosting is never classified as one of our vendors', () => {
-    for (const foreign of ['resume-parser.vendor-example.vercel.app', 'd111111abcdef8.cloudfront.net', 'vercel.app']) {
+    for (const foreign of [
+      'resume-parser.vendor-example.vercel.app',
+      'd111111abcdef8.cloudfront.net',
+      'vercel.app',
+      // AWS and Supabase host other tenants too (tier-1 review): an API Gateway, another account's bucket,
+      // another Supabase project.
+      'foreign-parser.execute-api.us-east-1.amazonaws.com',
+      'other-bucket.s3.us-west-2.amazonaws.com',
+      'amazonaws.com',
+      'foreign-parser.supabase.co',
+      'supabase.co',
+    ]) {
       expect(classifyHost(foreign), foreign).toBeUndefined();
     }
     expect(classifyHost('tims-ats.vercel.app')).toBe('vercel');
+    expect(classifyHost('tims-cv.s3.us-west-2.amazonaws.com')).toBe('aws-s3');
+    expect(classifyHost('*.supabase.co')).toBe('supabase');
   });
 
   it('only reserved example hosts count as placeholders, never a real vendor that merely contains a word', () => {
