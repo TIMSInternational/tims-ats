@@ -107,55 +107,48 @@ const NUGET_PACKAGES: Record<string, Classification> = {
   'xunit.runner.visualstudio': lib('test only'),
 };
 
-// Host suffix -> classification. Matched against every https/wss host referenced in source.
-const HOSTS: Array<[suffix: string, classification: Classification]> = [
-  ['daily.co', 'daily'],
-  ['dailywebrtc.com', 'daily'],
-  ['dailywebrtc.net', 'daily'],
-  ['pluot.blue', 'daily'],
-  ['elevenlabs.io', 'elevenlabs'],
-  // @elevenlabs/client depends on livekit-client: the WebRTC transport of the ElevenLabs session.
-  ['livekit.cloud', 'elevenlabs'],
-  ['challenges.cloudflare.com', 'cloudflare-turnstile'],
-  ['sentry.io', 'sentry'],
-  ['api.bamboohr.com', 'bamboohr'],
-  ['accounts.google.com', { notAVendor: 'sign-in identity provider chosen by the user (counsel TODO on the page)' }],
-  [
-    'login.microsoftonline.com',
-    { notAVendor: 'sign-in identity provider chosen by the user (counsel TODO on the page)' },
-  ],
-  ['googleusercontent.com', { notAVendor: 'img-src allowance for identity-provider profile pictures' }],
-  ['fonts.googleapis.com', { notAVendor: 'CSP allowance only; next/font self-hosts fonts at build time' }],
-  ['fonts.gstatic.com', { notAVendor: 'CSP allowance only; next/font self-hosts fonts at build time' }],
-  ['open.er-api.com', { notAVendor: 'public exchange-rate feed; no personal data is sent' }],
-  ['api.frankfurter.dev', { notAVendor: 'public exchange-rate feed; no personal data is sent' }],
-  ['linkedin.com', { notAVendor: 'input placeholder text only' }],
-  ['portal.invalid', { notAVendor: 'reserved .invalid base URL used for URL parsing' }],
-  ['storage.tims.app', { notAVendor: 'mock URL string in a stub service' }],
-];
-
-// Shared hosting domains: ANYONE can run a service under them, so a suffix rule would classify a third
-// party's endpoint (`resume-parser.vendor.vercel.app`) as our own vendor (tier-1 review). Exact hosts only,
-// each one reviewed.
-const EXACT_HOSTS = new Map<string, Classification>([
+// Host -> classification, EXACT hosts only. Suffix rules kept failing tier-1 review one platform at a time
+// (vercel.app, cloudfront.net, amazonaws.com, supabase.co, livekit.cloud): those platforms host other
+// customers' projects, so `foreign.livekit.cloud` or `parser.execute-api.<region>.amazonaws.com` is a
+// different processor, or a different account of one. Every host the source references is listed and
+// reviewed here; a new one fails "every https/wss host referenced in source is classified" until someone
+// decides what it is. Literal CSP wildcards (`*.daily.co`) are allowances, not hosts data is sent to.
+const NOT_DATA = (why: string): Classification => ({ notAVendor: why });
+const HOSTS = new Map<string, Classification>([
   ['tims-ats.vercel.app', 'vercel'],
-  // The CV bucket (apps/web/lib/security/csp.ts). Any other *.amazonaws.com endpoint, an API Gateway or
-  // another account's bucket, could be a different processor and must be reviewed.
   ['tims-cv.s3.us-west-2.amazonaws.com', 'aws-s3'],
-  // The literal CSP wildcard for our Supabase project (its URL comes from NEXT_PUBLIC_SUPABASE_URL), not a
-  // host anything is sent to. A literal https://<other-project>.supabase.co is a different tenant.
+  ['challenges.cloudflare.com', 'cloudflare-turnstile'],
+  ['api.daily.co', 'daily'],
+  ['meet.daily.co', NOT_DATA('sample meeting link in an email preview')],
+  ['domain.daily.co', NOT_DATA('placeholder in a code comment (DOMAIN.daily.co)')],
+  ['prod-ks.pluot.blue', 'daily'],
+  ['elevenlabs.io', 'elevenlabs'],
+  ['api.elevenlabs.io', 'elevenlabs'],
+  ['api.bamboohr.com', 'bamboohr'],
   ['*.supabase.co', 'supabase'],
-  // The literal CSP wildcard string, not a host anything is sent to.
-  ['*.cloudfront.net', { notAVendor: 'img-src allowance only; the browser fetches images, no data is sent' }],
+  ['*.daily.co', 'daily'],
+  ['*.wss.daily.co', 'daily'],
+  ['*.dailywebrtc.com', 'daily'],
+  ['*.dailywebrtc.net', 'daily'],
+  ['*.elevenlabs.io', 'elevenlabs'],
+  // @elevenlabs/client depends on livekit-client: the WebRTC transport of the ElevenLabs session.
+  ['*.livekit.cloud', 'elevenlabs'],
+  ['*.sentry.io', 'sentry'],
+  ['*.cloudfront.net', NOT_DATA('img-src allowance only; the browser fetches images, no data is sent')],
+  ['*.googleusercontent.com', NOT_DATA('img-src allowance for identity-provider profile pictures')],
+  ['accounts.google.com', NOT_DATA('sign-in identity provider chosen by the user (counsel TODO on the page)')],
+  ['login.microsoftonline.com', NOT_DATA('sign-in identity provider chosen by the user (counsel TODO on the page)')],
+  ['fonts.googleapis.com', NOT_DATA('CSP allowance only; next/font self-hosts fonts at build time')],
+  ['fonts.gstatic.com', NOT_DATA('CSP allowance only; next/font self-hosts fonts at build time')],
+  ['open.er-api.com', NOT_DATA('public exchange-rate feed; no personal data is sent')],
+  ['api.frankfurter.dev', NOT_DATA('public exchange-rate feed; no personal data is sent')],
+  ['linkedin.com', NOT_DATA('input placeholder text only')],
+  ['portal.invalid', NOT_DATA('reserved .invalid base URL used for URL parsing')],
+  ['storage.tims.app', NOT_DATA('mock URL string in a stub service')],
 ]);
-const SHARED_HOSTING_SUFFIXES = ['vercel.app', 'cloudfront.net', 'amazonaws.com', 'supabase.co'];
 
 function classifyHost(host: string): Classification | undefined {
-  const exact = EXACT_HOSTS.get(host);
-  if (exact !== undefined) return exact;
-  const bare = host.replace(/^\*\./, '');
-  if (SHARED_HOSTING_SUFFIXES.some((suffix) => bare === suffix || bare.endsWith(`.${suffix}`))) return undefined;
-  return HOSTS.find(([suffix]) => bare === suffix || bare.endsWith(`.${suffix}`))?.[1];
+  return HOSTS.get(host);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -197,6 +190,15 @@ const SOURCE_FILES = [
   ...walk(join(ROOT, 'services/Tims.Platform/src'), ['.cs']),
 ];
 
+const INVENTORY_FILE = join('lib', 'legal', 'subprocessors.ts');
+
+/** Runtime source where an activating env var must actually be read: everything except the inventory. */
+function activationCorpus(): string {
+  return SOURCE_FILES.filter((f) => !f.endsWith(INVENTORY_FILE))
+    .map((f) => readFileSync(f, 'utf8'))
+    .join('\n');
+}
+
 function nugetPackages(): Map<string, string> {
   const pkgs = new Map<string, string>();
   for (const file of walk(join(ROOT, 'services'), ['.csproj'])) {
@@ -208,7 +210,7 @@ function nugetPackages(): Map<string, string> {
 function referencedHosts(): Map<string, string> {
   const hosts = new Map<string, string>();
   for (const file of SOURCE_FILES) {
-    if (file.endsWith(join('lib', 'legal', 'subprocessors.ts'))) continue;
+    if (file.endsWith(INVENTORY_FILE)) continue;
     for (const m of readFileSync(file, 'utf8').matchAll(/\b(?:https|wss):\/\/([a-zA-Z0-9*.-]+\.[a-zA-Z]{2,})/g)) {
       hosts.set(m[1]!.toLowerCase(), file);
     }
@@ -259,7 +261,10 @@ describe('subprocessor list (apps/web/lib/legal/subprocessors.ts)', () => {
   );
 
   it('every activating env var of a "configured" vendor is read somewhere in source', () => {
-    const corpus = SOURCE_FILES.map((f) => readFileSync(f, 'utf8')).join('\n');
+    // The inventory itself is excluded: it names every activating variable, so including it would make each
+    // declaration satisfy its own check (tier-1 review).
+    const corpus = activationCorpus();
+    expect(corpus, 'the inventory must not be part of its own evidence').not.toContain('export const SUBPROCESSORS');
     for (const sp of SUBPROCESSORS) {
       if (sp.condition === 'configured')
         expect(sp.activatedBy?.length, `${sp.id} needs activatedBy`).toBeGreaterThan(0);
@@ -293,12 +298,17 @@ describe('subprocessor list (apps/web/lib/legal/subprocessors.ts)', () => {
       'amazonaws.com',
       'foreign-parser.supabase.co',
       'supabase.co',
+      'foreign-recorder.livekit.cloud',
+      'another-customer.daily.co',
+      'o123456.ingest.sentry.io',
+      'evil.elevenlabs.io.attacker.net',
     ]) {
       expect(classifyHost(foreign), foreign).toBeUndefined();
     }
     expect(classifyHost('tims-ats.vercel.app')).toBe('vercel');
     expect(classifyHost('tims-cv.s3.us-west-2.amazonaws.com')).toBe('aws-s3');
     expect(classifyHost('*.supabase.co')).toBe('supabase');
+    expect(classifyHost('*.livekit.cloud')).toBe('elevenlabs');
   });
 
   it('only reserved example hosts count as placeholders, never a real vendor that merely contains a word', () => {
@@ -314,8 +324,7 @@ describe('subprocessor list (apps/web/lib/legal/subprocessors.ts)', () => {
     const named = new Set([
       ...vendorIds(Object.values(NPM_DEPENDENCIES)),
       ...vendorIds(Object.values(NUGET_PACKAGES)),
-      ...vendorIds(HOSTS.map(([, c]) => c)),
-      ...vendorIds(EXACT_HOSTS.values()),
+      ...vendorIds(HOSTS.values()),
     ]);
     expect([...named].filter((id) => !ids.has(id))).toEqual([]);
     // Infrastructure-only vendors are detected through their evidence files instead of an SDK/host.
