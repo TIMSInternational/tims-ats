@@ -158,7 +158,7 @@ PERMS="$(cat <<JSON
     {
       "Sid": "WorkersDeployLock",
       "Effect": "Allow",
-      "Action": ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:DeleteItem"],
+      "Action": ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"],
       "Resource": "arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${WORKERS_LOCK_TABLE}",
       "Condition": { "ForAllValues:StringEquals": { "dynamodb:LeadingKeys": ["lock#workers-deploy"] } }
     },

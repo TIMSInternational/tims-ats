@@ -4,9 +4,13 @@
 create-workers-service.sh --apply runs on every manual roll and rollback, and used to replace the policy with
 the DB-only baseline. An owner who had extended it (an HRIS secret, a KMS key for a customer-managed secret)
 lost those grants on the next rollback while the task definition still referenced the secrets, so replacement
-tasks failed secret injection (tier-1 review). The result is the baseline, with the secret-injection statement
-widened to every secret the live statement already allowed, plus every other live statement kept verbatim.
-A roll can add access; it never removes any. Narrowing it is a deliberate, separate IAM change.
+tasks failed secret injection (tier-1 review).
+
+Nothing is merged or rewritten: every live statement is kept EXACTLY (its Effect, Action, Resource and
+Condition), and a baseline statement is added only when the live policy does not already contain it verbatim.
+A baseline statement whose Sid an edited live statement already uses is added under `<Sid>Baseline`. The
+result is the union of the live policy and the baseline: a roll can restore a baseline grant, but it never
+removes, narrows, or loosens anything an owner wrote. Narrowing is a deliberate, separate IAM change.
 
 Usage: workers-exec-policy.py <region> <account> <ecr-repo> <log-group> <db-secret-arn> [<live-policy.json>]
 Prints the policy JSON. Tested by tests/governance/workers-exec-policy.test.ts.
@@ -34,7 +38,6 @@ def baseline(region: str, account: str, repo: str, log_group: str, db_secret: st
             "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
             "Resource": f"arn:aws:logs:{region}:{account}:log-group:{log_group}:*",
         },
-        # Named for its origin; once an owner adds secrets it injects those too (see the module docstring).
         {"Sid": SECRETS_SID, "Effect": "Allow", "Action": "secretsmanager:GetSecretValue", "Resource": db_secret},
     ]
 
@@ -43,19 +46,32 @@ def as_list(value) -> list:
     return value if isinstance(value, list) else [value]
 
 
-def merge(base: list[dict], live: dict | None) -> dict:
-    ours = {s["Sid"] for s in base}
-    statements = [dict(s) for s in base]
-    if live:
-        live_statements = as_list(live.get("Statement", []))
-        secrets = statements[-1]
-        resources = as_list(secrets["Resource"])
-        for s in live_statements:
-            if s.get("Sid") == SECRETS_SID:
-                resources += [r for r in as_list(s.get("Resource", [])) if r not in resources]
-        secrets["Resource"] = resources[0] if len(resources) == 1 else resources
-        statements += [s for s in live_statements if s.get("Sid") not in ours]
-    return {"Version": "2012-10-17", "Statement": statements}
+def same_grant(a: dict, b: dict) -> bool:
+    """Equal Effect, Action and Resource (order-insensitive) and equal Condition (absent counts as none)."""
+    def norm(s: dict) -> tuple:
+        return (
+            s.get("Effect"),
+            tuple(sorted(as_list(s.get("Action", [])))),
+            tuple(sorted(as_list(s.get("Resource", [])))),
+            json.dumps(s.get("Condition"), sort_keys=True),
+        )
+    return norm(a) == norm(b)
+
+
+def union(base: list[dict], live: dict | None) -> dict:
+    if not live:
+        return {"Version": "2012-10-17", "Statement": base}
+    statements = [s for s in as_list(live.get("Statement", []))]
+    sids = {s.get("Sid") for s in statements}
+    for b in base:
+        if any(same_grant(b, s) for s in statements):
+            continue
+        sid = b["Sid"]
+        while sid in sids:
+            sid += "Baseline"
+        statements.append({**b, "Sid": sid})
+        sids.add(sid)
+    return {"Version": live.get("Version", "2012-10-17"), "Statement": statements}
 
 
 def main(argv: list[str]) -> int:
@@ -70,7 +86,7 @@ def main(argv: list[str]) -> int:
         if not isinstance(live, dict) or "Statement" not in live:
             print("the live policy is not an IAM policy document", file=sys.stderr)
             return 1
-    print(json.dumps(merge(baseline(region, account, repo, log_group, db_secret), live), indent=2))
+    print(json.dumps(union(baseline(region, account, repo, log_group, db_secret), live), indent=2))
     return 0
 
 

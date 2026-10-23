@@ -31,18 +31,26 @@ beforeEach(() => {
     [
       '#!/usr/bin/env bash',
       'if [ -n "${FAKE_AWS_ERROR:-}" ]; then echo "$FAKE_AWS_ERROR" >&2; exit 254; fi',
-      'item=""; values=""; prev=""',
-      'for a in "$@"; do [ "$prev" = "--item" ] && item="$a"; [ "$prev" = "--expression-attribute-values" ] && values="$a"; prev="$a"; done',
+      'item=""; values=""; cond=""; prev=""',
+      'for a in "$@"; do [ "$prev" = "--item" ] && item="$a"; [ "$prev" = "--expression-attribute-values" ] && values="$a"; [ "$prev" = "--condition-expression" ] && cond="$a"; prev="$a"; done',
+      // Each clause is enforced only if the script SENT it, so dropping a clause from the script is caught.
+      'has() { [[ "$cond" == *"$1"* ]]; }',
+      'exists() { [ -e "$FAKE_LOCK" ]; }',
+      'mine() { [ "$(cut -d" " -f1 "$FAKE_LOCK")" = "$(field "$values" :me)" ]; }',
+      'live() { [ "$(cut -d" " -f2 "$FAKE_LOCK")" -ge "$(field "$values" :now)" ]; }',
       // field '<json>' <name>: the S or N value of one attribute.
       `field() { python3 -c 'import json, sys; print(list(json.loads(sys.argv[1])[sys.argv[2]].values())[0])' "$1" "$2"; }`,
       'ccf() { echo "An error occurred (ConditionalCheckFailedException) when calling the $1 operation" >&2; exit 254; }',
       'case "$2" in',
       '  put-item)',
-      '    if [ -e "$FAKE_LOCK" ] && [ "$(cut -d" " -f2 "$FAKE_LOCK")" -ge "$(field "$values" :now)" ]; then ccf PutItem; fi',
+      '    if has "attribute_not_exists(pk)" && exists && ! { has "expiresAt < :now" && ! live; }; then ccf PutItem; fi',
       '    echo "$(field "$item" holder) $(field "$item" expiresAt)" > "$FAKE_LOCK" ;;',
       '  get-item) if [ -e "$FAKE_LOCK" ]; then tr " " "\\t" < "$FAKE_LOCK"; else echo "None	None"; fi ;;',
+      '  update-item)',
+      '    if { has "holder = :me" && ! { exists && mine; }; } || { has "expiresAt >= :now" && ! { exists && live; }; }; then ccf UpdateItem; fi',
+      '    echo "$(field "$values" :me) $(field "$values" :exp)" > "$FAKE_LOCK" ;;',
       '  delete-item)',
-      '    if [ ! -e "$FAKE_LOCK" ] || [ "$(cut -d" " -f1 "$FAKE_LOCK")" != "$(field "$values" :me)" ]; then ccf DeleteItem; fi',
+      '    if has "holder = :me" && ! { exists && mine; }; then ccf DeleteItem; fi',
       '    rm -f "$FAKE_LOCK" ;;',
       '  *) echo "unexpected: $*" >&2; exit 99 ;;',
       'esac',
@@ -113,6 +121,28 @@ describe('workers deploy lock', () => {
     expect(readFileSync(state, 'utf8')).toMatch(/^owner-fede-42 /);
   });
 
+  it('renew extends a live lease, and fails once the lease was lost to someone else', () => {
+    expect(lock('acquire', 'owner-fede-42', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
+    expect(lock('renew', 'owner-fede-42').status).toBe(0);
+    expect(Number(readFileSync(state, 'utf8').trim().split(' ')[1]) - Date.now() / 1000).toBeGreaterThan(3500);
+
+    // A holder suspended past its lease: someone else takes the expired lock; the stale holder's renew fails.
+    lock('release', 'owner-fede-42');
+    expect(lock('acquire', 'owner-fede-42', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
+    spawnSync('sleep', ['2']);
+    expect(lock('acquire', 'gha-7-1').status).toBe(0);
+    const stale = lock('renew', 'owner-fede-42');
+    expect(stale.status).toBe(1);
+    expect(stale.stderr).toContain('no longer holds the lock');
+    expect(readFileSync(state, 'utf8')).toMatch(/^gha-7-1 /);
+  });
+
+  it('renew also fails when the lease merely expired (nobody else took it yet)', () => {
+    expect(lock('acquire', 'owner-fede-42', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
+    spawnSync('sleep', ['2']);
+    expect(lock('renew', 'owner-fede-42').status).toBe(1);
+  });
+
   it('releasing a lock that is not held is a no-op', () => {
     expect(lock('release', 'gha-1-1').status).toBe(0);
   });
@@ -150,10 +180,17 @@ describe('workers deploy lock', () => {
     expect(steps(WORKFLOW).find((s) => s.includes('- name: Decide whether to push and roll'))).toContain('decided_td=');
     expect(roll).toContain('DECIDED_TD: ${{ steps.decide.outputs.decided_td }}');
     const guard = roll.indexOf('if [ "$CURRENT_TD" != "$DECIDED_TD" ]');
+    const renew = roll.indexOf('workers-deploy-lock.sh renew');
     expect(guard).toBeGreaterThan(-1);
-    expect(guard, 'the guard runs before the new revision is registered').toBeLessThan(
-      roll.indexOf('register-task-definition'),
-    );
+    expect(renew, 'the lease is renewed (still held) before the roll').toBeGreaterThan(-1);
+    for (const [name, at] of [
+      ['guard', guard],
+      ['renew', renew],
+    ] as const) {
+      expect(at, `the ${name} runs before the new revision is registered`).toBeLessThan(
+        roll.indexOf('register-task-definition'),
+      );
+    }
   });
 
   it('the owner script takes the same lock before any change and releases it on exit', () => {
@@ -164,5 +201,14 @@ describe('workers deploy lock', () => {
     for (const mutation of ['# ── Kill switch', 'mutate ecr put-lifecycle-policy', 'register-task-definition']) {
       expect(take, `lock before ${mutation}`).toBeLessThan(OWNER.indexOf(mutation));
     }
+    // Stale-writer guard: the lease is renewed and the live revision re-checked right before the roll and the stop.
+    const roll = OWNER.indexOf('mutate ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition');
+    const stop = OWNER.indexOf('--desired-count 0');
+    const renews = [...OWNER.matchAll(/lock renew/g)].map((m) => m.index!);
+    expect(renews.some((i) => i < stop && i > OWNER.indexOf('# ── Kill switch'))).toBe(true);
+    const guard = OWNER.indexOf('[[ "$NOW_TD" == "$LIVE_TD" ]]');
+    expect(guard).toBeGreaterThan(-1);
+    expect(renews.some((i) => i < roll && i > OWNER.indexOf('Stale-writer guard'))).toBe(true);
+    expect(guard).toBeLessThan(roll);
   });
 });

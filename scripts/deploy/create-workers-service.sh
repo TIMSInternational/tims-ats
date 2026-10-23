@@ -164,6 +164,7 @@ fi
 if [[ "$STOP" -eq 1 ]]; then
   say ""
   say "Stopping the scheduler (desired count 0). The service, image and roles are kept."
+  [[ "$APPLY" -eq 1 ]] && { lock renew || die "lost the workers deploy lock; nothing changed — re-run"; }
   mutate ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --desired-count 0
   [[ "$APPLY" -eq 1 ]] && ok "desired count 0 — re-enable with --apply --image-tag <tag>"
   exit 0
@@ -421,6 +422,18 @@ if [[ "$APPLY" -eq 1 ]]; then
     || die "could not protect $ECR_REPO:$IMAGE_TAG from expiry; not rolling onto it"
 else
   say "  would run: scripts/deploy/workers-protect-image.sh $IMAGE_TAG   (adds tag deployed-$IMAGE_TAG)"
+fi
+# Stale-writer guard, immediately before the roll: this run must still hold the lock (renewed, so nobody can
+# take it during the update), and the service must still run the revision this run copied. A run that stalled
+# (a suspended laptop) past its lease, or one overtaken by another deploy, stops instead of overwriting.
+if [[ "$APPLY" -eq 1 ]]; then
+  lock renew || die "lost the workers deploy lock (it expired or was cleared); nothing rolled — re-run"
+  if [[ -n "$LIVE_TD" ]]; then
+    NOW_TD="$("${AWSX[@]}" ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+      --query 'services[0].taskDefinition' --output text)" || die "cannot re-read the live task definition"
+    [[ "$NOW_TD" == "$LIVE_TD" ]] \
+      || die "the live revision changed while this ran ($LIVE_TD -> $NOW_TD); not overwriting it — re-run"
+  fi
 fi
 if [[ "$SERVICE_STATUS" == "ACTIVE" ]]; then
   mutate ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition "$TD_ARN" \

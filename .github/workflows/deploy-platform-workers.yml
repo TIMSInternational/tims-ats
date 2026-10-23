@@ -254,6 +254,8 @@ jobs:
             echo "::error::The live revision changed after the decision ($DECIDED_TD -> $CURRENT_TD). Not overwriting it; re-run to decide again."
             exit 1
           fi
+          # Still the lock holder (renewed so nobody takes it during the roll); a lost lease stops the run.
+          bash scripts/deploy/workers-deploy-lock.sh renew "gha-${{ github.run_id }}-${{ github.run_attempt }}"
           # Swap ONLY the image of the workers container; every env var, secret ref, health check, role and
           # size is carried over verbatim from the live revision. Read-only fields are stripped for re-register.
           jq --arg n "$CONTAINER_NAME" --arg img "$REGISTRY/$ECR_REPO:$TAG" '

@@ -50,44 +50,51 @@ describe('workers execution role policy', () => {
     expect(r.policy?.Statement).toHaveLength(4);
   });
 
-  it('keeps every secret the live policy allowed, and every statement that is not ours, verbatim', () => {
+  const BASE = build().policy!;
+  const live = (...statements: object[]) => ({ Version: '2012-10-17', Statement: statements });
+
+  it('an unedited live policy comes back unchanged (no duplicates)', () => {
+    expect(build(BASE).policy).toEqual(BASE);
+  });
+
+  it('keeps a grant an owner added under one of OUR statement names (a sidecar image repository)', () => {
+    const pull = {
+      ...sid(BASE, 'PullOnlyTheWorkersImage')!,
+      Resource: [
+        'arn:aws:ecr:us-west-2:747814092517:repository/tims-platform-workers',
+        'arn:aws:ecr:us-west-2:747814092517:repository/sidecar',
+      ],
+    };
+    const others = BASE.Statement.filter((st) => st.Sid !== 'PullOnlyTheWorkersImage');
+    const r = build(live(...others, pull));
+    expect(r.status, r.stderr).toBe(0);
+    expect(sid(r.policy, 'PullOnlyTheWorkersImage')).toEqual(pull);
+  });
+
+  it('keeps a conditioned secret grant verbatim and never re-grants that secret unconditionally', () => {
+    const hris = {
+      Sid: 'InjectOnlyTheDbConnectionString',
+      Effect: 'Allow',
+      Action: 'secretsmanager:GetSecretValue',
+      Resource: [DB, HRIS],
+      Condition: { StringEquals: { 'aws:SourceVpce': 'vpce-0123' } },
+    };
     const kms = {
       Sid: 'DecryptHrisSecret',
       Effect: 'Allow',
       Action: 'kms:Decrypt',
       Resource: 'arn:aws:kms:us-west-2:747814092517:key/k',
     };
-    const live = {
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Sid: 'InjectOnlyTheDbConnectionString',
-          Effect: 'Allow',
-          Action: 'secretsmanager:GetSecretValue',
-          Resource: [DB, HRIS],
-        },
-        kms,
-      ],
-    };
-    const r = build(live);
+    const r = build(live(hris, kms));
     expect(r.status, r.stderr).toBe(0);
-    expect(sid(r.policy, 'InjectOnlyTheDbConnectionString')?.Resource).toEqual([DB, HRIS]);
+    expect(sid(r.policy, 'InjectOnlyTheDbConnectionString')).toEqual(hris);
     expect(sid(r.policy, 'DecryptHrisSecret')).toEqual(kms);
-  });
-
-  it('a live policy without the DB secret gets it back (the baseline is always granted)', () => {
-    const live = {
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Sid: 'InjectOnlyTheDbConnectionString',
-          Effect: 'Allow',
-          Action: 'secretsmanager:GetSecretValue',
-          Resource: HRIS,
-        },
-      ],
-    };
-    expect(sid(build(live).policy, 'InjectOnlyTheDbConnectionString')?.Resource).toEqual([DB, HRIS]);
+    // The baseline DB grant comes back under its own name; HRIS is reachable only through the conditioned one.
+    expect(sid(r.policy, 'InjectOnlyTheDbConnectionStringBaseline')?.Resource).toBe(DB);
+    const unconditional = r
+      .policy!.Statement.filter((st) => !('Condition' in st))
+      .flatMap((st) => [st.Resource].flat());
+    expect(unconditional).not.toContain(HRIS);
   });
 
   it('refuses a live document that is not a policy', () => {

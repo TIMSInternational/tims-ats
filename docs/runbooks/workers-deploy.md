@@ -199,7 +199,13 @@ The workflow and `create-workers-service.sh --apply` share one lock: the item `l
 DynamoDB table `tims-ats-ratelimit` (`scripts/deploy/workers-deploy-lock.sh`; the table is the rate-limit
 table from owner-kit c12, so it must exist first). The workflow holds it from its decision through its
 roll; the owner script holds it for its whole run. Whoever comes second waits (the workflow 10 minutes,
-the script 20), then fails without changing anything. A holder that dies frees it after an hour. As a second guard, the workflow's roll step refuses to
+the script 20), then fails without changing anything. A holder that dies frees it after an hour. Both
+renew the lease right before they change ECS and the script re-checks the live revision there too, so a run
+that stalled past its hour (a suspended laptop) stops instead of overwriting a newer deploy.
+
+The script never shrinks the execution role's inline policy: it keeps every live statement exactly as written
+and adds only the baseline grants that are missing (`scripts/deploy/workers-exec-policy.py`). Narrowing that
+policy is a deliberate IAM change, not something a roll or rollback does. As a second guard, the workflow's roll step refuses to
 overwrite a live revision that changed after its decision. The deploy role's grant for this is part of
 `bootstrap-github-oidc-role.sh` (statement `WorkersDeployLock`, limited to that one item), so re-run it
 after pulling this change.

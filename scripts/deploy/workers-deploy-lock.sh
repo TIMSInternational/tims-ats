@@ -12,6 +12,11 @@
 # may touch only this item (IAM dynamodb:LeadingKeys, scripts/deploy/bootstrap-github-oidc-role.sh).
 #
 #   workers-deploy-lock.sh acquire <holder>   wait up to LOCK_WAIT_SECONDS (default 1200) for the lock
+#   workers-deploy-lock.sh renew <holder>     extend the lease, only if <holder> still holds it unexpired;
+#                                             fails (exit 1) when the lease was lost. Both paths call it
+#                                             right before they mutate ECS, so a holder that stalled past
+#                                             its lease (a suspended laptop) can never write after someone
+#                                             else took the lock (tier-1 review).
 #   workers-deploy-lock.sh release <holder>   release it, only if <holder> is the one holding it
 #
 # Any error other than "someone holds it" fails closed: no lock, no deploy.
@@ -63,6 +68,22 @@ case "$cmd" in
       sleep "$INTERVAL"
     done
     ;;
+  renew)
+    now=$(date +%s)
+    if err="$(aws dynamodb update-item --region "$REGION" --table-name "$TABLE" --key "$KEY" \
+      --update-expression 'SET expiresAt = :exp' \
+      --condition-expression 'holder = :me AND expiresAt >= :now' \
+      --expression-attribute-values "{\":me\":{\"S\":\"$holder\"},\":now\":{\"N\":\"$now\"},\":exp\":{\"N\":\"$((now + TTL))\"}}" 2>&1 >/dev/null)"; then
+      echo "workers deploy lock renewed by $holder"
+      exit 0
+    fi
+    if grep -q ConditionalCheckFailedException <<<"$err"; then
+      echo "workers-deploy-lock: $holder no longer holds the lock (now '$(holder_now)'): it expired or was cleared. Not deploying." >&2
+    else
+      echo "$err" >&2
+    fi
+    exit 1
+    ;;
   release)
     if err="$(aws dynamodb delete-item --region "$REGION" --table-name "$TABLE" --key "$KEY" \
       --condition-expression 'holder = :me' \
@@ -77,5 +98,5 @@ case "$cmd" in
     echo "$err" >&2
     exit 1
     ;;
-  *) fail "usage: workers-deploy-lock.sh acquire|release <holder>" ;;
+  *) fail "usage: workers-deploy-lock.sh acquire|renew|release <holder>" ;;
 esac
