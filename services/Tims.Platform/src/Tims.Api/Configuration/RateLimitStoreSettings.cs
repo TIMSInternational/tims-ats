@@ -9,6 +9,10 @@ namespace Tims.Api.Configuration;
 /// </summary>
 public sealed partial record RateLimitStoreSettings(string Table, string Region)
 {
+    /// <summary>Startup error when neither setting is present outside Development (Program.cs).</summary>
+    public const string MissingOutsideDevelopment =
+        "The shared rate-limit store is required outside Development: set Platform__RateLimitDynamoDbTable and Platform__RateLimitDynamoDbRegion";
+
     public static RateLimitStoreSettings? Read(IConfiguration platformSection)
     {
         var table = platformSection[nameof(PlatformOptions.RateLimitDynamoDbTable)] ?? string.Empty;

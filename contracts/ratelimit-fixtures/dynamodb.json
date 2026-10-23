@@ -16,6 +16,14 @@
     "attempts": 3,
     "contentionRetryMs": 1000
   },
+  "budgets": {
+    "$comment": "Tokens per sliding window, per category. Both stacks must use the same numbers or one caller would get a different budget from each. query was raised from 100 to 300 on 2026-10-23, when the shared limit first applied across all instances and both stacks.",
+    "mutation": { "tokens": 30, "windowMs": 60000 },
+    "query": { "tokens": 300, "windowMs": 60000 },
+    "auth": { "tokens": 10, "windowMs": 300000 },
+    "ai": { "tokens": 10, "windowMs": 60000 },
+    "export": { "tokens": 5, "windowMs": 300000 }
+  },
   "claim": {
     "conditionExpression": "attribute_not_exists(pk) OR #e <= :now",
     "prefixes": {

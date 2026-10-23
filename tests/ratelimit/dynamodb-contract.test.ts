@@ -22,6 +22,7 @@ const CONTRACT = JSON.parse(
     contentionRetryMs: number;
   };
   claim: { conditionExpression: string; prefixes: { applicationEmail: string } };
+  budgets: Record<string, { tokens: number; windowMs: number }>;
   partitionKeys: Array<{ category: string; identifier: string; pk: string }>;
 };
 
@@ -73,6 +74,18 @@ describe('DynamoDB rate-limit contract (shared with C#)', () => {
     expect(first!.input.ExpressionAttributeValues![':exp']!.N).toBe(
       String(Math.ceil(((bucket + 2) * WINDOW) / 1000) + 60),
     );
+  });
+
+  it('uses the frozen budget for every category', async () => {
+    const { LIMITS } = await import('../../packages/api/src/middleware/rate-limit');
+    const windowMs = { '1m': 60_000, '5m': 300_000 } as const;
+    const budgets = Object.fromEntries(
+      Object.entries(CONTRACT.budgets).filter(([key]) => !key.startsWith('$')),
+    );
+    expect(Object.keys(LIMITS).sort()).toEqual(Object.keys(budgets).sort());
+    for (const [category, { requests, window }] of Object.entries(LIMITS)) {
+      expect({ tokens: requests, windowMs: windowMs[window] }, category).toEqual(budgets[category]);
+    }
   });
 
   it('reads with ConsistentRead and claims with the frozen claim condition and prefix', async () => {

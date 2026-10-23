@@ -892,6 +892,19 @@ try
     // fail-closed in production). The in-memory fallback is always registered but engaged
     // Development-only. The relay nonce store and the readiness probe use the same store.
     var rateLimitStore = RateLimitStoreSettings.Read(platformSection);
+    // Build-time OpenAPI generation runs this file with GetDocument.Insider as the entry assembly and no
+    // environment (so "Production"); it never serves a request. See the strangler gating below.
+    var isOpenApiDocGeneration =
+        string.Equals(Assembly.GetEntryAssembly()?.GetName().Name, "GetDocument.Insider", StringComparison.Ordinal);
+    if (rateLimitStore is null && !builder.Environment.IsDevelopment() && !isOpenApiDocGeneration)
+    {
+        // Outside Development every rate-limited request and every relay nonce check fails closed without
+        // the store, while /health (App Runner's probe) stays green, so a deploy that lost these settings
+        // would take traffic and refuse it. Refuse to start instead: the deployment fails and the previous
+        // version keeps serving.
+        throw new InvalidOperationException(RateLimitStoreSettings.MissingOutsideDevelopment);
+    }
+
     if (rateLimitStore is not null)
     {
         builder.Services.AddSingleton(_ => new DynamoDbRateLimitStore(
@@ -1275,8 +1288,6 @@ try
     // the process entry assembly) forces both mapped so the emitted contract stays accurate even while the
     // runtime default is dark; at real runtime the entry assembly is Tims.Api, so the flags fully govern.
     var externalOptions = app.Services.GetRequiredService<IOptions<PlatformOptions>>().Value;
-    var isOpenApiDocGeneration =
-        string.Equals(Assembly.GetEntryAssembly()?.GetName().Name, "GetDocument.Insider", StringComparison.Ordinal);
 
     // External-vendor assessment READ surface (Phase-5 Slice 1): GET /external/assessment-results (list,
     // cursor) + /external/assessment-results/{assignmentId} (getOne). ApiKey scheme + assessment:read

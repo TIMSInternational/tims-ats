@@ -131,6 +131,11 @@ holds no secrets.
 The C# platform API shares this table and this algorithm (one budget per caller across both
 stacks): it reads `Platform__RateLimitDynamoDbTable` / `Platform__RateLimitDynamoDbRegion`
 on App Runner, uses the instance role (`dynamodb:GetItem` + `dynamodb:UpdateItem` +
-`dynamodb:PutItem` on the table), and fails closed in production on a store outage. Its relay
-nonce (`relay#sha256(nonce)`, 90 s) lives in the same table. The frozen cross-stack contract is
-`contracts/ratelimit-fixtures/key-layout.md` + `dynamodb.json`.
+`dynamodb:PutItem` on the table), and fails closed in production on a store outage. Outside
+Development it **refuses to start** without both settings: App Runner probes `/health`, so a
+store-less instance would otherwise take traffic and reject every rate-limited request. Set both
+settings and the role policy (owner kit `c12-ratelimit-dynamodb.sh --apply`) **before** deploying
+an image that contains this change; a deploy without them fails and the previous version keeps
+serving. Its relay nonce (`relay#sha256(nonce)`, 90 s) lives in the same table. The frozen
+cross-stack contract is `contracts/ratelimit-fixtures/key-layout.md` + `dynamodb.json`, and the
+E2E suite (`e2e/specs/platform/shared-rate-limit.spec.ts`) proves the two stacks exhaust one budget.

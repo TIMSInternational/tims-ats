@@ -17,7 +17,7 @@ public static class RateLimits
     public static int Tokens(RateLimitCategory category) => category switch
     {
         RateLimitCategory.Mutation => 30,
-        RateLimitCategory.Query => 100,
+        RateLimitCategory.Query => 300,
         RateLimitCategory.Auth => 10,
         RateLimitCategory.Ai => 10,
         RateLimitCategory.Export => 5,

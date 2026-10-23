@@ -117,7 +117,8 @@ surface, flipped per §6):
 | Env var                                      | Source                             | Required                               | Notes                                                                                        |
 | -------------------------------------------- | ---------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `Platform__DatabaseConnectionString`         | Supabase (post-0.1 rotation)       | ✅                                     | **See the DB-ROLE requirement below — the #1 first-deploy risk.**                            |
-| `Platform__RedisConnectionString`            | Upstash                            | ⚠️ recommended                         | perm-cache + rate-limit; fail-soft if absent (degrades, doesn't crash).                      |
+| `Platform__RateLimitDynamoDbTable`           | owner kit c12 (`tims-ats-ratelimit`)| ✅ (startup refuses without it)         | the shared rate-limit table the web app also uses; instance role needs Get/Update/PutItem.   |
+| `Platform__RateLimitDynamoDbRegion`          | = the table's region (`us-west-2`) | ✅ (with the table)                     | both or neither; a half-set or malformed pair fails at startup.                              |
 | `Platform__SupabaseJwtIssuer`                | Supabase project                   | ✅                                     | e.g. `https://<ref>.supabase.co/auth/v1`.                                                    |
 | `Platform__SupabaseJwtAudience`              | —                                  | default `authenticated`                | leave default unless customized.                                                             |
 | `Platform__SupabaseJwksMetadataAddress`      | Supabase project                   | ✅                                     | JWKS URL — **must be asymmetric (RS256/JWKS), NOT legacy HS256** (deploy-verify below).      |
@@ -178,7 +179,7 @@ docker push $ACCT.dkr.ecr.$REGION.amazonaws.com/$REPO:$TAG
 ## 5. Post-deploy smoke — STILL DARK, no traffic routed (sign-off gate)
 
 - [ ] `GET /health` → **200** (liveness).
-- [ ] `GET /ready` → **200** (DB + Redis reachable) — proves the connection string + Redis.
+- [ ] `GET /ready` → **200** (DB + rate-limit table reachable) — proves the connection string, the table and the instance role's access to it.
 - [ ] `GET /openapi/v1.json` → **200**.
 - [ ] Mint a real Supabase **staff JWT** → `GET /whoami` → **200** with the resolved principal — proves JWKS
       (asymmetric-JWT deploy-verify) **and** the privileged identity read (DB-ROLE requirement §2). If this 401s,
@@ -304,7 +305,7 @@ over `app_tenant`. Set `Workers:HrisSyncEnabled=false` until real connector rows
   staged nine-box read cutover, #165) — so a flip is a flag change, not a code change, on deploy day.
 - After each write domain is prod-verified: the **ownership-flip PRs** (drop the TS router/service/repo, flip the
   table to `efcore` in the ledger) for the flip-ready domains (validation, eval360, succession, nine-box).
-- Resolve any code follow-ups the §5 deploy-verifies surface (JWKS shape, rate-limit buckets, Redis perm-cache).
+- Resolve any code follow-ups the §5 deploy-verifies surface (JWKS shape, rate-limit buckets, perm-cache).
 
 ## 11. Phase 7 — final consolidation (the last code, AFTER all surfaces are cut over + verified)
 

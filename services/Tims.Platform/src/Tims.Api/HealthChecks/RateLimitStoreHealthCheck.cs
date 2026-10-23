@@ -8,7 +8,8 @@ namespace Tims.Api.HealthChecks;
 /// Readiness probe for the shared rate-limit store. When the DynamoDB store is configured it performs one
 /// strongly consistent read (Unhealthy → /ready 503 if unreachable or not permitted). When it is NOT
 /// configured it reports Degraded ("not configured") so /ready stays 200 in local/CI where no table exists,
-/// while still surfacing that the component is absent. The AWS error is deliberately NOT attached: its
+/// while still surfacing that the component is absent; outside Development the host refuses to start
+/// without it (Program.cs), so this state only exists in Development. The AWS error is deliberately NOT attached: its
 /// message can name the account and role ARN.
 /// </summary>
 public sealed class RateLimitStoreHealthCheck(IServiceProvider services) : IHealthCheck

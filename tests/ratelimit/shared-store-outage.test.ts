@@ -122,7 +122,7 @@ describe.each([
 describe('fail-open still limits per instance', () => {
   it('enforces the in-memory query limit while the shared store is down', async () => {
     const { mod } = await loadWithFakeDynamo('error');
-    for (let i = 0; i < 100; i++) await mod.checkRateLimit('user-flood', 'query');
+    for (let i = 0; i < mod.LIMITS.query.requests; i++) await mod.checkRateLimit('user-flood', 'query');
     await expect(mod.checkRateLimit('user-flood', 'query')).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' });
   });
 });

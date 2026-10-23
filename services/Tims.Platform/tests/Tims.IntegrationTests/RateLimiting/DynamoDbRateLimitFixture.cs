@@ -23,14 +23,53 @@ public sealed class DynamoDbRateLimitFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _container.StartAsync();
-        Client = CreateClient(_container.GetConnectionString());
-        await Client.CreateTableAsync(new CreateTableRequest
+
+        // Setup uses a patient client: DynamoDB Local is a JVM, and its first requests can take well over
+        // the production 1 s budget while the rest of the suite is starting containers. A slow setup call
+        // must not fail every test in the collection; the tests themselves keep the production policy.
+        using (var setup = new AmazonDynamoDBClient(
+            new BasicAWSCredentials("local", "local"),
+            new AmazonDynamoDBConfig
+            {
+                ServiceURL = _container.GetConnectionString(),
+                AuthenticationRegion = "us-west-2",
+                Timeout = TimeSpan.FromSeconds(30),
+                MaxErrorRetry = 5,
+            }))
         {
-            TableName = TableName,
-            AttributeDefinitions = [new AttributeDefinition("pk", ScalarAttributeType.S)],
-            KeySchema = [new KeySchemaElement("pk", KeyType.HASH)],
-            BillingMode = BillingMode.PAY_PER_REQUEST,
-        });
+            await setup.CreateTableAsync(new CreateTableRequest
+            {
+                TableName = TableName,
+                AttributeDefinitions = [new AttributeDefinition("pk", ScalarAttributeType.S)],
+                KeySchema = [new KeySchemaElement("pk", KeyType.HASH)],
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+            });
+
+            // Warm the engine on the exact request shapes the store sends, so the first test is not the
+            // one that pays for JIT compilation.
+            var key = new Dictionary<string, AttributeValue> { ["pk"] = new() { S = "warmup" } };
+            for (var i = 0; i < 20; i++)
+            {
+                await setup.GetItemAsync(new GetItemRequest { TableName = TableName, Key = key, ConsistentRead = true });
+                await setup.UpdateItemAsync(new UpdateItemRequest
+                {
+                    TableName = TableName,
+                    Key = key,
+                    UpdateExpression = "ADD #c :one",
+                    ConditionExpression = "attribute_not_exists(#c) OR #c < :max",
+                    ExpressionAttributeNames = new Dictionary<string, string> { ["#c"] = "w0" },
+                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    {
+                        [":one"] = new() { N = "1" },
+                        [":max"] = new() { N = "1000" },
+                    },
+                });
+            }
+
+            await setup.DeleteItemAsync(new DeleteItemRequest { TableName = TableName, Key = key });
+        }
+
+        Client = CreateClient(_container.GetConnectionString());
     }
 
     /// <summary>A client for DynamoDB Local (any static credentials are accepted) with the production policy.</summary>

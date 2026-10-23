@@ -78,7 +78,7 @@ packages/api/src/
 ### Rate Limiting (Per-Tenant)
 
 - **DynamoDB** (`middleware/rate-limit-store.ts`, one on-demand table) with sliding window. Tiers in
-  `middleware/rate-limit.ts` `LIMITS`: 100 queries/min and 30 mutations/min per user, 10 auth
+  `middleware/rate-limit.ts` `LIMITS`: 300 queries/min and 30 mutations/min per user, 10 auth
   mutations/5 min, 10 AI calls/min per org, 5 exports/5 min. Runbook: `docs/runbooks/production-rate-limits.md`.
 - **Fallback to in-memory** for local dev and previews when `RATE_LIMIT_DYNAMODB_*` is unset; Vercel
   production refuses to start without it.

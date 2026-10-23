@@ -43,6 +43,20 @@ public sealed class DynamoDbKeyLayoutFixtureTests
     }
 
     [Fact]
+    public void Uses_the_frozen_budget_for_every_category()
+    {
+        // The TS suite asserts the same numbers against LIMITS; a drift would give one caller two budgets.
+        var budgets = Root.GetProperty("budgets").EnumerateObject().Where(p => !p.Name.StartsWith('$')).ToList();
+        Assert.Equal(Enum.GetValues<RateLimitCategory>().Length, budgets.Count);
+        foreach (var budget in budgets)
+        {
+            var category = Parse(budget.Name);
+            Assert.Equal(budget.Value.GetProperty("tokens").GetInt32(), RateLimits.Tokens(category));
+            Assert.Equal(budget.Value.GetProperty("windowMs").GetInt64(), RateLimits.WindowMs(category));
+        }
+    }
+
+    [Fact]
     public void Hashes_utf8_exactly_like_node()
     {
         // From the fixture's non-ASCII case: Node's createHash('sha256').update(s, 'utf8').digest('hex').

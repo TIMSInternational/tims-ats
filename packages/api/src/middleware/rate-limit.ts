@@ -28,9 +28,9 @@ const sharedStore = sharedStoreConfig ? createSharedStore(sharedStoreConfig) : u
 // ---------------------------------------------------------------------------
 // Rate-limit definitions per category
 // ---------------------------------------------------------------------------
-const LIMITS = {
+export const LIMITS = {
   mutation: { requests: 30, window: '1m' as const }, // 30 mutations/min
-  query: { requests: 100, window: '1m' as const }, // 100 queries/min
+  query: { requests: 300, window: '1m' as const }, // 300 queries/min (one budget across both stacks)
   auth: { requests: 10, window: '5m' as const }, // 10 auth attempts/5min
   ai: { requests: 10, window: '1m' as const }, // 10 AI calls/min
   export: { requests: 5, window: '5m' as const }, // 5 exports/5min

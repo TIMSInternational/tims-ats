@@ -12,7 +12,7 @@ public enum RateLimitCategory
     /// <summary>30 mutations / 1m.</summary>
     Mutation,
 
-    /// <summary>100 queries / 1m.</summary>
+    /// <summary>300 queries / 1m.</summary>
     Query,
 
     /// <summary>10 auth attempts / 5m.</summary>
