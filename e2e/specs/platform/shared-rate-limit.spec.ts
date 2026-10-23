@@ -16,8 +16,18 @@ import { STATE_DIR, readStack } from '../../lib/stack';
 
 const QUERY_BUDGET = 300; // contracts/ratelimit-fixtures/dynamodb.json budgets.query (per minute)
 const API_SPEND = 200;
-// A minute boundary during the probe re-weights the previous window; a handful of extra admissions at most.
-const BOUNDARY_SLACK = 10;
+const WINDOW_MS = 60_000; // the query window; buckets are wall-clock minutes (now / windowMs)
+
+// The bound below is exact only inside one window: across a boundary the sliding window re-weights
+// the previous minute by elapsed time. So start the probe early in a minute (2 s in, clear of small
+// clock skew between the host and the API container) with at least 30 s left, and check it ended there.
+async function startOfAQuietWindow(): Promise<number> {
+  const into = Date.now() % WINDOW_MS;
+  if (into < 2_000 || into > WINDOW_MS - 30_000) {
+    await new Promise((resolve) => setTimeout(resolve, (WINDOW_MS - into + 2_000) % WINDOW_MS || 2_000));
+  }
+  return Math.floor(Date.now() / WINDOW_MS);
+}
 
 function anonKey(): string {
   const env = readFileSync(join(STATE_DIR, 'supabase.env'), 'utf8');
@@ -60,6 +70,7 @@ test('TS and C# draw on one shared rate-limit budget', async ({ browser, request
         .get(`${stack.apiURL}/candidate/list`, { headers: { authorization: `Bearer ${token}` } })
         .then((r) => r.status());
 
+    const startWindow = await startOfAQuietWindow();
     // 1. Spend part of the budget on C# only.
     for (let i = 0; i < API_SPEND; i++) {
       expect(await api(), `C# query ${i + 1} of ${API_SPEND}`).not.toBe(429);
@@ -68,8 +79,10 @@ test('TS and C# draw on one shared rate-limit budget', async ({ browser, request
     let webAdmitted = 0;
     while (webAdmitted <= QUERY_BUDGET && (await web()) !== 429) webAdmitted++;
     console.log(`[shared-rate-limit] C# spent ${API_SPEND}, then the web app admitted ${webAdmitted}`);
+    expect(Math.floor(Date.now() / WINDOW_MS), 'the probe crossed a minute boundary').toBe(startWindow);
+    expect(webAdmitted, 'the web app admitted nothing').toBeGreaterThan(0);
     expect(webAdmitted, 'the web app admitted more than C# left of the budget').toBeLessThanOrEqual(
-      QUERY_BUDGET - API_SPEND + BOUNDARY_SLACK,
+      QUERY_BUDGET - API_SPEND,
     );
     // 3. And C# is now refused too: the budget the web app exhausted is C#'s own.
     expect(await api(), 'C# still admitted after the web app hit 429').toBe(429);

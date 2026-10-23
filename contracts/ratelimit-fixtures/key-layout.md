@@ -13,13 +13,15 @@ buckets silently diverge — a caller would get a separate budget on each stack.
 | category | tokens | window | windowMs |
 | -------- | ------ | ------ | -------- |
 | mutation | 30     | 1m     | 60000    |
-| query    | 100    | 1m     | 60000    |
+| query    | 300    | 1m     | 60000    |
 | auth     | 10     | 5m     | 300000   |
 | ai       | 10     | 1m     | 60000    |
 | export   | 5      | 5m     | 300000   |
 
 Source: TS `LIMITS` in `packages/api/src/middleware/rate-limit.ts`; C# `RateLimits` in
-`Tims.Domain.RateLimiting`.
+`Tims.Domain.RateLimiting`. Frozen in `dynamodb.json` (`budgets`) and asserted by both suites. `query`
+was raised from 100 to 300 on 2026-10-23, when the shared limit first applied across all instances and
+both stacks.
 
 ## Item structure
 

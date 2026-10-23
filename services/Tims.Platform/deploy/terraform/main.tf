@@ -36,8 +36,12 @@ locals {
 
   # Secret CONTAINERS created here; VALUES populated out-of-band (never in TF state).
   # key => the env var name the .NET service reads (Platform:X binds from Platform__X).
+  # `redis` is kept for the ROLLBACK WINDOW ONLY: images before the DynamoDB rate limiter read this (Upstash)
+  # secret, and a rollback swaps only the image. The current image ignores it. Remove it, its binding and the
+  # Upstash database only once no pre-DynamoDB image can be rolled back to.
   base_secrets = {
     db            = "Platform__DatabaseConnectionString"
+    redis         = "Platform__RedisConnectionString"
     impersonation = "Platform__ImpersonationSecret"
     # #172: the alert-evaluation cron's credential for the CROSS-ORG metric surface. It is the entire
     # authorization boundary for a caller that may name any organization, so it lives here rather than in

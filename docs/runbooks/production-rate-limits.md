@@ -136,6 +136,9 @@ Development it **refuses to start** without both settings: App Runner probes `/h
 store-less instance would otherwise take traffic and reject every rate-limited request. Set both
 settings and the role policy (owner kit `c12-ratelimit-dynamodb.sh --apply`) **before** deploying
 an image that contains this change; a deploy without them fails and the previous version keeps
-serving. Its relay nonce (`relay#sha256(nonce)`, 90 s) lives in the same table. The frozen
+serving. Keep App Runner's `Platform__RedisConnectionString` secret binding and the Upstash
+database until no image from before this change can be rolled back to: a rollback swaps only the
+image, and those images still rate-limit and check relay nonces through Upstash. The C# relay
+nonce (`relay#sha256(nonce)`, 90 s) lives in the same table. The frozen
 cross-stack contract is `contracts/ratelimit-fixtures/key-layout.md` + `dynamodb.json`, and the
 E2E suite (`e2e/specs/platform/shared-rate-limit.spec.ts`) proves the two stacks exhaust one budget.
