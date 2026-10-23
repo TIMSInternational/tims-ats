@@ -5,6 +5,9 @@ import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand } fro
 // ---------------------------------------------------------------------------
 // Shared rate-limit store: one DynamoDB table (on-demand), partition key `pk` (string),
 // TTL attribute `expiresAt` (epoch seconds). Provisioned by the owner kit, never by the app.
+// The C# API uses the SAME table and items (Tims.Infrastructure.RateLimiting.DynamoDbRateLimitStore),
+// so a caller has one budget across both stacks: the layout and the exact expressions are frozen in
+// contracts/ratelimit-fixtures/dynamodb.json, which both test suites assert.
 //
 // RATE_LIMIT_DYNAMODB_TABLE + RATE_LIMIT_DYNAMODB_REGION are REQUIRED together, with no
 // AWS_REGION fallback: on Vercel AWS_REGION is the function's own region (and is set to the

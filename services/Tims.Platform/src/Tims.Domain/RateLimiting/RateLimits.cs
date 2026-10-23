@@ -1,17 +1,17 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Tims.Domain.RateLimiting;
 
 /// <summary>
-/// The frozen tokens-per-window table + Redis key layout, a byte-for-byte port of the TS
-/// <c>LIMITS</c> map and the <c>@upstash/ratelimit</c> single-region <c>slidingWindow</c> key
-/// structure (verified against <c>@upstash/ratelimit@2.0.8</c>). These constants are the
-/// cross-stack contract: the C# limiter and the TS limiter MUST produce identical keys and
+/// The frozen tokens-per-window table + shared DynamoDB item layout, a byte-for-byte port of the TS
+/// <c>LIMITS</c> map and <c>packages/api/src/middleware/rate-limit-store.ts</c>. These constants are
+/// the cross-stack contract: the C# limiter and the TS limiter MUST address identical items with
 /// identical per-window budgets or they would not share buckets. Frozen in
-/// <c>contracts/ratelimit-fixtures/key-layout.md</c>.
+/// <c>contracts/ratelimit-fixtures/key-layout.md</c> and <c>dynamodb.json</c>.
 /// </summary>
 public static class RateLimits
 {
-    /// <summary>The shared Redis key namespace (Upstash <c>Ratelimit.prefix</c> stem).</summary>
-    public const string KeyNamespace = "tims:ratelimit";
 
     /// <summary>Requests (tokens) permitted per sliding window for a category.</summary>
     public static int Tokens(RateLimitCategory category) => category switch
@@ -37,7 +37,7 @@ public static class RateLimits
 
     /// <summary>
     /// The lowercase wire token for a category, matching the TS <c>LIMITS</c> object key. This
-    /// is the segment interpolated into the shared Upstash prefix, so it MUST stay lowercase and
+    /// is the segment interpolated into the shared partition key, so it MUST stay lowercase and
     /// identical to the TS keys (mutation/query/auth/ai/export).
     /// </summary>
     public static string CategoryToken(RateLimitCategory category) => category switch
@@ -51,28 +51,32 @@ public static class RateLimits
     };
 
     /// <summary>
-    /// The Upstash <c>Ratelimit.prefix</c> for a category: <c>tims:ratelimit:{category}</c>.
-    /// Upstash builds <c>getKey(identifier) = "{prefix}:{identifier}"</c>, then the sliding-window
-    /// limiter appends <c>":{bucket}"</c> — see <see cref="CurrentKey"/>/<see cref="PreviousKey"/>.
-    /// </summary>
-    public static string Prefix(RateLimitCategory category) => $"{KeyNamespace}:{CategoryToken(category)}";
-
-    /// <summary>
-    /// The fixed-window bucket index: <c>floor(nowMs / windowMs)</c>, computed identically in
-    /// <c>@upstash/ratelimit</c> JS (<c>Math.floor(now / windowSize)</c>) — NOT in Lua.
+    /// The fixed-window bucket index: <c>floor(nowMs / windowMs)</c>, computed identically in TS
+    /// (<c>Math.floor(now / windowMs)</c>).
     /// </summary>
     public static long Bucket(RateLimitCategory category, long nowMs) => nowMs / WindowMs(category);
 
     /// <summary>
-    /// The current-window Redis key: <c>tims:ratelimit:{category}:{identifier}:{bucket}</c>.
-    /// This is the exact key both stacks INCRBY, which is what makes the buckets shared.
+    /// The shared item's partition key: <c>rl#{category}#{lowercase hex sha256(utf8 identifier)}</c>.
+    /// One item per category + identifier holds a counter per window; the raw identifier (user id,
+    /// client IP, api-key id) never reaches the table.
     /// </summary>
-    public static string CurrentKey(RateLimitCategory category, string identifier, long bucket) =>
-        $"{Prefix(category)}:{identifier}:{bucket}";
+    public static string PartitionKey(RateLimitCategory category, string identifier) =>
+        $"rl#{CategoryToken(category)}#{Sha256Hex(identifier)}";
 
-    /// <summary>The previous-window key (<c>bucket - 1</c>), read for the sliding interpolation.</summary>
-    public static string PreviousKey(RateLimitCategory category, string identifier, long bucket) =>
-        $"{Prefix(category)}:{identifier}:{bucket - 1}";
+    /// <summary>The per-window counter attribute on the shared item: <c>w{bucket}</c>.</summary>
+    public static string WindowAttribute(long bucket) => $"w{bucket}";
+
+    /// <summary>
+    /// The item's TTL (epoch seconds): it must outlive the NEXT window, for which this one is the
+    /// "previous". <c>ceil((bucket + 2) * windowMs / 1000) + 60</c>.
+    /// </summary>
+    public static long ExpiresAtSeconds(RateLimitCategory category, long bucket) =>
+        (long)Math.Ceiling((bucket + 2) * WindowMs(category) / 1000.0) + 60;
+
+    /// <summary>Lowercase hex SHA-256 of the UTF-8 bytes — identical to Node's <c>digest('hex')</c>.</summary>
+    public static string Sha256Hex(string value) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     /// <summary>
     /// Timestamp (unix ms) at which the current window rolls over: <c>(bucket + 1) * windowMs</c>,

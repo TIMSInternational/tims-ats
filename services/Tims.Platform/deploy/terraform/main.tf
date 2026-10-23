@@ -38,7 +38,6 @@ locals {
   # key => the env var name the .NET service reads (Platform:X binds from Platform__X).
   base_secrets = {
     db            = "Platform__DatabaseConnectionString"
-    redis         = "Platform__RedisConnectionString"
     impersonation = "Platform__ImpersonationSecret"
     # #172: the alert-evaluation cron's credential for the CROSS-ORG metric surface. It is the entire
     # authorization boundary for a caller that may name any organization, so it lives here rather than in
@@ -65,6 +64,9 @@ locals {
     Platform__SupabaseJwtIssuer           = var.supabase_jwt_issuer
     Platform__SupabaseJwtAudience         = var.supabase_jwt_audience
     Platform__SupabaseJwksMetadataAddress = var.supabase_jwks_metadata_address
+    # The shared rate-limit table (created by the owner kit, not here; see README). Region = the table's.
+    Platform__RateLimitDynamoDbTable      = var.rate_limit_dynamodb_table
+    Platform__RateLimitDynamoDbRegion     = var.aws_region
     Platform__ExternalVendorReadEnabled   = tostring(var.feature_flags.external_vendor_read)
     Platform__ExternalVendorWriteEnabled  = tostring(var.feature_flags.external_vendor_write)
     Platform__BillingReadEnabled          = tostring(var.feature_flags.billing_read)
@@ -193,6 +195,23 @@ data "aws_iam_policy_document" "read_secrets" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [for s in aws_secretsmanager_secret.this : s.arn]
   }
+}
+
+data "aws_caller_identity" "current" {}
+
+# The shared rate-limit table: exactly the three item calls the store makes, on that one table.
+data "aws_iam_policy_document" "rate_limit_table" {
+  statement {
+    sid       = "RateLimitTable"
+    actions   = ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:PutItem"]
+    resources = ["arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.rate_limit_dynamodb_table}"]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_rate_limit" {
+  name   = "tims-ats-ratelimit"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.rate_limit_table.json
 }
 
 resource "aws_iam_role_policy" "instance_secrets" {

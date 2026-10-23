@@ -53,7 +53,6 @@ terraform apply
 # 4) Populate the secret VALUES out-of-band (they are NOT in TF). Use the secret_arns output:
 terraform output secret_arns
 aws secretsmanager put-secret-value --secret-id <db-arn>            --secret-string '<dual-role conn string>'
-aws secretsmanager put-secret-value --secret-id <redis-arn>         --secret-string '<upstash url>'
 aws secretsmanager put-secret-value --secret-id <impersonation-arn> --secret-string '<= the TS impersonation secret>'
 #    #172 — ONLY needed before enabling alert_metrics_cron_read. Generate, do not invent:
 aws secretsmanager put-secret-value --secret-id <alert_metrics_cron-arn> --secret-string "$(openssl rand -base64 48)"

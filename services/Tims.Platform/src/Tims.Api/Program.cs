@@ -11,7 +11,8 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
-using StackExchange.Redis;
+using Amazon;
+using Amazon.DynamoDBv2;
 using Tims.Api.AccessReview;
 using Tims.Api.AssessmentTypes;
 using Tims.Api.CandidateConsent;
@@ -161,7 +162,7 @@ try
     // --- Health / readiness -----------------------------------------------------------
     builder.Services.AddHealthChecks()
         .AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"])
-        .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
+        .AddCheck<RateLimitStoreHealthCheck>("ratelimit-store", tags: ["ready"]);
 
     // --- Supabase JWT authentication (WP2.1) ------------------------------------------
     // Validates issuer, audience, lifetime, AND signing key (JWKS) — never skips exp/iss/aud
@@ -881,27 +882,34 @@ try
         }));
 
     // --- Rate limiting (WP2.6) --------------------------------------------------------
-    // Shared-bucket sliding-window limiter that reproduces @upstash/ratelimit byte-for-byte, so
-    // C# and TS throttle against the SAME Redis keys. The Redis limiter is registered ONLY when a
-    // connection string is configured (Upstash exposes a Redis TCP endpoint); AbortOnConnectFail
-    // is false so a transient outage surfaces as a per-call RedisConnectionException the guard
-    // handles (fail-open-to-in-memory in Development, fail-closed in production) rather than
-    // crashing the host. The in-memory fallback is always registered but engaged Development-only.
-    var redisConnectionString = platformSection[nameof(PlatformOptions.RedisConnectionString)];
-    if (!string.IsNullOrWhiteSpace(redisConnectionString))
+    // Shared sliding-window limiter (the @upstash/ratelimit algorithm, ported to DynamoDB), so
+    // C# and TS throttle against the SAME DynamoDB items (contracts/ratelimit-fixtures/dynamodb.json).
+    // The shared store is registered ONLY when both the table and its region are configured; a
+    // half-configured or malformed pair fails at startup instead of on every request. Credentials
+    // come from the default chain (the App Runner instance role). No SDK retries — an increment is
+    // not idempotent — and every call is bounded by DynamoDbRateLimitStore.TimeoutMs; a store
+    // outage surfaces per call and the guard handles it (fail-open-to-in-memory in Development,
+    // fail-closed in production). The in-memory fallback is always registered but engaged
+    // Development-only. The relay nonce store and the readiness probe use the same store.
+    var rateLimitStore = RateLimitStoreSettings.Read(platformSection);
+    if (rateLimitStore is not null)
     {
-        builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-        {
-            var config = ConfigurationOptions.Parse(redisConnectionString);
-            config.AbortOnConnectFail = false;
-            return ConnectionMultiplexer.Connect(config);
-        });
-        builder.Services.AddSingleton<RedisSlidingWindowRateLimiter>();
+        builder.Services.AddSingleton(_ => new DynamoDbRateLimitStore(
+            new AmazonDynamoDBClient(new AmazonDynamoDBConfig
+            {
+                RegionEndpoint = RegionEndpoint.GetBySystemName(rateLimitStore.Region),
+                Timeout = TimeSpan.FromMilliseconds(DynamoDbRateLimitStore.TimeoutMs),
+                MaxErrorRetry = 0,
+                // A separate SDK retry allowance that defaults to ten even with MaxErrorRetry=0.
+                MaxStaleConnectionRetries = 0,
+            }),
+            rateLimitStore.Table));
+        builder.Services.AddSingleton<DynamoDbSlidingWindowRateLimiter>();
     }
 
     builder.Services.AddSingleton<InMemorySlidingWindowRateLimiter>();
     builder.Services.AddSingleton<RateLimitGuard>(sp => new RateLimitGuard(
-        sp.GetService<RedisSlidingWindowRateLimiter>(),
+        sp.GetService<DynamoDbSlidingWindowRateLimiter>(),
         sp.GetRequiredService<InMemorySlidingWindowRateLimiter>(),
         sp.GetRequiredService<IHostEnvironment>()));
 
@@ -1227,8 +1235,8 @@ try
         Predicate = _ => false,
     });
 
-    // Readiness: dependency checks (DB + Redis). Degraded (e.g. Redis unconfigured) → 200;
-    // Unhealthy (DB unreachable) → 503.
+    // Readiness: dependency checks (DB + rate-limit store). Degraded (e.g. store unconfigured) → 200;
+    // Unhealthy (DB or a configured store unreachable) → 503.
     app.MapHealthChecks("/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         Predicate = check => check.Tags.Contains("ready"),

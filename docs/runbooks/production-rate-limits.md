@@ -128,5 +128,9 @@ first stops tRPC from starting, the second makes the auth, AI and export tiers f
 If the IAM key is compromised, rotate it (owner kit `c0-web-iam.sh`) and redeploy; the table
 holds no secrets.
 
-This runbook covers the web tRPC limiter. The C# platform API uses its own rate-limit
-configuration and must be verified separately.
+The C# platform API shares this table and this algorithm (one budget per caller across both
+stacks): it reads `Platform__RateLimitDynamoDbTable` / `Platform__RateLimitDynamoDbRegion`
+on App Runner, uses the instance role (`dynamodb:GetItem` + `dynamodb:UpdateItem` +
+`dynamodb:PutItem` on the table), and fails closed in production on a store outage. Its relay
+nonce (`relay#sha256(nonce)`, 90 s) lives in the same table. The frozen cross-stack contract is
+`contracts/ratelimit-fixtures/key-layout.md` + `dynamodb.json`.
