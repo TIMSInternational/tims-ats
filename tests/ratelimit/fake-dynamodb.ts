@@ -38,6 +38,8 @@ export interface FakeDynamo {
   staleEventualReads: boolean;
   /** When true, UpdateItem calls are queued and only take effect on releaseHeld(). */
   holdUpdates: boolean;
+  /** Runs just before each UpdateItem is evaluated (simulates writes landing in between). */
+  beforeUpdate?: (pk: string, item: Record<string, number> | undefined) => void;
   releaseHeld(): Promise<void>;
   mode: FakeMode;
 }
@@ -158,6 +160,7 @@ export function installFakeDynamo(mode: FakeMode = 'ok'): FakeDynamo {
         if (cmd.op === 'UpdateItem') {
           const commit = (): Promise<unknown> => {
             const pk = cmd.input.Key!.pk.S!;
+            fake.beforeUpdate?.(pk, fake.items.get(pk));
             const item = fake.items.get(pk);
             if (!conditionHolds(cmd.input, item)) return Promise.reject(conditionalFailure());
             const next = { ...(item ?? {}) };

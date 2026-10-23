@@ -35,8 +35,10 @@ count is weighted by its remaining overlap, and a denied request is not counted.
 atomic, as Upstash's single Lua script was: one conditional write checks that the current
 window has room, that the previous window is exactly what was weighed, and that no later
 window has started. If a request in flight across a window boundary lands late, that write
-is rejected and the request is re-decided at the current time (at most 3 attempts; then it
-takes the outage path). Concurrent requests inside one window never conflict with each
+is rejected and the request is re-decided at the current time (at most 3 attempts; if late
+writes keep landing, the request is denied with a 1 s retry hint, not sent down the outage
+path: the store is healthy and the caller is at its quota, so it must not get a fresh
+per-instance budget). Concurrent requests inside one window never conflict with each
 other. The application-email cap is a rolling 24 h claim per recipient.
 
 ## Activation order

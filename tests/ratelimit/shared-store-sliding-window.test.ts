@@ -125,6 +125,37 @@ describe('shared store sliding window', () => {
     expect(fake.items.get(PK)![`w${W0 + 1}`]).toBeUndefined();
   });
 
+  it('re-decides after a late previous-window write and still admits when room remains', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0 + WINDOW); // exact boundary: the previous window overlaps 100%
+    const { store, fake } = await load();
+    fake.items.set(PK, { [`w${W0}`]: 5 });
+    let landed = false;
+    fake.beforeUpdate = (pk, item) => {
+      if (landed || pk !== PK) return;
+      landed = true; // one late previous-window write lands between our read and our write
+      fake.items.set(PK, { ...item, [`w${W0}`]: 6 });
+    };
+    // 5 seen -> room for 5; the write fails (previous changed); re-read 6 -> room for 4 -> admitted.
+    expect((await once(store)).success).toBe(true);
+    expect(fake.calls.filter((c) => c.op === 'UpdateItem')).toHaveLength(2);
+    expect(fake.items.get(PK)![`w${W0 + 1}`]).toBe(1);
+  });
+
+  it('denies (does not fail) when late writes keep landing on every re-read', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0 + WINDOW);
+    const { store, fake } = await load();
+    fake.items.set(PK, { [`w${W0}`]: 7 });
+    fake.beforeUpdate = (pk, item) => {
+      if (pk === PK) fake.items.set(PK, { ...item, [`w${W0}`]: (item?.[`w${W0}`] ?? 0) + 1 });
+    };
+    const result = await once(store);
+    expect(result.success).toBe(false);
+    expect(result.reset - (T0 + WINDOW)).toBeLessThanOrEqual(1_000);
+    expect(fake.items.get(PK)![`w${W0 + 1}`]).toBeUndefined();
+  });
+
   it('concurrent requests in one window never block each other below the limit', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0 + 5_000);

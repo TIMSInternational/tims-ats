@@ -76,12 +76,8 @@ function hashIdentifier(identifier: string): string {
 /** Bounded re-reads when the windows move under a request; contention never loops forever. */
 const SLIDING_WINDOW_ATTEMPTS = 3;
 
-export class SharedLimiterContentionError extends Error {
-  constructor() {
-    super('Shared rate limiter could not settle the window');
-    this.name = 'SharedLimiterContentionError';
-  }
-}
+/** Retry hint when re-reads are exhausted: the store is healthy, the caller is just contended. */
+const CONTENTION_RETRY_MS = 1_000;
 
 /** Window index -> count, from an item's `w<index>` attributes. */
 function windowCounts(item: Record<string, { N?: string }> | undefined): Map<number, number> {
@@ -105,7 +101,9 @@ export interface SharedStore {
    * previous window's count is weighted by how much of it still overlaps, and a denied
    * request is NOT counted. Like Upstash's single Lua script, admission is atomic: both
    * windows live on one item and one conditional write checks them together. Rejects on
-   * timeout, on any store error, or if the windows keep moving (SharedLimiterContentionError).
+   * timeout or on any store error. If the windows keep moving (late writes landing on every
+   * re-read), the request is DENIED, not failed: the store is healthy and the caller is at its
+   * quota, so the outage path (which grants a fresh per-instance budget) must not apply.
    */
   slidingWindow(prefix: string, identifier: string, limit: number, windowMs: number): Promise<SlidingWindowResult>;
   /**
@@ -192,7 +190,7 @@ export function createSharedStore(config: SharedStoreConfig): SharedStore {
             // Full, or the windows moved under us: re-read and decide again.
           }
         }
-        throw new SharedLimiterContentionError();
+        return { success: false, reset: Date.now() + CONTENTION_RETRY_MS };
       }, SHARED_LIMIT_TIMEOUT_MS);
     },
 

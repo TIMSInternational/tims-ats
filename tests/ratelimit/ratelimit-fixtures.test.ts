@@ -12,7 +12,10 @@ import { getRateLimitCategory } from '../../packages/api/src/middleware/rate-lim
 
 const fixture = (name: string): unknown =>
   JSON.parse(
-    readFileSync(fileURLToPath(new URL(`../../contracts/ratelimit-fixtures/${name}`, import.meta.url)), 'utf8'),
+    readFileSync(
+      fileURLToPath(new URL(`../../contracts/ratelimit-fixtures/${name}`, import.meta.url)),
+      'utf8',
+    ),
   );
 
 // --- category.json: assert the REAL getRateLimitCategory --------------------------------

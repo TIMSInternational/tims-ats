@@ -146,6 +146,26 @@ describe('healthy shared store is unchanged', () => {
   });
 });
 
+describe('contention is not an outage (Codex tier-1, third pass)', () => {
+  it('a contended but healthy store denies a query instead of granting a per-instance budget', async () => {
+    const { createHash } = await import('node:crypto');
+    vi.useFakeTimers();
+    const windowMs = 60_000;
+    const t0 = Date.UTC(2026, 9, 22, 12, 0, 0);
+    vi.setSystemTime(t0 + windowMs); // exact boundary: the previous window overlaps 100%
+    const { mod, warn, fake } = await loadWithFakeDynamo('ok');
+    const pk = `rl#query#${createHash('sha256').update('user-1').digest('hex')}`;
+    const prev = `w${t0 / windowMs}`;
+    // 97 of 100 used in the previous window; a late write lands before every re-read.
+    fake.items.set(pk, { [prev]: 97 });
+    fake.beforeUpdate = (key, item) => {
+      if (key === pk) fake.items.set(pk, { ...item, [prev]: (item?.[prev] ?? 0) + 1 });
+    };
+    await expect(mod.checkRateLimit('user-1', 'query')).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' });
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe('isFailClosedPath', () => {
   it('covers invitation, password-reset and offer-signing token paths, case-insensitively', async () => {
     const { mod } = await loadWithFakeDynamo('hang');
