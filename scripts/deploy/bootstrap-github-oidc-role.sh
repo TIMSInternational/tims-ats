@@ -47,6 +47,9 @@ WORKERS_CLUSTER="tims-platform"
 WORKERS_SERVICE="tims-platform-workers"
 WORKERS_EXECUTION_ROLE="arn:aws:iam::${ACCOUNT}:role/tims-platform-workers-execution"
 WORKERS_TASK_ROLE="arn:aws:iam::${ACCOUNT}:role/tims-platform-workers-task"
+WORKERS_TASK_FAMILY="tims-platform-workers"
+# The workers deploy lock is one item in the shared rate-limit table (scripts/deploy/workers-deploy-lock.sh).
+WORKERS_LOCK_TABLE="tims-ats-ratelimit"
 
 say() { printf '%s\n' "$*"; }
 ok()  { printf '  \033[32m✓\033[0m %s\n' "$*"; }
@@ -135,10 +138,16 @@ PERMS="$(cat <<JSON
       "Resource": "arn:aws:ecr:${REGION}:${ACCOUNT}:repository/${WORKERS_ECR_REPO}"
     },
     {
-      "Sid": "TaskDefinitionsAreNotResourceScopable",
+      "Sid": "DescribeTaskDefinitionIsNotResourceScopable",
       "Effect": "Allow",
-      "Action": ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition"],
+      "Action": "ecs:DescribeTaskDefinition",
       "Resource": "*"
+    },
+    {
+      "Sid": "RegisterOnlyWorkersTaskDefinitions",
+      "Effect": "Allow",
+      "Action": "ecs:RegisterTaskDefinition",
+      "Resource": "arn:aws:ecs:${REGION}:${ACCOUNT}:task-definition/${WORKERS_TASK_FAMILY}:*"
     },
     {
       "Sid": "UpdateOnlyTheWorkersService",
@@ -149,8 +158,9 @@ PERMS="$(cat <<JSON
     {
       "Sid": "WorkersDeployLock",
       "Effect": "Allow",
-      "Action": ["ssm:PutParameter", "ssm:GetParameter", "ssm:DeleteParameter"],
-      "Resource": "arn:aws:ssm:${REGION}:${ACCOUNT}:parameter/tims-ats/workers/deploy-lock"
+      "Action": ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${WORKERS_LOCK_TABLE}",
+      "Condition": { "ForAllValues:StringEquals": { "dynamodb:LeadingKeys": ["lock#workers-deploy"] } }
     },
     {
       "Sid": "EcsRunsTheWorkersTaskAsTheseRoles",

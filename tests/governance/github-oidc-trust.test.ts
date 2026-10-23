@@ -83,7 +83,7 @@ describe('TIMS GitHub deploy trust', () => {
     );
     expect(invoked.length, 'the workflow runs the deploy scripts').toBeGreaterThan(3);
     for (const source of [workflow, ...invoked])
-      for (const m of source.matchAll(/\baws (ecr|ecs|ssm) ([a-z-]+)/g)) {
+      for (const m of source.matchAll(/\baws (ecr|ecs|dynamodb) ([a-z-]+)/g)) {
         // `aws ecs wait services-stable` is a client-side poll over DescribeServices.
         needed.add(m[2] === 'wait' ? 'ecs:DescribeServices' : `${m[1]}:${pascal(m[2]!)}`);
       }
@@ -92,16 +92,23 @@ describe('TIMS GitHub deploy trust', () => {
         'ecr:DescribeImages',
         'ecs:RegisterTaskDefinition',
         'ecs:UpdateService',
-        'ssm:PutParameter',
-        'ssm:DeleteParameter',
+        'dynamodb:PutItem',
+        'dynamodb:DeleteItem',
       ]),
     );
     for (const action of needed) expect(granted, `deploy role lacks ${action}`).toContain(action);
 
-    // The lock grant covers the one lock parameter, nothing else in SSM.
-    expect(policy.Statement.find((s) => s.Sid === 'WorkersDeployLock')?.Resource).toBe(
-      'arn:aws:ssm:${REGION}:${ACCOUNT}:parameter/tims-ats/workers/deploy-lock',
+    // The lock grant reaches only the lock item, never the rate-limit counters in the same table.
+    expect(policy.Statement.find((s) => s.Sid === 'WorkersDeployLock')).toMatchObject({
+      Resource: 'arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${WORKERS_LOCK_TABLE}',
+      Condition: { 'ForAllValues:StringEquals': { 'dynamodb:LeadingKeys': ['lock#workers-deploy'] } },
+    });
+    // Registration is scoped to the workers family; only Describe needs '*' (it supports no resource type).
+    expect(policy.Statement.find((s) => s.Sid === 'RegisterOnlyWorkersTaskDefinitions')?.Resource).toBe(
+      'arn:aws:ecs:${REGION}:${ACCOUNT}:task-definition/${WORKERS_TASK_FAMILY}:*',
     );
+    const wildcard = policy.Statement.filter((s) => s.Resource === '*').flatMap((s) => [s.Action].flat());
+    expect(wildcard).not.toContain('ecs:RegisterTaskDefinition');
     const update = policy.Statement.find((s) => s.Sid === 'UpdateOnlyTheWorkersService');
     expect(update?.Resource).toBe('arn:aws:ecs:${REGION}:${ACCOUNT}:service/${WORKERS_CLUSTER}/${WORKERS_SERVICE}');
     expect(policy.Statement.find((s) => s.Sid === 'EcsRunsTheWorkersTaskAsTheseRoles')).toEqual({

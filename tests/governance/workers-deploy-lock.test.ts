@@ -10,8 +10,8 @@ import { join, resolve } from 'node:path';
 // create-workers-service.sh --apply rolls too. GitHub `concurrency:` serialises only
 // workflow runs, so an automatic run that decided on commit B could, after its build,
 // overwrite a newer commit C the owner rolled meanwhile (tier-1 review). Both paths now
-// hold one lock (scripts/deploy/workers-deploy-lock.sh, an SSM parameter created
-// without --overwrite), and the roll step refuses a live revision that moved anyway.
+// hold one lock (scripts/deploy/workers-deploy-lock.sh: a conditional PutItem on one
+// expiring DynamoDB item), and the roll step refuses a live revision that moved anyway.
 
 const ROOT = resolve(__dirname, '../..');
 const LOCK = resolve(ROOT, 'scripts/deploy/workers-deploy-lock.sh');
@@ -19,27 +19,31 @@ const WORKFLOW = readFileSync(resolve(ROOT, '.github/workflows/deploy-platform-w
 const OWNER = readFileSync(resolve(ROOT, 'scripts/deploy/create-workers-service.sh'), 'utf8');
 
 let dir: string;
-let param: string;
+let state: string;
 
 beforeEach(() => {
-  // A fake `aws` holding one SSM parameter in a file: put-parameter without --overwrite fails while it exists.
-  dir = mkdtempSync(join(tmpdir(), 'fake-ssm-'));
-  param = join(dir, 'param');
+  // A fake `aws dynamodb` holding the one lock item in a file ("<holder> <expiresAt>"), with the same
+  // conditions DynamoDB enforces for the calls the script makes.
+  dir = mkdtempSync(join(tmpdir(), 'fake-ddb-'));
+  state = join(dir, 'lock');
   writeFileSync(
     join(dir, 'aws'),
     [
       '#!/usr/bin/env bash',
       'if [ -n "${FAKE_AWS_ERROR:-}" ]; then echo "$FAKE_AWS_ERROR" >&2; exit 254; fi',
-      'value=""; prev=""',
-      'for a in "$@"; do [ "$prev" = "--value" ] && value="$a"; prev="$a"; done',
+      'item=""; values=""; prev=""',
+      'for a in "$@"; do [ "$prev" = "--item" ] && item="$a"; [ "$prev" = "--expression-attribute-values" ] && values="$a"; prev="$a"; done',
+      // field '<json>' <name>: the S or N value of one attribute.
+      `field() { python3 -c 'import json, sys; print(list(json.loads(sys.argv[1])[sys.argv[2]].values())[0])' "$1" "$2"; }`,
+      'ccf() { echo "An error occurred (ConditionalCheckFailedException) when calling the $1 operation" >&2; exit 254; }',
       'case "$2" in',
-      '  put-parameter)',
-      '    if [ -e "$FAKE_PARAM" ]; then echo "An error occurred (ParameterAlreadyExists) when calling the PutParameter operation" >&2; exit 254; fi',
-      '    printf "%s" "$value" > "$FAKE_PARAM" ;;',
-      '  get-parameter)',
-      '    if [ ! -e "$FAKE_PARAM" ]; then echo "An error occurred (ParameterNotFound) when calling the GetParameter operation" >&2; exit 254; fi',
-      '    cat "$FAKE_PARAM"; echo ;;',
-      '  delete-parameter) rm -f "$FAKE_PARAM" ;;',
+      '  put-item)',
+      '    if [ -e "$FAKE_LOCK" ] && [ "$(cut -d" " -f2 "$FAKE_LOCK")" -ge "$(field "$values" :now)" ]; then ccf PutItem; fi',
+      '    echo "$(field "$item" holder) $(field "$item" expiresAt)" > "$FAKE_LOCK" ;;',
+      '  get-item) if [ -e "$FAKE_LOCK" ]; then tr " " "\\t" < "$FAKE_LOCK"; else echo "None	None"; fi ;;',
+      '  delete-item)',
+      '    if [ ! -e "$FAKE_LOCK" ] || [ "$(cut -d" " -f1 "$FAKE_LOCK")" != "$(field "$values" :me)" ]; then ccf DeleteItem; fi',
+      '    rm -f "$FAKE_LOCK" ;;',
       '  *) echo "unexpected: $*" >&2; exit 99 ;;',
       'esac',
       '',
@@ -55,7 +59,8 @@ function lock(cmd: string, holder: string, env: Record<string, string> = {}) {
     encoding: 'utf8',
     env: {
       PATH: `${dir}:${process.env.PATH ?? ''}`,
-      FAKE_PARAM: param,
+      NODE_ENV: 'test',
+      FAKE_LOCK: state,
       LOCK_WAIT_SECONDS: '1',
       LOCK_INTERVAL_SECONDS: '1',
       ...env,
@@ -78,23 +83,34 @@ function steps(src: string): string[] {
 describe('workers deploy lock', () => {
   it('one holder takes it; a second waits, then fails loud and says how to clear a stale lock', () => {
     expect(lock('acquire', 'gha-1-1').status).toBe(0);
-    expect(readFileSync(param, 'utf8')).toMatch(/^gha-1-1 \d{4}-\d{2}-\d{2}T/);
+    const [holder, expiresAt] = readFileSync(state, 'utf8').trim().split(' ');
+    expect(holder).toBe('gha-1-1');
+    // Expires after the default TTL (an hour), longer than the 45-minute workflow job.
+    expect(Number(expiresAt) - Date.now() / 1000).toBeGreaterThan(3500);
 
     const second = lock('acquire', 'owner-fede-42');
     expect(second.status).toBe(1);
     // Who holds it is named whether the deadline passes before or after the first wait.
     expect(second.stdout + second.stderr).toContain("held by 'gha-1-1");
-    expect(second.stderr).toContain('aws ssm delete-parameter');
-    expect(readFileSync(param, 'utf8')).toMatch(/^gha-1-1 /);
+    expect(second.stderr).toContain('aws dynamodb delete-item');
+    expect(readFileSync(state, 'utf8')).toMatch(/^gha-1-1 /);
   });
 
   it('only the holder releases it, and the next holder can then take it', () => {
     lock('acquire', 'gha-1-1');
     expect(lock('release', 'owner-fede-42').status).toBe(0);
-    expect(existsSync(param), 'a non-holder must not release').toBe(true);
+    expect(existsSync(state), 'a non-holder must not release').toBe(true);
     expect(lock('release', 'gha-1-1').status).toBe(0);
-    expect(existsSync(param)).toBe(false);
+    expect(existsSync(state)).toBe(false);
+    // Re-taken immediately after a release (an SSM parameter could not be re-created for ~30 s).
     expect(lock('acquire', 'owner-fede-42').status).toBe(0);
+  });
+
+  it('a lock whose holder died is taken over once it has expired', () => {
+    expect(lock('acquire', 'gha-1-1', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
+    spawnSync('sleep', ['2']);
+    expect(lock('acquire', 'owner-fede-42').status).toBe(0);
+    expect(readFileSync(state, 'utf8')).toMatch(/^owner-fede-42 /);
   });
 
   it('releasing a lock that is not held is a no-op', () => {
@@ -103,7 +119,7 @@ describe('workers deploy lock', () => {
 
   it('any error other than "already held" fails closed instead of deploying unlocked', () => {
     const r = lock('acquire', 'gha-1-1', {
-      FAKE_AWS_ERROR: 'An error occurred (AccessDeniedException) when calling the PutParameter operation',
+      FAKE_AWS_ERROR: 'An error occurred (AccessDeniedException) when calling the PutItem operation',
     });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('refusing to deploy');

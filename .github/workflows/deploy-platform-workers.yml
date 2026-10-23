@@ -112,6 +112,8 @@ jobs:
       # (scripts/deploy/workers-deploy-lock.sh). `concurrency:` above serialises workflow runs only.
       - name: Take the workers deploy lock
         id: lock
+        env:
+          LOCK_WAIT_SECONDS: '600' # leaves the 45-minute job room to build, roll and verify
         run: bash scripts/deploy/workers-deploy-lock.sh acquire "gha-${{ github.run_id }}-${{ github.run_attempt }}"
 
       - name: Log in to ECR

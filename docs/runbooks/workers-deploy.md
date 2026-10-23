@@ -193,16 +193,18 @@ Re-enabling it is the instant fallback if the workers ever stop (`enable-fx-refr
 
 ### One deploy at a time
 
-The workflow and `create-workers-service.sh --apply` share one lock, the SSM parameter
-`/tims-ats/workers/deploy-lock` (`scripts/deploy/workers-deploy-lock.sh`). The workflow holds it from its
-decision through its roll; the owner script holds it for its whole run. Whoever comes second waits up to
-20 minutes, then fails without changing anything. As a second guard, the workflow's roll step refuses to
+The workflow and `create-workers-service.sh --apply` share one lock: the item `lock#workers-deploy` in the
+DynamoDB table `tims-ats-ratelimit` (`scripts/deploy/workers-deploy-lock.sh`; the table is the rate-limit
+table from owner-kit c12, so it must exist first). The workflow holds it from its decision through its
+roll; the owner script holds it for its whole run. Whoever comes second waits (the workflow 10 minutes,
+the script 20), then fails without changing anything. A holder that dies frees it after an hour. As a second guard, the workflow's roll step refuses to
 overwrite a live revision that changed after its decision. The deploy role's grant for this is part of
-`bootstrap-github-oidc-role.sh` (statement `WorkersDeployLock`), so re-run it after pulling this change.
+`bootstrap-github-oidc-role.sh` (statement `WorkersDeployLock`, limited to that one item), so re-run it
+after pulling this change.
 
-If a run or script died while holding the lock, the next one says who holds it. Clear it only once that
-holder is gone:
+If a run or script died while holding the lock, the next one says who holds it; the lock also expires on
+its own after an hour. To clear it sooner, once that holder is gone:
 
 ```
-aws --profile tims-ats --region us-west-2 ssm delete-parameter --name /tims-ats/workers/deploy-lock
+aws --profile tims-ats --region us-west-2 dynamodb delete-item --table-name tims-ats-ratelimit --key '{"pk":{"S":"lock#workers-deploy"}}'
 ```
