@@ -105,6 +105,7 @@ describe('workers deploy — decide before build (ECR retention)', () => {
     ['stopped (desired 0)', { DESIRED_COUNT: '0', RUNNING_COUNT: '0' }],
     ['short of tasks', { DESIRED_COUNT: '1', RUNNING_COUNT: '0' }],
     ['a failed rollout of this tag', { ROLLOUT_STATE: 'FAILED' }],
+    ['scaled to two tasks (two schedulers)', { DESIRED_COUNT: '2', RUNNING_COUNT: '2' }],
     ['a rollout of this tag still in progress', { ROLLOUT_STATE: 'IN_PROGRESS' }],
   ])('re-rolls (no push) when the service references this tag but is %s, so the verifier decides', (_label, over) => {
     // Tier-1 review: skipping on the tag alone gave a green run for a stopped service and blocked retrying

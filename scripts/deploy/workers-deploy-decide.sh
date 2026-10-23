@@ -55,7 +55,8 @@ if [[ "$SERVICE_STATUS" != "ACTIVE" ]]; then
 fi
 
 if [[ "$RUNNING_TAG" == "$TAG" ]]; then
-  if (( DESIRED_COUNT > 0 && RUNNING_COUNT == DESIRED_COUNT )) && [[ "$ROLLOUT_STATE" == "COMPLETED" ]]; then
+  # Exactly one task: two would be two independent RAMJobStore schedulers, which the verifier fails.
+  if (( DESIRED_COUNT == 1 && RUNNING_COUNT == 1 )) && [[ "$ROLLOUT_STATE" == "COMPLETED" ]]; then
     emit false "the service already runs $TAG (running $RUNNING_COUNT of $DESIRED_COUNT, rollout COMPLETED)"
   fi
   # Stopped (desired 0), short of tasks, or a failed/unfinished rollout of this very tag: re-roll, so the roll
