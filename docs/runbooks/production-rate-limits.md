@@ -73,12 +73,22 @@ missing table, network):
 | Everything else (ordinary `query` / `mutation`)                                                                                                                                                           | **Fail open** to the per-instance in-memory limiter |
 | Public application e-mail cap                                                                                                                                                                             | Fail closed: the e-mail is skipped                  |
 
-Scope caveat: ONE live candidate-facing credential flow does pass through this limiter, and
-fails closed during a shared-store outage: **offer signing**. The public page
-`/offers/sign/[token]` (`apps/web/app/offers/sign/[token]/page.tsx`) calls
-`offer.getBySigningToken`, `offer.acceptByToken` and `offer.declineByToken`, all in the
-fail-closed set, so while the store is down a candidate can neither view nor answer an offer
-(`SERVICE_UNAVAILABLE`); tell recruiters to resend or wait. The other credential flows are
+Scope caveat: TWO live candidate-facing credential flows pass through this limiter, and
+fail closed during a shared-store outage:
+
+- **Offer signing.** The public page `/offers/sign/[token]`
+  (`apps/web/app/offers/sign/[token]/page.tsx`) calls `offer.getBySigningToken`,
+  `offer.acceptByToken` and `offer.declineByToken`, so while the store is down a candidate can
+  neither view nor answer an offer (`SERVICE_UNAVAILABLE`); tell recruiters to resend or wait.
+- **AI voice interviews.** The public page `/ai-interview/[token]`
+  (`apps/web/app/(portal)/ai-interview/[token]/consent-screen.tsx`, `use-interview-call.ts`)
+  calls `aiInterview.recordConsent` and `aiInterview.start`, so while the store is down a
+  candidate can neither consent to nor start the interview; the link keeps working once the
+  store is back.
+
+Every public procedure whose input carries a bearer token must be in the fail-closed set;
+`tests/ratelimit/fail-closed-token-coverage.test.ts` scans the routers and fails if one is
+missing. The other credential flows are
 outside it: login, self-serve password reset (`/forgot-password`) and MFA call Supabase Auth
 directly from the browser (Supabase's own auth limits apply), and the invitation accept UI
 relays to the C# platform API (`/api/invitation-setup/*` → `/invitations/setup/*`), outside

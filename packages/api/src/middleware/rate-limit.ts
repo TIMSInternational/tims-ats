@@ -54,8 +54,10 @@ export type RateLimitCategory = keyof typeof LIMITS;
 // ---------------------------------------------------------------------------
 const FAIL_CLOSED_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set(['auth', 'ai', 'export']);
 
-// Lower-cased full tRPC paths of credential-like procedures that live outside `auth.*`.
-// Their tier (and therefore their limit) is unchanged; only the outage policy differs.
+// Lower-cased full tRPC paths of credential-like procedures that live outside `auth.*`:
+// every public procedure whose input carries a bearer token (tests/ratelimit/
+// fail-closed-token-coverage.test.ts scans the routers and fails if one is missing), plus the
+// operator password reset. Their tier (and limit) is unchanged; only the outage policy differs.
 const FAIL_CLOSED_PATHS: ReadonlySet<string> = new Set([
   'platform.acceptinvitation',
   'platform.getinvitationbytoken',
@@ -63,6 +65,8 @@ const FAIL_CLOSED_PATHS: ReadonlySet<string> = new Set([
   'offer.acceptbytoken',
   'offer.declinebytoken',
   'offer.getbysigningtoken',
+  'aiinterview.recordconsent',
+  'aiinterview.start',
 ]);
 
 /** True when a shared-store outage must reject this path instead of degrading. */

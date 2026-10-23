@@ -97,6 +97,17 @@ describe.each([
     },
   );
 
+  it('fails CLOSED for the AI-interview token procedures (Codex pass 5)', async () => {
+    vi.useFakeTimers();
+    const { mod } = await loadWithFakeDynamo(mode);
+    for (const path of ['aiInterview.start', 'aiInterview.recordConsent']) {
+      const p = mod.checkRateLimit('ip:203.0.113.9', 'mutation', { path });
+      const assertion = expect(p).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
+      await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS);
+      await assertion;
+    }
+  });
+
   it('fails CLOSED for a credential-like path even in an ordinary tier', async () => {
     vi.useFakeTimers();
     const { mod } = await loadWithFakeDynamo(mode);
@@ -176,6 +187,8 @@ describe('isFailClosedPath', () => {
       'offer.acceptByToken',
       'offer.declineByToken',
       'offer.getBySigningToken',
+      'aiInterview.recordConsent',
+      'aiInterview.start',
     ]) {
       expect(mod.isFailClosedPath(p)).toBe(true);
     }
