@@ -195,14 +195,15 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
       en: 'Error monitoring for the web application.',
     },
     dataCategories: {
-      es: 'Reportes de error (traza, URL de la solicitud, navegador y dispositivo). El envío de PII por defecto está desactivado y los tokens de enlace para unirse a entrevistas se eliminan antes del envío.',
-      en: 'Error reports (stack trace, request URL, browser and device). Default PII sending is disabled and interview-join link tokens are scrubbed before sending.',
+      es: 'Reportes de error (mensaje de error, traza, URL de la solicitud, navegador y dispositivo). Los errores del servidor incluyen además los identificadores internos del usuario que inició sesión y de su organización. El envío de PII por defecto está desactivado y los tokens de enlace para unirse a entrevistas se eliminan antes del envío.',
+      en: 'Error reports (error message, stack trace, request URL, browser and device). Server errors also carry the internal identifiers of the signed-in user and of their organization. Default PII sending is disabled and interview-join link tokens are scrubbed before sending.',
     },
     condition: 'configured',
     activatedBy: ['NEXT_PUBLIC_SENTRY_DSN', 'SENTRY_DSN'],
     evidence: [
       { file: 'apps/web/instrumentation-client.ts', contains: 'sendDefaultPii: false' },
       { file: 'apps/web/lib/sentry-redact.ts', contains: 'JOIN_TOKEN_PATH' },
+      { file: 'apps/web/app/api/trpc/[trpc]/route.ts', contains: 'extra: base' },
       { file: 'apps/web/package.json', contains: '@sentry/nextjs' },
     ],
   },
