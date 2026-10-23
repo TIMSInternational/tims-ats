@@ -77,15 +77,31 @@ describe('TIMS GitHub deploy trust', () => {
     const workflow = readFileSync(resolve(__dirname, '../../.github/workflows/deploy-platform-workers.yml'), 'utf8');
     const pascal = (verb: string) => verb.replace(/(^|-)([a-z])/g, (_m, _d, c: string) => c.toUpperCase());
     const needed = new Set<string>();
-    for (const m of workflow.matchAll(/\baws (ecr|ecs) ([a-z-]+)/g)) {
-      // `aws ecs wait services-stable` is a client-side poll over DescribeServices.
-      needed.add(m[2] === 'wait' ? 'ecs:DescribeServices' : `${m[1]}:${pascal(m[2])}`);
-    }
+    // The workflow's own `aws` calls AND those of every deploy script it runs (the lock lives in one).
+    const invoked = [...workflow.matchAll(/\bbash (scripts\/deploy\/[a-z-]+\.sh)/g)].map((m) =>
+      readFileSync(resolve(__dirname, '../..', m[1]!), 'utf8'),
+    );
+    expect(invoked.length, 'the workflow runs the deploy scripts').toBeGreaterThan(3);
+    for (const source of [workflow, ...invoked])
+      for (const m of source.matchAll(/\baws (ecr|ecs|ssm) ([a-z-]+)/g)) {
+        // `aws ecs wait services-stable` is a client-side poll over DescribeServices.
+        needed.add(m[2] === 'wait' ? 'ecs:DescribeServices' : `${m[1]}:${pascal(m[2]!)}`);
+      }
     expect([...needed].sort()).toEqual(
-      expect.arrayContaining(['ecr:DescribeImages', 'ecs:RegisterTaskDefinition', 'ecs:UpdateService']),
+      expect.arrayContaining([
+        'ecr:DescribeImages',
+        'ecs:RegisterTaskDefinition',
+        'ecs:UpdateService',
+        'ssm:PutParameter',
+        'ssm:DeleteParameter',
+      ]),
     );
     for (const action of needed) expect(granted, `deploy role lacks ${action}`).toContain(action);
 
+    // The lock grant covers the one lock parameter, nothing else in SSM.
+    expect(policy.Statement.find((s) => s.Sid === 'WorkersDeployLock')?.Resource).toBe(
+      'arn:aws:ssm:${REGION}:${ACCOUNT}:parameter/tims-ats/workers/deploy-lock',
+    );
     const update = policy.Statement.find((s) => s.Sid === 'UpdateOnlyTheWorkersService');
     expect(update?.Resource).toBe('arn:aws:ecs:${REGION}:${ACCOUNT}:service/${WORKERS_CLUSTER}/${WORKERS_SERVICE}');
     expect(policy.Statement.find((s) => s.Sid === 'EcsRunsTheWorkersTaskAsTheseRoles')).toEqual({

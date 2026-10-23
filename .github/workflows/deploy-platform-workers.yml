@@ -107,6 +107,13 @@ jobs:
           role-to-assume: arn:aws:iam::747814092517:role/tims-ats-github-deploy-prod
           aws-region: ${{ env.AWS_REGION }}
 
+      # Held from the decision through the roll: create-workers-service.sh takes the same lock, so neither
+      # path can overwrite a revision the other registered while this run was building
+      # (scripts/deploy/workers-deploy-lock.sh). `concurrency:` above serialises workflow runs only.
+      - name: Take the workers deploy lock
+        id: lock
+        run: bash scripts/deploy/workers-deploy-lock.sh acquire "gha-${{ github.run_id }}-${{ github.run_attempt }}"
+
       - name: Log in to ECR
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -151,9 +158,15 @@ jobs:
           RUNNING_TAG=""
           RUNNING_IS_NEWER="unknown"
           GRAPH_CHANGED="unknown"
+          DESIRED_COUNT=""
+          RUNNING_COUNT=""
+          ROLLOUT_STATE=""
+          CURRENT_TD=""
           if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
-            CURRENT_TD="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
-                           --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
+            # Health facts for the "already runs this tag" shortcut (scripts/deploy/workers-deploy-decide.sh).
+            read -r CURRENT_TD DESIRED_COUNT RUNNING_COUNT ROLLOUT_STATE < <(aws ecs describe-services --region "$AWS_REGION" \
+              --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output text \
+              --query "services[0].[taskDefinition, desiredCount, runningCount, deployments[?status=='PRIMARY'] | [0].rolloutState]")
             aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$CURRENT_TD" \
               --query 'taskDefinition' > current-td.json
             RUNNING_IMAGE="$(jq -r --arg n "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$n) | .image' current-td.json)"
@@ -179,7 +192,10 @@ jobs:
             fi
           fi
           SERVICE_STATUS="$SERVICE_STATUS" RUNNING_TAG="$RUNNING_TAG" RUNNING_IS_NEWER="$RUNNING_IS_NEWER" \
-            GRAPH_CHANGED="$GRAPH_CHANGED" bash scripts/deploy/workers-deploy-decide.sh > decision.txt
+            GRAPH_CHANGED="$GRAPH_CHANGED" DESIRED_COUNT="$DESIRED_COUNT" RUNNING_COUNT="$RUNNING_COUNT" \
+            ROLLOUT_STATE="$ROLLOUT_STATE" bash scripts/deploy/workers-deploy-decide.sh > decision.txt
+          # The roll step refuses to overwrite a revision registered after this decision (e.g. by the owner script).
+          echo "decided_td=$CURRENT_TD" >> "$GITHUB_OUTPUT"
           cat decision.txt
           grep -E '^(push|roll)=(true|false)$' decision.txt >> "$GITHUB_OUTPUT"
           REASON_LINE="$(grep -E '^reason=' decision.txt | head -1)"
@@ -220,6 +236,7 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           TAG: ${{ steps.sha.outputs.short }}
+          DECIDED_TD: ${{ steps.decide.outputs.decided_td }}
         run: |
           set -euo pipefail
           # Re-read the live revision (the owner script may have registered one while the image built).
@@ -229,6 +246,12 @@ jobs:
             --query 'taskDefinition' > current-td.json
           RUNNING_IMAGE="$(jq -r --arg n "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$n) | .image' current-td.json)"
           RUNNING_TAG="${RUNNING_IMAGE##*:}"
+          # Under the lock nothing else may have rolled since the decision; if the live revision moved anyway
+          # (a holder that ignored the lock, or one cleared by hand), do not overwrite it.
+          if [ "$CURRENT_TD" != "$DECIDED_TD" ]; then
+            echo "::error::The live revision changed after the decision ($DECIDED_TD -> $CURRENT_TD). Not overwriting it; re-run to decide again."
+            exit 1
+          fi
           # Swap ONLY the image of the workers container; every env var, secret ref, health check, role and
           # size is carried over verbatim from the live revision. Read-only fields are stripped for re-register.
           jq --arg n "$CONTAINER_NAME" --arg img "$REGISTRY/$ECR_REPO:$TAG" '
@@ -266,3 +289,7 @@ jobs:
             echo "- to: \`$NEW_TD\`"
             echo "- rollback: \`bash scripts/deploy/create-workers-service.sh --apply --image-tag $RUNNING_TAG\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release the workers deploy lock
+        if: always() && steps.lock.outcome == 'success'
+        run: bash scripts/deploy/workers-deploy-lock.sh release "gha-${{ github.run_id }}-${{ github.run_attempt }}"

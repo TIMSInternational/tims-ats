@@ -147,6 +147,12 @@ PERMS="$(cat <<JSON
       "Resource": "arn:aws:ecs:${REGION}:${ACCOUNT}:service/${WORKERS_CLUSTER}/${WORKERS_SERVICE}"
     },
     {
+      "Sid": "WorkersDeployLock",
+      "Effect": "Allow",
+      "Action": ["ssm:PutParameter", "ssm:GetParameter", "ssm:DeleteParameter"],
+      "Resource": "arn:aws:ssm:${REGION}:${ACCOUNT}:parameter/tims-ats/workers/deploy-lock"
+    },
+    {
       "Sid": "EcsRunsTheWorkersTaskAsTheseRoles",
       "Effect": "Allow",
       "Action": "iam:PassRole",

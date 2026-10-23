@@ -149,6 +149,17 @@ else
   ok "Authenticated to $ACCOUNT ($REGION)"
 fi
 
+# Serialise with deploy-platform-workers.yml, which holds the same lock from its decision through its roll:
+# without it, an automatic run that decided before this script ran would overwrite what this script rolls
+# (scripts/deploy/workers-deploy-lock.sh). Released on exit, whatever the outcome.
+if [[ "$APPLY" -eq 1 ]]; then
+  LOCK_USER="$(id -un)"
+  LOCK_HOLDER="owner-${LOCK_USER//[^A-Za-z0-9._-]/_}-$$"
+  lock() { AWS_PROFILE="$PROFILE" AWS_REGION="$REGION" bash "$SCRIPT_DIR/workers-deploy-lock.sh" "$1" "$LOCK_HOLDER"; }
+  lock acquire || die "could not take the workers deploy lock (see above); nothing changed"
+  trap 'lock release || true; rm -rf "$WORK"' EXIT
+fi
+
 # ── Kill switch ──────────────────────────────────────────────────────────────────────────────────
 if [[ "$STOP" -eq 1 ]]; then
   say ""

@@ -33,10 +33,16 @@ type Inputs = {
   IMAGE_EXISTS: string;
   RUNNING_IS_NEWER: string;
   GRAPH_CHANGED: string;
+  DESIRED_COUNT: string;
+  RUNNING_COUNT: string;
+  ROLLOUT_STATE: string;
 };
 
 function decide(i: Inputs): { status: number | null; out: Record<string, string>; stderr: string } {
-  const r = spawnSync('bash', [SCRIPT], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...i } });
+  const r = spawnSync('bash', [SCRIPT], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...i },
+  });
   const out: Record<string, string> = {};
   for (const line of r.stdout.split('\n')) {
     const m = line.match(/^(push|roll|reason)=(.*)$/);
@@ -53,6 +59,9 @@ const base: Inputs = {
   IMAGE_EXISTS: 'false',
   RUNNING_IS_NEWER: 'false',
   GRAPH_CHANGED: 'true',
+  DESIRED_COUNT: '1',
+  RUNNING_COUNT: '1',
+  ROLLOUT_STATE: 'COMPLETED',
 };
 
 /** One step of the workflow's `steps:` list: its raw text. */
@@ -82,7 +91,7 @@ describe('workers deploy — decide before build (ECR retention)', () => {
   it.each([
     ['no change under the workers project graph', { GRAPH_CHANGED: 'false' }],
     ['production already runs a NEWER commit', { RUNNING_IS_NEWER: 'true' }],
-    ['the service already runs this tag', { RUNNING_TAG: 'bbbbbbb' }],
+    ['the service already runs this tag, healthy', { RUNNING_TAG: 'bbbbbbb', IMAGE_EXISTS: 'true' }],
     ['the service does not exist yet (automatic run)', { SERVICE_STATUS: 'MISSING' }],
     ['the service is INACTIVE (automatic run)', { SERVICE_STATUS: 'INACTIVE' }],
   ])('does NOT push when it will not roll: %s', (_label, over) => {
@@ -90,6 +99,30 @@ describe('workers deploy — decide before build (ECR retention)', () => {
     expect(r.status, r.stderr).toBe(0);
     expect(r.out).toMatchObject({ push: 'false', roll: 'false' });
     expect(r.out.reason).toBeTruthy();
+  });
+
+  it.each([
+    ['stopped (desired 0)', { DESIRED_COUNT: '0', RUNNING_COUNT: '0' }],
+    ['short of tasks', { DESIRED_COUNT: '1', RUNNING_COUNT: '0' }],
+    ['a failed rollout of this tag', { ROLLOUT_STATE: 'FAILED' }],
+    ['a rollout of this tag still in progress', { ROLLOUT_STATE: 'IN_PROGRESS' }],
+  ])('re-rolls (no push) when the service references this tag but is %s, so the verifier decides', (_label, over) => {
+    // Tier-1 review: skipping on the tag alone gave a green run for a stopped service and blocked retrying
+    // a failed first deploy of the same tag.
+    for (const EVENT of ['workflow_run', 'workflow_dispatch']) {
+      const r = decide({
+        ...base,
+        EVENT,
+        RUNNING_TAG: 'bbbbbbb',
+        IMAGE_EXISTS: 'true',
+        RUNNING_IS_NEWER: 'true',
+        GRAPH_CHANGED: 'false',
+        ...over,
+      });
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.out, EVENT).toMatchObject({ push: 'false', roll: 'true' });
+      expect(r.out.reason).toMatch(/not healthy/);
+    }
   });
 
   it('a manual dispatch with no service yet seeds the first image (push, no roll)', () => {
@@ -117,29 +150,31 @@ describe('workers deploy — decide before build (ECR retention)', () => {
         for (const RUNNING_TAG of ['aaaaaaa', 'bbbbbbb', ''])
           for (const IMAGE_EXISTS of ['true', 'false'])
             for (const RUNNING_IS_NEWER of ['true', 'false', 'unknown'])
-              for (const GRAPH_CHANGED of ['true', 'false', 'unknown']) {
-                const i = {
-                  ...base,
-                  EVENT,
-                  SERVICE_STATUS,
-                  RUNNING_TAG,
-                  IMAGE_EXISTS,
-                  RUNNING_IS_NEWER,
-                  GRAPH_CHANGED,
-                };
-                const r = decide(i);
-                expect(r.status, `${JSON.stringify(i)}: ${r.stderr}`).toBe(0);
-                expect(['true', 'false']).toContain(r.out.push);
-                expect(['true', 'false']).toContain(r.out.roll);
-                if (r.out.push === 'true') {
-                  const seed = EVENT === 'workflow_dispatch' && SERVICE_STATUS !== 'ACTIVE';
-                  expect(r.out.roll === 'true' || seed, JSON.stringify(i)).toBe(true);
+              for (const GRAPH_CHANGED of ['true', 'false', 'unknown'])
+                for (const health of ['healthy', 'stopped']) {
+                  const i = {
+                    ...base,
+                    EVENT,
+                    SERVICE_STATUS,
+                    RUNNING_TAG,
+                    IMAGE_EXISTS,
+                    RUNNING_IS_NEWER,
+                    GRAPH_CHANGED,
+                    ...(health === 'stopped' ? { DESIRED_COUNT: '0', RUNNING_COUNT: '0' } : {}),
+                  };
+                  const r = decide(i);
+                  expect(r.status, `${JSON.stringify(i)}: ${r.stderr}`).toBe(0);
+                  expect(['true', 'false']).toContain(r.out.push);
+                  expect(['true', 'false']).toContain(r.out.roll);
+                  if (r.out.push === 'true') {
+                    const seed = EVENT === 'workflow_dispatch' && SERVICE_STATUS !== 'ACTIVE';
+                    expect(r.out.roll === 'true' || seed, JSON.stringify(i)).toBe(true);
+                  }
+                  if (r.out.push === 'true') expect(IMAGE_EXISTS, JSON.stringify(i)).toBe('false');
+                  if (r.out.roll === 'true') expect(SERVICE_STATUS).toBe('ACTIVE');
+                  checked++;
                 }
-                if (r.out.push === 'true') expect(IMAGE_EXISTS, JSON.stringify(i)).toBe('false');
-                if (r.out.roll === 'true') expect(SERVICE_STATUS).toBe('ACTIVE');
-                checked++;
-              }
-    expect(checked).toBe(2 * 4 * 3 * 2 * 3 * 3);
+    expect(checked).toBe(2 * 4 * 3 * 2 * 3 * 3 * 2);
   });
 
   it('fails closed on a malformed input instead of defaulting to push', () => {
@@ -149,6 +184,9 @@ describe('workers deploy — decide before build (ECR retention)', () => {
       { GRAPH_CHANGED: 'yes' },
       { EVENT: 'push' },
       { TAG: '' },
+      { DESIRED_COUNT: '' },
+      { RUNNING_COUNT: 'two' },
+      { ROLLOUT_STATE: 'DONE' },
     ]) {
       const r = decide({ ...base, ...bad });
       expect(r.status, JSON.stringify(bad)).not.toBe(0);
