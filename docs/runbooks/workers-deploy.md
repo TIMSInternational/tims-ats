@@ -199,9 +199,9 @@ The workflow and `create-workers-service.sh --apply` share one lock: the item `l
 DynamoDB table `tims-ats-ratelimit` (`scripts/deploy/workers-deploy-lock.sh`; the table is the rate-limit
 table from owner-kit c12, so it must exist first). The workflow holds it from its decision through its
 roll; the owner script holds it for its whole run. Whoever comes second waits (the workflow 10 minutes,
-the script 20), then fails without changing anything. A holder that dies frees it after an hour. Both
-renew the lease right before they change ECS and the script re-checks the live revision there too, so a run
-that stalled past its hour (a suspended laptop) stops instead of overwriting a newer deploy.
+the script 20), then fails without changing anything. The lock never expires, on purpose: AWS cannot reject a
+write from a holder whose lease ran out, so an expiring lock would let a stalled run (a suspended laptop)
+overwrite a newer deploy. Both paths release it on exit, a failed or cancelled run included.
 
 A roll or rollback never rewrites the execution role's inline policy once it exists: grants or conditions you
 add to it (an HRIS secret, a KMS key, an `aws:SourceVpce` restriction) stay exactly as written. The script writes
@@ -211,8 +211,9 @@ overwrite a live revision that changed after its decision. The deploy role's gra
 `bootstrap-github-oidc-role.sh` (statement `WorkersDeployLock`, limited to that one item), so re-run it
 after pulling this change.
 
-If a run or script died while holding the lock, the next one says who holds it; the lock also expires on
-its own after an hour. To clear it sooner, once that holder is gone:
+If a run or script died without releasing it (a runner lost, a `kill -9`, a laptop that never woke), the next
+one fails and says who holds it and since when. Clear it only after confirming that holder has stopped (its
+GitHub run shows finished, or its terminal is closed):
 
 ```
 aws --profile tims-ats --region us-west-2 dynamodb delete-item --table-name tims-ats-ratelimit --key '{"pk":{"S":"lock#workers-deploy"}}'

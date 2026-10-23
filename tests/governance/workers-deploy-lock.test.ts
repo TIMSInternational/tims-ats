@@ -22,7 +22,7 @@ let dir: string;
 let state: string;
 
 beforeEach(() => {
-  // A fake `aws dynamodb` holding the one lock item in a file ("<holder> <expiresAt>"), with the same
+  // A fake `aws dynamodb` holding the one lock item in a file ("<holder> <since>"), with the same
   // conditions DynamoDB enforces for the calls the script makes.
   dir = mkdtempSync(join(tmpdir(), 'fake-ddb-'));
   state = join(dir, 'lock');
@@ -44,7 +44,7 @@ beforeEach(() => {
       'case "$2" in',
       '  put-item)',
       '    if has "attribute_not_exists(pk)" && exists && ! { has "expiresAt < :now" && ! live; }; then ccf PutItem; fi',
-      '    echo "$(field "$item" holder) $(field "$item" expiresAt)" > "$FAKE_LOCK" ;;',
+      '    echo "$(field "$item" holder) $(field "$item" since)" > "$FAKE_LOCK" ;;',
       '  get-item) if [ -e "$FAKE_LOCK" ]; then tr " " "\\t" < "$FAKE_LOCK"; else echo "None	None"; fi ;;',
       '  update-item)',
       '    if { has "holder = :me" && ! { exists && mine; }; } || { has "expiresAt >= :now" && ! { exists && live; }; }; then ccf UpdateItem; fi',
@@ -91,10 +91,9 @@ function steps(src: string): string[] {
 describe('workers deploy lock', () => {
   it('one holder takes it; a second waits, then fails loud and says how to clear a stale lock', () => {
     expect(lock('acquire', 'gha-1-1').status).toBe(0);
-    const [holder, expiresAt] = readFileSync(state, 'utf8').trim().split(' ');
+    const [holder, since] = readFileSync(state, 'utf8').trim().split(' ');
     expect(holder).toBe('gha-1-1');
-    // Expires after the default TTL (an hour), longer than the 45-minute workflow job.
-    expect(Number(expiresAt) - Date.now() / 1000).toBeGreaterThan(3500);
+    expect(since).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 
     const second = lock('acquire', 'owner-fede-42');
     expect(second.status).toBe(1);
@@ -114,33 +113,18 @@ describe('workers deploy lock', () => {
     expect(lock('acquire', 'owner-fede-42').status).toBe(0);
   });
 
-  it('a lock whose holder died is taken over once it has expired', () => {
-    expect(lock('acquire', 'gha-1-1', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
-    spawnSync('sleep', ['2']);
+  it('never expires: a stalled holder keeps it however long it sleeps, so nobody can write after it', () => {
+    // Tier-1 review: an expiring lease let a holder paused after its last check write after a takeover.
     expect(lock('acquire', 'owner-fede-42').status).toBe(0);
+    spawnSync('sleep', ['2']);
+    const other = lock('acquire', 'gha-7-1');
+    expect(other.status).toBe(1);
+    expect(other.stderr).toContain('never expires');
     expect(readFileSync(state, 'utf8')).toMatch(/^owner-fede-42 /);
-  });
-
-  it('renew extends a live lease, and fails once the lease was lost to someone else', () => {
-    expect(lock('acquire', 'owner-fede-42', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
-    expect(lock('renew', 'owner-fede-42').status).toBe(0);
-    expect(Number(readFileSync(state, 'utf8').trim().split(' ')[1]) - Date.now() / 1000).toBeGreaterThan(3500);
-
-    // A holder suspended past its lease: someone else takes the expired lock; the stale holder's renew fails.
-    lock('release', 'owner-fede-42');
-    expect(lock('acquire', 'owner-fede-42', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
-    spawnSync('sleep', ['2']);
-    expect(lock('acquire', 'gha-7-1').status).toBe(0);
-    const stale = lock('renew', 'owner-fede-42');
-    expect(stale.status).toBe(1);
-    expect(stale.stderr).toContain('no longer holds the lock');
-    expect(readFileSync(state, 'utf8')).toMatch(/^gha-7-1 /);
-  });
-
-  it('renew also fails when the lease merely expired (nobody else took it yet)', () => {
-    expect(lock('acquire', 'owner-fede-42', { LOCK_TTL_SECONDS: '1' }).status).toBe(0);
-    spawnSync('sleep', ['2']);
-    expect(lock('renew', 'owner-fede-42').status).toBe(1);
+    // No expiry attribute is ever written, and there is no lease to renew.
+    const script = readFileSync(LOCK, 'utf8');
+    expect(script).not.toContain('\\"expiresAt\\"');
+    expect(script).not.toMatch(/^\s+renew\)/m);
   });
 
   it('releasing a lock that is not held is a no-op', () => {
@@ -180,30 +164,21 @@ describe('workers deploy lock', () => {
     expect(steps(WORKFLOW).find((s) => s.includes('- name: Decide whether to push and roll'))).toContain('decided_td=');
     expect(roll).toContain('DECIDED_TD: ${{ steps.decide.outputs.decided_td }}');
     const guard = roll.indexOf('if [ "$CURRENT_TD" != "$DECIDED_TD" ]');
-    const renew = roll.indexOf('workers-deploy-lock.sh renew');
     expect(guard).toBeGreaterThan(-1);
-    expect(renew, 'the lease is renewed (still held) before the roll').toBeGreaterThan(-1);
-    for (const [name, at] of [
-      ['guard', guard],
-      ['renew', renew],
-    ] as const) {
-      expect(at, `the ${name} runs before the new revision is registered`).toBeLessThan(
-        roll.indexOf('register-task-definition'),
-      );
-    }
+    expect(guard, 'the guard runs before the new revision is registered').toBeLessThan(
+      roll.indexOf('register-task-definition'),
+    );
   });
 
-  it('a roll never rewrites an existing execution policy, and the first write is lease-guarded', () => {
+  it('a roll never rewrites an existing execution policy', () => {
     // Tier-1 review: replacing, merging or unioning the live policy either stripped an owner's grant or
     // loosened an owner's condition; and a stale run could overwrite newer IAM before its lease check.
     const read = OWNER.indexOf('iam get-role-policy --role-name "$EXECUTION_ROLE"');
     const skip = OWNER.indexOf('if [[ "$EXEC_POLICY_EXISTS" -eq 1 && "$RECONCILE_IAM" -eq 0 ]]; then');
     const put = OWNER.indexOf('mutate iam put-role-policy --role-name "$EXECUTION_ROLE"');
-    const renew = OWNER.lastIndexOf('lock renew', put);
     expect(read).toBeGreaterThan(-1);
     expect(read).toBeLessThan(skip);
     expect(skip).toBeLessThan(put);
-    expect(renew, 'the lease is renewed right before the IAM write').toBeGreaterThan(skip);
     expect(OWNER).toContain('refusing to write it blind');
     expect(OWNER).toMatch(/--reconcile-iam\) RECONCILE_IAM=1/);
   });
@@ -216,14 +191,10 @@ describe('workers deploy lock', () => {
     for (const mutation of ['# ── Kill switch', 'mutate ecr put-lifecycle-policy', 'register-task-definition']) {
       expect(take, `lock before ${mutation}`).toBeLessThan(OWNER.indexOf(mutation));
     }
-    // Stale-writer guard: the lease is renewed and the live revision re-checked right before the roll and the stop.
+    // Second guard: the live revision is re-checked right before the roll.
     const roll = OWNER.indexOf('mutate ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition');
-    const stop = OWNER.indexOf('--desired-count 0');
-    const renews = [...OWNER.matchAll(/lock renew/g)].map((m) => m.index!);
-    expect(renews.some((i) => i < stop && i > OWNER.indexOf('# ── Kill switch'))).toBe(true);
     const guard = OWNER.indexOf('[[ "$NOW_TD" == "$LIVE_TD" ]]');
     expect(guard).toBeGreaterThan(-1);
-    expect(renews.some((i) => i < roll && i > OWNER.indexOf('Stale-writer guard'))).toBe(true);
     expect(guard).toBeLessThan(roll);
   });
 });

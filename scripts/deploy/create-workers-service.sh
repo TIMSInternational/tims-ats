@@ -168,7 +168,6 @@ fi
 if [[ "$STOP" -eq 1 ]]; then
   say ""
   say "Stopping the scheduler (desired count 0). The service, image and roles are kept."
-  [[ "$APPLY" -eq 1 ]] && { lock renew || die "lost the workers deploy lock; nothing changed — re-run"; }
   mutate ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --desired-count 0
   [[ "$APPLY" -eq 1 ]] && ok "desired count 0 — re-enable with --apply --image-tag <tag>"
   exit 0
@@ -279,8 +278,6 @@ if [[ "$EXEC_POLICY_EXISTS" -eq 1 && "$RECONCILE_IAM" -eq 0 ]]; then
   ok "execution policy ${NAME}-execution exists — left exactly as it is (--reconcile-iam replaces it with the baseline)"
 else
   [[ "$EXEC_POLICY_EXISTS" -eq 1 ]] && warn "--reconcile-iam: REPLACING ${NAME}-execution with the baseline; custom grants in it are removed"
-  # Stale-writer guard: still the lock holder (renewed) at the moment of the write.
-  [[ "$APPLY" -eq 1 ]] && { lock renew || die "lost the workers deploy lock; IAM unchanged — re-run"; }
   mutate iam put-role-policy --role-name "$EXECUTION_ROLE" --policy-name "${NAME}-execution" \
     --policy-document "$EXEC_POLICY"
 fi
@@ -460,11 +457,9 @@ if [[ "$APPLY" -eq 1 ]]; then
 else
   say "  would run: scripts/deploy/workers-protect-image.sh $IMAGE_TAG   (adds tag deployed-$IMAGE_TAG)"
 fi
-# Stale-writer guard, immediately before the roll: this run must still hold the lock (renewed, so nobody can
-# take it during the update), and the service must still run the revision this run copied. A run that stalled
-# (a suspended laptop) past its lease, or one overtaken by another deploy, stops instead of overwriting.
+# Second guard, right before the roll (the lock is the first): the service must still run the revision this
+# run copied; if it moved anyway (a lock cleared by hand while this ran), stop instead of overwriting it.
 if [[ "$APPLY" -eq 1 ]]; then
-  lock renew || die "lost the workers deploy lock (it expired or was cleared); nothing rolled — re-run"
   if [[ -n "$LIVE_TD" ]]; then
     NOW_TD="$("${AWSX[@]}" ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
       --query 'services[0].taskDefinition' --output text)" || die "cannot re-read the live task definition"
