@@ -20,4 +20,8 @@ public sealed class LegacyRelayNonceBridge(IConnectionMultiplexer redis)
     /// <summary>True = claimed now; false = an image of either version already used this nonce.</summary>
     public Task<bool> TryClaimAsync(string nonce, TimeSpan lifetime) =>
         redis.GetDatabase().StringSetAsync(Key(nonce), "1", lifetime, When.NotExists).WaitAsync(Timeout);
+
+    /// <summary>Readiness: while the bridge is on, relayed requests need this Redis. Throws when unreachable.</summary>
+    public Task PingAsync(CancellationToken cancellationToken) =>
+        redis.GetDatabase().PingAsync().WaitAsync(Timeout, cancellationToken);
 }

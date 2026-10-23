@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StackExchange.Redis;
 using Testcontainers.Redis;
+using Tims.Api.HealthChecks;
 using Tims.Api.Http;
 using Tims.IntegrationTests.RateLimiting;
 
@@ -105,6 +107,31 @@ public sealed class RelayNonceBridgeTests(DynamoDbRateLimitFixture dynamo, Legac
         });
 
         Assert.Equal(expected, factory.Services.GetService<LegacyRelayNonceBridge>() is not null);
+    }
+
+    [Fact]
+    public async Task Readiness_follows_the_bridge_redis()
+    {
+        static Task<HealthCheckResult> Check(LegacyRelayNonceBridge? bridge)
+        {
+            var services = new ServiceCollection();
+            if (bridge is not null)
+            {
+                services.AddSingleton(bridge);
+            }
+
+            return new LegacyRelayNonceBridgeHealthCheck(services.BuildServiceProvider())
+                .CheckHealthAsync(new HealthCheckContext());
+        }
+
+        var config = ConfigurationOptions.Parse("127.0.0.1:1");
+        config.AbortOnConnectFail = false;
+        config.ConnectTimeout = 500;
+        await using var dead = await ConnectionMultiplexer.ConnectAsync(config);
+
+        Assert.Equal(HealthStatus.Healthy, (await Check(new LegacyRelayNonceBridge(redis.Connection))).Status);
+        Assert.Equal(HealthStatus.Unhealthy, (await Check(new LegacyRelayNonceBridge(dead))).Status);
+        Assert.Equal(HealthStatus.Healthy, (await Check(null)).Status);
     }
 
     [Fact]

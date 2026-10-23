@@ -162,7 +162,8 @@ try
     // --- Health / readiness -----------------------------------------------------------
     builder.Services.AddHealthChecks()
         .AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"])
-        .AddCheck<RateLimitStoreHealthCheck>("ratelimit-store", tags: ["ready"]);
+        .AddCheck<RateLimitStoreHealthCheck>("ratelimit-store", tags: ["ready"])
+        .AddCheck<LegacyRelayNonceBridgeHealthCheck>("relay-nonce-bridge", tags: ["ready"]);
 
     // --- Supabase JWT authentication (WP2.1) ------------------------------------------
     // Validates issuer, audience, lifetime, AND signing key (JWKS) — never skips exp/iss/aud
