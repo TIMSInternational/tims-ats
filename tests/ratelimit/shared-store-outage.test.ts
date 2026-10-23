@@ -35,7 +35,8 @@ describe('shared limiter is bounded', () => {
     expect(fake.clientConfigs).toHaveLength(1);
     const config = fake.clientConfigs[0]!;
     expect(config.region).toBe('us-west-2');
-    expect(config.maxAttempts).toBeLessThanOrEqual(2);
+    // No SDK retries: a retried non-idempotent increment could count one request twice.
+    expect(config.maxAttempts).toBe(1);
     expect(config.requestHandler).toMatchObject({ requestTimeout: mod.SHARED_LIMIT_TIMEOUT_MS });
     await mod.checkRateLimit('user-1', 'query');
     await mod.consumeApplicationEmailQuota('ana@example.com');

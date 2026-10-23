@@ -17,8 +17,8 @@ Credentials come from the default AWS chain, i.e. the same `AWS_ACCESS_KEY_ID` /
 | Setting             | Value                                                      | Why                                                                                                                                                                                    |
 | ------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Key                 | partition key `pk` (String), no sort key                   | One item per identifier per window                                                                                                                                                     |
-| Billing             | On-demand                                                  | No capacity to size; each check is 1 write unit + 0.5 read unit (eventually consistent read)                                                                                           |
-| Max throughput      | 4,000 write and 4,000 read units/s                         | The throughput a new on-demand table serves without scaling. Caps a flood at ≈ US$10/h; reaching it throttles, and throttling makes the fail-closed tiers return `SERVICE_UNAVAILABLE` |
+| Billing             | On-demand                                                  | No capacity to size; each check is 1 write unit + 1 read unit (strongly consistent read; an eventually consistent one could roughly double the quota just after a window boundary)     |
+| Max throughput      | 4,000 write and 4,000 read units/s                         | The throughput a new on-demand table serves without scaling. Caps a flood at ≈ US$11/h; reaching it throttles, and throttling makes the fail-closed tiers return `SERVICE_UNAVAILABLE` |
 | TTL                 | attribute `expiresAt` (epoch seconds)                      | Counters delete themselves; DynamoDB TTL is lazy, so the code never trusts an expired item                                                                                             |
 | Deletion protection | On                                                         | Deleting the table while the guard is deployed fails closed (see below)                                                                                                                |
 | Encryption          | AWS-owned key (default)                                    | No KMS cost; contents are hashes and counters                                                                                                                                          |
@@ -54,8 +54,9 @@ application-email cap is a rolling 24 h claim per recipient.
 
 Every shared-limiter call is bounded to `SHARED_LIMIT_TIMEOUT_MS` (1 s,
 `packages/api/src/middleware/rate-limit-store.ts`); at the deadline the in-flight request is
-aborted. When DynamoDB times out or errors (throttling, access denied, missing table,
-network):
+aborted. The SDK does not retry (an increment is not idempotent, so a retried write could
+count one request twice). When DynamoDB times out or errors (throttling, access denied,
+missing table, network):
 
 | Traffic                                                                                                                                                                                                   | Behavior                                            |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |

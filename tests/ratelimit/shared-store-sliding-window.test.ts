@@ -55,6 +55,18 @@ describe('shared store sliding window', () => {
     expect(await hits(store, 12)).toBe(10);
   });
 
+  it('reads the previous window strongly consistently (a stale read would double the quota)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const { store, fake } = await load();
+    fake.staleEventualReads = true;
+    expect(await hits(store, 10)).toBe(10);
+    // 1 ms into the next window almost all of the previous 10 still overlap: only 1 more fits.
+    vi.setSystemTime(T0 + WINDOW + 1);
+    expect(await hits(store, 10)).toBe(1);
+    for (const call of fake.calls.filter((c) => c.op === 'GetItem')) expect(call.input.ConsistentRead).toBe(true);
+  });
+
   it('reports reset as the end of the current window', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0 + 15_000);

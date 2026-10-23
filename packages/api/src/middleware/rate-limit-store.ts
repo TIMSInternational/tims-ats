@@ -96,8 +96,10 @@ export interface SharedStore {
 export function createSharedStore(config: SharedStoreConfig): SharedStore {
   const client = new DynamoDBClient({
     region: config.region,
-    // One retry fits inside the deadline; the deadline (not the SDK) bounds the total.
-    maxAttempts: 2,
+    // No automatic retries: the counter increment is not idempotent, so a retry after a write
+    // that committed but lost its response would count one request twice. A transient error
+    // takes the outage path instead (fail closed for the strict tiers, memory for the rest).
+    maxAttempts: 1,
     requestHandler: { connectionTimeout: 300, requestTimeout: SHARED_LIMIT_TIMEOUT_MS },
   });
   const TableName = config.table;
@@ -114,6 +116,9 @@ export function createSharedStore(config: SharedStoreConfig): SharedStore {
           new GetItemCommand({
             TableName,
             Key: { pk: { S: `${base}${current - 1}` } },
+            // Strongly consistent: just after a window boundary an eventually consistent read
+            // can miss the previous window's latest increments and roughly double the quota.
+            ConsistentRead: true,
             ProjectionExpression: '#c',
             ExpressionAttributeNames: { '#c': 'c' },
           }),

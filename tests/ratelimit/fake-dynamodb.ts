@@ -19,6 +19,7 @@ type Input = {
   Item?: { pk: AttrValue; expiresAt: AttrValue };
   ExpressionAttributeValues?: Record<string, AttrValue>;
   ConditionExpression?: string;
+  ConsistentRead?: boolean;
 };
 
 // Only the exact condition strings the store sends are enforced; a missing or different
@@ -32,6 +33,11 @@ export interface FakeDynamo {
   clientConfigs: Array<Record<string, unknown>>;
   /** In-flight requests whose abort signal fired. */
   aborted: number;
+  /**
+   * When true, a GetItem WITHOUT ConsistentRead returns nothing, which is what DynamoDB may
+   * legitimately return just after a write. A correct store must not depend on it.
+   */
+  staleEventualReads: boolean;
   mode: FakeMode;
 }
 
@@ -42,7 +48,7 @@ function conditionalFailure(): Error {
 }
 
 export function installFakeDynamo(mode: FakeMode = 'ok'): FakeDynamo {
-  const fake: FakeDynamo = { items: new Map(), calls: [], clientConfigs: [], aborted: 0, mode };
+  const fake: FakeDynamo = { items: new Map(), calls: [], clientConfigs: [], aborted: 0, staleEventualReads: false, mode };
 
   vi.doMock(DYNAMODB_SDK, () => {
     class Command {
@@ -89,6 +95,7 @@ export function installFakeDynamo(mode: FakeMode = 'ok'): FakeDynamo {
         }
         const values = cmd.input.ExpressionAttributeValues ?? {};
         if (cmd.op === 'GetItem') {
+          if (fake.staleEventualReads && cmd.input.ConsistentRead !== true) return Promise.resolve({});
           const item = fake.items.get(cmd.input.Key!.pk.S!);
           return Promise.resolve({ Item: item?.c !== undefined ? { c: { N: String(item.c) } } : undefined });
         }
