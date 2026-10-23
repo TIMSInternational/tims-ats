@@ -193,6 +193,21 @@ describe('workers deploy lock', () => {
     }
   });
 
+  it('a roll never rewrites an existing execution policy, and the first write is lease-guarded', () => {
+    // Tier-1 review: replacing, merging or unioning the live policy either stripped an owner's grant or
+    // loosened an owner's condition; and a stale run could overwrite newer IAM before its lease check.
+    const read = OWNER.indexOf('iam get-role-policy --role-name "$EXECUTION_ROLE"');
+    const skip = OWNER.indexOf('if [[ "$EXEC_POLICY_EXISTS" -eq 1 && "$RECONCILE_IAM" -eq 0 ]]; then');
+    const put = OWNER.indexOf('mutate iam put-role-policy --role-name "$EXECUTION_ROLE"');
+    const renew = OWNER.lastIndexOf('lock renew', put);
+    expect(read).toBeGreaterThan(-1);
+    expect(read).toBeLessThan(skip);
+    expect(skip).toBeLessThan(put);
+    expect(renew, 'the lease is renewed right before the IAM write').toBeGreaterThan(skip);
+    expect(OWNER).toContain('refusing to write it blind');
+    expect(OWNER).toMatch(/--reconcile-iam\) RECONCILE_IAM=1/);
+  });
+
   it('the owner script takes the same lock before any change and releases it on exit', () => {
     const take = OWNER.indexOf('lock acquire');
     expect(take).toBeGreaterThan(-1);

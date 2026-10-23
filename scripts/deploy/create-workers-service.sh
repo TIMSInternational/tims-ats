@@ -14,6 +14,8 @@
 #           --fx-refresh BOOL Workers__FxRefreshEnabled for a NEW task definition (default true)
 #           --hris-sync BOOL  Workers__HrisSyncEnabled for a NEW task definition (default false — see runbook)
 #           --stop            set the service's desired count to 0
+#           --reconcile-iam   REPLACE the execution role's existing inline policy with the baseline (otherwise an
+#                             existing policy is never touched: rolls and rollbacks keep custom grants as they are)
 # Sizing (env): WORKERS_CPU=256  WORKERS_MEMORY=512
 #
 # Procedure, env vars, double-execution analysis and rollback: docs/runbooks/workers-deploy.md.
@@ -62,6 +64,7 @@ FX_SET=0
 HRIS_SET=0
 APPLY=0
 STOP=0
+RECONCILE_IAM=0
 
 say() { printf '%s\n' "$*"; }
 ok() { printf '  ok   %s\n' "$*"; }
@@ -75,6 +78,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --apply) APPLY=1 ;;
     --stop) STOP=1 ;;
+    --reconcile-iam) RECONCILE_IAM=1 ;;
     --image-tag)
       IMAGE_TAG="${2:-}"
       shift
@@ -98,7 +102,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h | --help)
-      sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) die "unknown argument: $1 (see --help)" ;;
@@ -220,20 +224,34 @@ fi
 say ""
 say "4. IAM roles $EXECUTION_ROLE / $TASK_ROLE"
 TRUST='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ecs-tasks.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"'"$ACCOUNT"'"}}}]}'
-# Never shrink the live policy: a roll or rollback must not strip grants the owner added for secrets the task
-# definition still references (scripts/deploy/workers-exec-policy.py). Unreadable live policy = stop.
-LIVE_EXEC_POLICY=""
-if [[ "$ONLINE" -eq 1 ]]; then
-  if POLICY_OUT="$("${AWSX[@]}" iam get-role-policy --role-name "$EXECUTION_ROLE" --policy-name "${NAME}-execution" \
-    --query PolicyDocument --output json 2>&1)"; then
-    printf '%s' "$POLICY_OUT" >"$WORK/live-exec-policy.json"
-    LIVE_EXEC_POLICY="$WORK/live-exec-policy.json"
-  elif ! grep -q NoSuchEntity <<<"$POLICY_OUT"; then
-    die "cannot read $EXECUTION_ROLE's policy; refusing to overwrite it blind: $POLICY_OUT"
-  fi
-fi
-EXEC_POLICY="$(python3 "$SCRIPT_DIR/workers-exec-policy.py" "$REGION" "$ACCOUNT" "$ECR_REPO" "$LOG_GROUP" \
-  "$DB_SECRET_ARN" ${LIVE_EXEC_POLICY:+"$LIVE_EXEC_POLICY"})" || die "could not build the execution role policy"
+EXEC_POLICY="$(
+  cat <<JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "EcrAuthTokenIsAccountWide", "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*" },
+    {
+      "Sid": "PullOnlyTheWorkersImage",
+      "Effect": "Allow",
+      "Action": ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
+      "Resource": "arn:aws:ecr:${REGION}:${ACCOUNT}:repository/${ECR_REPO}"
+    },
+    {
+      "Sid": "WriteOnlyTheWorkersLogs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT}:log-group:${LOG_GROUP}:*"
+    },
+    {
+      "Sid": "InjectOnlyTheDbConnectionString",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "${DB_SECRET_ARN}"
+    }
+  ]
+}
+JSON
+)"
 python3 -c 'import json,sys; json.loads(sys.argv[1]); json.loads(sys.argv[2])' "$TRUST" "$EXEC_POLICY" \
   || die "generated IAM JSON does not parse"
 for ROLE in "$EXECUTION_ROLE" "$TASK_ROLE"; do
@@ -244,9 +262,28 @@ for ROLE in "$EXECUTION_ROLE" "$TASK_ROLE"; do
       --description "Tims.Workers ECS task ($ROLE)"
   fi
 done
-# put-role-policy is an upsert: re-running re-asserts the exact grant.
-mutate iam put-role-policy --role-name "$EXECUTION_ROLE" --policy-name "${NAME}-execution" \
-  --policy-document "$EXEC_POLICY"
+# A roll or rollback NEVER rewrites an existing policy: an owner may have added grants (an HRIS secret, a KMS
+# key) or restrictions (aws:SourceVpce) the running task definition depends on, and any rewrite (replace,
+# merge or union) either strips one or loosens one (tier-1 review). The baseline is written only when the
+# policy does not exist yet, or when --reconcile-iam asks to REPLACE it with the baseline.
+EXEC_POLICY_EXISTS=0
+if [[ "$ONLINE" -eq 1 ]]; then
+  if POLICY_OUT="$("${AWSX[@]}" iam get-role-policy --role-name "$EXECUTION_ROLE" --policy-name "${NAME}-execution" \
+    --query PolicyName --output text 2>&1)"; then
+    EXEC_POLICY_EXISTS=1
+  elif ! grep -q NoSuchEntity <<<"$POLICY_OUT"; then
+    die "cannot tell whether $EXECUTION_ROLE has its policy; refusing to write it blind: $POLICY_OUT"
+  fi
+fi
+if [[ "$EXEC_POLICY_EXISTS" -eq 1 && "$RECONCILE_IAM" -eq 0 ]]; then
+  ok "execution policy ${NAME}-execution exists — left exactly as it is (--reconcile-iam replaces it with the baseline)"
+else
+  [[ "$EXEC_POLICY_EXISTS" -eq 1 ]] && warn "--reconcile-iam: REPLACING ${NAME}-execution with the baseline; custom grants in it are removed"
+  # Stale-writer guard: still the lock holder (renewed) at the moment of the write.
+  [[ "$APPLY" -eq 1 ]] && { lock renew || die "lost the workers deploy lock; IAM unchanged — re-run"; }
+  mutate iam put-role-policy --role-name "$EXECUTION_ROLE" --policy-name "${NAME}-execution" \
+    --policy-document "$EXEC_POLICY"
+fi
 say "  (the task role deliberately carries NO policy: the jobs call no AWS API — Email is disabled)"
 
 # ── 5. Cluster ───────────────────────────────────────────────────────────────────────────────────
