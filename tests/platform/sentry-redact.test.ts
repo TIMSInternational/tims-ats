@@ -300,6 +300,9 @@ describe('Sentry join-token redaction', () => {
     for (const q of ['"', "'", '`']) {
       const value = `Error: { candidateToken: ${q}${TOKEN}`;
       expect(redactBearerTokens(value), value).toBe(`Error: { candidateToken: ${q}[redacted]`);
+      const cut = `${value}\\`;
+      expect(redactBearerTokens(cut), cut).not.toContain(TOKEN);
+      expect(JSON.stringify(redactSentryEvent({ exception: { values: [{ value: cut }] } })), cut).not.toContain(TOKEN);
       expect(JSON.stringify(redactSentryEvent({ message: value })), value).not.toContain(TOKEN);
     }
     // JSON-serialized and structured forms (codex r17).

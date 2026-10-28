@@ -87,7 +87,7 @@ const QUOTED_KEY_VALUE = new RegExp(
 );
 // A credential value whose closing quote never comes (a message truncated mid-value): redacted to the end.
 const UNTERMINATED_CREDENTIAL_VALUE = new RegExp(
-  `((?:^|[^A-Za-z0-9_$\\\\])["']?(?:${KEY_ALT})["']?\\s*[:=]\\s*)(["'\`])(?:(?!\\2)[^\\\\]|\\\\[\\s\\S])*$`,
+  `((?:^|[^A-Za-z0-9_$\\\\])["']?(?:${KEY_ALT})["']?\\s*[:=]\\s*)(["'\`])(?:(?!\\2)[^\\\\]|\\\\[\\s\\S])*(?:\\\\)?$`,
   'i',
 );
 const DIAGNOSTIC_BARE_VALUE = new RegExp(
