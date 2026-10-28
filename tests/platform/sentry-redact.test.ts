@@ -20,7 +20,7 @@ describe('Sentry join-token redaction', () => {
       '/login?next=%2Finterview%2Fjoin%2F[redacted]',
     );
     expect(redactJoinTokens(`/login?next=%2finterview%2fjoin%2f${TOKEN}&x=1`)).toBe(
-      '/login?next=%2Finterview%2Fjoin%2F[redacted]&x=1',
+      '/login?next=%2finterview%2fjoin%2f[redacted]&x=1',
     );
     expect(redactJoinTokens(`https://ats.example/interview%2Fjoin%2F${TOKEN}`)).not.toContain(TOKEN);
   });
@@ -206,6 +206,10 @@ describe('Sentry bearer-link redaction beyond the join link (offers, AI intervie
     const escapedChar = `/login?next=%2Faccept-invitation%3Ftoken%3D%25${UUID}`;
     const pretty = `/api/trpc/offer.getBySigningToken?input=${encodeURIComponent(JSON.stringify({ json: { token: UUID } }, null, 2))}`;
     const triple = `/login?next=${encodeURIComponent(encodeURIComponent(encodeURIComponent(`/offers/sign/${UUID}`)))}`;
+    // An escape INSIDE the token: the first pass stops at it, the decoded level must remove the rest.
+    const midEscape = `/login?next=%2Foffers%2Fsign%2F9%66${UUID.slice(2)}`;
+    expect(redactBearerTokens(midEscape)).not.toContain(UUID.slice(2));
+    expect(redactBearerTokens(`/offers/sign/9%66${UUID.slice(2)}`)).not.toContain(UUID.slice(2));
     for (const value of [escapedChar, pretty, triple, `/x?token=%41%42${SECRET.slice(2)}`]) {
       const redacted = redactBearerTokens(value);
       expect(redacted, value).not.toContain(UUID);
@@ -217,5 +221,18 @@ describe('Sentry bearer-link redaction beyond the join link (offers, AI intervie
     const plain = '/careers/acme?q=caf%C3%A9&page=2';
     expect(redactBearerTokens(plain)).toBe(plain);
     expect(redactBearerTokens('100% done %ZZ /x?token=abc')).toBe('100% done %ZZ /x?token=[redacted]');
+  });
+
+  it('is idempotent: scrubbing an already-scrubbed string changes nothing', () => {
+    for (const value of [
+      `/login?next=%2finterview%2fjoin%2f${UUID}&x=1`,
+      `/login?next=%252Foffers%252Fsign%252F${UUID}`,
+      `/reset-password?recovery=${UUID}&invitation=${SECRET}`,
+      `/api/trpc/x?input=${encodeURIComponent(JSON.stringify({ json: { token: UUID } }))}`,
+      `{"candidateToken":"${SECRET}"}`,
+    ]) {
+      const once = redactBearerTokens(value);
+      expect(redactBearerTokens(once), value).toBe(once);
+    }
   });
 });

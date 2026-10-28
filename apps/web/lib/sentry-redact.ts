@@ -29,10 +29,10 @@ const PATH_TOKEN = new RegExp(
 // The same paths percent-encoded once or twice, in any hex case. The token charset (base64url / UUID) has
 // no `%`, so the match stops at the next escape and never re-matches an already-written `[redacted]`.
 const SEP = '(?:\\/|%2F|%252F)';
-const ENCODED_PATH_TOKENS = PREFIX_SEGMENTS.map((segs) => ({
-  pattern: new RegExp(`${SEP}${segs.map(escapeRe).join(SEP)}${SEP}[a-z0-9_.~-]+`, 'gi'),
-  replacement: `%2F${segs.join('%2F')}%2F${REDACTED}`,
-}));
+// The separators are kept as written, so re-scrubbing an already-redacted string is a no-op (see below).
+const ENCODED_PATH_TOKENS = PREFIX_SEGMENTS.map(
+  (segs) => new RegExp(`(${SEP}${segs.map(escapeRe).join(SEP)}${SEP})[a-z0-9_.~-]+`, 'gi'),
+);
 
 const PARAMS = BEARER_QUERY_PARAMS.map(escapeRe).join('|');
 // `?token=…`, `&code=…`, `#access_token=…`, or a bare `token=…` query string. Only at a parameter boundary,
@@ -74,7 +74,7 @@ const MAX_DEPTH = 24;
 
 function scrubPatterns(value: string): string {
   let out = value.replace(PATH_TOKEN, `$1${REDACTED}`);
-  for (const { pattern, replacement } of ENCODED_PATH_TOKENS) out = out.replace(pattern, replacement);
+  for (const pattern of ENCODED_PATH_TOKENS) out = out.replace(pattern, `$1${REDACTED}`);
   return out
     .replace(QUERY_PARAM, `$1${REDACTED}`)
     .replace(ENCODED_QUERY_PARAM, `$1${REDACTED}`)
@@ -95,7 +95,6 @@ function percentDecode(value: string): string {
 }
 
 const MAX_DECODE_LEVELS = 3;
-const countRedactions = (value: string): number => value.split(REDACTED).length - 1;
 
 export function redactBearerTokens(value: string): string {
   const scrubbed = scrubPatterns(value);
@@ -108,8 +107,9 @@ export function redactBearerTokens(value: string): string {
     const decoded = percentDecode(current);
     if (decoded === current) break;
     current = scrubPatterns(decoded);
-    // Counted, not compared: re-normalizing an already-redacted value (e.g. `%2f` → `%2F`) is not a reveal.
-    if (countRedactions(current) > countRedactions(decoded)) revealed = true;
+    // scrubPatterns is idempotent on already-redacted text, so any change means this level exposed credential
+    // content the previous level did not (a new token, or the rest of one cut short by an escape).
+    if (current !== decoded) revealed = true;
   }
   return revealed ? current : scrubbed;
 }
