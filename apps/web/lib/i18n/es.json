@@ -255,6 +255,8 @@
     "sendLink": "Enviar enlace",
     "sendingLink": "Enviando...",
     "invalidCredentials": "Email o contraseña incorrectos",
+    "signupEmailInvalid": "No pudimos crear tu cuenta con ese correo electrónico. Regístrate de nuevo con otro correo o contacta a tu administrador.",
+    "authCallbackFailed": "Ese enlace de inicio de sesión no es válido o ha expirado. Inicia sesión de nuevo.",
     "login": "Iniciar Sesión",
     "loginSubtitle": "Ingresa a tu cuenta para continuar",
     "register": "Crear Cuenta",

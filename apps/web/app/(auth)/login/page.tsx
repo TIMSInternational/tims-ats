@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { loginErrorMessage } from '../../../lib/auth/login-error-message';
 
 export default function LoginPage() {
   return (
@@ -25,6 +26,10 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  // A callback redirect (?error=<code>) explains itself instead of showing a bare form (#213). The CODE is
+  // kept and translated on every render, so it follows the locale the provider restores after mount.
+  const [callbackCode, setCallbackCode] = useState(() => searchParams.get('error'));
+  const shownError = error || loginErrorMessage(callbackCode, t.auth);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -32,6 +37,7 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setCallbackCode(null);
 
     const supabase = createSupabaseBrowserClient();
     const { error: authError } = await supabase.auth.signInWithPassword({
@@ -124,9 +130,9 @@ function LoginForm() {
 
           {/* Form */}
           <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
+            {shownError && (
               <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
-                {error}
+                {shownError}
               </div>
             )}
 
