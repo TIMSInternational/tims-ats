@@ -276,6 +276,11 @@ describe('Sentry join-token redaction', () => {
     }
     expect(redactBearerTokens(nested)).toBe('Invalid args: { settings: {[redacted]}, id: 1 }');
     expect(redactBearerTokens(`{ path: ["signingToken"], equals: "${TOKEN}"`)).not.toContain(TOKEN);
+    // Quoted braces and many filters (codex r24).
+    const quotedBrace = `Invalid args: { equals: "${TOKEN}", string_contains: "{", path: ["signingToken"] }`;
+    expect(redactBearerTokens(quotedBrace)).toBe('Invalid args: {[redacted]}');
+    const many = Array.from({ length: 40 }, () => `{ path: ["signingToken"], equals: "${TOKEN}" }`).join(', ');
+    expect(redactBearerTokens(`[${many}]`)).not.toContain(TOKEN);
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);

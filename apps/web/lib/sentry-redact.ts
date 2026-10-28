@@ -98,35 +98,56 @@ const CREDENTIAL_PATH = `["']?path["']?\\s*:\\s*\\[[^\\]{}]*["'](?:${KEY_ALT})["
 const CREDENTIAL_PATH_RE = new RegExp(CREDENTIAL_PATH, 'gi');
 const FILTER_NON_VALUE_KEYS: ReadonlySet<string> = new Set(['path', 'mode']);
 
-// Index of the `{` that encloses `index`, or -1. Quoted text is not tracked backwards; a brace inside a string
-// can only widen or shift the redacted span, never let the filter's own values survive (it still covers `index`).
-function enclosingBrace(text: string, index: number): number {
-  let depth = 0;
-  for (let i = index - 1; i >= 0; i--) {
+// One forward scan, skipping braces inside quoted text: the span [open, close] of every `{…}` object (close = end
+// of text when it is cut off).
+function objectSpans(text: string): { spans: Array<[number, number]> } {
+  const spans: Array<[number, number]> = [];
+  const stack: Array<{ char: string; at: number }> = [];
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c === '}' || c === ']') depth++;
-    else if (c === '{' || c === '[') {
-      if (depth === 0) {
-        if (c === '{') return i;
-      } else depth--;
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') quote = c;
+    else if (c === '{' || c === '[') stack.push({ char: c, at: i });
+    else if (c === '}' || c === ']') {
+      const top = stack.pop();
+      if (top?.char === '{' && c === '}') spans.push([top.at, i]);
     }
   }
-  return -1;
+  for (const open of stack) if (open.char === '{') spans.push([open.at, text.length - 1]);
+  return { spans };
 }
 
 function scrubCredentialFilterObjects(value: string): string {
-  let out = value;
-  for (let guard = 0; guard < 32; guard++) {
-    const re = new RegExp(CREDENTIAL_PATH_RE.source, 'gi');
-    const match = re.exec(out);
-    if (match === null) return out;
-    const open = enclosingBrace(out, match.index);
-    if (open === -1) return `${out.slice(0, match.index)}${REDACTED}`;
-    const close = closingBracket(out, open);
-    if (close === -1) return `${out.slice(0, open)}{${REDACTED}`;
-    out = `${out.slice(0, open)}{${REDACTED}}${out.slice(close + 1)}`;
+  const re = new RegExp(CREDENTIAL_PATH_RE.source, 'gi');
+  if (!re.test(value)) return value;
+  // A path inside quoted text is still handled: a serialized diagnostic quotes the whole filter, so skipping it
+  // would leave the credential; over-redacting a sentence that merely mentions such a path is the accepted cost.
+  const { spans } = objectSpans(value);
+  const cuts: Array<[number, number]> = [];
+  re.lastIndex = 0;
+  for (let match = re.exec(value); match !== null; match = re.exec(value)) {
+    let best: [number, number] | null = null;
+    for (const span of spans) {
+      if (span[0] < match.index && span[1] >= match.index && (best === null || span[0] > best[0])) best = span;
+    }
+    // No enclosing object (a fragment): everything from the path onward goes.
+    cuts.push(best ?? [match.index, value.length - 1]);
   }
-  return out;
+  cuts.sort((a, b) => a[0] - b[0]);
+  let out = '';
+  let last = 0;
+  for (const [open, close] of cuts) {
+    if (open < last) continue; // inside a span already cut
+    const closed = value[close] === '}' && close > open;
+    out += `${value.slice(last, open)}${value[open] === '{' ? `{${REDACTED}${closed ? '}' : ''}` : REDACTED}`;
+    last = close + 1;
+  }
+  return out + value.slice(last);
 }
 
 // A Prisma validation error echoes the whole call (`Invalid \`prisma.offer.findMany()\` invocation: { where: … }`),
