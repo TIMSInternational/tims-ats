@@ -1,5 +1,7 @@
 'use client';
 
+import { useId } from 'react';
+
 import { useI18n } from '../../../../../../lib/i18n';
 import type { CvValidationError } from '../_lib/cv-validation';
 
@@ -20,12 +22,26 @@ const ERROR_KEYS = {
 export function CvUploadField({ file, error, uploading, onFileChange, onRemove }: CvUploadFieldProps) {
   const { t } = useI18n();
   const p = t.portal;
+  const inputId = useId();
+  const labelId = `${inputId}-label`;
+  const labelClass = 'block text-xs font-medium text-[#585858] mb-1';
 
   return (
     <div>
-      <label className="block text-xs font-medium text-[#585858] mb-1">{p.cvLabel}</label>
       {file ? (
-        <div className="flex items-center justify-between rounded-lg border border-[#EDEDED] px-3 py-2 text-sm text-[#333]">
+        <span id={labelId} className={labelClass}>
+          {p.cvLabel}
+        </span>
+      ) : (
+        <label id={labelId} htmlFor={inputId} className={labelClass}>
+          {p.cvLabel}
+        </label>
+      )}
+      {file ? (
+        <div
+          role="group"
+          aria-labelledby={labelId}
+          className="flex items-center justify-between rounded-lg border border-[#EDEDED] px-3 py-2 text-sm text-[#333]">
           <span className="truncate">{file.name}</span>
           <button
             type="button"
@@ -38,6 +54,7 @@ export function CvUploadField({ file, error, uploading, onFileChange, onRemove }
         </div>
       ) : (
         <input
+          id={inputId}
           type="file"
           accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
           onChange={onFileChange}

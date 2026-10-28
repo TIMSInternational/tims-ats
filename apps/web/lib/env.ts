@@ -22,7 +22,7 @@ const baseEnvSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
 
   // Platform
-  PLATFORM_EMAIL_FROM: z.string().email().default('noreply@nexadev.ai'),
+  PLATFORM_EMAIL_FROM: z.string().email().default('noreply@timssuite.com'),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 
   // Daily.co human video interviews. Missing/blank key keeps the room-creation

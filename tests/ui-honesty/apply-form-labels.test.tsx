@@ -33,10 +33,6 @@ describe('apply form step 1 accessibility', () => {
   });
 });
 
-vi.mock('../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_components/cv-upload-field', () => ({
-  CvUploadField: () => null,
-}));
-
 import { ApplyModalStep2 } from '../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_components/apply-modal-step2';
 
 describe('apply form step 2 accessibility', () => {
@@ -66,5 +62,29 @@ describe('apply form step 2 accessibility', () => {
     expect(screen.getByLabelText(p.yearsExpLabel).tagName).toBe('SELECT');
     expect((screen.getByLabelText('LinkedIn') as HTMLInputElement).value).toBe('https://linkedin.com/in/ana');
     expect((screen.getByLabelText(p.coverLetterLabel) as HTMLTextAreaElement).value).toBe('Hola');
+    expect((screen.getByLabelText(p.cvLabel) as HTMLInputElement).type).toBe('file');
+  });
+
+  it('names the selected-CV group with the CV label once a file is chosen', () => {
+    render(
+      <ApplyModalStep2
+        currentTitle=""
+        setCurrentTitle={noop}
+        currentCompany=""
+        setCurrentCompany={noop}
+        yearsExperience=""
+        setYearsExperience={noop}
+        linkedinUrl=""
+        setLinkedinUrl={noop}
+        coverLetter=""
+        setCoverLetter={noop}
+        cvFile={new File(['x'], 'cv.pdf', { type: 'application/pdf' })}
+        cvError={null}
+        cvUploading={false}
+        onCvFileChange={noop}
+        onCvRemove={noop}
+      />,
+    );
+    expect(screen.getByRole('group', { name: en.portal.cvLabel })).toHaveTextContent('cv.pdf');
   });
 });
