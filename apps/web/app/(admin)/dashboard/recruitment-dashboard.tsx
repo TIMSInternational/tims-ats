@@ -5,7 +5,7 @@ import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
 import { RecruitingKpiStrip } from './recruiting-kpi-strip';
 import { PipelineFunnel, PipelineFunnelSkeleton } from './pipeline-funnel';
-import { VacanciesByDimension, VacanciesByDimensionSkeleton } from './vacancies-by-dimension';
+import { OpenVacanciesCard, OpenVacanciesCardSkeleton } from './open-vacancies-card';
 import { AlertsSlaPanel } from './alerts-sla-panel';
 import { AlertsPendingPanel } from './alerts-pending-panel';
 import { AlertsRiskPanel } from './alerts-risk-panel';
@@ -104,19 +104,19 @@ function RecruiterDashboard() {
           onRetry={() => { vacancyKpis.refetch(); candidateKpis.refetch(); }}
         />
 
-        {/* Pipeline + Vacancies by Dimension */}
+        {/* Pipeline + open vacancies */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           {isLoading ? (
             <>
               <PipelineFunnelSkeleton />
-              <VacanciesByDimensionSkeleton />
+              <OpenVacanciesCardSkeleton />
             </>
           ) : publishedVacancies.isError ? (
             <ErrorState onRetry={() => publishedVacancies.refetch()} />
           ) : (
             <>
               <PipelineFunnel totalApplications={totalApplications} vacancies={publishedVacancies.data?.items ?? []} />
-              <VacanciesByDimension totalOpen={totalOpen} />
+              <OpenVacanciesCard totalOpen={totalOpen} />
             </>
           )}
         </div>
