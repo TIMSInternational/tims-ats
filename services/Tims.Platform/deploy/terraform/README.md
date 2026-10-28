@@ -81,6 +81,41 @@ memory. Because this module has never been applied, the live alarms are created 
 `docs/runbooks/production-rollback-and-alerting.md` §4, including the **SNS email confirmation click**.
 Until that click, no alarm is delivered.
 
+## Uptime checks (`synthetics.tf`, opt-in)
+
+`enable_synthetics = true` creates three CloudWatch Synthetics canaries that run every 5 minutes from
+outside the service: a public careers page (`synthetics_web_url`), the C# `/health` (liveness) and
+`/ready` (DB readiness), both under `synthetics_api_base_url`. A run passes only on a 2xx answer; the
+canary does not follow redirects, so give it the final URL. Each canary has an alarm
+(`tims-platform-api-uptime-<web|health|ready>`) that fires after two failed runs in a row, or when the
+canary stops reporting, and publishes to the platform alarms SNS topic.
+
+- **URLs are not committed.** Both URL variables default to `""`; put the real values in
+  `terraform.tfvars` (git-ignored) or pass `-var`. An apply that enables the canaries without https
+  URLs is refused by a precondition.
+- **Topic.** By default the alarms use the topic `alarms.tf` creates (needs `enable_alarms = true`).
+  While the live topic is the one `scripts/ops/create-alarms.sh` made, set
+  `synthetics_alarm_topic_arn` to it instead of letting Terraform create a second one.
+- **Recipients.** With the default topic, the alarms depend on `aws_sns_topic_subscription.alarm_email`,
+  so a `-target` apply on the alarms also creates the email subscription; nothing is delivered until
+  the recipient clicks the AWS confirmation link. `synthetics_alarm_topic_arn` requires
+  `enable_alarms = false` (a precondition refuses both together), so with it set Terraform creates no
+  topic and no subscription: before relying on the canaries, check that the existing topic has a
+  **Confirmed** subscriber (`aws sns list-subscriptions-by-topic --topic-arn <arn>`; a
+  `PendingConfirmation` ARN or an empty list means the alarms page no one).
+- **Runtime** is pinned (`local.synthetics_runtime_version`); upgrading it is a reviewed change.
+  AWS deprecates Synthetics runtimes on a schedule — check the runtime list before each upgrade.
+- **Artifacts** go to a private, SSE-S3-encrypted bucket with all Block Public Access flags, TLS-only
+  access and a `synthetics_artifact_retention_days` (default 14) expiry. Request/response headers and
+  bodies are not captured.
+- **Role** can write only to that bucket prefix, only to its canaries' own log groups, and only into
+  the `CloudWatchSynthetics` metric namespace (`s3:ListAllMyBuckets` cannot be scoped and is required
+  by the runtime).
+- Because the rest of this module has never been applied, apply the uptime resources with `-target`
+  on their own (see the owner apply procedure for the PR), not with a full `terraform apply`.
+- `tests/governance/uptime-synthetics.test.ts` pins all of the above and runs the canary script
+  against stubbed Synthetics modules.
+
 ## Notes
 
 - **Secrets are never in TF state or code** — only empty containers + an ignored placeholder version.

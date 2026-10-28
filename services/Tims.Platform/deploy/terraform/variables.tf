@@ -188,3 +188,65 @@ variable "alarm_memory_percent" {
   type        = number
   default     = 85
 }
+
+# --- External uptime checks (synthetics.tf) — opt-in -------------------------------------------------
+# The URLs have NO usable default on purpose: no production hostname is committed to this repository.
+# Supply them in terraform.tfvars (git-ignored) or with -var. An apply with enable_synthetics = true and
+# an empty or non-https URL is refused by a precondition in synthetics.tf.
+
+variable "enable_synthetics" {
+  description = "Create the three CloudWatch Synthetics uptime canaries (web careers page, API /health, API /ready), their artifacts bucket, execution role and alarms. Off by default."
+  type        = bool
+  default     = false
+}
+
+variable "synthetics_web_url" {
+  description = "Full https URL of a public careers page on the web app (e.g. https://<web-host>/careers/<org-slug>). Must answer 2xx directly — the canary does not follow redirects. Required when enable_synthetics."
+  type        = string
+  default     = ""
+}
+
+variable "synthetics_api_base_url" {
+  description = "https base URL of the C# API (the service_url output, or its custom domain). The canaries append /health and /ready. Required when enable_synthetics."
+  type        = string
+  default     = ""
+}
+
+variable "synthetics_alarm_topic_arn" {
+  description = "SNS topic ARN for the uptime alarms. Empty => the topic alarms.tf creates (requires enable_alarms = true). Set it to the existing out-of-band platform alarms topic while this module is not the owner of that topic."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.synthetics_alarm_topic_arn == "" || can(regex("^arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$", var.synthetics_alarm_topic_arn))
+    error_message = "The synthetics_alarm_topic_arn value must be empty or an SNS topic ARN."
+  }
+}
+
+variable "synthetics_name_prefix" {
+  description = "Prefix for canary names, the canary IAM role and its log-group scope. Canary names are <prefix>-web|-health|-ready and must stay <= 21 chars."
+  type        = string
+  default     = "tims-uptime"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9_-]{0,13}$", var.synthetics_name_prefix))
+    error_message = "The synthetics_name_prefix value must be 1-14 chars of [a-z0-9_-] so that <prefix>-health fits the 21-char canary name limit."
+  }
+}
+
+variable "synthetics_artifacts_bucket_name" {
+  description = "Override for the canary artifacts bucket name. Empty => <service_name>-synthetics-<account id>."
+  type        = string
+  default     = ""
+}
+
+variable "synthetics_artifact_retention_days" {
+  description = "Days canary run artifacts are kept (S3 lifecycle expiry and the canary's own success/failure retention)."
+  type        = number
+  default     = 14
+
+  validation {
+    condition     = var.synthetics_artifact_retention_days >= 1 && var.synthetics_artifact_retention_days <= 30
+    error_message = "The synthetics_artifact_retention_days value must be between 1 and 30."
+  }
+}
