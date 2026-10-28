@@ -45,7 +45,7 @@ export default function PortalLoginPage() {
             <span className="text-white text-xl font-bold">T</span>
           </div>
           <h1 className="text-[22px] font-bold text-[#1F114C]">{t.portalAuth.loginTitle}</h1>
-          <p className="text-[13px] text-[#8B8B8B] mt-1">{t.portalAuth.loginSubtitle}</p>
+          <p className="text-[13px] text-muted mt-1">{t.portalAuth.loginSubtitle}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
@@ -82,7 +82,7 @@ export default function PortalLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={t.portalAuth.emailPlaceholder}
-                  className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
+                  className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
                 />
               </div>
               <button
@@ -99,7 +99,7 @@ export default function PortalLoginPage() {
         <div className="text-center mt-5">
           <Link
             href={`/careers/${orgSlug}`}
-            className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline"
+            className="text-[13px] text-muted hover:text-[#585858] hover:underline"
           >
             {t.portalAuth.backToJobs}
           </Link>

@@ -39,6 +39,7 @@ export function OfferLetterModal({ offer, companyName, onClose }: OfferLetterMod
             {t.offers.printOrSavePdf}
           </button>
           <button
+            aria-label={t.common.close}
             onClick={onClose}
             className="ml-2 p-2 text-[#8B8B8B] hover:text-[#585858] rounded-lg hover:bg-[#EDEDED] transition"
           >

@@ -112,7 +112,7 @@ export function ApplyModalStep2({
           className={textareaCls}
           placeholder={p.coverLetterPlaceholder}
         />
-        <p className="mt-1 text-right text-[10px] text-[#8B8B8B]">{coverLetter.length}/5000</p>
+        <p className="mt-1 text-right text-[10px] text-muted">{coverLetter.length}/5000</p>
       </div>
       <CvUploadField
         file={cvFile}

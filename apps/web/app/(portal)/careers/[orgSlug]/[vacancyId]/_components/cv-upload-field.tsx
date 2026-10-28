@@ -45,7 +45,7 @@ export function CvUploadField({ file, error, uploading, onFileChange, onRemove }
           className="block w-full text-sm text-[#585858] file:mr-3 file:rounded-lg file:border-0 file:bg-[#F6F6F6] file:px-3 file:py-2 file:text-[12px] file:font-medium file:text-[#1F114C] disabled:opacity-50"
         />
       )}
-      <p className="mt-1 text-[10px] text-[#8B8B8B]">{p.cvHelperText}</p>
+      <p className="mt-1 text-[10px] text-muted">{p.cvHelperText}</p>
       {error && <p className="mt-1 text-[11px] text-[#DD0C15]">{p[ERROR_KEYS[error]]}</p>}
     </div>
   );
