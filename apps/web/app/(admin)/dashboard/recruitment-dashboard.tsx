@@ -83,7 +83,6 @@ function RecruiterDashboard() {
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
   const kpiIsError = vacancyKpis.isError || candidateKpis.isError;
   const totalApplications = vacancyKpis.data?.totalApplications ?? 0;
-  const totalOpen = vacancyKpis.data?.totalOpen ?? 0;
   const firstVacancyId = publishedVacancies.data?.items?.[0]?.id;
 
   return (
@@ -116,7 +115,12 @@ function RecruiterDashboard() {
           ) : (
             <>
               <PipelineFunnel totalApplications={totalApplications} vacancies={publishedVacancies.data?.items ?? []} />
-              <OpenVacanciesCard totalOpen={totalOpen} />
+              {/* Only the real count: a failed KPI query shows an error, never a default 0. */}
+              {vacancyKpis.data ? (
+                <OpenVacanciesCard totalOpen={vacancyKpis.data.totalOpen} />
+              ) : (
+                <ErrorState onRetry={() => vacancyKpis.refetch()} />
+              )}
             </>
           )}
         </div>
