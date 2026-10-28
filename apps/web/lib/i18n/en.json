@@ -4228,5 +4228,23 @@
     "emptyTitle": "No pending requests",
     "emptyDescription": "When a data subject requests deletion of their data, the request will appear here.",
     "loadError": "The requests could not be loaded. Please try again."
+  },
+  "legal": {
+    "draftBanner": "DRAFT: text pending legal review. Not a contractual commitment.",
+    "languageLabel": "Language",
+    "navLabel": "Legal documents",
+    "termsLink": "Terms of Service",
+    "privacyLink": "Privacy Notice",
+    "subprocessorsLink": "Subprocessors",
+    "aiProcessingLink": "AI processing",
+    "consentLinksPrefix": "See also:",
+    "subprocessorVendor": "Vendor",
+    "subprocessorService": "Service",
+    "subprocessorPurpose": "Purpose",
+    "subprocessorData": "Data categories",
+    "subprocessorCondition": "When used",
+    "conditionAlways": "Always",
+    "conditionConfigured": "Only when configured",
+    "conditionCustomerEnabled": "Only when the customer organization enables it"
   }
 }

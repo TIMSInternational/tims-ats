@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
     "**": [
       "../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/*.node",
     ],
+    // The legal pages read their Markdown at request time (lib/legal/content.ts); fs reads with a
+    // computed path are not traced, so ship the content directory with that route explicitly.
+    "/legal/[doc]": ["./content/legal/**/*"],
   },
   transpilePackages: [
     "@tims/api",

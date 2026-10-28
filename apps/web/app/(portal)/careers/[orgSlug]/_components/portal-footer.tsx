@@ -1,5 +1,8 @@
 import Image from 'next/image';
+import Link from 'next/link';
+import { useLegalLinks } from '../../../../../components/legal/use-legal-links';
 import { useI18n } from '../../../../../lib/i18n';
+import { LEGAL_DOCUMENT_SLUGS, isLegalPagesEnabled } from '../../../../../lib/legal/documents';
 
 interface PortalFooterProps {
   orgName: string;
@@ -8,10 +11,17 @@ interface PortalFooterProps {
 export function PortalFooter({ orgName }: PortalFooterProps) {
   const { t } = useI18n();
   const p = t.portal;
+  const legalLinks = useLegalLinks(LEGAL_DOCUMENT_SLUGS);
+  const placeholder = (label: string) => ({ label, href: undefined });
+  // The legal column links to the platform legal pages only while NEXT_PUBLIC_LEGAL_PAGES_ENABLED
+  // is on; otherwise it keeps its non-interactive placeholder labels.
+  const legalColumn = isLegalPagesEnabled()
+    ? legalLinks.map(({ label, href }) => ({ label, href }))
+    : [p.footerPrivacy, p.footerTerms, p.footerCookies, p.footerLicenses].map(placeholder);
   const columns = [
-    { title: p.footerPlatform, links: [p.footerJobs, p.footerCompanies, p.footerAssessments, p.footerBlog] },
-    { title: p.footerCompany, links: [p.footerAbout, p.footerContact, p.footerCareers, p.footerPartners] },
-    { title: p.footerLegal, links: [p.footerPrivacy, p.footerTerms, p.footerCookies, p.footerLicenses] },
+    { title: p.footerPlatform, links: [p.footerJobs, p.footerCompanies, p.footerAssessments, p.footerBlog].map(placeholder) },
+    { title: p.footerCompany, links: [p.footerAbout, p.footerContact, p.footerCareers, p.footerPartners].map(placeholder) },
+    { title: p.footerLegal, links: legalColumn },
   ];
   return (
     <footer className="bg-[#1F114C] px-8 py-8">
@@ -41,10 +51,16 @@ export function PortalFooter({ orgName }: PortalFooterProps) {
                 </h4>
                 <ul className="mt-3 space-y-2">
                   {col.links.map((link) => (
-                    <li key={link}>
-                      <span className="cursor-pointer text-[12px] text-white/60 transition-colors hover:text-white">
-                        {link}
-                      </span>
+                    <li key={link.label}>
+                      {link.href ? (
+                        <Link href={link.href} className="text-[12px] text-white/60 transition-colors hover:text-white">
+                          {link.label}
+                        </Link>
+                      ) : (
+                        <span className="cursor-pointer text-[12px] text-white/60 transition-colors hover:text-white">
+                          {link.label}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
