@@ -31,10 +31,13 @@
 # statement runs under psql ON_ERROR_ROLLBACK, so one failure does not abort the rest of the file.
 #
 # WHICH FILES ARE APPLIED. Only files whose text contains "function" or "procedure" (any case, anywhere,
-# comments included) or a psql include (\i, \ir, \include, \include_relative). Every statement that
-# creates a routine names one of those keywords, so this filter can only over-include; it exists because
-# files that cannot create a routine are often not applicable to an empty database. Building the keyword
-# out of fragments inside EXECUTE ('FUNC' || 'TION') would evade both this filter and the mention count;
+# comments included), or — ANYWHERE on a line, since psql accepts `SELECT 1; \ir x.sql` — an include
+# (\i, \ir, \include, \include_relative), which pulls in another file's text; includes are then refused by
+# \restrict and reported. Every statement that creates a routine names one of the keywords, so this filter
+# can only over-include; it exists because
+# files that cannot create a routine are often not applicable to an empty database (e.g. a role-provisioning
+# script driven by psql variables and \gexec). Building the keyword out of fragments — inside EXECUTE, or in a
+# query whose output \gexec runs ('FUNC' || 'TION') — would evade both this filter and the mention count;
 # that is not a shape this repository's DDL uses, and review is the control for it.
 #
 # ISOLATION. Nothing here reads a connection URL or touches an existing database. initdb creates a cluster
@@ -182,7 +185,7 @@ applied=0
 i=0
 for file in "$@"; do
   if ! grep -qiE 'function|procedure' "$file" \
-    && ! grep -qE '^[[:space:]]*\\(i|ir|include|include_relative)([[:space:]]|$)' "$file"; then
+    && ! grep -qE '\\(i|ir|include|include_relative)([^A-Za-z_]|$)' "$file"; then
     continue
   fi
   applied=$((applied + 1))

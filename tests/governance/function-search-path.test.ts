@@ -297,6 +297,17 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
     sql: "\\set ON_ERROR_STOP on\nSELECT 1/0;\nCREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
     expect: ['PINNED public.f()', 'UNVERIFIED'],
   },
+  // tier-1 round 3: an include is caught ANYWHERE on a line, so the file is applied (and the refusal
+  // reported) even though it never names FUNCTION/PROCEDURE itself.
+  'inline-include.sql': {
+    sql: 'SELECT 1; \\ir included.txt',
+    expect: ['UNVERIFIED'],
+  },
+  // \gexec that plainly generates a routine: applied (keyword), the meta-command refused, the text counted.
+  'gexec-plain.sql': {
+    sql: "SELECT 'CREATE FUNCTION g() RETURNS int LANGUAGE sql AS ''SELECT 1''' \\gexec",
+    expect: ['UNVERIFIED', 'UNVERIFIED'],
+  },
   // Pre-filter: a file that never names FUNCTION/PROCEDURE is not applied at all.
   'no-routine-keyword.sql': {
     sql: '\\set ON_ERROR_STOP on\nSELECT 1/0;',
@@ -312,6 +323,7 @@ describe('verify-function-search-path.sh — PostgreSQL answers the shapes a reg
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'search-path-gate-'));
     for (const [name, { sql }] of Object.entries(FIXTURES)) writeFileSync(join(dir, name), `${sql.replaceAll('@DIR@', dir)}\n`);
+    writeFileSync(join(dir, 'included.txt'), "CREATE FUNCTION inc() RETURNS int LANGUAGE sql AS 'SELECT 1';\n");
     run = gate(Object.keys(FIXTURES).map((n) => join(dir, n)));
     // ...but a file with a psql include is applied even without the keyword, and the include is refused.
     writeFileSync(join(dir, 'included.txt'), "CREATE FUNCTION inc() RETURNS int LANGUAGE sql AS 'SELECT 1';\n");
