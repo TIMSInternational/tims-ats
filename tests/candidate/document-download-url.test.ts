@@ -354,4 +354,13 @@ describe('S3 helpers (defence in depth)', () => {
     );
     expect(contentDispositionFor('inline', '', 'pdf')).toBe(`inline; filename="cv.pdf"; filename*=UTF-8''cv.pdf`);
   });
+
+  it('contentDispositionFor never throws on astral characters at the length cap or on lone surrogates', async () => {
+    const { contentDispositionFor } = await import('../../packages/api/src/lib/s3');
+    // 149 ASCII + an emoji: a UTF-16 slice(0, 150) would split the surrogate pair → URIError.
+    const capped = contentDispositionFor('inline', 'a'.repeat(149) + '\u{1F600}.pdf', 'pdf');
+    expect(capped).toContain(`filename*=UTF-8''${'a'.repeat(149)}%F0%9F%98%80.pdf`);
+    const lone = contentDispositionFor('inline', 'cv\uD800x\uDC00.pdf', 'pdf');
+    expect(lone).toBe(`inline; filename="cvx.pdf"; filename*=UTF-8''cvx.pdf`);
+  });
 });

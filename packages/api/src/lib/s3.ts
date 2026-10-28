@@ -100,17 +100,20 @@ export function cvKeyExtensionForOrg(orgId: string, key: string): 'pdf' | 'docx'
 }
 
 /**
- * A Content-Disposition value with a header-safe filename: control characters, quotes, backslashes
- * and path separators are removed from the ASCII fallback, and the RFC 5987 `filename*` carries the
- * original (percent-encoded) name for browsers that support it.
+ * A Content-Disposition value with a header-safe filename: control characters, quotes, backslashes,
+ * semicolons, path separators and lone surrogates are removed and the name is capped at 150 code
+ * points; the `filename` fallback is ASCII-only and the RFC 5987 `filename*` carries the UTF-8 name.
  */
 export function contentDispositionFor(disposition: 'inline' | 'attachment', fileName: string, ext: string): string {
-  const base = fileName
+  const cleaned = fileName
     .normalize('NFKC')
+    // Lone UTF-16 surrogates make encodeURIComponent throw; a stored name may carry one.
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f"\\/;]/g, '')
-    .trim()
-    .slice(0, 150);
+    .trim();
+  // Truncate by code point, never mid surrogate pair.
+  const base = Array.from(cleaned).slice(0, 150).join('');
   const name = base.toLowerCase().endsWith(`.${ext}`) ? base : `${base || 'cv'}.${ext}`;
   const ascii = name.replace(/[^\x20-\x7e]/g, '_');
   const encoded = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
