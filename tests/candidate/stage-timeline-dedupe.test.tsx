@@ -29,12 +29,17 @@ describe('candidate stage timeline', () => {
     },
   );
 
-  it.each([3, 5])('keeps the actual stage current when its name matches a built-in step at order %i', (order) => {
+  it.each([2, 3, 5])('keeps the actual stage current when its name matches a built-in step at order %i', (order) => {
     const steps = buildStageSteps(app('Preselección', order));
     expect(steps.filter((s) => s.isCurrent)).toEqual([
       { name: 'Preselección', date: null, isCurrent: true, isCompleted: false },
     ]);
     expect(steps.filter((s) => stripped(s.name) === 'preseleccion')).toHaveLength(1);
+  });
+
+  it.each([1, 2])('marks only the actual stage current when a placeholder shares its order (%i)', (order) => {
+    const steps = buildStageSteps(app('Entrevista técnica', order));
+    expect(steps.filter((s) => s.isCurrent).map((s) => s.name)).toEqual(['Entrevista técnica']);
   });
 
   it('keeps a distinct current stage as its own step', () => {

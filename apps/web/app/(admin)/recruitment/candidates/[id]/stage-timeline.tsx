@@ -44,22 +44,23 @@ export function buildStageSteps(app: Application): StageStep[] {
   // Deduplicate by name, ignoring accents and case. The candidate's actual stage always wins over a
   // built-in placeholder of the same name, so its real order (and "current" marker) is kept.
   const indexByKey = new Map<string, number>();
-  const unique: Array<{ name: string; order: number }> = [];
+  const unique: Array<{ name: string; order: number; isActual: boolean }> = [];
   for (const s of stages) {
     const key = stageKey(s.name);
     const existing = indexByKey.get(key);
     if (existing === undefined) {
       indexByKey.set(key, unique.length);
-      unique.push({ name: s.name, order: s.order });
+      unique.push({ name: s.name, order: s.order, isActual: 'isActual' in s });
     } else if ('isActual' in s) {
-      unique[existing] = { name: s.name, order: s.order };
+      unique[existing] = { name: s.name, order: s.order, isActual: true };
     }
   }
 
   return unique.map((s) => ({
     name: s.name,
     date: s.order === 0 ? formatDate(app.appliedAt) : null,
-    isCurrent: s.order === currentOrder,
+    // Identity, not order: a built-in placeholder can share the actual stage's order number.
+    isCurrent: s.isActual,
     isCompleted: s.order < currentOrder,
   }));
 }
