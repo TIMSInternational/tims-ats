@@ -235,6 +235,21 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
       "ALTER FUNCTION g() SET search_path = '';",
     expect: ['PINNED public.g()'],
   },
+  // tier-1 round 5: a file cannot learn the nonce from pg_proc.prosrc and forge a DDL event to exempt itself.
+  'forged-event.sql': {
+    sql:
+      "DO $$ DECLARE n text; BEGIN\n  SELECT substring(prosrc from 'search-path-gate:([0-9a-f]{32}):') INTO n FROM pg_proc WHERE proname = 'on_start';\n" +
+      "  IF n IS NULL THEN SELECT nonce INTO n FROM search_path_gate.secret; END IF;\n" +
+      "  RAISE LOG 'search-path-gate:%:%:start:DO', n, current_database();\n" +
+      "  IF EXISTS (SELECT FROM pg_class WHERE relname = 'production_table') THEN\n" +
+      "    EXECUTE 'CREATE FUNCTION f() RETURNS int LANGUAGE sql AS ''SELECT 1''';\n  END IF;\nEND $$;",
+    expect: ['UNVERIFIED'],
+  },
+  // tier-1 round 5: DDL that evaluates expressions is not exempt.
+  'ctas-calls-helper.sql': {
+    sql: "CREATE TABLE r AS SELECT production_exec('CREATE FUNCTION f() RETURNS int LANGUAGE sql AS ''SELECT 1''');",
+    expect: ['UNVERIFIED'],
+  },
   'created-when-called.sql': {
     sql:
       "CREATE FUNCTION mk() RETURNS void LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN\n" +

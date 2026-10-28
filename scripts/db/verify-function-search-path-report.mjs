@@ -17,12 +17,16 @@
 //     `function|procedure` a SECOND time — a body that creates routines when called (tier-1 round 4);
 //   - a routine created INSIDE another statement (ps = DO, SELECT, CALL, ...) is dynamic: which declarations
 //     such code runs depends on database state, so it is UNVERIFIED even though what ran is checked (round 2);
-//   - any other DDL statement (CREATE TRIGGER ... EXECUTE FUNCTION, GRANT ... ON FUNCTION, ALTER FUNCTION,
-//     COMMENT ON FUNCTION) cannot create a routine when it runs, so it is not text-checked;
-//   - every remaining statement — DO, SELECT, CALL, or one that failed before the server ran it — whose text
+//   - a statement the server tags as DDL that evaluates no expressions (INERT_DDL below: CREATE TRIGGER ...
+//     EXECUTE FUNCTION, GRANT/REVOKE/COMMENT/ALTER ON FUNCTION, DROP) cannot create a routine when it runs, so
+//     it is not text-checked;
+//   - every remaining statement — DO, SELECT, CALL, CREATE TABLE AS and other expression-evaluating DDL, or one
+//     that failed before the server ran it — whose text
 //     contains the substrings `create` and `function` or `procedure` anywhere, in any case, is UNVERIFIED: a
 //     routine on a path the scratch database did not take (a DO block that failed first, an untaken IF, a
 //     loop) cannot be checked (rounds 1, 2, 4).
+// Event authenticity: the marker carries a per-run nonce that is stored where the applying role cannot read it,
+// so SQL in a file cannot forge an event (round 5).
 // The text checks are SUBSTRING tests on what the server received — comments, literals and escape sequences
 // such as E'CREATE\nFUNCTION' included — so they can only over-report, which fails closed. A keyword spelled
 // out of fragments or character codes ('FUNC' || 'TION', chr(70)) evades them; see the gate script header.
@@ -39,6 +43,13 @@ if (!logPath || !nonce || !db || !label) {
 const MARK = `search-path-gate:${nonce}:${db}:`;
 const PSQL_INTERNAL = /^(SAVEPOINT|RELEASE|ROLLBACK TO) pg_psql_temporary_savepoint$/;
 const ROUTINE = new Set(['CREATE FUNCTION', 'CREATE PROCEDURE']);
+// DDL that evaluates no expressions, so it cannot run code that creates a routine (tier-1 round 5): only these
+// are exempt from the text check. CREATE TABLE AS, ALTER TABLE ... DEFAULT, CREATE INDEX on an expression and
+// the rest are text-checked like any other statement.
+const INERT_DDL = new Set([
+  'CREATE TRIGGER', 'DROP TRIGGER', 'GRANT', 'REVOKE', 'COMMENT', 'ALTER FUNCTION', 'ALTER PROCEDURE',
+  'ALTER ROUTINE', 'DROP FUNCTION', 'DROP PROCEDURE', 'DROP ROUTINE', 'ALTER DEFAULT PRIVILEGES',
+]);
 const count = (text, re) => (text.match(re) ?? []).length;
 
 /**
@@ -113,7 +124,7 @@ for (const s of statements) {
     if (creates >= 2 && routines >= 2) {
       unverified(s, 'the routine body itself mentions creating a routine (it would create one when called), which cannot be checked here');
     }
-  } else if (topTag === null && creates >= 1 && routines >= 1) {
+  } else if (!(topTag !== null && INERT_DDL.has(topTag)) && creates >= 1 && routines >= 1) {
     unverified(s, 'the statement mentions CREATE and FUNCTION/PROCEDURE but created no routine at top level; a path the scratch database did not take cannot be checked');
   }
 }
