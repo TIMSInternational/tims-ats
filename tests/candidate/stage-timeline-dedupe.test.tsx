@@ -42,6 +42,12 @@ describe('candidate stage timeline', () => {
     expect(steps.filter((s) => s.isCurrent).map((s) => s.name)).toEqual(['Entrevista técnica']);
   });
 
+  it('lists completed steps before the actual stage after it replaces a placeholder', () => {
+    const steps = buildStageSteps(app('Preselección', 3));
+    expect(steps.map((s) => s.name)).toEqual(['Postulada', 'Evaluaciones', 'Preselección', 'Oferta', 'Contratación']);
+    expect(steps.map((s) => s.isCompleted)).toEqual([true, true, false, false, false]);
+  });
+
   it('keeps a distinct current stage as its own step', () => {
     const steps = buildStageSteps(app('Entrevista técnica', 3));
     expect(steps.map((s) => s.name)).toContain('Entrevista técnica');

@@ -56,6 +56,9 @@ export function buildStageSteps(app: Application): StageStep[] {
     }
   }
 
+  // A replaced placeholder keeps its slot but takes the actual stage's order; re-sort (stable).
+  unique.sort((a, b) => a.order - b.order);
+
   return unique.map((s) => ({
     name: s.name,
     date: s.order === 0 ? formatDate(app.appliedAt) : null,
