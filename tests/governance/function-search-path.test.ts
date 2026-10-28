@@ -342,6 +342,11 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
     sql: "CREATE FUNCTION f(x no_such_type) RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
     expect: ['UNVERIFIED'],
   },
+  // tier-1 round 8: rejected by the scanner (invalid Unicode escape, 22025) before it is logged as received.
+  'scanner-error.sql': {
+    sql: "CREATE FUNCTION f() RETURNS text LANGUAGE sql AS E'\\u12';",
+    expect: ['SYNTAX'],
+  },
   'syntax-error.sql': {
     sql: 'CREATE FUNCTION f( RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;',
     expect: ['SYNTAX'],

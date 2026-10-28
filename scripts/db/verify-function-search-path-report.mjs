@@ -5,7 +5,8 @@
 //   PINNED     <file>: <routine>    a CREATE FUNCTION/PROCEDURE completed and proconfig has search_path=
 //   UNPINNED   <file>: <routine>    it completed without one
 //   UNVERIFIED <file>: <reason>     a routine-creating statement could not be checked (see below)
-//   SYNTAX     <file>: <message>    PostgreSQL could not parse a statement (SQLSTATE 42601)
+//   SYNTAX     <file>: <message>    PostgreSQL rejected a statement before running it (42601, or any error
+//                                   on a statement it never logged as received, e.g. 22025 from the scanner)
 //
 // Everything is attributed per STATEMENT as the server received it (log_statement=all), so psql's lexer — not
 // ours — decides where statements begin and end. The event trigger logs the tag of EVERY DDL command at
@@ -64,7 +65,7 @@ const syntax = [];
 
 for (const raw of readFileSync(logPath, 'utf8').split('\n')) {
   if (!raw.trim()) continue;
-  /** @type {{ dbname?: string, session_id?: string, error_severity?: string, state_code?: string, message?: string, ps?: string }} */
+  /** @type {{ dbname?: string, session_id?: string, error_severity?: string, state_code?: string, message?: string, ps?: string, statement?: string }} */
   let e;
   try {
     e = JSON.parse(raw);
@@ -93,8 +94,11 @@ for (const raw of readFileSync(logPath, 'utf8').split('\n')) {
     continue;
   }
   if (e.error_severity === 'ERROR') {
-    if (e.state_code === '42601') syntax.push(msg);
-    if (stmt) stmt.errors.push(`${e.state_code ?? '?'}: ${msg}`);
+    // Rejected before the server logged it as received (a syntax error, or a scanner error such as an invalid
+    // escape, 22025): nothing in it ran, so a routine inside it went unseen — whatever the SQLSTATE (round 8).
+    const rejected = e.statement !== undefined && e.statement !== stmt?.text;
+    if (e.state_code === '42601' || rejected) syntax.push(`${e.state_code ?? '?'}: ${msg}`);
+    if (stmt && !rejected) stmt.errors.push(`${e.state_code ?? '?'}: ${msg}`);
   }
 }
 
