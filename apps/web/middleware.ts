@@ -53,7 +53,8 @@ function isBearerLinkPathname(pathname: string): boolean {
     pathname === '/accept-invitation' ||
     pathname === '/reset-password' ||
     pathname.startsWith('/offers/sign/') ||
-    pathname.startsWith('/interview/join/')
+    pathname.startsWith('/interview/join/') ||
+    pathname.startsWith('/ai-interview/')
   );
 }
 

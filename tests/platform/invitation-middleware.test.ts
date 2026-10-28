@@ -49,3 +49,15 @@ it('lets a candidate open the interview join link without a session, never cache
   expect(response.headers.get('cache-control')).toBe('no-store');
   expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive');
 });
+
+it('marks AI interview bearer links noindex, uncached and Referer-free', async () => {
+  const response = await middleware(
+    new NextRequest('https://app.tims.com/ai-interview/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde', {
+      headers: { host: 'app.tims.com' },
+    }),
+  );
+  expect(response.headers.get('location')).toBeNull();
+  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive');
+});

@@ -17,6 +17,7 @@ describe('robots.txt policy', () => {
       '/reset-password',
       '/offers/sign/',
       '/interview/join/',
+      '/ai-interview/',
     ]);
     expect(rule?.disallow).toEqual(['/']);
   });
