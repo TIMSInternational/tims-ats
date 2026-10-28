@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
-const SYSTEM_PROMPT = `You are a professional HR job description writer for a Latin American enterprise HR platform.
+export const VACANCY_WRITER_SYSTEM_PROMPT = `You are a professional HR job description writer for a Latin American enterprise HR platform.
 Generate compelling, inclusive job descriptions in Spanish, as 3 variants for different publishing channels.
 
 Output format: a single JSON object with this exact structure:
@@ -32,7 +32,7 @@ Rules:
 - Do NOT invent company-specific details not provided in the input
 - Length limits: formal description under 8000 characters, social under 3000, whatsapp under 2000; at most 20 items per section, each under 500 characters`;
 
-const outputSchema = z.object({
+export const vacancyWriterOutputSchema = z.object({
   formal: z.object({
     description: z.string().max(8000),
     sections: z.object({
@@ -45,7 +45,7 @@ const outputSchema = z.object({
   whatsapp: z.object({ description: z.string().max(2000) }),
 });
 
-export type VacancyDescriptionVariants = z.infer<typeof outputSchema>;
+export type VacancyDescriptionVariants = z.infer<typeof vacancyWriterOutputSchema>;
 
 export async function generateVacancyDescription(
   orgId: string,
@@ -56,12 +56,12 @@ export async function generateVacancyDescription(
     slug: 'vacancy-writer',
     orgId,
     input: { title, context: context ?? null },
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: VACANCY_WRITER_SYSTEM_PROMPT,
     buildUserMessage: ({ title, context }) => {
       const body = `Title: ${title}${context ? `\nAdditional context: ${context}` : ''}`;
       return `${wrapAsData('job_data', body)}\n\nGenerate the 3 variants (formal, social, whatsapp) of a professional job description for this position.`;
     },
-    schema: outputSchema,
+    schema: vacancyWriterOutputSchema,
     // Never surfaced: a degraded result is turned into an error below, so raw
     // (possibly oversized or JSON) model text or an empty timeout result can
     // never be offered to the recruiter as a description to apply.

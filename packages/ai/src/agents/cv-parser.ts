@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
-const SYSTEM_PROMPT = `You are a CV/resume parser for an HR platform. Extract structured data from CV text.
+export const CV_PARSER_SYSTEM_PROMPT = `You are a CV/resume parser for an HR platform. Extract structured data from CV text.
 
 Output format: JSON with the following structure:
 {
@@ -27,9 +27,10 @@ Rules:
 - Skills should be individual items, not grouped
 - If information is not available, use null
 - Parse dates as years (not full dates)
-- Length limits: at most 100 skills, 30 experience entries, 20 education entries and 20 languages; each description and the summary under 2000 characters`;
+- Length limits: at most 100 skills, 30 experience entries, 20 education entries and 20 languages
+- Field limits: name, company, title, institution and degree under 200 characters; email under 320; phone under 50; each skill and language under 100; each experience description and the summary under 2000`;
 
-const outputSchema = z.object({
+export const cvParserOutputSchema = z.object({
   name: z.string().max(200).nullable(),
   email: z.string().max(320).nullable(),
   phone: z.string().max(50).nullable(),
@@ -50,7 +51,7 @@ const outputSchema = z.object({
   summary: z.string().max(2000).nullable(),
 });
 
-export type ParsedCVData = z.infer<typeof outputSchema>;
+export type ParsedCVData = z.infer<typeof cvParserOutputSchema>;
 
 const EMPTY_CV: ParsedCVData = {
   name: null, email: null, phone: null, skills: [], experience: [], education: [], languages: [], summary: null,
@@ -66,10 +67,10 @@ export async function parseCV(
     slug: 'cv-parser',
     orgId,
     input: { cvText: cvText.slice(0, 8000) },
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: CV_PARSER_SYSTEM_PROMPT,
     buildUserMessage: ({ cvText }) =>
       `${wrapAsData('cv_text', cvText)}\n\nParse this CV and extract structured data. Return JSON only.`,
-    schema: outputSchema,
+    schema: cvParserOutputSchema,
     fallback: () => EMPTY_CV,
     maxTokens: 2048,
   });

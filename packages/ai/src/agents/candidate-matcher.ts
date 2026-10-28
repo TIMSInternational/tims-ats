@@ -25,7 +25,8 @@ Rules:
 - matchScore reflects how well the candidate's title/skills/experience fit that vacancy's
   title alone — be conservative when little signal is available
 - suggestedActions must contain between 1 and 5 short, concrete recruiter actions (e.g.
-  "Schedule technical assessment"), grounded only in the given profile/vacancy data
+  "Schedule technical assessment"), grounded only in the given profile/vacancy data, each
+  under 200 characters
 - Do NOT fabricate candidate history, employers, or vacancy details you were not given
 - Respond in Spanish unless the vacancy titles are clearly in another language
 
