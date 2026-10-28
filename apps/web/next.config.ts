@@ -8,6 +8,8 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // No `x-powered-by: Next.js` response header (do not advertise the framework).
+  poweredByHeader: false,
   // Monorepo: trace from the repo root so file tracing can see the pnpm store
   // (workspace packages + the Prisma query-engine binary live two levels up).
   outputFileTracingRoot: path.join(__dirname, "../../"),

@@ -1135,6 +1135,10 @@ try
     // ClientIp kernel, which is pinned cross-stack.
     app.UseMiddleware<TrustedProxyHeaderMiddleware>();
 
+    // nosniff + HSTS on every response (including CORS preflights and error responses) outside
+    // Development. Header-only, reads nothing from the request.
+    app.UseMiddleware<SecurityHeadersMiddleware>();
+
     // CORS runs FIRST among the request-handling middlewares — an unauthenticated preflight (OPTIONS) is
     // answered by this middleware before it can reach authentication or the fail-closed rate limiter.
     app.UseCors(BrowserCorsPolicyName);
