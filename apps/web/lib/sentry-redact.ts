@@ -121,12 +121,13 @@ function scrubJsonText(text: string, depth: number): string | null {
 // encoding of the value can survive. Sensitive: the credential parameters, plus tRPC's `input`, which carries
 // the whole procedure input (a credential or personal data) and is never needed to debug an error.
 const DROPPED_QUERY_PARAMS: ReadonlySet<string> = new Set([...BEARER_QUERY_PARAMS, 'input']);
-// Only the parameter NAME is matched by pattern. A dropped value then runs to the real query boundary (`&`, `#`,
-// whitespace): URL parsers keep a literal `;` or `?` inside a value, so stopping there would leave its tail
-// behind. Scanning resumes right after each `=`, so a parameter nested in a decoded URL (`?next=/x?input=…`) is
+// Only the parameter NAME is matched by pattern. A dropped value then runs to the real query boundary (`&` or
+// `#`): URL parsers keep a literal `;` or `?` inside a value, and a raw `query_string` may hold unencoded JSON with
+// spaces, so stopping at any of those would leave its tail behind. Over-redaction (a URL quoted mid-sentence loses
+// the rest of the sentence) is the accepted cost. Scanning resumes right after each `=`, so a parameter nested in a decoded URL (`?next=/x?input=…`) is
 // still seen on its own.
 const QUERY_PARAMETER_NAME = /(?:^|[?&;#])([^=&#?;\s"'<>]+)=/g;
-const QUERY_VALUE_END = /[&#\s]/;
+const QUERY_VALUE_END = /[&#]/;
 
 function queryParamName(raw: string): string {
   let name = raw;

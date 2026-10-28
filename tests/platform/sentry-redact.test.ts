@@ -158,6 +158,13 @@ describe('Sentry join-token redaction', () => {
     }
   });
 
+  it('drops a raw (unencoded) input value containing spaces in a string query_string (codex r12)', () => {
+    const event = redactSentryEvent({
+      request: { query_string: 'input={"cvText":"prefix medical-history"}&batch=1' },
+    });
+    expect(event.request.query_string).toBe('input=[redacted]&batch=1');
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);
