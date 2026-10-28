@@ -261,7 +261,9 @@ public sealed class DynamoDbRateLimitStore
     /// <summary>
     /// Runs <paramref name="call"/> under <see cref="TimeoutMs"/>. Expiry cancels the in-flight request and
     /// surfaces as <see cref="TimeoutException"/>; a cancellation the CALLER requested (client went away)
-    /// still surfaces as <see cref="OperationCanceledException"/>.
+    /// still surfaces as <see cref="OperationCanceledException"/>. The deadline is enforced on the await
+    /// itself, so a call that does not observe its token (e.g. an SDK credential refresh) is abandoned at
+    /// the deadline instead of holding the request open.
     /// </summary>
     private static async Task<T> WithDeadlineAsync<T>(Func<CancellationToken, Task<T>> call, CancellationToken cancellationToken)
     {
@@ -269,7 +271,14 @@ public sealed class DynamoDbRateLimitStore
         deadline.CancelAfter(TimeoutMs);
         try
         {
-            return await call(deadline.Token).ConfigureAwait(false);
+            return await call(deadline.Token)
+                .WaitAsync(TimeSpan.FromMilliseconds(TimeoutMs), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            deadline.Cancel();
+            throw new TimeoutException("Shared rate-limit store timed out");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

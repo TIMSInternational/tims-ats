@@ -302,4 +302,20 @@ public sealed class DynamoDbRateLimitStoreTests(DynamoDbRateLimitFixture fixture
         Assert.True(cancelled, "the in-flight request must be cancelled, not just abandoned");
         Assert.InRange(started.ElapsedMilliseconds, DynamoDbRateLimitStore.TimeoutMs - 100, DynamoDbRateLimitStore.TimeoutMs + 2_000);
     }
+
+    [Fact]
+    public async Task A_store_call_that_ignores_cancellation_still_times_out_at_the_deadline()
+    {
+        var (client, hooks) = HookedDynamoDb.Wrap(fixture.Client);
+        var never = new TaskCompletionSource<GetItemResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        hooks.Override = (method, _) =>
+            method.Name == nameof(Amazon.DynamoDBv2.IAmazonDynamoDB.GetItemAsync) ? never.Task : null;
+        var store = new DynamoDbRateLimitStore(client, DynamoDbRateLimitFixture.TableName);
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var call = store.SlidingWindowAsync(RateLimitCategory.Query, NewId());
+        Assert.Same(call, await Task.WhenAny(call, Task.Delay(10_000)));
+        await Assert.ThrowsAsync<TimeoutException>(() => call);
+        Assert.InRange(started.ElapsedMilliseconds, DynamoDbRateLimitStore.TimeoutMs - 100, DynamoDbRateLimitStore.TimeoutMs + 2_000);
+    }
 }
