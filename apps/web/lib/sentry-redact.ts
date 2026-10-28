@@ -85,6 +85,11 @@ const QUOTED_KEY_VALUE = new RegExp(
   `((["'])(?:${KEY_ALT})\\2\\s*[:=]\\s*)(["'\`])(?:(?!\\3)[^\\\\]|\\\\.)+(?=\\3)`,
   'gi',
 );
+// A credential value whose closing quote never comes (a message truncated mid-value): redacted to the end.
+const UNTERMINATED_CREDENTIAL_VALUE = new RegExp(
+  `((?:^|[^A-Za-z0-9_$\\\\])["']?(?:${KEY_ALT})["']?\\s*[:=]\\s*)(["'\`])(?:(?!\\2)[^\\\\]|\\\\[\\s\\S])*$`,
+  'i',
+);
 const DIAGNOSTIC_BARE_VALUE = new RegExp(
   `(${KEY_BOUNDARY}(?:${KEY_ALT})\\s*[:=]\\s*)(?!["'\`\\[{])[^\\s,;}\\])&#"'<>]{6,}`,
   'gi',
@@ -136,20 +141,25 @@ function scrubCredentialFilterObjects(value: string): string {
     for (const span of spans) {
       if (span[0] < match.index && span[1] >= match.index && (best === null || span[0] > best[0])) best = span;
     }
-    // No enclosing object could be established (a fragment, or quoting the scan could not follow): fail closed —
-    // from the nearest preceding `{` (or the start of the text) to the end.
-    if (best === null) {
-      const brace = value.lastIndexOf('{', match.index);
-      cuts.push([brace === -1 ? 0 : brace, value.length - 1]);
-      continue;
-    }
-    cuts.push(best);
+    // No enclosing object could be established (a fragment, or quoting the scan could not follow): fail closed
+    // and drop the whole string; no brace found without the scan can be trusted to bound the filter.
+    if (best === null) return REDACTED;
+    // Quote tracking can be misled by prose (`wrapped "{ … "{", path: … }`) into a span that starts too late, so
+    // the cut starts at the FIRST `{` of the string instead: over-redaction, never a comparison left before it.
+    const first = value.indexOf('{');
+    cuts.push([first !== -1 && first < best[0] ? first : best[0], best[1]]);
   }
   cuts.sort((a, b) => a[0] - b[0]);
+  // Overlapping cuts are merged, so a later filter's object is never left out because an earlier cut began first.
+  const merged: Array<[number, number]> = [];
+  for (const cut of cuts) {
+    const prev = merged[merged.length - 1];
+    if (prev && cut[0] <= prev[1]) prev[1] = Math.max(prev[1], cut[1]);
+    else merged.push([cut[0], cut[1]]);
+  }
   let out = '';
   let last = 0;
-  for (const [open, close] of cuts) {
-    if (open < last) continue; // inside a span already cut
+  for (const [open, close] of merged) {
     const closed = value[close] === '}' && close > open;
     out += `${value.slice(last, open)}${value[open] === '{' ? `{${REDACTED}${closed ? '}' : ''}` : REDACTED}`;
     last = close + 1;
@@ -242,6 +252,7 @@ function scrubPatterns(value: string): string {
     .replace(DIAGNOSTIC_QUOTED_VALUE, `$1$2${REDACTED}`)
     .replace(QUOTED_KEY_VALUE, `$1$3${REDACTED}`)
     .replace(DIAGNOSTIC_BARE_VALUE, `$1${REDACTED}`)
+    .replace(UNTERMINATED_CREDENTIAL_VALUE, `$1$2${REDACTED}`)
     .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
 }
 

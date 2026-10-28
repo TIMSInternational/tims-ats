@@ -274,7 +274,8 @@ describe('Sentry join-token redaction', () => {
       expect(redactBearerTokens(value), value).not.toContain(TOKEN);
       expect(JSON.stringify(redactSentryEvent({ message: value })), value).not.toContain(TOKEN);
     }
-    expect(redactBearerTokens(nested)).toBe('Invalid args: { settings: {[redacted]}, id: 1 }');
+    // The cut starts at the first `{` of the string (conservative); what follows the filter object survives.
+    expect(redactBearerTokens(nested)).toBe('Invalid args: {[redacted]}, id: 1 }');
     expect(redactBearerTokens(`{ path: ["signingToken"], equals: "${TOKEN}"`)).not.toContain(TOKEN);
     // Quoted braces and many filters (codex r24).
     const quotedBrace = `Invalid args: { equals: "${TOKEN}", string_contains: "{", path: ["signingToken"] }`;
@@ -292,6 +293,15 @@ describe('Sentry join-token redaction', () => {
     expect(redactBearerTokens(`Can't run query: { equals: "${TOKEN}", path: ["signingToken"] }`)).toBe(
       "Can't run query: {[redacted]}",
     );
+    // Fail closed on an unparseable enclosure, and on truncated values (codex r26).
+    expect(
+      redactBearerTokens(`wrapped "{ equals: "${TOKEN}", string_contains: "{", path: ["signingToken"] }`),
+    ).not.toContain(TOKEN);
+    for (const q of ['"', "'", '`']) {
+      const value = `Error: { candidateToken: ${q}${TOKEN}`;
+      expect(redactBearerTokens(value), value).toBe(`Error: { candidateToken: ${q}[redacted]`);
+      expect(JSON.stringify(redactSentryEvent({ message: value })), value).not.toContain(TOKEN);
+    }
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);
