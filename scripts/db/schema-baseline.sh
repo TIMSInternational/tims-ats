@@ -128,10 +128,18 @@ if [ "${SCHEMA_DRIFT_OBJECTS_ONLY:-}" = "1" ] || [ "${GITHUB_ACTIONS:-}" = "true
 # \restrict) belong to "(dump preamble)". Only entry identities (Type, Schema, Name, reduced to a safe
 # character set and truncated) and counts are printed. No dump line is echoed on this path.
 #
-# Residual, documented rather than parsed away: a function body or comment containing that exact three-line
-# header shape would open a pseudo-entry, mis-attributing the following lines to an identity taken from the
-# body text. That can print at most that one sanitised, truncated identity, and it cannot change the exit
-# code: drift is decided by `diff` over the full dumps, never by this summary.
+# WHAT MAY BE PRINTED IN OBJECTS-ONLY MODE (#336 tier-1 round 1). The TOC header is recognised by shape, so
+# a function body or comment that contains the exact three-line header opens a pseudo-entry whose "name" is
+# arbitrary body text. Identities are therefore printed only when they cannot carry untrusted text:
+#   - "-" and "~" entries exist in the OLD file, which is the committed baseline: every identity printed for
+#     them is a string already published in this repository;
+#   - "+" entries exist only in the live dump, so their names are NEVER printed. They are shown as the TOC
+#     type, taken from a fixed allowlist of pg_dump types (anything else prints as OTHER), plus the first 12
+#     hex digits of the identity's SHA-256 so that distinct new objects stay distinguishable. The names are
+#     in the full local diff and in the capture artifact.
+# Nothing printed is copied from the live dump. A forged header can still mis-attribute lines, which only
+# changes WHICH committed identity, type word or hash is printed; it cannot change the exit code, because
+# drift is decided by `diff` over the full dumps, never by this summary.
 toc_records() {
   awk '
     function field(s, from, to,    a, b) {
@@ -159,8 +167,32 @@ toc_records() {
     }' "$1"
 }
 
+# pg_dump TOC entry types (src/bin/pg_dump). Used only to print the type of a NEW entry, whose name is
+# withheld in objects-only mode; a type outside this list prints as OTHER. First match wins, so every type is
+# listed BEFORE any shorter type that is its prefix ("DEFAULT ACL" before "DEFAULT").
+TOC_TYPES=("ACCESS METHOD" "ACL" "AGGREGATE" "CAST" "CHECK CONSTRAINT" "COLLATION" "COMMENT" "CONSTRAINT"
+  "CONVERSION" "DATABASE" "DEFAULT ACL" "DEFAULT" "DOMAIN" "EVENT TRIGGER" "EXTENSION" "FK CONSTRAINT"
+  "FOREIGN DATA WRAPPER" "FOREIGN TABLE" "FUNCTION" "INDEX ATTACH" "INDEX" "LARGE OBJECT" "MATERIALIZED VIEW"
+  "OPERATOR CLASS" "OPERATOR FAMILY" "OPERATOR" "POLICY" "PROCEDURAL LANGUAGE" "PROCEDURE" "PUBLICATION TABLE"
+  "PUBLICATION TABLES IN SCHEMA" "PUBLICATION" "ROW SECURITY" "RULE" "SCHEMA" "SECURITY LABEL"
+  "SEQUENCE OWNED BY" "SEQUENCE SET" "SEQUENCE" "SERVER" "SHELL TYPE" "STATISTICS" "SUBSCRIPTION TABLE"
+  "SUBSCRIPTION" "TABLE ATTACH" "TABLE" "TEXT SEARCH CONFIGURATION" "TEXT SEARCH DICTIONARY"
+  "TEXT SEARCH PARSER" "TEXT SEARCH TEMPLATE" "TRANSFORM" "TRIGGER" "TYPE" "USER MAPPING" "VIEW")
+
+# withheld_identity KEY → "<TYPE> [new; name withheld, sha256:<12 hex>]". Prints nothing derived from KEY
+# except the allowlisted type word and the hash. Without a SHA-256 tool the hash is omitted, not the line.
+withheld_identity() {
+  local key="$1" type="OTHER" t h=""
+  for t in "${TOC_TYPES[@]}"; do
+    case "$key" in "$t "*) type="$t"; break ;; esac
+  done
+  if command -v sha256sum >/dev/null 2>&1; then h="$(printf '%s' "$key" | sha256sum | cut -c1-12)"
+  elif command -v shasum >/dev/null 2>&1; then h="$(printf '%s' "$key" | shasum -a 256 | cut -c1-12)"; fi
+  echo "$type [new; name withheld${h:+, sha256:$h}]"
+}
+
 # object_summary OLD NEW → one "<sign> <TOC identity>" line per changed entry ("+" only in NEW, "-" only in
-# OLD, "~" in both but different), then counts. Identities and numbers only, never dump text.
+# OLD, "~" in both but different), then counts. In objects-only mode "+" names are withheld (see above).
 object_summary() {
   local t us
   t="$(mktemp -d)"
@@ -173,13 +205,16 @@ object_summary() {
     FILENAME == ARGV[2] { n[$1] = 1; next }
     { s = (($0 in o) && ($0 in n)) ? "~" : (($0 in n) ? "+" : "-"); print s " " $0 }
   ' "$t/old.rec" "$t/new.rec" "$t/changed.keys" >"$t/summary"
-  local objects added removed modified lines
+  local objects added removed modified lines sign key
   objects="$(grep -c . "$t/summary" || true)"
   added="$(grep -c '^+ ' "$t/summary" || true)"
   removed="$(grep -c '^- ' "$t/summary" || true)"
   modified="$(grep -c '^~ ' "$t/summary" || true)"
   lines="$({ diff -U0 "$1" "$2" || true; } | grep -cE '^[+-][^+-]' || true)"
-  head -200 "$t/summary"
+  head -200 "$t/summary" | while IFS= read -r line; do
+    sign="${line%% *}"; key="${line#? }"
+    if [ "$OBJECTS_ONLY" = "1" ] && [ "$sign" = "+" ]; then echo "+ $(withheld_identity "$key")"; else echo "$line"; fi
+  done
   if [ "$objects" -gt 200 ]; then echo "... and $((objects - 200)) more changed object(s), not listed"; fi
   echo "($objects changed object(s): +$added added, -$removed removed, ~$modified modified; $lines changed line(s), no schema text printed)"
   rm -rf "$t"

@@ -296,6 +296,8 @@ jobs:
 
           1. READ capture-summary.txt. Every '+'/'-'/'~' object it lists is a real production change. If one is
              not explained by a reviewed change, STOP — docs/architecture/ddl-governance.md section 7.
+             NEW objects are listed by type and hash only (their names come from the unreviewed dump);
+             read their names in the patch below.
           2. Apply on a branch cut from $GITHUB_SHA (or rebase onto it):
                git apply schema-baseline-recapture.patch
              (or copy the files/ tree over the repo root).
