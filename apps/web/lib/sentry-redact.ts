@@ -92,13 +92,14 @@ const DIAGNOSTIC_BARE_VALUE = new RegExp(
 
 // A Prisma JSON-path filter on a credential field, as echoed by a Prisma diagnostic:
 // `{ path: ["signingToken"], equals: "…" }` (either order, within one object). The compared value is the credential.
-const JSON_FILTER_OPS = 'equals|not|string_contains|string_starts_with|string_ends_with|array_contains';
+// Once a filter targets a credential path, EVERY sibling is a comparison on the credential (equals, not, gt, gte,
+// lt, lte, string_*, array_*, and any operator Prisma adds later); only `path` and `mode` carry no value of it.
 const CREDENTIAL_PATH = `["']?path["']?\\s*:\\s*\\[[^\\]{}]*["'](?:${KEY_ALT})["'][^\\]{}]*\\]`;
 const QUOTED = `(["'\`])(?:(?!\\2)[^\\\\]|\\\\.)+(?=\\2)`;
-const FILTER_OP = `["']?(?:${JSON_FILTER_OPS})["']?`;
+const FILTER_OP = `(?<![A-Za-z0-9_$])["']?(?!(?:path|mode)["'\\s:])[A-Za-z_][A-Za-z0-9_]*["']?`;
 const PATH_THEN_VALUE = new RegExp(`(${CREDENTIAL_PATH}[^{}]*?${FILTER_OP}\\s*:\\s*)${QUOTED}`, 'gi');
 const VALUE_THEN_PATH = new RegExp(`(${FILTER_OP}\\s*:\\s*)${QUOTED}(?=[^{}]*?${CREDENTIAL_PATH})`, 'gi');
-const FILTER_OP_SET: ReadonlySet<string> = new Set(JSON_FILTER_OPS.split('|'));
+const FILTER_NON_VALUE_KEYS: ReadonlySet<string> = new Set(['path', 'mode']);
 const CREDENTIAL_PATH_TEST = new RegExp(CREDENTIAL_PATH, 'i');
 const FILTER_OP_VALUE = new RegExp(`(${FILTER_OP}\\s*:\\s*)(?:${QUOTED}|\\[[^\\]]*\\])`, 'gi');
 const INNERMOST_OBJECT = /\{[^{}]*\}/g;
@@ -343,7 +344,7 @@ function scrub(node: unknown, depth: number): unknown {
     filterPath.some((segment) => typeof segment === 'string' && CREDENTIAL_KEY_SET.has(segment.toLowerCase()))
   ) {
     for (const key of Object.keys(record)) {
-      if (FILTER_OP_SET.has(key) && record[key] !== null && record[key] !== undefined) record[key] = REDACTED;
+      if (!FILTER_NON_VALUE_KEYS.has(key) && record[key] !== null && record[key] !== undefined) record[key] = REDACTED;
     }
   }
   for (const key of Object.keys(record)) {

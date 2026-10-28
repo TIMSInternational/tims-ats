@@ -259,6 +259,15 @@ describe('Sentry join-token redaction', () => {
       'Invalid `prisma.offer.findMany()` invocation: [arguments redacted]',
     );
     expect(redactBearerTokens('{ token: { equals: "x" }, status: "ok" }')).toBe('{ token: {[redacted]}, status: "ok" }');
+    // Every operator, known or not (codex r22); path and mode survive.
+    for (const op of ['gte', 'gt', 'lt', 'lte', 'array_starts_with', 'array_ends_with', 'someFutureOp']) {
+      const text = `{ path: ["signingToken"], mode: "insensitive", ${op}: "${TOKEN}" }`;
+      expect(redactBearerTokens(text), op).not.toContain(TOKEN);
+      expect(redactBearerTokens(text), op).toContain('mode: "insensitive"');
+      const event = redactSentryEvent({ extra: { f: { path: ['signingToken'], mode: 'insensitive', [op]: TOKEN } } });
+      expect(JSON.stringify(event), op).not.toContain(TOKEN);
+      expect(event.extra.f.mode).toBe('insensitive');
+    }
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);
