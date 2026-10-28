@@ -218,6 +218,12 @@ describe('Sentry join-token redaction', () => {
     }
     // A filter on a non-credential path keeps its value.
     expect(redactBearerTokens('{ settings: { path: ["status"], equals: "signed" } }')).toContain('"signed"');
+    // A serialized diagnostic string, once and twice (codex r18).
+    const diag = `Invalid args: { settings: { path: ["signingToken"], equals: "${TOKEN}" } }`;
+    for (const value of [JSON.stringify(diag), JSON.stringify(JSON.stringify(diag))]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      expect(JSON.stringify(redactSentryEvent({ exception: { values: [{ value }] } })), value).not.toContain(TOKEN);
+    }
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);

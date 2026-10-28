@@ -153,9 +153,11 @@ const MAX_DECODE_LEVELS = 3;
 // JSON object or array.
 function scrubJsonText(text: string, depth: number): string | null {
   const trimmed = text.trim();
-  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"'))) return null;
   try {
     const parsed: unknown = JSON.parse(trimmed);
+    // A serialized string (`JSON.stringify(message)`): scrub its decoded content, then serialize it again.
+    if (typeof parsed === 'string') return JSON.stringify(redactBearerTokens(parsed, depth + 1));
     if (parsed === null || typeof parsed !== 'object') return null;
     return JSON.stringify(scrub(parsed, depth + 1));
   } catch {
