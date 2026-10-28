@@ -19,15 +19,15 @@ Rules:
 - Behavioral questions must ask for concrete past examples (STAR-style)
 - Never include questions about protected characteristics (age, family, religion, health, origin)
 - Respond in the same language as the vacancy description (Spanish for Spanish vacancies)
-- Max 6 questions per section`;
+- Max 6 questions per section, each question under 500 characters; section titles under 200 characters`;
 
 const outputSchema = z.object({
   sections: z
     .array(
       z.object({
-        title: z.string(),
+        title: z.string().max(200),
         duration: z.number().min(1).max(120),
-        questions: z.array(z.string()).min(1).max(6),
+        questions: z.array(z.string().max(500)).min(1).max(6),
       }),
     )
     .min(1)

@@ -39,6 +39,21 @@ const MODELS = {
 
 export type ModelId = keyof typeof MODELS;
 
+/**
+ * Hard ceiling on one Bedrock call (including the SDK's own retries). Without
+ * it a hung call holds the request until the platform kills the function; the
+ * circuit breaker only opens after repeated failures.
+ */
+export const BEDROCK_TIMEOUT_MS = 20_000;
+
+/** Thrown when a Bedrock call exceeds BEDROCK_TIMEOUT_MS. */
+export class BedrockTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Bedrock call timed out after ${timeoutMs}ms`);
+    this.name = 'BedrockTimeoutError';
+  }
+}
+
 export interface InvokeResult {
   text: string;
   inputTokens: number;
@@ -61,13 +76,23 @@ export async function bedrockGenerate(
   const start = Date.now();
 
   return bedrockCircuit.execute(async () => {
-    const result = await generateText({
-      model: MODELS[model],
-      system: systemPrompt,
-      prompt: userMessage,
-      maxTokens,
-      ...(guardrail ? { providerOptions: guardrail } : {}),
-    });
+    const abortSignal = AbortSignal.timeout(BEDROCK_TIMEOUT_MS);
+    let result: Awaited<ReturnType<typeof generateText>>;
+    try {
+      result = await generateText({
+        model: MODELS[model],
+        system: systemPrompt,
+        prompt: userMessage,
+        maxTokens,
+        abortSignal,
+        ...(guardrail ? { providerOptions: guardrail } : {}),
+      });
+    } catch (error) {
+      // Normalise the abort into one typed error (still counted by the circuit
+      // breaker, since it is rethrown inside execute) so invokeAgent can degrade.
+      if (abortSignal.aborted) throw new BedrockTimeoutError(BEDROCK_TIMEOUT_MS);
+      throw error;
+    }
 
     return {
       text: result.text,

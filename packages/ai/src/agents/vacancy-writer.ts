@@ -28,19 +28,20 @@ Rules:
 - Use gender-neutral language (use "persona candidata" instead of "candidato")
 - Include specific, measurable responsibilities in the "formal" variant
 - "formal" should be concise but comprehensive; "social" must be noticeably shorter than "formal"; "whatsapp" must be the shortest and use plain text only (no markdown, no bullet symbols)
-- Do NOT invent company-specific details not provided in the input`;
+- Do NOT invent company-specific details not provided in the input
+- Length limits: formal description under 8000 characters, social under 3000, whatsapp under 2000; at most 20 items per section, each under 500 characters`;
 
 const outputSchema = z.object({
   formal: z.object({
-    description: z.string(),
+    description: z.string().max(8000),
     sections: z.object({
-      responsibilities: z.array(z.string()),
-      requirements: z.array(z.string()),
-      benefits: z.array(z.string()),
+      responsibilities: z.array(z.string().max(500)).max(20),
+      requirements: z.array(z.string().max(500)).max(20),
+      benefits: z.array(z.string().max(500)).max(20),
     }),
   }),
-  social: z.object({ description: z.string() }),
-  whatsapp: z.object({ description: z.string() }),
+  social: z.object({ description: z.string().max(3000) }),
+  whatsapp: z.object({ description: z.string().max(2000) }),
 });
 
 export type VacancyDescriptionVariants = z.infer<typeof outputSchema>;

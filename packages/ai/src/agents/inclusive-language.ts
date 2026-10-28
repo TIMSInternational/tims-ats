@@ -25,19 +25,20 @@ Rules:
 - Be constructive, not prescriptive
 - Maximum 10 suggestions`;
 
-const outputSchema = z.object({
-  score: z.number().min(0).max(100),
+export const inclusiveLanguageOutputSchema = z.object({
+  // null = "not available" (degraded fallback) — never a made-up default score.
+  score: z.number().min(0).max(100).nullable(),
   suggestions: z.array(z.object({
-    original: z.string(),
-    suggestion: z.string(),
-    reason: z.string(),
+    original: z.string().max(500),
+    suggestion: z.string().max(500),
+    reason: z.string().max(500),
   })).max(10),
 });
 
 export async function checkInclusiveLanguage(
   orgId: string,
   text: string,
-): Promise<{ score: number; suggestions: Array<{ original: string; suggestion: string; reason: string }>; model: string }> {
+): Promise<{ score: number | null; suggestions: Array<{ original: string; suggestion: string; reason: string }>; model: string }> {
   const { data, model } = await invokeAgent({
     slug: 'inclusive-language',
     orgId,
@@ -45,8 +46,8 @@ export async function checkInclusiveLanguage(
     systemPrompt: SYSTEM_PROMPT,
     buildUserMessage: ({ text }) =>
       `${wrapAsData('text_to_review', text)}\n\nAnalyze this job description for inclusive language. Return JSON.`,
-    schema: outputSchema,
-    fallback: () => ({ score: 75, suggestions: [] }),
+    schema: inclusiveLanguageOutputSchema,
+    fallback: () => ({ score: null, suggestions: [] }),
     maxTokens: 1024,
   });
 

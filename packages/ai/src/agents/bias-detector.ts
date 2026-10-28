@@ -25,7 +25,8 @@ Rules:
 - If evidence is insufficient to assess a type, omit it (do NOT assert absence of bias you cannot verify)
 - overallRisk must reflect the strongest credible indicator found
 - Respond in the same language as the scorecard content
-- Max 6 indicators, max 4 recommendations`;
+- Max 6 indicators, max 4 recommendations
+- Each description under 1000 characters; each recommendation under 500 characters`;
 
 const severityEnum = z.enum(['none', 'low', 'medium', 'high']);
 
@@ -35,14 +36,14 @@ const outputSchema = z.object({
   biasIndicators: z
     .array(
       z.object({
-        type: z.string(),
+        type: z.string().max(100),
         severity: severityEnum,
-        description: z.string(),
+        description: z.string().max(1000),
       }),
     )
     .max(6),
   overallRisk: z.enum(['none', 'low', 'medium', 'high', 'unknown']),
-  recommendations: z.array(z.string()).max(4),
+  recommendations: z.array(z.string().max(500)).max(4),
 });
 
 // Model output OR a degraded shape whose overallRisk is 'unknown' —

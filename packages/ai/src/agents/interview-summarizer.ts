@@ -18,13 +18,13 @@ Rules:
 - If evaluators disagree, say so explicitly in the summary
 - Do NOT output a hire/no-hire recommendation — that decision belongs to humans
 - Respond in the same language as the scorecard content (Spanish for Spanish scorecards)
-- Keep the summary under 120 words; max 5 items per array`;
+- Keep the summary under 120 words; max 5 items per array, each item under 300 characters`;
 
 const outputSchema = z.object({
-  summary: z.string(),
-  keyPoints: z.array(z.string()).max(5),
-  strengths: z.array(z.string()).max(5),
-  concerns: z.array(z.string()).max(5),
+  summary: z.string().max(2000),
+  keyPoints: z.array(z.string().max(300)).max(5),
+  strengths: z.array(z.string().max(300)).max(5),
+  concerns: z.array(z.string().max(300)).max(5),
 });
 
 export type InterviewSummaryResult = z.infer<typeof outputSchema>;

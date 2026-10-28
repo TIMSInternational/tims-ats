@@ -25,27 +25,28 @@ Rules:
 - Normalize phone numbers to international format
 - Skills should be individual items, not grouped
 - If information is not available, use null
-- Parse dates as years (not full dates)`;
+- Parse dates as years (not full dates)
+- Length limits: at most 100 skills, 30 experience entries, 20 education entries and 20 languages; each description and the summary under 2000 characters`;
 
 const outputSchema = z.object({
-  name: z.string().nullable(),
-  email: z.string().nullable(),
-  phone: z.string().nullable(),
-  skills: z.array(z.string()),
+  name: z.string().max(200).nullable(),
+  email: z.string().max(320).nullable(),
+  phone: z.string().max(50).nullable(),
+  skills: z.array(z.string().max(100)).max(100),
   experience: z.array(z.object({
-    company: z.string(),
-    title: z.string(),
+    company: z.string().max(200),
+    title: z.string().max(200),
     startYear: z.number().nullable(),
     endYear: z.number().nullable(),
-    description: z.string().nullable(),
-  })),
+    description: z.string().max(2000).nullable(),
+  })).max(30),
   education: z.array(z.object({
-    institution: z.string(),
-    degree: z.string(),
+    institution: z.string().max(200),
+    degree: z.string().max(200),
     year: z.number().nullable(),
-  })),
-  languages: z.array(z.string()),
-  summary: z.string().nullable(),
+  })).max(20),
+  languages: z.array(z.string().max(100)).max(20),
+  summary: z.string().max(2000).nullable(),
 });
 
 export type ParsedCVData = z.infer<typeof outputSchema>;

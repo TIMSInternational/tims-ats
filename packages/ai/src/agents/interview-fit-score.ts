@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData, sanitizeInput } from '../pii';
+import { PROTECTED_ATTRIBUTES_RULE } from '../fairness';
 
-const SYSTEM_PROMPT = `You are a candidate-fit evaluator for an HR platform.
+export const INTERVIEW_FIT_SCORE_SYSTEM_PROMPT = `You are a candidate-fit evaluator for an HR platform.
 Analyze a recorded interview transcript to produce a structured fit score.
 
 Output format: JSON with the following structure:
@@ -21,20 +22,24 @@ Scoring rubric (0–100):
 Rules:
 - Score ONLY on evidence present in the transcript — never infer or assume
 - Cite specific transcript moments in the rationale (e.g. "When asked about X, the candidate said Y")
-- If the transcript is empty or too short to evaluate, return score 0 with rationale explaining insufficiency
+- If the transcript is empty or too short to evaluate, return score null with a rationale explaining insufficiency
 - Do NOT recommend hire/no-hire — score and evidence only
 - Respond in the same language as the transcript content
-- rationale must be under 2000 characters`;
+- rationale must be under 2000 characters
+
+${PROTECTED_ATTRIBUTES_RULE}`;
 
 export const fitScoreOutputSchema = z.object({
-  score: z.number().int().min(0).max(100),
+  // null = "not available" (degraded fallback or too little evidence) — never a
+  // made-up number that would read as a real score.
+  score: z.number().int().min(0).max(100).nullable(),
   rationale: z.string().max(2000),
 });
 
 export type FitScoreResult = z.infer<typeof fitScoreOutputSchema>;
 
-const DEGRADED_FALLBACK: FitScoreResult = {
-  score: 0,
+export const FIT_SCORE_FALLBACK: FitScoreResult = {
+  score: null,
   rationale: 'El análisis automático no pudo completarse. Revisión manual requerida.',
 };
 
@@ -52,7 +57,7 @@ export async function scoreInterviewFit(
     slug: 'interview-fit-score',
     orgId,
     input,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: INTERVIEW_FIT_SCORE_SYSTEM_PROMPT,
     buildUserMessage: ({ transcriptText, roleTitle, guideQuestions }) => {
       const contextParts: string[] = [];
       if (roleTitle) {
@@ -68,7 +73,7 @@ export async function scoreInterviewFit(
       return `${contextBlock}${wrapAsData('transcript', sanitizeInput(transcriptText, 20_000))}\n\nScore this interview transcript. Return JSON.`;
     },
     schema: fitScoreOutputSchema,
-    fallback: () => DEGRADED_FALLBACK,
+    fallback: () => FIT_SCORE_FALLBACK,
     maxTokens: 1024,
   });
 
