@@ -52,7 +52,7 @@ describe('Onboarding dashboard data integrity', () => {
     );
     const updatedCell = screen.getByText('Beta Tester').closest('tr')!.querySelectorAll('td')[6];
     expect(within(updatedCell).getByText(/Día 30 ✓/)).toBeInTheDocument();
-    expect(updatedCell).not.toHaveTextContent('Dia 1');
+    expect(updatedCell).not.toHaveTextContent(/D[ií]a 1(?!\d)/);
 
     rerender(
       <I18nProvider>
