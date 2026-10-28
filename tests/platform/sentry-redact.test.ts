@@ -84,6 +84,26 @@ describe('Sentry join-token redaction', () => {
     expect(decodeURIComponent(JSON.stringify(event))).not.toContain(TOKEN);
   });
 
+  it('scrubs escaped JSON keys that only appear after percent decoding (codex r8 P1)', () => {
+    const json = String.raw`{"token\u0020":"unused","to\u006ben":"${TOKEN}"}`;
+    expect(JSON.parse(json).token).toBe(TOKEN);
+    const input = encodeURIComponent(json);
+    const trpcUrl = `/api/trpc/offer.getBySigningToken?input=${input}`;
+    const events = [
+      { request: { query_string: { input } } },
+      { request: { query_string: [['input', input]] } },
+      { request: { query_string: `input=${input}` } },
+      { request: { url: `https://app.tims.com/login?next=${encodeURIComponent(trpcUrl)}` } },
+      { extra: { body: input } },
+    ];
+    for (const event of events) {
+      const out = JSON.stringify(redactSentryEvent(event));
+      let text = out;
+      for (let i = 0; i < 4; i++) text = decodeURIComponent(text.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+      expect(text, JSON.stringify(event)).not.toContain(TOKEN);
+    }
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);

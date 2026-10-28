@@ -118,7 +118,7 @@ function scrubJsonText(text: string, depth: number): string | null {
 }
 
 // A tRPC GET carries its JSON input percent-encoded in `?input=`; decode it, scrub it as JSON, re-encode it.
-const TRPC_INPUT_PARAM = /([?&]input=)([^&#\s"'<>]+)/gi;
+const TRPC_INPUT_PARAM = /((?:^|[?&;#])input=)([^&#\s"'<>]+)/gi;
 
 function scrubTrpcInput(value: string, depth: number): string {
   return value.replace(TRPC_INPUT_PARAM, (whole, prefix: string, encoded: string) => {
@@ -133,12 +133,16 @@ function scrubTrpcInput(value: string, depth: number): string {
   });
 }
 
+// One scrubbing pass over a string: the structural JSON pass first (keys compared after JSON decoding; an
+// encoded tRPC `?input=` is decoded for it), then the text patterns over the result, which still catch shapes
+// only text reveals, such as a join token stored under an unrelated key.
+function scrubLevel(text: string, depth: number): string {
+  if (depth >= MAX_DEPTH) return scrubPatterns(text);
+  return scrubPatterns(scrubJsonText(text, depth) ?? scrubTrpcInput(text, depth));
+}
+
 export function redactBearerTokens(value: string, depth = 0): string {
-  // Structural pass first (keys compared after JSON decoding), then the text patterns over the result: they
-  // still catch shapes that only text reveals, such as a join token stored under an unrelated key.
-  const asJson = depth < MAX_DEPTH ? scrubJsonText(value, depth) : null;
-  const text = asJson ?? (depth < MAX_DEPTH ? scrubTrpcInput(value, depth) : value);
-  const scrubbed = scrubPatterns(text);
+  const scrubbed = scrubLevel(value, depth);
   // Encoded forms the patterns above do not anticipate (an escaped character inside a token, JSON whitespace
   // inside an encoded body, a third encoding level, …): decode level by level and re-scrub each level. If any
   // decoded level still revealed a credential, the event carries the decoded, scrubbed form instead.
@@ -147,9 +151,9 @@ export function redactBearerTokens(value: string, depth = 0): string {
   for (let level = 0; level < MAX_DECODE_LEVELS && current.includes('%'); level++) {
     const decoded = percentDecode(current);
     if (decoded === current) break;
-    current = scrubPatterns(decoded);
-    // scrubPatterns is idempotent on already-redacted text, so any change means this level exposed credential
-    // content the previous level did not (a new token, or the rest of one cut short by an escape).
+    current = scrubLevel(decoded, depth);
+    // Any change means this level exposed something the previous level did not (a new token, the rest of one cut
+    // short by an escape, or JSON that only parses once decoded); the decoded, scrubbed form is then kept.
     if (current !== decoded) revealed = true;
   }
   return revealed ? current : scrubbed;
