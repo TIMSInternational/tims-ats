@@ -33,6 +33,9 @@ check_prereqs() {
   # An X25519 age recipient: "age1" + 58 bech32 characters. Anything else is refused, not passed to age.
   [[ "$AGE_RECIPIENT" =~ ^age1[02-9ac-hj-np-z]{58}$ ]] || die2 "AGE_RECIPIENT is not an age X25519 public key (age1 + 58 bech32 characters)."
   command -v age >/dev/null 2>&1 || die2 "the age binary is not installed (apt-get install age)."
+  # The shape check cannot see the Bech32 checksum; age can. Encrypting nothing proves the key is usable
+  # before any production access, instead of after the dump (tier-1 round 6).
+  age -r "$AGE_RECIPIENT" </dev/null >/dev/null 2>&1 || die2 "age rejects AGE_RECIPIENT (checksum or encoding is invalid)."
 }
 
 if [ "${1:-}" = "--check" ]; then

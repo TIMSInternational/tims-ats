@@ -25,6 +25,8 @@ const ROOT = join(__dirname, '../..');
 const SCRIPT = join(ROOT, 'scripts/security/encrypt-artifact.sh');
 const RECIPIENT = `age1${'qpzry9x8gf2tvdw0s3jn54khce6mua7l'.repeat(2).slice(0, 58)}`;
 const PLAINTEXT_MARKER = 'SYNTHETIC_PLAINTEXT_MARKER_7731';
+// Right shape (age1 + 58 bech32 characters) but a checksum the real CLI rejects: verified against age 1.1.1.
+const CHECKSUM_BAD = `age1${'q'.repeat(58)}`;
 
 let sandbox: string;
 
@@ -57,14 +59,18 @@ function binDir(name: string, age: 'encrypting' | 'passthrough' | 'failing' | nu
     if (found) symlinkSync(found, join(bin, tool));
   }
   if (age) {
-    const out = '"$4"'; // invoked as: age -r RECIPIENT -o OUT IN
+    const out = '"$4"'; // invoked as: age -r RECIPIENT -o OUT IN, or (the --check probe) age -r RECIPIENT
     const body =
       age === 'encrypting'
         ? `printf '%s\\n' "$@" > "${join(sandbox, name)}/argv"\n{ printf 'age-encryption.org/v1\\n'; base64 < "$5"; } > ${out}\n`
         : age === 'passthrough'
           ? `cat "$5" > ${out}\n`
           : 'echo "age: error: boom" >&2\nexit 1\n';
-    writeFileSync(join(bin, 'age'), `#!/usr/bin/env bash\n${body}`);
+    // Like the real CLI, reject a recipient whose checksum is wrong (stand-in: the CHECKSUM_BAD constant).
+    const probe =
+      `[ "$2" = "${CHECKSUM_BAD}" ] && { echo "age: error: invalid recipient" >&2; exit 1; }\n` +
+      `[ "$#" -eq 2 ] && { ${age === 'failing' ? 'exit 1' : "printf 'age-encryption.org/v1\\n'; exit 0"}; }\n`;
+    writeFileSync(join(bin, 'age'), `#!/usr/bin/env bash\n${probe}${body}`);
     chmodSync(join(bin, 'age'), 0o755);
     const b64 = spawnSync('bash', ['-c', 'command -v base64'], { encoding: 'utf8' }).stdout.trim();
     if (b64) symlinkSync(b64, join(bin, 'base64'));
@@ -113,6 +119,12 @@ describe('encrypt-artifact.sh — only ciphertext for the owner key, or nothing'
     const r = run(binDir('check-noage', null), ['--check'], RECIPIENT);
     expect(r.code).toBe(2);
     expect(r.out).toMatch(/age binary is not installed/);
+  });
+
+  it('--check asks age itself, so a well-shaped recipient with a bad checksum is refused (tier-1 round 6)', () => {
+    const r = run(binDir('check-checksum', 'encrypting'), ['--check'], CHECKSUM_BAD);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/age rejects AGE_RECIPIENT/);
   });
 
   it('--check passes with a recipient and the binary', () => {
