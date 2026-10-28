@@ -88,10 +88,12 @@ const DIAGNOSTIC_BARE_VALUE = new RegExp(
 // A Prisma JSON-path filter on a credential field, as echoed by a Prisma diagnostic:
 // `{ path: ["signingToken"], equals: "…" }` (either order, within one object). The compared value is the credential.
 const JSON_FILTER_OPS = 'equals|not|string_contains|string_starts_with|string_ends_with|array_contains';
-const CREDENTIAL_PATH = `path\\s*:\\s*\\[[^\\]{}]*["'](?:${KEY_ALT})["'][^\\]{}]*\\]`;
+const CREDENTIAL_PATH = `["']?path["']?\\s*:\\s*\\[[^\\]{}]*["'](?:${KEY_ALT})["'][^\\]{}]*\\]`;
 const QUOTED = `(["'\`])(?:(?!\\2)[^\\\\]|\\\\.)+(?=\\2)`;
-const PATH_THEN_VALUE = new RegExp(`(${CREDENTIAL_PATH}[^{}]*?(?:${JSON_FILTER_OPS})\\s*:\\s*)${QUOTED}`, 'gi');
-const VALUE_THEN_PATH = new RegExp(`((?:${JSON_FILTER_OPS})\\s*:\\s*)${QUOTED}(?=[^{}]*?${CREDENTIAL_PATH})`, 'gi');
+const FILTER_OP = `["']?(?:${JSON_FILTER_OPS})["']?`;
+const PATH_THEN_VALUE = new RegExp(`(${CREDENTIAL_PATH}[^{}]*?${FILTER_OP}\\s*:\\s*)${QUOTED}`, 'gi');
+const VALUE_THEN_PATH = new RegExp(`(${FILTER_OP}\\s*:\\s*)${QUOTED}(?=[^{}]*?${CREDENTIAL_PATH})`, 'gi');
+const FILTER_OP_SET: ReadonlySet<string> = new Set(JSON_FILTER_OPS.split('|'));
 
 // The same members percent-encoded once or twice, as in a tRPC GET URL:
 // `/api/trpc/offer.getBySigningToken?input=%7B%220%22%3A%7B%22json%22%3A%7B%22token%22%3A%22<token>%22%7D…`.
@@ -258,6 +260,17 @@ function scrub(node: unknown, depth: number): unknown {
     return node;
   }
   const record = node as Record<string, unknown>;
+  // A structured JSON-path filter on a credential field (`{ path: ['signingToken'], equals: … }`): the compared
+  // values are the credential even though their own keys are not credential names.
+  const filterPath = record.path;
+  if (
+    Array.isArray(filterPath) &&
+    filterPath.some((segment) => typeof segment === 'string' && CREDENTIAL_KEY_SET.has(segment.toLowerCase()))
+  ) {
+    for (const key of Object.keys(record)) {
+      if (FILTER_OP_SET.has(key) && record[key] !== null && record[key] !== undefined) record[key] = REDACTED;
+    }
+  }
   for (const key of Object.keys(record)) {
     const value = record[key];
     if (key === 'query_string') scrubQueryString(value);

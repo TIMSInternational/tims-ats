@@ -218,6 +218,14 @@ describe('Sentry join-token redaction', () => {
     }
     // A filter on a non-credential path keeps its value.
     expect(redactBearerTokens('{ settings: { path: ["status"], equals: "signed" } }')).toContain('"signed"');
+    // JSON-serialized and structured forms (codex r17).
+    const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
+    expect(redactBearerTokens(serialized)).not.toContain(TOKEN);
+    expect(redactBearerTokens(`prefix ${serialized} suffix`)).not.toContain(TOKEN);
+    const structured = redactSentryEvent({ extra: { where: { settings: { equals: TOKEN, path: ['signingToken'] } } } });
+    expect(JSON.stringify(structured)).not.toContain(TOKEN);
+    const other = redactSentryEvent({ extra: { where: { settings: { path: ['status'], equals: 'signed' } } } });
+    expect(other.extra.where.settings.equals).toBe('signed');
   });
 
   it('leaves unrelated or non-token-shaped values alone', () => {
