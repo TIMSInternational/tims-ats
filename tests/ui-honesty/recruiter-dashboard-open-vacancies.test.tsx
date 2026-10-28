@@ -45,4 +45,11 @@ describe('recruiter dashboard open-vacancies card', () => {
     expect(screen.queryByTestId('open-vacancies-total')).toBeNull();
     expect(screen.getByTestId('error-state')).toBeTruthy();
   });
+
+  it('shows the error state when a refetch fails even though earlier data is cached', () => {
+    state.kpis = { isLoading: false, isError: true, data: { totalOpen: 5, totalApplications: 0 } };
+    render(<RecruitmentDashboard roleSlugs={['recruiter']} />);
+    expect(screen.queryByTestId('open-vacancies-total')).toBeNull();
+    expect(screen.getByTestId('error-state')).toBeTruthy();
+  });
 });

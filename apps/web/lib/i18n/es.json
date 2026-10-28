@@ -2236,6 +2236,7 @@
     "requestExtension": "Solicitar extension al evaluador",
     "noRiskCandidates": "Sin candidatos en riesgo",
     "noVacanciesPublished": "Sin vacantes publicadas",
+    "noPipelineData": "Esta vacante aún no tiene candidatos en el pipeline.",
     "noSlaOverdue": "Sin candidatos con SLA vencido",
     "resendComingSoon": "Reenviar: próximamente",
     "noPendingTests": "Sin pruebas pendientes",

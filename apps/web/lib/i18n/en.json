@@ -2236,6 +2236,7 @@
     "requestExtension": "Request evaluator extension",
     "noRiskCandidates": "No candidates at risk",
     "noVacanciesPublished": "No published vacancies",
+    "noPipelineData": "This vacancy has no candidates in its pipeline yet.",
     "noSlaOverdue": "No candidates with overdue SLA",
     "resendComingSoon": "Resend: coming soon",
     "noPendingTests": "No pending tests",
