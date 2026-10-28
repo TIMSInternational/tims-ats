@@ -2061,6 +2061,7 @@
     "inclusiveChecking": "Revisando...",
     "inclusiveScoreLabel": "Puntaje de inclusividad",
     "inclusiveScoreUnavailable": "No disponible",
+    "inclusiveUnavailable": "No se pudo revisar el texto. Inténtalo de nuevo.",
     "inclusiveNoSuggestions": "No se encontraron sugerencias, el texto luce inclusivo",
     "noEligibleApprovers": "Nadie tiene esta vacante dentro de su alcance de aprobación. Asigna la vacante a un equipo con líder o a una unidad con responsables (Configuración > Unidades de negocio), o pide a un administrador que la apruebe.",
     "autoPublishNeedsNoApproval": "La publicación automática solo está disponible si la vacante no requiere aprobación. Con aprobación, publícala manualmente una vez aprobada.",

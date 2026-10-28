@@ -2061,6 +2061,7 @@
     "inclusiveChecking": "Checking...",
     "inclusiveScoreLabel": "Inclusive language score",
     "inclusiveScoreUnavailable": "Not available",
+    "inclusiveUnavailable": "The text could not be reviewed. Please try again.",
     "inclusiveNoSuggestions": "No suggestions found, the text looks inclusive",
     "noEligibleApprovers": "No one has this vacancy within their approval scope. Assign the vacancy to a team with a leader or a unit with assignees (Settings > Business units), or ask an admin to approve it.",
     "autoPublishNeedsNoApproval": "Auto-publish is only available when the vacancy does not require approval. With approval, publish it manually once approved.",

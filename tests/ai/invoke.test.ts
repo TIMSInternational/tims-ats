@@ -121,13 +121,22 @@ describe('invokeAgent (gated path)', () => {
     expect(logger.warn).toHaveBeenCalledWith({ agent: 'vacancy-writer', reason: 'invalid_output' }, expect.any(String));
   });
 
-  it('a Bedrock timeout degrades to the fallback, logs success:false, and does not throw', async () => {
+  it('a Bedrock timeout is logged as a failed call and rethrown (never turned into a fallback)', async () => {
     vi.mocked(bedrockGenerate).mockRejectedValue(new BedrockTimeoutError(20_000));
-    const r = await invokeAgent(params);
-    expect(r).toMatchObject({ degraded: true, cached: false, data: { description: 'fallback:' } });
+    await expect(invokeAgent(params)).rejects.toBeInstanceOf(BedrockTimeoutError);
     expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ success: false, costUsd: 0 }));
     expect(setCached).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith({ agent: 'vacancy-writer', reason: 'timeout' }, expect.any(String));
+  });
+
+  it('a cache entry that fails the current schema is treated as a miss, not served', async () => {
+    vi.mocked(getCached).mockResolvedValue({ description: 12345 });
+    vi.mocked(bedrockGenerate).mockResolvedValue({
+      text: '{"description":"fresh"}', inputTokens: 1, outputTokens: 1, model: 'haiku', latencyMs: 1,
+    });
+    const r = await invokeAgent(params);
+    expect(r).toMatchObject({ cached: false, data: { description: 'fresh' } });
+    expect(bedrockGenerate).toHaveBeenCalledTimes(1);
   });
 
   it('other Bedrock errors still throw (fail closed)', async () => {

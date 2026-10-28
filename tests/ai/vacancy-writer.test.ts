@@ -111,6 +111,6 @@ describe('generateVacancyDescription (vacancy-writer agent)', () => {
 
   it('throws on a Bedrock timeout instead of returning empty variants', async () => {
     vi.mocked(bedrockGenerate).mockRejectedValue(new BedrockTimeoutError(20_000));
-    await expect(generateVacancyDescription('org-1', 'Backend Engineer')).rejects.toThrow('No se pudo generar');
+    await expect(generateVacancyDescription('org-1', 'Backend Engineer')).rejects.toBeInstanceOf(BedrockTimeoutError);
   });
 });

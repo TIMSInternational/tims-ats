@@ -18,7 +18,10 @@ import { logger } from '@tims/shared';
 // no Upstash env falls back to an in-memory Map with TTL expiry.
 // ---------------------------------------------------------------------------
 
-const KEY_PREFIX = 'tims:ai:cache';
+// v2: entries written before 2026-10 could hold an agent's degraded fallback
+// (invokeAgent used to cache it). Bumping the prefix orphans them; they expire
+// on their own TTL. invokeAgent also re-validates every hit against the schema.
+const KEY_PREFIX = 'tims:ai:cache:v2';
 
 const redis =
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
@@ -61,7 +62,7 @@ export async function parseCV(
 ): Promise<{ data: ParsedCVData; model: string; confidence: number }> {
   // CV text contains candidate PII — the registry sets cacheTtlSeconds=0 for
   // cv-parser, so invokeAgent never caches raw input here.
-  const { data, model } = await invokeAgent({
+  const { data, model, degraded } = await invokeAgent({
     slug: 'cv-parser',
     orgId,
     input: { cvText: cvText.slice(0, 8000) },
@@ -72,6 +73,13 @@ export async function parseCV(
     fallback: () => EMPTY_CV,
     maxTokens: 2048,
   });
+
+  // A degraded parse (unparseable or over-limit output) must not be persisted
+  // as an empty "parsed" CV over the candidate's existing data — fail instead.
+  // The portal apply flow already tolerates a parse failure.
+  if (degraded) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'No se pudo analizar el CV. Intenta de nuevo.' });
+  }
 
   const filledFields = Object.values(data).filter(
     (v) => v !== null && (Array.isArray(v) ? v.length > 0 : true),

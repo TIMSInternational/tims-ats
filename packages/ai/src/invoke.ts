@@ -20,8 +20,8 @@ import { resolveAgentId, AGENT_REGISTRY } from './registry';
 //   6. log      — every call (real or cached) is metered, then successful
 //                 results are written to the cache.
 //
-// Budget/circuit failures THROW (fail-closed). A malformed AI response or a
-// Bedrock timeout is NOT a system failure — it returns the agent's
+// Budget/circuit/timeout failures THROW (fail-closed). A malformed AI response
+// is NOT a system failure — it returns the agent's
 // obviously-degraded fallback (rule #4), never fabricated data. A fallback is
 // flagged `degraded: true`, never cached, and reported via logger.warn. It is
 // also passed to logInvocation as success:false, but the usage-log table has no
@@ -81,8 +81,13 @@ export async function invokeAgent<TInput, TOutput>(
   }
 
   // 2. Cache — org-scoped, TTL owned by the agent (0 ⇒ bypass).
-  const cached = await getCached<TOutput>(slug, orgId, input, ttl);
-  if (cached !== null) {
+  //    A hit is re-validated against the agent's current schema; an entry that
+  //    no longer satisfies it (e.g. written before an output bound existed) is
+  //    treated as a miss rather than served.
+  const cachedRaw = await getCached<unknown>(slug, orgId, input, ttl);
+  const cachedParse = cachedRaw === null ? null : schema.safeParse(cachedRaw);
+  if (cachedParse?.success) {
+    const cached = cachedParse.data;
     await logInvocation({
       agentId,
       organizationId: orgId,
@@ -104,15 +109,17 @@ export async function invokeAgent<TInput, TOutput>(
   let userMessage = buildUserMessage(input);
   if (userMessage.length > HARD_MESSAGE_CAP) userMessage = userMessage.slice(0, HARD_MESSAGE_CAP);
 
-  // 4. Bedrock — raw call via the circuit breaker. A timeout degrades to the
-  //    fallback (logged as a failed call); every other error still throws.
+  // 4. Bedrock — raw call via the circuit breaker. A timeout is logged as a
+  //    failed call and then rethrown, exactly like any other Bedrock error:
+  //    callers that persist results must not store a fallback as if it were a
+  //    real answer.
   const started = Date.now();
   let result: InvokeResult;
   try {
     result = await bedrockGenerate(model, systemPrompt, userMessage, maxTokens);
   } catch (error) {
     if (!(error instanceof BedrockTimeoutError)) throw error;
-    logger.warn({ agent: slug, reason: 'timeout' }, 'AI agent degraded to fallback');
+    logger.warn({ agent: slug, reason: 'timeout' }, 'AI agent call timed out');
     await logInvocation({
       agentId,
       organizationId: orgId,
@@ -125,7 +132,7 @@ export async function invokeAgent<TInput, TOutput>(
       cached: false,
       userId,
     });
-    return { data: fallback(''), model, cached: false, degraded: true, inputTokens: 0, outputTokens: 0 };
+    throw error;
   }
   const cost = calculateCost(model, result.inputTokens, result.outputTokens);
 
