@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loadJourney, type JourneyState } from '../../lib/journey';
-import { newPersona, signIn, closePersona, type Persona } from '../../lib/persona';
+import { newPersona, signIn, closePersona, expectNotRateLimited, type Persona } from '../../lib/persona';
 import { waitForMail, linkContaining } from '../../lib/mail';
 import { needs, supersededBy, PENDING } from '../../lib/pending';
 import { tinyPdf } from '../../lib/files';
@@ -34,18 +34,27 @@ const cand = () => ({
 });
 const fullName = () => `${cand().firstName} ${cand().lastName}`;
 
+/** Follow the staff navigation that a signed-in user uses, retaining the app's query cache. */
+async function navigateStaff(page: Page, path: string): Promise<void> {
+  if (new URL(page.url()).pathname === path) return;
+  await page.locator(`nav a[href="${path}"]`).first().click();
+  await expect(page).toHaveURL(new RegExp(`${path}$`));
+}
+
 test.beforeAll(async ({ browser }, testInfo) => {
   j = loadJourney();
   candId = testInfo.retry > 0 ? `${j.runId}c${testInfo.retry}` : j.runId;
   if (!j.vacancy) throw new Error('[e2e] the company journey did not publish a vacancy');
-  candidate = await newPersona(browser);
-  recruiter = await newPersona(browser);
-  admin = await newPersona(browser);
-  leader = await newPersona(browser);
+  candidate = await newPersona(browser, 'candidate');
+  recruiter = await newPersona(browser, 'recruiter');
+  admin = await newPersona(browser, 'company admin');
+  leader = await newPersona(browser, 'hiring leader');
   await signIn(recruiter.page, j.recruiter);
   await signIn(admin.page, j.admin);
   await signIn(leader.page, j.leader);
 });
+
+test.afterEach(() => expectNotRateLimited(candidate, recruiter, admin, leader));
 
 test.afterAll(async () => {
   await Promise.all([candidate, recruiter, admin, leader].map(closePersona));
@@ -110,6 +119,9 @@ test('candidate receives the "application received" email', async () => {
 
 test('recruiter sees the application in the pipeline and opens the candidate', async () => {
   const { page } = recruiter;
+  // A full load on purpose, not navigateStaff: the recruiter's dashboard (opened at sign-in, BEFORE the
+  // candidate applied) already fetched and cached this vacancy's board for the app's five-minute
+  // staleTime, so an in-app navigation would show it without the new application.
   await page.goto('/recruitment/pipeline');
   await page.getByText(fullName()).first().click();
   await expect(page).toHaveURL(/\/recruitment\/candidates\/[0-9a-f-]{36}/);
@@ -119,7 +131,7 @@ test('recruiter sees the application in the pipeline and opens the candidate', a
 
 /** On the candidate profile: move the (only) application to `stage`. */
 async function moveStage(page: Page, stage: string): Promise<void> {
-  await page.goto(profileUrl);
+  if (page.url() !== profileUrl) await page.goto(profileUrl);
   await page.getByRole('button', { name: 'Mover Etapa' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Mover Etapa' });
   await dialog.getByLabel('Mover a etapa').selectOption({ label: stage });
@@ -136,7 +148,7 @@ test('recruiter moves the candidate through screening to the HR interview stage'
 
 /** Schedule an in-person interview (never video — no Daily in E2E) with the leader as evaluator. */
 async function scheduleInterview(page: Page): Promise<void> {
-  await page.goto('/recruitment/interviews');
+  await navigateStaff(page, '/recruitment/interviews');
   await page
     .getByRole('button', { name: /programar entrevista/i })
     .first()
@@ -242,16 +254,25 @@ test('recruiter moves the candidate to Oferta and drafts an offer', async () => 
   await expect(page.getByText(fullName()).first()).toBeVisible();
 });
 
-/** Open this candidate's offer from the offers list. */
-async function openOffer(page: Page): Promise<void> {
-  await page.goto('/recruitment/offers');
+/**
+ * Open this candidate's offer from the offers list. `fromCurrentList`: the page is already showing the
+ * list with this offer on it (asserted by the previous step), so open it from there instead of loading
+ * the list again — see 'recruiter requests offer approval' for why that matters.
+ */
+async function openOffer(page: Page, { fromCurrentList = false } = {}): Promise<void> {
+  if (!fromCurrentList) await page.goto('/recruitment/offers');
   await page.getByText(fullName()).first().click();
   await expect(page.getByText(fullName()).first()).toBeVisible();
 }
 
 /** Request approval from `approverName`, then approve as `approverPage`. */
-async function approveOffer(requester: Page, approverName: string, approverPage: Page): Promise<void> {
-  await openOffer(requester);
+async function approveOffer(
+  requester: Page,
+  approverName: string,
+  approverPage: Page,
+  { requesterOnList = false } = {},
+): Promise<void> {
+  await openOffer(requester, { fromCurrentList: requesterOnList });
   if (PENDING.peopleDirectory.merged) {
     // #304 replaces the approver <select> with a server-searched people picker.
     // Scope BOTH the search box and the result to the page's main region: the app header has its own
@@ -281,7 +302,15 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
 
 test('recruiter requests offer approval; the hiring leader approves', async () => {
   needs('peopleDirectory', 'orgStructure');
-  await approveOffer(recruiter.page, `${j.leader.firstName} ${j.leader.lastName}`, leader.page);
+  // #330: the recruiter is the one user who drives BOTH journeys (company: vacancy → approval → publish;
+  // candidate: pipeline → stages → interview → offer), all inside one rate-limit window. A fresh load of
+  // the offers list here was the request that crossed the per-user tRPC query limit, so every first
+  // attempt timed out on an offer that existed; a retry only passed because the window had rolled over.
+  // The previous step leaves the recruiter on the list with this offer visible — open it from there.
+  expect(new URL(recruiter.page.url()).pathname).toBe('/recruitment/offers');
+  await approveOffer(recruiter.page, `${j.leader.firstName} ${j.leader.lastName}`, leader.page, {
+    requesterOnList: true,
+  });
 });
 
 test('company admin requests and gives offer approval (main-only path)', async () => {
