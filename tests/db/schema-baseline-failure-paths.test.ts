@@ -174,7 +174,7 @@ describe('schema-baseline.sh check — exit 2 means DID NOT RUN, never a pass', 
         'exit 1\n',
     );
     chmodSync(stub, 0o755);
-    for (const env of [{ SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, { GITHUB_ACTIONS: 'true' }]) {
+    for (const env of [{ SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, { GITHUB_ACTIONS: 'true' }] as Record<string, string>[]) {
       for (const cmd of ['capture', 'check']) {
         if (cmd === 'check') writeFileSync(join(root, BASELINE_REL), '-- >>> END BASELINE HEADER — everything below is verbatim pg_dump output\n');
         const { code, out } = run(root, [cmd], { DIRECT_URL: FAKE_URL, PG_DUMP: stub, ...env });
@@ -551,7 +551,7 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
       ),
     ];
     for (const type of ['TABLE', `${'gh' + 'p_'}SYNTHETIC_TYPE_998877`]) {
-      for (const env of [{ SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, { GITHUB_ACTIONS: 'true' }]) {
+      for (const env of [{ SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, { GITHUB_ACTIONS: 'true' }] as Record<string, string>[]) {
         const { code, out } = driftCheck(`oo-forged-${type.length}-${Object.keys(env)[0]}`, before, forged(type), env);
         expect(code).toBe(1);
         expect(out).not.toMatch(SYNTHETIC);
