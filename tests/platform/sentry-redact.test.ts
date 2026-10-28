@@ -244,6 +244,21 @@ describe('Sentry join-token redaction', () => {
     for (const data of [{ token: { equals: TOKEN } }, { token: [TOKEN] }, { signingToken: { not: TOKEN } }]) {
       expect(JSON.stringify(redactSentryEvent({ request: { data } })), JSON.stringify(data)).not.toContain(TOKEN);
     }
+    // Nested diagnostic values (codex r21) and Prisma invocation dumps.
+    for (const value of [
+      `Invalid args: { candidateToken: { equals: "${TOKEN}" } }`,
+      `Invalid args: { path: ["signingToken"], array_contains: ["${TOKEN}"] }`,
+      `{ "token": ["a", { "x": "${TOKEN}" }] }`,
+      `token: { equals: "${TOKEN}"`,
+      `Invalid \`prisma.offer.findMany()\` invocation:\n{\n  where: { settings: { path: ["x"], equals: "${TOKEN}" } }\n}`,
+    ]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      expect(redactBearerTokens(JSON.stringify(value)), value).not.toContain(TOKEN);
+    }
+    expect(redactBearerTokens('Invalid `prisma.offer.findMany()` invocation:\n{ where: {} }')).toBe(
+      'Invalid `prisma.offer.findMany()` invocation: [arguments redacted]',
+    );
+    expect(redactBearerTokens('{ token: { equals: "x" }, status: "ok" }')).toBe('{ token: {[redacted]}, status: "ok" }');
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);

@@ -100,14 +100,65 @@ const PATH_THEN_VALUE = new RegExp(`(${CREDENTIAL_PATH}[^{}]*?${FILTER_OP}\\s*:\
 const VALUE_THEN_PATH = new RegExp(`(${FILTER_OP}\\s*:\\s*)${QUOTED}(?=[^{}]*?${CREDENTIAL_PATH})`, 'gi');
 const FILTER_OP_SET: ReadonlySet<string> = new Set(JSON_FILTER_OPS.split('|'));
 const CREDENTIAL_PATH_TEST = new RegExp(CREDENTIAL_PATH, 'i');
-const FILTER_OP_VALUE = new RegExp(`(${FILTER_OP}\\s*:\\s*)${QUOTED}`, 'gi');
+const FILTER_OP_VALUE = new RegExp(`(${FILTER_OP}\\s*:\\s*)(?:${QUOTED}|\\[[^\\]]*\\])`, 'gi');
 const INNERMOST_OBJECT = /\{[^{}]*\}/g;
 
 // Every comparison inside each innermost `{…}` that filters on a credential path is redacted (a filter object
 // holds its path in brackets, never braces). The two order-specific patterns above still cover a diagnostic cut
 // off before its closing brace.
 function scrubFilterObject(object: string): string {
-  return CREDENTIAL_PATH_TEST.test(object) ? object.replace(FILTER_OP_VALUE, `$1$2${REDACTED}`) : object;
+  return CREDENTIAL_PATH_TEST.test(object)
+    ? object.replace(FILTER_OP_VALUE, (_match, prefix: string, quote: string | undefined) =>
+        quote ? `${prefix}${quote}${REDACTED}` : `${prefix}[${REDACTED}]`,
+      )
+    : object;
+}
+
+// A Prisma validation error echoes the whole call (`Invalid \`prisma.offer.findMany()\` invocation: { where: … }`),
+// arguments included. Only the first line identifies the failing call; the argument dump is dropped outright.
+const PRISMA_INVOCATION = /(Invalid `[^`\n]{1,200}` invocation)[\s\S]*/g;
+
+// A credential-named key whose value is an object or array (`candidateToken: { equals: "…" }`,
+// `token: ["…"]`): the whole bracketed value is redacted, found by a bracket-matching scan that skips quoted text.
+const CREDENTIAL_CONTAINER_KEY = new RegExp(
+  `((?:^|[^A-Za-z0-9_$\\\\])["']?(?:${KEY_ALT})["']?\\s*[:=]\\s*)(?=[\\[{])`,
+  'gi',
+);
+
+function closingBracket(text: string, open: number): number {
+  const stack: string[] = [];
+  let quote: string | null = null;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') quote = c;
+    else if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']');
+    else if (c === '}' || c === ']') {
+      if (stack.pop() !== c) return -1;
+      if (stack.length === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function scrubCredentialContainers(value: string): string {
+  const keys = new RegExp(CREDENTIAL_CONTAINER_KEY.source, 'gi');
+  let out = '';
+  let last = 0;
+  for (let match = keys.exec(value); match !== null; match = keys.exec(value)) {
+    const open = keys.lastIndex;
+    const close = closingBracket(value, open);
+    // Unbalanced (a truncated message): everything after the key goes.
+    const end = close === -1 ? value.length : close + 1;
+    out += `${value.slice(last, open)}${value[open]}${REDACTED}${close === -1 ? '' : value[close]}`;
+    last = end;
+    keys.lastIndex = end;
+  }
+  return out + value.slice(last);
 }
 
 // The same members percent-encoded once or twice, as in a tRPC GET URL:
@@ -135,7 +186,9 @@ function unescapeKeyChars(value: string): string {
 }
 
 function scrubPatterns(value: string): string {
-  let out = unescapeKeyChars(value).replace(PATH_TOKEN, `$1${REDACTED}`);
+  let out = scrubCredentialContainers(
+    unescapeKeyChars(value).replace(PRISMA_INVOCATION, '$1: [arguments redacted]'),
+  ).replace(PATH_TOKEN, `$1${REDACTED}`);
   for (const pattern of ENCODED_PATH_TOKENS) out = out.replace(pattern, `$1${REDACTED}`);
   return out
     .replace(QUERY_PARAM, `$1${REDACTED}`)
