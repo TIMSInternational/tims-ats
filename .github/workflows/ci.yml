@@ -74,7 +74,7 @@ jobs:
         run: pnpm audit --prod --audit-level high
       - run: pnpm --filter @tims/db exec prisma generate --schema prisma/schema
       # tests/governance/function-search-path.test.ts applies the committed SQL to a throwaway, socket-only
-      # PostgreSQL >= 17 cluster it creates itself (scripts/db/verify-function-search-path.sh, #376) and
+      # PostgreSQL >= 17.6 cluster it creates itself (scripts/db/verify-function-search-path.sh, #376) and
       # FAILS, rather than skips, when CI=true and no such binaries exist. Production is 17, so take 17
       # from PGDG; create_main_cluster=false keeps the package from creating or starting a cluster.
       - name: PostgreSQL 17 server binaries for the search_path gate

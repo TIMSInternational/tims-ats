@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -20,11 +20,11 @@ import { join, relative } from 'node:path';
 // stripped bodies and comments with regular expressions, and four review rounds each found
 // another shape it got wrong (digits in dollar-quote tags, quoted defaults, `--` inside a
 // literal, nested comments). scripts/db/verify-function-search-path.sh applies each file to a
-// throwaway PostgreSQL >= 17 cluster with psql and reads pg_proc.proconfig from an event
+// throwaway PostgreSQL >= 17.6 cluster with psql and reads pg_proc.proconfig from an event
 // trigger right after every CREATE FUNCTION / CREATE PROCEDURE the server executes. The
 // fixtures below are the shapes the regex version mishandled, now answered by the server.
 //
-// Needs PostgreSQL >= 17 server binaries (initdb, pg_ctl, psql). In CI (CI=true) their absence
+// Needs PostgreSQL >= 17.6 server binaries (initdb, pg_ctl, psql) and node. In CI (CI=true) their absence
 // FAILS this test — .github/workflows/ci.yml installs them. Locally it is skipped with a reason.
 //
 // Out of scope, deliberately:
@@ -76,13 +76,13 @@ function gate(files: string[]): GateRun {
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
-const NO_SERVER = /SEARCH_PATH GATE DID NOT RUN — no PostgreSQL >= \d+ server binaries/;
+const NO_SERVER = /SEARCH_PATH GATE DID NOT RUN — no PostgreSQL >= [\d.]+ server binaries/;
 
 /** Exit 2 for missing binaries is a skip locally and a failure in CI; any other exit 2 always fails. */
 function unavailable(run: GateRun): string | null {
   if (run.code !== 2 || !NO_SERVER.test(run.out)) return null;
   if (process.env.CI === 'true') throw new Error(`search_path gate could not run in CI:\n${run.out}`);
-  return 'PostgreSQL >= 17 server binaries not found (set SEARCH_PATH_GATE_PG_BIN)';
+  return 'PostgreSQL >= 17.6 server binaries not found (set SEARCH_PATH_GATE_PG_BIN)';
 }
 
 /** "VERDICT identity" lines for one file, sorted. */
@@ -220,15 +220,48 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
   // Every one of these is refused for the non-superuser that applies files, so the routine is still seen.
   'tamper-settings.sql': {
     sql:
-      'SET client_min_messages = error;\nSET log_min_messages = panic;\nSET session_replication_role = replica;\n' +
+      'SET client_min_messages = error;\nSET log_min_messages = panic;\nSET log_statement = none;\n' +
+      'SET session_replication_role = replica;\n' +
       'ALTER EVENT TRIGGER search_path_gate_end DISABLE;\nDROP EVENT TRIGGER search_path_gate_start;\n' +
       "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';",
     expect: ['UNPINNED public.f()'],
   },
-  // Leaving the scratch database is refused too, and psql aborts the file: fail closed.
-  'connect-escape.sql': {
+  // tier-1 round 1: psql meta-commands are refused (\restrict), so a file cannot reconnect as the superuser
+  // (or to another database) and cannot run a shell. The refusal is itself reported, and what follows is
+  // still checked as the non-superuser.
+  'connect-as-admin.sql': {
+    sql:
+      '\\connect - gate_admin\nALTER EVENT TRIGGER search_path_gate_start DISABLE;\n' +
+      "ALTER EVENT TRIGGER search_path_gate_end DISABLE;\nCREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';",
+    expect: ['UNPINNED public.f()', 'UNVERIFIED'],
+  },
+  'connect-other-db.sql': {
     sql: "\\connect postgres\nCREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';",
+    expect: ['UNPINNED public.f()', 'UNVERIFIED'],
+  },
+  'shell-escape.sql': {
+    sql: "\\! touch SHELL_ESCAPE_RAN\nCREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
+    expect: ['PINNED public.f()', 'UNVERIFIED'],
+  },
+  // tier-1 round 1: a routine on a path the empty database does not take is never executed, so the server
+  // cannot report it — the statement's own text says it would have created one.
+  'do-block-fails-first.sql': {
+    sql:
+      'DO $$ BEGIN\n  PERFORM 1 FROM existing_production_table;\n' +
+      "  EXECUTE 'CREATE FUNCTION f() RETURNS int LANGUAGE sql AS ''SELECT 1''';\nEND $$;",
     expect: ['UNVERIFIED'],
+  },
+  'do-block-untaken-branch.sql': {
+    sql:
+      "DO $$ BEGIN\n  IF EXISTS (SELECT FROM pg_class WHERE relname = 'existing_production_table') THEN\n" +
+      "    EXECUTE 'CREATE OR REPLACE FUNCTION f() RETURNS int LANGUAGE sql AS ''SELECT 1''';\n  END IF;\nEND $$;",
+    expect: ['UNVERIFIED'],
+  },
+  'do-block-one-of-two.sql': {
+    sql:
+      "DO $$ BEGIN\n  EXECUTE 'CREATE FUNCTION a() RETURNS int LANGUAGE sql SET search_path = '''' AS ''SELECT 1''';\n" +
+      "  IF false THEN EXECUTE 'CREATE FUNCTION b() RETURNS int LANGUAGE sql AS ''SELECT 1'''; END IF;\nEND $$;",
+    expect: ['PINNED public.a()', 'UNVERIFIED'],
   },
   // Fail closed when the server cannot read the pin.
   'missing-type.sql': {
@@ -239,11 +272,12 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
     sql: 'CREATE FUNCTION f( RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;',
     expect: ['SYNTAX'],
   },
-  'stops-early.sql': {
+  // A file's own \set ON_ERROR_STOP is refused like every meta-command, so the file runs to the end.
+  'sets-on-error-stop.sql': {
     sql: "\\set ON_ERROR_STOP on\nSELECT 1/0;\nCREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
-    expect: ['UNVERIFIED'],
+    expect: ['PINNED public.f()', 'UNVERIFIED'],
   },
-  // Pre-filter: a file that never names FUNCTION/PROCEDURE is not applied, so its early stop is harmless...
+  // Pre-filter: a file that never names FUNCTION/PROCEDURE is not applied at all.
   'no-routine-keyword.sql': {
     sql: '\\set ON_ERROR_STOP on\nSELECT 1/0;',
     expect: [],
@@ -259,7 +293,7 @@ describe('verify-function-search-path.sh — PostgreSQL answers the shapes a reg
     dir = mkdtempSync(join(tmpdir(), 'search-path-gate-'));
     for (const [name, { sql }] of Object.entries(FIXTURES)) writeFileSync(join(dir, name), `${sql}\n`);
     run = gate(Object.keys(FIXTURES).map((n) => join(dir, n)));
-    // ...but a psql include is applied even without the keyword, because the included file may create one.
+    // ...but a file with a psql include is applied even without the keyword, and the include is refused.
     writeFileSync(join(dir, 'included.txt'), "CREATE FUNCTION inc() RETURNS int LANGUAGE sql AS 'SELECT 1';\n");
     writeFileSync(join(dir, 'includes.sql'), '\\ir included.txt\n');
     unpinnedInclude = gate([join(dir, 'includes.sql')]);
@@ -283,11 +317,18 @@ describe('verify-function-search-path.sh — PostgreSQL answers the shapes a reg
     });
   }
 
-  it('a psql include is followed: its unpinned routine is caught', (ctx) => {
+  it('a psql include is never followed silently: the file is applied and reported UNVERIFIED', (ctx) => {
     const reason = unavailable(unpinnedInclude);
     if (reason) return ctx.skip(reason);
     expect(unpinnedInclude.code, unpinnedInclude.out).toBe(1);
-    expect(verdicts(unpinnedInclude.out, join(dir, 'includes.sql'))).toEqual(['UNPINNED public.inc()']);
+    expect(verdicts(unpinnedInclude.out, join(dir, 'includes.sql'))).toEqual(['UNVERIFIED']);
+  });
+
+  it('the shell escape did not run', (ctx) => {
+    const reason = unavailable(run);
+    if (reason) return ctx.skip(reason);
+    expect(existsSync(join(ROOT, 'SHELL_ESCAPE_RAN'))).toBe(false);
+    expect(existsSync(join(dir, 'SHELL_ESCAPE_RAN'))).toBe(false);
   });
 
   it('exits 2 — never 0 — when given nothing to check', () => {
