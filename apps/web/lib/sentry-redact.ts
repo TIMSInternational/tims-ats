@@ -85,6 +85,14 @@ const DIAGNOSTIC_BARE_VALUE = new RegExp(
   'gi',
 );
 
+// A Prisma JSON-path filter on a credential field, as echoed by a Prisma diagnostic:
+// `{ path: ["signingToken"], equals: "…" }` (either order, within one object). The compared value is the credential.
+const JSON_FILTER_OPS = 'equals|not|string_contains|string_starts_with|string_ends_with|array_contains';
+const CREDENTIAL_PATH = `path\\s*:\\s*\\[[^\\]{}]*["'](?:${KEY_ALT})["'][^\\]{}]*\\]`;
+const QUOTED = `(["'\`])(?:(?!\\2)[^\\\\]|\\\\.)+(?=\\2)`;
+const PATH_THEN_VALUE = new RegExp(`(${CREDENTIAL_PATH}[^{}]*?(?:${JSON_FILTER_OPS})\\s*:\\s*)${QUOTED}`, 'gi');
+const VALUE_THEN_PATH = new RegExp(`((?:${JSON_FILTER_OPS})\\s*:\\s*)${QUOTED}(?=[^{}]*?${CREDENTIAL_PATH})`, 'gi');
+
 // The same members percent-encoded once or twice, as in a tRPC GET URL:
 // `/api/trpc/offer.getBySigningToken?input=%7B%220%22%3A%7B%22json%22%3A%7B%22token%22%3A%22<token>%22%7D…`.
 // The value runs until its closing (encoded) quote; other escapes inside it are consumed.
@@ -120,6 +128,8 @@ function scrubPatterns(value: string): string {
     .replace(ESCAPED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
     .replace(DIAGNOSTIC_QUOTED_VALUE, `$1$2${REDACTED}`)
     .replace(DIAGNOSTIC_BARE_VALUE, `$1${REDACTED}`)
+    .replace(PATH_THEN_VALUE, `$1$2${REDACTED}`)
+    .replace(VALUE_THEN_PATH, `$1$2${REDACTED}`)
     .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
 }
 

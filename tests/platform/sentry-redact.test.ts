@@ -207,6 +207,19 @@ describe('Sentry join-token redaction', () => {
     expect(redactBearerTokens(once)).toBe(once);
   });
 
+  it('scrubs the value of a Prisma JSON-path filter on a credential field, either order (codex r16)', () => {
+    for (const value of [
+      `Invalid args: { settings: { path: ["signingToken"], equals: "${TOKEN}" } }`,
+      `Invalid args: { settings: { equals: '${TOKEN}', path: ['signingToken'] } }`,
+      `{ settings: { path: ["offer", "token"], string_contains: "${TOKEN}" } }`,
+    ]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      expect(JSON.stringify(redactSentryEvent({ message: value })), value).not.toContain(TOKEN);
+    }
+    // A filter on a non-credential path keeps its value.
+    expect(redactBearerTokens('{ settings: { path: ["status"], equals: "signed" } }')).toContain('"signed"');
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);
