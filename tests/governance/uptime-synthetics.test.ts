@@ -203,6 +203,11 @@ describe('synthetics.tf — uptime canaries', () => {
     expect(closure.has('aws_sns_topic_subscription.alarm_email')).toBe(true);
   });
 
+  it('refuses the topic override together with enable_alarms, so the override path never creates a subscription', () => {
+    const alarm = SYN.slice(SYN.indexOf('resource "aws_cloudwatch_metric_alarm" "synthetics"'));
+    expect(alarm).toMatch(/condition\s*=\s*!\(var\.synthetics_alarm_topic_arn != "" && var\.enable_alarms\)/);
+  });
+
   it('commits no hostname: the URL variables default to empty and the apply refuses empty/non-https', () => {
     expect(variableDefault('synthetics_web_url')).toBe('""');
     expect(variableDefault('synthetics_api_base_url')).toBe('""');

@@ -335,5 +335,12 @@ resource "aws_cloudwatch_metric_alarm" "synthetics" {
       condition     = local.synthetics_alarm_topic_arn != null
       error_message = "enable_synthetics = true needs an SNS topic: set enable_alarms = true, or set synthetics_alarm_topic_arn to the existing platform alarms topic."
     }
+    # The override exists so Terraform leaves an externally managed topic alone. With enable_alarms = true
+    # this module would still create (and, through depends_on above, -target) its own topic and email
+    # subscription, so the two are mutually exclusive.
+    precondition {
+      condition     = !(var.synthetics_alarm_topic_arn != "" && var.enable_alarms)
+      error_message = "synthetics_alarm_topic_arn is for an externally managed topic: set enable_alarms = false with it, or unset it to use the topic alarms.tf creates."
+    }
   }
 }
