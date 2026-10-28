@@ -263,11 +263,19 @@ describe('Sentry join-token redaction', () => {
     for (const op of ['gte', 'gt', 'lt', 'lte', 'array_starts_with', 'array_ends_with', 'someFutureOp']) {
       const text = `{ path: ["signingToken"], mode: "insensitive", ${op}: "${TOKEN}" }`;
       expect(redactBearerTokens(text), op).not.toContain(TOKEN);
-      expect(redactBearerTokens(text), op).toContain('mode: "insensitive"');
+      expect(redactBearerTokens(text), op).toBe('{[redacted]}');
       const event = redactSentryEvent({ extra: { f: { path: ['signingToken'], mode: 'insensitive', [op]: TOKEN } } });
       expect(JSON.stringify(event), op).not.toContain(TOKEN);
       expect(event.extra.f.mode).toBe('insensitive');
     }
+    // Nested comparisons in a credential filter (codex r23): the whole filter object goes.
+    const nested = `Invalid args: { settings: { path: ["signingToken"], equals: "${TOKEN}", string_contains: "${TOKEN}", not: { unrelated: "${TOKEN}" } }, id: 1 }`;
+    for (const value of [nested, JSON.stringify(nested)]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      expect(JSON.stringify(redactSentryEvent({ message: value })), value).not.toContain(TOKEN);
+    }
+    expect(redactBearerTokens(nested)).toBe('Invalid args: { settings: {[redacted]}, id: 1 }');
+    expect(redactBearerTokens(`{ path: ["signingToken"], equals: "${TOKEN}"`)).not.toContain(TOKEN);
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);

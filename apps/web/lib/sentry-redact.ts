@@ -90,29 +90,43 @@ const DIAGNOSTIC_BARE_VALUE = new RegExp(
   'gi',
 );
 
-// A Prisma JSON-path filter on a credential field, as echoed by a Prisma diagnostic:
-// `{ path: ["signingToken"], equals: "…" }` (either order, within one object). The compared value is the credential.
-// Once a filter targets a credential path, EVERY sibling is a comparison on the credential (equals, not, gt, gte,
-// lt, lte, string_*, array_*, and any operator Prisma adds later); only `path` and `mode` carry no value of it.
+// A Prisma JSON-path filter on a credential field, as echoed by a diagnostic: `{ path: ["signingToken"], … }`.
+// Every sibling of such a path is a comparison on the credential (equals, gte, string_*, nested `not: {…}`, …), so
+// the WHOLE enclosing object is replaced, found by a bracket-matching scan; there is no operator list to fall
+// behind. A filter cut off before its closing brace loses everything after its opening brace.
 const CREDENTIAL_PATH = `["']?path["']?\\s*:\\s*\\[[^\\]{}]*["'](?:${KEY_ALT})["'][^\\]{}]*\\]`;
-const QUOTED = `(["'\`])(?:(?!\\2)[^\\\\]|\\\\.)+(?=\\2)`;
-const FILTER_OP = `(?<![A-Za-z0-9_$])["']?(?!(?:path|mode)["'\\s:])[A-Za-z_][A-Za-z0-9_]*["']?`;
-const PATH_THEN_VALUE = new RegExp(`(${CREDENTIAL_PATH}[^{}]*?${FILTER_OP}\\s*:\\s*)${QUOTED}`, 'gi');
-const VALUE_THEN_PATH = new RegExp(`(${FILTER_OP}\\s*:\\s*)${QUOTED}(?=[^{}]*?${CREDENTIAL_PATH})`, 'gi');
+const CREDENTIAL_PATH_RE = new RegExp(CREDENTIAL_PATH, 'gi');
 const FILTER_NON_VALUE_KEYS: ReadonlySet<string> = new Set(['path', 'mode']);
-const CREDENTIAL_PATH_TEST = new RegExp(CREDENTIAL_PATH, 'i');
-const FILTER_OP_VALUE = new RegExp(`(${FILTER_OP}\\s*:\\s*)(?:${QUOTED}|\\[[^\\]]*\\])`, 'gi');
-const INNERMOST_OBJECT = /\{[^{}]*\}/g;
 
-// Every comparison inside each innermost `{…}` that filters on a credential path is redacted (a filter object
-// holds its path in brackets, never braces). The two order-specific patterns above still cover a diagnostic cut
-// off before its closing brace.
-function scrubFilterObject(object: string): string {
-  return CREDENTIAL_PATH_TEST.test(object)
-    ? object.replace(FILTER_OP_VALUE, (_match, prefix: string, quote: string | undefined) =>
-        quote ? `${prefix}${quote}${REDACTED}` : `${prefix}[${REDACTED}]`,
-      )
-    : object;
+// Index of the `{` that encloses `index`, or -1. Quoted text is not tracked backwards; a brace inside a string
+// can only widen or shift the redacted span, never let the filter's own values survive (it still covers `index`).
+function enclosingBrace(text: string, index: number): number {
+  let depth = 0;
+  for (let i = index - 1; i >= 0; i--) {
+    const c = text[i];
+    if (c === '}' || c === ']') depth++;
+    else if (c === '{' || c === '[') {
+      if (depth === 0) {
+        if (c === '{') return i;
+      } else depth--;
+    }
+  }
+  return -1;
+}
+
+function scrubCredentialFilterObjects(value: string): string {
+  let out = value;
+  for (let guard = 0; guard < 32; guard++) {
+    const re = new RegExp(CREDENTIAL_PATH_RE.source, 'gi');
+    const match = re.exec(out);
+    if (match === null) return out;
+    const open = enclosingBrace(out, match.index);
+    if (open === -1) return `${out.slice(0, match.index)}${REDACTED}`;
+    const close = closingBracket(out, open);
+    if (close === -1) return `${out.slice(0, open)}{${REDACTED}`;
+    out = `${out.slice(0, open)}{${REDACTED}}${out.slice(close + 1)}`;
+  }
+  return out;
 }
 
 // A Prisma validation error echoes the whole call (`Invalid \`prisma.offer.findMany()\` invocation: { where: … }`),
@@ -187,9 +201,9 @@ function unescapeKeyChars(value: string): string {
 }
 
 function scrubPatterns(value: string): string {
-  let out = scrubCredentialContainers(
+  let out = scrubCredentialFilterObjects(scrubCredentialContainers(
     unescapeKeyChars(value).replace(PRISMA_INVOCATION, '$1: [arguments redacted]'),
-  ).replace(PATH_TOKEN, `$1${REDACTED}`);
+  )).replace(PATH_TOKEN, `$1${REDACTED}`);
   for (const pattern of ENCODED_PATH_TOKENS) out = out.replace(pattern, `$1${REDACTED}`);
   return out
     .replace(QUERY_PARAM, `$1${REDACTED}`)
@@ -200,9 +214,6 @@ function scrubPatterns(value: string): string {
     .replace(DIAGNOSTIC_QUOTED_VALUE, `$1$2${REDACTED}`)
     .replace(QUOTED_KEY_VALUE, `$1$3${REDACTED}`)
     .replace(DIAGNOSTIC_BARE_VALUE, `$1${REDACTED}`)
-    .replace(PATH_THEN_VALUE, `$1$2${REDACTED}`)
-    .replace(INNERMOST_OBJECT, scrubFilterObject)
-    .replace(VALUE_THEN_PATH, `$1$2${REDACTED}`)
     .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
 }
 
