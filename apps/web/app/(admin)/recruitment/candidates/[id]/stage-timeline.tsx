@@ -19,7 +19,17 @@ interface StageStep {
   isCompleted: boolean;
 }
 
-function buildStageSteps(app: Application): StageStep[] {
+// Stage names come from the DB and may predate the accent fix ("Preseleccion" vs "Preselección"),
+// so compare them accent- and case-insensitively.
+function stageKey(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+export function buildStageSteps(app: Application): StageStep[] {
   const currentOrder = app.currentStage.order;
   // Build typical pipeline stages in order
   const stages = [
@@ -31,12 +41,13 @@ function buildStageSteps(app: Application): StageStep[] {
     { name: 'Contratación', order: currentOrder + 2 },
   ];
 
-  // Deduplicate by name
+  // Deduplicate by name, ignoring accents and case
   const seen = new Set<string>();
   const unique: typeof stages = [];
   for (const s of stages) {
-    if (!seen.has(s.name)) {
-      seen.add(s.name);
+    const key = stageKey(s.name);
+    if (!seen.has(key)) {
+      seen.add(key);
       unique.push(s);
     }
   }
