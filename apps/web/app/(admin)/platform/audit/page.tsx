@@ -239,6 +239,7 @@ export default function AuditPage() {
               <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1F114C]/10 text-[#1F114C] rounded-full text-xs font-medium">
                 {action}
                 <button
+                  aria-label={`${t.common.removeFilter}: ${action}`}
                   onClick={() => {
                     setAction('');
                     setPage(0);
@@ -255,6 +256,7 @@ export default function AuditPage() {
               <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1F114C]/10 text-[#1F114C] rounded-full text-xs font-medium">
                 {entity}
                 <button
+                  aria-label={`${t.common.removeFilter}: ${entity}`}
                   onClick={() => {
                     setEntity('');
                     setPage(0);
@@ -271,6 +273,7 @@ export default function AuditPage() {
               <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1F114C]/10 text-[#1F114C] rounded-full text-xs font-medium">
                 {dateFrom || '...'} - {dateTo || '...'}
                 <button
+                  aria-label={t.common.removeFilter}
                   onClick={() => {
                     setDateFrom('');
                     setDateTo('');
@@ -397,6 +400,7 @@ export default function AuditPage() {
               </span>
               <div className="flex items-center gap-1">
                 <button
+                  aria-label={t.common.prevPage}
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
                   className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] disabled:opacity-30"
@@ -415,6 +419,7 @@ export default function AuditPage() {
                   </button>
                 ))}
                 <button
+                  aria-label={t.common.nextPage}
                   onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={page >= totalPages - 1}
                   className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] disabled:opacity-30"
