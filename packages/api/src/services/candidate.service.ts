@@ -4,6 +4,16 @@ import type { Prisma } from '@tims/db';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { takeCursorPage } from '../lib/cursor-page';
 import { candidateAiService } from './candidate-ai.service';
+import { canonicalizeEmail } from '../lib/candidate-email';
+
+// #315: the DB unique (organization_id, email) is case-sensitive, so a case/whitespace
+// variant of an existing candidate's email would create a second identity. Refuse it.
+async function assertEmailAvailable(orgId: string, canonicalEmail: string, selfId?: string) {
+  const ids = await candidateRepository.findIdsByCanonicalEmail(orgId, canonicalEmail);
+  if (ids.some((id) => id !== selfId)) {
+    throw new TRPCError({ code: 'CONFLICT', message: 'Ya existe un candidato con este email' });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Candidate Service — business logic only, no db imports.
@@ -67,10 +77,12 @@ export const candidateService = {
       notes?: string;
     },
   ) {
+    const email = canonicalizeEmail(input.email);
+    await assertEmailAvailable(orgId, email);
     return candidateRepository.create(orgId, userId, {
       firstName: input.firstName,
       lastName: input.lastName,
-      email: input.email,
+      email,
       phone: input.phone,
       source: input.source,
       poolType: input.poolType,
@@ -89,6 +101,11 @@ export const candidateService = {
     const existing = await candidateRepository.exists(orgId, id);
     if (!existing) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+    }
+    if (typeof data.email === 'string') {
+      const email = canonicalizeEmail(data.email);
+      await assertEmailAvailable(orgId, email, id);
+      return candidateRepository.update(id, { ...data, email });
     }
     return candidateRepository.update(id, data);
   },

@@ -414,3 +414,27 @@ describe('DSAR export — withdrawal-only marker rows (#312)', () => {
     expect(consents.find((c) => c.id === 'c2')?.agreedAt).toBe('2026-09-30T10:00:00.000Z');
   });
 });
+
+describe('DSAR export — exact subject match (#315)', () => {
+  it('escapes LIKE wildcards and never bundles a wildcard neighbour (another person)', async () => {
+    const NEIGHBOUR = '77777777-7777-4777-8777-777777777777';
+    findMany.user.mockResolvedValue([]);
+    findMany.candidate.mockResolvedValue([
+      { id: CANDIDATE_ID, email: 'A_B@X.com', firstName: 'A', lastName: 'B', organizationId: SUBJECT_ORG },
+      { id: NEIGHBOUR, email: 'axb@x.com', firstName: 'X', lastName: 'Y', organizationId: SUBJECT_ORG },
+    ]);
+    const out = await caller().exportSubjectData({ email: 'a_b@x.com' });
+    expect(findMany.candidate.mock.calls[0][0].where).toEqual({
+      email: { equals: 'a\\_b@x.com', mode: 'insensitive' },
+    });
+    expect(out.json).toContain(CANDIDATE_ID);
+    expect(out.json).not.toContain(NEIGHBOUR);
+    expect(findMany.application.mock.calls[0][0].where).toEqual({ candidateId: { in: [CANDIDATE_ID] } });
+  });
+
+  it('returns NOT_FOUND when only wildcard neighbours matched', async () => {
+    findMany.user.mockResolvedValue([{ id: USER_ID, email: 'axb@x.com', organizationId: SUBJECT_ORG }]);
+    findMany.candidate.mockResolvedValue([]);
+    await expect(caller().exportSubjectData({ email: 'a_b@x.com' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
