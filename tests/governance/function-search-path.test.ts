@@ -246,9 +246,20 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
     expect: ['UNVERIFIED'],
   },
   // tier-1 round 5: DDL that evaluates expressions is not exempt.
+  // Forging a PINNED report for a routine that does not exist must not work either: the nonce is unreadable.
+  'forged-pinned-report.sql': {
+    sql:
+      "DO $$ DECLARE n text; BEGIN\n  SELECT substring(prosrc from 'search-path-gate:([0-9a-f]{32}):') INTO n FROM pg_proc WHERE proname = 'on_end';\n" +
+      "  RAISE LOG 'search-path-gate:%:%:end:pinned:public.forged_function()', n, current_database();\nEND $$;",
+    expect: [],
+  },
+  // tier-1 round 5: DDL that evaluates expressions is not exempt (the helper exists here, so the statement runs as
+  // CREATE TABLE AS; in production the helper could create a routine).
   'ctas-calls-helper.sql': {
-    sql: "CREATE TABLE r AS SELECT production_exec('CREATE FUNCTION f() RETURNS int LANGUAGE sql AS ''SELECT 1''');",
-    expect: ['UNVERIFIED'],
+    sql:
+      "CREATE FUNCTION production_exec(t text) RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';\n" +
+      "CREATE TABLE r AS SELECT production_exec('CREATE FUNCTION f() RETURNS int LANGUAGE sql AS ''SELECT 1''');",
+    expect: ['PINNED public.production_exec(pg_catalog.text)', 'UNVERIFIED'],
   },
   'created-when-called.sql': {
     sql:
