@@ -294,7 +294,7 @@ jobs:
           cat > "$out/README.txt" <<EOF
           Production schema baseline re-capture (#328) — run $GITHUB_RUN_ID, commit $GITHUB_SHA.
 
-          1. READ capture-summary.txt. Every '+'/'-' object it lists is a real production change. If one is
+          1. READ capture-summary.txt. Every '+'/'-'/'~' object it lists is a real production change. If one is
              not explained by a reviewed change, STOP — docs/architecture/ddl-governance.md section 7.
           2. Apply on a branch cut from $GITHUB_SHA (or rebase onto it):
                git apply schema-baseline-recapture.patch
@@ -306,10 +306,11 @@ jobs:
           # Counts only in the public step summary — never diff lines.
           added=$(grep -cE '^  \+ ' "$out/capture-summary.txt" || true)
           removed=$(grep -cE '^  - ' "$out/capture-summary.txt" || true)
+          modified=$(grep -cE '^  ~ ' "$out/capture-summary.txt" || true)
           {
             echo "## Schema baseline re-capture"
             echo
-            echo "- changed objects: +$added / -$removed (names in the artifact's capture-summary.txt)"
+            echo "- changed objects: +$added / -$removed / ~$modified (names in the artifact's capture-summary.txt)"
             echo "- files changed: $(git diff --name-only -- packages/db/baseline services/Tims.Platform/db/flip-ddl | wc -l | tr -d ' ')"
             echo
             echo "_Artifact only (1-day retention) — nothing was committed or pushed. See README.txt in the artifact._"

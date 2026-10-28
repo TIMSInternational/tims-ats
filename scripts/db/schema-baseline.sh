@@ -107,122 +107,82 @@ normalise() {
 
 # ── Object-level change summary ───────────────────────────────────────────────────────────────────
 # OBJECTS-ONLY MODE (#328 review): this repository is PUBLIC, so anything a CI run prints is public. In CI
-# (GITHUB_ACTIONS=true) or with SCHEMA_DRIFT_OBJECTS_ONLY=1, output names changed OBJECTS only — never a
-# verbatim schema line, because a function body, default or comment changed out of band could carry
-# anything. Lines that name no object (columns, bodies) are counted, not echoed. Locally the full diff is
-# still printed: it is the reviewer's main tool and goes nowhere public.
+# (GITHUB_ACTIONS=true) or with SCHEMA_DRIFT_OBJECTS_ONLY=1, `check` prints the object summary below and
+# never a verbatim schema line, because a function body, default or comment changed out of band could carry
+# anything. Locally `check` also prints the full diff: it is the reviewer's main tool and goes nowhere public.
 OBJECTS_ONLY=0
 if [ "${SCHEMA_DRIFT_OBJECTS_ONLY:-}" = "1" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then OBJECTS_ONLY=1; fi
 
-OBJ_MARK='@@obj@@ '
-# annotate_statements FILE → each line prefixed "T|" (top-level statement text) or "B|<object>|" (inside a
-# single-quoted literal or a dollar-quoted body that began on an earlier line), where <object> is the most
-# recent top-level CREATE <kind> <name> (identifier characters only). POSIX awk; nothing here is printed by
-# object_summary except the strict object names.
-annotate_statements() {
+# HOW CHANGES ARE ATTRIBUTED (#336 tier-1 review): NOT by parsing SQL. Earlier versions classified lines with
+# a hand-written lexer (quotes, dollar tags, identifiers) plus per-statement regexes, and every review round
+# found another dump shape it mishandled (GRANT ... ON TABLE lists, single-line bodies, column changes).
+# Instead, every line is attributed to the pg_dump TOC entry it belongs to. pg_dump opens EVERY object it
+# emits with a three-line header that it generates itself:
+#
+#     --
+#     -- Name: <name>; Type: <TYPE>; Schema: <schema>; Owner: <owner>
+#     --
+#
+# so a column change lands in that table's TABLE entry, a GRANT in its ACL entry and a body edit in its
+# FUNCTION entry, whatever the SQL inside looks like. Lines before the first header (SET statements,
+# \restrict) belong to "(dump preamble)". Only entry identities (Type, Schema, Name, reduced to a safe
+# character set and truncated) and counts are printed. No dump line is echoed on this path.
+#
+# Residual, documented rather than parsed away: a function body or comment containing that exact three-line
+# header shape would open a pseudo-entry, mis-attributing the following lines to an identity taken from the
+# body text. That can print at most that one sanitised, truncated identity, and it cannot change the exit
+# code: drift is decided by `diff` over the full dumps, never by this summary.
+toc_records() {
   awk '
-    BEGIN { inq = 0; indq = 0; indol = 0; tag = ""; obj = "?" }
-    {
-      line = $0
-      body = (inq || indol)
-      if (!body && match(line, /^[[:space:]]*CREATE (OR REPLACE )?(UNIQUE )?(FUNCTION|PROCEDURE|TRIGGER|VIEW|MATERIALIZED VIEW|TABLE|INDEX|POLICY|RULE|TYPE|DOMAIN|AGGREGATE) [A-Za-z0-9_."]+/)) {
-        head = substr(line, RSTART, RLENGTH)
-        sub(/^[[:space:]]*CREATE /, "", head); sub(/^OR REPLACE /, "", head); sub(/^UNIQUE /, "", head)
-        obj = substr(head, 1, 160)
+    function field(s, from, to,    a, b) {
+      a = index(s, from); if (a == 0) return ""
+      s = substr(s, a + length(from))
+      if (to == "") return s
+      b = index(s, to); return (b == 0) ? s : substr(s, 1, b - 1)
+    }
+    function ident(h,    name, type, schema, k) {
+      name = field(h, "-- Name: ", "; Type: ")
+      type = field(h, "; Type: ", "; Schema: ")
+      schema = field(h, "; Schema: ", "; Owner: ")
+      k = (schema == "-" || schema == "") ? type " " name : type " " schema "." name
+      gsub(/[^A-Za-z0-9_ .,()"-]/, "?", k)
+      return substr(k, 1, 120)
+    }
+    { L[NR] = $0 }
+    END {
+      key = "(dump preamble)"
+      for (i = 1; i <= NR; i++) {
+        if (L[i] == "--" && i + 2 <= NR && L[i + 2] == "--" && L[i + 1] ~ /^-- Name: .*; Type: .*; Schema: /)
+          key = ident(L[i + 1])
+        printf "%s\037%s\n", key, L[i]
       }
-      i = 1; L = length(line)
-      while (i <= L) {
-        if (indol) {
-          p = index(substr(line, i), tag)
-          if (p == 0) break
-          indol = 0; i += p - 1 + length(tag); continue
-        }
-        if (indq) {
-          # Inside a double-quoted identifier: an apostrophe or a $ here is part of the name.
-          p = index(substr(line, i), "\042")
-          if (p == 0) { i = L + 1; break }
-          i += p
-          if (substr(line, i, 1) == "\042") { i++; continue }
-          indq = 0; continue
-        }
-        if (inq) {
-          p = index(substr(line, i), "\047")
-          if (p == 0) break
-          i += p
-          if (substr(line, i, 1) == "\047") { i++; continue }
-          inq = 0; continue
-        }
-        c = substr(line, i, 1)
-        if (c == "\047") { inq = 1; i++; continue }
-        if (c == "\042") { indq = 1; i++; continue }
-        if (c == "-" && substr(line, i + 1, 1) == "-") break
-        if (c == "$") {
-          rest = substr(line, i)
-          if (match(rest, /^\$[A-Za-z_]*\$/)) { tag = substr(rest, 1, RLENGTH); indol = 1; i += RLENGTH; continue }
-        }
-        i++
-      }
-      if (body) print "B|" obj "|" line; else print "T|" line
     }' "$1"
 }
 
-# object_summary OLD NEW → one "± <object>" line per changed object line; in OBJECTS_ONLY mode other
-# changed lines are dropped and only counted.
+# object_summary OLD NEW → one "<sign> <TOC identity>" line per changed entry ("+" only in NEW, "-" only in
+# OLD, "~" in both but different), then counts. Identities and numbers only, never dump text.
 object_summary() {
-  if [ "$OBJECTS_ONLY" = "1" ]; then
-    # Statement-aware (tier-1 review): every dump line is first classified by annotate_statements as
-    # top-level (T|) or as text INSIDE a quoted literal / dollar-quoted body (B|<enclosing object>|). Only
-    # top-level lines are mapped to object names; a body line is never printed, even if it starts with
-    # "CREATE TABLE ...", and a body-only change is reported by its enclosing object's name.
-    local d names bodies total shown
-    d="$(diff -U0 <(annotate_statements "$1") <(annotate_statements "$2") | grep -E '^[+-][^+-]' || true)"
-    names="$(printf '%s\n' "$d" | sed -nE \
-      -e "s/^([+-])T\\|[[:space:]]*(CREATE TABLE [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(CREATE POLICY [a-zA-Z0-9_.\"]+ ON [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(ALTER TABLE [a-zA-Z0-9_.\"]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_.\"]+ TO [a-zA-Z0-9_\"]+).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(ADD CONSTRAINT [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(CREATE FUNCTION [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(CREATE TRIGGER [a-zA-Z0-9_.\"]+).*/\1 \2/p" \
-      -e 't' \
-      -e "s/^([+-])T\\|[[:space:]]*(ALTER TABLE (ONLY )?[a-zA-Z0-9_.\"]+).*/\1 \2 (altered)/p" || true)"
-    bodies="$(printf '%s\n' "$d" | sed -nE 's/^[+-]B\|([^|]*)\|.*/~ \1 (body changed)/p' | sort -u || true)"
-    [ -n "$names" ] && printf '%s\n' "$names" | head -60
-    [ -n "$bodies" ] && printf '%s\n' "$bodies" | head -60
-    total="$(printf '%s\n' "$d" | grep -c . || true)"
-    shown="$(printf '%s\n' "$names" | grep -c . || true)"
-    echo "  (+ $((total - shown)) changed line(s) inside object bodies — not printed: objects-only mode)"
-    return 0
-  fi
-  local mapped
-  mapped="$(diff -U0 "$1" "$2" \
-    | grep -E '^[+-][^+-]' \
-    | sed -E "s/^([+-])[[:space:]]*(CREATE TABLE [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(CREATE POLICY [a-zA-Z0-9_.\"]+ ON [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(ALTER TABLE [a-zA-Z0-9_.\"]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_.\"]+ TO [a-zA-Z0-9_\"]+).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(ADD CONSTRAINT [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(CREATE FUNCTION [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(CREATE TRIGGER [a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2/;
-              t
-              s/^([+-])[[:space:]]*(ALTER TABLE (ONLY )?[a-zA-Z0-9_.\"]+).*/${OBJ_MARK}\1 \2 (altered)/" || true)"
-    printf '%s\n' "$mapped" | sed "s/^${OBJ_MARK}//" | head -60
+  local t us
+  t="$(mktemp -d)"
+  us="$(printf '\037')"
+  toc_records "$1" >"$t/old.rec"
+  toc_records "$2" >"$t/new.rec"
+  { diff "$t/old.rec" "$t/new.rec" || true; } | grep -E '^[<>] ' | cut -c3- | cut -d "$us" -f1 | sort -u >"$t/changed.keys"
+  awk -F "$us" '
+    FILENAME == ARGV[1] { o[$1] = 1; next }
+    FILENAME == ARGV[2] { n[$1] = 1; next }
+    { s = (($0 in o) && ($0 in n)) ? "~" : (($0 in n) ? "+" : "-"); print s " " $0 }
+  ' "$t/old.rec" "$t/new.rec" "$t/changed.keys" >"$t/summary"
+  local objects added removed modified lines
+  objects="$(grep -c . "$t/summary" || true)"
+  added="$(grep -c '^+ ' "$t/summary" || true)"
+  removed="$(grep -c '^- ' "$t/summary" || true)"
+  modified="$(grep -c '^~ ' "$t/summary" || true)"
+  lines="$({ diff -U0 "$1" "$2" || true; } | grep -cE '^[+-][^+-]' || true)"
+  head -200 "$t/summary"
+  if [ "$objects" -gt 200 ]; then echo "... and $((objects - 200)) more changed object(s), not listed"; fi
+  echo "($objects changed object(s): +$added added, -$removed removed, ~$modified modified; $lines changed line(s), no schema text printed)"
+  rm -rf "$t"
 }
 
 # NOTE ON CREDENTIAL EXPOSURE: pg_dump takes its connection string as an argv, so the URL — password
@@ -320,10 +280,7 @@ case "$cmd" in
       echo
       echo "  ── What changed vs the previous baseline ───────────────────────────────────"
       object_summary "$PREV_BODY" "$TMP/live.norm.sql" | sed 's/^/  /'
-      added=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^\+[^+]' || true)
-      removed=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^-[^-]' || true)
       echo "  ───────────────────────────────────────────────────────────────────────────"
-      echo "  (+$added / -$removed changed lines; showing up to 60)"
       echo
       echo "  Every line above is a real production change. If one is NOT explained by this PR,"
       echo "  STOP — see docs/architecture/ddl-governance.md §7."
@@ -346,11 +303,11 @@ case "$cmd" in
     echo "✖ SCHEMA DRIFT: production no longer matches the committed baseline." >&2
     echo >&2
     total=$(grep -cE '^[+-][^+-]' "$TMP/drift.diff")
+    echo "  Changed objects (pg_dump TOC entries):" >&2
+    object_summary "$TMP/base.norm.sql" "$TMP/live.norm.sql" | sed 's/^/  /' >&2
+    echo >&2
     if [ "$OBJECTS_ONLY" = "1" ]; then
-      echo "  Changed objects (objects-only mode — run 'check' locally for the full diff):" >&2
-      object_summary "$TMP/base.norm.sql" "$TMP/live.norm.sql" | sed 's/^/  /' >&2
-      echo >&2
-      echo "  ($total changed line(s) in total)" >&2
+      echo "  objects-only mode: no schema text printed. Run 'check' locally for the full diff." >&2
     else
       sed -n '3,203p' "$TMP/drift.diff" >&2
       echo >&2

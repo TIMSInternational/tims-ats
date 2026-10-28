@@ -329,6 +329,9 @@ been burned by the difference (#38):
 > `schema-baseline.sh` names changed **objects only** (`GITHUB_ACTIONS=true` or
 > `SCHEMA_DRIFT_OBJECTS_ONLY=1`). It never echoes a verbatim schema line, because a function body or default
 > changed out of band could carry anything. Run `check` locally to see the full diff.
+> Changes are attributed by pg_dump's own TOC headers (`-- Name: …; Type: …; Schema: …`), not by parsing
+> SQL, so a column change is reported as its `TABLE`, a grant as its `ACL` entry and a body edit as its
+> `FUNCTION`. Only those identities (reduced to a safe character set) and counts are printed (#336).
 
 > **The nightly credential is read-only only once `scripts/db/ci-readonly-probe-role.sql` has run** (#292).
 > `ci_readonly` was a member of `app_tenant` (check 14 needed `SET LOCAL ROLE app_tenant`), which let the
