@@ -3,6 +3,7 @@ import superjson from 'superjson';
 import type { Context } from './context';
 import { db, runWithTenant } from '@tims/db';
 import { clientIpFrom } from './lib/client-ip';
+import { shapeClientError } from './lib/error-shape';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
@@ -15,8 +16,10 @@ import type { Module, Action } from '@tims/shared';
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
-  errorFormatter({ shape }) {
-    return shape;
+  // Generic INTERNAL_SERVER_ERROR text + no stack in production; Prisma not-found -> NOT_FOUND.
+  // The full error is logged by the HTTP handler's onError. See lib/error-shape.ts.
+  errorFormatter({ shape, error }) {
+    return shapeClientError(shape, error);
   },
 });
 
