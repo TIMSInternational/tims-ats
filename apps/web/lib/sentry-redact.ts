@@ -22,7 +22,7 @@ const PREFIX_SEGMENTS = BEARER_TOKEN_PATH_PREFIXES.map((prefix) => prefix.split(
 
 // Plain path: the first segment after the prefix is the credential.
 const PATH_TOKEN = new RegExp(
-  `(/(?:${PREFIX_SEGMENTS.map((segs) => segs.map(escapeRe).join('/')).join('|')})/)[^/?#\\s"'<>]+`,
+  `(/(?:${PREFIX_SEGMENTS.map((segs) => segs.map(escapeRe).join('/')).join('|')})/)[^/?#&\\s"'<>]+`,
   'g',
 );
 
@@ -72,7 +72,7 @@ const CREDENTIAL_KEY_SET: ReadonlySet<string> = new Set(CREDENTIAL_KEYS);
 const QUERY_PARAM_SET: ReadonlySet<string> = new Set(BEARER_QUERY_PARAMS);
 const MAX_DEPTH = 24;
 
-export function redactBearerTokens(value: string): string {
+function scrubPatterns(value: string): string {
   let out = value.replace(PATH_TOKEN, `$1${REDACTED}`);
   for (const { pattern, replacement } of ENCODED_PATH_TOKENS) out = out.replace(pattern, replacement);
   return out
@@ -81,6 +81,37 @@ export function redactBearerTokens(value: string): string {
     .replace(JOIN_PREFIXED_TOKEN, `$1${REDACTED}`)
     .replace(JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
     .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
+}
+
+// Percent-decodes every well-formed escape run, leaving malformed ones (a stray `%`) as they are. Never throws.
+function percentDecode(value: string): string {
+  return value.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      return run;
+    }
+  });
+}
+
+const MAX_DECODE_LEVELS = 3;
+const countRedactions = (value: string): number => value.split(REDACTED).length - 1;
+
+export function redactBearerTokens(value: string): string {
+  const scrubbed = scrubPatterns(value);
+  // Encoded forms the patterns above do not anticipate (an escaped character inside a token, JSON whitespace
+  // inside an encoded body, a third encoding level, …): decode level by level and re-scrub each level. If any
+  // decoded level still revealed a credential, the event carries the decoded, scrubbed form instead.
+  let current = scrubbed;
+  let revealed = false;
+  for (let level = 0; level < MAX_DECODE_LEVELS && current.includes('%'); level++) {
+    const decoded = percentDecode(current);
+    if (decoded === current) break;
+    current = scrubPatterns(decoded);
+    // Counted, not compared: re-normalizing an already-redacted value (e.g. `%2f` → `%2F`) is not a reveal.
+    if (countRedactions(current) > countRedactions(decoded)) revealed = true;
+  }
+  return revealed ? current : scrubbed;
 }
 
 // Sentry's `request.query_string` may be a string (handled by the regexes) or an object / array of

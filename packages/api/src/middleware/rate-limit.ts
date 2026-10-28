@@ -26,6 +26,8 @@ const LIMITS = {
   export: { requests: 5, window: '5m' as const }, // 5 exports/5min
   // Public CV-upload presign (portal.getCvUploadUrl): one legitimate application needs one URL,
   // so a tight per-client cap plus a per-vacancy ceiling bound how many upload URLs can be minted.
+  // Like every tier, these are shared across instances only when Upstash is configured; without it the
+  // in-memory fallback below enforces them per instance.
   cvUpload: { requests: 10, window: '10m' as const }, // 10 presigns/10min per client (IP when anonymous)
   cvUploadVacancy: { requests: 100, window: '10m' as const }, // 100 presigns/10min per vacancy
 } as const;

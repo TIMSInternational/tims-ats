@@ -201,4 +201,21 @@ describe('Sentry bearer-link redaction beyond the join link (offers, AI intervie
     // The following double-encoded parameter survives.
     expect(redactBearerTokens(`/login?next=%252Fx%253Ftoken%253D${SECRET}%2526keep%253Dyes`)).toContain('%2526keep%253Dyes');
   });
+
+  it('normalizes encodings the patterns do not anticipate: escaped token characters, encoded JSON whitespace', () => {
+    const escapedChar = `/login?next=%2Faccept-invitation%3Ftoken%3D%25${UUID}`;
+    const pretty = `/api/trpc/offer.getBySigningToken?input=${encodeURIComponent(JSON.stringify({ json: { token: UUID } }, null, 2))}`;
+    const triple = `/login?next=${encodeURIComponent(encodeURIComponent(encodeURIComponent(`/offers/sign/${UUID}`)))}`;
+    for (const value of [escapedChar, pretty, triple, `/x?token=%41%42${SECRET.slice(2)}`]) {
+      const redacted = redactBearerTokens(value);
+      expect(redacted, value).not.toContain(UUID);
+      expect(redacted, value).not.toContain(UUID.slice(1));
+      expect(redacted, value).not.toContain(SECRET.slice(2));
+      expect(redacted, value).toContain('[redacted]');
+    }
+    // Strings with no credential keep their original encoding; a stray `%` never throws.
+    const plain = '/careers/acme?q=caf%C3%A9&page=2';
+    expect(redactBearerTokens(plain)).toBe(plain);
+    expect(redactBearerTokens('100% done %ZZ /x?token=abc')).toBe('100% done %ZZ /x?token=[redacted]');
+  });
 });
