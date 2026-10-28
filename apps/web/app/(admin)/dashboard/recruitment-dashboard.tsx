@@ -104,7 +104,8 @@ function RecruiterDashboard() {
 
         {/* Pipeline + open vacancies */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
-          {isLoading ? (
+          {/* The funnel's vacancy list must have loaded too, or an empty list would read as "none published". */}
+          {isLoading || publishedVacancies.isLoading ? (
             <>
               <PipelineFunnelSkeleton />
               <OpenVacanciesCardSkeleton />

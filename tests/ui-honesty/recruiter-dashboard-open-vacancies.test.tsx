@@ -3,9 +3,10 @@ import { render, screen } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 
 const { state, stub } = vi.hoisted(() => ({
-  stub: (name: string) => ({ [name]: () => null, [`${name}Skeleton`]: () => null }),
+  stub: (name: string) => ({ [name]: () => <div data-testid={name} />, [`${name}Skeleton`]: () => <div data-testid={`${name}Skeleton`} /> }),
   state: {
   kpis: { isLoading: false, isError: false, data: undefined as { totalOpen: number; totalApplications: number } | undefined },
+  listLoading: false,
   },
 }));
 
@@ -14,7 +15,12 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     vacancy: {
       getDashboardKpis: { useQuery: () => ({ ...state.kpis, refetch: vi.fn() }) },
-      list: { useQuery: () => ({ isLoading: false, isError: false, data: { items: [] }, refetch: vi.fn() }) },
+      list: {
+        useQuery: () =>
+          state.listLoading
+            ? { isLoading: true, isError: false, data: undefined, refetch: vi.fn() }
+            : { isLoading: false, isError: false, data: { items: [] }, refetch: vi.fn() },
+      },
     },
     candidate: { getDashboardKpis: { useQuery: () => ({ isLoading: false, isError: false, data: undefined }) } },
   },
@@ -51,5 +57,14 @@ describe('recruiter dashboard open-vacancies card', () => {
     render(<RecruitmentDashboard roleSlugs={['recruiter']} />);
     expect(screen.queryByTestId('open-vacancies-total')).toBeNull();
     expect(screen.getByTestId('error-state')).toBeTruthy();
+  });
+
+  it('keeps the pipeline card in its loading state until the vacancy list has loaded', () => {
+    state.kpis = { isLoading: false, isError: false, data: { totalOpen: 5, totalApplications: 0 } };
+    state.listLoading = true;
+    render(<RecruitmentDashboard roleSlugs={['recruiter']} />);
+    expect(screen.queryByTestId('PipelineFunnel')).toBeNull();
+    expect(screen.getByTestId('PipelineFunnelSkeleton')).toBeTruthy();
+    state.listLoading = false;
   });
 });
