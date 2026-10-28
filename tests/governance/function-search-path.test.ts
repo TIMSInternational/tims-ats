@@ -239,13 +239,22 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
   'forged-event.sql': {
     sql:
       "DO $$ DECLARE n text; BEGIN\n  SELECT substring(prosrc from 'search-path-gate:([0-9a-f]{32}):') INTO n FROM pg_proc WHERE proname = 'on_start';\n" +
-      "  IF n IS NULL THEN SELECT nonce INTO n FROM search_path_gate.secret; END IF;\n" +
+      '  IF n IS NULL THEN SELECT nonce INTO n FROM search_path_gate.secret; END IF;\n' +
       "  RAISE LOG 'search-path-gate:%:%:start:DO', n, current_database();\n" +
       "  IF EXISTS (SELECT FROM pg_class WHERE relname = 'production_table') THEN\n" +
       "    EXECUTE 'CREATE FUNCTION f() RETURNS int LANGUAGE sql AS ''SELECT 1''';\n  END IF;\nEND $$;",
     expect: ['UNVERIFIED'],
   },
-  // tier-1 round 5: DDL that evaluates expressions is not exempt.
+  // tier-1 round 6: shadowing a type in pg_temp must not run code inside the SECURITY DEFINER triggers
+  // (which would leak the nonce, or change superuser-only settings).
+  'pg-temp-type-shadow.sql': {
+    sql:
+      "CREATE DOMAIN pg_temp.text AS pg_catalog.text CHECK (pg_catalog.set_config('gate.leak', COALESCE(VALUE, ''), false) IS NOT NULL);\n" +
+      "CREATE DOMAIN pg_temp.bool AS pg_catalog.bool CHECK (pg_catalog.set_config('gate.leak_b', 'x', false) IS NOT NULL);\n" +
+      "CREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';\n" +
+      "DO $$ BEGIN RAISE LOG 'search-path-gate:%:%:end:pinned:public.forged_function()', pg_catalog.current_setting('gate.leak', true), pg_catalog.current_database(); END $$;",
+    expect: ['PINNED public.f()'],
+  },
   // Forging a PINNED report for a routine that does not exist must not work either: the nonce is unreadable.
   'forged-pinned-report.sql': {
     sql:
@@ -367,7 +376,8 @@ describe('verify-function-search-path.sh — PostgreSQL answers the shapes a reg
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'search-path-gate-'));
-    for (const [name, { sql }] of Object.entries(FIXTURES)) writeFileSync(join(dir, name), `${sql.replaceAll('@DIR@', dir)}\n`);
+    for (const [name, { sql }] of Object.entries(FIXTURES))
+      writeFileSync(join(dir, name), `${sql.replaceAll('@DIR@', dir)}\n`);
     writeFileSync(join(dir, 'included.txt'), "CREATE FUNCTION inc() RETURNS int LANGUAGE sql AS 'SELECT 1';\n");
     run = gate(Object.keys(FIXTURES).map((n) => join(dir, n)));
     // ...but a file with a psql include is applied even without the keyword, and the include is refused.

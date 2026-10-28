@@ -147,20 +147,23 @@ CREATE SCHEMA search_path_gate;
 REVOKE ALL ON SCHEMA search_path_gate FROM PUBLIC;
 -- The nonce lives in a table only the superuser can read, NOT in the function source: pg_proc.prosrc is
 -- world-readable, and a file that learned the nonce could RAISE LOG forged events (tier-1 round 5).
+-- Both functions below are SECURITY DEFINER, so their search_path puts pg_temp LAST and their types are
+-- schema-qualified: otherwise pg_temp is searched FIRST for types, and a file could shadow `text` with a temp
+-- domain whose CHECK would run as the superuser (tier-1 round 6).
 CREATE TABLE search_path_gate.secret (nonce text NOT NULL);
 REVOKE ALL ON TABLE search_path_gate.secret FROM PUBLIC;
 INSERT INTO search_path_gate.secret VALUES ('$NONCE');
 CREATE FUNCTION search_path_gate.on_start() RETURNS event_trigger LANGUAGE plpgsql SECURITY DEFINER
-  SET search_path = pg_catalog AS \$f\$
-DECLARE n text;
+  SET search_path = pg_catalog, pg_temp AS \$f\$
+DECLARE n pg_catalog.text;
 BEGIN
   SELECT nonce INTO n FROM search_path_gate.secret;
   RAISE LOG 'search-path-gate:%:%:start:%', n, current_database(), tg_tag;
 END
 \$f\$;
 CREATE FUNCTION search_path_gate.on_end() RETURNS event_trigger LANGUAGE plpgsql SECURITY DEFINER
-  SET search_path = pg_catalog AS \$f\$
-DECLARE r record; pinned boolean; n text;
+  SET search_path = pg_catalog, pg_temp AS \$f\$
+DECLARE r record; pinned pg_catalog.bool; n pg_catalog.text;
 BEGIN
   SELECT nonce INTO n FROM search_path_gate.secret;
   FOR r IN SELECT objid, object_identity FROM pg_event_trigger_ddl_commands()
