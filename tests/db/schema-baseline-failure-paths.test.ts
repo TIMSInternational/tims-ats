@@ -411,9 +411,23 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
   const REAL_V2 = readFileSync(join(FIXTURES, 'v2.sql'), 'utf8').replace(/\n$/, '').split('\n');
   const SYNTHETIC = /SYNTHETIC_[A-Z]+_\d+|synthetic_col_778/;
 
-  function driftCheck(name: string, before: string[], after: string[], env: Record<string, string>): Run {
+  /** Commits the tree's baseline as git HEAD: objects-only mode prints only names committed there. */
+  function commitBaseline(root: string): void {
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.email=test@example.invalid', '-c', 'user.name=test', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args],
+        { cwd: root, stdio: 'ignore' },
+      );
+    git('init', '-q');
+    git('add', BASELINE_REL);
+    git('commit', '-q', '--no-verify', '-m', 'baseline');
+  }
+
+  function driftCheck(name: string, before: string[], after: string[], env: Record<string, string>, commit = true): Run {
     const root = makeTree(name);
     expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'before', before) }).code).toBe(0);
+    if (commit) commitBaseline(root);
     return run(root, ['check'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'after', after), ...env });
   }
 
@@ -432,8 +446,8 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
       // `GRANT SELECT,UPDATE ON TABLE ...` → the ACL entry.
       expect(out).toMatch(/^ {2}~ ACL public\.TABLE t$/m);
       // NEW entries exist only in the live dump, so their names are withheld: type + hash only.
-      expect(out).toMatch(/^ {2}\+ FUNCTION \[new; name withheld, sha256:[0-9a-f]{12}\]$/m);
-      expect(out).toMatch(/^ {2}\+ COMMENT \[new; name withheld, sha256:[0-9a-f]{12}\]$/m);
+      expect(out).toMatch(/^ {2}\+ FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+      expect(out).toMatch(/^ {2}\+ COMMENT \[name withheld, sha256:[0-9a-f]{12}\]$/m);
       expect(out).not.toMatch(/clock/);
       expect(out).toMatch(/5 changed object\(s\): \+2 added, -0 removed, ~3 modified/);
       expect(out).toMatch(/objects-only mode: no schema text printed/);
@@ -480,7 +494,7 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
     ];
     const { code, out } = driftCheck('oo-hostile', before, after, { SCHEMA_DRIFT_OBJECTS_ONLY: '1' });
     expect(code).toBe(1);
-    expect(out).toMatch(/^ {2}\+ FUNCTION \[new; name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).toMatch(/^ {2}\+ FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
     expect(out).toMatch(/1 changed object\(s\)/);
     expect(out).not.toMatch(SYNTHETIC);
   });
@@ -519,7 +533,7 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
         expect(out).not.toMatch(SYNTHETIC);
         expect(out).not.toMatch(/gh[p]_/);
         // An unrecognised type word is not echoed either.
-        expect(out).toMatch(/^ {2}\+ (TABLE|OTHER) \[new; name withheld, sha256:[0-9a-f]{12}\]$/m);
+        expect(out).toMatch(/^ {2}\+ (TABLE|OTHER) \[name withheld, sha256:[0-9a-f]{12}\]$/m);
       }
     }
   });
@@ -527,6 +541,7 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
   it('capture under objects-only mode withholds new names too (its summary is tee-d to the public log)', () => {
     const root = makeTree('oo-capture');
     expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'v1', REAL_V1) }).code).toBe(0);
+    commitBaseline(root);
     const { code, out } = run(root, ['capture'], {
       DIRECT_URL: FAKE_URL,
       PG_DUMP: stubEmitting(root, 'v2', REAL_V2),
@@ -534,9 +549,41 @@ describe('schema-baseline.sh — objects-only output for public CI logs', () => 
     });
     expect(code).toBe(0);
     expect(out).toMatch(/^ {2}~ TABLE public\.t$/m);
-    expect(out).toMatch(/^ {2}\+ FUNCTION \[new; name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).toMatch(/^ {2}\+ FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
     expect(out).not.toMatch(SYNTHETIC);
     expect(out).not.toMatch(/clock/);
+  });
+
+  it('capture-then-drift: a name the capture just wrote is NOT trusted by the round-trip check (tier-1 round 2)', () => {
+    // The capture job runs `capture` (overwriting the baseline file with an unreviewed dump) and then `check`.
+    // A name that exists only in that fresh capture must stay withheld even though it is now on the OLD side.
+    const token = `${'gh' + 'p_'}SYNTHETIC_FRESH_NAME_12345678901234567890`;
+    const root = makeTree('oo-capture-then-drift');
+    const v1 = pgDump([{ name: 't', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.t ();'] }]);
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'v1', v1) }).code).toBe(0);
+    commitBaseline(root);
+    const fn = (n: number) => [
+      ...v1,
+      ...pgDump([{ name: `${token}()`, type: 'FUNCTION', schema: 'public', body: [`CREATE FUNCTION public.${token}() RETURNS int LANGUAGE sql AS $$SELECT ${n}$$;`] }], false),
+    ];
+    const env = { DIRECT_URL: FAKE_URL, SCHEMA_DRIFT_OBJECTS_ONLY: '1' };
+    const captured = run(root, ['capture'], { ...env, PG_DUMP: stubEmitting(root, 'v2', fn(1)) });
+    expect(captured.code).toBe(0);
+    expect(captured.out).not.toMatch(SYNTHETIC);
+    for (const after of [fn(2), v1]) {
+      const { code, out } = run(root, ['check'], { ...env, PG_DUMP: stubEmitting(root, `v3-${after.length}`, after) });
+      expect(code).toBe(1);
+      expect(out).toMatch(/^ {2}[~-] FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+      expect(out).not.toMatch(SYNTHETIC);
+    }
+  });
+
+  it('outside a git checkout no name is trusted: every identity is withheld', () => {
+    const { code, out } = driftCheck('oo-no-git', REAL_V1, REAL_V2, { SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, false);
+    expect(code).toBe(1);
+    expect(out).toMatch(/^ {2}~ TABLE \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).toMatch(/^ {2}~ ACL \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).not.toMatch(/public\.t/);
   });
 
   it('a body-only change is reported by its entry identity, never by its text', () => {

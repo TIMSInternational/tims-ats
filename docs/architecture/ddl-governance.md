@@ -331,9 +331,11 @@ been burned by the difference (#38):
 > changed out of band could carry anything. Run `check` locally to see the full diff.
 > Changes are attributed by pg_dump's own TOC headers (`-- Name: …; Type: …; Schema: …`), not by parsing
 > SQL, so a column change is reported as its `TABLE`, a grant as its `ACL` entry and a body edit as its
-> `FUNCTION`. Only identities that already appear in the committed baseline are printed by name; a NEW entry
-> (one that exists only in the live dump) is printed as its pg_dump type plus a SHA-256 prefix, because its
-> "name" is untrusted text: a function body can contain a header-shaped comment (#336).
+> `FUNCTION`. An identity is printed by name only if it appears in the baseline as committed at git `HEAD`
+> (read with `git show`, so a baseline the capture job has just overwritten does not count); any other entry
+> is printed as its pg_dump type plus a SHA-256 prefix, because its "name" is untrusted text: a function body
+> can contain a header-shaped comment. `regenerate-flip-ddl.sh` likewise counts, and does not print, the
+> generator's diagnostics in CI (#336).
 
 > **The nightly credential is read-only only once `scripts/db/ci-readonly-probe-role.sql` has run** (#292).
 > `ci_readonly` was a member of `app_tenant` (check 14 needed `SET LOCAL ROLE app_tenant`), which let the

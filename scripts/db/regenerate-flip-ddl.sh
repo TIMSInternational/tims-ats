@@ -11,7 +11,26 @@
 # identifiers, or this script refuses. A file without a valid line is an error, not a skip.
 #
 # EXIT  0 = every file regenerated · 2 = could not run (bad/missing header, generator failure)
+#
+# PUBLIC LOGS (#336 tier-1 round 2): the generator's diagnostics (stderr) quote names read from the freshly
+# captured, not-yet-reviewed dump. In CI (GITHUB_ACTIONS=true) or with SCHEMA_DRIFT_OBJECTS_ONLY=1 they are
+# counted, never printed; run this script locally to read them.
 set -euo pipefail
+
+OBJECTS_ONLY=0
+if [ "${SCHEMA_DRIFT_OBJECTS_ONLY:-}" = "1" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then OBJECTS_ONLY=1; fi
+DIAG="$(mktemp)"
+trap 'rm -f "$DIAG"' EXIT
+
+# report_diagnostics REL → the generator's stderr for REL: verbatim locally, a count in objects-only mode.
+report_diagnostics() {
+  [ -s "$DIAG" ] || return 0
+  if [ "$OBJECTS_ONLY" = "1" ]; then
+    echo "  ($(grep -c '' "$DIAG") generator diagnostic line(s) for $1 withheld: objects-only mode, re-run locally to read them)" >&2
+  else
+    sed 's/^/  /' "$DIAG" >&2
+  fi
+}
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIR="$REPO_ROOT/services/Tims.Platform/db/flip-ddl"
@@ -38,9 +57,11 @@ for f in "${files[@]}"; do
   fi
   # shellcheck disable=SC2086 # word-splitting the validated identifier list is the point
   # --out is resolved against the repo root by the generator, so it takes the repo-relative path.
-  if ! node "$REPO_ROOT/scripts/db/extract-table-ddl.mjs" --out "$rel" $tables >/dev/null; then
+  if ! node "$REPO_ROOT/scripts/db/extract-table-ddl.mjs" --out "$rel" $tables >/dev/null 2>"$DIAG"; then
+    report_diagnostics "$rel"
     echo "✖ COULD NOT RUN — extract-table-ddl.mjs failed for $rel" >&2
     exit 2
   fi
+  report_diagnostics "$rel"
   echo "✓ regenerated $rel ($tables)"
 done

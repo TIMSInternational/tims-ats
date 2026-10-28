@@ -114,6 +114,7 @@ describe('scripts/db/regenerate-flip-ddl.sh — parses its Regenerate lines, nev
   function runIn(
     files: Record<string, string>,
     stub = RECORD,
+    env: NodeJS.ProcessEnv = process.env,
   ): { status: number | null; stderr: string; argv: string[] | null } {
     const dir = mkdtempSync(join(tmpdir(), 'flipddl-'));
     try {
@@ -124,7 +125,7 @@ describe('scripts/db/regenerate-flip-ddl.sh — parses its Regenerate lines, nev
       for (const [name, body] of Object.entries(files)) {
         writeFileSync(join(dir, 'services/Tims.Platform/db/flip-ddl', name), body);
       }
-      const r = spawnSync('bash', [join(dir, 'scripts/db/regenerate-flip-ddl.sh')], { encoding: 'utf8' });
+      const r = spawnSync('bash', [join(dir, 'scripts/db/regenerate-flip-ddl.sh')], { encoding: 'utf8', env });
       let argv: string[] | null = null;
       try {
         argv = JSON.parse(readFileSync(join(dir, 'scripts/db/argv.json'), 'utf8')) as string[];
@@ -138,6 +139,37 @@ describe('scripts/db/regenerate-flip-ddl.sh — parses its Regenerate lines, nev
   }
 
   const header = (tail: string) => `-- GENERATED FILE\n-- Regenerate: node scripts/db/extract-table-ddl.mjs ${tail}\n`;
+
+  // #336 tier-1 round 2: the generator's warnings quote names from the fresh, unreviewed dump, and the
+  // capture job tees this script's output to the public log.
+  describe('generator diagnostics never reach a public log', () => {
+    const TOKEN = `${'gh' + 'p_'}SYNTHETIC_TRIGGER_NAME_123456789`;
+    const WARN = (code: number) => `process.stderr.write('warning: trigger ${TOKEN} not found\\n'); process.exit(${code});\n`;
+    const base = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', NODE_ENV: process.env.NODE_ENV ?? 'test' };
+
+    for (const [label, env] of [
+      ['SCHEMA_DRIFT_OBJECTS_ONLY=1', { ...base, SCHEMA_DRIFT_OBJECTS_ONLY: '1' }],
+      ['GITHUB_ACTIONS=true', { ...base, GITHUB_ACTIONS: 'true' }],
+    ] as const) {
+      it(`under ${label}: warnings are counted, not printed — on success and on failure`, () => {
+        const ok = runIn({ 'surveys.sql': header('surveys') }, WARN(0), env);
+        expect(ok.status).toBe(0);
+        expect(ok.stderr).toMatch(/1 generator diagnostic line\(s\) for services\/Tims\.Platform\/db\/flip-ddl\/surveys\.sql withheld/);
+        expect(ok.stderr).not.toContain('SYNTHETIC_TRIGGER_NAME');
+
+        const failed = runIn({ 'surveys.sql': header('surveys') }, WARN(1), env);
+        expect(failed.status).toBe(2);
+        expect(failed.stderr).toMatch(/extract-table-ddl\.mjs failed/);
+        expect(failed.stderr).not.toContain('SYNTHETIC_TRIGGER_NAME');
+      });
+    }
+
+    it('positive control: locally the warnings are printed verbatim', () => {
+      const r = runIn({ 'surveys.sql': header('surveys') }, WARN(0), base);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain(TOKEN);
+    });
+  });
 
   it('positive control: a valid line calls the generator with --out <repo-relative file> and the tables', () => {
     const r = runIn({ 'surveys.sql': header('surveys survey_responses') });
