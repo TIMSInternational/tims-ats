@@ -41,7 +41,8 @@
 # runs as a NON-superuser in its own scratch database, under psql's \restrict mode, so it cannot run psql
 # meta-commands (no \! shell, no \connect to another identity or database, no \o pipe), cannot turn off
 # logging (log_min_messages, log_statement) or event triggers (event_triggers, session_replication_role),
-# and cannot reach another database (CONNECT is revoked on every other one).
+# and cannot reach another database (\restrict refuses \connect; CONNECT is also revoked on every other
+# database, as a second layer that no test can observe while \restrict holds).
 #
 # EXIT CODES (cf. .claude/rules/verification.md)
 #   0  ran; every routine created by the files pins search_path

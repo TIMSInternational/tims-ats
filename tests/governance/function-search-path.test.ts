@@ -240,7 +240,7 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
     expect: ['UNPINNED public.f()', 'UNVERIFIED'],
   },
   'shell-escape.sql': {
-    sql: "\\! touch SHELL_ESCAPE_RAN\nCREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
+    sql: "\\! touch @DIR@/SHELL_ESCAPE_RAN\nCREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
     expect: ['PINNED public.f()', 'UNVERIFIED'],
   },
   // tier-1 round 1: a routine on a path the empty database does not take is never executed, so the server
@@ -262,6 +262,11 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
       "DO $$ BEGIN\n  EXECUTE 'CREATE FUNCTION a() RETURNS int LANGUAGE sql SET search_path = '''' AS ''SELECT 1''';\n" +
       "  IF false THEN EXECUTE 'CREATE FUNCTION b() RETURNS int LANGUAGE sql AS ''SELECT 1'''; END IF;\nEND $$;",
     expect: ['PINNED public.a()', 'UNVERIFIED'],
+  },
+  // The session dies mid-file, so the rest of it never ran: psql's non-zero exit is the only signal.
+  'terminates-own-backend.sql': {
+    sql: "SELECT pg_terminate_backend(pg_backend_pid());\nCREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';",
+    expect: ['UNVERIFIED'],
   },
   // Fail closed when the server cannot read the pin.
   'missing-type.sql': {
@@ -291,7 +296,7 @@ describe('verify-function-search-path.sh — PostgreSQL answers the shapes a reg
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'search-path-gate-'));
-    for (const [name, { sql }] of Object.entries(FIXTURES)) writeFileSync(join(dir, name), `${sql}\n`);
+    for (const [name, { sql }] of Object.entries(FIXTURES)) writeFileSync(join(dir, name), `${sql.replaceAll('@DIR@', dir)}\n`);
     run = gate(Object.keys(FIXTURES).map((n) => join(dir, n)));
     // ...but a file with a psql include is applied even without the keyword, and the include is refused.
     writeFileSync(join(dir, 'included.txt'), "CREATE FUNCTION inc() RETURNS int LANGUAGE sql AS 'SELECT 1';\n");
@@ -327,7 +332,6 @@ describe('verify-function-search-path.sh — PostgreSQL answers the shapes a reg
   it('the shell escape did not run', (ctx) => {
     const reason = unavailable(run);
     if (reason) return ctx.skip(reason);
-    expect(existsSync(join(ROOT, 'SHELL_ESCAPE_RAN'))).toBe(false);
     expect(existsSync(join(dir, 'SHELL_ESCAPE_RAN'))).toBe(false);
   });
 
