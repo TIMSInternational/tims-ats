@@ -24,9 +24,13 @@ const LIMITS = {
   auth: { requests: 10, window: '5m' as const }, // 10 auth attempts/5min
   ai: { requests: 10, window: '1m' as const }, // 10 AI calls/min
   export: { requests: 5, window: '5m' as const }, // 5 exports/5min
+  // Public CV-upload presign (portal.getCvUploadUrl): one legitimate application needs one URL,
+  // so a tight per-client cap plus a per-vacancy ceiling bound how many upload URLs can be minted.
+  cvUpload: { requests: 10, window: '10m' as const }, // 10 presigns/10min per client (IP when anonymous)
+  cvUploadVacancy: { requests: 100, window: '10m' as const }, // 100 presigns/10min per vacancy
 } as const;
 
-type RateLimitCategory = keyof typeof LIMITS;
+export type RateLimitCategory = keyof typeof LIMITS;
 
 // ---------------------------------------------------------------------------
 // Upstash limiters (one per category, created lazily)
@@ -47,6 +51,8 @@ const upstashLimiters: Record<RateLimitCategory, Ratelimit | null> = {
   auth: createUpstashLimiter('auth'),
   ai: createUpstashLimiter('ai'),
   export: createUpstashLimiter('export'),
+  cvUpload: createUpstashLimiter('cvUpload'),
+  cvUploadVacancy: createUpstashLimiter('cvUploadVacancy'),
 };
 
 // ---------------------------------------------------------------------------
@@ -215,6 +221,8 @@ export function getRateLimitCategory(path: string, type: 'query' | 'mutation'): 
   // candidate.applyToVacancy shares the same procedure name and never calls AI, so a
   // generic 'apply' keyword would incorrectly recategorize it too.
   if (p === 'portal.applytovacancy') return 'ai';
+  // Public presigned CV-upload URL: its own strict tier (exact path, like the line above).
+  if (p === 'portal.getcvuploadurl') return 'cvUpload';
   // AI-related endpoints
   if (AI_PATH_KEYWORDS.some((k) => p.includes(k))) return 'ai';
   // Export endpoints
