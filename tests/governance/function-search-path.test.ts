@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
 // ── Every function DDL in committed SQL pins its search_path ──────────────────
@@ -14,14 +16,27 @@ import { join, relative } from 'node:path';
 // statement that (re)creates a function to carry the pin itself — which is what this
 // asserts, over every committed `.sql` the repo can apply.
 //
+// HOW (#376 tier-1 review): PostgreSQL decides, not a regex. The first version of this test
+// stripped bodies and comments with regular expressions, and four review rounds each found
+// another shape it got wrong (digits in dollar-quote tags, quoted defaults, `--` inside a
+// literal, nested comments). scripts/db/verify-function-search-path.sh applies each file to a
+// throwaway PostgreSQL >= 17 cluster with psql and reads pg_proc.proconfig from an event
+// trigger right after every CREATE FUNCTION / CREATE PROCEDURE the server executes. The
+// fixtures below are the shapes the regex version mishandled, now answered by the server.
+//
+// Needs PostgreSQL >= 17 server binaries (initdb, pg_ctl, psql). In CI (CI=true) their absence
+// FAILS this test — .github/workflows/ci.yml installs them. Locally it is skipped with a reason.
+//
 // Out of scope, deliberately:
 //   * packages/db/baseline/ — a pg_dump OF production. It records what prod IS, not what
 //     the repo applies; it changes only by re-capture after the owner applies DDL.
 //   * the backup-drill fixture — synthetic data restored into a throwaway database.
 // The C# builder (AuditImmutability.BuildAppendOnlySql) is pinned by its own unit test
-// and by ProdSqlMatchesBuilderTests, which keeps it byte-identical to two files below.
+// and by ProdSqlMatchesBuilderTests, which keeps it byte-identical to two files below;
+// FunctionSearchPathPinTests proves the 2026-10-12 script against a real Postgres.
 
 const ROOT = join(__dirname, '../..');
+const SCRIPT = join(ROOT, 'scripts/db/verify-function-search-path.sh');
 const SCAN_ROOTS = ['packages/db/prisma', 'services/Tims.Platform/db', 'scripts'];
 const EXCLUDED = new Set(['scripts/backup-drill/fixtures/synthetic-source.sql']);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'worktrees']);
@@ -44,122 +59,70 @@ function sqlFilesUnder(dir: string): string[] {
   return out;
 }
 
-const CREATE_FN = /\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/gi;
+type GateRun = { code: number | null; out: string };
 
-/**
- * Each function statement, from `CREATE` to the `;` that follows the closing
- * dollar-quote of its body. Assumes `$$` or `$tag$` quoting, which is all this repo uses;
- * a statement whose body cannot be delimited is returned whole to the end of the file,
- * so it can only fail the check, never slip past it.
- */
-/** SQL with `--` line comments and (nested) block comments removed, so prose cannot start a statement. */
-function stripSqlComments(sql: string): string {
-  let text = sql;
-  for (let prev = ''; prev !== text; ) {
-    prev = text;
-    text = text.replace(/\/\*(?:(?!\/\*|\*\/)[\s\S])*\*\//g, ' ');
-  }
-  return text.replace(/--[^\n]*/g, '');
+function gate(files: string[]): GateRun {
+  const r = spawnSync('bash', [SCRIPT, ...files], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 180_000,
+    env: {
+      PATH: process.env.PATH ?? '',
+      HOME: process.env.HOME ?? '',
+      NODE_ENV: process.env.NODE_ENV ?? 'test',
+      ...(process.env.SEARCH_PATH_GATE_PG_BIN ? { SEARCH_PATH_GATE_PG_BIN: process.env.SEARCH_PATH_GATE_PG_BIN } : {}),
+    },
+  });
+  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
-function functionStatements(rawSql: string): string[] {
-  // Comments first: a comment that merely mentions "CREATE FUNCTION" must not open a statement.
-  const sql = stripSqlComments(rawSql);
-  const out: string[] = [];
-  const starts = [...sql.matchAll(CREATE_FN)].map((m) => m.index ?? 0);
-  for (const [n, start] of starts.entries()) {
-    // Never past the NEXT function: a single-quoted body has no dollar quote, and searching on would
-    // borrow the next function's body and pin (tier-1 review).
-    const rest = sql.slice(start, starts[n + 1] ?? sql.length);
-    const open = /\$([A-Za-z_]*)\$/.exec(rest);
-    if (!open) {
-      out.push(rest);
-      continue;
-    }
-    const tag = open[0];
-    const close = rest.indexOf(tag, open.index + tag.length);
-    if (close < 0) {
-      out.push(rest);
-      continue;
-    }
-    const end = rest.indexOf(';', close + tag.length);
-    out.push(end < 0 ? rest : rest.slice(0, end + 1));
-  }
-  return out;
+const NO_SERVER = /SEARCH_PATH GATE DID NOT RUN — no PostgreSQL >= \d+ server binaries/;
+
+/** Exit 2 for missing binaries is a skip locally and a failure in CI; any other exit 2 always fails. */
+function unavailable(run: GateRun): string | null {
+  if (run.code !== 2 || !NO_SERVER.test(run.out)) return null;
+  if (process.env.CI === 'true') throw new Error(`search_path gate could not run in CI:\n${run.out}`);
+  return 'PostgreSQL >= 17 server binaries not found (set SEARCH_PATH_GATE_PG_BIN)';
 }
 
-const PINNED = /\bSET\s+search_path\s*(?:=|TO)\s*/i;
-
-/**
- * The function's OPTION text only: dollar-quoted and single-quoted bodies and `--` comments removed, so a
- * `SET search_path` that appears inside the body or a comment cannot satisfy the check (tier-1 review). A
- * quoted option value (`SET search_path = ''`) survives because only `AS '...'` bodies are stripped.
- */
-function optionsOf(stmt: string): string {
-  let text = stmt
-    .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' ')
-    .replace(/\bAS\s+'(?:[^']|'')*'/gi, ' AS ');
-  // PostgreSQL block comments nest: remove innermost ones until none remain (tier-1 review, round 3).
-  for (let prev = ''; prev !== text; ) {
-    prev = text;
-    text = text.replace(/\/\*(?:(?!\/\*|\*\/)[\s\S])*\*\//g, ' ');
+/** "VERDICT identity" lines for one file, sorted. */
+function verdicts(out: string, file: string): string[] {
+  const result: string[] = [];
+  for (const line of out.split('\n')) {
+    const m = /^(PINNED|UNPINNED|UNVERIFIED|SYNTAX) +(.+?): (.*)$/.exec(line);
+    if (!m || m[2] !== file) continue;
+    result.push(m[1] === 'PINNED' || m[1] === 'UNPINNED' ? `${m[1]} ${m[3]}` : (m[1] ?? ''));
   }
-  text = text.replace(/--[^\n]*/g, ' ');
-  // The function statement ends at its first ';' once bodies and comments are gone: anything after it
-  // (a session `SET search_path`, an unrelated ALTER FUNCTION) is not this function's option.
-  const end = text.indexOf(';');
-  return end < 0 ? text : text.slice(0, end);
+  return result.sort();
 }
 
-describe('governance — committed function DDL pins search_path', () => {
-  const files = SCAN_ROOTS.flatMap((r) => sqlFilesUnder(join(ROOT, r))).filter((f) => !EXCLUDED.has(relative(ROOT, f)));
-  const statements = files.flatMap((f) =>
-    functionStatements(readFileSync(f, 'utf8')).map((stmt) => ({ file: relative(ROOT, f), stmt })),
-  );
+describe('governance — committed function DDL pins search_path (decided by PostgreSQL)', () => {
+  const files = SCAN_ROOTS.flatMap((r) => sqlFilesUnder(join(ROOT, r)))
+    .filter((f) => !EXCLUDED.has(relative(ROOT, f)))
+    .map((f) => relative(ROOT, f))
+    .sort();
+  let repo: GateRun;
+
+  beforeAll(() => {
+    repo = gate(files);
+  }, 200_000);
 
   it('scans a non-empty population (non-vacuity)', () => {
-    // Two known function-creating scripts: the CB-1 / CB-1b immutability guards.
     expect(files.length).toBeGreaterThan(20);
-    expect(statements.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('every CREATE [OR REPLACE] FUNCTION carries SET search_path', () => {
-    const offenders = statements
-      .filter(({ stmt }) => !PINNED.test(optionsOf(stmt)))
-      .map(({ file, stmt }) => `${file}: ${stmt.split('\n')[0]}`);
-    expect(
-      offenders,
-      "Add `SET search_path = ''` (or an explicit schema list) to the function definition. A CREATE OR " +
-        'REPLACE without it RESETS any pin applied earlier by ALTER FUNCTION (Supabase lint 0011).\nOffenders:\n' +
-        offenders.join('\n'),
-    ).toEqual([]);
-  });
-
-  it('a SET search_path inside the body or a comment does not count as a pin (tier-1 review)', () => {
-    for (const fake of [
-      "CREATE FUNCTION f() RETURNS int AS $$\n  SELECT 1; -- SET search_path = ''\n$$ LANGUAGE sql;",
-      "CREATE FUNCTION f() RETURNS void AS $fn$ BEGIN EXECUTE 'SET search_path = public'; END $fn$ LANGUAGE plpgsql;",
-      "CREATE FUNCTION f() RETURNS int\n-- SET search_path = ''\nAS $$ SELECT 1 $$ LANGUAGE sql;",
-      "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1 /* SET search_path = x */';",
-      "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$\nLANGUAGE sql /* SET search_path = '' */;",
-      "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql /* outer /* inner */ SET search_path = '' */;",
-      "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1'; SET search_path = public;",
-      "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';\nALTER FUNCTION g() SET search_path = '';",
-    ]) {
-      const [stmt] = functionStatements(fake);
-      expect(PINNED.test(optionsOf(stmt ?? fake)), fake).toBe(false);
-    }
-    // A single-quoted-body function followed by a pinned one must not borrow the second one's pin.
-    const [first, second] = functionStatements(
-      "CREATE FUNCTION a() RETURNS int LANGUAGE sql AS 'SELECT 1';\n" +
-        "CREATE FUNCTION b() RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 2 $$;",
-    );
-    expect(PINNED.test(optionsOf(first ?? ''))).toBe(false);
-    expect(PINNED.test(optionsOf(second ?? ''))).toBe(true);
-    const [real] = functionStatements(
-      "CREATE OR REPLACE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 1 $$;",
-    );
-    expect(PINNED.test(optionsOf(real ?? ''))).toBe(true);
+  it('every CREATE [OR REPLACE] FUNCTION / PROCEDURE in committed SQL carries SET search_path', (ctx) => {
+    const reason = unavailable(repo);
+    if (reason) return ctx.skip(reason);
+    expect(repo.out).toMatch(/✓ search_path gate/);
+    expect(repo.code, repo.out).toBe(0);
+    // Non-vacuity on the SERVER side: the two CB-1 / CB-1b guard scripts really created their routine.
+    expect(verdicts(repo.out, 'packages/db/prisma/manual/2026-07-17-audit-logs-immutable.sql')).toEqual([
+      'PINNED public.tims_append_only_guard()',
+    ]);
+    expect(verdicts(repo.out, 'packages/db/prisma/manual/2026-07-17-data-access-logs-immutable.sql')).toEqual([
+      'PINNED public.tims_append_only_guard()',
+    ]);
   });
 
   it('both the apply and the ROLLBACK instructions require regenerating the flip-DDL after re-capture (tier-1 review)', () => {
@@ -172,17 +135,164 @@ describe('governance — committed function DDL pins search_path', () => {
       expect(text, f).toMatch(/regenerate every services\/Tims\.Platform\/db\/flip-ddl\/\*\.sql/);
     }
   });
+});
 
-  it('the statement splitter really sees an unpinned function (the check can fail)', () => {
-    const [unpinned] = functionStatements(
-      'CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ SELECT 1; $$ LANGUAGE sql;\nSELECT 2;',
-    );
-    expect(unpinned).toBe('CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ SELECT 1; $$ LANGUAGE sql;');
-    expect(PINNED.test(unpinned)).toBe(false);
+/**
+ * Each fixture is one file; the expected value is the gate's per-file verdict list. The first block is every
+ * shape a tier-1 review round found the old regex gate getting wrong.
+ */
+const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
+  'pinned-basic.sql': {
+    sql: "CREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 1 $$;",
+    expect: ['PINNED public.f()'],
+  },
+  'unpinned-basic.sql': {
+    sql: 'CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ SELECT 1; $$ LANGUAGE sql;\nSELECT 2;',
+    expect: ['UNPINNED public.f()'],
+  },
+  // r4: digits in the dollar-quote tag, with a fake pin inside the body.
+  'dollar-tag-digits.sql': {
+    sql:
+      "CREATE FUNCTION a() RETURNS int AS $fn1$ SELECT 1; -- SET search_path = ''\n$fn1$ LANGUAGE sql;\n" +
+      "CREATE FUNCTION b() RETURNS int AS $a1$ SELECT 1 $a1$ LANGUAGE sql SET search_path TO '';",
+    expect: ['PINNED public.b()', 'UNPINNED public.a()'],
+  },
+  // r4: a quoted argument default containing `$$`, `--` and a pin-shaped string.
+  'quoted-default.sql': {
+    sql:
+      "CREATE FUNCTION a(x text DEFAULT '$$ -- ; SET search_path = x') RETURNS int LANGUAGE sql AS $$ SELECT 1 $$;\n" +
+      "CREATE FUNCTION b(x text DEFAULT '$$ -- ;') RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 1 $$;",
+    expect: ['PINNED public.b(pg_catalog.text)', 'UNPINNED public.a(pg_catalog.text)'],
+  },
+  // r4: `--` inside a string literal (a regex comment-stripper ate the rest of the line, pin included).
+  'dashdash-in-literal.sql': {
+    sql:
+      "CREATE FUNCTION a() RETURNS text LANGUAGE sql AS 'SELECT ''--''' SET search_path = '';\n" +
+      "CREATE FUNCTION b() RETURNS text LANGUAGE sql AS 'SELECT ''-- SET search_path = x''';",
+    expect: ['PINNED public.a()', 'UNPINNED public.b()'],
+  },
+  // r1-r3: a pin in the body, in comments (nested too), or after the statement does not count.
+  'pin-in-body.sql': {
+    sql: "CREATE FUNCTION f() RETURNS void AS $fn$ BEGIN EXECUTE 'SET search_path = public'; END $fn$ LANGUAGE plpgsql;",
+    expect: ['UNPINNED public.f()'],
+  },
+  'pin-in-comments.sql': {
+    sql:
+      "CREATE FUNCTION a() RETURNS int\n-- SET search_path = ''\nAS $$ SELECT 1 $$ LANGUAGE sql;\n" +
+      "CREATE FUNCTION b() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql /* outer /* inner */ SET search_path = '' */;",
+    expect: ['UNPINNED public.a()', 'UNPINNED public.b()'],
+  },
+  'session-set-after.sql': {
+    sql: "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1'; SET search_path = public;",
+    expect: ['UNPINNED public.f()'],
+  },
+  'single-quoted-then-pinned.sql': {
+    sql:
+      "CREATE FUNCTION a() RETURNS int LANGUAGE sql AS 'SELECT 1';\n" +
+      "CREATE FUNCTION b() RETURNS int LANGUAGE sql SET search_path = '' AS $$ SELECT 2 $$;",
+    expect: ['PINNED public.b()', 'UNPINNED public.a()'],
+  },
+  // The trap itself: a pin applied by ALTER does not make the CREATE pinned, and CREATE OR REPLACE resets it.
+  'alter-after-create.sql': {
+    sql: "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';\nALTER FUNCTION f() SET search_path = '';",
+    expect: ['UNPINNED public.f()'],
+  },
+  'replace-resets-pin.sql': {
+    sql:
+      "CREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';\n" +
+      "CREATE OR REPLACE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 2';",
+    expect: ['PINNED public.f()', 'UNPINNED public.f()'],
+  },
+  // Shapes no text check could see.
+  'do-block-execute.sql': {
+    sql: "DO $$ BEGIN EXECUTE 'CREATE FUNCTION g() RETURNS int LANGUAGE sql AS ''SELECT 1'''; END $$;",
+    expect: ['UNPINNED public.g()'],
+  },
+  'procedure.sql': {
+    sql: 'CREATE PROCEDURE p() LANGUAGE sql AS $$ SELECT 1 $$;',
+    expect: ['UNPINNED public.p()'],
+  },
+  'mention-only-in-comment.sql': {
+    sql: "-- CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';\nSELECT 1;",
+    expect: [],
+  },
+  // The file cannot hide its routines from the gate.
+  // Every one of these is refused for the non-superuser that applies files, so the routine is still seen.
+  'tamper-settings.sql': {
+    sql:
+      'SET client_min_messages = error;\nSET log_min_messages = panic;\nSET session_replication_role = replica;\n' +
+      'ALTER EVENT TRIGGER search_path_gate_end DISABLE;\nDROP EVENT TRIGGER search_path_gate_start;\n' +
+      "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';",
+    expect: ['UNPINNED public.f()'],
+  },
+  // Leaving the scratch database is refused too, and psql aborts the file: fail closed.
+  'connect-escape.sql': {
+    sql: "\\connect postgres\nCREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';",
+    expect: ['UNVERIFIED'],
+  },
+  // Fail closed when the server cannot read the pin.
+  'missing-type.sql': {
+    sql: "CREATE FUNCTION f(x no_such_type) RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
+    expect: ['UNVERIFIED'],
+  },
+  'syntax-error.sql': {
+    sql: 'CREATE FUNCTION f( RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;',
+    expect: ['SYNTAX'],
+  },
+  'stops-early.sql': {
+    sql: "\\set ON_ERROR_STOP on\nSELECT 1/0;\nCREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = '' AS 'SELECT 1';",
+    expect: ['UNVERIFIED'],
+  },
+  // Pre-filter: a file that never names FUNCTION/PROCEDURE is not applied, so its early stop is harmless...
+  'no-routine-keyword.sql': {
+    sql: '\\set ON_ERROR_STOP on\nSELECT 1/0;',
+    expect: [],
+  },
+};
 
-    const [pinned] = functionStatements(
-      "CREATE FUNCTION g() RETURNS trigger AS $body$ BEGIN RETURN NULL; END; $body$ LANGUAGE plpgsql SET search_path = '';",
-    );
-    expect(PINNED.test(pinned)).toBe(true);
+describe('verify-function-search-path.sh — PostgreSQL answers the shapes a regex got wrong', () => {
+  let dir: string;
+  let run: GateRun;
+  let unpinnedInclude: GateRun;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'search-path-gate-'));
+    for (const [name, { sql }] of Object.entries(FIXTURES)) writeFileSync(join(dir, name), `${sql}\n`);
+    run = gate(Object.keys(FIXTURES).map((n) => join(dir, n)));
+    // ...but a psql include is applied even without the keyword, because the included file may create one.
+    writeFileSync(join(dir, 'included.txt'), "CREATE FUNCTION inc() RETURNS int LANGUAGE sql AS 'SELECT 1';\n");
+    writeFileSync(join(dir, 'includes.sql'), '\\ir included.txt\n');
+    unpinnedInclude = gate([join(dir, 'includes.sql')]);
+  }, 200_000);
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('exits 1 on the fixture set, which contains violations', (ctx) => {
+    const reason = unavailable(run);
+    if (reason) return ctx.skip(reason);
+    expect(run.code, run.out).toBe(1);
+  });
+
+  for (const [name, { expect: want }] of Object.entries(FIXTURES)) {
+    it(`${name} → ${want.length ? want.join(', ') : 'no routine'}`, (ctx) => {
+      const reason = unavailable(run);
+      if (reason) return ctx.skip(reason);
+      expect(verdicts(run.out, join(dir, name)), run.out).toEqual([...want].sort());
+    });
+  }
+
+  it('a psql include is followed: its unpinned routine is caught', (ctx) => {
+    const reason = unavailable(unpinnedInclude);
+    if (reason) return ctx.skip(reason);
+    expect(unpinnedInclude.code, unpinnedInclude.out).toBe(1);
+    expect(verdicts(unpinnedInclude.out, join(dir, 'includes.sql'))).toEqual(['UNPINNED public.inc()']);
+  });
+
+  it('exits 2 — never 0 — when given nothing to check', () => {
+    const r = gate([]);
+    expect(r.code).toBe(2);
+    expect(r.out).toMatch(/DID NOT RUN/);
   });
 });
