@@ -20,16 +20,16 @@ export const POOL_TYPES = [
 
 export const EXPERIENCE_LEVELS = [
   { value: '0', label: 'Sin experiencia' },
-  { value: '1', label: '1 ano' },
-  { value: '2', label: '2 anos' },
-  { value: '3', label: '3-4 anos' },
-  { value: '5', label: '5-7 anos' },
-  { value: '8', label: '8-10 anos' },
-  { value: '12', label: '10+ anos' },
+  { value: '1', label: '1 año' },
+  { value: '2', label: '2 años' },
+  { value: '3', label: '3-4 años' },
+  { value: '5', label: '5-7 años' },
+  { value: '8', label: '8-10 años' },
+  { value: '12', label: '10+ años' },
 ];
 
 export const inputCls = 'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] disabled:opacity-50 disabled:bg-[#FAFAFA]';
 export const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
 export const textareaCls = 'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none disabled:opacity-50';
 
-export const STEP_LABELS = ['Datos personales', 'Perfil profesional', 'Fuente y aplicacion'];
+export const STEP_LABELS = ['Datos personales', 'Perfil profesional', 'Fuente y aplicación'];

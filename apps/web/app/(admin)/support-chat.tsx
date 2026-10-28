@@ -12,9 +12,9 @@ interface Message {
 
 const AUTO_REPLIES: Record<string, string> = {
   'hola': 'Hola! Como puedo ayudarte hoy?',
-  'ayuda': 'Estoy aqui para ayudarte. Puedes preguntarme sobre:\n• Configuracion de la plataforma\n• Gestion de organizaciones\n• Facturacion y suscripciones\n• Problemas tecnicos',
-  'precio': 'Nuestros planes van desde $499/mes (Starter) hasta $2,499/mes (Enterprise). Visita /platform/subscriptions para mas detalles.',
-  'error': 'Lamento escuchar eso. Puedes describir el error? Tambien puedes revisar /platform/health para ver el estado del sistema.',
+  'ayuda': 'Estoy aquí para ayudarte. Puedes preguntarme sobre:\n• Configuración de la plataforma\n• Gestión de organizaciones\n• Facturación y suscripciones\n• Problemas técnicos',
+  'precio': 'Nuestros planes van desde $499/mes (Starter) hasta $2,499/mes (Enterprise). Visita /platform/subscriptions para más detalles.',
+  'error': 'Lamento escuchar eso. Puedes describir el error? También puedes revisar /platform/health para ver el estado del sistema.',
   'contacto': 'Puedes contactarnos en:\n• Email: soporte@timshr.com\n• WhatsApp: +57 300 123 4567\n• Horario: Lun-Vie 8am-6pm COT',
 };
 
@@ -23,7 +23,7 @@ function getAutoReply(text: string): string {
   for (const [key, reply] of Object.entries(AUTO_REPLIES)) {
     if (lower.includes(key)) return reply;
   }
-  return 'Gracias por tu mensaje. Un miembro del equipo de soporte te respondera pronto. Mientras tanto, puedes revisar nuestra documentacion o visitar la pagina de soporte.';
+  return 'Gracias por tu mensaje. Un miembro del equipo de soporte te responderá pronto. Mientras tanto, puedes revisar nuestra documentación o visitar la página de soporte.';
 }
 
 export function SupportChat({ open, onClose }: { open: boolean; onClose: () => void }) {

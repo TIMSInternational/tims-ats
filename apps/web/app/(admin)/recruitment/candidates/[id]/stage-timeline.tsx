@@ -24,11 +24,11 @@ function buildStageSteps(app: Application): StageStep[] {
   // Build typical pipeline stages in order
   const stages = [
     { name: 'Postulada', order: 0 },
-    { name: 'Preseleccion', order: 1 },
+    { name: 'Preselección', order: 1 },
     { name: 'Evaluaciones', order: 2 },
     { name: app.currentStage.name, order: currentOrder },
     { name: 'Oferta', order: currentOrder + 1 },
-    { name: 'Contratacion', order: currentOrder + 2 },
+    { name: 'Contratación', order: currentOrder + 2 },
   ];
 
   // Deduplicate by name

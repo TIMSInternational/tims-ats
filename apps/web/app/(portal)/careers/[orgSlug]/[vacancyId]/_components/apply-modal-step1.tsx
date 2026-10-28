@@ -45,7 +45,7 @@ export function ApplyModalStep1({
             onChange={(e) => setFirstName(e.target.value)}
             maxLength={100}
             className={inputCls}
-            placeholder="Maria"
+            placeholder={p.firstNamePlaceholder}
             autoFocus
           />
         </div>

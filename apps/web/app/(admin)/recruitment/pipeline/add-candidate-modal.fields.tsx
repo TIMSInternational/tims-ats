@@ -41,7 +41,7 @@ export function Step1Fields({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>{t.candidates.formFirstName}</label>
-          <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="Maria" autoFocus />
+          <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="María" autoFocus />
         </div>
         <div>
           <label className={labelCls}>{t.candidates.formLastName}</label>

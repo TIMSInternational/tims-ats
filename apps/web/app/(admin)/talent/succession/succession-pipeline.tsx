@@ -95,14 +95,14 @@ const READINESS_STYLES: Record<string, { border: string; bg: string; label: stri
     ready_1_year: {
       border: 'border-amber-300',
       bg: 'bg-amber-50/50',
-      label: '1-2 Anos',
+      label: '1-2 Años',
       text: 'text-amber-700',
       avatarBg: 'bg-amber-600',
     },
     ready_2_years: {
       border: 'border-amber-300',
       bg: 'bg-amber-50/50',
-      label: '1-2 Anos',
+      label: '1-2 Años',
       text: 'text-amber-700',
       avatarBg: 'bg-amber-600',
     },
