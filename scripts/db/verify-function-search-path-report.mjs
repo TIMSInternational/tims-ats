@@ -8,18 +8,24 @@
 //   SYNTAX     <file>: <message>    PostgreSQL could not parse a statement (SQLSTATE 42601)
 //
 // Everything is attributed per STATEMENT as the server received it (log_statement=all), so psql's lexer — not
-// ours — decides where statements begin and end. Only a TOP-LEVEL CREATE FUNCTION/PROCEDURE statement can be
-// verified: what it creates does not depend on database state. A statement is UNVERIFIED when:
-//   - a CREATE FUNCTION/PROCEDURE started in it but did not complete (a type it needs is missing), or
-//   - a routine was created INSIDE it by dynamic SQL — the server's own top-level command tag (jsonlog `ps`)
-//     is DO, SELECT, CALL, ... rather than CREATE FUNCTION/PROCEDURE. Which declarations such code runs
-//     depends on the database (a loop, an IF on production state), so one execution in an empty database
-//     proves nothing about the others (tier-1 round 2), or
-//   - its text mentions `CREATE [OR REPLACE] FUNCTION|PROCEDURE` more times than the server started such a
-//     command: the routine sits on a path the scratch database did not take (a DO block that failed before
-//     its EXECUTE, an IF branch that was false), or in a body that creates routines when called. The mention
-//     count is a superset check on text the server received — comments and string literals count too — so
-//     it can only over-report, which fails closed.
+// ours — decides where statements begin and end. The event trigger logs the tag of EVERY DDL command at
+// ddl_command_start together with the server's top-level command tag (jsonlog `ps`), so each statement is
+// classified by the server, not by reading its text:
+//
+//   - a top-level CREATE FUNCTION/PROCEDURE (ps = tag) is verified from proconfig. It is UNVERIFIED if it
+//     started but did not complete (a type it needs is missing), or if its text contains `create` AND
+//     `function|procedure` a SECOND time — a body that creates routines when called (tier-1 round 4);
+//   - a routine created INSIDE another statement (ps = DO, SELECT, CALL, ...) is dynamic: which declarations
+//     such code runs depends on database state, so it is UNVERIFIED even though what ran is checked (round 2);
+//   - any other DDL statement (CREATE TRIGGER ... EXECUTE FUNCTION, GRANT ... ON FUNCTION, ALTER FUNCTION,
+//     COMMENT ON FUNCTION) cannot create a routine when it runs, so it is not text-checked;
+//   - every remaining statement — DO, SELECT, CALL, or one that failed before the server ran it — whose text
+//     contains the substrings `create` and `function` or `procedure` anywhere, in any case, is UNVERIFIED: a
+//     routine on a path the scratch database did not take (a DO block that failed first, an untaken IF, a
+//     loop) cannot be checked (rounds 1, 2, 4).
+// The text checks are SUBSTRING tests on what the server received — comments, literals and escape sequences
+// such as E'CREATE\nFUNCTION' included — so they can only over-report, which fails closed. A keyword spelled
+// out of fragments or character codes ('FUNC' || 'TION', chr(70)) evades them; see the gate script header.
 //
 // usage: node verify-function-search-path-report.mjs <jsonlog> <nonce> <database> <file-label>
 import { readFileSync } from 'node:fs';
@@ -32,11 +38,13 @@ if (!logPath || !nonce || !db || !label) {
 
 const MARK = `search-path-gate:${nonce}:${db}:`;
 const PSQL_INTERNAL = /^(SAVEPOINT|RELEASE|ROLLBACK TO) pg_psql_temporary_savepoint$/;
-const TOP_LEVEL_CREATE = new Set(['CREATE FUNCTION', 'CREATE PROCEDURE']);
-const GAP = String.raw`(?:\s|/\*[\s\S]*?\*/|--[^\n]*(?:\n|$))+`;
-const CREATE_ROUTINE = new RegExp(String.raw`\bcreate${GAP}(?:or${GAP}replace${GAP})?(?:function|procedure)\b`, 'gi');
+const ROUTINE = new Set(['CREATE FUNCTION', 'CREATE PROCEDURE']);
+const count = (text, re) => (text.match(re) ?? []).length;
 
-/** @typedef {{ text: string, starts: number, dynamic: Set<string>, ends: { pinned: boolean, ident: string }[], errors: string[] }} Stmt */
+/**
+ * @typedef {{ tag: string, ps: string }} Start
+ * @typedef {{ text: string, starts: Start[], ends: { pinned: boolean, ident: string }[], errors: string[] }} Stmt
+ */
 /** @type {Stmt[]} */
 const statements = [];
 /** @type {Map<string, Stmt>} current statement per backend session */
@@ -59,7 +67,7 @@ for (const raw of readFileSync(logPath, 'utf8').split('\n')) {
   if (e.error_severity === 'LOG' && msg.startsWith('statement: ')) {
     const text = msg.slice('statement: '.length);
     if (PSQL_INTERNAL.test(text.trim())) continue;
-    const stmt = { text, starts: 0, dynamic: new Set(), ends: [], errors: [] };
+    const stmt = { text, starts: [], ends: [], errors: [] };
     statements.push(stmt);
     current.set(session, stmt);
     continue;
@@ -68,10 +76,7 @@ for (const raw of readFileSync(logPath, 'utf8').split('\n')) {
   if (e.error_severity === 'LOG' && msg.startsWith(MARK)) {
     const rest = msg.slice(MARK.length);
     if (!stmt) continue;
-    if (rest.startsWith('start:')) {
-      stmt.starts += 1;
-      if (!TOP_LEVEL_CREATE.has(e.ps ?? '')) stmt.dynamic.add(e.ps || '?');
-    }
+    if (rest.startsWith('start:')) stmt.starts.push({ tag: rest.slice('start:'.length), ps: e.ps ?? '' });
     else if (rest.startsWith('end:pinned:')) stmt.ends.push({ pinned: true, ident: rest.slice('end:pinned:'.length) });
     else if (rest.startsWith('end:unpinned:')) stmt.ends.push({ pinned: false, ident: rest.slice('end:unpinned:'.length) });
     continue;
@@ -84,21 +89,32 @@ for (const raw of readFileSync(logPath, 'utf8').split('\n')) {
 
 let violations = 0;
 const first = (s) => s.replace(/\s+/g, ' ').trim().slice(0, 100);
+const unverified = (s, why) => {
+  console.log(`UNVERIFIED ${label}: ${why}${s.errors[0] ? ` — ${first(s.errors[0])}` : ''} [in: ${first(s.text)}]`);
+  violations += 1;
+};
 for (const s of statements) {
   for (const end of s.ends) {
     console.log(`${end.pinned ? 'PINNED    ' : 'UNPINNED  '} ${label}: ${end.ident}`);
     if (!end.pinned) violations += 1;
   }
-  const mentions = (s.text.match(CREATE_ROUTINE) ?? []).length;
-  if (s.starts > s.ends.length) {
-    console.log(`UNVERIFIED ${label}: a CREATE FUNCTION/PROCEDURE did not complete, so its search_path could not be read — ${first(s.errors[0] ?? 'no error recorded')} [in: ${first(s.text)}]`);
-    violations += 1;
-  } else if (s.dynamic.size > 0) {
-    console.log(`UNVERIFIED ${label}: a routine was created by dynamic SQL inside a top-level ${[...s.dynamic].join('/')} statement; which declarations run depends on database state, so create it with a top-level CREATE statement [in: ${first(s.text)}]`);
-    violations += 1;
-  } else if (mentions > s.starts) {
-    console.log(`UNVERIFIED ${label}: the statement mentions CREATE FUNCTION/PROCEDURE ${mentions} time(s) but the server started ${s.starts}; a path the scratch database did not take cannot be checked${s.errors[0] ? ` — ${first(s.errors[0])}` : ''} [in: ${first(s.text)}]`);
-    violations += 1;
+  const routineStarts = s.starts.filter((st) => ROUTINE.has(st.tag));
+  // The statement's own DDL tag, as the server reported it (ps equals the tag only at top level).
+  const topTag = s.starts.find((st) => st.ps === st.tag)?.tag ?? null;
+  const creates = count(s.text, /create/gi);
+  const routines = count(s.text, /function|procedure/gi);
+
+  if (routineStarts.length > s.ends.length) {
+    unverified(s, 'a CREATE FUNCTION/PROCEDURE did not complete, so its search_path could not be read');
+  } else if (routineStarts.some((st) => !ROUTINE.has(st.ps))) {
+    const outer = [...new Set(routineStarts.filter((st) => !ROUTINE.has(st.ps)).map((st) => st.ps || '?'))].join('/');
+    unverified(s, `a routine was created by dynamic SQL inside a top-level ${outer} statement; which declarations run depends on database state, so create it with a top-level CREATE statement`);
+  } else if (topTag !== null && ROUTINE.has(topTag)) {
+    if (creates >= 2 && routines >= 2) {
+      unverified(s, 'the routine body itself mentions creating a routine (it would create one when called), which cannot be checked here');
+    }
+  } else if (topTag === null && creates >= 1 && routines >= 1) {
+    unverified(s, 'the statement mentions CREATE and FUNCTION/PROCEDURE but created no routine at top level; a path the scratch database did not take cannot be checked');
   }
 }
 for (const m of syntax) {

@@ -22,10 +22,11 @@
 #   UNVERIFIED  a routine-creating statement could not be checked: a CREATE FUNCTION/PROCEDURE started but
 #               did not complete (a type it needs is missing here); or a routine was created by dynamic SQL
 #               inside a DO / SELECT / CALL (only top-level CREATE statements are verifiable: what dynamic
-#               code creates depends on database state); or the statement's text mentions
-#               CREATE [OR REPLACE] FUNCTION/PROCEDURE more often than the server started one (a failed or
-#               untaken path in a DO block); or the file uses a psql meta-command, which is refused (below);
-#               or psql exited non-zero
+#               code creates depends on database state); or a statement that is not server-tagged as DDL
+#               contains the substrings "create" and "function"/"procedure" (a failed, untaken or looping
+#               path in a DO block); or a routine's own text mentions creating another; or the file uses a
+#               psql meta-command, which is refused (below); or psql exited non-zero.
+#               The rules are in scripts/db/verify-function-search-path-report.mjs.
 #   SYNTAX      PostgreSQL could not parse a statement (SQLSTATE 42601): a routine inside it would go unseen
 # Other errors (a REVOKE on a table the scratch database does not have) are expected and ignored: each
 # statement runs under psql ON_ERROR_ROLLBACK, so one failure does not abort the rest of the file.
@@ -163,8 +164,9 @@ BEGIN
   END LOOP;
 END
 \$f\$;
+-- Every DDL command, not only routine DDL: the reporter needs each statement's server-reported tag.
 CREATE EVENT TRIGGER search_path_gate_start ON ddl_command_start
-  WHEN TAG IN ('CREATE FUNCTION', 'CREATE PROCEDURE') EXECUTE FUNCTION search_path_gate.on_start();
+  EXECUTE FUNCTION search_path_gate.on_start();
 CREATE EVENT TRIGGER search_path_gate_end ON ddl_command_end
   WHEN TAG IN ('CREATE FUNCTION', 'CREATE PROCEDURE') EXECUTE FUNCTION search_path_gate.on_end();
 SQL

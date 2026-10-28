@@ -216,6 +216,25 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
       "    EXECUTE 'CREATE FUNCTION b() RETURNS int LANGUAGE sql AS ''SELECT 1''';\n  END IF;\nEND $do$;",
     expect: ['PINNED public.a()', 'PINNED public.a()', 'UNVERIFIED'],
   },
+  // tier-1 round 4: an escape sequence between the keywords defeated an adjacency regex; the reporter now
+  // tests substrings on any statement the server did not tag as DDL.
+  'escaped-keyword-untaken.sql': {
+    sql:
+      "DO $$ BEGIN\n  IF EXISTS (SELECT FROM pg_class WHERE relname = 'production_table') THEN\n" +
+      "    EXECUTE E'CREATE\\nFUNCTION f() RETURNS int LANGUAGE sql AS \\'SELECT 1\\'';\n  END IF;\nEND $$;",
+    expect: ['UNVERIFIED'],
+  },
+  // Negative controls: DDL the server tags as something other than CREATE FUNCTION/PROCEDURE cannot create a
+  // routine when it runs, so naming a function in it is not a finding.
+  'function-naming-ddl.sql': {
+    sql:
+      "CREATE FUNCTION g() RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN RETURN NEW; END $$;\n" +
+      'CREATE TABLE t (id int);\nCREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION g();\n' +
+      'GRANT EXECUTE ON FUNCTION g() TO PUBLIC;\n' +
+      "COMMENT ON FUNCTION g() IS 'created to guard t; see CREATE FUNCTION docs';\n" +
+      "ALTER FUNCTION g() SET search_path = '';",
+    expect: ['PINNED public.g()'],
+  },
   'created-when-called.sql': {
     sql:
       "CREATE FUNCTION mk() RETURNS void LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN\n" +
