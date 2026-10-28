@@ -175,4 +175,30 @@ describe('Sentry bearer-link redaction beyond the join link (offers, AI intervie
     const other = encodeURIComponent(JSON.stringify({ 0: { json: { vacancyId: UUID } } }));
     expect(redactBearerTokens(`/api/trpc/portal.getVacancy?input=${other}`)).toContain(UUID);
   });
+
+  it('scrubs the invitation token and recovery proof on the password-setup redirect (URL and query_string)', () => {
+    const url = `https://ats.example/reset-password?recovery=${UUID}&invitation=${SECRET}`;
+    expect(redactBearerTokens(url)).toBe('https://ats.example/reset-password?recovery=[redacted]&invitation=[redacted]');
+    const event = redactSentryEvent({
+      request: { url, query_string: { recovery: UUID, invitation: SECRET } },
+      breadcrumbs: [{ data: { to: `/auth/confirm?token_hash=${SECRET}&type=invite` } }],
+    });
+    const json = JSON.stringify(event);
+    expect(json).not.toContain(SECRET);
+    expect(json).not.toContain(UUID);
+  });
+
+  it('scrubs credential query values in a DOUBLY encoded nested URL', () => {
+    for (const value of [
+      `/login?next=%252Faccept-invitation%253Ftoken%253D${SECRET}`,
+      `/login?next=%252Freset-password%253Frecovery%253D1%2526invitation%253D${SECRET}%2526x%253D1`,
+      `/login?next=${encodeURIComponent(encodeURIComponent(`/accept-invitation?token=${SECRET}&a=b`))}`,
+    ]) {
+      const redacted = redactBearerTokens(value);
+      expect(redacted, value).not.toContain(SECRET);
+      expect(redacted, value).toContain('[redacted]');
+    }
+    // The following double-encoded parameter survives.
+    expect(redactBearerTokens(`/login?next=%252Fx%253Ftoken%253D${SECRET}%2526keep%253Dyes`)).toContain('%2526keep%253Dyes');
+  });
 });

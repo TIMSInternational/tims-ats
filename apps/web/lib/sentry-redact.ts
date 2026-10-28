@@ -38,10 +38,11 @@ const PARAMS = BEARER_QUERY_PARAMS.map(escapeRe).join('|');
 // `?token=…`, `&code=…`, `#access_token=…`, or a bare `token=…` query string. Only at a parameter boundary,
 // so `x_token=` or `session=` are left alone.
 const QUERY_PARAM = new RegExp(`((?:^|[?&;#])(?:${PARAMS})=)[^&#\\s"'<>]+`, 'gi');
-// The same inside an encoded nested URL: `%3Ftoken%3D…` / `%26code%3D…`. Escapes inside the value are
-// consumed except an encoded `&` / `#`, which ends it.
+// The same inside an encoded nested URL, encoded once (`%3Ftoken%3D…`, `%26code%3D…`) or twice
+// (`%253Ftoken%253D…`). Escapes inside the value are consumed except an encoded `&` / `#` / `%`, which end it
+// (a double-encoded separator starts with `%25`).
 const ENCODED_QUERY_PARAM = new RegExp(
-  `((?:%3F|%26|%23)(?:${PARAMS})%3D)(?:[^&#%\\s"'<>]|%(?!26|23)[0-9a-f]{2})+`,
+  `((?:%3F|%26|%23|%253F|%2526|%2523)(?:${PARAMS})(?:%3D|%253D))(?:[^&#%\\s"'<>]|%(?!26|23|25)[0-9a-f]{2})+`,
   'gi',
 );
 
