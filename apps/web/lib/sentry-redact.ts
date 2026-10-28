@@ -1,40 +1,95 @@
-// Bearer credentials that live in URL paths must never reach Sentry: the candidate video-interview join
-// link `/interview/join/<token>` (WP-H) is the ENTIRE credential for that interview. Sentry records page
-// URLs in request data, transaction names, spans and navigation breadcrumbs, so every event is scrubbed.
+// Bearer credentials that live in URLs must never reach Sentry. Sentry records page URLs in request data,
+// query strings, transaction names, spans and navigation breadcrumbs, so every string in every event is
+// scrubbed. The set of bearer-link routes and credential query parameters comes from
+// lib/security/bearer-links.ts — the same list the middleware uses for no-referrer / no-store.
+//
+// Covered shapes:
+//   - path tokens: `/offers/sign/<token>`, `/interview/join/<token>`, `/ai-interview/<token>` — plain,
+//     `%2F`-encoded and `%252F`-double-encoded (as they appear inside a `?next=`/`returnTo=` value);
+//   - credential query values anywhere: `?token=`, `&code=`, `#access_token=`, `refresh_token=`, and the same
+//     inside an encoded nested URL (`%3Ftoken%3D…`); also Sentry's `query_string` in object / pair form;
+//   - credential-named JSON members (`{"token":"…"}`, also JSON-escaped) and object properties;
+//   - (#329) any 43-character base64url run that follows the word "join" (the join-token shape).
 
-const JOIN_TOKEN_PATH = /\/interview\/join\/[^/?#\s"'<>]+/g;
-const REDACTED_PATH = '/interview/join/[redacted]';
+import { BEARER_QUERY_PARAMS, BEARER_TOKEN_PATH_PREFIXES } from './security/bearer-links';
 
-// #329 item 4 — the same path percent-encoded, as it appears in a `?next=`/`returnTo=` query value, a serialized
-// redirect target or an encoded span attribute: `%2Finterview%2Fjoin%2F<token>` (any mix of `/` and `%2F`, either
-// hex case). The token itself is base64url, so the match stops at the next escape (and never re-matches an
-// already-written `[redacted]`).
-// `%252F` is the same path encoded TWICE (a returnTo nested inside another query value).
-const ENCODED_JOIN_TOKEN_PATH = /(?:\/|%2F|%252F)interview(?:\/|%2F|%252F)join(?:\/|%2F|%252F)[a-z0-9_-]+/gi;
-const REDACTED_ENCODED_PATH = '%2Finterview%2Fjoin%2F[redacted]';
+const REDACTED = '[redacted]';
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Belt and braces: ANY 43-character base64url run (the exact shape of a join token: 32 random bytes, unpadded)
-// that follows the word "join" and a short separator — `join=`, `join: `, `join%2F`, `"join":"` — regardless of
-// the surrounding URL shape. Bounded on both sides so a longer identifier is not partially rewritten.
+// `/offers/sign/` → ['offers', 'sign']
+const PREFIX_SEGMENTS = BEARER_TOKEN_PATH_PREFIXES.map((prefix) => prefix.split('/').filter(Boolean));
+
+// Plain path: the first segment after the prefix is the credential.
+const PATH_TOKEN = new RegExp(
+  `(/(?:${PREFIX_SEGMENTS.map((segs) => segs.map(escapeRe).join('/')).join('|')})/)[^/?#\\s"'<>]+`,
+  'g',
+);
+
+// The same paths percent-encoded once or twice, in any hex case. The token charset (base64url / UUID) has
+// no `%`, so the match stops at the next escape and never re-matches an already-written `[redacted]`.
+const SEP = '(?:\\/|%2F|%252F)';
+const ENCODED_PATH_TOKENS = PREFIX_SEGMENTS.map((segs) => ({
+  pattern: new RegExp(`${SEP}${segs.map(escapeRe).join(SEP)}${SEP}[a-z0-9_.~-]+`, 'gi'),
+  replacement: `%2F${segs.join('%2F')}%2F${REDACTED}`,
+}));
+
+const PARAMS = BEARER_QUERY_PARAMS.map(escapeRe).join('|');
+// `?token=…`, `&code=…`, `#access_token=…`, or a bare `token=…` query string. Only at a parameter boundary,
+// so `x_token=` or `session=` are left alone.
+const QUERY_PARAM = new RegExp(`((?:^|[?&;#])(?:${PARAMS})=)[^&#\\s"'<>]+`, 'gi');
+// The same inside an encoded nested URL: `%3Ftoken%3D…` / `%26code%3D…`. Escapes inside the value are
+// consumed except an encoded `&` / `#`, which ends it.
+const ENCODED_QUERY_PARAM = new RegExp(
+  `((?:%3F|%26|%23)(?:${PARAMS})%3D)(?:[^&#%\\s"'<>]|%(?!26|23)[0-9a-f]{2})+`,
+  'gi',
+);
+
+// Any 43-character base64url run (the exact shape of a join token: 32 random bytes, unpadded) that follows
+// the word "join" and a short separator — `join=`, `join: `, `join%2F`, `"join":"`. Bounded on both sides so
+// a longer identifier is not partially rewritten.
 const JOIN_PREFIXED_TOKEN = /(join(?:%[0-9a-f]{2}|[^a-z0-9_\-%]){1,8})[a-z0-9_-]{43}(?![a-z0-9_-])/gi;
 
-// The join POST body is `{"token":"<43 chars>"}`; Sentry can capture it as request data, a breadcrumb or a
-// serialized string (also JSON-escaped inside another string: `{\"token\":\"…\"}`).
-const JSON_TOKEN_VALUE = /(\\?"token\\?"\s*:\s*\\?")[a-z0-9_-]{43}(?![a-z0-9_-])/gi;
+// Credential-named JSON members, as a request body, breadcrumb or serialized string (also JSON-escaped inside
+// another string: `{\"token\":\"…\"}`).
+const CREDENTIAL_KEYS = ['token', 'candidateToken', 'signingToken', 'access_token', 'refresh_token'] as const;
+const JSON_CREDENTIAL_VALUE = new RegExp(
+  `(\\\\?"(?:${CREDENTIAL_KEYS.map(escapeRe).join('|')})\\\\?"\\s*:\\s*\\\\?")[^"\\\\]+`,
+  'gi',
+);
 
-const BARE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+const CREDENTIAL_KEY_SET: ReadonlySet<string> = new Set(CREDENTIAL_KEYS);
+const QUERY_PARAM_SET: ReadonlySet<string> = new Set(BEARER_QUERY_PARAMS);
 const MAX_DEPTH = 24;
 
-export function redactJoinTokens(value: string): string {
-  return value
-    .replace(JOIN_TOKEN_PATH, REDACTED_PATH)
-    .replace(ENCODED_JOIN_TOKEN_PATH, REDACTED_ENCODED_PATH)
-    .replace(JOIN_PREFIXED_TOKEN, '$1[redacted]')
-    .replace(JSON_TOKEN_VALUE, '$1[redacted]');
+export function redactBearerTokens(value: string): string {
+  let out = value.replace(PATH_TOKEN, `$1${REDACTED}`);
+  for (const { pattern, replacement } of ENCODED_PATH_TOKENS) out = out.replace(pattern, replacement);
+  return out
+    .replace(QUERY_PARAM, `$1${REDACTED}`)
+    .replace(ENCODED_QUERY_PARAM, `$1${REDACTED}`)
+    .replace(JOIN_PREFIXED_TOKEN, `$1${REDACTED}`)
+    .replace(JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
+}
+
+// Sentry's `request.query_string` may be a string (handled by the regexes) or an object / array of
+// [name, value] pairs, where the value has no `name=` context to match on.
+function scrubQueryString(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const pair of node) {
+      if (Array.isArray(pair) && typeof pair[0] === 'string' && QUERY_PARAM_SET.has(pair[0].toLowerCase())) {
+        pair[1] = REDACTED;
+      }
+    }
+  } else if (node !== null && typeof node === 'object') {
+    const record = node as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (QUERY_PARAM_SET.has(key.toLowerCase())) record[key] = REDACTED;
+    }
+  }
 }
 
 function scrub(node: unknown, depth: number): unknown {
-  if (typeof node === 'string') return redactJoinTokens(node);
+  if (typeof node === 'string') return redactBearerTokens(node);
   if (depth >= MAX_DEPTH || node === null || typeof node !== 'object') return node;
   if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i++) node[i] = scrub(node[i], depth + 1);
@@ -43,14 +98,15 @@ function scrub(node: unknown, depth: number): unknown {
   const record = node as Record<string, unknown>;
   for (const key of Object.keys(record)) {
     const value = record[key];
-    // A parsed join body (`request.data = { token }`): the bare value has no surrounding text to match on.
+    if (key === 'query_string') scrubQueryString(value);
+    // A parsed body (`request.data = { token }`): the bare value has no surrounding text to match on.
     record[key] =
-      key === 'token' && typeof value === 'string' && BARE_TOKEN.test(value) ? '[redacted]' : scrub(value, depth + 1);
+      CREDENTIAL_KEY_SET.has(key) && typeof value === 'string' && value.length > 0 ? REDACTED : scrub(value, depth + 1);
   }
   return record;
 }
 
-/** Sentry beforeSend / beforeSendTransaction hook: scrubs join tokens from every string in the event. */
+/** Sentry beforeSend / beforeSendTransaction hook (breadcrumbs ride inside the event): scrubs credentials in place. */
 export function redactSentryEvent<T extends object>(event: T): T {
   return scrub(event, 0) as T;
 }

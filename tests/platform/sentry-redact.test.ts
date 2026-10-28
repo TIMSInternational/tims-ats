@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { redactJoinTokens, redactSentryEvent } from '../../apps/web/lib/sentry-redact';
+import { redactBearerTokens, redactSentryEvent } from '../../apps/web/lib/sentry-redact';
+import { BEARER_TOKEN_PATH_PREFIXES, isBearerLinkPathname } from '../../apps/web/lib/security/bearer-links';
+
+const redactJoinTokens = redactBearerTokens;
 
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde';
 
@@ -76,5 +79,78 @@ describe('Sentry join-token redaction', () => {
     expect(JSON.stringify(redacted)).not.toContain(TOKEN);
     expect(redacted.level).toBe('error');
     expect(redacted.timestamp).toBe(1);
+  });
+});
+
+describe('Sentry bearer-link redaction beyond the join link (offers, AI interview, query credentials)', () => {
+  const UUID = '9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f';
+  const SECRET = 'S3cr3t-Value_123';
+
+  it('scrubs the path token of EVERY bearer-link route, taken from the shared route list', () => {
+    for (const prefix of BEARER_TOKEN_PATH_PREFIXES) {
+      for (const value of [
+        `https://ats.example${prefix}${UUID}`,
+        `${prefix}${UUID}?x=1`,
+        `/login?next=${encodeURIComponent(`${prefix}${UUID}`)}`,
+        `/login?next=${encodeURIComponent(encodeURIComponent(`${prefix}${UUID}`))}`,
+      ]) {
+        const redacted = redactBearerTokens(value);
+        expect(redacted, value).not.toContain(UUID);
+        expect(redacted, value).toContain('[redacted]');
+      }
+    }
+    expect(redactBearerTokens(`/offers/sign/${UUID}`)).toBe('/offers/sign/[redacted]');
+    expect(redactBearerTokens(`/ai-interview/${UUID}`)).toBe('/ai-interview/[redacted]');
+  });
+
+  it('covers the offer-signing and AI-interview routes (and the middleware treats them as bearer links)', () => {
+    expect(BEARER_TOKEN_PATH_PREFIXES).toEqual(
+      expect.arrayContaining(['/offers/sign/', '/ai-interview/', '/interview/join/']),
+    );
+    expect(isBearerLinkPathname(`/ai-interview/${UUID}`)).toBe(true);
+    expect(isBearerLinkPathname('/ai-interviewer')).toBe(false);
+  });
+
+  it('scrubs credential query values anywhere in a URL, including an encoded nested URL', () => {
+    for (const [value, expected] of [
+      [`/accept-invitation?token=${SECRET}`, '/accept-invitation?token=[redacted]'],
+      [`https://ats.example/reset-password?lang=es&token=${SECRET}#x`, 'https://ats.example/reset-password?lang=es&token=[redacted]#x'],
+      [`/auth/callback?code=${SECRET}&next=/home`, '/auth/callback?code=[redacted]&next=/home'],
+      [`/reset-password#access_token=${SECRET}&refresh_token=${SECRET}&type=recovery`, '/reset-password#access_token=[redacted]&refresh_token=[redacted]&type=recovery'],
+      [`token=${SECRET}&x=1`, 'token=[redacted]&x=1'],
+      [`/login?next=%2Faccept-invitation%3Ftoken%3D${SECRET}%2B%2F%26a%3Db`, '/login?next=%2Faccept-invitation%3Ftoken%3D[redacted]%26a%3Db'],
+    ] as const) {
+      expect(redactBearerTokens(value), value).toBe(expected);
+    }
+    // Not a credential parameter, or not at a parameter boundary.
+    expect(redactBearerTokens(`/x?session=${SECRET}&x_token=${SECRET}`)).toBe(`/x?session=${SECRET}&x_token=${SECRET}`);
+  });
+
+  it('scrubs request.url, query_string (string, object and pair forms), breadcrumbs and transaction names', () => {
+    const event = {
+      request: {
+        url: `https://ats.example/offers/sign/${UUID}?token=${SECRET}`,
+        query_string: `token=${SECRET}`,
+        data: { signingToken: SECRET, candidateToken: SECRET, access_token: SECRET },
+      },
+      transaction: `/ai-interview/${UUID}`,
+      breadcrumbs: [
+        { category: 'navigation', data: { from: `/reset-password?code=${SECRET}`, to: `/offers/sign/${UUID}` } },
+        { category: 'fetch', data: { url: `/api/trpc/x?input=%7B%22token%22%3A1%7D&token=${SECRET}` } },
+      ],
+      extra: {
+        qsObject: { query_string: { token: SECRET, code: SECRET, keep: 'ok' } },
+        qsPairs: { query_string: [['token', SECRET], ['Code', SECRET], ['keep', 'ok']] },
+        body: `{"signingToken":"${SECRET}"}`,
+      },
+      level: 'error',
+    };
+    const redacted = redactSentryEvent(event);
+    const json = JSON.stringify(redacted);
+    expect(json).not.toContain(SECRET);
+    expect(json).not.toContain(UUID);
+    expect(redacted.extra.qsObject.query_string.keep).toBe('ok');
+    expect(redacted.extra.qsPairs.query_string[2]).toEqual(['keep', 'ok']);
+    expect(redacted.level).toBe('error');
   });
 });

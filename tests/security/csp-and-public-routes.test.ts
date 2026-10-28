@@ -249,7 +249,7 @@ describe('env schema — CV_UPLOADS_REGION with CV_UPLOADS_BUCKET', () => {
 });
 
 describe('bearer-link pages never leak their token (Referer / shared cache)', () => {
-  it.each(['/offers/sign/tok_abc', '/interview/join/tok_abc', '/accept-invitation', '/reset-password'])(
+  it.each(['/offers/sign/tok_abc', '/interview/join/tok_abc', '/ai-interview/tok_abc', '/accept-invitation', '/reset-password'])(
     '%s gets referrer-policy no-referrer + cache-control no-store',
     async (path) => {
       const middleware = await loadMiddleware();
@@ -261,7 +261,7 @@ describe('bearer-link pages never leak their token (Referer / shared cache)', ()
     },
   );
 
-  it.each(['/careers/acme/v1', '/offers/signatures', '/interview/joiner'])('%s is not treated as a bearer-link page', async (path) => {
+  it.each(['/careers/acme/v1', '/offers/signatures', '/interview/joiner', '/ai-interviewer'])('%s is not treated as a bearer-link page', async (path) => {
     const middleware = await loadMiddleware();
     const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));
     expect(res.headers.get('referrer-policy')).toBeNull();
