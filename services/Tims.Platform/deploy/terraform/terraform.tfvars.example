@@ -82,3 +82,18 @@ mfa_enforced = ""
 
 # Set true only before the billing WRITE cutover (creates + wires Stripe secret containers).
 manage_stripe_secrets = false
+
+# CV parse recovery (#333). Leave disabled until the owner apply procedure's earlier steps (retry
+# migration, published guardrail version, cv-parser agent active, alarm subscriber) are verified.
+# cv_recovery = {
+#   enabled               = true
+#   bucket_name           = "<cv bucket>"
+#   bucket_region         = "<bucket region>"
+#   bedrock_region        = "<inference region>"
+#   inference_profile_arn = "<Haiku 4.5 US inference profile ARN>"
+#   foundation_model_arns = ["<foundation-model ARN in each routed region>"]
+#   guardrail_arn         = "<guardrail ARN>"
+#   guardrail_id          = "<guardrail id>"
+#   guardrail_version     = "<published numeric version, never DRAFT>"
+#   created_after         = "<activation time minus 1h, e.g. 2026-10-20T14:00:00Z>"
+# }

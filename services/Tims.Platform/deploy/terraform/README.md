@@ -81,6 +81,15 @@ memory. Because this module has never been applied, the live alarms are created 
 `docs/runbooks/production-rollback-and-alerting.md` §4, including the **SNS email confirmation click**.
 Until that click, no alarm is delivered.
 
+## CV parse recovery (`cv-recovery.tf`, opt-in)
+
+`cv_recovery.enabled = true` sets `Platform__CvParseRecoveryEnabled=true` plus the bucket/Bedrock/
+guardrail variables, attaches a least-privilege instance policy (`s3:GetObject` on `cv-uploads/*`,
+`bedrock:InvokeModel` on the pinned Haiku profile and its routed foundation models,
+`bedrock:ApplyGuardrail` on one guardrail) and, with `enable_alarms`, the alert + heartbeat alarms
+that `scripts/ops/create-cv-recovery-alarm.sh` also creates. Validation refuses a DRAFT guardrail
+version and a missing `created_after` cut-off.
+
 ## Notes
 
 - **Secrets are never in TF state or code** — only empty containers + an ignored placeholder version.
