@@ -3,8 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // The raw Bedrock call must carry an abort signal with a hard timeout, and an
 // abort must surface as the typed BedrockTimeoutError that invokeAgent degrades on.
 const generateTextMock = vi.fn();
+// 'ai' is aliased in vitest.config.ts to packages/ai's copy so this mock
+// intercepts the generateText import in client.ts.
 vi.mock('ai', () => ({ generateText: (...a: unknown[]) => generateTextMock(...a) }));
-vi.mock('@ai-sdk/amazon-bedrock', () => ({ createAmazonBedrock: () => (id: string) => ({ modelId: id }) }));
 
 import { bedrockGenerate, BedrockTimeoutError, BEDROCK_TIMEOUT_MS } from '../../packages/ai/src/client';
 
