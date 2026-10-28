@@ -28,6 +28,16 @@ export interface DisplayService {
   metrics: DisplayMetric[];
 }
 
+/**
+ * State of the tRPC source. `error` = the last tRPC request failed (initial or background refresh);
+ * `loading` = no tRPC result yet. Either way the tRPC rows are not shown as a state, but the probe rows
+ * still are: the two sources are independent and one failing must not hide the other (tier-1 review).
+ */
+export type TrpcSourceState = 'ok' | 'loading' | 'error';
+
+/** Rows whose state comes from the tRPC source; always rendered, even when that source has no data. */
+export const TRPC_SERVICE_IDS = ['database'] as const;
+
 /** Rows whose state comes from the C# probes. `database` stays on the tRPC probe. */
 export const PROBED_SERVICE_IDS = ['api_gateway', 'auth', 'storage', 'jobs', 'ai', 'email', 'realtime'] as const;
 
@@ -64,10 +74,13 @@ export function probeResultTime(probes: Extract<DependencyHealthState, { kind: '
   return probes.receivedAt !== undefined ? new Date(probes.receivedAt) : probes.checkedAt;
 }
 
+/** `trpcUpdatedAt <= 0` means the tRPC source has no usable measurement; only the probe time then counts. */
 export function healthMeasuredAt(trpcUpdatedAt: number, probes: DependencyHealthState): number {
-  if (probes.kind !== 'ok') return trpcUpdatedAt;
+  const trpcAt = trpcUpdatedAt > 0 ? trpcUpdatedAt : 0;
+  if (probes.kind !== 'ok') return trpcAt;
   const at = probeResultTime(probes).getTime();
-  return Number.isFinite(at) && at > 0 ? Math.min(trpcUpdatedAt, at) : trpcUpdatedAt;
+  if (!(Number.isFinite(at) && at > 0)) return trpcAt;
+  return trpcAt > 0 ? Math.min(trpcAt, at) : at;
 }
 
 export function mergeHealthServices(
@@ -76,17 +89,25 @@ export function mergeHealthServices(
   now: Date = new Date(),
   /** When the tRPC rows were measured (react-query dataUpdatedAt); omitted = treated as current. */
   trpcUpdatedAt: number = now.getTime(),
+  /** Whether the tRPC source answered; on `loading`/`error` its rows render unverified, probes still render. */
+  trpcState: TrpcSourceState = 'ok',
 ): DisplayService[] {
+  const trpcRows = trpcState === 'ok' ? trpcServices : [];
   // The tRPC rows (the database row) expire by the same rule as the probes: a stalled tRPC poll must not
   // keep an arbitrarily old green database row on screen (tier-1 review).
   const trpcExpired = isExpiredProbeResult(new Date(trpcUpdatedAt), now);
-  const trpcById = new Map(trpcServices.map((service) => [service.id as string, service]));
-  const ids: string[] = trpcServices.map((service) => service.id);
-  for (const id of PROBED_SERVICE_IDS) if (!ids.includes(id)) ids.push(id);
+  const trpcById = new Map(trpcRows.map((service) => [service.id as string, service]));
+  const ids: string[] = trpcRows.map((service) => service.id);
+  // Without tRPC rows, keep the grid order the tRPC source uses (API first, database second).
+  for (const id of [PROBED_SERVICE_IDS[0], ...TRPC_SERVICE_IDS, ...PROBED_SERVICE_IDS.slice(1)]) {
+    if (!ids.includes(id)) ids.push(id);
+  }
+  const trpcUnavailableReason = trpcState === 'error' ? 'trpc_unavailable' : 'checking';
 
   return ids.map((id): DisplayService => {
     const trpc = trpcById.get(id);
     if (!PROBED.has(id)) {
+      if (trpcState !== 'ok') return { id, status: 'not_monitored', reason: trpcUnavailableReason, metrics: [] };
       if (trpc && trpcExpired) return { id, status: 'not_monitored', reason: 'stale_result', metrics: [] };
       return {
         id,
@@ -109,7 +130,8 @@ export function mergeHealthServices(
           trpc,
         );
       case 'ok': {
-        if (isExpiredProbeResult(probeResultTime(probes), now)) return unavailableRow(id, 'stale_result', 'not_monitored', trpc);
+        if (isExpiredProbeResult(probeResultTime(probes), now))
+          return unavailableRow(id, 'stale_result', 'not_monitored', trpc);
         const probe = probes.dependencies.find((dependency) => dependency.id === id);
         if (!probe) return unavailableRow(id, 'probe_failed', 'not_monitored', trpc);
         const metrics: DisplayMetric[] = [];

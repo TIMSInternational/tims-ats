@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../lib/format-utils';
-import { ErrorState } from '../../../../components';
 import { HealthStatusBanner } from './health-status-banner';
 import { HealthServiceGrid } from './health-service-grid';
-import { healthMeasuredAt, mergeHealthServices, overallHealthStatus } from './merge-health';
+import { healthMeasuredAt, mergeHealthServices, overallHealthStatus, type TrpcSourceState } from './merge-health';
 import { usePlatformDependencyHealth } from '../../../../lib/platform-api/platform-health';
 
 export default function PlatformHealthPage() {
@@ -28,13 +27,18 @@ export default function PlatformHealthPage() {
   }, []);
 
   // The database row comes from tRPC (a live SELECT 1); the other seven from the C# dependency probes.
-  const services = mergeHealthServices(data?.services ?? [], dependencyHealth.state, now, dataUpdatedAt);
+  // The sources are independent: a tRPC failure (first load or a background refresh) marks only the tRPC
+  // parts unavailable and never hides the probe results (tier-1 review).
+  const trpcState: TrpcSourceState = isError ? 'error' : isLoading ? 'loading' : 'ok';
+  const trpcData = trpcState === 'ok' ? data : undefined;
+  const services = mergeHealthServices(trpcData?.services ?? [], dependencyHealth.state, now, dataUpdatedAt, trpcState);
   const overall = overallHealthStatus(services);
-  // null = the feed could not be read (DB down) — shown as unavailable, never as "no errors".
-  const recentErrors = data?.recentErrors ?? null;
-  const stats = data?.stats;
+  // null = the feed could not be read (DB down, or the tRPC source failed) — shown as unavailable, never as "no errors".
+  const recentErrors = trpcData?.recentErrors ?? null;
+  const stats = trpcData?.stats;
 
-  if (isLoading) {
+  // Skeleton only while NEITHER source has answered; once either has, the page renders what it has.
+  if (trpcState === 'loading' && dependencyHealth.state.kind === 'loading') {
     return (
       <div className="h-full overflow-y-auto p-5">
         <div className="bg-gray-100 rounded-xl p-4 mb-3 animate-pulse h-[68px]" />
@@ -54,22 +58,12 @@ export default function PlatformHealthPage() {
     );
   }
 
-  if (isError) {
-    return (
-      <div className="h-full flex flex-col overflow-y-auto p-5">
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-          <ErrorState onRetry={() => refetch()} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex flex-col overflow-y-auto p-5">
       <HealthStatusBanner
         overall={overall}
         services={services}
-        dataUpdatedAt={healthMeasuredAt(dataUpdatedAt, dependencyHealth.state)}
+        dataUpdatedAt={healthMeasuredAt(trpcState === 'ok' ? dataUpdatedAt : 0, dependencyHealth.state)}
         onRefresh={() => {
           refetch();
           dependencyHealth.refetch();
@@ -147,6 +141,23 @@ export default function PlatformHealthPage() {
               <p className="text-[10px] text-[#8B8B8B]">{t.health.eventsToday}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {trpcState === 'error' && (
+        <div
+          role="alert"
+          data-testid="health-trpc-error"
+          className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 flex items-center justify-between gap-3 shrink-0"
+        >
+          <p className="text-[12px] text-amber-800">{t.health.trpcSourceError}</p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="text-[11px] font-medium text-amber-900 hover:underline shrink-0"
+          >
+            {t.health.refresh}
+          </button>
         </div>
       )}
 

@@ -214,6 +214,8 @@ describe('i18n covers every code the server and the merge can emit', () => {
     'platform_api_not_configured',
     'platform_api_unreachable',
     'probes_disabled',
+    'stale_result',
+    'trpc_unavailable',
     'unknown',
   ];
   const metrics = [
@@ -299,16 +301,62 @@ describe('expired dependency results are never shown as a current state (tier-1 
     expect(healthMeasuredAt(NOW.getTime(), { kind: 'loading' })).toBe(NOW.getTime());
   });
 
+  it('a tRPC source with no usable result leaves only the probe time on the banner', () => {
+    const probedAt = new Date(NOW.getTime() - 50_000);
+    expect(healthMeasuredAt(0, okAt(probedAt))).toBe(probedAt.getTime());
+    expect(healthMeasuredAt(0, { kind: 'unavailable', reason: 'unreachable' })).toBe(0);
+  });
+
   it('the page re-evaluates expiry on a clock, so a stalled poll cannot keep a result green', () => {
     // Source-level: the page needs trpc + react-query mocks to mount; the merge rule itself is tested above.
     const page = readFileSync(resolve(__dirname, '../../apps/web/app/(admin)/platform/health/page.tsx'), 'utf8');
     expect(page).toMatch(/setInterval\(\(\) => setNow\(new Date\(\)\), 15_000\)/);
-    expect(page).toMatch(/mergeHealthServices\(data\?\.services \?\? \[\], dependencyHealth\.state, now, dataUpdatedAt\)/);
+    expect(page).toMatch(
+      /mergeHealthServices\(trpcData\?\.services \?\? \[\], dependencyHealth\.state, now, dataUpdatedAt, trpcState\)/,
+    );
   });
 
   it('the dependency query re-probes on every visit instead of serving the 5-minute provider cache', () => {
     const src = readFileSync(resolve(__dirname, '../../apps/web/lib/platform-api/platform-health.ts'), 'utf8');
     expect(src).toMatch(/staleTime: 0,/);
     expect(src).toMatch(/refetchOnMount: 'always',/);
+  });
+});
+
+describe('the two sources are independent — a tRPC failure never hides the probe rows (tier-1 review r4-2)', () => {
+  it('tRPC error: probe rows keep their states; the database row is unverified / trpc_unavailable', () => {
+    const services = byId(mergeHealthServices(trpcServices, allOperational, NOW, NOW.getTime(), 'error'));
+    for (const id of PROBED_SERVICE_IDS.filter((x) => x !== 'realtime'))
+      expect(services.get(id)?.status, id).toBe('operational');
+    expect(services.get('database')).toEqual({
+      id: 'database',
+      status: 'not_monitored',
+      reason: 'trpc_unavailable',
+      metrics: [],
+    });
+    // Cached tRPC auth counts from a failed refresh are not overlaid on the probe row.
+    expect(services.get('auth')?.metrics.some((m) => m.id === 'logins_today')).toBe(false);
+  });
+
+  it('tRPC error with no tRPC data at all still renders a database row, in the usual grid order', () => {
+    const services = mergeHealthServices([], allOperational, NOW, 0, 'error');
+    expect(services.map((s) => s.id)).toEqual(['api_gateway', 'database', ...PROBED_SERVICE_IDS.slice(1)]);
+    expect(overallHealthStatus(services)).toBe('incomplete');
+  });
+
+  it('tRPC still loading: the database row is checking, the probe rows are shown', () => {
+    const services = byId(mergeHealthServices([], allOperational, NOW, 0, 'loading'));
+    expect(services.get('database')?.reason).toBe('checking');
+    expect(services.get('email')?.status).toBe('operational');
+  });
+
+  it('a probe-found outage still drives the overall state when tRPC fails', () => {
+    const storageDown: DependencyHealthState = {
+      ...allOperational,
+      dependencies: allOperational.dependencies.map((d) =>
+        d.id === 'storage' ? dep('storage', 'down', 'not_found') : d,
+      ),
+    } as DependencyHealthState;
+    expect(overallHealthStatus(mergeHealthServices([], storageDown, NOW, 0, 'error'))).toBe('down');
   });
 });
