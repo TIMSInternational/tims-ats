@@ -76,22 +76,39 @@ export async function bedrockGenerate(
   const start = Date.now();
 
   return bedrockCircuit.execute(async () => {
-    const abortSignal = AbortSignal.timeout(BEDROCK_TIMEOUT_MS);
+    // Two layers: the abort signal cancels the in-flight HTTP request, and the
+    // deadline race bounds the WHOLE operation — the SDK's retry backoff does
+    // not observe the signal, so the signal alone can overrun the ceiling.
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new BedrockTimeoutError(BEDROCK_TIMEOUT_MS));
+      }, BEDROCK_TIMEOUT_MS);
+    });
+    const call = generateText({
+      model: MODELS[model],
+      system: systemPrompt,
+      prompt: userMessage,
+      maxTokens,
+      abortSignal: controller.signal,
+      ...(guardrail ? { providerOptions: guardrail } : {}),
+    });
+    // If the deadline wins, the call may still reject later; observe it so it
+    // is not reported as an unhandled rejection.
+    call.catch(() => undefined);
+
     let result: Awaited<ReturnType<typeof generateText>>;
     try {
-      result = await generateText({
-        model: MODELS[model],
-        system: systemPrompt,
-        prompt: userMessage,
-        maxTokens,
-        abortSignal,
-        ...(guardrail ? { providerOptions: guardrail } : {}),
-      });
+      result = await Promise.race([call, deadline]);
     } catch (error) {
-      // Normalise the abort into one typed error (still counted by the circuit
-      // breaker, since it is rethrown inside execute) so invokeAgent can degrade.
-      if (abortSignal.aborted) throw new BedrockTimeoutError(BEDROCK_TIMEOUT_MS);
+      // One typed error for every timeout path (still counted by the circuit
+      // breaker, since it is rethrown inside execute).
+      if (controller.signal.aborted) throw new BedrockTimeoutError(BEDROCK_TIMEOUT_MS);
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
 
     return {

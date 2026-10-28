@@ -22,7 +22,8 @@ Rules:
 - Be objective and evidence-based
 - Consider both hard skills and experience level
 - "advance" = strong match, "review" = needs manual review, "reject" = poor fit
-- At most 20 items in each list; each item under 200 characters
+- At most 20 matchedSkills and 20 missingSkills, each under 200 characters
+- At most 10 strengths and 10 gaps, each under 300 characters
 - Keep reasoning under 200 words
 
 ${PROTECTED_ATTRIBUTES_RULE}`;

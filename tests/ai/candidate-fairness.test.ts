@@ -182,6 +182,21 @@ describe('output bounds', () => {
     reasoning: 'ok',
   };
 
+  it('accepts the maximum list sizes the system prompt allows', () => {
+    const n = (k: number, p: string) => Array.from({ length: k }, (_, i) => `${p}${i}`);
+    expect(CANDIDATE_SCREENER_SYSTEM_PROMPT).toContain('At most 20 matchedSkills and 20 missingSkills');
+    expect(CANDIDATE_SCREENER_SYSTEM_PROMPT).toContain('At most 10 strengths and 10 gaps');
+    expect(() =>
+      candidateScreenerOutputSchema.parse({
+        ...valid,
+        matchedSkills: n(20, 'm'),
+        missingSkills: n(20, 'x'),
+        strengths: n(10, 's'),
+        gaps: n(10, 'g'),
+      }),
+    ).not.toThrow();
+  });
+
   it('accepts a normal screener result', () => {
     expect(() => candidateScreenerOutputSchema.parse(valid)).not.toThrow();
   });
@@ -192,6 +207,7 @@ describe('output bounds', () => {
     ['skill array', { missingSkills: Array.from({ length: 21 }, (_, i) => `s${i}`) }],
     ['strength item', { strengths: ['x'.repeat(301)] }],
     ['gaps array', { gaps: Array.from({ length: 11 }, (_, i) => `g${i}`) }],
+    ['strengths array', { strengths: Array.from({ length: 11 }, (_, i) => `s${i}`) }],
   ])('rejects an oversize %s', (_label, patch) => {
     expect(() => candidateScreenerOutputSchema.parse({ ...valid, ...patch })).toThrow();
   });
