@@ -19,6 +19,13 @@ using Tims.Workers.Hris;
 using Tims.Workers.Jobs;
 using Tims.Workers.Scheduling;
 
+// Container health-check mode (ECS task definition): `dotnet Tims.Workers.dll --healthcheck` probes this
+// host's own /health on loopback and exits — it never builds the host. See ContainerHealthProbe.
+if (ContainerHealthProbe.IsProbeInvocation(args))
+{
+    return await ContainerHealthProbe.RunAsync(args);
+}
+
 // Two-stage Serilog init: a bootstrap logger captures failures during host build (including
 // config-validation failures), then the full logger is swapped in. Mirrors Tims.Api.
 Log.Logger = new LoggerConfiguration()
@@ -47,6 +54,13 @@ try
         .AddOptions<PlatformOptions>()
         .Bind(builder.Configuration.GetSection(PlatformOptions.SectionName))
         .ValidateDataAnnotations()
+        // Fail closed on the Terraform placeholder and (outside Development/Testing) on the loopback dev
+        // default — [Required] accepts both. See DatabaseConnectionStringGuard.
+        .Validate(
+            options => DatabaseConnectionStringGuard.IsUsable(
+                options.DatabaseConnectionString,
+                requireRemoteHost: !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing")),
+            DatabaseConnectionStringGuard.FailureMessage)
         .ValidateOnStart();
     builder.Services
         .AddOptions<WorkerOptions>()
@@ -173,12 +187,21 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException)
 {
+    // RETURN a non-zero code — do NOT rethrow. A rethrown exception takes the runtime's abort() path, and
+    // `dotnet` running as PID 1 in a container (no init) ignores the resulting SIGABRT and spins forever:
+    // reproduced 2026-10-12 with a placeholder DB secret — the container stayed "running" instead of exiting,
+    // so a fail-closed config check never actually stopped the task. Exiting with 1 is what ECS's restart +
+    // deployment circuit breaker need to see. (The task definition also sets initProcessEnabled.)
+    // HostAbortedException is excluded: WebApplicationFactory throws it to unwind Main after capturing the host.
     Log.Fatal(ex, "Tims.Workers host terminated unexpectedly during startup");
-    throw;
+    return 1;
 }
 finally
 {
     Log.CloseAndFlush();
 }
+
+// The host ran to a graceful shutdown (the --healthcheck branch above returns its own code).
+return 0;
