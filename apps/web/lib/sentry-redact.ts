@@ -102,8 +102,43 @@ function percentDecode(value: string): string {
 
 const MAX_DECODE_LEVELS = 3;
 
-export function redactBearerTokens(value: string): string {
-  const scrubbed = scrubPatterns(value);
+// JSON text is parsed and scrubbed structurally, so credential keys are matched AFTER JSON decoding: an escaped
+// key (`"to\u006ben"`) or value cannot slip past the text patterns. Returns null for anything that is not a
+// JSON object or array.
+function scrubJsonText(text: string, depth: number): string | null {
+  const trimmed = text.trim();
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed === null || typeof parsed !== 'object') return null;
+    return JSON.stringify(scrub(parsed, depth + 1));
+  } catch {
+    return null;
+  }
+}
+
+// A tRPC GET carries its JSON input percent-encoded in `?input=`; decode it, scrub it as JSON, re-encode it.
+const TRPC_INPUT_PARAM = /([?&]input=)([^&#\s"'<>]+)/gi;
+
+function scrubTrpcInput(value: string, depth: number): string {
+  return value.replace(TRPC_INPUT_PARAM, (whole, prefix: string, encoded: string) => {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(encoded);
+    } catch {
+      return whole;
+    }
+    const scrubbed = scrubJsonText(decoded, depth);
+    return scrubbed === null ? whole : `${prefix}${encodeURIComponent(scrubbed)}`;
+  });
+}
+
+export function redactBearerTokens(value: string, depth = 0): string {
+  // Structural pass first (keys compared after JSON decoding), then the text patterns over the result: they
+  // still catch shapes that only text reveals, such as a join token stored under an unrelated key.
+  const asJson = depth < MAX_DEPTH ? scrubJsonText(value, depth) : null;
+  const text = asJson ?? (depth < MAX_DEPTH ? scrubTrpcInput(value, depth) : value);
+  const scrubbed = scrubPatterns(text);
   // Encoded forms the patterns above do not anticipate (an escaped character inside a token, JSON whitespace
   // inside an encoded body, a third encoding level, …): decode level by level and re-scrub each level. If any
   // decoded level still revealed a credential, the event carries the decoded, scrubbed form instead.
@@ -138,7 +173,7 @@ function scrubQueryString(node: unknown): void {
 }
 
 function scrub(node: unknown, depth: number): unknown {
-  if (typeof node === 'string') return redactBearerTokens(node);
+  if (typeof node === 'string') return redactBearerTokens(node, depth);
   if (depth >= MAX_DEPTH || node === null || typeof node !== 'object') return node;
   if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i++) node[i] = scrub(node[i], depth + 1);
