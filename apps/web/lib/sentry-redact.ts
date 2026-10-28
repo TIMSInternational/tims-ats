@@ -117,28 +117,21 @@ function scrubJsonText(text: string, depth: number): string | null {
   }
 }
 
-// A tRPC GET carries its JSON input percent-encoded in `?input=`; decode it, scrub it as JSON, re-encode it.
-const TRPC_INPUT_PARAM = /((?:^|[?&;#])input=)([^&#\s"'<>]+)/gi;
+// A tRPC GET carries its whole JSON input percent-encoded in `?input=` (or form-encoded, `+` for spaces). Its
+// value is dropped entirely rather than parsed: procedure inputs are not needed to debug an error, may hold
+// personal data, and every partial-decoding strategy left some encoding of a credential behind.
+const TRPC_INPUT_PARAM = /((?:^|[?&;#])input=)[^&#\s"'<>]+/gi;
 
-function scrubTrpcInput(value: string, depth: number): string {
-  return value.replace(TRPC_INPUT_PARAM, (whole, prefix: string, encoded: string) => {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(encoded);
-    } catch {
-      return whole;
-    }
-    const scrubbed = scrubJsonText(decoded, depth);
-    return scrubbed === null ? whole : `${prefix}${encodeURIComponent(scrubbed)}`;
-  });
+function scrubTrpcInput(value: string): string {
+  return value.replace(TRPC_INPUT_PARAM, `$1${REDACTED}`);
 }
 
 // One scrubbing pass over a string: the structural JSON pass first (keys compared after JSON decoding; an
 // encoded tRPC `?input=` is decoded for it), then the text patterns over the result, which still catch shapes
 // only text reveals, such as a join token stored under an unrelated key.
 function scrubLevel(text: string, depth: number): string {
-  if (depth >= MAX_DEPTH) return scrubPatterns(text);
-  return scrubPatterns(scrubJsonText(text, depth) ?? scrubTrpcInput(text, depth));
+  if (depth >= MAX_DEPTH) return scrubPatterns(scrubTrpcInput(text));
+  return scrubPatterns(scrubJsonText(text, depth) ?? scrubTrpcInput(text));
 }
 
 export function redactBearerTokens(value: string, depth = 0): string {
@@ -149,7 +142,8 @@ export function redactBearerTokens(value: string, depth = 0): string {
   let current = scrubbed;
   let revealed = false;
   for (let level = 0; level < MAX_DECODE_LEVELS && current.includes('%'); level++) {
-    const decoded = percentDecode(current);
+    // Form semantics: in a query value `+` is a space, so `"token":+"…"` must read as JSON whitespace.
+    const decoded = percentDecode(current.replace(/\+/g, ' '));
     if (decoded === current) break;
     current = scrubLevel(decoded, depth);
     // Any change means this level exposed something the previous level did not (a new token, the rest of one cut

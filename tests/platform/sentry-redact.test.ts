@@ -104,6 +104,28 @@ describe('Sentry join-token redaction', () => {
     }
   });
 
+  it('drops tRPC input values wholesale, whatever their encoding, and decodes + as a space (codex r9 P1)', () => {
+    for (const key of ['token', 'candidateToken', 'signingToken']) {
+      const json = JSON.stringify({ '0': { json: { [key]: TOKEN } } });
+      const viaSearchParams = new URLSearchParams({ batch: '1', input: json.replace(':', ': ') }).toString();
+      expect(viaSearchParams).toContain('+');
+      const formInput = `input=%7B%22json%22%3A%7B%22${key}%22%3A+%22${TOKEN}%22%7D%7D`;
+      for (const value of [
+        `/api/trpc/offer.getBySigningToken?${viaSearchParams}`,
+        `/api/trpc/x?${formInput}`,
+        formInput,
+        `/login?next=${encodeURIComponent(`/api/trpc/x?${formInput}`)}`,
+      ]) {
+        const out = redactBearerTokens(value);
+        expect(out, value).not.toContain(TOKEN);
+        expect(decodeURIComponent(out.replace(/\+/g, ' ')), value).not.toContain(TOKEN);
+      }
+    }
+    expect(redactBearerTokens('/api/trpc/x?batch=1&input=%7B%7D')).toBe('/api/trpc/x?batch=1&input=[redacted]');
+    // Outside a query value, form decoding only applies to what the decode loop exposes: a body's `"token":+"…"`.
+    expect(redactBearerTokens(`%7B%22token%22%3A+%22${TOKEN}%22%7D`)).not.toContain(TOKEN);
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);
@@ -212,7 +234,7 @@ describe('Sentry bearer-link redaction beyond the join link (offers, AI intervie
       const url = `https://ats.example/api/trpc/${procedure}?batch=1&input=${input}`;
       const redacted = redactBearerTokens(url);
       expect(redacted, url).not.toContain(UUID);
-      expect(redacted, url).toContain(`%22${key}%22%3A%22[redacted]%22%7D`);
+      expect(redacted, url).toBe(`https://ats.example/api/trpc/${procedure}?batch=1&input=[redacted]`);
 
       const nested = `/login?next=${encodeURIComponent(url)}`;
       expect(redactBearerTokens(nested), nested).not.toContain(UUID);
@@ -220,9 +242,11 @@ describe('Sentry bearer-link redaction beyond the join link (offers, AI intervie
       const event = redactSentryEvent({ breadcrumbs: [{ category: 'fetch', data: { url, method: 'GET' } }] });
       expect(JSON.stringify(event)).not.toContain(UUID);
     }
-    // Other encoded members are untouched.
+    // Every tRPC input value is dropped, credential or not; the procedure path and other parameters survive.
     const other = encodeURIComponent(JSON.stringify({ 0: { json: { vacancyId: UUID } } }));
-    expect(redactBearerTokens(`/api/trpc/portal.getVacancy?input=${other}`)).toContain(UUID);
+    expect(redactBearerTokens(`/api/trpc/portal.getVacancy?batch=1&input=${other}`)).toBe(
+      '/api/trpc/portal.getVacancy?batch=1&input=[redacted]',
+    );
   });
 
   it('scrubs the invitation token and recovery proof on the password-setup redirect (URL and query_string)', () => {
