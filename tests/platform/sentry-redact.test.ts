@@ -153,4 +153,26 @@ describe('Sentry bearer-link redaction beyond the join link (offers, AI intervie
     expect(redacted.extra.qsPairs.query_string[2]).toEqual(['keep', 'ok']);
     expect(redacted.level).toBe('error');
   });
+
+  it('scrubs a credential sent as tRPC GET input (percent-encoded superjson, once or twice)', () => {
+    for (const [key, procedure] of [
+      ['token', 'offer.getBySigningToken'],
+      ['candidateToken', 'aiInterview.getSession'],
+    ] as const) {
+      const input = encodeURIComponent(JSON.stringify({ 0: { json: { [key]: UUID } } }));
+      const url = `https://ats.example/api/trpc/${procedure}?batch=1&input=${input}`;
+      const redacted = redactBearerTokens(url);
+      expect(redacted, url).not.toContain(UUID);
+      expect(redacted, url).toContain(`%22${key}%22%3A%22[redacted]%22%7D`);
+
+      const nested = `/login?next=${encodeURIComponent(url)}`;
+      expect(redactBearerTokens(nested), nested).not.toContain(UUID);
+
+      const event = redactSentryEvent({ breadcrumbs: [{ category: 'fetch', data: { url, method: 'GET' } }] });
+      expect(JSON.stringify(event)).not.toContain(UUID);
+    }
+    // Other encoded members are untouched.
+    const other = encodeURIComponent(JSON.stringify({ 0: { json: { vacancyId: UUID } } }));
+    expect(redactBearerTokens(`/api/trpc/portal.getVacancy?input=${other}`)).toContain(UUID);
+  });
 });

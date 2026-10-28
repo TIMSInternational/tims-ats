@@ -8,7 +8,8 @@
 //     `%2F`-encoded and `%252F`-double-encoded (as they appear inside a `?next=`/`returnTo=` value);
 //   - credential query values anywhere: `?token=`, `&code=`, `#access_token=`, `refresh_token=`, and the same
 //     inside an encoded nested URL (`%3Ftoken%3D…`); also Sentry's `query_string` in object / pair form;
-//   - credential-named JSON members (`{"token":"…"}`, also JSON-escaped) and object properties;
+//   - credential-named JSON members (`{"token":"…"}`, also JSON-escaped, and percent-encoded as in a tRPC
+//     GET `?input=` value) and object properties;
 //   - (#329) any 43-character base64url run that follows the word "join" (the join-token shape).
 
 import { BEARER_QUERY_PARAMS, BEARER_TOKEN_PATH_PREFIXES } from './security/bearer-links';
@@ -57,6 +58,15 @@ const JSON_CREDENTIAL_VALUE = new RegExp(
   'gi',
 );
 
+// The same members percent-encoded once or twice, as in a tRPC GET URL:
+// `/api/trpc/offer.getBySigningToken?input=%7B%220%22%3A%7B%22json%22%3A%7B%22token%22%3A%22<token>%22%7D…`.
+// The value runs until its closing (encoded) quote; other escapes inside it are consumed.
+const ENCODED_JSON_CREDENTIAL_VALUE = new RegExp(
+  `((?:%22|%2522)(?:${CREDENTIAL_KEYS.map(escapeRe).join('|')})(?:%22|%2522)(?:%3A|%253A)(?:%22|%2522))` +
+    `(?:[^%&#\\s"'<>]|%(?!22|25)[0-9a-f]{2})+`,
+  'gi',
+);
+
 const CREDENTIAL_KEY_SET: ReadonlySet<string> = new Set(CREDENTIAL_KEYS);
 const QUERY_PARAM_SET: ReadonlySet<string> = new Set(BEARER_QUERY_PARAMS);
 const MAX_DEPTH = 24;
@@ -68,7 +78,8 @@ export function redactBearerTokens(value: string): string {
     .replace(QUERY_PARAM, `$1${REDACTED}`)
     .replace(ENCODED_QUERY_PARAM, `$1${REDACTED}`)
     .replace(JOIN_PREFIXED_TOKEN, `$1${REDACTED}`)
-    .replace(JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
+    .replace(JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
+    .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
 }
 
 // Sentry's `request.query_string` may be a string (handled by the regexes) or an object / array of

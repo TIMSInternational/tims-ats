@@ -32,6 +32,13 @@ const LIMITS = {
 
 export type RateLimitCategory = keyof typeof LIMITS;
 
+// Tiers whose limit must hold even when Upstash is slow: on a limiter timeout the Upstash client reports
+// `success: true, reason: 'timeout'`, which these tiers treat as a rejection (fail closed).
+const FAIL_CLOSED_ON_TIMEOUT: ReadonlySet<RateLimitCategory> = new Set<RateLimitCategory>([
+  'cvUpload',
+  'cvUploadVacancy',
+]);
+
 // ---------------------------------------------------------------------------
 // Upstash limiters (one per category, created lazily)
 // ---------------------------------------------------------------------------
@@ -128,8 +135,8 @@ export async function checkRateLimit(identifier: string, category: RateLimitCate
   const upstash = upstashLimiters[category];
 
   if (upstash) {
-    const { success, reset } = await upstash.limit(identifier);
-    if (!success) {
+    const { success, reset, reason } = await upstash.limit(identifier);
+    if (!success || (reason === 'timeout' && FAIL_CLOSED_ON_TIMEOUT.has(category))) {
       const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
       throw new TRPCError({
         code: 'TOO_MANY_REQUESTS',

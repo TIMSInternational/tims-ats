@@ -209,7 +209,8 @@ export const portalRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      await checkRateLimit(`vacancy:${input.vacancyId}`, 'cvUploadVacancy');
+      // Lowercased: Postgres treats UUID case variants as one vacancy, so the quota key must too.
+      await checkRateLimit(`vacancy:${input.vacancyId.toLowerCase()}`, 'cvUploadVacancy');
       const vacancy = await db.vacancy.findFirstOrThrow({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
         select: { organizationId: true },

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const VACANCY_A = '11111111-1111-1111-1111-111111111111';
 const VACANCY_B = '22222222-2222-2222-2222-222222222222';
+const VACANCY_C = 'abcdef12-3456-4abc-8def-abcdefabcdef';
 const ORG_ID = '33333333-3333-3333-3333-333333333333';
 
 const findFirstOrThrow = vi.fn();
@@ -74,5 +75,16 @@ describe('portal.getCvUploadUrl rate limits', () => {
     // A different vacancy has its own budget.
     await expect(upload(callerFor('198.51.100.201'), VACANCY_B)).resolves.toBeTruthy();
     expect(createPresignedPostMock).toHaveBeenCalledTimes(101);
+  });
+
+  it('counts UUID case variants of one vacancy against the same per-vacancy budget', async () => {
+    const callerFor = await loadCallerFactory();
+    const variants = [VACANCY_C, VACANCY_C.toUpperCase()];
+    expect(variants[0]).not.toBe(variants[1]);
+    for (let i = 0; i < 100; i++) await expect(upload(callerFor(`192.0.2.${i}`), variants[i % 2])).resolves.toBeTruthy();
+    await expect(upload(callerFor('192.0.2.200'), VACANCY_C.toUpperCase())).rejects.toMatchObject({
+      code: 'TOO_MANY_REQUESTS',
+    });
+    await expect(upload(callerFor('192.0.2.201'), VACANCY_C)).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' });
   });
 });
