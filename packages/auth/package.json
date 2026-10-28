@@ -21,7 +21,7 @@
     "next": ">=15.0.0"
   },
   "devDependencies": {
-    "next": "15.5.24",
+    "next": "15.5.28",
     "typescript": "^5.8.0"
   }
 }
