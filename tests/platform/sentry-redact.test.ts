@@ -281,6 +281,17 @@ describe('Sentry join-token redaction', () => {
     expect(redactBearerTokens(quotedBrace)).toBe('Invalid args: {[redacted]}');
     const many = Array.from({ length: 40 }, () => `{ path: ["signingToken"], equals: "${TOKEN}" }`).join(', ');
     expect(redactBearerTokens(`[${many}]`)).not.toContain(TOKEN);
+    // Prose apostrophes and unresolvable enclosures fail closed (codex r25).
+    for (const value of [
+      `Can't run query: { equals: "${TOKEN}", path: ["signingToken"] }`,
+      `it's "odd: { equals: "${TOKEN}", path: ["signingToken"] }`,
+      `equals: "${TOKEN}", path: ["signingToken"]`,
+    ]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+    }
+    expect(redactBearerTokens(`Can't run query: { equals: "${TOKEN}", path: ["signingToken"] }`)).toBe(
+      "Can't run query: {[redacted]}",
+    );
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);

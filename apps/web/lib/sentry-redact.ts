@@ -111,7 +111,8 @@ function objectSpans(text: string): { spans: Array<[number, number]> } {
       else if (c === quote) quote = null;
       continue;
     }
-    if (c === '"' || c === "'" || c === '`') quote = c;
+    // An apostrophe between letters (`Can't`) is prose, not a quote.
+    if (c === '"' || c === '`' || (c === "'" && !/[A-Za-z0-9]/.test(text[i - 1] ?? ''))) quote = c;
     else if (c === '{' || c === '[') stack.push({ char: c, at: i });
     else if (c === '}' || c === ']') {
       const top = stack.pop();
@@ -135,8 +136,14 @@ function scrubCredentialFilterObjects(value: string): string {
     for (const span of spans) {
       if (span[0] < match.index && span[1] >= match.index && (best === null || span[0] > best[0])) best = span;
     }
-    // No enclosing object (a fragment): everything from the path onward goes.
-    cuts.push(best ?? [match.index, value.length - 1]);
+    // No enclosing object could be established (a fragment, or quoting the scan could not follow): fail closed —
+    // from the nearest preceding `{` (or the start of the text) to the end.
+    if (best === null) {
+      const brace = value.lastIndexOf('{', match.index);
+      cuts.push([brace === -1 ? 0 : brace, value.length - 1]);
+      continue;
+    }
+    cuts.push(best);
   }
   cuts.sort((a, b) => a[0] - b[0]);
   let out = '';
