@@ -82,7 +82,7 @@ function source(name: string): string {
 function run(bin: string, args: string[], recipient: string | undefined) {
   const r = spawnSync(join(bin, 'bash'), [SCRIPT, ...args], {
     encoding: 'utf8',
-    env: { PATH: bin, ...(recipient === undefined ? {} : { AGE_RECIPIENT: recipient }) },
+    env: { PATH: bin, NODE_ENV: process.env.NODE_ENV ?? 'test', ...(recipient === undefined ? {} : { AGE_RECIPIENT: recipient }) },
   });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
