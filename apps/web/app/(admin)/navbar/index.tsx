@@ -87,7 +87,7 @@ export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { 
           {langOpen && (
             <div className="absolute right-0 top-full mt-2 w-[140px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden py-1">
               {[
-                { code: 'ES' as const, label: 'Espanol', flag: '🇪🇸' },
+                { code: 'ES' as const, label: 'Español', flag: '🇪🇸' },
                 { code: 'EN' as const, label: 'English', flag: '🇺🇸' },
               ].map((l) => (
                 <button

@@ -38,7 +38,7 @@ const DIMENSION_DATA: Record<DimensionTab, DimensionItem[]> = {
   leader: [
     { label: 'Laura G.', count: 8, pct: 33, color: 'bg-[#1F114C]' },
     { label: 'Andres T.', count: 6, pct: 25, color: 'bg-teal-500' },
-    { label: 'Maria L.', count: 5, pct: 21, color: 'bg-violet-500' },
+    { label: 'María L.', count: 5, pct: 21, color: 'bg-violet-500' },
     { label: 'Carlos R.', count: 5, pct: 21, color: 'bg-amber-500' },
   ],
 };

@@ -26,7 +26,7 @@ export function TrialsAlert({ trials, onExtendTrial, isUpdating }: TrialsAlertPr
       <div className="space-y-3">
         {trials.map((trial) => {
           const days = trial.trialEndsAt ? daysUntil(trial.trialEndsAt) : 0;
-          const orgName = trial.organization?.name || 'Organizacion';
+          const orgName = trial.organization?.name || 'Organización';
           return (
             <div key={trial.id} className="flex items-center justify-between p-3 rounded-lg bg-amber-50">
               <div className="flex items-center gap-3">

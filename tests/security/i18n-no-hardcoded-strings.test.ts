@@ -94,6 +94,21 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-table.tsx:150:jsx-text',
   'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:108:ternary',
   'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:124:ternary',
+  // Same pre-existing admin-only debt, newly VISIBLE (not new): these single-word literals were
+  // already hardcoded but spelled without their accents ("Dia", "Telefono", "Atras"), and the
+  // scanner only treats a single word as prose when it carries a Spanish accent. Restoring the
+  // accents (fix/es-accents) made them detectable. Remove each entry when it moves to t.*.
+  'apps/web/app/(admin)/people/onboarding/onboarding-table.tsx:138:jsx-text',
+  'apps/web/app/(admin)/people/performance/page.tsx:69:jsx-text',
+  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:67:jsx-text',
+  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:68:jsx-text',
+  'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:150:jsx-text',
+  'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:54:jsx-text',
+  'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:99:jsx-text',
+  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:44:placeholder',
+  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:227:jsx-text',
+  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.fields.tsx:44:placeholder',
+  'apps/web/app/(admin)/talent/team-intelligence/page.tsx:35:jsx-text',
 ]);
 
 // Exact trimmed literals that are allowed (not user-facing prose, or

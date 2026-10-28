@@ -49,9 +49,9 @@ export function PipelineFunnel({ totalApplications, vacancies }: PipelineFunnelP
   }, [selectedVacancyId, vacancyList, rd.allVacancies]);
 
   const periodLabel: Record<Period, string> = {
-    '7d': rd.last7Days ?? '7 dias',
+    '7d': rd.last7Days ?? '7 días',
     '30d': rd.last30Days,
-    '90d': rd.last90Days ?? '90 dias',
+    '90d': rd.last90Days ?? '90 días',
     'all': rd.allTime ?? 'Todo',
   };
 

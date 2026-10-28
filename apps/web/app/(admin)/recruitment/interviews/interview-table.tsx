@@ -30,11 +30,11 @@ const STATUS_MAP: Record<string, { cls: string; label: string }> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  phone: 'Telefonica',
+  phone: 'Telefónica',
   video: 'Video',
   panel: 'Panel',
   onsite: 'Presencial',
-  technical: 'Tecnica',
+  technical: 'Técnica',
   cultural: 'Cultural',
 };
 

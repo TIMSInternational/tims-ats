@@ -92,7 +92,7 @@ export function SubTable({
         const status = sub.status?.toLowerCase();
         const isCancelled = status === 'cancelled' || status === 'canceled';
         const isPastDue = status === 'past_due';
-        const orgName = sub.organization?.name || 'Organizacion';
+        const orgName = sub.organization?.name || 'Organización';
 
         return (
           <tr

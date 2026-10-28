@@ -66,7 +66,7 @@ export default function PerformancePage() {
           </select>
           <select className="text-[12px] border border-[#EDEDED] rounded-lg px-3 py-1.5 text-[#585858] bg-white">
             <option>{t.performance.allTeams}</option>
-            <option>Logistica</option>
+            <option>Logística</option>
             <option>Comercial</option>
             <option>Operaciones</option>
           </select>

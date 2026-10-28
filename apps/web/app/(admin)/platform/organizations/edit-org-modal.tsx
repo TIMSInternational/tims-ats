@@ -25,7 +25,7 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
       toast(t.organizations.updated, { type: 'success' });
       onSuccess();
     },
-    onError: (err) => { toast(err.message || 'Error al actualizar organizacion', { type: 'error' }); },
+    onError: (err) => { toast(err.message || 'Error al actualizar organización', { type: 'error' }); },
   });
 
   const suspendOrg = trpc.platform.suspendOrganization.useMutation({
@@ -35,7 +35,7 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
       toast(t.organizations.statusUpdated, { type: 'success' });
       onClose();
     },
-    onError: (err) => { toast(err.message || 'Error al cambiar estado de organizacion', { type: 'error' }); },
+    onError: (err) => { toast(err.message || 'Error al cambiar estado de organización', { type: 'error' }); },
   });
 
   const handleEdit = (e: React.FormEvent) => {

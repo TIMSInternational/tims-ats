@@ -3578,6 +3578,7 @@
     "exploreByArea": "Explore by Area",
     "applicationSentTitle": "Application submitted",
     "firstNameLabel": "First Name *",
+    "firstNamePlaceholder": "Maria",
     "lastNameLabel": "Last Name *",
     "lastNamePlaceholder": "Lopez Rodriguez",
     "emailLabel": "Email *",
