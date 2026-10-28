@@ -74,7 +74,6 @@ const ENCODED_JSON_CREDENTIAL_VALUE = new RegExp(
 );
 
 const CREDENTIAL_KEY_SET: ReadonlySet<string> = new Set(CREDENTIAL_KEYS);
-const QUERY_PARAM_SET: ReadonlySet<string> = new Set(BEARER_QUERY_PARAMS);
 const MAX_DEPTH = 24;
 
 function scrubPatterns(value: string): string {
@@ -117,21 +116,41 @@ function scrubJsonText(text: string, depth: number): string | null {
   }
 }
 
-// A tRPC GET carries its whole JSON input percent-encoded in `?input=` (or form-encoded, `+` for spaces). Its
-// value is dropped entirely rather than parsed: procedure inputs are not needed to debug an error, may hold
-// personal data, and every partial-decoding strategy left some encoding of a credential behind.
-const TRPC_INPUT_PARAM = /((?:^|[?&;#])input=)[^&#\s"'<>]+/gi;
+// Query parameters are matched by NAME the way a URL parser reads it (percent escapes and `+` decoded, case
+// folded), and a sensitive parameter's RAW value is dropped before anything inside it is decoded, so no
+// encoding of the value can survive. Sensitive: the credential parameters, plus tRPC's `input`, which carries
+// the whole procedure input (a credential or personal data) and is never needed to debug an error.
+const DROPPED_QUERY_PARAMS: ReadonlySet<string> = new Set([...BEARER_QUERY_PARAMS, 'input']);
+// A value stops at `?` too: once a nested URL is decoded, its own query (`?next=/x?input=…`) must be seen as
+// parameters rather than swallowed by the outer value.
+const QUERY_PARAMETER = /((?:^|[?&;#])([^=&#?;\s"'<>]+)=)([^&#;?\s]*)/gi;
 
-function scrubTrpcInput(value: string): string {
-  return value.replace(TRPC_INPUT_PARAM, `$1${REDACTED}`);
+function queryParamName(raw: string): string {
+  let name = raw;
+  for (let level = 0; level < MAX_DECODE_LEVELS; level++) {
+    const decoded = percentDecode(name.replace(/\+/g, ' '));
+    if (decoded === name) break;
+    name = decoded;
+  }
+  return name.trim().toLowerCase();
 }
 
-// One scrubbing pass over a string: the structural JSON pass first (keys compared after JSON decoding; an
-// encoded tRPC `?input=` is decoded for it), then the text patterns over the result, which still catch shapes
+function isDroppedQueryParam(rawName: string): boolean {
+  return DROPPED_QUERY_PARAMS.has(queryParamName(rawName));
+}
+
+function scrubQueryParams(value: string): string {
+  return value.replace(QUERY_PARAMETER, (whole, prefix: string, name: string, raw: string) =>
+    raw.length > 0 && raw !== REDACTED && isDroppedQueryParam(name) ? `${prefix}${REDACTED}` : whole,
+  );
+}
+
+// One scrubbing pass over a string: the structural JSON pass first (keys compared after JSON decoding) or, for
+// anything else, the query-parameter pass; then the text patterns over the result, which still catch shapes
 // only text reveals, such as a join token stored under an unrelated key.
 function scrubLevel(text: string, depth: number): string {
-  if (depth >= MAX_DEPTH) return scrubPatterns(scrubTrpcInput(text));
-  return scrubPatterns(scrubJsonText(text, depth) ?? scrubTrpcInput(text));
+  if (depth >= MAX_DEPTH) return scrubPatterns(scrubQueryParams(text));
+  return scrubPatterns(scrubJsonText(text, depth) ?? scrubQueryParams(text));
 }
 
 export function redactBearerTokens(value: string, depth = 0): string {
@@ -158,14 +177,14 @@ export function redactBearerTokens(value: string, depth = 0): string {
 function scrubQueryString(node: unknown): void {
   if (Array.isArray(node)) {
     for (const pair of node) {
-      if (Array.isArray(pair) && typeof pair[0] === 'string' && QUERY_PARAM_SET.has(pair[0].toLowerCase())) {
+      if (Array.isArray(pair) && typeof pair[0] === 'string' && isDroppedQueryParam(pair[0])) {
         pair[1] = REDACTED;
       }
     }
   } else if (node !== null && typeof node === 'object') {
     const record = node as Record<string, unknown>;
     for (const key of Object.keys(record)) {
-      if (QUERY_PARAM_SET.has(key.toLowerCase())) record[key] = REDACTED;
+      if (isDroppedQueryParam(key)) record[key] = REDACTED;
     }
   }
 }

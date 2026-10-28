@@ -126,6 +126,30 @@ describe('Sentry join-token redaction', () => {
     expect(redactBearerTokens(`%7B%22token%22%3A+%22${TOKEN}%22%7D`)).not.toContain(TOKEN);
   });
 
+  it('drops input/credential parameter values by URL-parsed name before decoding them (codex r10)', () => {
+    const json = String.raw`{"0":{"json":{"to\u006ben":"${TOKEN}"}}}`;
+    const enc = encodeURIComponent(json);
+    for (const value of [
+      `/api/trpc/x?%69nput=${enc}`,
+      `/api/trpc/x?batch=1&INPUT=${enc}`,
+      `/api/trpc/x?in%2570ut=${enc}`,
+      `/login?next=${encodeURIComponent(`/api/trpc/x?%69nput=${enc}`)}`,
+      `/x?%74oken=${TOKEN}`,
+      `/x?to+ken=${TOKEN}`.replace('to+ken', 'token'),
+    ]) {
+      const out = redactBearerTokens(value);
+      let text = out;
+      for (let i = 0; i < 4; i++) text = decodeURIComponent(text.replace(/%(?![0-9a-f]{2})/gi, '%25').replace(/\+/g, ' '));
+      expect(text, value).not.toContain(TOKEN);
+    }
+    // Structured query strings: `input` is dropped wholesale, personal data included.
+    const pii = encodeURIComponent(JSON.stringify({ email: 'ana@example.com', cvText: 'Ana Pérez' }));
+    const obj = redactSentryEvent({ request: { query_string: { input: pii, batch: '1' } } });
+    expect(obj.request.query_string).toEqual({ input: '[redacted]', batch: '1' });
+    const pairs = redactSentryEvent({ request: { query_string: [['%69nput', pii], ['batch', '1']] } });
+    expect(pairs.request.query_string).toEqual([['%69nput', '[redacted]'], ['batch', '1']]);
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);
