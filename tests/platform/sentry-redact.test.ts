@@ -176,6 +176,19 @@ describe('Sentry join-token redaction', () => {
     expect(redactBearerTokens(String.raw`caf\u00e9`)).toBe(String.raw`caf\u00e9`);
   });
 
+  it('treats every credential parameter name as a credential in event data too, except error codes (codex r14)', () => {
+    for (const key of ['token_hash', 'nonce', 'invitation', 'recovery', 'access_token', 'refresh_token', 'Token']) {
+      const asObject = redactSentryEvent({ request: { data: { [key]: TOKEN } } });
+      expect(JSON.stringify(asObject), key).not.toContain(TOKEN);
+      expect(redactBearerTokens(JSON.stringify({ [key]: TOKEN })), key).not.toContain(TOKEN);
+      expect(redactBearerTokens(`failed: {"${key}":"${TOKEN}"}`), key).not.toContain(TOKEN);
+    }
+    // A JSON `code` member is an error code, not the Supabase auth code (which only travels in the query string).
+    const err = redactSentryEvent({ extra: { error: { code: 'NOT_FOUND' } }, request: { url: `/x?code=${TOKEN}` } });
+    expect(err.extra.error.code).toBe('NOT_FOUND');
+    expect(JSON.stringify(err)).not.toContain(TOKEN);
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);

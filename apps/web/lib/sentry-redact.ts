@@ -54,7 +54,15 @@ const JOIN_PREFIXED_TOKEN = /(join(?:%[0-9a-f]{2}|[^a-z0-9_\-%]){1,8})[a-z0-9_-]
 // Credential-named JSON members, as a request body, breadcrumb or serialized string. The value consumes JSON
 // escapes (`\u0039…`, `\"`), so an escaped character cannot cut the match short and leave the rest of the
 // credential behind.
-const CREDENTIAL_KEYS = ['token', 'candidateToken', 'signingToken', 'access_token', 'refresh_token'] as const;
+// Every credential query parameter except `code` is also a credential when it is a JSON member or object
+// property. `code` is not: as a member it is almost always an error code (`{"code":"NOT_FOUND"}`), and the Supabase
+// auth code only ever travels as a query parameter, where the query-parameter pass drops it.
+const CREDENTIAL_KEYS = [
+  'token',
+  'candidateToken',
+  'signingToken',
+  ...BEARER_QUERY_PARAMS.filter((name) => name !== 'code' && name !== 'token'),
+] as const;
 const KEY_ALT = CREDENTIAL_KEYS.map(escapeRe).join('|');
 const JSON_CREDENTIAL_VALUE = new RegExp(`("(?:${KEY_ALT})"\\s*:\\s*")(?:[^"\\\\]|\\\\.)+`, 'gi');
 // The same member JSON-escaped inside another JSON string (`{\"token\":\"…\"}`): the value ends at the escaped
@@ -73,7 +81,7 @@ const ENCODED_JSON_CREDENTIAL_VALUE = new RegExp(
   'gi',
 );
 
-const CREDENTIAL_KEY_SET: ReadonlySet<string> = new Set(CREDENTIAL_KEYS);
+const CREDENTIAL_KEY_SET: ReadonlySet<string> = new Set(CREDENTIAL_KEYS.map((key) => key.toLowerCase()));
 const MAX_DEPTH = 24;
 
 // JSON `\uXXXX` escapes (also doubly escaped, `\\uXXXX`) that spell a letter, digit or `_` are decoded before
@@ -230,7 +238,7 @@ function scrub(node: unknown, depth: number): unknown {
     if (key === 'query_string') scrubQueryString(value);
     // A parsed body (`request.data = { token }`): the bare value has no surrounding text to match on.
     record[key] =
-      CREDENTIAL_KEY_SET.has(key) && typeof value === 'string' && value.length > 0 ? REDACTED : scrub(value, depth + 1);
+      CREDENTIAL_KEY_SET.has(key.toLowerCase()) && typeof value === 'string' && value.length > 0 ? REDACTED : scrub(value, depth + 1);
   }
   return record;
 }
