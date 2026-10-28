@@ -164,7 +164,7 @@ public sealed class PlatformHealthEndpointTests(PlatformDashboardReadFixture fix
         var text = await response.Content.ReadAsStringAsync();
         var body = JsonDocument.Parse(text).RootElement;
 
-        Assert.Equal(["checkedAt", "cacheSeconds", "dependencies"], body.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(["checkedAt", "cacheSeconds", "dependencies", "ageMs"], body.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal(30, body.GetProperty("cacheSeconds").GetInt32());
         var deps = body.GetProperty("dependencies").EnumerateArray().ToDictionary(d => d.GetProperty("id").GetString()!);
         Assert.Equal(["api_gateway", "auth", "storage", "jobs", "ai", "email", "realtime"],
@@ -217,6 +217,8 @@ public sealed class PlatformHealthEndpointTests(PlatformDashboardReadFixture fix
         Assert.True(callsAfterFirst > 0);
         Assert.Equal(callsAfterFirst, transport.Requests.Count);
         Assert.Equal(first.GetProperty("checkedAt").GetString(), second.GetProperty("checkedAt").GetString());
+        // The cached answer states its own age on the server clock (the page anchors it locally).
+        Assert.True(second.GetProperty("ageMs").GetInt64() >= first.GetProperty("ageMs").GetInt64());
     }
 
     [Fact]

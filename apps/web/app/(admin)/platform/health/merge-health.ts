@@ -69,9 +69,9 @@ export function isExpiredProbeResult(checkedAt: Date, now: Date): boolean {
  * The time the banner shows: the OLDER of the two measurements, so a fresh tRPC refresh never makes an older
  * dependency result look new (tier-1 review: the banner used the tRPC refresh time for both sources).
  */
-/** The local-clock time a probe result applies from: receipt time when known (skew-free), else checkedAt. */
+/** The local-clock time the probes ran (NaN when the response was undated — always expired). */
 export function probeResultTime(probes: Extract<DependencyHealthState, { kind: 'ok' }>): Date {
-  return probes.receivedAt !== undefined ? new Date(probes.receivedAt) : probes.checkedAt;
+  return new Date(probes.measuredAt);
 }
 
 /** `trpcUpdatedAt <= 0` means the tRPC source has no usable measurement; only the probe time then counts. */

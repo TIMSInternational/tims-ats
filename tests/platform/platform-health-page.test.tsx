@@ -43,6 +43,7 @@ vi.mock('@tims/auth/client', () => ({
 const probes = () => ({
   checkedAt: new Date().toISOString(),
   cacheSeconds: 30,
+  ageMs: 0,
   dependencies: [
     { id: 'api_gateway', status: 'operational', reason: null, latencyMs: 4, metrics: [] },
     { id: 'auth', status: 'operational', reason: null, latencyMs: 80, metrics: [] },

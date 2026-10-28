@@ -40,11 +40,12 @@ export type DependencyHealthState =
   | { kind: 'disabled' }
   | { kind: 'loading' }
   /**
-   * `receivedAt` is the BROWSER's clock at receipt. Expiry and the banner use it, never the server's
-   * `checkedAt`, because comparing a server timestamp with the browser clock breaks under clock skew
-   * (tier-1 review). The server's own cache adds at most 60 s on top.
+   * `measuredAt` is when the probes ran, on the BROWSER's clock: the local request start minus the server's own
+   * `ageMs` (see {@link localMeasuredAt}). Expiry and the banner use it, never the server's `checkedAt`, because
+   * comparing a server timestamp with the browser clock breaks under clock skew, and receipt time alone would
+   * show a cached answer as new (tier-1 review). NaN = undated, which is never shown as a state.
    */
-  | { kind: 'ok'; checkedAt: Date; receivedAt?: number; dependencies: DependencyResult[] }
+  | { kind: 'ok'; checkedAt: Date; measuredAt: number; dependencies: DependencyResult[] }
   | { kind: 'unavailable'; reason: DependencyUnavailableReason };
 
 /** The page polls every 30s; the server caches 30–60s, so this never fans out to the dependencies. */
@@ -68,8 +69,12 @@ const shortToken = (value: unknown): string | null =>
  * Wire → view. The C# contract types int64 as `number | string`; an unknown status (a newer server, a bad
  * proxy) is shown as not_monitored rather than trusted, and every string is length-bounded.
  */
-export function mapDependencyHealth(raw: unknown): { checkedAt: Date; dependencies: DependencyResult[] } {
-  const body = (raw ?? {}) as { checkedAt?: unknown; dependencies?: unknown };
+export function mapDependencyHealth(raw: unknown): {
+  checkedAt: Date;
+  ageMs: number | null;
+  dependencies: DependencyResult[];
+} {
+  const body = (raw ?? {}) as { checkedAt?: unknown; ageMs?: unknown; dependencies?: unknown };
   const list = Array.isArray(body.dependencies) ? body.dependencies : [];
   const dependencies = list.flatMap((item): DependencyResult[] => {
     const d = (item ?? {}) as Record<string, unknown>;
@@ -93,7 +98,18 @@ export function mapDependencyHealth(raw: unknown): { checkedAt: Date; dependenci
     ];
   });
   const checkedAt = new Date(typeof body.checkedAt === 'string' ? body.checkedAt : Number.NaN);
-  return { checkedAt, dependencies };
+  const age = typeof body.ageMs === 'number' || typeof body.ageMs === 'string' ? Number(body.ageMs) : Number.NaN;
+  return { checkedAt, ageMs: Number.isFinite(age) && age >= 0 ? age : null, dependencies };
+}
+
+/**
+ * The measurement time on the local clock: `requestedAt` (local, taken BEFORE the request) minus the server's
+ * `ageMs` (server clock only, so no cross-clock comparison). The server computed the age after the request
+ * started, so this errs older, never newer. A response without a valid `checkedAt` or `ageMs` is undated: NaN.
+ */
+export function localMeasuredAt(checkedAt: Date, ageMs: number | null, requestedAt: number): number {
+  if (!Number.isFinite(checkedAt.getTime()) || ageMs === null) return Number.NaN;
+  return requestedAt - ageMs;
 }
 
 /** Any failure → the honest unavailable reason. A non-HTTP failure (network, client timeout) is unreachable. */
@@ -109,6 +125,7 @@ export function classifyDependencyHealthError(error: unknown): DependencyUnavail
 
 async function fetchDependencyHealth(): Promise<DependencyHealthState> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const requestedAt = Date.now();
   try {
     const raw = await Promise.race([
       platformGet('/platform/health/dependencies'),
@@ -116,7 +133,8 @@ async function fetchDependencyHealth(): Promise<DependencyHealthState> {
         timer = setTimeout(() => reject(new Error('dependency health timed out')), DEPENDENCY_HEALTH_CLIENT_TIMEOUT_MS);
       }),
     ]);
-    return { kind: 'ok', ...mapDependencyHealth(raw), receivedAt: Date.now() };
+    const { checkedAt, ageMs, dependencies } = mapDependencyHealth(raw);
+    return { kind: 'ok', checkedAt, measuredAt: localMeasuredAt(checkedAt, ageMs, requestedAt), dependencies };
   } catch (error) {
     return { kind: 'unavailable', reason: classifyDependencyHealthError(error) };
   } finally {

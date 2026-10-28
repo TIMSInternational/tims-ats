@@ -3925,6 +3925,8 @@ export interface components {
             /** Format: int32 */
             cacheSeconds: number | string;
             dependencies: components["schemas"]["DependencyProbeResult"][];
+            /** Format: int64 */
+            ageMs: number | string;
         };
         DependencyMetric: {
             id: string;

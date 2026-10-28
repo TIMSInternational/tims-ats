@@ -33,7 +33,7 @@ public sealed class DependencyHealthUseCase(
         var cached = Volatile.Read(ref _cached);
         if (cached is not null && clock.GetUtcNow() < cached.ExpiresAt)
         {
-            return cached.View;
+            return WithCurrentAge(cached.View);
         }
 
         await _refresh.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -42,15 +42,15 @@ public sealed class DependencyHealthUseCase(
             cached = Volatile.Read(ref _cached);
             if (cached is not null && clock.GetUtcNow() < cached.ExpiresAt)
             {
-                return cached.View;
+                return WithCurrentAge(cached.View);
             }
 
             var checkedAt = clock.GetUtcNow();
             var results = await Task.WhenAll(_probes.Select(probe => RunAsync(probe, cancellationToken)))
                 .ConfigureAwait(false);
-            var view = new DependencyHealthView(checkedAt, (int)settings.CacheDuration.TotalSeconds, results);
+            var view = new DependencyHealthView(checkedAt, (int)settings.CacheDuration.TotalSeconds, results, AgeMs: 0);
             Volatile.Write(ref _cached, new Cached(view, clock.GetUtcNow() + settings.CacheDuration));
-            return view;
+            return WithCurrentAge(view);
         }
         finally
         {
@@ -124,6 +124,10 @@ public sealed class DependencyHealthUseCase(
 
         return [.. DependencyIds.Ordered.Where(byId.ContainsKey).Select(id => byId[id])];
     }
+
+    /// <summary>The measurement's age now, on the server clock (never negative if the clock steps back).</summary>
+    private DependencyHealthView WithCurrentAge(DependencyHealthView view) =>
+        view with { AgeMs = Math.Max(0L, (long)(clock.GetUtcNow() - view.CheckedAt).TotalMilliseconds) };
 
     private sealed record Cached(DependencyHealthView View, DateTimeOffset ExpiresAt);
 }

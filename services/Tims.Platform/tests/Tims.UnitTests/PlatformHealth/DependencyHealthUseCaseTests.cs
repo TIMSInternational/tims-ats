@@ -121,14 +121,18 @@ public sealed class DependencyHealthUseCaseTests
         var second = await useCase.GetAsync(CancellationToken.None);
 
         Assert.Equal(1, probe.Calls);
-        Assert.Same(first, second);
+        Assert.Equal(first.Dependencies, second.Dependencies);
         Assert.Equal(first.CheckedAt, second.CheckedAt); // a cached answer keeps its original instant
+        // ...and reports its true age on the server clock, so the page never shows a cached answer as new.
+        Assert.Equal(0, first.AgeMs);
+        Assert.Equal(29_000, second.AgeMs);
 
         clock.Advance(TimeSpan.FromSeconds(1));
         var third = await useCase.GetAsync(CancellationToken.None);
 
         Assert.Equal(2, probe.Calls);
         Assert.Equal(clock.GetUtcNow(), third.CheckedAt);
+        Assert.Equal(0, third.AgeMs);
     }
 
     [Fact]

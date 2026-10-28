@@ -66,12 +66,15 @@ public sealed record DependencyProbeResult(
 
 /// <summary>
 /// The response of <c>GET /platform/health/dependencies</c>. <c>CheckedAt</c> is when the probes ran (a cached
-/// answer keeps its original instant, so the page can show its age honestly).
+/// answer keeps its original instant). <c>AgeMs</c> is how old that measurement is at the moment of THIS
+/// response, on the server's own clock: the page anchors it to its local request time, so a cached answer shows
+/// its true age without comparing the server clock to the browser clock.
 /// </summary>
 public sealed record DependencyHealthView(
     DateTimeOffset CheckedAt,
     int CacheSeconds,
-    IReadOnlyList<DependencyProbeResult> Dependencies);
+    IReadOnlyList<DependencyProbeResult> Dependencies,
+    long AgeMs);
 
 /// <summary>Stable dependency ids — identical to the web app's health service ids.</summary>
 public static class DependencyIds

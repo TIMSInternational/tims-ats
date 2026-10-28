@@ -24,6 +24,7 @@ const payload = {
   // A fresh measurement: results older than DEPENDENCY_HEALTH_MAX_AGE_MS render as unverified.
   checkedAt: new Date().toISOString(),
   cacheSeconds: 30,
+  ageMs: 0,
   dependencies: [
     {
       id: 'api_gateway',
@@ -84,6 +85,25 @@ describe('usePlatformDependencyHealth', () => {
     expect(state.dependencies.find((d) => d.id === 'api_gateway')?.latencyMs).toBe(4);
   });
 
+  it('anchors the measurement time to the local request start minus the server-reported age (tier-1 r5)', async () => {
+    const saved = respond;
+    respond = async () =>
+      new Response(JSON.stringify({ ...payload, ageMs: 45_000 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    const { usePlatformDependencyHealth } = await import('../../apps/web/lib/platform-api/platform-health');
+    const before = Date.now();
+    const { result } = renderHook(() => usePlatformDependencyHealth(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.state.kind).toBe('ok'));
+    respond = saved;
+    const state = result.current.state;
+    if (state.kind !== 'ok') throw new Error('expected ok');
+    // A cached 45-second-old answer is not presented as measured on receipt.
+    expect(state.measuredAt).toBeLessThanOrEqual(Date.now() - 45_000);
+    expect(state.measuredAt).toBeGreaterThanOrEqual(before - 45_000);
+  });
+
   it.each([
     [404, 'probes_disabled'],
     [403, 'access_denied'],
@@ -114,7 +134,8 @@ describe('HealthServiceGrid', () => {
     const { mergeHealthServices } = await import('../../apps/web/app/(admin)/platform/health/merge-health');
     const { mapDependencyHealth } = await import('../../apps/web/lib/platform-api/platform-health');
 
-    const services = mergeHealthServices([], { kind: 'ok', ...mapDependencyHealth(payload) });
+    const { checkedAt, dependencies } = mapDependencyHealth(payload);
+    const services = mergeHealthServices([], { kind: 'ok', checkedAt, measuredAt: Date.now(), dependencies });
     render(<HealthServiceGrid services={services} />);
 
     const card = (id: string) => screen.getByTestId(`health-service-${id}`);

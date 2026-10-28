@@ -10,6 +10,7 @@ import {
 } from '../../apps/web/app/(admin)/platform/health/merge-health';
 import {
   classifyDependencyHealthError,
+  localMeasuredAt,
   mapDependencyHealth,
   type DependencyHealthState,
   type DependencyResult,
@@ -43,6 +44,7 @@ const dep = (id: string, status: DependencyResult['status'], reason: string | nu
 const allOperational: DependencyHealthState = {
   kind: 'ok',
   checkedAt: new Date('2026-10-12T12:00:00Z'),
+  measuredAt: Date.parse('2026-10-12T12:00:00Z'),
   dependencies: [
     ...PROBED_SERVICE_IDS.filter((id) => id !== 'realtime').map((id) => dep(id, 'operational')),
     dep('realtime', 'not_monitored', 'not_used'),
@@ -167,6 +169,7 @@ describe('mapDependencyHealth / classifyDependencyHealthError', () => {
     const mapped = mapDependencyHealth({
       checkedAt: '2026-10-12T12:00:00+00:00',
       cacheSeconds: 30,
+      ageMs: '29000',
       dependencies: [
         { id: 'auth', status: 'operational', reason: null, latencyMs: '17', metrics: [{ id: 'x', value: '1' }] },
         { id: 'ai', status: 'green', reason: 'whatever', latencyMs: null, metrics: [] },
@@ -175,6 +178,9 @@ describe('mapDependencyHealth / classifyDependencyHealthError', () => {
     });
 
     expect(mapped.checkedAt.toISOString()).toBe('2026-10-12T12:00:00.000Z');
+    expect(mapped.ageMs).toBe(29_000);
+    expect(mapDependencyHealth({ checkedAt: '2026-10-12T12:00:00Z', ageMs: -5 }).ageMs).toBeNull();
+    expect(mapDependencyHealth({ checkedAt: '2026-10-12T12:00:00Z' }).ageMs).toBeNull();
     expect(mapped.dependencies).toEqual([
       { id: 'auth', status: 'operational', reason: null, latencyMs: 17, metrics: [{ id: 'x', value: '1' }] },
       { id: 'ai', status: 'not_monitored', reason: 'probe_failed', latencyMs: null, metrics: [] },
@@ -262,7 +268,8 @@ describe('cross-stack pin — the web app translates every reason code the C# pr
 });
 
 describe('expired dependency results are never shown as a current state (tier-1 review)', () => {
-  const okAt = (checkedAt: Date) => ({ ...allOperational, checkedAt }) as typeof allOperational;
+  const okAt = (measuredAt: Date) =>
+    ({ ...allOperational, checkedAt: measuredAt, measuredAt: measuredAt.getTime() }) as typeof allOperational;
 
   it('a result older than the max age makes every probed row unverified, not green', () => {
     const old = okAt(new Date(NOW.getTime() - 121_000));
@@ -274,16 +281,40 @@ describe('expired dependency results are never shown as a current state (tier-1 
     expect(isExpiredProbeResult(new Date(Number.NaN), NOW)).toBe(true);
   });
 
-  it('expiry uses the browser receipt time, so server/browser clock skew cannot keep or kill a result (tier-1 r4)', () => {
-    // Server clock 10 minutes AHEAD of the browser (checkedAt in the browser's future), received just now.
-    const ahead = { ...okAt(new Date(NOW.getTime() + 600_000)), receivedAt: NOW.getTime() - 5_000 };
-    expect(byId(mergeHealthServices(trpcServices, ahead, NOW)).get('ai')?.reason).not.toBe('stale_result');
-    // Server clock 10 minutes BEHIND, received just now: still current.
-    const behind = { ...okAt(new Date(NOW.getTime() - 600_000)), receivedAt: NOW.getTime() - 5_000 };
-    expect(byId(mergeHealthServices(trpcServices, behind, NOW)).get('ai')?.reason).not.toBe('stale_result');
-    // Received 3 minutes ago (polling stalled): expired whatever the server's timestamp says.
-    const oldReceipt = { ...okAt(new Date(NOW.getTime() + 600_000)), receivedAt: NOW.getTime() - 180_000 };
-    expect(byId(mergeHealthServices(trpcServices, oldReceipt, NOW)).get('ai')?.reason).toBe('stale_result');
+  it('measurement time = local request start minus the server-reported age: skew-free, cache-aware (tier-1 r4/r5)', () => {
+    const requestedAt = NOW.getTime() - 5_000;
+    // Server clock 10 minutes AHEAD or BEHIND the browser: checkedAt is ignored for timing, only ageMs counts.
+    for (const skew of [600_000, -600_000]) {
+      const checkedAt = new Date(NOW.getTime() + skew);
+      const state = { ...allOperational, checkedAt, measuredAt: localMeasuredAt(checkedAt, 1_000, requestedAt) };
+      expect(byId(mergeHealthServices(trpcServices, state, NOW)).get('ai')?.reason, String(skew)).not.toBe(
+        'stale_result',
+      );
+    }
+    // A cached answer received just now but measured 59 s earlier shows as 59+ s old, not new.
+    const cached = { ...allOperational, measuredAt: localMeasuredAt(new Date(NOW), 59_000, NOW.getTime()) };
+    expect(NOW.getTime() - healthMeasuredAt(NOW.getTime(), cached)).toBe(59_000);
+    // Requested 3 minutes ago (polling stalled): expired whatever the server's timestamp says.
+    const stalled = { ...allOperational, measuredAt: localMeasuredAt(new Date(NOW), 0, NOW.getTime() - 180_000) };
+    expect(byId(mergeHealthServices(trpcServices, stalled, NOW)).get('ai')?.reason).toBe('stale_result');
+  });
+
+  it('an undated response (no checkedAt or no ageMs) is never shown as a state, in the production shape', () => {
+    const requestedAt = NOW.getTime();
+    const raw = { dependencies: [{ id: 'auth', status: 'operational', reason: null, latencyMs: 3, metrics: [] }] };
+    for (const body of [raw, { ...raw, ageMs: 0 }, { ...raw, checkedAt: NOW.toISOString() }]) {
+      const mapped = mapDependencyHealth(body);
+      const state: DependencyHealthState = {
+        kind: 'ok',
+        checkedAt: mapped.checkedAt,
+        measuredAt: localMeasuredAt(mapped.checkedAt, mapped.ageMs, requestedAt),
+        dependencies: mapped.dependencies,
+      };
+      expect(byId(mergeHealthServices(trpcServices, state, NOW)).get('auth'), JSON.stringify(body)).toMatchObject({
+        status: 'not_monitored',
+        reason: 'stale_result',
+      });
+    }
   });
 
   it('an old tRPC measurement makes the database row unverified too (tier-1 r3)', () => {
