@@ -20,7 +20,9 @@
 # FAIL-CLOSED RULES (each is a violation, exit 1)
 #   UNPINNED    the routine was created and its proconfig has no search_path entry
 #   UNVERIFIED  a routine-creating statement could not be checked: a CREATE FUNCTION/PROCEDURE started but
-#               did not complete (a type it needs is missing here); or the statement's text mentions
+#               did not complete (a type it needs is missing here); or a routine was created by dynamic SQL
+#               inside a DO / SELECT / CALL (only top-level CREATE statements are verifiable: what dynamic
+#               code creates depends on database state); or the statement's text mentions
 #               CREATE [OR REPLACE] FUNCTION/PROCEDURE more often than the server started one (a failed or
 #               untaken path in a DO block); or the file uses a psql meta-command, which is refused (below);
 #               or psql exited non-zero

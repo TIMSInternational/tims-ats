@@ -204,9 +204,24 @@ const FIXTURES: Record<string, { sql: string; expect: string[] }> = {
     expect: ['PINNED public.f()', 'UNPINNED public.f()'],
   },
   // Shapes no text check could see.
+  // Dynamic SQL is reported (what it created is still checked), and never counts as verified (round 2).
   'do-block-execute.sql': {
     sql: "DO $$ BEGIN EXECUTE 'CREATE FUNCTION g() RETURNS int LANGUAGE sql AS ''SELECT 1'''; END $$;",
-    expect: ['UNPINNED public.g()'],
+    expect: ['UNPINNED public.g()', 'UNVERIFIED'],
+  },
+  'do-block-loop-masks-branch.sql': {
+    sql:
+      "DO $do$ BEGIN\n  FOR i IN 1..2 LOOP\n    EXECUTE 'CREATE OR REPLACE FUNCTION a() RETURNS int LANGUAGE sql SET search_path = '''' AS ''SELECT 1''';\n  END LOOP;\n" +
+      "  IF EXISTS (SELECT FROM pg_class WHERE relname = 'production_table') THEN\n" +
+      "    EXECUTE 'CREATE FUNCTION b() RETURNS int LANGUAGE sql AS ''SELECT 1''';\n  END IF;\nEND $do$;",
+    expect: ['PINNED public.a()', 'PINNED public.a()', 'UNVERIFIED'],
+  },
+  'created-when-called.sql': {
+    sql:
+      "CREATE FUNCTION mk() RETURNS void LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN\n" +
+      "  EXECUTE 'CREATE FUNCTION public.made() RETURNS int LANGUAGE sql SET search_path = '''' AS ''SELECT 1''';\nEND $$;\n" +
+      'SELECT mk();',
+    expect: ['PINNED public.made()', 'PINNED public.mk()', 'UNVERIFIED', 'UNVERIFIED'],
   },
   'procedure.sql': {
     sql: 'CREATE PROCEDURE p() LANGUAGE sql AS $$ SELECT 1 $$;',
