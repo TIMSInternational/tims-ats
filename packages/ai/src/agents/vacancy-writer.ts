@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
@@ -51,7 +52,7 @@ export async function generateVacancyDescription(
   title: string,
   context?: string,
 ): Promise<VacancyDescriptionVariants & { model: string; tokensUsed: number }> {
-  const { data, model, inputTokens, outputTokens } = await invokeAgent({
+  const { data, model, inputTokens, outputTokens, degraded } = await invokeAgent({
     slug: 'vacancy-writer',
     orgId,
     input: { title, context: context ?? null },
@@ -61,16 +62,24 @@ export async function generateVacancyDescription(
       return `${wrapAsData('job_data', body)}\n\nGenerate the 3 variants (formal, social, whatsapp) of a professional job description for this position.`;
     },
     schema: outputSchema,
-    // Job descriptions are non-PII prose — if the model returns un-parseable
-    // text, the raw text is still a usable description for all 3 variants.
-    fallback: (raw) => ({
-      formal: { description: raw, sections: { responsibilities: [], requirements: [], benefits: [] } },
-      social: { description: raw },
-      whatsapp: { description: raw },
+    // Never surfaced: a degraded result is turned into an error below, so raw
+    // (possibly oversized or JSON) model text or an empty timeout result can
+    // never be offered to the recruiter as a description to apply.
+    fallback: () => ({
+      formal: { description: '', sections: { responsibilities: [], requirements: [], benefits: [] } },
+      social: { description: '' },
+      whatsapp: { description: '' },
     }),
     // 3 variants in one call need more headroom than the old single-variant call.
     maxTokens: 3072,
   });
+
+  if (degraded) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'No se pudo generar la descripción con IA. Intenta de nuevo.',
+    });
+  }
 
   return { ...data, model, tokensUsed: inputTokens + outputTokens };
 }

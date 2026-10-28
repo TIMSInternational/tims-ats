@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../packages/ai/src/client', () => ({
   bedrockGenerate: vi.fn(),
   calculateCost: vi.fn(() => 0.01),
+  BedrockTimeoutError: class BedrockTimeoutError extends Error {},
 }));
 vi.mock('../../packages/ai/src/budget', () => ({ checkBudget: vi.fn() }));
 vi.mock('../../packages/ai/src/cache', () => ({ getCached: vi.fn(), setCached: vi.fn() }));
@@ -19,7 +20,7 @@ vi.mock('../../packages/ai/src/registry', () => ({
 }));
 
 import { generateVacancyDescription } from '../../packages/ai/src/agents/vacancy-writer';
-import { bedrockGenerate } from '../../packages/ai/src/client';
+import { bedrockGenerate, BedrockTimeoutError } from '../../packages/ai/src/client';
 import { checkBudget } from '../../packages/ai/src/budget';
 import { getCached } from '../../packages/ai/src/cache';
 
@@ -84,7 +85,7 @@ describe('generateVacancyDescription (vacancy-writer agent)', () => {
     expect(userMessage).toContain('Remote, fintech');
   });
 
-  it('falls back to a degraded-but-usable 3-variant shape when Bedrock returns unparseable output', async () => {
+  it('throws instead of offering raw text when Bedrock returns unparseable output', async () => {
     vi.mocked(bedrockGenerate).mockResolvedValue({
       text: 'totally not json',
       inputTokens: 5,
@@ -93,11 +94,23 @@ describe('generateVacancyDescription (vacancy-writer agent)', () => {
       latencyMs: 1,
     });
 
-    const result = await generateVacancyDescription('org-1', 'Backend Engineer');
+    await expect(generateVacancyDescription('org-1', 'Backend Engineer')).rejects.toThrow('No se pudo generar');
+  });
 
-    expect(result.formal.description).toContain('totally not json');
-    expect(result.formal.sections).toEqual({ responsibilities: [], requirements: [], benefits: [] });
-    expect(result.social.description).toBeTruthy();
-    expect(result.whatsapp.description).toBeTruthy();
+  it('throws when a variant exceeds its length bound (no raw JSON is offered)', async () => {
+    vi.mocked(bedrockGenerate).mockResolvedValue({
+      text: JSON.stringify({ ...VALID_PAYLOAD, whatsapp: { description: 'x'.repeat(2001) } }),
+      inputTokens: 5,
+      outputTokens: 5,
+      model: 'haiku',
+      latencyMs: 1,
+    });
+
+    await expect(generateVacancyDescription('org-1', 'Backend Engineer')).rejects.toThrow('No se pudo generar');
+  });
+
+  it('throws on a Bedrock timeout instead of returning empty variants', async () => {
+    vi.mocked(bedrockGenerate).mockRejectedValue(new BedrockTimeoutError(20_000));
+    await expect(generateVacancyDescription('org-1', 'Backend Engineer')).rejects.toThrow('No se pudo generar');
   });
 });
