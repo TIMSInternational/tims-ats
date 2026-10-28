@@ -6,6 +6,7 @@ import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
 import { DataTable, FitScoreBadge, ErrorState } from '../../../../../components';
 import { CandidateFitPanel } from './candidate-fit-panel';
+import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
 
 const DIMENSIONS = ['assessment', 'interview', 'experience', 'education', 'languages'] as const;
 type Dimension = (typeof DIMENSIONS)[number];
@@ -55,7 +56,7 @@ export function FitRanking({ vacancyId }: { vacancyId: string }) {
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.fitRanking.title}</h3>
         <button
           onClick={() => compute.mutate({ vacancyId })}
@@ -65,6 +66,7 @@ export function FitRanking({ vacancyId }: { vacancyId: string }) {
           {compute.isPending ? t.fitRanking.computing : t.fitRanking.computeButton}
         </button>
       </div>
+      <AiSuggestionNotice className="mb-4" />
 
       {ranking.isError ? (
         <ErrorState onRetry={() => ranking.refetch()} />
