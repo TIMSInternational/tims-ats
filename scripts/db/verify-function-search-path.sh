@@ -148,7 +148,7 @@ REVOKE ALL ON SCHEMA search_path_gate FROM PUBLIC;
 -- The nonce lives in a table only the superuser can read, NOT in the function source: pg_proc.prosrc is
 -- world-readable, and a file that learned the nonce could RAISE LOG forged events (tier-1 round 5).
 -- Both functions below are SECURITY DEFINER, so their search_path puts pg_temp LAST and their types are
--- schema-qualified: otherwise pg_temp is searched FIRST for types, and a file could shadow `text` with a temp
+-- schema-qualified: otherwise pg_temp is searched FIRST for types, and a file could shadow "text" with a temp
 -- domain whose CHECK would run as the superuser (tier-1 round 6).
 CREATE TABLE search_path_gate.secret (nonce text NOT NULL);
 REVOKE ALL ON TABLE search_path_gate.secret FROM PUBLIC;
