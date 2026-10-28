@@ -165,6 +165,17 @@ describe('Sentry join-token redaction', () => {
     expect(event.request.query_string).toBe('input=[redacted]&batch=1');
   });
 
+  it('scrubs escaped credential keys inside free text and stringified copies (codex r13)', () => {
+    const body = String.raw`{"to\u006ben":"${TOKEN}"}`;
+    for (const value of [`Request failed: ${body}`, JSON.stringify(`Request failed: ${body}`), JSON.stringify({ msg: body })]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      const event = redactSentryEvent({ exception: { values: [{ value }] } });
+      expect(JSON.stringify(event), value).not.toContain(TOKEN);
+    }
+    // Escapes of non-key characters are untouched.
+    expect(redactBearerTokens(String.raw`caf\u00e9`)).toBe(String.raw`caf\u00e9`);
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);

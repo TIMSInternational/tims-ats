@@ -76,8 +76,20 @@ const ENCODED_JSON_CREDENTIAL_VALUE = new RegExp(
 const CREDENTIAL_KEY_SET: ReadonlySet<string> = new Set(CREDENTIAL_KEYS);
 const MAX_DEPTH = 24;
 
+// JSON `\uXXXX` escapes (also doubly escaped, `\\uXXXX`) that spell a letter, digit or `_` are decoded before
+// matching, so a credential key written as `"to\u006ben"` in free text (an exception message, a serialized body)
+// reads as `"token"`. Escapes of any other character are left as they are.
+const KEY_CHAR_ESCAPE = /\\{1,2}u([0-9a-f]{4})/gi;
+
+function unescapeKeyChars(value: string): string {
+  return value.replace(KEY_CHAR_ESCAPE, (escape, hex: string) => {
+    const char = String.fromCharCode(Number.parseInt(hex, 16));
+    return /^[A-Za-z0-9_]$/.test(char) ? char : escape;
+  });
+}
+
 function scrubPatterns(value: string): string {
-  let out = value.replace(PATH_TOKEN, `$1${REDACTED}`);
+  let out = unescapeKeyChars(value).replace(PATH_TOKEN, `$1${REDACTED}`);
   for (const pattern of ENCODED_PATH_TOKENS) out = out.replace(pattern, `$1${REDACTED}`);
   return out
     .replace(QUERY_PARAM, `$1${REDACTED}`)
