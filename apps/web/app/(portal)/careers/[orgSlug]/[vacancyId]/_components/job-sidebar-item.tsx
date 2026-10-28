@@ -52,7 +52,7 @@ export function JobSidebarItem({ orgSlug, isActive, item }: JobSidebarItemProps)
             {contract && (
               <span className="rounded bg-[#F6F6F6] px-1.5 py-0.5 text-[10px] text-[#585858]">{contract}</span>
             )}
-            <span className="ml-auto text-[10px] text-[#8B8B8B]">{formatTimeAgo(item.createdAt, p)}</span>
+            <span className="ml-auto text-[10px] text-[#8B8B8B]">{formatTimeAgo(item.createdAt, locale, { standalone: true })}</span>
           </div>
         </div>
       </div>

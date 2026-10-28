@@ -132,7 +132,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
                   {v.location}{remote ? ` (${remote})` : ''}
                 </span>
               )}
-              <span>{p.postedLabel} {formatTimeAgo(v.createdAt, p)}</span>
+              <span>{p.postedLabel} {formatTimeAgo(v.createdAt, locale)}</span>
               <span>{v.applicantCount} {v.applicantCount === 1 ? p.oneApplicant : p.manyApplicants}</span>
             </div>
             <div className="mb-4 flex flex-wrap items-center gap-2">

@@ -2,6 +2,7 @@
 
 import { useI18n } from '../../../../../lib/i18n';
 import type { VacancyDetail } from '../../../../../lib/trpc-types';
+import { vacancyStatusLabel } from './vacancy-status-label';
 
 interface SlaCardProps {
   vacancy: VacancyDetail;
@@ -29,7 +30,7 @@ export function SlaCard({ vacancy }: SlaCardProps) {
         <div className="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center">
           <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.positions}</p>
           <p className="text-[22px] font-bold text-[#1F114C]">{vacancy.positions}</p>
-          <p className="text-[10px] text-[#8B8B8B]">{vacancy.status === 'closed' ? t.vacancies.statusClosed : vacancy.status}</p>
+          <p className="text-[10px] text-[#8B8B8B]">{vacancyStatusLabel(vacancy.status, t.vacancies)}</p>
         </div>
       </div>
 
