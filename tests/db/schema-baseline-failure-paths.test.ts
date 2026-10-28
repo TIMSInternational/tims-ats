@@ -163,6 +163,30 @@ describe('schema-baseline.sh check — exit 2 means DID NOT RUN, never a pass', 
     expect(out).toMatch(/password authentication failed/);
   });
 
+  it('objects-only mode: a failed pg_dump reports categories, never its stderr text (tier-1 round 3)', () => {
+    const root = makeTree('dump-fails-objects-only');
+    const stub = join(root, 'stub-fail-quoting');
+    writeFileSync(
+      stub,
+      '#!/bin/sh\n[ "$1" = "--version" ] && { echo "pg_dump (PostgreSQL) 17.0"; exit 0; }\n' +
+        'echo "pg_dump: error: query failed: ERROR:  permission denied for table SYNTHETIC_PRIVATE_NAME_42" >&2\n' +
+        'echo "pg_dump: detail: Query was: LOCK TABLE public.\\"SYNTHETIC_PRIVATE_NAME_42\\" IN ACCESS SHARE MODE" >&2\n' +
+        'exit 1\n',
+    );
+    chmodSync(stub, 0o755);
+    for (const env of [{ SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, { GITHUB_ACTIONS: 'true' }]) {
+      for (const cmd of ['capture', 'check']) {
+        if (cmd === 'check') writeFileSync(join(root, BASELINE_REL), '-- >>> END BASELINE HEADER — everything below is verbatim pg_dump output\n');
+        const { code, out } = run(root, [cmd], { DIRECT_URL: FAKE_URL, PG_DUMP: stub, ...env });
+        expect(code).toBe(2);
+        expect(out).toMatch(/pg_dump failed/);
+        expect(out).toMatch(/2 line\(s\) of pg_dump diagnostics withheld/);
+        expect(out).toMatch(/matched categories: permission/);
+        expect(out).not.toMatch(/SYNTHETIC_PRIVATE_NAME|LOCK TABLE/);
+      }
+    }
+  });
+
   it('exits 2 when pg_dump succeeds but emits nothing — the #38 failure mode', () => {
     const root = makeTree('dump-empty');
     const stub = makeStubPgDump(root, '17.0', 'empty');

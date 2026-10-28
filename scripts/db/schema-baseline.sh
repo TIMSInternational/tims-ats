@@ -250,6 +250,30 @@ dump_live() {
     "${DUMP_SCHEMAS[@]}" --dbname "$url" >"$out" 2>"$out.err"
 }
 
+# dump_diagnostics ERRFILE → pg_dump's stderr for the "pg_dump failed" message. Locally: the first 20 lines.
+# In objects-only mode (#336 tier-1 round 3) server errors can quote object names or the failed query
+# (permission denied for table X / LOCK TABLE X), so nothing from the file is printed: only its line count
+# and which FIXED categories its text matches, enough to tell a credential problem from a privilege one.
+dump_diagnostics() {
+  if [ "$OBJECTS_ONLY" != "1" ]; then
+    sed 's/^/    /' "$1" 2>/dev/null | head -20
+    return 0
+  fi
+  local cats="" c pat
+  for c in "authentication:password authentication failed|authentication failed|no pg_hba.conf entry" \
+           "connection:could not connect|connection refused|could not translate host name|timeout expired|server closed the connection" \
+           "tls:ssl|certificate|tls" \
+           "permission:permission denied|must be owner|insufficient privilege" \
+           "version:server version mismatch|aborting because of server version mismatch" \
+           "lock:lock timeout|could not obtain lock|deadlock"; do
+    pat="${c#*:}"
+    if grep -qiE -- "$pat" "$1" 2>/dev/null; then cats="$cats ${c%%:*}"; fi
+  done
+  echo "    ($(grep -c '' "$1" 2>/dev/null || echo 0) line(s) of pg_dump diagnostics withheld: objects-only mode)"
+  echo "    matched categories:${cats:- none}"
+  echo "    Run 'check' locally, or inspect the database, for the full message."
+}
+
 cmd="${1:-check}"
 
 PG_DUMP_BIN="$(find_pg_dump)" || die2 "no pg_dump >= 17 found (prod is PostgreSQL 17.x; pg_dump refuses to dump a newer server).
@@ -277,7 +301,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 if ! dump_live "$DB_URL" "$TMP/live.sql" "$PG_DUMP_BIN"; then
   die2 "pg_dump failed:
-$(sed 's/^/    /' "$TMP/live.sql.err" 2>/dev/null | head -20)"
+$(dump_diagnostics "$TMP/live.sql.err")"
 fi
 [ -s "$TMP/live.sql" ] || die2 "pg_dump produced an empty dump — refusing to treat that as 'no drift'."
 
