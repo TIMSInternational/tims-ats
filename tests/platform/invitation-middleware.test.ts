@@ -17,6 +17,7 @@ it('lets a new recipient open the setup link on the canonical app host', async (
   expect(response.headers.get('location')).toBeNull();
   expect(response.headers.get('referrer-policy')).toBe('no-referrer');
   expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive');
 });
 
 it('allows an authenticated recovery session to choose a new secret', async () => {
@@ -27,6 +28,7 @@ it('allows an authenticated recovery session to choose a new secret', async () =
   expect(response.headers.get('location')).toBeNull();
   expect(response.headers.get('referrer-policy')).toBe('no-referrer');
   expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive');
 });
 
 it('still redirects anonymous users away from the private dashboard', async () => {
@@ -45,4 +47,5 @@ it('lets a candidate open the interview join link without a session, never cache
   expect(response.headers.get('location')).toBeNull();
   expect(response.headers.get('referrer-policy')).toBe('no-referrer');
   expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive');
 });

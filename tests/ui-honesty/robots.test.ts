@@ -8,7 +8,16 @@ describe('robots.txt policy', () => {
     const rules = robots().rules;
     const rule = Array.isArray(rules) ? rules[0] : rules;
     expect(rule?.userAgent).toBe('*');
-    expect(rule?.allow).toEqual(['/careers', '/_next/static/', '/_next/image', '/api/trpc/portal.']);
+    expect(rule?.allow).toEqual([
+      '/careers',
+      '/_next/static/',
+      '/_next/image',
+      '/api/trpc/portal.',
+      '/accept-invitation',
+      '/reset-password',
+      '/offers/sign/',
+      '/interview/join/',
+    ]);
     expect(rule?.disallow).toEqual(['/']);
   });
 

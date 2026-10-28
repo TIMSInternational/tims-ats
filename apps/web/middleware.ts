@@ -81,6 +81,7 @@ export async function middleware(request: NextRequest) {
     if (isBearerLinkPathname(request.nextUrl.pathname)) {
       res.headers.set('referrer-policy', 'no-referrer');
       res.headers.set('cache-control', 'no-store');
+      res.headers.set('x-robots-tag', 'noindex, nofollow, noarchive');
     }
     return res;
   };
