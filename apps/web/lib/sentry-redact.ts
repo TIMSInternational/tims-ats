@@ -80,6 +80,11 @@ const DIAGNOSTIC_QUOTED_VALUE = new RegExp(
   `(${KEY_BOUNDARY}(?:${KEY_ALT})\\s*[:=]\\s*)(["'\`])(?:(?!\\2)[^\\\\]|\\\\.)+(?=\\2)`,
   'gi',
 );
+// A quoted key in any quote style with a quoted value in any quote style: `'candidateToken': '…'`, `"token": '…'`.
+const QUOTED_KEY_VALUE = new RegExp(
+  `((["'])(?:${KEY_ALT})\\2\\s*[:=]\\s*)(["'\`])(?:(?!\\3)[^\\\\]|\\\\.)+(?=\\3)`,
+  'gi',
+);
 const DIAGNOSTIC_BARE_VALUE = new RegExp(
   `(${KEY_BOUNDARY}(?:${KEY_ALT})\\s*[:=]\\s*)(?!["'\`\\[{])[^\\s,;}\\])&#"'<>]{6,}`,
   'gi',
@@ -129,6 +134,7 @@ function scrubPatterns(value: string): string {
     .replace(JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
     .replace(ESCAPED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
     .replace(DIAGNOSTIC_QUOTED_VALUE, `$1$2${REDACTED}`)
+    .replace(QUOTED_KEY_VALUE, `$1$3${REDACTED}`)
     .replace(DIAGNOSTIC_BARE_VALUE, `$1${REDACTED}`)
     .replace(PATH_THEN_VALUE, `$1$2${REDACTED}`)
     .replace(VALUE_THEN_PATH, `$1$2${REDACTED}`)
@@ -221,13 +227,16 @@ function scrubLevel(text: string, depth: number): string {
 export function redactBearerTokens(value: string, depth = 0): string {
   const scrubbed = scrubLevel(value, depth);
   // Encoded forms the patterns above do not anticipate (an escaped character inside a token, JSON whitespace
-  // inside an encoded body, a third encoding level, …): decode level by level and re-scrub each level. If any
-  // decoded level still revealed a credential, the event carries the decoded, scrubbed form instead.
+  // inside an encoded body, a serialized string embedded in a message, a third encoding level, …): decode level
+  // by level — percent escapes, then backslash escapes of quotes — and re-scrub each level. If any decoded level
+  // still revealed something, the event carries the decoded, scrubbed form instead.
   let current = scrubbed;
   let revealed = false;
-  for (let level = 0; level < MAX_DECODE_LEVELS && current.includes('%'); level++) {
+  for (let level = 0; level < MAX_DECODE_LEVELS && (current.includes('%') || current.includes('\\')); level++) {
+    let decoded = current;
     // Form semantics: in a query value `+` is a space, so `"token":+"…"` must read as JSON whitespace.
-    const decoded = percentDecode(current.replace(/\+/g, ' '));
+    if (decoded.includes('%')) decoded = percentDecode(decoded.replace(/\+/g, ' '));
+    decoded = decoded.replace(/\\(["'`\\/])/g, '$1');
     if (decoded === current) break;
     current = scrubLevel(decoded, depth);
     // Any change means this level exposed something the previous level did not (a new token, the rest of one cut

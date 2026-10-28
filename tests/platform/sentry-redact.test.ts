@@ -224,6 +224,17 @@ describe('Sentry join-token redaction', () => {
       expect(redactBearerTokens(value), value).not.toContain(TOKEN);
       expect(JSON.stringify(redactSentryEvent({ exception: { values: [{ value }] } })), value).not.toContain(TOKEN);
     }
+    // Embedded after a prefix (codex r19), and quoted diagnostic keys.
+    for (const value of [
+      `failed: ${JSON.stringify(diag)}`,
+      `failed: ${JSON.stringify(`wrapped ${JSON.stringify(diag)}`)}`,
+      `Error: { 'candidateToken': '${TOKEN}' }`,
+      `Error: { "candidateToken": '${TOKEN}' }`,
+      `Error: { 'signingToken': "${TOKEN}" }`,
+    ]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      expect(JSON.stringify(redactSentryEvent({ exception: { values: [{ value }] } })), value).not.toContain(TOKEN);
+    }
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);
