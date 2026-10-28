@@ -41,6 +41,20 @@
       <Link>db\quartz\quartz-tables_postgres.sql</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\..\..\..\packages\db\prisma\migrations\20261010180000_cv_parse_retry_leases\migration.sql">
+      <Link>db\cv-parse-retry\migration.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- CV recovery tests build their tables, RLS policies and app_tenant grants from the COMMITTED
+         production baseline plus the post-baseline migrations, never from hand-written DDL. -->
+    <None Include="..\..\..\..\packages\db\baseline\prod-public-schema.sql">
+      <Link>db\baseline\prod-public-schema.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\..\..\packages\db\prisma\migrations\20261012120000_ai_usage_success\migration.sql">
+      <Link>db\ai-usage-success\migration.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
