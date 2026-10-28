@@ -68,8 +68,8 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
       en: 'Primary platform database and user authentication.',
     },
     dataCategories: {
-      es: 'Registros de la plataforma: perfiles y postulaciones de candidatos, datos de colaboradores y de RR. HH., resultados de evaluaciones, registros de consentimiento y de auditoría; credenciales de cuenta (correo electrónico, contraseña con hash, sesiones).',
-      en: 'Platform records: candidate profiles and applications, employee and HR data, assessment results, consent and audit records; account credentials (email, hashed password, sessions).',
+      es: 'Registros de la plataforma: perfiles y postulaciones de candidatos, datos de colaboradores y de RR. HH., resultados de evaluaciones, registros de consentimiento y de auditoría; credenciales de cuenta (correo electrónico; la contraseña, que Supabase recibe por HTTPS cada vez que se define o se usa para iniciar sesión y guarda solo como hash; sesiones).',
+      en: 'Platform records: candidate profiles and applications, employee and HR data, assessment results, consent and audit records; account credentials (email; the password, which Supabase receives over HTTPS whenever it is set or used to sign in, and stores only as a hash; sessions).',
     },
     condition: 'always',
     evidence: [
