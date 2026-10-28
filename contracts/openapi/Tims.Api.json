@@ -2411,6 +2411,32 @@
         }
       }
     },
+    "/platform/health/dependencies": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "PlatformHealthGetDependencies",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyHealthView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/platform/organizations/{id}/suspend": {
       "post": {
         "tags": [
@@ -11610,6 +11636,100 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DataSubjectRequestListItem"
+            }
+          }
+        }
+      },
+      "DependencyHealthView": {
+        "required": [
+          "checkedAt",
+          "cacheSeconds",
+          "dependencies",
+          "ageMs"
+        ],
+        "type": "object",
+        "properties": {
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cacheSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DependencyProbeResult"
+            }
+          },
+          "ageMs": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DependencyMetric": {
+        "required": [
+          "id",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DependencyProbeResult": {
+        "required": [
+          "id",
+          "status",
+          "reason",
+          "latencyMs",
+          "metrics"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "latencyMs": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DependencyMetric"
             }
           }
         }

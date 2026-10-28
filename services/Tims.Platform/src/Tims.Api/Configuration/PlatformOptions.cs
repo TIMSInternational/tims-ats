@@ -720,6 +720,16 @@ public sealed class PlatformOptions
     public bool PlatformDashboardReadEnabled { get; init; }
 
     /// <summary>
+    /// Live dependency probes for the platform Health page (<c>GET /platform/health/dependencies</c>,
+    /// <c>Tims.Api.PlatformHealth</c>): the API's readiness, Supabase Auth, the CV bucket (S3 HeadBucket), the
+    /// worker heartbeat, the Bedrock guardrail (control plane, never an inference), SES account state, realtime.
+    /// Platform-owner only, read-only, ~2s per probe, cached 30–60s. A NEW surface, not a port — no TS reader is
+    /// displaced. DEFAULT false (dark): enable once the instance role carries the probe permissions (Terraform
+    /// <c>instance_health_probes</c>), or the AWS probes will truthfully report <c>access_denied</c>.
+    /// </summary>
+    public bool PlatformHealthProbesEnabled { get; init; }
+
+    /// <summary>
     /// MFA step-up enforcement (#173) — the platform-service counterpart of the web app's
     /// <c>MFA_ENFORCED</c>. When exactly "true", a PRIVILEGED principal (platform owner or
     /// super_admin) on an <c>aal1</c> session is refused with 403 + <c>{"message":"MFA_REQUIRED"}</c>

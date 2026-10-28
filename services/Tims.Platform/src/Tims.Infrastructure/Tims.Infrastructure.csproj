@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.Bedrock" Version="4.0.102.1" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.102.1" />
     <PackageReference Include="AWSSDK.SimpleEmail" Version="4.0.100.13" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- WP3.1 HRIS: design-time EF tooling so `dotnet ef migrations` can build HrisDbContext (the

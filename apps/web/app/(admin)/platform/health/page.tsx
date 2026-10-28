@@ -1,64 +1,44 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../lib/format-utils';
-import { ErrorState } from '../../../../components';
 import { HealthStatusBanner } from './health-status-banner';
-
-type ServiceStatus = 'operational' | 'degraded' | 'down' | 'unmonitored';
-
-const METRIC_COLORS: Record<string, string> = {
-  green: 'text-green-600',
-  red: 'text-[#DD0C15]',
-  amber: 'text-amber-600',
-};
+import { HealthServiceGrid } from './health-service-grid';
+import { healthMeasuredAt, mergeHealthServices, overallHealthStatus, type TrpcSourceState } from './merge-health';
+import { usePlatformDependencyHealth } from '../../../../lib/platform-api/platform-health';
 
 export default function PlatformHealthPage() {
   const { t } = useI18n();
   const { data, isLoading, isError, refetch, dataUpdatedAt } = trpc.platform.getSystemHealth.useQuery(undefined, {
     refetchInterval: 30000,
+    // A health page must not show the provider's 5-minute cache as the current state.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
+  const dependencyHealth = usePlatformDependencyHealth();
+  // Re-render on a clock, not only on new data: when polling stalls (offline, paused fetch) the last
+  // result must still expire on screen instead of staying green (tier-1 review).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(tick);
+  }, []);
 
-  const statusConfig: Record<
-    ServiceStatus,
-    { dot: string; badge: string; badgeText: string; label: string; ring?: string }
-  > = {
-    operational: {
-      dot: 'bg-green-500',
-      badge: 'bg-green-100',
-      badgeText: 'text-green-700',
-      label: t.health.statusOperational,
-    },
-    degraded: {
-      dot: 'bg-amber-500',
-      badge: 'bg-amber-100',
-      badgeText: 'text-amber-700',
-      label: t.health.statusDegraded,
-      ring: 'ring-1 ring-amber-200',
-    },
-    down: {
-      dot: 'bg-red-500',
-      badge: 'bg-red-100',
-      badgeText: 'text-red-700',
-      label: t.health.statusDown,
-      ring: 'ring-1 ring-red-200',
-    },
-    unmonitored: {
-      dot: 'bg-slate-400',
-      badge: 'bg-slate-100',
-      badgeText: 'text-slate-700',
-      label: t.health.statusUnmonitored,
-    },
-  };
+  // The database row comes from tRPC (a live SELECT 1); the other seven from the C# dependency probes.
+  // The sources are independent: a tRPC failure (first load or a background refresh) marks only the tRPC
+  // parts unavailable and never hides the probe results (tier-1 review).
+  const trpcState: TrpcSourceState = isError ? 'error' : isLoading ? 'loading' : 'ok';
+  const trpcData = trpcState === 'ok' ? data : undefined;
+  const services = mergeHealthServices(trpcData?.services ?? [], dependencyHealth.state, now, dataUpdatedAt, trpcState);
+  const overall = overallHealthStatus(services);
+  // null = the feed could not be read (DB down, or the tRPC source failed) — shown as unavailable, never as "no errors".
+  const recentErrors = trpcData?.recentErrors ?? null;
+  const stats = trpcData?.stats;
 
-  const services = data?.services ?? [];
-  const overall = data?.overall ?? 'unmonitored';
-  // null = the feed could not be read (DB down) — shown as unavailable, never as "no errors".
-  const recentErrors = data?.recentErrors ?? null;
-  const stats = data?.stats;
-
-  if (isLoading) {
+  // Skeleton only while NEITHER source has answered; once either has, the page renders what it has.
+  if (trpcState === 'loading' && dependencyHealth.state.kind === 'loading') {
     return (
       <div className="h-full overflow-y-auto p-5">
         <div className="bg-gray-100 rounded-xl p-4 mb-3 animate-pulse h-[68px]" />
@@ -78,23 +58,16 @@ export default function PlatformHealthPage() {
     );
   }
 
-  if (isError) {
-    return (
-      <div className="h-full flex flex-col overflow-y-auto p-5">
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-          <ErrorState onRetry={() => refetch()} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex flex-col overflow-y-auto p-5">
       <HealthStatusBanner
         overall={overall}
         services={services}
-        dataUpdatedAt={dataUpdatedAt}
-        onRefresh={() => refetch()}
+        dataUpdatedAt={healthMeasuredAt(trpcState === 'ok' ? dataUpdatedAt : 0, dependencyHealth.state)}
+        onRefresh={() => {
+          refetch();
+          dependencyHealth.refetch();
+        }}
       />
 
       {/* Quick Platform Stats */}
@@ -171,42 +144,24 @@ export default function PlatformHealthPage() {
         </div>
       )}
 
-      {/* Service Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 shrink-0">
-        {services.map((service) => {
-          const config = statusConfig[service.status as ServiceStatus] || statusConfig.unmonitored;
-          return (
-            <div
-              key={service.id}
-              className={`bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] ${config.ring || ''}`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${config.dot}`} />
-                  <span className="text-[13px] font-semibold text-[#1F114C]">{t.health.serviceNames[service.id]}</span>
-                </div>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[9px] font-semibold ${config.badge} ${config.badgeText}`}
-                >
-                  {config.label}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {service.metrics?.map((metric, idx) => (
-                  <div key={idx} className="flex justify-between">
-                    <span className="text-[11px] text-[#8B8B8B]">{t.health.metricLabels[metric.id]}</span>
-                    <span
-                      className={`text-[12px] font-medium ${'color' in metric && metric.color ? METRIC_COLORS[metric.color] || 'text-[#1F114C]' : 'text-[#1F114C]'}`}
-                    >
-                      {metric.value ?? t.health.notAvailable}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {trpcState === 'error' && (
+        <div
+          role="alert"
+          data-testid="health-trpc-error"
+          className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 flex items-center justify-between gap-3 shrink-0"
+        >
+          <p className="text-[12px] text-amber-800">{t.health.trpcSourceError}</p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="text-[11px] font-medium text-amber-900 hover:underline shrink-0"
+          >
+            {t.health.refresh}
+          </button>
+        </div>
+      )}
+
+      <HealthServiceGrid services={services} />
 
       {/* Bottom Row: Chart + Errors — fills remaining space */}
       <div className="grid grid-cols-2 gap-3 flex-1 min-h-[260px]">

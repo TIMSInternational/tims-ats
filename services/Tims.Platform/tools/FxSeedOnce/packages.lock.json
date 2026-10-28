@@ -15,10 +15,26 @@
           "Microsoft.Extensions.Options": "10.0.10"
         }
       },
+      "AWSSDK.Bedrock": {
+        "type": "Transitive",
+        "resolved": "4.0.102.1",
+        "contentHash": "i+bq6iZQqcuCb9fjxTZQErh9W23EcaK2V31d9fgZQXypexTM/daOsGtcvY2fABkY+VXnuVC9hn2tK1U6PrpUCw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.4, 5.0.0)"
+        }
+      },
       "AWSSDK.Core": {
         "type": "Transitive",
         "resolved": "4.0.102.4",
         "contentHash": "cFMZnb05RV290HDdybtgR5b/ypkLekeaoHde4tiQHLmgegGLMmcEKsvThnLm1PJOeWSNFcBxzC5fomOvWiW24A=="
+      },
+      "AWSSDK.S3": {
+        "type": "Transitive",
+        "resolved": "4.0.102.1",
+        "contentHash": "zGP3FW4D0wfbmYxoOWgNoPcwoA8E+kWH6KezOBPiLpAOi3l4cygFF15jiWdma6R7D+M9qu3DzdpWq/VlyIJX+Q==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.101, 5.0.0)"
+        }
       },
       "AWSSDK.SimpleEmail": {
         "type": "Transitive",
@@ -437,6 +453,8 @@
       "tims.infrastructure": {
         "type": "Project",
         "dependencies": {
+          "AWSSDK.Bedrock": "[4.0.102.1, )",
+          "AWSSDK.S3": "[4.0.102.1, )",
           "AWSSDK.SimpleEmail": "[4.0.100.13, )",
           "Microsoft.Extensions.Http.Resilience": "[10.0.0, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",

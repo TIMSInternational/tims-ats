@@ -2,6 +2,24 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
+      "AWSSDK.Bedrock": {
+        "type": "Direct",
+        "requested": "[4.0.102.1, )",
+        "resolved": "4.0.102.1",
+        "contentHash": "i+bq6iZQqcuCb9fjxTZQErh9W23EcaK2V31d9fgZQXypexTM/daOsGtcvY2fABkY+VXnuVC9hn2tK1U6PrpUCw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.4, 5.0.0)"
+        }
+      },
+      "AWSSDK.S3": {
+        "type": "Direct",
+        "requested": "[4.0.102.1, )",
+        "resolved": "4.0.102.1",
+        "contentHash": "zGP3FW4D0wfbmYxoOWgNoPcwoA8E+kWH6KezOBPiLpAOi3l4cygFF15jiWdma6R7D+M9qu3DzdpWq/VlyIJX+Q==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.101, 5.0.0)"
+        }
+      },
       "AWSSDK.SimpleEmail": {
         "type": "Direct",
         "requested": "[4.0.100.13, )",

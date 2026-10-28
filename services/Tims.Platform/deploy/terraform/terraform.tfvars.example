@@ -63,6 +63,20 @@ feature_flags = {
   # first or the apply silently darkens it — the same drift class as team_intel_read above.
   monitoring_read         = false # #100, Q0b slice 1 — the six monitoring READ endpoints
   alert_metrics_cron_read = false # #172, Q0b slice 2 — GET /internal/alert-metrics (cron cross-org read)
+
+  # --- Health page live dependency probes (read-only; health_probes.tf grants the IAM reads) ---
+  platform_health_probes = false
+}
+
+# Identifiers for the Health page probes — the SAME values the web app uses (CV_UPLOADS_BUCKET,
+# CV_UPLOADS_REGION, BEDROCK_GUARDRAIL_ID, BEDROCK_GUARDRAIL_VERSION, BEDROCK_AWS_REGION). Leave a value
+# empty and that probe reports not_configured (and no IAM statement is created for it).
+health_probe = {
+  cv_uploads_bucket         = ""
+  cv_uploads_region         = ""
+  bedrock_guardrail_id      = ""
+  bedrock_guardrail_version = ""
+  bedrock_region            = ""
 }
 
 # #173 MFA step-up on the platform service. ⚠️ Also previously absent from main.tf, so the same

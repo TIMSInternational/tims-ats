@@ -118,6 +118,19 @@ variable "feature_flags" {
     access_review_write     = optional(bool, false)
     monitoring_read         = optional(bool, false) # Q0b slice 1 (#100) — gates flips #64/#66/#68
     alert_metrics_cron_read = optional(bool, false) # Q0b slice 2 (#172) — the last blocker on #64/#66
+    platform_health_probes  = optional(bool, false) # Health page live dependency probes (health_probes.tf grants the IAM reads)
+  })
+  default = {}
+}
+
+variable "health_probe" {
+  description = "Non-secret identifiers for the Health page dependency probes (PlatformHealth__*). Use the SAME values as the web app's CV_UPLOADS_BUCKET / CV_UPLOADS_REGION / BEDROCK_GUARDRAIL_ID / BEDROCK_GUARDRAIL_VERSION / BEDROCK_AWS_REGION. Empty = that probe reports not_configured and no IAM statement is created for it."
+  type = object({
+    cv_uploads_bucket         = optional(string, "")
+    cv_uploads_region         = optional(string, "")
+    bedrock_guardrail_id      = optional(string, "") # the id, or its full ARN
+    bedrock_guardrail_version = optional(string, "")
+    bedrock_region            = optional(string, "")
   })
   default = {}
 }

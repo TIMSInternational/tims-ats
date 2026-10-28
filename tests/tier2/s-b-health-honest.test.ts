@@ -10,6 +10,10 @@ const page = readFileSync(
   resolve(__dirname, '../../apps/web/app/(admin)/platform/health/page.tsx'),
   'utf8',
 );
+const grid = readFileSync(
+  resolve(__dirname, '../../apps/web/app/(admin)/platform/health/health-service-grid.tsx'),
+  'utf8',
+);
 
 describe('Tier-2 Slice B — no fabricated health literals', () => {
   it('removes fabricated literals from system.helpers.ts', () => {
@@ -35,7 +39,10 @@ describe('Tier-2 Slice B — no fabricated health literals', () => {
   it('marks unsourced metrics as unmeasured (null), which the UI renders as health.notAvailable', () => {
     // #323 moved the "N/D" literal out of the API (it was Spanish-only) — an unmeasured metric is value: null.
     expect(h, 'helper must build unmeasured metrics with value: null').toContain('({ id, value: null })');
-    expect(page, 'page must render a null metric as t.health.notAvailable').toContain('metric.value ?? t.health.notAvailable');
+    // The service grid moved out of page.tsx (health-service-grid.tsx) when the C# dependency probes landed.
+    expect(grid, 'grid must render a null metric as t.health.notAvailable').toContain(
+      'metric.value === null ? t.health.notAvailable',
+    );
   });
 
   it('keeps real DB latency without the ×3 fudge', () => {
