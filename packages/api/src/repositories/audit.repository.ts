@@ -1,4 +1,5 @@
 import { tenantDb as db } from '@tims/db';
+import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 
 // ---------------------------------------------------------------------------
@@ -76,10 +77,15 @@ export const auditRepository = {
       };
     }
 
+    const cursorLive = await cursorRowMatches(cursor, (id) =>
+      db.auditLog.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+    );
+    if (!cursorLive) {
+      return [];
+    }
     return db.auditLog.findMany({
       where,
-      take: take + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      ...cursorPageArgs(take, cursor),
       // Explicit select (not bare `include`) — same fields a bare `include`
       // would have returned (all scalars + `actor`), just enumerated so this
       // satisfies the repo's "no findMany/findFirst without explicit select"
@@ -99,7 +105,7 @@ export const auditRepository = {
         createdAt: true,
         actor: { select: { id: true, firstName: true, lastName: true, avatar: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
   },
 
@@ -150,14 +156,16 @@ export const auditRepository = {
   // `include` converted to an equivalent explicit `select` (see findLogs
   // comment above).
   async findChangesByEntity(orgId: string, entity: string, entityId: string, take: number, cursor?: string) {
+    const where: Prisma.AuditLogWhereInput = { organizationId: orgId, entity, entityId };
+    const cursorLive = await cursorRowMatches(cursor, (id) =>
+      db.auditLog.findFirst({ where: { AND: [where, { id }] }, select: { id: true } }),
+    );
+    if (!cursorLive) {
+      return [];
+    }
     return db.auditLog.findMany({
-      where: {
-        organizationId: orgId,
-        entity,
-        entityId,
-      },
-      take: take + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      where,
+      ...cursorPageArgs(take, cursor),
       select: {
         id: true,
         organizationId: true,
@@ -173,7 +181,7 @@ export const auditRepository = {
         createdAt: true,
         actor: { select: { id: true, firstName: true, lastName: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
   },
 };

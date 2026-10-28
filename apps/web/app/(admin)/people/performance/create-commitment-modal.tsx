@@ -69,6 +69,7 @@ export function CreateCommitmentModal({ onClose }: CreateCommitmentModalProps) {
             </div>
           ) : (
             <UserPicker
+              purpose="performance_subject"
               onSelect={(_userId, user) => setOwner(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}

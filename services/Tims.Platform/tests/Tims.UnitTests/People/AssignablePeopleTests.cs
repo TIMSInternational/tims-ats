@@ -1,5 +1,6 @@
 using Tims.Application.People;
 using Tims.Domain.Access;
+using Tims.Domain.Identity;
 using Tims.Domain.People;
 
 namespace Tims.UnitTests.People;
@@ -11,6 +12,14 @@ public sealed class AssignablePeopleTests
     [InlineData("vacancy_approver", AssignablePurpose.VacancyApprover)]
     [InlineData("offer_approver", AssignablePurpose.OfferApprover)]
     [InlineData("vacancy_assignee", AssignablePurpose.VacancyAssignee)]
+    [InlineData("colleague", AssignablePurpose.Colleague)]
+    [InlineData("performance_subject", AssignablePurpose.PerformanceSubject)]
+    [InlineData("learning_enrollee", AssignablePurpose.LearningEnrollee)]
+    [InlineData("onboarding_hire", AssignablePurpose.OnboardingHire)]
+    [InlineData("succession_candidate", AssignablePurpose.SuccessionCandidate)]
+    [InlineData("evaluation360_participant", AssignablePurpose.Evaluation360Participant)]
+    [InlineData("ninebox_committee_member", AssignablePurpose.NineBoxCommitteeMember)]
+    [InlineData("org_structure_member", AssignablePurpose.OrgStructureMember)]
     public void TryParse_AcceptsOnlyTheExactWireNames(string value, AssignablePurpose expected)
     {
         Assert.True(AssignablePurposes.TryParse(value, out var purpose));
@@ -40,6 +49,85 @@ public sealed class AssignablePeopleTests
             AssignablePurposes.RuleFor(AssignablePurpose.VacancyAssignee));
     }
 
+    [Fact]
+    public void Rules_ForTheNonRecruitmentPickers_FollowTheMutationEachFeeds()
+    {
+        // submitFeedback / giveRecognition are protectedProcedure: no caller permission at all.
+        Assert.Equal(new AssignablePurposeRule(null, null, null, null, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.Colleague));
+        // assertSubjectInScope mutations: narrow callers get their subject set instead of a 403.
+        Assert.Equal(new AssignablePurposeRule("performance", "create", null, null, SubjectScoped: true, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.PerformanceSubject));
+        Assert.Equal(new AssignablePurposeRule("learning", "create", null, null, SubjectScoped: true, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.LearningEnrollee));
+        Assert.Equal(new AssignablePurposeRule("onboarding", "create", null, null, SubjectScoped: true, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.OnboardingHire));
+        Assert.Equal(new AssignablePurposeRule("succession", "create", null, null, SubjectScoped: true, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.SuccessionCandidate));
+        // Org-scope-only C# gates: the whole directory, org-wide callers only.
+        Assert.Equal(new AssignablePurposeRule("evaluation360", "create", null, null, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.Evaluation360Participant));
+        Assert.Equal(new AssignablePurposeRule("ninebox", "update", null, null, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.NineBoxCommitteeMember));
+        Assert.Equal(new AssignablePurposeRule("user", "create", null, null, StaffOnly: true),
+            AssignablePurposes.RuleFor(AssignablePurpose.OrgStructureMember));
+    }
+
+    [Fact]
+    public void EveryPurpose_HasAWireNameAndARule()
+    {
+        foreach (var purpose in Enum.GetValues<AssignablePurpose>())
+        {
+            Assert.NotNull(AssignablePurposes.RuleFor(purpose));
+        }
+        var wire = new[]
+        {
+            "interview_evaluator", "vacancy_approver", "offer_approver", "vacancy_assignee", "colleague",
+            "performance_subject", "learning_enrollee", "onboarding_hire", "succession_candidate",
+            "evaluation360_participant", "ninebox_committee_member", "org_structure_member",
+        };
+        Assert.Equal(Enum.GetValues<AssignablePurpose>().Length, wire.Length);
+        Assert.All(wire, name => Assert.True(AssignablePurposes.TryParse(name, out _)));
+    }
+
+    [Theory]
+    [InlineData(AssignablePurpose.PerformanceSubject, AccessScope.Organization, false)]
+    [InlineData(AssignablePurpose.PerformanceSubject, AccessScope.Company, false)]
+    [InlineData(AssignablePurpose.PerformanceSubject, AccessScope.Team, true)]
+    [InlineData(AssignablePurpose.PerformanceSubject, AccessScope.Unit, true)]
+    [InlineData(AssignablePurpose.PerformanceSubject, AccessScope.Own, true)]
+    [InlineData(AssignablePurpose.OnboardingHire, AccessScope.Unit, true)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Team, false)]
+    [InlineData(AssignablePurpose.OrgStructureMember, AccessScope.Organization, false)]
+    public void SubjectFilter_AppliesOnlyToASubjectScopedPurposeBelowOrgScope(
+        AssignablePurpose purpose, AccessScope scope, bool expected) =>
+        Assert.Equal(expected, AssignablePurposes.NeedsSubjectFilter(AssignablePurposes.RuleFor(purpose), scope));
+
+    [Theory]
+    [InlineData(PrincipalType.OrgUser, new[] { "employee" }, true)]
+    [InlineData(PrincipalType.OrgUser, new[] { "leader", "external" }, true)]
+    [InlineData(PrincipalType.OrgUser, new[] { "external" }, false)]
+    [InlineData(PrincipalType.OrgUser, new[] { "candidate" }, false)]
+    [InlineData(PrincipalType.OrgUser, new string[0], false)]
+    [InlineData(PrincipalType.OrgUser, new[] { "platform_owner" }, false)]
+    // A real platform owner is privileged (PermissionService); the endpoint still requires a home organization.
+    [InlineData(PrincipalType.PlatformOwner, new[] { "platform_owner" }, true)]
+    [InlineData(PrincipalType.Candidate, new[] { "employee" }, false)]
+    public void Colleague_RequiresAStaffRoleOrAPlatformOwner(PrincipalType type, string[] roles, bool expected) =>
+        Assert.Equal(expected, AssignablePurposes.IsAnyStaffMember(type, roles));
+
+    [Fact]
+    public void RecruitmentPurposes_KeepListingEveryActiveMember_NewOnesListStaffOnly()
+    {
+        foreach (var purpose in Enum.GetValues<AssignablePurpose>())
+        {
+            var rule = AssignablePurposes.RuleFor(purpose);
+            var recruitment = purpose is AssignablePurpose.InterviewEvaluator or AssignablePurpose.VacancyApprover
+                or AssignablePurpose.OfferApprover or AssignablePurpose.VacancyAssignee;
+            Assert.Equal(!recruitment, rule.StaffOnly);
+        }
+    }
+
     [Theory]
     [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Organization, true)]
     [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Company, true)]
@@ -52,6 +140,13 @@ public sealed class AssignablePeopleTests
     [InlineData(AssignablePurpose.VacancyAssignee, AccessScope.Organization, true)]
     [InlineData(AssignablePurpose.VacancyAssignee, AccessScope.Team, false)]
     [InlineData(AssignablePurpose.VacancyAssignee, AccessScope.Unit, false)]
+    [InlineData(AssignablePurpose.PerformanceSubject, AccessScope.Own, true)]
+    [InlineData(AssignablePurpose.PerformanceSubject, AccessScope.Team, true)]
+    [InlineData(AssignablePurpose.OnboardingHire, AccessScope.Unit, true)]
+    [InlineData(AssignablePurpose.Evaluation360Participant, AccessScope.Team, false)]
+    [InlineData(AssignablePurpose.NineBoxCommitteeMember, AccessScope.Team, false)]
+    [InlineData(AssignablePurpose.OrgStructureMember, AccessScope.Unit, false)]
+    [InlineData(AssignablePurpose.OrgStructureMember, AccessScope.Organization, true)]
     public void CallerScope_TheWholeDirectoryNeedsOrgWideScope_ApproverListsAnyGrantedScope(
         AssignablePurpose purpose, AccessScope scope, bool expected) =>
         Assert.Equal(expected, AssignablePurposes.CallerScopeAllows(AssignablePurposes.RuleFor(purpose), scope));
@@ -89,8 +184,30 @@ public sealed class AssignablePeopleTests
     {
         var repository = new RecordingRepository();
         await Assert.ThrowsAsync<ArgumentException>(() => new AssignablePeopleUseCase(repository)
-            .ListAsync(Guid.NewGuid(), purpose, null, 10, Filter(), CancellationToken.None));
+            .ListAsync(Guid.NewGuid(), purpose, null, 10, Filter(), null, CancellationToken.None));
         Assert.Equal(0, repository.Calls);
+    }
+
+    [Theory]
+    [InlineData(AssignablePurpose.InterviewEvaluator)]
+    [InlineData(AssignablePurpose.Colleague)]
+    [InlineData(AssignablePurpose.OrgStructureMember)]
+    public async Task UseCase_RejectsASubjectSetForNonSubjectScopedPurposesBeforeQuerying(AssignablePurpose purpose)
+    {
+        var repository = new RecordingRepository();
+        await Assert.ThrowsAsync<ArgumentException>(() => new AssignablePeopleUseCase(repository)
+            .ListAsync(Guid.NewGuid(), purpose, null, 10, null, [Guid.NewGuid()], CancellationToken.None));
+        Assert.Equal(0, repository.Calls);
+    }
+
+    [Fact]
+    public async Task UseCase_ForwardsTheSubjectSetForASubjectScopedPurpose()
+    {
+        var repository = new RecordingRepository();
+        Guid[] subjects = [Guid.NewGuid()];
+        await new AssignablePeopleUseCase(repository)
+            .ListAsync(Guid.NewGuid(), AssignablePurpose.PerformanceSubject, null, 10, null, subjects, CancellationToken.None);
+        Assert.Same(subjects, repository.LastSubjects);
     }
 
     [Fact]
@@ -99,7 +216,7 @@ public sealed class AssignablePeopleTests
         var repository = new RecordingRepository();
         var filter = Filter();
         await new AssignablePeopleUseCase(repository)
-            .ListAsync(Guid.NewGuid(), AssignablePurpose.VacancyApprover, null, 10, filter, CancellationToken.None);
+            .ListAsync(Guid.NewGuid(), AssignablePurpose.VacancyApprover, null, 10, filter, null, CancellationToken.None);
         Assert.Equal(filter, repository.LastVacancy);
     }
 
@@ -111,10 +228,13 @@ public sealed class AssignablePeopleTests
         public IReadOnlyList<AssignablePerson> Result { get; init; } = [];
 
         public VacancyApproverFilter? LastVacancy { get; private set; }
+        public IReadOnlyCollection<Guid>? LastSubjects { get; private set; }
 
         public Task<IReadOnlyList<AssignablePerson>?> ListAsync(Guid organizationId, AssignablePurposeRule rule,
-            string? search, int limit, VacancyApproverFilter? vacancy, CancellationToken cancellationToken)
+            string? search, int limit, VacancyApproverFilter? vacancy, IReadOnlyCollection<Guid>? subjects,
+            CancellationToken cancellationToken)
         {
+            LastSubjects = subjects;
             Calls++;
             LastSearch = search;
             LastRule = rule;

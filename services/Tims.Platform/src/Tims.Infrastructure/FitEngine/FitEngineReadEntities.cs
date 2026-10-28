@@ -24,10 +24,14 @@ public sealed class FitScoreReadEntity
     public DateTime CalculatedAt { get; set; }
 }
 
-/// <summary>candidates — names only (the ranking/explain joins).</summary>
+/// <summary>candidates — names (the ranking/explain joins) + org/email (the #312 withdrawn-consent filter).</summary>
 public sealed class FitCandidateReadEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public string Email { get; set; } = null!;
 
     public string FirstName { get; set; } = null!;
 

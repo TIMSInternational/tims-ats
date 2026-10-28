@@ -13,18 +13,11 @@ public sealed class NotificationReadUseCase(
     private readonly INotificationWriteRepository _writeRepository = writeRepository;
 
     /// <summary>
-    /// <c>list</c> — fetch <c>limit + 1</c> rows, then reproduce the TS overflow split EXACTLY:
-    /// <code>
-    /// if (notifications.length > limit) { const next = notifications.pop(); nextCursor = next?.id; }
-    /// </code>
+    /// <c>list</c> — fetch <c>limit + 1</c> rows; the extra row only signals that another page exists.
     ///
-    /// <para>⚠️ <b>That split loses one row per page boundary, and the port reproduces the loss on purpose.</b>
-    /// <c>pop()</c> returns the (limit+1)-th row — the FIRST row of the next page — and its id becomes
-    /// <c>nextCursor</c>. The next call passes that id as a Prisma <c>cursor</c> with <c>skip: 1</c>, which
-    /// starts the page AFTER the cursor row, so the popped row is never returned by either page. The correct
-    /// cursor would be the LAST row of the page just returned. This is a pre-existing TS defect, filed
-    /// separately; narrowing or fixing it here would make a step-5 parity diff uninterpretable — it could no
-    /// longer separate "the port is wrong" from "the port is deliberately better".</para>
+    /// <para><c>nextCursor</c> is the LAST row RETURNED (#246), matching the TS fix: the next call positions on
+    /// that row and pages strictly after it. The earlier port deliberately reproduced the TS defect of naming
+    /// the look-ahead row as the cursor, which lost one row at every page boundary.</para>
     /// </summary>
     public async Task<NotificationListResult> ListAsync(
         Guid? organizationId,
@@ -45,8 +38,8 @@ public sealed class NotificationReadUseCase(
             return new NotificationListResult(rows, null);
         }
 
-        // rows[limit] is what TS's pop() returns: the last element of a (limit + 1)-length array.
-        return new NotificationListResult([.. rows.Take(limit)], rows[limit].Id);
+        // rows[limit] is the look-ahead row — the FIRST row of the next page, so never the cursor.
+        return new NotificationListResult([.. rows.Take(limit)], rows[limit - 1].Id);
     }
 
     /// <summary><c>unreadCount</c> — <c>{ count }</c> over unread AND non-archived rows.</summary>

@@ -44,6 +44,7 @@ export function UserBusinessUnitModal({ units, onClose }: UserBusinessUnitModalP
       ) : (
         <div className="mb-3">
           <UserPicker
+            purpose="org_structure_member"
             onSelect={(_id, picked) => setUser(picked)}
             searchPlaceholder={t.units.searchUser}
             loadingLabel={t.units.loadingUsers}

@@ -15,6 +15,9 @@ public sealed class FitCandidateWriteEntity
 
     public Guid OrganizationId { get; set; }
 
+    /// <summary>Read ONLY by the #312/#313 consent guard's normalized-email match (never projected out).</summary>
+    public string Email { get; set; } = null!;
+
     public int? YearsExperience { get; set; }
 
     public string? Education { get; set; }
@@ -98,4 +101,21 @@ public sealed class FitApplicationWriteEntity
     public Guid VacancyId { get; set; }
 
     public string Status { get; set; } = null!;
+}
+
+/// <summary>
+/// data_consents — the #312/#313 consent-guard subset (read-only here; CandidateConsentDbContext is the C# writer).
+/// withdrawn_at is <c>timestamp</c> (TRAP 11), only ever compared to NULL.
+/// </summary>
+public sealed class FitDataConsentReadEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public Guid SubjectUserId { get; set; }
+
+    public string ConsentType { get; set; } = null!;
+
+    public DateTime? WithdrawnAt { get; set; }
 }

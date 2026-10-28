@@ -71,6 +71,7 @@ export function FeedbackModal({ onClose }: FeedbackModalProps) {
             </div>
           ) : (
             <UserPicker
+              purpose="colleague"
               onSelect={(_userId, user) => setRecipient(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}

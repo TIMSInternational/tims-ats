@@ -5,12 +5,24 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
+import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
+import { assertNoRejectedApproval } from './rejected-approval-guard';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
   return email.trim().toLowerCase();
+}
+
+// The emailed signing URL is a live bearer token (salary/terms + accept/decline), so in production it
+// must never travel over plain http (#322). http is tolerated outside production, and for a loopback
+// host (a local `next start` runs with NODE_ENV=production; a loopback link never leaves the machine).
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+function isAllowedSigningOrigin(url: URL): boolean {
+  if (url.protocol === 'https:') return true;
+  if (url.protocol !== 'http:') return false;
+  return process.env.NODE_ENV !== 'production' || LOOPBACK_HOSTS.has(url.hostname);
 }
 
 // Public signing-token procedures run with NO tenant in scope (the candidate has no
@@ -42,13 +54,17 @@ export const offerSigningRouter = router({
         },
         select: {
           id: true, status: true, settings: true, updatedAt: true, expiresAt: true, sentAt: true,
-          candidate: { select: { firstName: true, lastName: true, email: true, updatedAt: true } },
+          candidate: { select: { id: true, firstName: true, lastName: true, email: true, updatedAt: true } },
           vacancy: { select: { title: true } },
         },
       });
 
       if (!offer) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Oferta no encontrada' });
+      }
+      // #312: a candidate who revoked their data-processing authorization gets no further emails.
+      if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(ctx.user.organizationId, offer.candidate.id)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' });
       }
 
       if (offer.status !== 'approved' && offer.status !== 'sent') {
@@ -57,6 +73,13 @@ export const offerSigningRouter = router({
           message: 'Solo se pueden enviar ofertas aprobadas o ya enviadas',
         });
       }
+
+      await assertNoRejectedApproval(
+        db,
+        ctx.user.organizationId,
+        offer.id,
+        'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
+      );
 
       if (!offer.candidate.email) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene correo electrónico' });
@@ -106,7 +129,7 @@ export const offerSigningRouter = router({
       } catch {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
       }
-      if (appUrl.protocol !== 'https:' && appUrl.protocol !== 'http:') {
+      if (!isAllowedSigningOrigin(appUrl)) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
       }
 
@@ -241,7 +264,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -261,6 +284,8 @@ export const offerSigningRouter = router({
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado y no puede firmarse' });
       }
+
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible para firma');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();
@@ -339,7 +364,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -359,6 +384,8 @@ export const offerSigningRouter = router({
       if (offer.expiresAt && offer.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
       }
+
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
-import { describeOfferActionError } from '../../../../../lib/offer-action-error';
+import { describeOfferActionError, isStateConflict } from '../../../../../lib/offer-action-error';
 import { UserPicker, type PickedUser } from '../../../../../components/user-picker';
 
 export function OfferApprovalActions({
@@ -38,6 +38,8 @@ export function OfferApprovalActions({
       const message = describeOfferActionError(cause, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction });
       setError(message);
       toast(message, { type: 'error' });
+      // Another decision won the race: refetch so the stale approve/reject buttons disappear.
+      if (isStateConflict(cause)) onUpdated();
     }
   };
 

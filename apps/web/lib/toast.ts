@@ -1,5 +1,7 @@
 'use client';
 
+import { localizeKnownErrorCode } from './known-error-codes';
+
 // Lightweight toast system — no dependencies
 // Renders a fixed-position notification that auto-dismisses
 
@@ -36,6 +38,7 @@ interface ToastOptions {
 
 export function toast(message: string, options: ToastOptions = {}) {
   const { type = 'info', duration = 4000, action } = options;
+  message = localizeKnownErrorCode(message);
   const container = getContainer();
 
   const colors = {

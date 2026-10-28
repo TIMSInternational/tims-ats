@@ -17,6 +17,7 @@ import { RiskFlags } from './risk-flags';
 import { CvParseCard } from './cv-parse-card';
 import { ScreenCandidateCard } from './screen-candidate-card';
 import { AssignAssessmentModal } from './assign-assessment-modal';
+import { CandidateConsentCard } from './consent-card';
 
 const TABS = [
   'tabProfile', 'tabApplications', 'tabAssessments', 'tabInterviews',
@@ -130,6 +131,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               <CvParseCard candidateId={id} />
               <StageTimeline applications={c.applications} />
               <TagsCard tags={c.tags} candidateId={id} />
+              <CandidateConsentCard candidateId={id} />
               <RiskFlags />
               <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />
             </div>

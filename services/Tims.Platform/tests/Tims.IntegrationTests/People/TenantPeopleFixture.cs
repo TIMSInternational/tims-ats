@@ -18,6 +18,8 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     public const string CommitteeSub = "sub-people-committee";
     public const string OrgBRecruiterSub = "sub-people-recruiter-b";
     public const string PlatformOwnerSub = "sub-people-platform-owner";
+    public const string ExternalSub = "sub-people-external";
+    public const string HomeOwnerSub = "sub-people-owner-home";
 
     public static readonly Guid Recruiter = Guid.Parse("c1000000-0000-0000-0000-000000000001");
     public static readonly Guid Admin = Guid.Parse("c1000000-0000-0000-0000-000000000002");
@@ -30,6 +32,8 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     public static readonly Guid Underscore = Guid.Parse("c1000000-0000-0000-0000-000000000009");
     public static readonly Guid Hrbp = Guid.Parse("c1000000-0000-0000-0000-00000000000a");
     public static readonly Guid Committee = Guid.Parse("c1000000-0000-0000-0000-00000000000b");
+    /// <summary>A platform owner whose users row has a home organization (Acme) and no staff role.</summary>
+    public static readonly Guid HomeOwner = Guid.Parse("c1000000-0000-0000-0000-00000000000c");
     public static readonly Guid OrgBHrAdmin = Guid.Parse("c2000000-0000-0000-0000-000000000001");
     public static readonly Guid OrgBRecruiter = Guid.Parse("c2000000-0000-0000-0000-000000000002");
     public static readonly Guid OrgBInactiveRoleLeader = Guid.Parse("c2000000-0000-0000-0000-000000000003");
@@ -74,13 +78,28 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
             phone text NULL,
             is_platform_owner boolean NOT NULL DEFAULT false,
             is_active boolean NOT NULL DEFAULT true,
-            deleted_at timestamp NULL
+            deleted_at timestamp NULL,
+            business_unit_id uuid NULL
         );
         CREATE TABLE roles (id uuid PRIMARY KEY, organization_id uuid NOT NULL, slug text NOT NULL, is_active boolean NOT NULL DEFAULT true);
         CREATE TABLE permissions (id uuid PRIMARY KEY, module text NOT NULL, action text NOT NULL);
         CREATE TABLE role_permissions (id uuid PRIMARY KEY, role_id uuid NOT NULL REFERENCES roles (id), permission_id uuid NOT NULL REFERENCES permissions (id), scope text NOT NULL);
         CREATE TABLE user_roles (id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES users (id), role_id uuid NOT NULL REFERENCES roles (id));
-        GRANT SELECT ON users, roles, permissions, role_permissions, user_roles TO app_tenant;
+        CREATE TABLE business_units (id uuid PRIMARY KEY, organization_id uuid NOT NULL, is_active boolean NOT NULL DEFAULT true);
+        CREATE TABLE teams (id uuid PRIMARY KEY, organization_id uuid NOT NULL, business_unit_id uuid NULL REFERENCES business_units (id),
+            leader_id uuid NULL REFERENCES users (id), is_active boolean NOT NULL DEFAULT true);
+        CREATE TABLE user_teams (id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES users (id), team_id uuid NOT NULL REFERENCES teams (id));
+        CREATE TABLE user_business_units (id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid NOT NULL REFERENCES users (id),
+            business_unit_id uuid NOT NULL REFERENCES business_units (id));
+        GRANT SELECT ON users, roles, permissions, role_permissions, user_roles, business_units, teams, user_teams, user_business_units TO app_tenant;
+        ALTER TABLE business_units ENABLE ROW LEVEL SECURITY; ALTER TABLE business_units FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON business_units USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        ALTER TABLE teams ENABLE ROW LEVEL SECURITY; ALTER TABLE teams FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON teams USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        ALTER TABLE user_business_units ENABLE ROW LEVEL SECURITY; ALTER TABLE user_business_units FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON user_business_units USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        ALTER TABLE user_teams ENABLE ROW LEVEL SECURITY; ALTER TABLE user_teams FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON user_teams USING (EXISTS (SELECT 1 FROM teams par WHERE par.id = user_teams.team_id AND par.organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid));
         ALTER TABLE users ENABLE ROW LEVEL SECURITY; ALTER TABLE users FORCE ROW LEVEL SECURITY;
         CREATE POLICY tenant_isolation ON users USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         ALTER TABLE roles ENABLE ROW LEVEL SECURITY; ALTER TABLE roles FORCE ROW LEVEL SECURITY;
@@ -102,6 +121,13 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     //     so Gil — whose only approve grants ride that role — must be absent from both Globex approver lists.
     //  4. b1…010 is a DRIFTED row: Acme's Uma linked to Globex's hr_admin role. It must never make her an Acme
     //     approver (the directory joins roles on the caller's organization, and RLS hides the row).
+    // #317 pickers, also MATRIX rows: performance:create (hr_admin @organization, leader @team, employee @own),
+    // onboarding:create (hr_admin @organization, hrbp @unit), user/learning/succession/evaluation360:create and
+    // ninebox:update (hr_admin @organization), ninebox:update (committee @team). Zed is a platform owner whose
+    // users row sits in Acme with no staff role: listed by the legacy recruitment directory, never by StaffOnly ones.
+    // Org structure: team Ventas (led by Lia, unit Comercial) has members Eli and the INACTIVE Ivan; Pablo (hrbp)
+    // is assigned to Comercial, and Uma belongs to it directly (users.business_unit_id). So the leader's subject
+    // set is {Lia, Eli}, the hrbp's {Eli, Uma} (+ inactive Ivan, whom the directory drops), the employee's {Eli}.
     // With MATRIX grants the leader holds BOTH approve permissions (team scope), so the vacancy/offer approver
     // lists coincide; AssignablePeopleRepositoryTests proves the repository reads the rule's permission instead.
     private const string SeedSql =
@@ -118,7 +144,14 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('e1000000-0000-0000-0000-000000000006', 'user', 'read'),
           ('e1000000-0000-0000-0000-000000000007', 'interview', 'update'),
           ('e1000000-0000-0000-0000-000000000008', 'vacancy', 'update'),
-          ('e1000000-0000-0000-0000-000000000009', 'offer', 'update');
+          ('e1000000-0000-0000-0000-000000000009', 'offer', 'update'),
+          ('e1000000-0000-0000-0000-00000000000a', 'performance', 'create'),
+          ('e1000000-0000-0000-0000-00000000000b', 'onboarding', 'create'),
+          ('e1000000-0000-0000-0000-00000000000c', 'user', 'create'),
+          ('e1000000-0000-0000-0000-00000000000d', 'learning', 'create'),
+          ('e1000000-0000-0000-0000-00000000000e', 'succession', 'create'),
+          ('e1000000-0000-0000-0000-00000000000f', 'evaluation360', 'create'),
+          ('e1000000-0000-0000-0000-000000000010', 'ninebox', 'update');
         INSERT INTO roles (id, organization_id, slug, is_active) VALUES
           ('a1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'recruiter', true),
           ('a1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'super_admin', true),
@@ -161,6 +194,19 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           -- committee (MATRIX: interview read/create/update — team)
           ('f1000000-0000-0000-0000-000000000041', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000001', 'team'),
           ('f1000000-0000-0000-0000-000000000042', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000007', 'team'),
+          -- #317 subject-scoped pickers (MATRIX)
+          ('f1000000-0000-0000-0000-000000000061', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000a', 'organization'),
+          ('f1000000-0000-0000-0000-000000000062', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000b', 'organization'),
+          ('f1000000-0000-0000-0000-000000000063', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000c', 'organization'),
+          ('f1000000-0000-0000-0000-000000000064', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-00000000000a', 'team'),
+          ('f1000000-0000-0000-0000-000000000065', 'a1000000-0000-0000-0000-000000000005', 'e1000000-0000-0000-0000-00000000000a', 'own'),
+          ('f1000000-0000-0000-0000-000000000066', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-00000000000b', 'unit'),
+          ('f1000000-0000-0000-0000-000000000067', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000d', 'organization'),
+          ('f1000000-0000-0000-0000-000000000068', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000e', 'organization'),
+          ('f1000000-0000-0000-0000-000000000069', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000f', 'organization'),
+          ('f1000000-0000-0000-0000-00000000006a', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000010', 'organization'),
+          -- committee holds ninebox:update only at TEAM scope (MATRIX): refused by the org-wide-only committee picker
+          ('f1000000-0000-0000-0000-00000000006b', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000010', 'team'),
           -- external: DIVERGENCE 2 (non-staff principal holding approve grants)
           ('f1000000-0000-0000-0000-000000000051', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000004', 'organization'),
           ('f1000000-0000-0000-0000-000000000052', 'a1000000-0000-0000-0000-000000000006', 'e1000000-0000-0000-0000-000000000005', 'organization'),
@@ -184,6 +230,7 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('c1000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'sub-people-underscore', 'uma@acme.test', 'Uma', 'Under_score', NULL, NULL, false, true, NULL),
           ('c1000000-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'sub-people-hrbp', 'pablo@acme.test', 'Pablo', 'Partner', NULL, NULL, false, true, NULL),
           ('c1000000-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'sub-people-committee', 'tomas@acme.test', 'Tomas', 'Committee', NULL, NULL, false, true, NULL),
+          ('c1000000-0000-0000-0000-00000000000c', '11111111-1111-1111-1111-111111111111', 'sub-people-owner-home', 'zed@tims.test', 'Zed', 'Owner', NULL, NULL, true, true, NULL),
           ('c2000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'sub-people-hr-b', 'foreign-hr@globex.test', 'Fiona', 'Foreign', NULL, NULL, false, true, NULL),
           ('c2000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'sub-people-recruiter-b', 'foreign-rec@globex.test', 'Fabio', 'Foreign', NULL, NULL, false, true, NULL),
           ('c2000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', 'sub-people-leader-b', 'gil@globex.test', 'Gil', 'Gone', NULL, NULL, false, true, NULL),
@@ -204,6 +251,15 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('b2000000-0000-0000-0000-000000000001', 'c2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001'),
           ('b2000000-0000-0000-0000-000000000002', 'c2000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000002'),
           ('b2000000-0000-0000-0000-000000000003', 'c2000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000003');
+        INSERT INTO business_units (id, organization_id) VALUES ('b5000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111');
+        INSERT INTO teams (id, organization_id, business_unit_id, leader_id) VALUES
+          ('7e000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'b5000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000004');
+        INSERT INTO user_teams (id, user_id, team_id) VALUES
+          ('9a000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000005', '7e000000-0000-0000-0000-000000000001'),
+          ('9a000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000006', '7e000000-0000-0000-0000-000000000001');
+        INSERT INTO user_business_units (id, organization_id, user_id, business_unit_id) VALUES
+          ('9b000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'c1000000-0000-0000-0000-00000000000a', 'b5000000-0000-0000-0000-000000000001');
+        UPDATE users SET business_unit_id = 'b5000000-0000-0000-0000-000000000001' WHERE id = 'c1000000-0000-0000-0000-000000000009';
         """;
 }
 

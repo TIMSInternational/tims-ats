@@ -3,6 +3,7 @@ import {
   MANIFESTS, manifestFor, resolveLabel, computeVisibleSections, NAV_ROLES, pickSidebarVariant, isNavItemActive,
   type NavSection,
 } from '../../apps/web/lib/nav/manifest';
+import type { NavFeatureFlag } from '../../apps/web/lib/nav/manifest';
 import { moduleForPath } from '../../apps/web/lib/nav/routes';
 import es from '../../apps/web/lib/i18n/es.json';
 
@@ -185,7 +186,7 @@ describe('/settings/users (Equipo) — gated on user:create, not user:read', () 
 
 describe('/settings/users (Equipo) — hidden while the tenant-invitations flag is off', () => {
   const canEverything = () => true;
-  const hrefs = (role: 'super_admin' | 'hr_admin', isFeatureOn?: (flag: 'tenantInvitations') => boolean) =>
+  const hrefs = (role: 'super_admin' | 'hr_admin', isFeatureOn?: (flag: NavFeatureFlag) => boolean) =>
     computeVisibleSections(MANIFESTS[role].sections, canEverything, false, isFeatureOn).flatMap((s) =>
       s.items.map((i) => i.href),
     );
@@ -208,13 +209,36 @@ describe('/settings/users (Equipo) — hidden while the tenant-invitations flag 
       return true;
     });
     expect(shown).toContain('/settings/users');
-    expect(new Set(asked)).toEqual(new Set(['tenantInvitations']));
+    expect(new Set(asked)).toEqual(new Set(['tenantInvitations', 'candidateConsent']));
   });
 
-  it('every flagged item is the Equipo entry (no other item silently depends on a flag)', () => {
+  it('every flagged item is a known flagged entry (no other item silently depends on a flag)', () => {
+    const known = new Set(['/settings/users|tenantInvitations', '/settings/data-requests|candidateConsent']);
     for (const role of NAV_ROLES) {
       const flagged = MANIFESTS[role].sections.flatMap((s) => s.items.filter((i) => i.featureFlag !== undefined));
-      for (const item of flagged) expect([item.href, item.featureFlag]).toEqual(['/settings/users', 'tenantInvitations']);
+      for (const item of flagged) expect(known.has(`${item.href}|${item.featureFlag}`), item.href).toBe(true);
+    }
+  });
+});
+
+describe('/settings/data-requests — candidate:update AND the candidate-consent flag', () => {
+  const hrefs = (role: 'super_admin' | 'hr_admin', can: (m: string, a?: string) => boolean, flagOn: boolean) =>
+    computeVisibleSections(MANIFESTS[role].sections, can, false, (flag) => flag === 'candidateConsent' && flagOn).flatMap(
+      (s) => s.items.map((i) => i.href),
+    );
+
+  it('is declared for super_admin and hr_admin only', () => {
+    for (const role of NAV_ROLES) {
+      const all = MANIFESTS[role].sections.flatMap((s) => s.items.map((i) => i.href));
+      expect(all.includes('/settings/data-requests'), role).toBe(role === 'super_admin' || role === 'hr_admin');
+    }
+  });
+
+  it('is shown only with candidate:update and the flag on', () => {
+    for (const role of ['super_admin', 'hr_admin'] as const) {
+      expect(hrefs(role, (m, a) => m === 'candidate' && a === 'update', true)).toContain('/settings/data-requests');
+      expect(hrefs(role, (m, a) => m === 'candidate' && a === 'read', true)).not.toContain('/settings/data-requests');
+      expect(hrefs(role, () => true, false)).not.toContain('/settings/data-requests');
     }
   });
 });

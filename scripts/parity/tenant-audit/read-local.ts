@@ -52,6 +52,29 @@ async function main() {
         take: 1,
         cursor: 'd0000000-0000-0000-0000-000000000014',
       }),
+      // 13, 16 and 17 share created_at 2026-09-01: these pages split that tie (#318).
+      listTie: await auditService.listLogs(org, {
+        entity: 'cross-page',
+        take: 2,
+        cursor: 'd0000000-0000-0000-0000-000000000014',
+      }),
+      historyTie: await auditService.getChangesByEntity(org, {
+        entity: 'cross-page',
+        entityId: 'cross-page',
+        take: 2,
+        cursor: 'd0000000-0000-0000-0000-000000000014',
+      }),
+      listTieAfter: await auditService.listLogs(org, {
+        entity: 'cross-page',
+        take: 2,
+        cursor: 'd0000000-0000-0000-0000-000000000016',
+      }),
+      historyTieAfter: await auditService.getChangesByEntity(org, {
+        entity: 'cross-page',
+        entityId: 'cross-page',
+        take: 2,
+        cursor: 'd0000000-0000-0000-0000-000000000016',
+      }),
       csv: await auditService.exportLogs(org, { entity: 'csv-probe', format: 'csv' }),
       json: await auditService.exportLogs(org, { entity: 'csv-probe', format: 'json' }),
       dated: await auditService.exportLogs(org, {

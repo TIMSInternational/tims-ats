@@ -26,7 +26,7 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
 
         // orderBy overallScore DESC only (no tiebreaker in the TS) — tie order is DB-unspecified in BOTH stacks.
         var rows = await (
-                from f in _db.FitScores.AsNoTracking()
+                from f in VisibleFitScores(organizationId)
                 join c in _db.Candidates.AsNoTracking() on f.CandidateId equals c.Id
                 where f.OrganizationId == organizationId && f.VacancyId == vacancyId
                 orderby f.OverallScore descending
@@ -78,7 +78,7 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
             .ConfigureAwait(false);
 
         var row = await (
-                from f in _db.FitScores.AsNoTracking()
+                from f in VisibleFitScores(organizationId)
                 join c in _db.Candidates.AsNoTracking() on f.CandidateId equals c.Id
                 join v in _db.Vacancies.AsNoTracking() on f.VacancyId equals v.Id
                 where f.CandidateId == candidateId && f.VacancyId == vacancyId
@@ -93,6 +93,27 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
             ? null
             : new ExplainFitRowData(row.OverallScore, row.Breakdown, row.FirstName, row.LastName, row.Title);
     }
+
+    // #312: fit_scores minus every row whose candidate's recruitment consent is withdrawn — a data_consents row
+    // (recruitment_data_processing, withdrawn_at NOT NULL, same org) on the candidate itself OR on any same-org
+    // candidate whose lower(btrim(email)) EQUALS the scored candidate's non-blank one (exact equality, never LIKE).
+    // A correlated NOT EXISTS in the same query, so ranking, simulate and explain all hide the row; never deleted.
+    private IQueryable<FitScoreReadEntity> VisibleFitScores(Guid organizationId) =>
+        _db.FitScores.AsNoTracking()
+            .Where(f => f.OrganizationId == organizationId
+                && !_db.DataConsents.Any(dc => dc.OrganizationId == organizationId
+                    && dc.ConsentType == RecruitmentConsentType
+                    && dc.WithdrawnAt != null
+                    && (dc.SubjectUserId == f.CandidateId
+                        || _db.Candidates.Any(other => other.OrganizationId == organizationId
+                            && other.Id == dc.SubjectUserId
+                            && _db.Candidates.Any(target => target.Id == f.CandidateId
+                                && target.OrganizationId == organizationId
+                                && target.Email.Trim() != string.Empty
+                                && other.Email.Trim().ToLower() == target.Email.Trim().ToLower())))));
+
+    // Mirrors CandidateConsentConstants.ConsentType (same duplication as FitEngineWriteRepository).
+    private const string RecruitmentConsentType = "recruitment_data_processing";
 
     private static DateTimeOffset ToUtc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
 }

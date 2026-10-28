@@ -121,10 +121,15 @@ export const vacancyApprovalsRouter = router({
       // failure the old code left status=pending_approval + 1 approval row COMMITTED;
       // runTenantTransaction left status=draft + 0 rows.
       return runTenantTransaction(ctx.user.organizationId, async (tx) => {
-        await tx.vacancy.update({
-          where: { id: input.id },
+        // Compare-and-set draft -> pending_approval: the draft check above ran outside this
+        // transaction, so a concurrent submit (or close/freeze) must not be overwritten.
+        const moved = await tx.vacancy.updateMany({
+          where: { id: input.id, organizationId: ctx.user.organizationId, status: 'draft', deletedAt: null },
           data: { status: 'pending_approval' },
         });
+        if (moved.count !== 1) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta en borrador' });
+        }
 
         await tx.vacancyApproval.createMany({
           data: input.approverIds.map((approverId, idx) => ({
@@ -153,46 +158,67 @@ export const vacancyApprovalsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      const approval = await db.vacancyApproval.findFirst({
-        where: {
-          vacancyId: input.id,
-          approverId: ctx.user.id,
-          status: 'pending',
-        },
-        select: { id: true },
-      });
-      if (!approval) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
-      }
+      // State-guarded (live defects: a rejected - or closed - vacancy could end up approved, and two
+      // concurrent final approvals could leave it stuck in pending_approval because each counted the
+      // other's still-pending row under READ COMMITTED). Every step is a compare-and-set inside ONE
+      // runTenantTransaction (#45: tenantDb.$transaction does not compose):
+      //  1. no-op CAS on status='pending_approval' takes the vacancy row lock. A concurrent approve or
+      //     reject blocks until the other commits, then Postgres re-checks the predicate, so approvals
+      //     of one vacancy are serialized and a rejected/closed vacancy fails here;
+      //  2. flip only THIS approver's row, and only while it is still pending;
+      //  3. count pending rows (fresh snapshot, after the lock) and, when none remain, CAS
+      //     pending_approval -> approved.
+      const organizationId = ctx.user.organizationId;
+      const outcome = await runTenantTransaction(organizationId, async (tx) => {
+        const locked = await tx.vacancy.updateMany({
+          where: { id: input.id, organizationId, status: 'pending_approval', deletedAt: null },
+          data: { status: 'pending_approval' },
+        });
+        if (locked.count !== 1) {
+          // Idempotent replay: this approver already approved and the vacancy reached `approved`
+          // (e.g. a client retry after the final approval committed). Anything else is a conflict.
+          const replay = await tx.vacancyApproval.count({
+            where: {
+              organizationId,
+              vacancyId: input.id,
+              approverId: ctx.user.id,
+              status: 'approved',
+              vacancy: { status: 'approved', deletedAt: null },
+            },
+          });
+          return replay > 0 ? ('replay' as const) : ('conflict' as const);
+        }
 
-      // Codex PR #120 finding #5: the approval-update + pending-count +
-      // vacancy-status-update sequence was three separate writes -- a failure
-      // between them could leave the vacancy's status inconsistent with its
-      // approvals. Wrap in one transaction; the final read stays outside (it's a
-      // read, and reflects whatever the transaction committed).
-      // NOTE (#45): that wrapping was `db.$transaction` = `tenantDb.$transaction`,
-      // which does NOT compose (prisma/prisma#17948) -- the finding above was
-      // therefore still open. runTenantTransaction is the construct that closes it.
-      await runTenantTransaction(ctx.user.organizationId, async (tx) => {
-        await tx.vacancyApproval.update({
-          where: { id: approval.id },
+        const decided = await tx.vacancyApproval.updateMany({
+          where: { organizationId, vacancyId: input.id, approverId: ctx.user.id, status: 'pending' },
           data: { status: 'approved', comment: input.comment, decidedAt: new Date() },
         });
+        if (decided.count === 0) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
+        }
 
         const pendingCount = await tx.vacancyApproval.count({
-          where: { vacancyId: input.id, status: 'pending' },
+          where: { organizationId, vacancyId: input.id, status: 'pending' },
         });
 
         if (pendingCount === 0) {
-          await tx.vacancy.update({
-            where: { id: input.id },
+          const flipped = await tx.vacancy.updateMany({
+            where: { id: input.id, organizationId, status: 'pending_approval', deletedAt: null },
             data: { status: 'approved' },
           });
+          if (flipped.count !== 1) {
+            throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta pendiente de aprobacion' });
+          }
         }
+        return 'decided' as const;
       });
 
-      return db.vacancy.findUniqueOrThrow({
-        where: { id: input.id },
+      if (outcome === 'conflict') {
+        throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta pendiente de aprobacion' });
+      }
+
+      return db.vacancy.findFirstOrThrow({
+        where: { id: input.id, organizationId },
         select: vacancyWithApprovalsSelect,
       });
     }),
@@ -207,40 +233,35 @@ export const vacancyApprovalsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      const approval = await db.vacancyApproval.findFirst({
-        where: {
-          vacancyId: input.id,
-          approverId: ctx.user.id,
-          status: 'pending',
-        },
-        select: { id: true },
-      });
-      if (!approval) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
-      }
-
-      // runTenantTransaction per #45 — see submitForApproval above. This block is the
-      // worst of the three under the old code: reject did status->draft, then
-      // cancelled the remaining pending approvals. A failure between those two left
-      // the vacancy in `draft` with live `pending` approvals attached.
-      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
-        await tx.vacancyApproval.update({
-          where: { id: approval.id },
-          data: { status: 'rejected', comment: input.comment, decidedAt: new Date() },
-        });
-
-        await tx.vacancy.update({
-          where: { id: input.id },
+      // State-guarded: only a pending_approval vacancy can be rejected (a closed/frozen/approved one
+      // cannot be pushed back to draft), and only by an approver whose own row is still pending. The
+      // vacancy CAS runs first so it serializes against a concurrent final approve. One
+      // runTenantTransaction (#45); any throw rolls every step back.
+      const organizationId = ctx.user.organizationId;
+      return runTenantTransaction(organizationId, async (tx) => {
+        const moved = await tx.vacancy.updateMany({
+          where: { id: input.id, organizationId, status: 'pending_approval', deletedAt: null },
           data: { status: 'draft' },
         });
+        if (moved.count !== 1) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta pendiente de aprobacion' });
+        }
+
+        const decided = await tx.vacancyApproval.updateMany({
+          where: { organizationId, vacancyId: input.id, approverId: ctx.user.id, status: 'pending' },
+          data: { status: 'rejected', comment: input.comment, decidedAt: new Date() },
+        });
+        if (decided.count === 0) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
+        }
 
         await tx.vacancyApproval.updateMany({
-          where: { vacancyId: input.id, status: 'pending' },
+          where: { organizationId, vacancyId: input.id, status: 'pending' },
           data: { status: 'cancelled' },
         });
 
-        return tx.vacancy.findUniqueOrThrow({
-          where: { id: input.id },
+        return tx.vacancy.findFirstOrThrow({
+          where: { id: input.id, organizationId },
           select: vacancyWithApprovalsSelect,
         });
       });

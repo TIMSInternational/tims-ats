@@ -4,7 +4,14 @@ import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
 import { logSecurityEvent } from '../../access/security-audit';
 import { PLAN_PRICES } from '../../lib/plan-prices';
-import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices, getOverallHealthStatus } from './system.helpers';
+import {
+  auditLogSelect,
+  SYSTEM_FLAG_KEYS,
+  buildSystemHealthServices,
+  getOverallHealthStatus,
+  logHealthFailure,
+  readSystemHealthCounts,
+} from './system.helpers';
 import { cacheInvalidatePrefix } from '../../lib/cache';
 import {
   sendBulkNotificationInput,
@@ -28,43 +35,44 @@ export const systemRouter = router({
       await db.$queryRaw`SELECT 1`;
       dbLatency = Date.now() - start;
       dbHealthy = true;
-    } catch {
-      /* DB down */
+    } catch (error) {
+      logHealthFailure('select1', error);
     }
 
-    const [userCount, orgCount, loginsToday, enabledUsers, auditLogsToday, vacancyCount, failedLogins] =
-      await Promise.all([
-        db.user.count(),
-        db.organization.count(),
-        db.user.count({ where: { lastLoginAt: { gte: todayStart } } }),
-        db.user.count({ where: { isActive: true } }),
-        db.auditLog.count({ where: { createdAt: { gte: todayStart } } }),
-        db.vacancy.count(),
-        db.auditLog.count({ where: { createdAt: { gte: todayStart }, action: 'login_failed' } }),
-      ]);
-
-    const recentErrors = await db.auditLog.findMany({
-      where: { action: { in: ['error', 'login_failed', 'rate_limit', 'system_error', 'bounce'] } },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: { id: true, action: true, entity: true, metadata: true, createdAt: true },
+    // Each count is guarded (#323): one failing query degrades the database row instead of turning the whole
+    // procedure into a 500, and when SELECT 1 already failed nothing else is attempted — so the page can
+    // actually show the DB-down state.
+    const counts = await readSystemHealthCounts(dbHealthy, {
+      userCount: () => db.user.count(),
+      orgCount: () => db.organization.count(),
+      loginsToday: () => db.user.count({ where: { lastLoginAt: { gte: todayStart } } }),
+      enabledUsers: () => db.user.count({ where: { isActive: true } }),
+      auditLogsToday: () => db.auditLog.count({ where: { createdAt: { gte: todayStart } } }),
+      vacancyCount: () => db.vacancy.count(),
+      failedLogins: () => db.auditLog.count({ where: { createdAt: { gte: todayStart }, action: 'login_failed' } }),
     });
 
-    const services = buildSystemHealthServices({
-      dbHealthy,
-      dbLatency,
-      orgCount,
-      userCount,
-      vacancyCount,
-      loginsToday,
-      failedLogins,
-      enabledUsers,
-    });
+    // null = the feed could not be read ("unavailable"), distinct from [] = read, nothing matched.
+    const recentErrors = dbHealthy
+      ? await db.auditLog
+          .findMany({
+            where: { action: { in: ['error', 'login_failed', 'rate_limit', 'system_error', 'bounce'] } },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select: { id: true, action: true, entity: true, metadata: true, createdAt: true },
+          })
+          .catch((error: unknown) => {
+            logHealthFailure('recentErrors', error);
+            return null;
+          })
+      : null;
+
+    const services = buildSystemHealthServices({ dbHealthy, dbLatency, ...counts });
 
     return {
       services,
       overall: getOverallHealthStatus(services),
-      recentErrors: recentErrors.map((e) => {
+      recentErrors: recentErrors?.map((e) => {
         const meta = e.metadata as Record<string, unknown> | null;
         return {
           id: e.id,
@@ -72,8 +80,13 @@ export const systemRouter = router({
           time: e.createdAt,
           message: (meta?.message as string) || e.action,
         };
-      }),
-      stats: { userCount, orgCount, loginsToday, auditLogsToday },
+      }) ?? null,
+      stats: {
+        userCount: counts.userCount,
+        orgCount: counts.orgCount,
+        loginsToday: counts.loginsToday,
+        auditLogsToday: counts.auditLogsToday,
+      },
     };
   }),
 

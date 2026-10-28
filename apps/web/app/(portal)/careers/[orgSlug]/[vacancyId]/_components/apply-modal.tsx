@@ -27,7 +27,7 @@ interface ApplyModalProps {
 type Step = 1 | 2 | 3;
 
 export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerName, onClose }: ApplyModalProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const p = t.portal;
   const params = useParams<{ orgSlug: string }>();
   // Platform-default candidate privacy notice for this org. A per-organization policy URL
@@ -94,6 +94,8 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         source: 'portal',
         consentAccepted: true,
         consentTextVersion: APPLICATION_CONSENT_TEXT_VERSION,
+        // The server hashes its canonical copy of the text shown in this locale (#313).
+        consentLocale: locale === 'EN' ? 'en' : 'es',
       });
       setSuccess(true);
       // The detail page shows "N personas aplicaron"; refetch it so the count includes this application.

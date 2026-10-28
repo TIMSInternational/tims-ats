@@ -115,6 +115,7 @@ export function AddSuccessorModal({
             </div>
           ) : (
             <UserPicker
+              purpose="succession_candidate"
               onSelect={(_userId, user) => setCandidate(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}

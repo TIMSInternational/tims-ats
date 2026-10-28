@@ -71,6 +71,7 @@ export function LogCoachingModal({ onClose }: LogCoachingModalProps) {
             </div>
           ) : (
             <UserPicker
+              purpose="performance_subject"
               onSelect={(_userId, user) => setEmployee(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}
@@ -101,6 +102,7 @@ export function LogCoachingModal({ onClose }: LogCoachingModalProps) {
             </div>
           ) : (
             <UserPicker
+              purpose="colleague"
               excludeIds={employee ? [employee.id] : []}
               onSelect={(_userId, user) => setCoach(user)}
               disabled={submit.isPending}

@@ -1,4 +1,5 @@
 import { tenantDb as db } from '@tims/db';
+import { candidateConsentRepository } from './candidate-consent.repository';
 
 // Everything the interview invitation/update/cancel emails need, in one
 // explicitly-selected, org-filtered read. Never selects the join-token hash.
@@ -17,7 +18,7 @@ export const interviewEmailRepository = {
           meetingUrl: true,
           cancelReason: true,
           updatedAt: true,
-          candidate: { select: { firstName: true, lastName: true, email: true } },
+          candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true, company: { select: { language: true, timezone: true } } } },
           evaluators: {
             select: {
@@ -41,10 +42,18 @@ export const interviewEmailRepository = {
         select: { name: true, billingEmail: true },
       }),
     ]);
-    return interview && org ? { interview, org } : null;
+    if (!interview || !org) return null;
+    // #312: a candidate who revoked their data-processing authorization gets no further emails
+    // (evaluators still do).
+    const candidateConsentWithdrawn = await candidateConsentRepository.isRecruitmentConsentWithdrawn(
+      orgId,
+      interview.candidate.id,
+    );
+    return { interview, org, candidateConsentWithdrawn };
   },
 };
 
-export type InterviewNotificationData = NonNullable<
-  Awaited<ReturnType<typeof interviewEmailRepository.findForNotification>>
->;
+type FoundNotification = NonNullable<Awaited<ReturnType<typeof interviewEmailRepository.findForNotification>>>;
+export type InterviewNotificationData = Omit<FoundNotification, 'candidateConsentWithdrawn'> & {
+  candidateConsentWithdrawn?: boolean;
+};
