@@ -200,11 +200,12 @@ jobs:
   #
   # NB: this repository is PUBLIC, and its artifacts and logs are readable outside the team. The artifact is
   # a FRESH, NOT-YET-REVIEWED production dump: it can contain anything changed out of band since the last
-  # capture (function bodies, defaults, comments), which is exactly what the reviewer has not read yet. So:
-  # scripts/security/scan-for-credentials.sh must pass before anything is uploaded, logs and the step
-  # summary carry object names / counts only (SCHEMA_DRIFT_OBJECTS_ONLY), and retention is 1 day.
-  # The scan is a denylist tripwire, not a guarantee (see its header): the artifact is still readable by any
-  # signed-in GitHub user for that day. Dispatch this job only when that is acceptable for the dump.
+  # capture (function bodies, defaults, comments), which is exactly what the reviewer has not read yet. So
+  # it is PRIVATE BY CONSTRUCTION (#336): it is encrypted to the owner's age public key
+  # (vars.SCHEMA_CAPTURE_AGE_RECIPIENT, a non-secret variable) and only the ciphertext is uploaded. Without
+  # a valid recipient the job refuses BEFORE dumping anything. Logs and the step summary carry committed
+  # object names, type words, hashes and counts only (SCHEMA_DRIFT_OBJECTS_ONLY). The credential scan stays
+  # as a tripwire in front of the encryption, and retention is 1 day.
   #
   # Output is an ARTIFACT, never a commit (contents: read, persist-credentials: false). Apply it by hand
   # and read every hunk the object-level summary lists — see the README inside the artifact.
@@ -225,6 +226,16 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+
+      # Before any production access: no private destination, no dump.
+      - name: Refuse to capture without an encryption recipient
+        env:
+          AGE_RECIPIENT: ${{ vars.SCHEMA_CAPTURE_AGE_RECIPIENT }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          bash scripts/security/encrypt-artifact.sh --check
+
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
@@ -315,18 +326,26 @@ jobs:
             echo "- changed objects: +$added / -$removed / ~$modified (names in the artifact's capture-summary.txt)"
             echo "- files changed: $(git diff --name-only -- packages/db/baseline services/Tims.Platform/db/flip-ddl | wc -l | tr -d ' ')"
             echo
-            echo "_Artifact only (1-day retention) — nothing was committed or pushed. See README.txt in the artifact._"
+            echo "_Encrypted artifact only (1-day retention) — nothing was committed or pushed. See DECRYPT.txt in the artifact._"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Nothing is uploaded unless this passes. Exit 1 (hit) and exit 2 (could not scan) both fail the job.
       - name: Refuse to upload credential-shaped content
         run: bash scripts/security/scan-for-credentials.sh "$RUNNER_TEMP/schema-baseline-recapture"
 
-      - name: Upload the refreshed baseline
+      # Only ciphertext leaves the runner. Exit 2 (no recipient, no age, failed) fails the job before upload.
+      - name: Encrypt the result to the owner's age key
+        env:
+          AGE_RECIPIENT: ${{ vars.SCHEMA_CAPTURE_AGE_RECIPIENT }}
+        run: >-
+          bash scripts/security/encrypt-artifact.sh
+          "$RUNNER_TEMP/schema-baseline-recapture" "$RUNNER_TEMP/schema-baseline-recapture-encrypted"
+
+      - name: Upload the refreshed baseline (encrypted)
         uses: actions/upload-artifact@v4
         with:
           name: schema-baseline-recapture
-          path: ${{ runner.temp }}/schema-baseline-recapture
+          path: ${{ runner.temp }}/schema-baseline-recapture-encrypted
           if-no-files-found: error
           retention-days: 1
 

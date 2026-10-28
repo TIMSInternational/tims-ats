@@ -397,8 +397,12 @@ regenerates every `flip-ddl/*.sql` (`scripts/db/regenerate-flip-ddl.sh`, from ea
 `git apply`-able patch and the object-level summary as the `schema-baseline-recapture` artifact. The upload
 happens only if `scripts/security/scan-for-credentials.sh` finds nothing credential-shaped, and the artifact is
 kept for **1 day**. The artifact is a fresh, not-yet-reviewed dump from a public repo, so it can hold anything
-changed out of band, not just what is already committed. The step summary carries counts only. **It never
-commits.** A human applies the patch in a PR and reads every hunk the summary lists — §7 applies unchanged:
+changed out of band, not just what is already committed — and a denylist scan cannot prove otherwise. So it is
+**encrypted to the owner's age public key** (`scripts/security/encrypt-artifact.sh`) and only the ciphertext is
+uploaded (#336). The recipient comes from the non-secret variable `SCHEMA_CAPTURE_AGE_RECIPIENT` (repository or
+`prod-db-controls` environment); without a well-formed one the job refuses **before** it connects to production.
+To set it up once: `age-keygen -o key.txt` on an owner machine, keep `key.txt` offline, and store the printed
+`age1…` public key in the variable. The step summary carries counts only. **It never commits.** A human applies the patch in a PR and reads every hunk the summary lists — §7 applies unchanged:
 an artifact is not a reason to re-capture without reading.
 
 That creates an obvious trap, so it is spelled out rather than left to be discovered: **"every schema PR

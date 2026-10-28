@@ -99,6 +99,25 @@ describe('nightly-db-controls — baseline capture job (#328) hands back an arti
     expect(check).toBeGreaterThan(regen);
   });
 
+  it('publishes only ciphertext for the owner key, and refuses before any production access without one (#336)', () => {
+    const check = cap.indexOf('bash scripts/security/encrypt-artifact.sh --check');
+    const credential = cap.indexOf('PROD_DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}');
+    const capture = cap.indexOf('bash scripts/db/schema-baseline.sh capture');
+    const scan = cap.indexOf('bash scripts/security/scan-for-credentials.sh');
+    const encrypt = cap.search(/bash scripts\/security\/encrypt-artifact\.sh\s+"\$RUNNER_TEMP\/schema-baseline-recapture" "\$RUNNER_TEMP\/schema-baseline-recapture-encrypted"/);
+    const upload = cap.indexOf('uses: actions/upload-artifact@v4');
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(credential);
+    expect(check).toBeLessThan(capture);
+    expect(encrypt).toBeGreaterThan(scan);
+    expect(upload).toBeGreaterThan(encrypt);
+    expect(cap).toMatch(/AGE_RECIPIENT: \$\{\{ vars\.SCHEMA_CAPTURE_AGE_RECIPIENT \}\}/);
+    expect(cap).not.toMatch(/AGE_RECIPIENT: \$\{\{ secrets\./);
+    // The upload path is the encrypted directory, never the plaintext one.
+    const paths = [...cap.matchAll(/^\s+path: (.+)$/gm)].map((m) => m[1]?.trim());
+    expect(paths).toEqual(['${{ runner.temp }}/schema-baseline-recapture-encrypted']);
+  });
+
   it('uploads the result as an artifact and errors if there is nothing to upload', () => {
     expect(cap).toMatch(/uses: actions\/upload-artifact@v4/);
     expect(cap).toMatch(/if-no-files-found: error/);
