@@ -5,8 +5,8 @@ import { defaultOnboardingTasks } from '../../packages/api/src/services/onboardi
 // strict UUID regex before it becomes the RLS GUC value — a non-UUID fixture like
 // 'org-1' throws FORBIDDEN before the mutation body ever runs. Use real UUID-format
 // strings for organizationId and for offerId (the input schema is z.string().uuid()).
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
-const OFFER_ID = '22222222-2222-2222-2222-222222222222';
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
+const OFFER_ID = '22222222-2222-4222-8222-222222222222';
 
 const mockOffer = {
   id: OFFER_ID,
