@@ -276,6 +276,22 @@ describe('bearer-link pages never leak their token (Referer / shared cache)', ()
     }
   });
 
+  it('every route the middleware classifies as a bearer link is in the shared list (reverse parity)', async () => {
+    const { BEARER_QUERY_PATHS, BEARER_TOKEN_PATH_PREFIXES } = await import('../../apps/web/lib/security/bearer-links');
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const src = readFileSync(resolve(__dirname, '../../apps/web/middleware.ts'), 'utf8');
+    const body = /function isBearerLinkPathname\(pathname: string\): boolean \{([\s\S]*?)\n\}/.exec(src)?.[1] ?? '';
+    expect(body).not.toBe('');
+    const exact = [...body.matchAll(/pathname === '([^']+)'/g)].map((m) => m[1]).sort();
+    const prefixes = [...body.matchAll(/pathname\.startsWith\('([^']+)'\)/g)].map((m) => m[1]).sort();
+    // Any other kind of check would escape this comparison, so the body may contain only these two forms.
+    const clauses = body.split('||').map((c) => c.replace(/[\s();]|return/g, '')).filter(Boolean);
+    expect(clauses.length).toBe(exact.length + prefixes.length);
+    expect(exact).toEqual([...BEARER_QUERY_PATHS].sort());
+    expect(prefixes).toEqual([...BEARER_TOKEN_PATH_PREFIXES].sort());
+  });
+
   it.each(['/careers/acme/v1', '/offers/signatures', '/interview/joiner', '/ai-interviewer'])('%s is not treated as a bearer-link page', async (path) => {
     const middleware = await loadMiddleware();
     const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));

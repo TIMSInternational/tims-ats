@@ -55,6 +55,21 @@ describe('Sentry join-token redaction', () => {
     expect(JSON.stringify(event)).not.toContain(TOKEN);
   });
 
+  it('scrubs a JSON credential whose value contains JSON escapes, plain and nested (codex r6 P1)', () => {
+    // `\u0039` decodes to `9`: JSON.parse would rebuild the credential from what is left behind.
+    const escaped = `\\u0039${TOKEN.slice(1)}`;
+    const plain = `{"0":{"json":{"token":"${escaped}","x":1}}}`;
+    const nested = `"body":"{\\"token\\":\\"\\${escaped}\\",\\"x\\":1}"`;
+    for (const value of [plain, nested]) {
+      const redacted = redactBearerTokens(value);
+      expect(redacted, value).not.toContain(TOKEN.slice(1));
+      expect(redacted, value).toContain('[redacted]');
+    }
+    expect(redactBearerTokens(plain)).toBe('{"0":{"json":{"token":"[redacted]","x":1}}}');
+    const event = redactSentryEvent({ request: { data: plain } });
+    expect(JSON.stringify(event)).not.toContain(TOKEN.slice(1));
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);

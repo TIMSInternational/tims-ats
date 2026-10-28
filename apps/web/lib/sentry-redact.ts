@@ -51,11 +51,16 @@ const ENCODED_QUERY_PARAM = new RegExp(
 // a longer identifier is not partially rewritten.
 const JOIN_PREFIXED_TOKEN = /(join(?:%[0-9a-f]{2}|[^a-z0-9_\-%]){1,8})[a-z0-9_-]{43}(?![a-z0-9_-])/gi;
 
-// Credential-named JSON members, as a request body, breadcrumb or serialized string (also JSON-escaped inside
-// another string: `{\"token\":\"…\"}`).
+// Credential-named JSON members, as a request body, breadcrumb or serialized string. The value consumes JSON
+// escapes (`\u0039…`, `\"`), so an escaped character cannot cut the match short and leave the rest of the
+// credential behind.
 const CREDENTIAL_KEYS = ['token', 'candidateToken', 'signingToken', 'access_token', 'refresh_token'] as const;
-const JSON_CREDENTIAL_VALUE = new RegExp(
-  `(\\\\?"(?:${CREDENTIAL_KEYS.map(escapeRe).join('|')})\\\\?"\\s*:\\s*\\\\?")[^"\\\\]+`,
+const KEY_ALT = CREDENTIAL_KEYS.map(escapeRe).join('|');
+const JSON_CREDENTIAL_VALUE = new RegExp(`("(?:${KEY_ALT})"\\s*:\\s*")(?:[^"\\\\]|\\\\.)+`, 'gi');
+// The same member JSON-escaped inside another JSON string (`{\"token\":\"…\"}`): the value ends at the escaped
+// closing quote `\"`; anything else, including a doubly escaped `\\u0039`, belongs to the credential.
+const ESCAPED_JSON_CREDENTIAL_VALUE = new RegExp(
+  `(\\\\"(?:${KEY_ALT})\\\\"\\s*:\\s*\\\\")(?:(?!\\\\")[^"])+`,
   'gi',
 );
 
@@ -80,6 +85,7 @@ function scrubPatterns(value: string): string {
     .replace(ENCODED_QUERY_PARAM, `$1${REDACTED}`)
     .replace(JOIN_PREFIXED_TOKEN, `$1${REDACTED}`)
     .replace(JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
+    .replace(ESCAPED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
     .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
 }
 
