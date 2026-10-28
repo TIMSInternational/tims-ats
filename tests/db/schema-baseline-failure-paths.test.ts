@@ -19,7 +19,7 @@
  * pg_dump, so these tests never touch a database.
  */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -65,6 +65,29 @@ function makeStubPgDump(root: string, version: string, behaviour: 'fail' | 'empt
 }
 
 type Run = { code: number; out: string };
+
+type DumpEntry = { name: string; type: string; schema: string; body: string[] };
+
+/** Lines shaped like pg_dump --schema-only output: a preamble, then one TOC header per entry. */
+function pgDump(entries: DumpEntry[], withPreamble = true): string[] {
+  const out = withPreamble ? ['--', '-- PostgreSQL database dump', '--', '', 'SET lock_timeout = 0;', ''] : [];
+  for (const e of entries) {
+    out.push('--', `-- Name: ${e.name}; Type: ${e.type}; Schema: ${e.schema}; Owner: postgres`, '--', '', ...e.body, '', '');
+  }
+  return out;
+}
+
+/** A stub pg_dump emitting fixed lines, so "prod changed" can be simulated by swapping stubs. */
+function stubEmitting(root: string, name: string, lines: string[]): string {
+  const path = join(root, name);
+  writeFileSync(
+    path,
+    '#!/bin/sh\n[ "$1" = "--version" ] && { echo "pg_dump (PostgreSQL) 17.0"; exit 0; }\n' +
+      `cat <<'SQLEOF'\n${lines.join('\n')}\nSQLEOF\n`,
+  );
+  chmodSync(path, 0o755);
+  return path;
+}
 
 function run(root: string, args: string[], env: Record<string, string | undefined>): Run {
   try {
@@ -138,6 +161,30 @@ describe('schema-baseline.sh check — exit 2 means DID NOT RUN, never a pass', 
     expect(code).toBe(2);
     expect(out).toMatch(/pg_dump failed/);
     expect(out).toMatch(/password authentication failed/);
+  });
+
+  it('objects-only mode: a failed pg_dump reports categories, never its stderr text (tier-1 round 3)', () => {
+    const root = makeTree('dump-fails-objects-only');
+    const stub = join(root, 'stub-fail-quoting');
+    writeFileSync(
+      stub,
+      '#!/bin/sh\n[ "$1" = "--version" ] && { echo "pg_dump (PostgreSQL) 17.0"; exit 0; }\n' +
+        'echo "pg_dump: error: query failed: ERROR:  permission denied for table SYNTHETIC_PRIVATE_NAME_42" >&2\n' +
+        'echo "pg_dump: detail: Query was: LOCK TABLE public.\\"SYNTHETIC_PRIVATE_NAME_42\\" IN ACCESS SHARE MODE" >&2\n' +
+        'exit 1\n',
+    );
+    chmodSync(stub, 0o755);
+    for (const env of [{ SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, { GITHUB_ACTIONS: 'true' }] as Record<string, string>[]) {
+      for (const cmd of ['capture', 'check']) {
+        if (cmd === 'check') writeFileSync(join(root, BASELINE_REL), '-- >>> END BASELINE HEADER — everything below is verbatim pg_dump output\n');
+        const { code, out } = run(root, [cmd], { DIRECT_URL: FAKE_URL, PG_DUMP: stub, ...env });
+        expect(code).toBe(2);
+        expect(out).toMatch(/pg_dump failed/);
+        expect(out).toMatch(/2 line\(s\) of pg_dump diagnostics withheld/);
+        expect(out).toMatch(/matched categories: permission/);
+        expect(out).not.toMatch(/SYNTHETIC_PRIVATE_NAME|LOCK TABLE/);
+      }
+    }
   });
 
   it('exits 2 when pg_dump succeeds but emits nothing — the #38 failure mode', () => {
@@ -231,19 +278,10 @@ describe('schema-baseline.sh — capture/check round-trip and drift detection', 
  * 8,781-line generated dump does not get read, six lines do.
  */
 describe('schema-baseline.sh capture — object-level change summary', () => {
-  /** A stub emitting a fixed schema, so "prod changed" can be simulated by swapping stubs. */
-  function stubEmitting(root: string, name: string, lines: string[]): string {
-    const path = join(root, name);
-    writeFileSync(
-      path,
-      '#!/bin/sh\n[ "$1" = "--version" ] && { echo "pg_dump (PostgreSQL) 17.0"; exit 0; }\n' +
-        `cat <<'SQLEOF'\n${lines.join('\n')}\nSQLEOF\n`,
-    );
-    chmodSync(path, 0o755);
-    return path;
-  }
-
-  const V1 = ['CREATE TABLE public.a (id uuid NOT NULL);', 'CREATE POLICY tenant_isolation ON public.a USING (true);'];
+  const V1 = pgDump([
+    { name: 'a', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.a (', '    id uuid NOT NULL', ');'] },
+    { name: 'a tenant_isolation', type: 'POLICY', schema: 'public', body: ['CREATE POLICY tenant_isolation ON public.a USING (true);'] },
+  ]);
 
   it('reports no schema change when only the capture timestamp moved', () => {
     const root = makeTree('summary-nochange');
@@ -262,17 +300,20 @@ describe('schema-baseline.sh capture — object-level change summary', () => {
 
     const v2 = stubEmitting(root, 'v2', [
       ...V1,
-      'CREATE TABLE public.zz_snuck_in (id uuid NOT NULL);',
-      // The #111 shape: a second PERMISSIVE policy that ORs past the fail-closed guard.
-      'CREATE POLICY allow_all ON public.a USING (true);',
-      'GRANT SELECT ON public.zz_snuck_in TO app_tenant;',
+      ...pgDump([
+        { name: 'zz_snuck_in', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.zz_snuck_in (', '    id uuid NOT NULL', ');'] },
+        // The #111 shape: a second PERMISSIVE policy that ORs past the fail-closed guard.
+        { name: 'a allow_all', type: 'POLICY', schema: 'public', body: ['CREATE POLICY allow_all ON public.a USING (true);'] },
+        { name: 'TABLE zz_snuck_in', type: 'ACL', schema: 'public', body: ['GRANT SELECT ON TABLE public.zz_snuck_in TO app_tenant;'] },
+      ], false),
     ]);
     const { code, out } = run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: v2 });
 
     expect(code).toBe(0);
-    expect(out).toMatch(/CREATE TABLE public\.zz_snuck_in/);
-    expect(out).toMatch(/CREATE POLICY allow_all ON public\.a/);
-    expect(out).toMatch(/GRANT SELECT ON public\.zz_snuck_in TO app_tenant/);
+    expect(out).toMatch(/\+ TABLE public\.zz_snuck_in$/m);
+    expect(out).toMatch(/\+ POLICY public\.a allow_all$/m);
+    expect(out).toMatch(/\+ ACL public\.TABLE zz_snuck_in$/m);
+    expect(out).toMatch(/3 changed object\(s\): \+3 added, -0 removed, ~0 modified/);
     // The summary must not bury the change — it is the whole reason the summary exists.
     expect(out).toMatch(/STOP/);
   });
@@ -373,5 +414,241 @@ describe('guard-prod-ddl.sh — refuses schema mutation against a non-local host
     const { code, out } = guard({ DATABASE_URL: PROD, DIRECT_URL: PROD }, 'echo', 'generate ok');
     expect(code).toBe(0);
     expect(out).toMatch(/generate ok/);
+  });
+});
+
+/**
+ * #328 review (MEDIUM-1): the repository is PUBLIC, so whatever the nightly job prints is public. In CI
+ * (GITHUB_ACTIONS=true) or with SCHEMA_DRIFT_OBJECTS_ONLY=1 the script names changed OBJECTS only and never
+ * echoes a verbatim schema line — a function body changed out of band could carry anything.
+ *
+ * #336 tier-1 review: objects are identified by pg_dump's own TOC headers, not by parsing SQL. The fixtures
+ * under tests/db/fixtures/pg-dump-17 are REAL pg_dump 17.10 output (a throwaway local cluster, before and
+ * after: a column added, a single-line function body changed, a GRANT widened to a comma list, a function
+ * with an apostrophe in its name and an E'' literal containing `--`, a multi-line table comment). Only the
+ * random `\restrict` nonce was replaced by a fixed placeholder. Every dump shape the earlier SQL lexer
+ * missed is in them.
+ */
+describe('schema-baseline.sh — objects-only output for public CI logs', () => {
+  const FIXTURES = join(REPO_ROOT, 'tests', 'db', 'fixtures', 'pg-dump-17');
+  const REAL_V1 = readFileSync(join(FIXTURES, 'v1.sql'), 'utf8').replace(/\n$/, '').split('\n');
+  const REAL_V2 = readFileSync(join(FIXTURES, 'v2.sql'), 'utf8').replace(/\n$/, '').split('\n');
+  const SYNTHETIC = /SYNTHETIC_[A-Z]+_\d+|synthetic_col_778/;
+
+  /** Commits the tree's baseline as git HEAD: objects-only mode prints only names committed there. */
+  function commitBaseline(root: string): void {
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.email=test@example.invalid', '-c', 'user.name=test', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args],
+        { cwd: root, stdio: 'ignore' },
+      );
+    git('init', '-q');
+    git('add', BASELINE_REL);
+    git('commit', '-q', '--no-verify', '-m', 'baseline');
+  }
+
+  function driftCheck(name: string, before: string[], after: string[], env: Record<string, string>, commit = true): Run {
+    const root = makeTree(name);
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'before', before) }).code).toBe(0);
+    if (commit) commitBaseline(root);
+    return run(root, ['check'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'after', after), ...env });
+  }
+
+  for (const [label, env] of [
+    ['SCHEMA_DRIFT_OBJECTS_ONLY=1', { SCHEMA_DRIFT_OBJECTS_ONLY: '1' }],
+    ['GITHUB_ACTIONS=true', { GITHUB_ACTIONS: 'true' }],
+  ] as const) {
+    it(`check under ${label}: real pg_dump shapes are all named, and no schema text is printed`, () => {
+      const { code, out } = driftCheck(`oo-real-${label.replace(/\W/g, '')}`, REAL_V1, REAL_V2, env);
+      expect(code).toBe(1);
+      expect(out).toMatch(/SCHEMA DRIFT/);
+      // Column-only change inside CREATE TABLE → the TABLE entry.
+      expect(out).toMatch(/^ {2}~ TABLE public\.t$/m);
+      // Single-line body `AS $$SELECT 2 ...$$;` → the FUNCTION entry.
+      expect(out).toMatch(/^ {2}~ FUNCTION public\.f\(\)$/m);
+      // `GRANT SELECT,UPDATE ON TABLE ...` → the ACL entry.
+      expect(out).toMatch(/^ {2}~ ACL public\.TABLE t$/m);
+      // NEW entries exist only in the live dump, so their names are withheld: type + hash only.
+      expect(out).toMatch(/^ {2}\+ FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+      expect(out).toMatch(/^ {2}\+ COMMENT \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+      expect(out).not.toMatch(/clock/);
+      expect(out).toMatch(/5 changed object\(s\): \+2 added, -0 removed, ~3 modified/);
+      expect(out).toMatch(/objects-only mode: no schema text printed/);
+      expect(out).not.toMatch(SYNTHETIC);
+      // Nothing that only occurs inside a dump statement may appear at all.
+      expect(out).not.toMatch(/SELECT|GRANT|CREATE|COMMENT ON|E'it/);
+    });
+  }
+
+  it('every line the check prints is a fixed message, a TOC identity, or a count (no verbatim dump line)', () => {
+    const { out } = driftCheck('oo-allowlist', REAL_V1, REAL_V2, { SCHEMA_DRIFT_OBJECTS_ONLY: '1' });
+    const dumpLines = new Set([...REAL_V1, ...REAL_V2].map((l) => l.trim()).filter((l) => l.length > 3));
+    for (const line of out.split('\n')) expect(dumpLines.has(line.trim())).toBe(false);
+  });
+
+  it('hostile body text never reaches the log, however it is quoted or commented', () => {
+    const before = pgDump([{ name: 't', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.t (', '    id uuid NOT NULL', ');'] }]);
+    const after = [
+      ...before,
+      ...pgDump(
+        [
+          {
+            name: 'g()',
+            type: 'FUNCTION',
+            schema: 'public',
+            body: [
+              'CREATE FUNCTION public.g() RETURNS void',
+              '    LANGUAGE plpgsql',
+              '    AS $_1$',
+              'BEGIN',
+              `CREATE TABLE "${'gh' + 'p_'}SYNTHETIC_CREDENTIAL_1234567890" (x int);`,
+              "  PERFORM E'\\' -- SYNTHETIC_ESCAPE_77';",
+              '  /* GRANT ALL ON TABLE public.t TO SYNTHETIC_ROLE_88 */',
+              "  PERFORM '@@obj@@ Bearer SYNTHETIC_SECRET_12345678';",
+              // A forged header WITHOUT pg_dump's bracketing `--` lines is just body text.
+              '-- Name: SYNTHETIC_FORGED_55; Type: TABLE; Schema: public; Owner: postgres',
+              'END',
+              '$_1$;',
+            ],
+          },
+        ],
+        false,
+      ),
+    ];
+    const { code, out } = driftCheck('oo-hostile', before, after, { SCHEMA_DRIFT_OBJECTS_ONLY: '1' });
+    expect(code).toBe(1);
+    expect(out).toMatch(/^ {2}\+ FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).toMatch(/1 changed object\(s\)/);
+    expect(out).not.toMatch(SYNTHETIC);
+  });
+
+  it('a COMPLETE forged TOC banner inside a body cannot print its text (tier-1 round 1)', () => {
+    // pg_dump's header is recognised by shape, so this body DOES open a pseudo-entry. What must hold is that
+    // nothing from it is printed: a name that is not in the committed baseline is withheld.
+    const token = `${'gh' + 'p_'}SYNTHETIC_CREDENTIAL_12345678901234567890`;
+    const before = pgDump([{ name: 't', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.t ();'] }]);
+    const forged = (type: string) => [
+      ...before,
+      ...pgDump(
+        [
+          {
+            name: 'g()',
+            type: 'FUNCTION',
+            schema: 'public',
+            body: [
+              'CREATE FUNCTION public.g() RETURNS text LANGUAGE sql AS $body$',
+              'SELECT $embedded$',
+              '--',
+              `-- Name: ${token}; Type: ${type}; Schema: public; Owner: postgres`,
+              '--',
+              '$embedded$;',
+              '$body$;',
+            ],
+          },
+        ],
+        false,
+      ),
+    ];
+    for (const type of ['TABLE', `${'gh' + 'p_'}SYNTHETIC_TYPE_998877`]) {
+      for (const env of [{ SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, { GITHUB_ACTIONS: 'true' }] as Record<string, string>[]) {
+        const { code, out } = driftCheck(`oo-forged-${type.length}-${Object.keys(env)[0]}`, before, forged(type), env);
+        expect(code).toBe(1);
+        expect(out).not.toMatch(SYNTHETIC);
+        expect(out).not.toMatch(/gh[p]_/);
+        // An unrecognised type word is not echoed either.
+        expect(out).toMatch(/^ {2}\+ (TABLE|OTHER) \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+      }
+    }
+  });
+
+  it('capture under objects-only mode withholds new names too (its summary is tee-d to the public log)', () => {
+    const root = makeTree('oo-capture');
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'v1', REAL_V1) }).code).toBe(0);
+    commitBaseline(root);
+    const { code, out } = run(root, ['capture'], {
+      DIRECT_URL: FAKE_URL,
+      PG_DUMP: stubEmitting(root, 'v2', REAL_V2),
+      SCHEMA_DRIFT_OBJECTS_ONLY: '1',
+    });
+    expect(code).toBe(0);
+    expect(out).toMatch(/^ {2}~ TABLE public\.t$/m);
+    expect(out).toMatch(/^ {2}\+ FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).not.toMatch(SYNTHETIC);
+    expect(out).not.toMatch(/clock/);
+  });
+
+  it('capture-then-drift: a name the capture just wrote is NOT trusted by the round-trip check (tier-1 round 2)', () => {
+    // The capture job runs `capture` (overwriting the baseline file with an unreviewed dump) and then `check`.
+    // A name that exists only in that fresh capture must stay withheld even though it is now on the OLD side.
+    const token = `${'gh' + 'p_'}SYNTHETIC_FRESH_NAME_12345678901234567890`;
+    const root = makeTree('oo-capture-then-drift');
+    const v1 = pgDump([{ name: 't', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.t ();'] }]);
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'v1', v1) }).code).toBe(0);
+    commitBaseline(root);
+    const fn = (n: number) => [
+      ...v1,
+      ...pgDump([{ name: `${token}()`, type: 'FUNCTION', schema: 'public', body: [`CREATE FUNCTION public.${token}() RETURNS int LANGUAGE sql AS $$SELECT ${n}$$;`] }], false),
+    ];
+    const env = { DIRECT_URL: FAKE_URL, SCHEMA_DRIFT_OBJECTS_ONLY: '1' };
+    const captured = run(root, ['capture'], { ...env, PG_DUMP: stubEmitting(root, 'v2', fn(1)) });
+    expect(captured.code).toBe(0);
+    expect(captured.out).not.toMatch(SYNTHETIC);
+    for (const after of [fn(2), v1]) {
+      const { code, out } = run(root, ['check'], { ...env, PG_DUMP: stubEmitting(root, `v3-${after.length}`, after) });
+      expect(code).toBe(1);
+      expect(out).toMatch(/^ {2}[~-] FUNCTION \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+      expect(out).not.toMatch(SYNTHETIC);
+    }
+  });
+
+  it('outside a git checkout no name is trusted: every identity is withheld', () => {
+    const { code, out } = driftCheck('oo-no-git', REAL_V1, REAL_V2, { SCHEMA_DRIFT_OBJECTS_ONLY: '1' }, false);
+    expect(code).toBe(1);
+    expect(out).toMatch(/^ {2}~ TABLE \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).toMatch(/^ {2}~ ACL \[name withheld, sha256:[0-9a-f]{12}\]$/m);
+    expect(out).not.toMatch(/public\.t/);
+  });
+
+  it('a body-only change is reported by its entry identity, never by its text', () => {
+    const fn = (ret: string) =>
+      pgDump([
+        { name: 'answer()', type: 'FUNCTION', schema: 'public', body: ['CREATE FUNCTION public.answer() RETURNS integer', '    LANGUAGE sql', `    AS $$SELECT ${ret}$$;`] },
+      ]);
+    const { code, out } = driftCheck('oo-body-change', fn('41'), fn('424242'), { SCHEMA_DRIFT_OBJECTS_ONLY: '1' });
+    expect(code).toBe(1);
+    expect(out).toMatch(/^ {2}~ FUNCTION public\.answer\(\)$/m);
+    expect(out).not.toMatch(/424242/);
+  });
+
+  it('a removed entry is reported with "-", and preamble-only changes are attributed, not dropped', () => {
+    const gone = { name: 'gone', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.gone (', '    id int', ');'] };
+    const kept = { name: 'kept', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.kept (', '    id int', ');'] };
+    const after = pgDump([kept]).map((l) => (l === 'SET lock_timeout = 0;' ? 'SET SYNTHETIC_SETTING_31 = on;' : l));
+    const { code, out } = driftCheck('oo-removed', pgDump([gone, kept]), after, { SCHEMA_DRIFT_OBJECTS_ONLY: '1' });
+    expect(code).toBe(1);
+    expect(out).toMatch(/^ {2}- TABLE public\.gone$/m);
+    expect(out).toMatch(/^ {2}~ \(dump preamble\)$/m);
+    expect(out).not.toMatch(SYNTHETIC);
+  });
+
+  it('locally, an identity is reduced to a safe character set and truncated', () => {
+    const before = pgDump([{ name: 't', type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.t ();'] }]);
+    const weird = `x$'\`;|&<>{}%${'A'.repeat(300)}`;
+    const after = [...before, ...pgDump([{ name: weird, type: 'TABLE', schema: 'public', body: ['CREATE TABLE public.x ();'] }], false)];
+    // Local mode: the only mode that prints a NEW entry's name.
+    const { out } = driftCheck('oo-sanitise', before, after, {});
+    const line = out.split('\n').find((l) => l.startsWith('  + TABLE public.x'));
+    expect(line).toBeDefined();
+    expect(line).toMatch(/^ {2}\+ TABLE public\.x\?{11}A+$/);
+    expect((line ?? '').length).toBeLessThanOrEqual(2 + 2 + 120);
+  });
+
+  it('positive control: locally (no CI env) check names the objects AND prints the verbatim diff', () => {
+    const { code, out } = driftCheck('oo-local', REAL_V1, REAL_V2, {});
+    expect(code).toBe(1);
+    expect(out).toMatch(/^ {2}~ TABLE public\.t$/m);
+    expect(out).toMatch(/^ {2}\+ FUNCTION public\.o\?clock\(\)$/m);
+    expect(out).toMatch(/SYNTHETIC_BODY_991/);
   });
 });

@@ -309,6 +309,10 @@ EOF
 
 # ── 9. Web ────────────────────────────────────────────────────────────────────────────────
 write_web_env() {
+  # TIMS_E2E_STACK + TIMS_E2E_RATE_LIMIT_MULTIPLIER: one user drives several personas across both journeys
+  # (and a retry re-runs them as the same users), which exhausted the per-user 100/min tRPC query tier
+  # (#330). packages/api/src/middleware/rate-limit.ts honours the multiplier in a production build ONLY
+  # with TIMS_E2E_STACK=1, never on Vercel, and only for its in-memory limiter.
   umask 077
   cat >"$E2E_STATE/web.env" <<EOF
 NODE_ENV=production
@@ -335,6 +339,8 @@ CV_UPLOADS_BUCKET=tims-cv-e2e
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 DAILY_API_URL=http://127.0.0.1:9/v1
+TIMS_E2E_STACK=1
+TIMS_E2E_RATE_LIMIT_MULTIPLIER=50
 $(cat "$E2E_REPO_ROOT/scripts/e2e/web-flags.env")
 EOF
   write_env_file_blocklist >>"$E2E_STATE/web.env"

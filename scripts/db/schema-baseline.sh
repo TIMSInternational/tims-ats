@@ -105,12 +105,142 @@ normalise() {
     | cat -s
 }
 
+# ── Object-level change summary ───────────────────────────────────────────────────────────────────
+# OBJECTS-ONLY MODE (#328 review): this repository is PUBLIC, so anything a CI run prints is public. In CI
+# (GITHUB_ACTIONS=true) or with SCHEMA_DRIFT_OBJECTS_ONLY=1, `check` prints the object summary below and
+# never a verbatim schema line, because a function body, default or comment changed out of band could carry
+# anything. Locally `check` also prints the full diff: it is the reviewer's main tool and goes nowhere public.
+OBJECTS_ONLY=0
+if [ "${SCHEMA_DRIFT_OBJECTS_ONLY:-}" = "1" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then OBJECTS_ONLY=1; fi
+
+# HOW CHANGES ARE ATTRIBUTED (#336 tier-1 review): NOT by parsing SQL. Earlier versions classified lines with
+# a hand-written lexer (quotes, dollar tags, identifiers) plus per-statement regexes, and every review round
+# found another dump shape it mishandled (GRANT ... ON TABLE lists, single-line bodies, column changes).
+# Instead, every line is attributed to the pg_dump TOC entry it belongs to. pg_dump opens EVERY object it
+# emits with a three-line header that it generates itself:
+#
+#     --
+#     -- Name: <name>; Type: <TYPE>; Schema: <schema>; Owner: <owner>
+#     --
+#
+# so a column change lands in that table's TABLE entry, a GRANT in its ACL entry and a body edit in its
+# FUNCTION entry, whatever the SQL inside looks like. Lines before the first header (SET statements,
+# \restrict) belong to "(dump preamble)". Only entry identities (Type, Schema, Name, reduced to a safe
+# character set and truncated) and counts are printed. No dump line is echoed on this path.
+#
+# WHAT MAY BE PRINTED IN OBJECTS-ONLY MODE (#336 tier-1 rounds 1-2). The TOC header is recognised by shape,
+# so a function body or comment containing the exact three-line header opens a pseudo-entry whose "name" is
+# arbitrary body text. And neither comparison file is safe to trust: in `check` the NEW side is the live dump,
+# and in the capture job's round-trip `check` even the OLD side is the dump `capture` has just written. So an
+# identity is printed by name only if it is a TOC identity of the baseline AS COMMITTED AT git HEAD, read with
+# `git show` independently of both files: every such string is already published in this repository.
+# Any other identity, whatever its sign, is shown as its TOC type from a fixed allowlist of pg_dump types
+# (anything else prints as OTHER) plus the first 12 hex digits of its SHA-256, so distinct objects stay
+# distinguishable. Without git, or outside a checkout, NO name is trusted and all are withheld. The names
+# are in the full local diff and in the capture artifact. A forged header can still mis-attribute lines,
+# which only changes WHICH committed identity, type word or hash is printed; it cannot change the exit
+# code, because drift is decided by `diff` over the full dumps, never by this summary.
+toc_records() {
+  awk '
+    function field(s, from, to,    a, b) {
+      a = index(s, from); if (a == 0) return ""
+      s = substr(s, a + length(from))
+      if (to == "") return s
+      b = index(s, to); return (b == 0) ? s : substr(s, 1, b - 1)
+    }
+    function ident(h,    name, type, schema, k) {
+      name = field(h, "-- Name: ", "; Type: ")
+      type = field(h, "; Type: ", "; Schema: ")
+      schema = field(h, "; Schema: ", "; Owner: ")
+      k = (schema == "-" || schema == "") ? type " " name : type " " schema "." name
+      gsub(/[^A-Za-z0-9_ .,()"-]/, "?", k)
+      return substr(k, 1, 120)
+    }
+    { L[NR] = $0 }
+    END {
+      key = "(dump preamble)"
+      for (i = 1; i <= NR; i++) {
+        if (L[i] == "--" && i + 2 <= NR && L[i + 2] == "--" && L[i + 1] ~ /^-- Name: .*; Type: .*; Schema: /)
+          key = ident(L[i + 1])
+        printf "%s\037%s\n", key, L[i]
+      }
+    }' "$1"
+}
+
+# pg_dump TOC entry types (src/bin/pg_dump). Used only to print the type of a NEW entry, whose name is
+# withheld in objects-only mode; a type outside this list prints as OTHER. First match wins, so every type is
+# listed BEFORE any shorter type that is its prefix ("DEFAULT ACL" before "DEFAULT").
+TOC_TYPES=("ACCESS METHOD" "ACL" "AGGREGATE" "CAST" "CHECK CONSTRAINT" "COLLATION" "COMMENT" "CONSTRAINT"
+  "CONVERSION" "DATABASE" "DEFAULT ACL" "DEFAULT" "DOMAIN" "EVENT TRIGGER" "EXTENSION" "FK CONSTRAINT"
+  "FOREIGN DATA WRAPPER" "FOREIGN TABLE" "FUNCTION" "INDEX ATTACH" "INDEX" "LARGE OBJECT" "MATERIALIZED VIEW"
+  "OPERATOR CLASS" "OPERATOR FAMILY" "OPERATOR" "POLICY" "PROCEDURAL LANGUAGE" "PROCEDURE" "PUBLICATION TABLE"
+  "PUBLICATION TABLES IN SCHEMA" "PUBLICATION" "ROW SECURITY" "RULE" "SCHEMA" "SECURITY LABEL"
+  "SEQUENCE OWNED BY" "SEQUENCE SET" "SEQUENCE" "SERVER" "SHELL TYPE" "STATISTICS" "SUBSCRIPTION TABLE"
+  "SUBSCRIPTION" "TABLE ATTACH" "TABLE" "TEXT SEARCH CONFIGURATION" "TEXT SEARCH DICTIONARY"
+  "TEXT SEARCH PARSER" "TEXT SEARCH TEMPLATE" "TRANSFORM" "TRIGGER" "TYPE" "USER MAPPING" "VIEW")
+
+# withheld_identity KEY → "<TYPE> [name withheld, sha256:<12 hex>]". Prints nothing derived from KEY
+# except the allowlisted type word and the hash. Without a SHA-256 tool the hash is omitted, not the line.
+withheld_identity() {
+  local key="$1" type="OTHER" t h=""
+  for t in "${TOC_TYPES[@]}"; do
+    case "$key" in "$t "*) type="$t"; break ;; esac
+  done
+  if command -v sha256sum >/dev/null 2>&1; then h="$(printf '%s' "$key" | sha256sum | cut -c1-12)"
+  elif command -v shasum >/dev/null 2>&1; then h="$(printf '%s' "$key" | shasum -a 256 | cut -c1-12)"; fi
+  echo "$type [name withheld${h:+, sha256:$h}]"
+}
+
+# object_summary OLD NEW → one "<sign> <TOC identity>" line per changed entry ("+" only in NEW, "-" only in
+# OLD, "~" in both but different), then counts. In objects-only mode only identities of the baseline committed
+# at git HEAD are printed by name (see above).
+object_summary() {
+  local t us
+  t="$(mktemp -d)"
+  us="$(printf '\037')"
+  toc_records "$1" >"$t/old.rec"
+  toc_records "$2" >"$t/new.rec"
+  { diff "$t/old.rec" "$t/new.rec" || true; } | grep -E '^[<>] ' | cut -c3- | cut -d "$us" -f1 | sort -u >"$t/changed.keys"
+  awk -F "$us" '
+    FILENAME == ARGV[1] { o[$1] = 1; next }
+    FILENAME == ARGV[2] { n[$1] = 1; next }
+    { s = (($0 in o) && ($0 in n)) ? "~" : (($0 in n) ? "+" : "-"); print s " " $0 }
+  ' "$t/old.rec" "$t/new.rec" "$t/changed.keys" >"$t/summary"
+  local objects added removed modified lines sign key
+  : >"$t/trusted"
+  if [ "$OBJECTS_ONLY" = "1" ]; then
+    echo "(dump preamble)" >"$t/trusted"
+    if git -C "$REPO_ROOT" show "HEAD:./${BASELINE#"$REPO_ROOT"/}" >"$t/head.sql" 2>/dev/null; then
+      toc_records "$t/head.sql" | cut -d "$us" -f1 | sort -u >>"$t/trusted"
+    fi
+  fi
+  objects="$(grep -c . "$t/summary" || true)"
+  added="$(grep -c '^+ ' "$t/summary" || true)"
+  removed="$(grep -c '^- ' "$t/summary" || true)"
+  modified="$(grep -c '^~ ' "$t/summary" || true)"
+  lines="$({ diff -U0 "$1" "$2" || true; } | grep -cE '^[+-][^+-]' || true)"
+  head -200 "$t/summary" | while IFS= read -r line; do
+    sign="${line%% *}"; key="${line#? }"
+    if [ "$OBJECTS_ONLY" = "1" ] && ! grep -qxF -- "$key" "$t/trusted"; then
+      echo "$sign $(withheld_identity "$key")"
+    else
+      echo "$line"
+    fi
+  done
+  if [ "$objects" -gt 200 ]; then echo "... and $((objects - 200)) more changed object(s), not listed"; fi
+  echo "($objects changed object(s): +$added added, -$removed removed, ~$modified modified; $lines changed line(s), no schema text printed)"
+  rm -rf "$t"
+}
+
 # NOTE ON CREDENTIAL EXPOSURE: pg_dump takes its connection string as an argv, so the URL — password
 # included — is visible in `ps` to other processes of the same user for the duration of the dump.
 # pg_dump offers no stdin/file alternative for a URI; avoiding it would mean parsing the URL into
-# PGHOST/PGUSER/PGPASSWORD, which is its own fragile failure mode. Accepted here because this runs on a
-# developer machine against a URL already sitting in packages/db/.env. If check 16 is wired into CI
-# (#124), pass the credentials as PG* environment variables there instead.
+# PGHOST/PGUSER/PGPASSWORD, which is its own fragile failure mode. Accepted on a developer machine, where
+# the URL already sits in packages/db/.env.
+# CI DECISION (#124, 2026-10-01): check 16 runs nightly (.github/workflows/nightly-db-controls.yml) and kept
+# the argv form. The runner is an ephemeral single-tenant VM running only this job's own processes, the URL
+# is the read-only `ci_readonly` credential (verify-full, from a main-only environment), and GitHub masks the
+# secret in logs. Converting to PG* variables was judged not worth a second URL parser in a security check.
 dump_live() {
   local url="$1" out="$2" pgd="$3"
   # --no-owner/--no-acl-less: ownership and grants are part of the security surface (#111 was a
@@ -118,6 +248,30 @@ dump_live() {
   # the same reason. Only the noisy, environment-dependent bits are excluded.
   "$pgd" --schema-only --no-publications --no-subscriptions \
     "${DUMP_SCHEMAS[@]}" --dbname "$url" >"$out" 2>"$out.err"
+}
+
+# dump_diagnostics ERRFILE → pg_dump's stderr for the "pg_dump failed" message. Locally: the first 20 lines.
+# In objects-only mode (#336 tier-1 round 3) server errors can quote object names or the failed query
+# (permission denied for table X / LOCK TABLE X), so nothing from the file is printed: only its line count
+# and which FIXED categories its text matches, enough to tell a credential problem from a privilege one.
+dump_diagnostics() {
+  if [ "$OBJECTS_ONLY" != "1" ]; then
+    sed 's/^/    /' "$1" 2>/dev/null | head -20
+    return 0
+  fi
+  local cats="" c pat
+  for c in "authentication:password authentication failed|authentication failed|no pg_hba.conf entry" \
+           "connection:could not connect|connection refused|could not translate host name|timeout expired|server closed the connection" \
+           "tls:ssl|certificate|tls" \
+           "permission:permission denied|must be owner|insufficient privilege" \
+           "version:server version mismatch|aborting because of server version mismatch" \
+           "lock:lock timeout|could not obtain lock|deadlock"; do
+    pat="${c#*:}"
+    if grep -qiE -- "$pat" "$1" 2>/dev/null; then cats="$cats ${c%%:*}"; fi
+  done
+  echo "    ($(grep -c '' "$1" 2>/dev/null || echo 0) line(s) of pg_dump diagnostics withheld: objects-only mode)"
+  echo "    matched categories:${cats:- none}"
+  echo "    Run 'check' locally, or inspect the database, for the full message."
 }
 
 cmd="${1:-check}"
@@ -147,7 +301,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 if ! dump_live "$DB_URL" "$TMP/live.sql" "$PG_DUMP_BIN"; then
   die2 "pg_dump failed:
-$(sed 's/^/    /' "$TMP/live.sql.err" 2>/dev/null | head -20)"
+$(dump_diagnostics "$TMP/live.sql.err")"
 fi
 [ -s "$TMP/live.sql" ] || die2 "pg_dump produced an empty dump — refusing to treat that as 'no drift'."
 
@@ -196,21 +350,8 @@ case "$cmd" in
     else
       echo
       echo "  ── What changed vs the previous baseline ───────────────────────────────────"
-      diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" \
-        | grep -E '^[+-][^+-]' \
-        | sed -E 's/^([+-]).*(CREATE TABLE [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE POLICY [a-zA-Z0-9_."]+ ON [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(ALTER TABLE [a-zA-Z0-9_."]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/\1 \2/;
-                  s/^([+-]).*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_."]+ TO [a-zA-Z0-9_"]+).*/\1 \2/;
-                  s/^([+-]).*(ADD CONSTRAINT [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE FUNCTION [a-zA-Z0-9_."]+).*/\1 \2/;
-                  s/^([+-]).*(CREATE TRIGGER [a-zA-Z0-9_."]+).*/\1 \2/' \
-        | sed 's/^/  /' | head -60
-      added=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^\+[^+]' || true)
-      removed=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^-[^-]' || true)
+      object_summary "$PREV_BODY" "$TMP/live.norm.sql" | sed 's/^/  /'
       echo "  ───────────────────────────────────────────────────────────────────────────"
-      echo "  (+$added / -$removed changed lines; showing up to 60)"
       echo
       echo "  Every line above is a real production change. If one is NOT explained by this PR,"
       echo "  STOP — see docs/architecture/ddl-governance.md §7."
@@ -232,10 +373,17 @@ case "$cmd" in
 
     echo "✖ SCHEMA DRIFT: production no longer matches the committed baseline." >&2
     echo >&2
-    sed -n '3,203p' "$TMP/drift.diff" >&2
     total=$(grep -cE '^[+-][^+-]' "$TMP/drift.diff")
+    echo "  Changed objects (pg_dump TOC entries):" >&2
+    object_summary "$TMP/base.norm.sql" "$TMP/live.norm.sql" | sed 's/^/  /' >&2
     echo >&2
-    echo "  ($total changed line(s); showing the first 200 of the diff)" >&2
+    if [ "$OBJECTS_ONLY" = "1" ]; then
+      echo "  objects-only mode: no schema text printed. Run 'check' locally for the full diff." >&2
+    else
+      sed -n '3,203p' "$TMP/drift.diff" >&2
+      echo >&2
+      echo "  ($total changed line(s); showing the first 200 of the diff)" >&2
+    fi
     cat >&2 <<'EOF'
 
 Every hunk is a production change that no committed file explains, OR a committed change that has

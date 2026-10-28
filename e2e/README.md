@@ -31,8 +31,16 @@ LocalStack `4577`.
 
 **Rate limits and rapid reruns.** The app's real rate limiters stay on. Two of them matter here:
 
-- The tRPC limiter is per user (100 queries/min). Every run — and every retry attempt — therefore
-  provisions its own platform owner (`lib/owner.ts`); all other personas are created per run anyway.
+- The tRPC limiter is per user (100 queries/min). Every run — and every retry attempt — provisions its
+  own platform owner (`lib/owner.ts`), but the company's admin, recruiter and hiring leader are created
+  once by the company journey and **reused** by the candidate journey and by any candidate-journey retry.
+  One user driving several browser contexts across two journeys exhausted the per-user window (#330:
+  `TOO_MANY_REQUESTS` on `pipeline.getBoard`, `candidate.getById`). The stack therefore sets
+  `TIMS_E2E_STACK=1` + `TIMS_E2E_RATE_LIMIT_MULTIPLIER=50` in `web.env`, which scales **only** the
+  in-memory limiter; `packages/api/src/middleware/rate-limit.ts` ignores it in a production build without
+  the marker, on Vercel, and whenever Upstash is configured (`tests/ratelimit/e2e-ceiling.test.ts`).
+- CI uploads the Playwright report, traces and scrubbed stack logs whenever **any attempt** failed — a
+  flaky test (failed, then passed on retry) included — not only when the job fails.
 - The C# limiter keys unauthenticated calls on the trusted client IP, which only Vercel supplies
   (`x-real-ip`); locally every invitation-setup call (preview/register/complete — 9 per run) lands in
   one shared `anonymous` bucket of 30 mutations/min. A single run (and a CI retry) fits; **starting a
