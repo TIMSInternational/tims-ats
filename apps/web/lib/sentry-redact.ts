@@ -72,6 +72,19 @@ const ESCAPED_JSON_CREDENTIAL_VALUE = new RegExp(
   'gi',
 );
 
+// The same names in diagnostic object syntax rather than JSON — unquoted keys, any quote style, or a bare value:
+// `{ candidateToken: "…" }` (Prisma / util.inspect), `token: '…'`, `nonce = …`. The key must not be the tail of a
+// longer identifier, and a value that is already `[redacted]` (or opens an object/array) is left alone.
+const KEY_BOUNDARY = `(?:^|[^A-Za-z0-9_$"'\\\\])`;
+const DIAGNOSTIC_QUOTED_VALUE = new RegExp(
+  `(${KEY_BOUNDARY}(?:${KEY_ALT})\\s*[:=]\\s*)(["'\`])(?:(?!\\2)[^\\\\]|\\\\.)+(?=\\2)`,
+  'gi',
+);
+const DIAGNOSTIC_BARE_VALUE = new RegExp(
+  `(${KEY_BOUNDARY}(?:${KEY_ALT})\\s*[:=]\\s*)(?!["'\`\\[{])[^\\s,;}\\])&#"'<>]{6,}`,
+  'gi',
+);
+
 // The same members percent-encoded once or twice, as in a tRPC GET URL:
 // `/api/trpc/offer.getBySigningToken?input=%7B%220%22%3A%7B%22json%22%3A%7B%22token%22%3A%22<token>%22%7D…`.
 // The value runs until its closing (encoded) quote; other escapes inside it are consumed.
@@ -105,6 +118,8 @@ function scrubPatterns(value: string): string {
     .replace(JOIN_PREFIXED_TOKEN, `$1${REDACTED}`)
     .replace(JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
     .replace(ESCAPED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`)
+    .replace(DIAGNOSTIC_QUOTED_VALUE, `$1$2${REDACTED}`)
+    .replace(DIAGNOSTIC_BARE_VALUE, `$1${REDACTED}`)
     .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
 }
 

@@ -189,6 +189,24 @@ describe('Sentry join-token redaction', () => {
     expect(JSON.stringify(err)).not.toContain(TOKEN);
   });
 
+  it('scrubs credentials written in diagnostic object syntax (codex r15)', () => {
+    for (const value of [
+      `Error: { candidateToken: "${TOKEN}" }`,
+      `Invalid args: { where: { token: '${TOKEN}', id: 1 } }`,
+      `nonce = ${TOKEN}`,
+      'signingToken: `' + TOKEN + '`',
+      `token_hash:${TOKEN}`,
+    ]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      const event = redactSentryEvent({ exception: { values: [{ type: 'Error', value }] } });
+      expect(JSON.stringify(event), value).not.toContain(TOKEN);
+    }
+    // Longer identifiers and other fields are untouched; redaction is stable on a second pass.
+    expect(redactBearerTokens('csrfTokenizer: abcdefgh, status: active')).toBe('csrfTokenizer: abcdefgh, status: active');
+    const once = redactBearerTokens(`Error: { candidateToken: "${TOKEN}" }`);
+    expect(redactBearerTokens(once)).toBe(once);
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);
