@@ -36,19 +36,23 @@ export function buildStageSteps(app: Application): StageStep[] {
     { name: 'Postulada', order: 0 },
     { name: 'Preselección', order: 1 },
     { name: 'Evaluaciones', order: 2 },
-    { name: app.currentStage.name, order: currentOrder },
+    { name: app.currentStage.name, order: currentOrder, isActual: true },
     { name: 'Oferta', order: currentOrder + 1 },
     { name: 'Contratación', order: currentOrder + 2 },
   ];
 
-  // Deduplicate by name, ignoring accents and case
-  const seen = new Set<string>();
-  const unique: typeof stages = [];
+  // Deduplicate by name, ignoring accents and case. The candidate's actual stage always wins over a
+  // built-in placeholder of the same name, so its real order (and "current" marker) is kept.
+  const indexByKey = new Map<string, number>();
+  const unique: Array<{ name: string; order: number }> = [];
   for (const s of stages) {
     const key = stageKey(s.name);
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(s);
+    const existing = indexByKey.get(key);
+    if (existing === undefined) {
+      indexByKey.set(key, unique.length);
+      unique.push({ name: s.name, order: s.order });
+    } else if ('isActual' in s) {
+      unique[existing] = { name: s.name, order: s.order };
     }
   }
 

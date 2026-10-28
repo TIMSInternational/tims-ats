@@ -12,6 +12,12 @@ function app(name: string, order: number) {
   };
 }
 
+const stripped = (name: string) =>
+  name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
 describe('candidate stage timeline', () => {
   it.each(['Preseleccion', 'Preselección', 'PRESELECCION'])(
     'collapses a stored "%s" stage onto the built-in step (accent/case-insensitive)',
@@ -22,6 +28,14 @@ describe('candidate stage timeline', () => {
       expect(steps.filter((s) => s.isCurrent)).toHaveLength(1);
     },
   );
+
+  it.each([3, 5])('keeps the actual stage current when its name matches a built-in step at order %i', (order) => {
+    const steps = buildStageSteps(app('Preselección', order));
+    expect(steps.filter((s) => s.isCurrent)).toEqual([
+      { name: 'Preselección', date: null, isCurrent: true, isCompleted: false },
+    ]);
+    expect(steps.filter((s) => stripped(s.name) === 'preseleccion')).toHaveLength(1);
+  });
 
   it('keeps a distinct current stage as its own step', () => {
     const steps = buildStageSteps(app('Entrevista técnica', 3));
