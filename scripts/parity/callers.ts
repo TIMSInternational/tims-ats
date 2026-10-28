@@ -62,7 +62,7 @@ export async function callCsharp(
 }
 
 /**
- * C# WRITE caller (POST/PATCH). Mirrors `callCsharp` but sends a JSON body and an
+ * C# WRITE caller (POST/PATCH/PUT/DELETE). Mirrors `callCsharp` but sends a JSON body and an
  * explicit method — used by the write-verification checks. `Bearer` auth like the
  * read caller; `Content-Type: application/json`. Same JSON-or-raw-text body fallback
  * so a non-JSON error page still yields a usable `status`. A `null`/`undefined` body
@@ -70,7 +70,7 @@ export async function callCsharp(
  */
 export async function callCsharpWrite(
   base: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   token: string,
   body: unknown,
