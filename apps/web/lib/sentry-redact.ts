@@ -99,6 +99,16 @@ const FILTER_OP = `["']?(?:${JSON_FILTER_OPS})["']?`;
 const PATH_THEN_VALUE = new RegExp(`(${CREDENTIAL_PATH}[^{}]*?${FILTER_OP}\\s*:\\s*)${QUOTED}`, 'gi');
 const VALUE_THEN_PATH = new RegExp(`(${FILTER_OP}\\s*:\\s*)${QUOTED}(?=[^{}]*?${CREDENTIAL_PATH})`, 'gi');
 const FILTER_OP_SET: ReadonlySet<string> = new Set(JSON_FILTER_OPS.split('|'));
+const CREDENTIAL_PATH_TEST = new RegExp(CREDENTIAL_PATH, 'i');
+const FILTER_OP_VALUE = new RegExp(`(${FILTER_OP}\\s*:\\s*)${QUOTED}`, 'gi');
+const INNERMOST_OBJECT = /\{[^{}]*\}/g;
+
+// Every comparison inside each innermost `{…}` that filters on a credential path is redacted (a filter object
+// holds its path in brackets, never braces). The two order-specific patterns above still cover a diagnostic cut
+// off before its closing brace.
+function scrubFilterObject(object: string): string {
+  return CREDENTIAL_PATH_TEST.test(object) ? object.replace(FILTER_OP_VALUE, `$1$2${REDACTED}`) : object;
+}
 
 // The same members percent-encoded once or twice, as in a tRPC GET URL:
 // `/api/trpc/offer.getBySigningToken?input=%7B%220%22%3A%7B%22json%22%3A%7B%22token%22%3A%22<token>%22%7D…`.
@@ -137,6 +147,7 @@ function scrubPatterns(value: string): string {
     .replace(QUOTED_KEY_VALUE, `$1$3${REDACTED}`)
     .replace(DIAGNOSTIC_BARE_VALUE, `$1${REDACTED}`)
     .replace(PATH_THEN_VALUE, `$1$2${REDACTED}`)
+    .replace(INNERMOST_OBJECT, scrubFilterObject)
     .replace(VALUE_THEN_PATH, `$1$2${REDACTED}`)
     .replace(ENCODED_JSON_CREDENTIAL_VALUE, `$1${REDACTED}`);
 }
@@ -287,7 +298,9 @@ function scrub(node: unknown, depth: number): unknown {
     if (key === 'query_string') scrubQueryString(value);
     // A parsed body (`request.data = { token }`): the bare value has no surrounding text to match on.
     record[key] =
-      CREDENTIAL_KEY_SET.has(key.toLowerCase()) && typeof value === 'string' && value.length > 0 ? REDACTED : scrub(value, depth + 1);
+      CREDENTIAL_KEY_SET.has(key.toLowerCase()) && value !== null && value !== undefined && value !== ''
+        ? REDACTED
+        : scrub(value, depth + 1);
   }
   return record;
 }

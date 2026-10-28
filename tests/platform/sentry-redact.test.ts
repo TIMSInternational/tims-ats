@@ -235,6 +235,15 @@ describe('Sentry join-token redaction', () => {
       expect(redactBearerTokens(value), value).not.toContain(TOKEN);
       expect(JSON.stringify(redactSentryEvent({ exception: { values: [{ value }] } })), value).not.toContain(TOKEN);
     }
+    // Every comparison in one filter (codex r20), plain and serialized.
+    const multi = `Invalid args: { path: ["signingToken"], equals: "${TOKEN}", string_contains: "${TOKEN}" }`;
+    for (const value of [multi, JSON.stringify(multi), `x ${JSON.stringify(multi)}`]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+    }
+    // A credential-named property is redacted whatever its value's type.
+    for (const data of [{ token: { equals: TOKEN } }, { token: [TOKEN] }, { signingToken: { not: TOKEN } }]) {
+      expect(JSON.stringify(redactSentryEvent({ request: { data } })), JSON.stringify(data)).not.toContain(TOKEN);
+    }
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);
