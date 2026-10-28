@@ -99,7 +99,8 @@ const DIAGNOSTIC_BARE_VALUE = new RegExp(
 // Every sibling of such a path is a comparison on the credential (equals, gte, string_*, nested `not: {…}`, …), so
 // the WHOLE enclosing object is replaced, found by a bracket-matching scan; there is no operator list to fall
 // behind. A filter cut off before its closing brace loses everything after its opening brace.
-const CREDENTIAL_PATH = `["']?path["']?\\s*:\\s*\\[[^\\]{}]*["'](?:${KEY_ALT})["'][^\\]{}]*\\]`;
+// The closing quote and `]` are optional: a diagnostic truncated inside the path array still names the filter.
+const CREDENTIAL_PATH = `["']?path["']?\\s*:\\s*\\[[^\\]{}]*?["'](?:${KEY_ALT})(?![A-Za-z0-9_])`;
 const CREDENTIAL_PATH_RE = new RegExp(CREDENTIAL_PATH, 'gi');
 const FILTER_NON_VALUE_KEYS: ReadonlySet<string> = new Set(['path', 'mode']);
 
@@ -262,7 +263,9 @@ function percentDecode(value: string): string {
     try {
       return decodeURIComponent(run);
     } catch {
-      return run;
+      // An invalid UTF-8 byte must not shield the escapes next to it: decode every ASCII escape on its own and
+      // leave only the undecodable bytes encoded.
+      return run.replace(/%([0-7][0-9a-f])/gi, (_escape, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
     }
   });
 }

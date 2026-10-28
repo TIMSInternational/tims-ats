@@ -305,6 +305,15 @@ describe('Sentry join-token redaction', () => {
       expect(JSON.stringify(redactSentryEvent({ exception: { values: [{ value: cut }] } })), cut).not.toContain(TOKEN);
       expect(JSON.stringify(redactSentryEvent({ message: value })), value).not.toContain(TOKEN);
     }
+    // Truncated inside the path array, and invalid UTF-8 next to an encoded key (codex r28).
+    for (const value of [
+      `Invalid args: { equals: "${TOKEN}", path: ["signingToken"`,
+      `Invalid args: { equals: "${TOKEN}", path: ["signingTok`.replace('signingTok', 'signingToken'),
+      `%FF%7B%22%74oken%22%3A%22${TOKEN}%22%7D`,
+    ]) {
+      expect(redactBearerTokens(value), value).not.toContain(TOKEN);
+      expect(JSON.stringify(redactSentryEvent({ message: value })), value).not.toContain(TOKEN);
+    }
     // JSON-serialized and structured forms (codex r17).
     const serialized = JSON.stringify({ settings: { path: ['signingToken'], equals: TOKEN } });
     expect(redactBearerTokens(serialized)).not.toContain(TOKEN);
