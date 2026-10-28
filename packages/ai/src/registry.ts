@@ -20,6 +20,10 @@ export interface AgentDef {
   cacheTtlSeconds: number;
 }
 
+// Model choice (owner decision D-10): every live agent runs on Claude Haiku 4.5.
+// The runtime model comes from THIS registry (invokeAgent reads AGENT_REGISTRY),
+// not from the ai_agents row: resolveAgentId only writes `model` when it first
+// creates a row, so an older row may still carry a stale label.
 export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'cv-parser': {
     slug: 'cv-parser',
@@ -32,7 +36,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'candidate-screener': {
     slug: 'candidate-screener',
     name: 'Candidate Screener',
-    model: 'sonnet',
+    model: 'haiku',
     category: 'recruitment',
     batchEligible: true,
     cacheTtlSeconds: 0,
@@ -49,7 +53,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'vacancy-writer': {
     slug: 'vacancy-writer',
     name: 'Vacancy Writer',
-    model: 'sonnet',
+    model: 'haiku',
     category: 'recruitment',
     batchEligible: false,
     cacheTtlSeconds: 2_592_000,
@@ -63,9 +67,6 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
     cacheTtlSeconds: 86_400,
   },
   // Interview agents — all operate on candidate PII / evaluator opinions ⇒ ttl 0 (never cached).
-  // On 'haiku' (Haiku 4.5) deliberately: the Bedrock account's Sonnet 4.5 Marketplace subscription
-  // can't complete until a valid payment instrument is on file. Haiku 4.5 is current-gen and capable
-  // for guide/analysis. Upgrade these back to 'sonnet' once the account billing is fixed.
   'interview-summarizer': {
     slug: 'interview-summarizer',
     name: 'Interview Summarizer',
@@ -96,12 +97,11 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'ai-voice-interview': {
     slug: 'ai-voice-interview',
     name: 'AI Voice Interview',
-    model: 'sonnet',
+    model: 'haiku',
     category: 'recruitment',
     batchEligible: false,
     cacheTtlSeconds: 0,
   },
-  // 'haiku' (Haiku 4.5) pending the account's Sonnet 4.5 billing fix — see note above; upgrade to 'sonnet' after.
   'interview-fit-score': {
     slug: 'interview-fit-score',
     name: 'Interview Fit Scorer',
@@ -110,11 +110,11 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
     batchEligible: false,
     cacheTtlSeconds: 0,
   },
-  // Consequential candidate-evaluation narrative (not interview-analysis-cluster) ⇒ 'sonnet', matching candidate-screener.
+  // Consequential candidate-evaluation narrative (not interview-analysis-cluster).
   'fit-explainer': {
     slug: 'fit-explainer',
     name: 'FIT Score Explainer',
-    model: 'sonnet',
+    model: 'haiku',
     category: 'recruitment',
     batchEligible: false,
     cacheTtlSeconds: 0,
@@ -124,7 +124,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'pipeline-optimizer': {
     slug: 'pipeline-optimizer',
     name: 'Pipeline Optimizer',
-    model: 'sonnet',
+    model: 'haiku',
     category: 'pipeline',
     batchEligible: false,
     cacheTtlSeconds: 0,
@@ -135,7 +135,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'candidate-matcher': {
     slug: 'candidate-matcher',
     name: 'Candidate Matcher',
-    model: 'sonnet',
+    model: 'haiku',
     category: 'recruitment',
     batchEligible: true,
     cacheTtlSeconds: 900,

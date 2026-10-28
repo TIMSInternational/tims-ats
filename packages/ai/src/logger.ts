@@ -15,6 +15,12 @@ export async function logInvocation(params: {
   costUsd: number;
   latencyMs: number;
   model: string;
+  /**
+   * NOT persisted: ai_agent_usage_logs has no success column yet, so a degraded
+   * call is indistinguishable from a good one in this table. Until that column
+   * exists, failures are visible only through invokeAgent's PII-free
+   * logger.warn ('AI agent degraded to fallback').
+   */
   success: boolean;
   cached?: boolean;
   userId?: string;

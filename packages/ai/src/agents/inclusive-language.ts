@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
-const SYSTEM_PROMPT = `You are an inclusive language reviewer for job descriptions in Spanish.
+export const INCLUSIVE_LANGUAGE_SYSTEM_PROMPT = `You are an inclusive language reviewer for job descriptions in Spanish.
 Analyze the text for gendered, biased, or exclusionary language and suggest improvements.
 
 Output format: JSON with the following structure:
@@ -23,30 +23,32 @@ Rules:
 - Flag age-biased terms (e.g., "joven y dinamico")
 - Flag ability-biased terms
 - Be constructive, not prescriptive
-- Maximum 10 suggestions`;
+- Maximum 10 suggestions
+- Keep "original", "suggestion" and "reason" each under 500 characters; quote only the problematic phrase, not a whole paragraph`;
 
-const outputSchema = z.object({
-  score: z.number().min(0).max(100),
+export const inclusiveLanguageOutputSchema = z.object({
+  // null = "not available" (degraded fallback) — never a made-up default score.
+  score: z.number().min(0).max(100).nullable(),
   suggestions: z.array(z.object({
-    original: z.string(),
-    suggestion: z.string(),
-    reason: z.string(),
+    original: z.string().max(500),
+    suggestion: z.string().max(500),
+    reason: z.string().max(500),
   })).max(10),
 });
 
 export async function checkInclusiveLanguage(
   orgId: string,
   text: string,
-): Promise<{ score: number; suggestions: Array<{ original: string; suggestion: string; reason: string }>; model: string }> {
+): Promise<{ score: number | null; suggestions: Array<{ original: string; suggestion: string; reason: string }>; model: string }> {
   const { data, model } = await invokeAgent({
     slug: 'inclusive-language',
     orgId,
     input: { text },
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: INCLUSIVE_LANGUAGE_SYSTEM_PROMPT,
     buildUserMessage: ({ text }) =>
       `${wrapAsData('text_to_review', text)}\n\nAnalyze this job description for inclusive language. Return JSON.`,
-    schema: outputSchema,
-    fallback: () => ({ score: 75, suggestions: [] }),
+    schema: inclusiveLanguageOutputSchema,
+    fallback: () => ({ score: null, suggestions: [] }),
     maxTokens: 1024,
   });
 

@@ -29,6 +29,10 @@ export default defineConfig({
       exceljs: resolve(__dirname, 'packages/api/node_modules/exceljs'),
       // Same fix, pre-applied for the CV-upload plan's S3 library (packages/api/src/lib/s3.ts)
       // and its tests, which hit the identical mismatch for these two packages.
+      // Same fix for the Vercel AI SDK used by packages/ai/src/client.ts, so
+      // tests/ai/bedrock-timeout.test.ts can vi.mock('ai') and intercept generateText.
+      // A string alias key matches only 'ai' and 'ai/...', not other names starting with "ai".
+      ai: resolve(__dirname, 'packages/ai/node_modules/ai'),
       '@aws-sdk/client-s3': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/client-s3'),
       '@aws-sdk/s3-presigned-post': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/s3-presigned-post'),
       // `import 'server-only'` throws when imported outside the Next.js server bundler
