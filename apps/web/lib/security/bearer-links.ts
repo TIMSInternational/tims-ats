@@ -1,6 +1,7 @@
-// Single source of truth for pages whose URL carries a bearer credential. Read by the middleware
-// (no-referrer + no-store on those pages) and by the Sentry redactor (lib/sentry-redact.ts), so a new
-// bearer-link route is protected in both places by adding it here once.
+// Pages whose URL carries a bearer credential, as data for the Sentry redactor (lib/sentry-redact.ts).
+// Mirrors `isBearerLinkPathname` in middleware.ts (no-referrer + no-store on those pages); a parity test
+// (tests/security/csp-and-public-routes.test.ts) drives the REAL middleware with every route listed here,
+// so adding a bearer-link route to one side without the other turns CI red.
 
 /** Routes whose FIRST path segment after the prefix is the credential: `/offers/sign/<token>`. */
 export const BEARER_TOKEN_PATH_PREFIXES = ['/offers/sign/', '/interview/join/', '/ai-interview/'] as const;

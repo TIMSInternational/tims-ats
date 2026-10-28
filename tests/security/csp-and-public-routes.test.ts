@@ -261,6 +261,21 @@ describe('bearer-link pages never leak their token (Referer / shared cache)', ()
     },
   );
 
+  it('the middleware and the Sentry redactor share one bearer-link route list (lib/security/bearer-links.ts)', async () => {
+    const { BEARER_QUERY_PATHS, BEARER_TOKEN_PATH_PREFIXES, isBearerLinkPathname } = await import(
+      '../../apps/web/lib/security/bearer-links'
+    );
+    expect([...BEARER_QUERY_PATHS, ...BEARER_TOKEN_PATH_PREFIXES].sort()).toEqual(
+      ['/accept-invitation', '/ai-interview/', '/interview/join/', '/offers/sign/', '/reset-password'].sort(),
+    );
+    const middleware = await loadMiddleware();
+    const paths = [...BEARER_QUERY_PATHS, ...BEARER_TOKEN_PATH_PREFIXES.map((p) => `${p}tok_abc`)];
+    for (const path of [...paths, '/careers/acme/v1', '/ai-interviewer', '/offers/signatures']) {
+      const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));
+      expect(res.headers.get('referrer-policy') === 'no-referrer', path).toBe(isBearerLinkPathname(path));
+    }
+  });
+
   it.each(['/careers/acme/v1', '/offers/signatures', '/interview/joiner', '/ai-interviewer'])('%s is not treated as a bearer-link page', async (path) => {
     const middleware = await loadMiddleware();
     const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));

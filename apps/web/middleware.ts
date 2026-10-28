@@ -2,9 +2,6 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
 import { buildCsp, cvUploadCspOrigin, originOf, type CspOrigins } from './lib/security/csp';
-// Pages whose URL carries a bearer credential (?token= or a path token): never leak it via
-// Referer, never let a shared cache store the page. Shared with the Sentry redactor.
-import { isBearerLinkPathname } from './lib/security/bearer-links';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -47,6 +44,17 @@ const CSP_ORIGINS: CspOrigins = {
   cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
 };
 
+// Pages whose URL carries a bearer credential (?token= or a path token): never
+// leak it via Referer, never let a shared cache store the page.
+function isBearerLinkPathname(pathname: string): boolean {
+  return (
+    pathname === '/accept-invitation' ||
+    pathname === '/reset-password' ||
+    pathname.startsWith('/offers/sign/') ||
+    pathname.startsWith('/interview/join/') ||
+    pathname.startsWith('/ai-interview/')
+  );
+}
 
 // A path is public when it IS one of PUBLIC_PATHS or is nested under one
 // (segment-aware: '/offers/sign' does not make '/offers/signatures' public).
