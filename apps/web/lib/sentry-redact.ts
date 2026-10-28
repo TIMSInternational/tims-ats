@@ -121,9 +121,12 @@ function scrubJsonText(text: string, depth: number): string | null {
 // encoding of the value can survive. Sensitive: the credential parameters, plus tRPC's `input`, which carries
 // the whole procedure input (a credential or personal data) and is never needed to debug an error.
 const DROPPED_QUERY_PARAMS: ReadonlySet<string> = new Set([...BEARER_QUERY_PARAMS, 'input']);
-// A value stops at `?` too: once a nested URL is decoded, its own query (`?next=/x?input=…`) must be seen as
-// parameters rather than swallowed by the outer value.
-const QUERY_PARAMETER = /((?:^|[?&;#])([^=&#?;\s"'<>]+)=)([^&#;?\s]*)/gi;
+// Only the parameter NAME is matched by pattern. A dropped value then runs to the real query boundary (`&`, `#`,
+// whitespace): URL parsers keep a literal `;` or `?` inside a value, so stopping there would leave its tail
+// behind. Scanning resumes right after each `=`, so a parameter nested in a decoded URL (`?next=/x?input=…`) is
+// still seen on its own.
+const QUERY_PARAMETER_NAME = /(?:^|[?&;#])([^=&#?;\s"'<>]+)=/g;
+const QUERY_VALUE_END = /[&#\s]/;
 
 function queryParamName(raw: string): string {
   let name = raw;
@@ -140,9 +143,21 @@ function isDroppedQueryParam(rawName: string): boolean {
 }
 
 function scrubQueryParams(value: string): string {
-  return value.replace(QUERY_PARAMETER, (whole, prefix: string, name: string, raw: string) =>
-    raw.length > 0 && raw !== REDACTED && isDroppedQueryParam(name) ? `${prefix}${REDACTED}` : whole,
-  );
+  const names = new RegExp(QUERY_PARAMETER_NAME.source, 'g');
+  let out = '';
+  let last = 0;
+  for (let match = names.exec(value); match !== null; match = names.exec(value)) {
+    if (!isDroppedQueryParam(match[1])) continue;
+    const start = names.lastIndex;
+    let end = start;
+    while (end < value.length && !QUERY_VALUE_END.test(value[end])) end++;
+    if (end > start && value.slice(start, end) !== REDACTED) {
+      out += value.slice(last, start) + REDACTED;
+      last = end;
+    }
+    names.lastIndex = end;
+  }
+  return out + value.slice(last);
 }
 
 // One scrubbing pass over a string: the structural JSON pass first (keys compared after JSON decoding) or, for

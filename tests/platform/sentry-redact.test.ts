@@ -150,6 +150,14 @@ describe('Sentry join-token redaction', () => {
     expect(pairs.request.query_string).toEqual([['%69nput', '[redacted]'], ['batch', '1']]);
   });
 
+  it('drops an input value up to the real query boundary, literal ; and ? included (codex r11)', () => {
+    for (const sep of [';', '?']) {
+      const url = `/api/trpc/x?input=%7B%22cvText%22%3A%22prefix${sep}medical-history%22%7D&batch=1#frag`;
+      expect(new URLSearchParams(url.split('?').slice(1).join('?').split('#')[0]).get('input')).toContain('medical-history');
+      expect(redactBearerTokens(url)).toBe('/api/trpc/x?input=[redacted]&batch=1#frag');
+    }
+  });
+
   it('leaves unrelated or non-token-shaped values alone', () => {
     // 42 and 44 characters: not the token shape. No "join" prefix: not this rule's business.
     const short = TOKEN.slice(0, 42);
