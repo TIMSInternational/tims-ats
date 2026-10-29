@@ -32,19 +32,19 @@ Paths that start with `Tims.` are under `services/Tims.Platform/src/`.
 
 ## 2. Decision summary
 
-| id      | decision                                                                                                                                      |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| D-25-1  | Store money as `bigint` minor units at the ISO 4217 exponent, next to a `char(3)` currency.                                                   |
-| D-25-2  | Costa Rica defaults to 13 salary payments a year (aguinaldo). The value is editable per offer.                                                |
-| D-25-3  | ExchangeRate-API stays the FX provider of record. The fallback starts as `none`.                                                              |
-| D-25-3b | Reports fail soft on missing FX. Issuing an invoice fails closed. Recording a payment never fails on FX.                                      |
-| D-25-4  | The locale profile is four typed `organizations` columns. The billing currency is **not** one of them: it stays on the subscription contract. |
-| D-25-5  | The platform owner edits all four profile fields. Tenant admins edit timezone and locale only.                                                |
-| D-25-6  | Round half-even at the ISO exponent wherever a stored amount is produced. The legacy read kernels are the one documented exception.           |
-| D-25-7  | Tenant reports convert into the tenant base currency, or show per-currency totals when none is set. Platform reports use USD.                 |
-| D-25-8  | An invoice is "issued" when it leaves draft. The FX rate is frozen then, and again when a payment is recorded.                                |
-| D-25-9  | Invoice documents show the ISO exponent. Summaries follow the display rule.                                                                   |
-| D-25-10 | Legacy offers without salary terms are left as they are and labelled as older than the model. There is no backfill.                           |
+| id      | decision                                                                                                                                                                         |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-25-1  | Store money as `bigint` minor units at the ISO 4217 exponent, next to a `char(3)` currency.                                                                                      |
+| D-25-2  | Costa Rica defaults to 13 salary payments a year (aguinaldo). The value is editable per offer.                                                                                   |
+| D-25-3  | ExchangeRate-API stays the FX provider of record. The fallback starts as `none`.                                                                                                 |
+| D-25-3b | Reports fail soft on missing FX. Issuing an invoice fails closed. Recording a payment never fails on FX.                                                                         |
+| D-25-4  | The locale profile is four typed `organizations` columns. The billing currency is **not** one of them: it belongs on a subscription contract currency that WP-22 must add first. |
+| D-25-5  | The platform owner edits all four profile fields. Tenant admins edit timezone and locale only.                                                                                   |
+| D-25-6  | Round half-even at the ISO exponent wherever a stored amount is produced. The legacy read kernels are the one documented exception.                                              |
+| D-25-7  | Tenant reports convert into the tenant base currency, or show per-currency totals when none is set. Platform reports use USD.                                                    |
+| D-25-8  | An invoice is "issued" when it leaves draft. The FX rate is frozen then, and again when a payment is recorded.                                                                   |
+| D-25-9  | Invoice documents show the ISO exponent. Summaries follow the display rule.                                                                                                      |
+| D-25-10 | Legacy offers without salary terms are left as they are and labelled as older than the model. There is no backfill.                                                              |
 
 ## 3. The target model
 
@@ -74,8 +74,20 @@ Paths that start with `Tims.` are under `services/Tims.Platform/src/`.
 - `band`: a snapshot of the vacancy salary band when the offer was created, built on the server and never supplied by
   the client.
 
-The annual equivalent is `monthly × paymentsPerYear`. The legacy `offers.salary` column keeps its meaning,
-`12 × monthly`, and is dual-written so that existing readers and KPIs stay stable until the C# offer port.
+Conversions between the two periods:
+
+- A **yearly** amount is the full annual figure and **includes** every payment, aguinaldo too. The monthly
+  equivalent is `yearly ÷ paymentsPerYear`, rounded once, half-even at the ISO exponent (D-25-6).
+- A **monthly** amount is one regular payment. The annual equivalent is `monthly × paymentsPerYear`, which is exact.
+- The legacy `offers.salary` column keeps its meaning, `12 × monthly`, where `monthly` is the entered amount or the
+  derived monthly equivalent above. It is dual-written so that existing readers and KPIs stay stable until the C#
+  offer port.
+
+Worked example: a yearly CRC 13 000 000 with 13 payments gives a monthly equivalent of CRC 1 000 000 and a legacy
+`salary` of CRC 12 000 000. The annual equivalent shown to the user stays CRC 13 000 000. The shared
+`salary-terms` fixture (planned, `contracts/money-fixtures/`) pins both periods: this case, a monthly case with 13
+payments, and a yearly case whose division needs rounding (CRC 15 000 001 with 12 payments gives a monthly minor
+amount of 125000008).
 
 ### 3.3 Tenant locale profile
 
@@ -170,9 +182,16 @@ and documents the configuration rollback (raise `Fx__MaxPinAgeDays`).
 - Four typed `organizations` columns are canonical for locale and reporting.
 - The legacy `settings` JSON is read only as a fallback, and C# stops reading `settings.currency` once a typed value is
   set.
-- **The billing currency is not an organization column.** Its single source is the subscription's contract currency,
-  limited to the billable currencies USD and CRC. This decision is recorded against the platform-billing work package
-  (WP-22), which already defines that field as the one source of truth. WP-25 adds no competing field.
+- **The billing currency is not an organization column.** Its intended single source is a subscription contract
+  currency, limited to the billable currencies USD and CRC. **That field does not exist yet**: `Subscription` has no
+  currency (`packages/db/prisma/schema/billing.prisma:8`), and `createInvoice` stores the caller's currency as given
+  (`packages/api/src/routers/platform/invoices.ts:123`). Adding it is a prerequisite owned by the platform-billing
+  work package (WP-22). WP-25 adds no competing field.
+- **Migration policy until then.** Existing invoices keep their stored `currency`; nothing is rewritten. Once the
+  contract currency exists, a new invoice for an organization with a contract defaults to that currency, and a
+  different currency needs an explicit, audited override. An invoice for an organization **without** a subscription
+  (or with no contract currency set) has no default: the currency is required and must be billable. Nothing falls back
+  to the organization's `base_currency`, which is a reporting currency.
 - The base currency is validated only as a known ISO 4217 code, not against the billable list, because it is a
   reporting currency. A Colombian tenant reports in COP, for example.
 
@@ -180,7 +199,7 @@ and documents the configuration rollback (raise `Fx__MaxPinAgeDays`).
 billing needs the contract.
 
 **Alternative rejected.** An `organizations.billing_currency` column, from the first draft of the plan. It would have
-competed with the contract currency that the invoice flow actually uses.
+competed with the planned contract currency, leaving two candidate sources for one fact.
 
 ### D-25-5 Who edits the profile
 
@@ -201,8 +220,14 @@ aguinaldo default. Keeping both support-managed stops a tenant from silently cha
 `toMinor`, the invoice totals kernel and the DDL backfills.
 
 - Invoice line totals are exact (`quantity × unitPriceMinor`). Tax is rounded once.
-- This is recorded against WP-22. It is the rule WP-22 already pins for invoice totals, so both work packages share
-  one rule and none of WP-22's tests change. The shared invoice-totals fixture copies WP-22's case.
+- **This is a dependency, not an existing contract.** Today no invoice-totals fixture exists:
+  `contracts/billing-fixtures/invoice-v1.json` pins wire serialization only, and `createInvoice` computes totals in
+  unrounded floating point (`packages/api/src/routers/platform/invoices.ts:113`). The platform-billing work package
+  (WP-22) plans the C# invoice-totals kernel with this same rule, so the two work packages share one rule from the
+  start. Whichever lands first adds the shared fixture; the other reuses it unchanged.
+- The fixture must pin the tie-breaking cases, not only a happy path: an exact case (3 × 250000 minor at 13% gives
+  subtotal 750000, tax 97500, total 847500), a tax that lands on .5 minor at an even digit (rounds down), and one at
+  an odd digit (rounds up). A half-up mutation must turn at least one case red.
 - PostgreSQL `round()` on `numeric` rounds half away from zero, so the backfills use an explicit half-even expression.
 
 **The one exception.** The existing `roundMoney` / `CompensationKernels.RoundMoney` (half-up with an `EPSILON` bias)
@@ -211,7 +236,8 @@ contract for the live FX read surfaces. It is a read-side display kernel and nev
 
 **Why.** One rule across both work packages. Half-even has no upward bias when many rounded values are summed.
 
-**Alternative rejected.** Half-up everywhere, to match the legacy kernel. It would contradict WP-22's pinned totals.
+**Alternative rejected.** Half-up everywhere, to match the legacy kernel. It would split the stored-amount rule from
+the one planned for the invoice-totals kernel.
 
 ### D-25-7 Reporting base currency
 
