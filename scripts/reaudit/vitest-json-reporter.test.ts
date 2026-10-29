@@ -78,7 +78,10 @@ describe('binding inventory against a real Vitest report', () => {
   it('the names the scanner derives from the source are the names the real reporter writes', () => {
     const out = join(dir, 'inv-full.json');
     expect(runVitest(reporter, out)).toBe(0);
-    const vt = collectVitestReport(JSON.parse(readFileSync(out, 'utf8')), undefined, { runExitCode: 0 });
+    const vt = collectVitestReport(JSON.parse(readFileSync(out, 'utf8')), undefined, {
+      runExitCode: 0,
+      checkoutRoot: repoRoot,
+    });
     expect(inventory().entries.map((e) => e.name)).toEqual([
       'fixture ideal [finding:syn-a]',
       'fixture ideal [finding:syn-b]',
@@ -92,7 +95,10 @@ describe('binding inventory against a real Vitest report', () => {
   it('a -t filter does NOT drop a check from its file: Vitest reports it skipped, so it is STALE-BINDING (whole-file omission is what the inventory catches)', () => {
     const out = join(dir, 'inv-filtered.json');
     expect(runVitest(reporter, out, ['-t', 'syn-a'])).toBe(0);
-    const vt = collectVitestReport(JSON.parse(readFileSync(out, 'utf8')), undefined, { runExitCode: 0 });
+    const vt = collectVitestReport(JSON.parse(readFileSync(out, 'utf8')), undefined, {
+      runExitCode: 0,
+      checkoutRoot: repoRoot,
+    });
     expect(statusById(vt.observations).get('syn-b')).toBe('STALE-BINDING');
     expect(reconcileInventory(inventory(), vt.observations, new Set(['vitest']), known).untrusted).toEqual([]);
   }, 60_000);

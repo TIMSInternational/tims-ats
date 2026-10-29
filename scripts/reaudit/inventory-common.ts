@@ -20,8 +20,6 @@ export interface FileScan {
 }
 
 const PREFIX_RE = /\[finding:|@finding:/g;
-/** A character after the prefix that starts a runtime-built id. */
-const DYNAMIC_NEXT = new Set(['$', '{', "'", '"', '`']);
 
 export function lineAt(text: string, index: number): number {
   let n = 1;
@@ -29,12 +27,21 @@ export function lineAt(text: string, index: number): number {
   return n;
 }
 
-/** The id of a complete tag at `index` (bracket or Playwright form), or null. */
-function completeTagAt(text: string, index: number): string | null {
-  const bracket = /^\[finding:([a-z0-9]+(?:-[a-z0-9]+)*)\]/.exec(text.slice(index, index + 80));
-  if (bracket) return bracket[1] as string;
-  const at = /^@finding:([a-z0-9]+(?:-[a-z0-9]+)*)(?![\w-])/.exec(text.slice(index, index + 80));
-  return at ? (at[1] as string) : null;
+const SLUG_AT = /^[a-z0-9]+(?:-[a-z0-9]+)*/;
+
+/**
+ * A tag at `index`. `[finding:<slug>]` is delimited by its bracket, so it is complete. A Playwright tag
+ * runs to the next whitespace (/@\S+/), so `@finding:<slug>` is complete only before whitespace or the
+ * end of the text; before anything else (a closing quote that `+ x` may follow, `${`) the id may be
+ * extended at runtime, and `open` is set.
+ */
+function tagAt(text: string, index: number, prefix: string): { id: string | null; open: boolean } {
+  const rest = text.slice(index + prefix.length, index + prefix.length + 80);
+  const slug = SLUG_AT.exec(rest)?.[0];
+  if (!slug) return { id: null, open: true };
+  const next = rest[slug.length];
+  if (prefix === '[finding:') return next === ']' ? { id: slug, open: false } : { id: null, open: true };
+  return { id: slug, open: next !== undefined && !/\s/.test(next) };
 }
 
 export interface Span {
@@ -53,13 +60,13 @@ export function leftovers(
   for (const m of text.matchAll(PREFIX_RE)) {
     const i = m.index;
     if (consumed.some((s) => i >= s.start && i < s.end)) continue;
-    const id = completeTagAt(text, i);
+    // A prose placeholder (`[finding:<id>]`) names no id and builds none.
+    if (text[i + m[0].length] === '<') continue;
+    const { id, open } = tagAt(text, i, m[0]);
     const line = lineAt(text, i);
-    if (id) {
+    if (id)
       out.entries.push({ id, source, file, line, name: null, why: 'tag outside a statically resolvable test title' });
-      continue;
-    }
-    const next = text[i + m[0].length];
-    if (next === undefined || DYNAMIC_NEXT.has(next)) out.unattributable.push(`${file}:${line}`);
+    // Any other incomplete tag may have its id (or a suffix of it) built at runtime: fail closed.
+    if (open) out.unattributable.push(`${file}:${line}`);
   }
 }

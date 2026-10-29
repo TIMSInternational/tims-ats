@@ -98,6 +98,7 @@ function stamp(
     headSha: over.sha ?? HEAD,
     exitCode: over.exitCode ?? 0,
     dirtyPaths: over.dirtyPaths ?? [],
+    checkoutRoot: '/abs',
   });
 }
 

@@ -23,7 +23,14 @@ afterEach(() => {
 function fileEvidence(kind: 'playwright' | 'vitest' = 'vitest', over: Partial<{ sha: string; dirty: string[] }> = {}) {
   const p = join(dir, `${kind}.json`);
   writeFileSync(p, '{"x":1}');
-  writeProvenance({ kind, output: p, headSha: over.sha ?? HEAD, dirtyPaths: over.dirty ?? [], exitCode: 0 });
+  writeProvenance({
+    kind,
+    output: p,
+    headSha: over.sha ?? HEAD,
+    dirtyPaths: over.dirty ?? [],
+    exitCode: 0,
+    checkoutRoot: '/abs/repo',
+  });
   return p;
 }
 
@@ -32,7 +39,7 @@ function trxEvidence() {
   mkdirSync(d);
   writeFileSync(join(d, 'a.trx'), '<a/>');
   writeFileSync(join(d, 'b.trx'), '<b/>');
-  writeProvenance({ kind: 'xunit', output: d, headSha: HEAD, dirtyPaths: [], exitCode: 0 });
+  writeProvenance({ kind: 'xunit', output: d, headSha: HEAD, dirtyPaths: [], exitCode: 0, checkoutRoot: '/abs/repo' });
   return d;
 }
 
@@ -111,6 +118,19 @@ describe('verifyProvenance: file evidence', () => {
     );
   });
 
+  it('a manifest without the absolute checkout root of the run is rejected (evidence paths are resolved against it)', () => {
+    const p = fileEvidence();
+    const m = manifestPathFor(p, 'vitest');
+    const good = JSON.parse(readFileSync(m, 'utf8')) as Record<string, unknown>;
+    expect(good.checkoutRoot).toBe('/abs/repo');
+    for (const bad of [undefined, '', 'relative/root']) {
+      writeFileSync(m, JSON.stringify({ ...good, checkoutRoot: bad }));
+      expect(() => verifyProvenance({ kind: 'vitest', evidence: p, headSha: HEAD, requireClean: false })).toThrow(
+        ProvenanceError,
+      );
+    }
+  });
+
   it('a manifest that says clean while listing dirty paths is rejected', () => {
     const p = fileEvidence('vitest', { dirty: ['x.ts'] });
     const m = manifestPathFor(p, 'vitest');
@@ -164,6 +184,8 @@ describe('verifyProvenance: TRX directory evidence', () => {
 describe('writeProvenance', () => {
   it('never overwrites an existing manifest (a stale manifest cannot be silently refreshed)', () => {
     const p = fileEvidence();
-    expect(() => writeProvenance({ kind: 'vitest', output: p, headSha: HEAD, dirtyPaths: [], exitCode: 0 })).toThrow();
+    expect(() =>
+      writeProvenance({ kind: 'vitest', output: p, headSha: HEAD, dirtyPaths: [], exitCode: 0, checkoutRoot: '/r' }),
+    ).toThrow();
   });
 });

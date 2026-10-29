@@ -29,7 +29,8 @@
  * unexpected outcome is a contradiction and rejects the report.
  */
 import { z } from 'zod';
-import { SLUG_RE, type Collection, type Observation, type ObservedStatus } from './status';
+import { posix } from 'node:path';
+import { repoRelative, SLUG_RE, type Collection, type Observation, type ObservedStatus } from './status';
 
 export class PlaywrightReportError extends Error {
   constructor(message: string) {
@@ -73,7 +74,12 @@ const suiteSchema: z.ZodType<Suite> = z.lazy(() =>
 );
 
 const globalErrorSchema = z.object({ message: z.string().max(20000).optional() });
-const reportSchema = z.object({ suites: z.array(suiteSchema), errors: z.array(globalErrorSchema) });
+/** `config.rootDir` (absolute, at the time of the run): `spec.file` is relative to it. */
+const reportSchema = z.object({
+  config: z.object({ rootDir: z.string().max(4096).optional() }).optional(),
+  suites: z.array(suiteSchema),
+  errors: z.array(globalErrorSchema),
+});
 
 type PwTest = z.infer<typeof testSchema>;
 type PwSpec = z.infer<typeof specSchema>;
@@ -117,6 +123,8 @@ interface Walked {
   /** Tests with an unexpected outcome and no finding tag. */
   unboundFailures: string[];
   anyUnexpected: boolean;
+  checkoutRoot?: string;
+  rootDir?: string;
 }
 
 function statusFor(
@@ -156,7 +164,8 @@ function collectTest(spec: PwSpec, test: PwTest, titlePath: string[], acc: Walke
   }
   const finalAnnotations = findingAnnotations([...(test.annotations ?? []), ...(last?.annotations ?? [])], name);
   const evidence = new Set(finalAnnotations.map((a) => `${a.type}\u0000${a.id}`));
-  const key = { file: spec.file, name: titlePath.slice(1).join(' › ') };
+  const abs = acc.rootDir && spec.file ? posix.join(acc.rootDir.replace(/\\/g, '/'), spec.file) : undefined;
+  const key = { file: repoRelative(acc.checkoutRoot, abs), name: titlePath.slice(1).join(' › ') };
   for (const id of ids) {
     acc.observations.push({ id, status: statusFor(id, last, test, evidence), source: 'playwright', test: name, key });
   }
@@ -179,7 +188,10 @@ function walk(suite: Suite, parents: string[], acc: Walked): void {
 
 export type PlaywrightCollection = Collection;
 
-export function collectPlaywrightReport(raw: unknown, opts: { runExitCode?: number } = {}): PlaywrightCollection {
+export function collectPlaywrightReport(
+  raw: unknown,
+  opts: { runExitCode?: number; checkoutRoot?: string } = {},
+): PlaywrightCollection {
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
@@ -187,7 +199,13 @@ export function collectPlaywrightReport(raw: unknown, opts: { runExitCode?: numb
       `not a Playwright JSON report (${first ? `${first.path.join('.') || '(root)'}: ${first.message}` : 'invalid'})`,
     );
   }
-  const acc: Walked = { observations: [], unboundFailures: [], anyUnexpected: false };
+  const acc: Walked = {
+    observations: [],
+    unboundFailures: [],
+    anyUnexpected: false,
+    checkoutRoot: opts.checkoutRoot,
+    rootDir: parsed.data.config?.rootDir,
+  };
   for (const suite of parsed.data.suites) walk(suite, [], acc);
 
   const untrusted: string[] = acc.unboundFailures.map(

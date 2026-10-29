@@ -97,7 +97,14 @@ export function runRecord(argv: readonly string[], io: RecordIo): number {
       return 2;
     }
     const dirtyPaths = [...new Set([...before.dirtyPaths, ...after.dirtyPaths])].sort();
-    writeProvenance({ kind: args.kind, output, headSha: before.headSha, dirtyPaths, exitCode });
+    writeProvenance({
+      kind: args.kind,
+      output,
+      headSha: before.headSha,
+      dirtyPaths,
+      exitCode,
+      checkoutRoot: before.repoRoot,
+    });
     io.log(
       `record: ${args.kind} evidence at ${before.headSha}${dirtyPaths.length ? ' (DIRTY checkout)' : ''}, exit ${exitCode}`,
     );

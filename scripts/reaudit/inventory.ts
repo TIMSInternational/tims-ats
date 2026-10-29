@@ -2,13 +2,17 @@
  * The binding inventory: every public finding check the COMMITTED source declares at the evidence SHA,
  * found by scanning the source (inventory-scan.ts), never by trusting what the evidence says ran.
  *
- * Collectors only see the checks a report contains. A filtered or partial run (`vitest run one.test.ts`,
- * `-t`, a Playwright `--grep`, one .NET project) simply leaves the other checks out, and a sibling
- * check's pass would then carry the finding. reconcileInventory closes that: every inventoried check
- * for a known finding must match an evidence entry (same source, same id, same exact name, same file
- * where the evidence names one). One that does not is NOT-RUN for its finding and, for a supplied
- * source, an untrusted-run reason, so --gate launch fails. Private (name-only) bindings are reconciled
- * by the collectors themselves (bindings.ts).
+ * Collectors only see the checks a report contains. A partial run (some test files, a Playwright
+ * `--grep`, one .NET project) simply leaves the other checks out, and a sibling check's pass would then
+ * carry the finding. (A Vitest `-t` filter is different: it reports the filtered tests as skipped, which
+ * is STALE-BINDING.) reconcileInventory closes that: every inventoried check for a known finding must
+ * match an evidence entry with the same source, id and exact name and, for Vitest and Playwright, the
+ * same repository-relative file, resolved against the checkout root the provenance manifest records
+ * (never a suffix match). TRX names no file, so xUnit matches by DisplayName (or a theory row of it).
+ * Two declarations one evidence entry could satisfy (same file and name; for xUnit the same DisplayName
+ * anywhere) are ambiguous and neither counts as run. An unmatched check is NOT-RUN for its finding
+ * and, for a supplied source (or when unresolvable), an untrusted-run reason, so --gate launch fails.
+ * Private (name-only) bindings are reconciled by the collectors themselves (bindings.ts).
  *
  * The scan reads the git objects of the SHA (`git grep` + `git cat-file`), not the working tree, so it
  * describes exactly the commit the provenance manifests name. Excluded: scripts/reaudit/ (the harness's
@@ -56,18 +60,19 @@ export function readInventory(repoRoot: string, sha: string): BindingInventory {
   return { sha, entries, unattributable };
 }
 
-/** Same file when one path ends with the other at a segment boundary (absolute / rootDir-relative). */
-function sameFile(repoRelative: string, reported: string | undefined): boolean {
-  if (reported === undefined || reported === '') return false;
-  const a = repoRelative.replace(/\\/g, '/');
-  const b = reported.replace(/\\/g, '/');
-  return a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
-}
-
 function matches(e: InventoryEntry, key: EvidenceKey): boolean {
   if (e.name === null) return false;
   if (e.source === 'xunit') return key.name === e.name || key.name.startsWith(`${e.name}(`);
-  return key.name === e.name && sameFile(e.file, key.file);
+  // key.file is repository-relative (resolved against the recorded checkout root): exact equality.
+  return key.name === e.name && key.file === e.file;
+}
+
+/** Names one evidence entry could satisfy both of. TRX carries no file, so xUnit compares across files. */
+function collide(a: InventoryEntry, b: InventoryEntry): boolean {
+  if (a.source !== b.source || a.name === null || b.name === null) return false;
+  if (a.file === b.file && a.line === b.line) return false; // the same declaration (bound to several ids)
+  if (a.source !== 'xunit') return a.file === b.file && a.name === b.name;
+  return a.name === b.name || a.name.startsWith(`${b.name}(`) || b.name.startsWith(`${a.name}(`);
 }
 
 export function reconcileInventory(
@@ -78,8 +83,13 @@ export function reconcileInventory(
 ): Collection {
   const out: Observation[] = [];
   const untrusted: string[] = [];
-  for (const e of inv.entries) {
-    if (!knownIds.has(e.id)) continue;
+  for (const e0 of inv.entries) {
+    if (!knownIds.has(e0.id)) continue;
+    // Two declarations one evidence entry could satisfy are ambiguous: neither can be shown to have run.
+    const twin = inv.entries.find((f) => collide(e0, f));
+    const e: InventoryEntry = twin
+      ? { ...e0, name: null, why: `ambiguous: ${twin.file}:${twin.line} declares a check with the same name` }
+      : e0;
     const ran = observations.some((o) => o.source === e.source && o.id === e.id && o.key && matches(e, o.key));
     if (ran) continue;
     const what = e.name === null ? `unresolvable: ${e.why ?? 'not a static test title'}` : `"${e.name}"`;

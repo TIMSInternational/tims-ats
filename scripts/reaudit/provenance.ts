@@ -4,7 +4,7 @@
  * The evidence-producing step (scripts/reaudit/record.ts) wraps the test command and, after it exits,
  * writes a manifest next to the report: the git SHA the run started and ended at (the same, or no
  * manifest is written), whether the checkout was dirty (untracked files included), the run's exit status,
- * and a SHA-256 of every report file. The collector accepts a report only when its manifest names the
+ * the absolute checkout root (report file paths are resolved against it), and a SHA-256 of every report file. The collector accepts a report only when its manifest names the
  * current HEAD and every hash still matches, and it parses the exact bytes it hashed.
  *
  * File timestamps play no part. What this proves: the report bytes are the ones a recorded run wrote,
@@ -14,7 +14,7 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import { z } from 'zod';
 import { FULL_SHA_RE } from './git-state';
 
@@ -46,6 +46,8 @@ const manifestSchema = z
     dirty: z.boolean(),
     dirtyPaths: z.array(z.string().min(1).max(4096)).max(MAX_LISTED_DIRTY),
     exitCode: z.number().int().min(0).max(255),
+    /** Absolute toplevel of the checkout the run happened in: report paths are resolved against it. */
+    checkoutRoot: z.string().min(1).max(4096).refine(isAbsolute, { message: 'checkoutRoot must be absolute' }),
     recordedAt: z.string().datetime(),
     files: z
       .array(z.object({ name: z.string().min(1).max(255), sha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict())
@@ -83,6 +85,8 @@ export interface WriteProvenanceInput {
   headSha: string;
   dirtyPaths: readonly string[];
   exitCode: number;
+  /** Absolute toplevel of the checkout the run happened in. */
+  checkoutRoot: string;
 }
 
 /** Hashes the report(s) at `output` and writes the manifest. Never overwrites an existing manifest. */
@@ -98,6 +102,7 @@ export function writeProvenance(input: WriteProvenanceInput): ProvenanceManifest
     dirty: input.dirtyPaths.length > 0,
     dirtyPaths: input.dirtyPaths.slice(0, MAX_LISTED_DIRTY),
     exitCode: input.exitCode,
+    checkoutRoot: input.checkoutRoot,
     recordedAt: new Date().toISOString(),
     files: names.map((name) => ({ name, sha256: sha256(readRegularFile(join(base, name))) })),
   });

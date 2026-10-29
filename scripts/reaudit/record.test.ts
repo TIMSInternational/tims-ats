@@ -68,6 +68,7 @@ describe('runRecord', () => {
     expect(code).toBe(3);
     const m = manifest(out);
     expect(m.headSha).toBe(git('rev-parse', 'HEAD'));
+    expect(m.checkoutRoot).toBe(git('rev-parse', '--show-toplevel'));
     expect(m.exitCode).toBe(3);
     expect(m.dirty).toBe(false);
     expect(() =>

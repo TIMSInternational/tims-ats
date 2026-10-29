@@ -66,7 +66,7 @@ describe('reconcileInventory: an omitted public check is never masked by a passi
     const vt = collectVitestReport(
       vitestReport([vitestFile('/abs/repo/tests/one.test.ts', 'ideal holds [finding:syn-a]')]),
       undefined,
-      { runExitCode: 0 },
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
     );
     expect(statusById(vt.observations).get('syn-a')).toBe('FIXED-VERIFIED'); // the premise
     const rec = reconcileInventory(twoFiles, vt.observations, ALL, KNOWN);
@@ -90,7 +90,7 @@ describe('reconcileInventory: an omitted public check is never masked by a passi
         vitestFile('/abs/repo/tests/two.test.ts', 'second check [finding:syn-a]'),
       ]),
       undefined,
-      { runExitCode: 0 },
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
     );
     expect(reconcileInventory(twoFiles, vt.observations, ALL, KNOWN)).toEqual({ observations: [], untrusted: [] });
   });
@@ -99,7 +99,7 @@ describe('reconcileInventory: an omitted public check is never masked by a passi
     const vt = collectVitestReport(
       vitestReport([vitestFile('/abs/repo/tests/elsewhere.test.ts', 'ideal holds [finding:syn-a]')]),
       undefined,
-      { runExitCode: 0 },
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
     );
     const one = inv([entry({ file: 'tests/one.test.ts', name: 's ideal holds [finding:syn-a]' })]);
     expect(reconcileInventory(one, vt.observations, ALL, KNOWN).observations).toHaveLength(1);
@@ -109,10 +109,60 @@ describe('reconcileInventory: an omitted public check is never masked by a passi
     const vt = collectVitestReport(
       vitestReport([vitestFile('/abs/repo/tests/xone.test.ts', 'ideal holds [finding:syn-a]')]),
       undefined,
-      { runExitCode: 0 },
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
     );
     const one = inv([entry({ file: 'one.test.ts', name: 's ideal holds [finding:syn-a]' })]);
     expect(reconcileInventory(one, vt.observations, ALL, KNOWN).observations).toHaveLength(1);
+  });
+
+  it('REGRESSION (Codex r12): a same-named file elsewhere in the checkout does not satisfy the entry (exact repo-relative path)', () => {
+    const vt = collectVitestReport(
+      vitestReport([vitestFile('/abs/repo/packages/api/tests/one.test.ts', 'ideal holds [finding:syn-a]')]),
+      undefined,
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
+    );
+    const one = inv([entry({ file: 'tests/one.test.ts', name: 's ideal holds [finding:syn-a]' })]);
+    expect(reconcileInventory(one, vt.observations, ALL, KNOWN).untrusted).toHaveLength(1);
+  });
+
+  it('a report file outside the recorded checkout root, or no checkout root, matches nothing', () => {
+    const one = inv([entry({ file: 'tests/one.test.ts', name: 's ideal holds [finding:syn-a]' })]);
+    for (const opts of [{ runExitCode: 0, checkoutRoot: '/other/repo' }, { runExitCode: 0 }]) {
+      const vt = collectVitestReport(
+        vitestReport([vitestFile('/abs/repo/tests/one.test.ts', 'ideal holds [finding:syn-a]')]),
+        undefined,
+        opts,
+      );
+      expect(reconcileInventory(one, vt.observations, ALL, KNOWN).untrusted).toHaveLength(1);
+    }
+  });
+
+  it('two declarations with the same name in the same file are ambiguous: one evidence entry cannot stand for both', () => {
+    const vt = collectVitestReport(
+      vitestReport([vitestFile('/abs/repo/tests/one.test.ts', 'ideal holds [finding:syn-a]')]),
+      undefined,
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
+    );
+    const dup = inv([
+      entry({ file: 'tests/one.test.ts', line: 3, name: 's ideal holds [finding:syn-a]' }),
+      entry({ file: 'tests/one.test.ts', line: 9, name: 's ideal holds [finding:syn-a]' }),
+    ]);
+    const r = reconcileInventory(dup, vt.observations, ALL, KNOWN);
+    expect(r.observations).toHaveLength(2);
+    expect(r.untrusted.join('\n')).toMatch(/ambiguous/);
+  });
+
+  it('one declaration bound to two ids is not ambiguous with itself', () => {
+    const vt = collectVitestReport(
+      vitestReport([vitestFile('/abs/repo/tests/one.test.ts', 'x [finding:syn-a] [finding:syn-b]')]),
+      undefined,
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
+    );
+    const both = inv([
+      entry({ id: 'syn-a', file: 'tests/one.test.ts', line: 3, name: 's x [finding:syn-a] [finding:syn-b]' }),
+      entry({ id: 'syn-b', file: 'tests/one.test.ts', line: 3, name: 's x [finding:syn-a] [finding:syn-b]' }),
+    ]);
+    expect(reconcileInventory(both, vt.observations, ALL, KNOWN)).toEqual({ observations: [], untrusted: [] });
   });
 
   it('a private-binding NOT-RUN (no evidence behind it) does not count as the check being present', () => {
@@ -125,7 +175,7 @@ describe('reconcileInventory: an omitted public check is never masked by a passi
     const vt = collectVitestReport(
       vitestReport([vitestFile('/abs/repo/tests/one.test.ts', 'ideal holds [finding:syn-a]')]),
       undefined,
-      { runExitCode: 0 },
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
     );
     const r = reconcileInventory(
       inv([entry({ file: 'tests/one.test.ts', name: null, why: 'dynamic title' })]),
@@ -190,6 +240,7 @@ describe('reconcileInventory: playwright and xunit keys', () => {
       },
     ],
     errors: [],
+    config: { rootDir: '/abs/repo/e2e' },
   });
   const pwEntry = entry({
     source: 'playwright',
@@ -198,7 +249,7 @@ describe('reconcileInventory: playwright and xunit keys', () => {
   });
 
   it('a Playwright spec matches by its title path below the file suite and its rootDir-relative file', () => {
-    const pw = collectPlaywrightReport(pwReport('step one'), { runExitCode: 0 });
+    const pw = collectPlaywrightReport(pwReport('step one'), { runExitCode: 0, checkoutRoot: '/abs/repo' });
     expect(reconcileInventory(inv([pwEntry]), pw.observations, ALL, KNOWN)).toEqual({
       observations: [],
       untrusted: [],
@@ -206,7 +257,7 @@ describe('reconcileInventory: playwright and xunit keys', () => {
   });
 
   it('a Playwright entry whose spec is absent is NOT-RUN and untrusted', () => {
-    const pw = collectPlaywrightReport(pwReport('another step'), { runExitCode: 0 });
+    const pw = collectPlaywrightReport(pwReport('another step'), { runExitCode: 0, checkoutRoot: '/abs/repo' });
     const r = reconcileInventory(inv([pwEntry]), pw.observations, ALL, KNOWN);
     expect(r.observations.map((o) => o.status)).toEqual(['NOT-RUN']);
     expect(r.untrusted).toHaveLength(1);
@@ -225,6 +276,24 @@ describe('reconcileInventory: playwright and xunit keys', () => {
       const xu = collectXunitRun([{ name: 'a.trx', xml: trx([name]) }], undefined, { runExitCode: 0 });
       expect(reconcileInventory(inv([xuEntry]), xu.observations, ALL, KNOWN).untrusted).toEqual([]);
     }
+  });
+
+  it('REGRESSION (Codex r12): two methods sharing a DisplayName are ambiguous; one TRX result cannot satisfy both', () => {
+    const xu = collectXunitRun([{ name: 'a.trx', xml: trx(['per row [finding:syn-a]']) }], undefined, {
+      runExitCode: 0,
+    });
+    const two = inv([xuEntry, { ...xuEntry, file: 'services/U/B.cs', line: 4 }]);
+    const r = reconcileInventory(two, xu.observations, ALL, KNOWN);
+    expect(r.observations.map((o) => o.status)).toEqual(['NOT-RUN', 'NOT-RUN']);
+    expect(r.untrusted.join('\n')).toMatch(/ambiguous/);
+  });
+
+  it('a DisplayName that is a theory-row prefix of another declaration is ambiguous too', () => {
+    const two = inv([xuEntry, { ...xuEntry, file: 'services/U/B.cs', name: 'per row [finding:syn-a](x: 1)' }]);
+    const xu = collectXunitRun([{ name: 'a.trx', xml: trx(['per row [finding:syn-a](x: 1)']) }], undefined, {
+      runExitCode: 0,
+    });
+    expect(reconcileInventory(two, xu.observations, ALL, KNOWN).observations).toHaveLength(2);
   });
 
   it('an xUnit test whose name merely starts with the DisplayName does not match', () => {

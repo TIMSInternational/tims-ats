@@ -34,7 +34,7 @@
  * finding is FIXED-VERIFIED and --gate launch fails.
  */
 import { z } from 'zod';
-import { tagIds, type Collection, type Observation, type ObservedStatus } from './status';
+import { repoRelative, tagIds, type Collection, type Observation, type ObservedStatus } from './status';
 
 export { tagIds };
 
@@ -75,6 +75,8 @@ function statusFor(status: string): ObservedStatus {
 export interface VitestRunOptions {
   /** The `vitest run` process exit status. Undefined only for callers with no process (unit tests). */
   runExitCode?: number;
+  /** The recorded checkout root of the run (provenance manifest). Without it no inventory entry matches. */
+  checkoutRoot?: string;
 }
 
 export function collectVitest(
@@ -121,7 +123,7 @@ export function collectVitestReport(
       // A test.fails "pass" means the body threw: never evidence that the ideal holds.
       const raw = a.fails ? 'NOT-RUN' : statusFor(a.status);
       const status = untrusted && raw === 'FIXED-VERIFIED' ? 'NOT-RUN' : raw;
-      const key = { file: file.name, name: fullName };
+      const key = { file: repoRelative(opts.checkoutRoot, file.name), name: fullName };
       for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName, key });
     }
   }

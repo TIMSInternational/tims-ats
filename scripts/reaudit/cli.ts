@@ -13,7 +13,7 @@
  *   REAUDIT_OWNER_CHECKS_DIR (required with --with-owner-checks).
  *
  * Evidence must be of HEAD. Every input must be produced through scripts/reaudit/record.ts, which writes
- * a provenance manifest (tested git SHA, dirty flag, exit status, SHA-256 of each report). An input with
+ * a provenance manifest (tested git SHA, dirty flag, exit status, checkout root, SHA-256 of each report). An input with
  * no manifest, a manifest naming another commit, or a report whose bytes no longer match is refused
  * (exit 2); the collectors parse the exact bytes that were verified. --vitest-exit must equal the
  * recorded vitest exit status. --gate launch also refuses evidence recorded on a dirty checkout and a
@@ -183,6 +183,7 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   if (pwEv && args.playwright) {
     const pw = collectPlaywrightReport(parseJson(pwEv, args.playwright, '--playwright'), {
       runExitCode: pwEv.manifest.exitCode,
+      checkoutRoot: pwEv.manifest.checkoutRoot,
     });
     observations.push(...pw.observations);
     untrusted.push(...pw.untrusted);
@@ -190,6 +191,7 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   if (vtEv && args.vitest) {
     const vt = collectVitestReport(parseJson(vtEv, args.vitest, '--vitest'), nameBindings(bindings, 'vitest'), {
       runExitCode: vtEv.manifest.exitCode,
+      checkoutRoot: vtEv.manifest.checkoutRoot,
     });
     observations.push(...vt.observations);
     untrusted.push(...vt.untrusted);

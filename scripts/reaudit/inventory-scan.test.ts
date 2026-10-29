@@ -104,6 +104,18 @@ describe('scanFile: vitest', () => {
     expect(r.unattributable).toEqual(['tests/a.test.ts:2']);
   });
 
+  it('REGRESSION (Codex r12): a runtime SUFFIX on a tag id is unattributable, not silently dropped', () => {
+    const src = 'it(`check [finding:syn-${suffix}]`, () => {});\nit(`other [finding:syn-a${n}]`, () => {});';
+    const r = scanFile('tests/a.test.ts', src);
+    expect(r.entries).toEqual([]);
+    expect(r.unattributable).toEqual(['tests/a.test.ts:1', 'tests/a.test.ts:2']);
+  });
+
+  it('any incomplete tag that is not a <placeholder> is unattributable (fail closed)', () => {
+    const r = scanFile('tests/a.test.ts', "// tag with [finding: then the id\nconst x = '[finding:Bad]';");
+    expect(r.unattributable).toEqual(['tests/a.test.ts:1', 'tests/a.test.ts:2']);
+  });
+
   it('a file with no tag yields nothing', () => {
     expect(scanFile('tests/a.test.ts', "it('x', () => {});")).toEqual({ entries: [], unattributable: [] });
   });
@@ -141,7 +153,13 @@ describe('scanFile: playwright', () => {
   it('a non-literal tag option cannot be attributed (unattributable), and its literal elsewhere is UNRESOLVABLE', () => {
     const r = scanFile('e2e/specs/j.spec.ts', "const tag = '@finding:syn-a';\ntest('s', { tag }, async () => {});");
     expect(pick(r.entries)).toEqual([{ id: 'syn-a', source: 'playwright', name: null }]);
-    expect(r.unattributable).toEqual(['e2e/specs/j.spec.ts:2']);
+    // line 1: a Playwright tag runs to the next whitespace, so a quote can be followed by a runtime suffix.
+    expect(r.unattributable).toEqual(['e2e/specs/j.spec.ts:1', 'e2e/specs/j.spec.ts:2']);
+  });
+
+  it('REGRESSION (Codex r12): a Playwright tag with a runtime suffix is unattributable', () => {
+    const r = scanFile('e2e/specs/j.spec.ts', 'test(`step @finding:syn-a${n}`, async () => {});');
+    expect(r.unattributable).toEqual(['e2e/specs/j.spec.ts:1']);
   });
 
   it('a prose placeholder (no id, not a dynamic construct) is neither an entry nor unattributable', () => {

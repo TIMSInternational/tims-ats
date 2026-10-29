@@ -75,6 +75,8 @@ function scanCs(file: string, text: string): FileScan {
 export function scanFile(file: string, text: string): FileScan {
   const source = sourceForPath(file);
   if (source === null) return { entries: [], unattributable: [] };
-  if (source === 'xunit') return scanCs(file, text);
-  return scanJs(file, text, source);
+  const out = source === 'xunit' ? scanCs(file, text) : scanJs(file, text, source);
+  const lineOf = (where: string) => Number(where.slice(where.lastIndexOf(':') + 1));
+  out.unattributable = [...new Set(out.unattributable)].sort((a, b) => lineOf(a) - lineOf(b));
+  return out;
 }
