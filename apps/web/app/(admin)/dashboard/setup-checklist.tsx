@@ -7,8 +7,9 @@ import { useI18n } from '../../../lib/i18n';
 import { useCan } from '../../../lib/permissions';
 import { toast } from '../../../lib/toast';
 import { ErrorState } from '../../../components';
-import { deriveSetupChecklistRows } from './setup-checklist-rows';
+import { deriveSetupChecklistRows, isSetupComplete } from './setup-checklist-rows';
 import { isTenantInvitationsEnabled } from '../../../lib/platform-api/tenant-invitations';
+import { isOrgStructureViaCSharp } from '../../../lib/platform-api/org-structure';
 
 function CheckIcon({ done }: { done: boolean }) {
   return (
@@ -32,6 +33,8 @@ export function SetupChecklist() {
   const canManageBranding = can('organization', 'update');
   const canInviteTeam = can('user', 'create');
   const invitationsEnabled = isTenantInvitationsEnabled();
+  const orgStructureEnabled = isOrgStructureViaCSharp();
+  const canManageStructure = can('organization', 'update');
 
   // Optimistic client-side hide the instant "hide for now" is clicked, backed
   // by the real dismissSetupChecklist mutation (per Task 4 brief). Reverted on
@@ -53,25 +56,27 @@ export function SetupChecklist() {
   if (hiddenOptimistic) return null;
 
   const data = statusQuery.data;
-  // Auto-hides entirely (not just visually collapsed) once everything is
-  // done, or once the server confirms a still-fresh dismissal.
-  if (data && (data.allComplete || data.dismissedAt !== null)) return null;
-
   const rows = data
     ? deriveSetupChecklistRows(
         data.items,
         {
           companyStructureReady: sc.companyStructureReady,
+          companyStructureBySupport: sc.companyStructureBySupport,
           teamInvited: sc.teamInvited,
           brandingSet: sc.brandingSet,
           firstVacancyPosted: sc.firstVacancyPosted,
           firstVacancyPublished: sc.firstVacancyPublished,
         },
-        canManageBranding,
-        canInviteTeam,
-        invitationsEnabled,
+        { canManageBranding, canInviteTeam, invitationsEnabled, orgStructureEnabled, canManageStructure },
       )
     : [];
+
+  // Auto-hides entirely (not just visually collapsed) once every row that
+  // counts is done, or once the server confirms a still-fresh dismissal.
+  // Completion is computed here, not from the server's `allComplete`: a row
+  // the viewer cannot act on (support-owned structure) must not keep the
+  // widget open (company-admin-journeys-21).
+  if (data && (isSetupComplete(rows) || data.dismissedAt !== null)) return null;
 
   const onDismiss = () => {
     setHiddenOptimistic(true);

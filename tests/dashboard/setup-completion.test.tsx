@@ -1,6 +1,6 @@
 import React from 'react';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '../../apps/web/lib/i18n/en.json';
@@ -164,7 +164,8 @@ describe('SetupChecklist widget completion', () => {
     expect(doneRows.find((x) => x.key === 'teamInvited')?.done).toBe(true);
 
     const src = readFileSync(
-      fileURLToPath(new URL('../../apps/web/app/(admin)/dashboard/setup-checklist.tsx', import.meta.url)),
+      // join(__dirname, ...), not new URL(..., import.meta.url): under happy-dom the module URL is not file://.
+      join(__dirname, '../../apps/web/app/(admin)/dashboard/setup-checklist.tsx'),
       'utf8',
     );
     expect(src).not.toMatch(/tenant-people/);
