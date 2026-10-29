@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  linkSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertOutsideRepo, isInsideRepo, OutsideRepoError } from './paths';
+import { assertOutsideRepo, isInsideRepo, OutsideRepoError, writeFileOutsideRepo } from './paths';
 
 // The re-audit harness reads private audit input and writes private reports. Every one of those
 // paths must live OUTSIDE the (public) repository. This guard is the single choke point; every
@@ -121,5 +131,40 @@ describe('assertOutsideRepo', () => {
 
   it('refuses a relative path rather than guessing a base directory', () => {
     expect(() => assertOutsideRepo('findings.json', repo, 'findings file')).toThrow(/absolute/i);
+  });
+});
+
+describe('writeFileOutsideRepo', () => {
+  it('a destination hard-linked to a file inside the repo is replaced, never written through', () => {
+    const tracked = join(repo, 'scripts', 'tracked.txt');
+    writeFileSync(tracked, 'tracked\n');
+    const dest = join(outside, 'report.json');
+    linkSync(tracked, dest);
+    writeFileOutsideRepo(dest, 'private\n', repo, 'report file');
+    expect(readFileSync(tracked, 'utf8')).toBe('tracked\n');
+    expect(readFileSync(dest, 'utf8')).toBe('private\n');
+  });
+
+  it('refuses a symlink at the destination and leaves no temporary file behind', () => {
+    const tracked = join(repo, 'scripts', 'tracked.txt');
+    writeFileSync(tracked, 'tracked\n');
+    symlinkSync(tracked, join(outside, 'report.json'));
+    expect(() => writeFileOutsideRepo(join(outside, 'report.json'), 'private\n', repo, 'report file')).toThrow(
+      OutsideRepoError,
+    );
+    expect(readFileSync(tracked, 'utf8')).toBe('tracked\n');
+    expect(readdirSync(outside)).toEqual(['report.json']);
+  });
+
+  it('a failed replace (destination is a directory) throws and leaves no temporary file behind', () => {
+    mkdirSync(join(outside, 'report.json'));
+    expect(() => writeFileOutsideRepo(join(outside, 'report.json'), 'private\n', repo, 'report file')).toThrow();
+    expect(readdirSync(outside)).toEqual(['report.json']);
+  });
+
+  it('writes a new file and leaves no temporary file behind', () => {
+    writeFileOutsideRepo(join(outside, 'new.md'), 'x\n', repo, 'report file');
+    expect(readFileSync(join(outside, 'new.md'), 'utf8')).toBe('x\n');
+    expect(readdirSync(outside)).toEqual(['new.md']);
   });
 });

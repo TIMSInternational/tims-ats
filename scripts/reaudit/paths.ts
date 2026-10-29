@@ -14,7 +14,18 @@
  * a `.git`, the roots come from `git worktree list`; if git cannot list them, the guard fails closed.
  */
 import { execFileSync } from 'node:child_process';
-import { closeSync, constants, existsSync, openSync, realpathSync, writeSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import {
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync,
+  openSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeSync,
+} from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export class OutsideRepoError extends Error {
@@ -84,26 +95,28 @@ export function assertOutsideRepo(p: string, repoRoot: string, label: string): s
 }
 
 /**
- * Writes `data` to the file `p`, which must be outside the repository. The final path component is
- * opened with O_NOFOLLOW, so a pre-existing symlink at the destination (live or dangling) is refused
- * instead of followed: a predictable report name in the output directory cannot be pointed back
- * into the repository.
+ * Writes `data` to the file `p`, which must be outside the repository. A pre-existing symlink at the
+ * destination (live or dangling) is refused. The data goes to a fresh, exclusively created temporary
+ * file in the same directory, which is then renamed over the destination: the destination's directory
+ * entry is replaced, never written through, so neither a symlink nor a hard link at a predictable
+ * report name can carry private content into a file inside the repository.
  */
 export function writeFileOutsideRepo(p: string, data: string, repoRoot: string, label: string): void {
   const dest = assertOutsideRepo(p, repoRoot, label);
-  let fd: number;
-  try {
-    fd = openSync(dest, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === 'ELOOP' || code === 'EMLINK') {
-      throw new OutsideRepoError(`${label} is a symlink (${dest}); refusing to follow it`);
-    }
-    throw e;
+  if (lstatSync(dest, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new OutsideRepoError(`${label} is a symlink (${dest}); refusing to follow it`);
   }
+  const tmp = join(dirname(dest), `.${basename(dest)}.${randomBytes(6).toString('hex')}.tmp`);
+  const fd = openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try {
-    writeSync(fd, data);
-  } finally {
-    closeSync(fd);
+    try {
+      writeSync(fd, data);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, dest);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
   }
 }

@@ -171,6 +171,72 @@ describe('collectXunitTrx', () => {
     expect(statusById(collectXunitTrx(full)).get('syn-a')).toBe('FIXED-VERIFIED');
   });
 
+  it('a Failed run with no failing result and a run-level Error downgrades its passes to NOT-RUN', () => {
+    const x = trx([{ id: 'g1', name: 'check [finding:syn-a]', outcome: 'Passed' }], 'Failed').replace(
+      '</ResultSummary>',
+      '<RunInfos><RunInfo outcome="Error"><Text>Adapter run-level failure</Text></RunInfo></RunInfos></ResultSummary>',
+    );
+    expect(statusById(collectXunitTrx(x)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a Failed run with no failing result and no RunInfo is unexplained: its passes are NOT-RUN', () => {
+    const x = trx([{ id: 'g1', name: 'check [finding:syn-a]', outcome: 'Passed' }], 'Failed');
+    expect(statusById(collectXunitTrx(x)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a Completed run carrying an Error RunInfo that names no failed test downgrades its passes', () => {
+    const x = trx([{ id: 'g1', name: 'check [finding:syn-a]', outcome: 'Passed' }]).replace(
+      '</ResultSummary>',
+      '<RunInfos><RunInfo outcome="Error"><Text>Testhost process exited unexpectedly</Text></RunInfo></RunInfos></ResultSummary>',
+    );
+    expect(statusById(collectXunitTrx(x)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('an extra unexplained Error beside an explained [FAIL] still downgrades the passes', () => {
+    const x = trx(
+      [
+        { id: 'g1', name: 'ok [finding:syn-a]', outcome: 'Passed' },
+        { id: 'g2', name: 'broken [finding:syn-b]', outcome: 'Failed' },
+      ],
+      'Failed',
+    ).replace(
+      '</ResultSummary>',
+      '<RunInfos><RunInfo outcome="Error"><Text>[xUnit.net 00:00:00.08]     broken [finding:syn-b] [FAIL]</Text></RunInfo>' +
+        '<RunInfo outcome="Error"><Text>Adapter run-level failure</Text></RunInfo></RunInfos></ResultSummary>',
+    );
+    const byId = statusById(collectXunitTrx(x));
+    expect(byId.get('syn-a')).toBe('NOT-RUN');
+    expect(byId.get('syn-b')).toBe('REGRESSED');
+  });
+
+  it('an Error RunInfo that names a failed test without the [FAIL] marker is NOT explained', () => {
+    const x = trx(
+      [
+        { id: 'g1', name: 'ok [finding:syn-a]', outcome: 'Passed' },
+        { id: 'g2', name: 'broken [finding:syn-b]', outcome: 'Failed' },
+      ],
+      'Failed',
+    ).replace(
+      '</ResultSummary>',
+      '<RunInfos><RunInfo outcome="Error"><Text>Test host crashed after broken [finding:syn-b]</Text></RunInfo></RunInfos></ResultSummary>',
+    );
+    expect(statusById(collectXunitTrx(x)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('an Error RunInfo that reports a real failed test is explained: sibling passes stay FIXED-VERIFIED', () => {
+    const x = trx(
+      [
+        { id: 'g1', name: 'ok [finding:syn-a]', outcome: 'Passed' },
+        { id: 'g2', name: 'broken [finding:syn-b]', outcome: 'Failed' },
+      ],
+      'Failed',
+    ).replace(
+      '</ResultSummary>',
+      '<RunInfos><RunInfo outcome="Error"><Text>[xUnit.net 00:00:00.08]     broken [finding:syn-b] [FAIL]</Text></RunInfo></RunInfos></ResultSummary>',
+    );
+    expect(statusById(collectXunitTrx(x)).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
   it('a document that is not a TRX TestRun is rejected loudly', () => {
     expect(() => collectXunitTrx('<html></html>')).toThrow(XunitReportError);
   });
