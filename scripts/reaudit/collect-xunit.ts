@@ -137,7 +137,9 @@ function readTrx(
     seen.add(name);
     const raw = statusFor(outcome);
     const status = untrusted && raw === 'FIXED-VERIFIED' ? 'NOT-RUN' : raw;
-    for (const id of idsFor(name, extraNameBindings)) out.push({ id, status, source: 'xunit', test: name });
+    for (const id of idsFor(name, extraNameBindings)) {
+      out.push({ id, status, source: 'xunit', test: name, key: { name } });
+    }
   }
   for (const [testId, name] of definitions) {
     if (reported.has(testId)) continue;

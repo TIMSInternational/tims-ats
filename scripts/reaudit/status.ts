@@ -19,6 +19,18 @@ export interface Observation {
   source: ObservationSource;
   /** Human-readable name of the test or check that produced this observation. */
   test: string;
+  /**
+   * The check as the evidence names it, for reconciling against the source inventory (inventory.ts).
+   * Set ONLY on observations backed by an entry in the evidence, never on a synthesised NOT-RUN.
+   */
+  key?: EvidenceKey;
+}
+
+export interface EvidenceKey {
+  /** The file as the evidence reports it (absolute for Vitest, rootDir-relative for Playwright); none for TRX. */
+  file?: string;
+  /** Vitest full name · Playwright title path below the file (" › ") · TRX test name. */
+  name: string;
 }
 
 /** A collector's output: observations, plus why the run cannot be trusted as proof of any pass. */

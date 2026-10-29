@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitContext, runCli } from './cli';
 import { VITEST_REPORT_MARKER } from './collect-vitest';
+import type { BindingInventory } from './inventory';
 import { manifestPathFor, writeProvenance, type EvidenceKind } from './provenance';
 
 // `pnpm exec tsx scripts/reaudit/cli.ts --playwright <json> --vitest <json> --trx <dir>
@@ -29,6 +30,9 @@ let root: string;
 let repo: string;
 let priv: string;
 let lines: string[];
+/** What the injected source scan returns (the real one reads git; see the real-git suite). */
+let inventory: BindingInventory;
+let inventorySha: string | undefined;
 
 const finding = (id: string, severity = 'P1') => ({
   id,
@@ -126,6 +130,10 @@ function ctx(e: Record<string, string | undefined>, over: { dirtyPaths?: string[
     now: new Date('2026-10-28T12:00:00Z'),
     log: (s: string) => lines.push(s),
     err: (s: string) => lines.push(s),
+    readInventory: (sha: string) => {
+      inventorySha = sha;
+      return inventory;
+    },
   };
 }
 
@@ -136,6 +144,8 @@ beforeEach(() => {
   mkdirSync(repo, { recursive: true });
   mkdirSync(priv, { recursive: true });
   lines = [];
+  inventory = { sha: HEAD, entries: [], unattributable: [] };
+  inventorySha = undefined;
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -409,6 +419,80 @@ describe('gitContext + runCli (real git)', () => {
     mkdirSync(join(gitRepo, 'ignored'));
     writeFileSync(join(gitRepo, 'ignored', 'results.json'), '{}');
     expect(await run()).toBe(0);
+  });
+
+  const commitChecks = (files: Record<string, string>) => {
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(gitRepo, name), body);
+    g('add', '.');
+    g('commit', '-q', '-m', 'checks');
+  };
+
+  it('REGRESSION (Codex r11): a committed [finding:syn-a] check omitted from the evidence → gate 1, even though its sibling passed', async () => {
+    commitChecks({
+      'synthetic.test.ts': "describe('s', () => {\n  it('ideal holds [finding:syn-a]', () => {});\n});\n",
+      'other.test.ts': "describe('s', () => {\n  it('second check [finding:syn-a]', () => {});\n});\n",
+    });
+    expect(await run()).toBe(1);
+    const out = lines.join('\n');
+    expect(out).toContain('other.test.ts:2');
+    const report = JSON.parse(readFileSync(lines.find((l) => l.endsWith('.json'))!.replace('report: ', ''), 'utf8'));
+    expect(report.rows[0].status).toBe('NOT-RUN');
+  });
+
+  it('control: when the only committed check is the one recorded, the gate passes (0)', async () => {
+    commitChecks({
+      'synthetic.test.ts': "describe('s', () => {\n  it('ideal holds [finding:syn-a]', () => {});\n});\n",
+    });
+    expect(await run()).toBe(0);
+  });
+});
+
+describe('runCli — the binding inventory', () => {
+  const twoChecks = (): BindingInventory => ({
+    sha: HEAD,
+    entries: [
+      { id: 'syn-a', source: 'vitest', file: 'synthetic.test.ts', line: 3, name: 's ideal holds [finding:syn-a]' },
+      { id: 'syn-a', source: 'vitest', file: 'other.test.ts', line: 7, name: 's second check [finding:syn-a]' },
+    ],
+    unattributable: [],
+  });
+
+  it('is read at the verified HEAD sha', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(0);
+    expect(inventorySha).toBe(HEAD);
+  });
+
+  it('an inventoried check absent from the evidence → the finding is NOT-RUN and --gate launch fails (1)', async () => {
+    inventory = twoChecks();
+    const { pw, vt, trxDir } = inputs('passed');
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(1);
+    expect(lines.join('\n')).toMatch(/UNTRUSTED RUN.*other\.test\.ts:7/);
+  });
+
+  it('without --gate the report is still written, with the finding NOT-RUN (exit 0)', async () => {
+    inventory = twoChecks();
+    const { vt } = inputs('passed');
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env()))).toBe(0);
+    const report = JSON.parse(readFileSync(lines.find((l) => l.endsWith('.json'))!.replace('report: ', ''), 'utf8'));
+    expect(report.rows[0].status).toBe('NOT-RUN');
+  });
+
+  it('an unattributable tag occurrence fails --gate launch', async () => {
+    inventory = { sha: HEAD, entries: [], unattributable: ['x.test.ts:4'] };
+    const { pw, vt, trxDir } = inputs('passed');
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(1);
+    expect(lines.join('\n')).toContain('x.test.ts:4');
+  });
+
+  it('an inventory that cannot be read → 2 (never treated as empty)', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const c = ctx(env());
+    c.readInventory = () => {
+      throw new Error('git grep failed');
+    };
+    expect(await runCli(all(pw, vt, trxDir), c)).toBe(2);
+    expect(lines.join('\n')).toContain('git grep failed');
   });
 });
 

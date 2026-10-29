@@ -121,7 +121,8 @@ export function collectVitestReport(
       // A test.fails "pass" means the body threw: never evidence that the ideal holds.
       const raw = a.fails ? 'NOT-RUN' : statusFor(a.status);
       const status = untrusted && raw === 'FIXED-VERIFIED' ? 'NOT-RUN' : raw;
-      for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName });
+      const key = { file: file.name, name: fullName };
+      for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName, key });
     }
   }
   for (const [name, ids] of extraNameBindings ?? []) {

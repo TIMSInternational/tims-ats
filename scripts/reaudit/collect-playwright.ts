@@ -52,6 +52,8 @@ const testSchema = z.object({
 });
 const specSchema = z.object({
   title: z.string().max(2000),
+  /** Relative to the Playwright config's rootDir. Optional: without it no inventory entry can match. */
+  file: z.string().max(4096).optional(),
   tags: z.array(z.string().max(500)).max(200),
   tests: z.array(testSchema),
 });
@@ -132,6 +134,7 @@ function statusFor(
   return 'NOT-RUN';
 }
 
+/** `titlePath[0]` is the file suite's title; the key name is the path below it (see inventory-scan.ts). */
 function collectTest(spec: PwSpec, test: PwTest, titlePath: string[], acc: Walked): void {
   const name = [test.projectName ? `[${test.projectName}]` : '', titlePath.join(' › ')].filter(Boolean).join(' ');
   const ids = taggedIds(spec, name);
@@ -153,8 +156,10 @@ function collectTest(spec: PwSpec, test: PwTest, titlePath: string[], acc: Walke
   }
   const finalAnnotations = findingAnnotations([...(test.annotations ?? []), ...(last?.annotations ?? [])], name);
   const evidence = new Set(finalAnnotations.map((a) => `${a.type}\u0000${a.id}`));
-  for (const id of ids)
-    acc.observations.push({ id, status: statusFor(id, last, test, evidence), source: 'playwright', test: name });
+  const key = { file: spec.file, name: titlePath.slice(1).join(' › ') };
+  for (const id of ids) {
+    acc.observations.push({ id, status: statusFor(id, last, test, evidence), source: 'playwright', test: name, key });
+  }
 
   // `requires()` names a dependency, not the test's own binding: it is never a pass.
   for (const { id } of finalAnnotations.filter((a) => a.type === 'finding-requires')) {

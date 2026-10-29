@@ -22,7 +22,8 @@
  * copied evidence; it is not a signature against a hand-forged manifest.
  *
  * An untrusted run turns every FIXED-VERIFIED from every source into NOT-RUN and fails --gate launch
- * (exit 1): a Playwright run with an unexpected outcome in a test that has no @finding tag (a
+ * (exit 1): a public check the committed source declares (a `[finding:<id>]` / `@finding:<id>` tag, see
+ * inventory.ts) that the evidence does not show, or a tag the source scan cannot attribute; a Playwright run with an unexpected outcome in a test that has no @finding tag (a
  * `test.fail()` test that fails is expected), a global error, or a non-zero
  * exit its report does not explain; and ANY failed Vitest or .NET run (their reports cannot attribute
  * every failure: unhandled errors, files that fail to load, projects that write no TRX).
@@ -41,6 +42,8 @@ import { collectXunitRun } from './collect-xunit';
 import { evidenceDrift, type EvidenceDrift } from './evidence-drift';
 import { loadFindings } from './findings-source';
 import { readGitState } from './git-state';
+import { readInventory, reconcileInventory, type BindingInventory } from './inventory';
+import type { InventorySource } from './inventory-scan';
 import { assertOutsideRepo } from './paths';
 import { manifestPathFor, verifyProvenance, type EvidenceKind, type VerifiedEvidence } from './provenance';
 import { buildReport, launchGate, loadWpIndex, writeReport } from './report';
@@ -55,6 +58,8 @@ export interface CliContext {
   now: Date;
   log: (s: string) => void;
   err: (s: string) => void;
+  /** The public bindings the committed source declares at `sha` (inventory.ts). Throws if unreadable. */
+  readInventory: (sha: string) => BindingInventory;
 }
 
 interface CliArgs {
@@ -198,6 +203,20 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
     observations.push(...xu.observations);
     untrusted.push(...xu.untrusted);
   }
+  // Every public check the source declares must be in the evidence: a filtered or partial run cannot
+  // let a sibling's pass stand for a check that never ran (inventory.ts).
+  const supplied = new Set<InventorySource>();
+  if (pwEv) supplied.add('playwright');
+  if (vtEv) supplied.add('vitest');
+  if (trxEv) supplied.add('xunit');
+  const inv = reconcileInventory(
+    ctx.readInventory(ctx.headSha),
+    observations,
+    supplied,
+    new Set(findings.map((f) => f.id)),
+  );
+  observations.push(...inv.observations);
+  untrusted.push(...inv.untrusted);
   if (checksDir) {
     const ids = ownerCheckIds(checksDir, bindings.ownerChecks, new Set(findings.map((f) => f.id)));
     observations.push(...runOwnerChecks({ enabled: true, checksDir, ids }));
@@ -268,9 +287,14 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
 }
 
 /** The git part of main()'s context, read with the real git binary (see git-state.ts). */
-export function gitContext(cwd: string): Pick<CliContext, 'repoRoot' | 'headSha' | 'dirtyPaths'> {
+export function gitContext(cwd: string): Pick<CliContext, 'repoRoot' | 'headSha' | 'dirtyPaths' | 'readInventory'> {
   const s = readGitState(cwd);
-  return { repoRoot: s.repoRoot, headSha: s.headSha, dirtyPaths: s.dirtyPaths };
+  return {
+    repoRoot: s.repoRoot,
+    headSha: s.headSha,
+    dirtyPaths: s.dirtyPaths,
+    readInventory: (sha) => readInventory(s.repoRoot, sha),
+  };
 }
 
 // No top-level await: tsx runs this package as CommonJS.
