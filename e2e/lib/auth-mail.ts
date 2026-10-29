@@ -206,18 +206,59 @@ export async function waitForAuthMail(options: WaitForAuthMailOptions): Promise<
     controller.abort();
     return new Error(`[e2e] no auth mail for ${address} within ${timeoutMs} ms`);
   };
+  const { signal } = controller;
+  const checkAlive = (): void => {
+    if (signal.aborted || Date.now() >= deadline) throw timedOut();
+  };
   const poll = async (): Promise<MailpitMessage> => {
     for (;;) {
-      const listUrl = new URL('/api/v1/messages', base).href;
-      const list = parseMailpitList(await getJson(fetchImpl, listUrl, controller.signal));
-      const hit = pickLatestFor(list, address, since);
+      checkAlive();
+      const hit = pickLatestFor(await listAll(fetchImpl, base, signal, checkAlive), address, since);
       if (hit) {
+        checkAlive();
         const url = new URL(`/api/v1/message/${encodeURIComponent(hit.id)}`, base).href;
-        return parseMailpitMessage(await getJson(fetchImpl, url, controller.signal));
+        return parseMailpitMessage(await getJson(fetchImpl, url, signal));
       }
-      if (controller.signal.aborted || Date.now() >= deadline) throw timedOut();
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      checkAlive();
+      await abortableSleep(intervalMs, signal);
     }
   };
   return beforeDeadline(poll(), deadline, timedOut);
+}
+
+/** Resolve after `ms`, or as soon as `signal` aborts (the caller then re-checks and stops). */
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done, { once: true });
+  });
+}
+
+const PAGE_SIZE = 50;
+
+/** Every summary in the inbox, walking Mailpit's `start`/`limit` pages until `total` is covered. */
+async function listAll(
+  fetchImpl: FetchImpl,
+  base: URL,
+  signal: AbortSignal,
+  checkAlive: () => void,
+): Promise<MailpitSummary[]> {
+  const all: MailpitSummary[] = [];
+  for (let start = 0; ; ) {
+    checkAlive();
+    const url = new URL('/api/v1/messages', base);
+    url.searchParams.set('start', String(start));
+    url.searchParams.set('limit', String(PAGE_SIZE));
+    const raw = await getJson(fetchImpl, url.href, signal);
+    const page = parseMailpitList(raw);
+    all.push(...page);
+    start += page.length;
+    const total = isRecord(raw) && typeof raw.total === 'number' ? raw.total : start;
+    if (page.length === 0 || start >= total) return all;
+  }
 }

@@ -327,4 +327,76 @@ describe('waitForAuthMail (fetch injected, no network)', () => {
       }),
     ).rejects.toThrow(/within 50 ms/);
   });
+
+  it('stops polling once it has timed out: no request after the rejection', async () => {
+    const stub = mailpitStub();
+    const abortedAtCall: boolean[] = [];
+    const fetchImpl = vi.fn((input: string, init: RequestInit): Promise<Response> => {
+      abortedAtCall.push(init.signal?.aborted ?? false);
+      return stub(input);
+    });
+    await expect(
+      waitForAuthMail({
+        baseUrl: 'http://localhost:54324',
+        address: 'nobody@vivienda-e2e.test',
+        timeoutMs: 40,
+        intervalMs: 150,
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/within 40 ms/);
+    const callsAtRejection = fetchImpl.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(fetchImpl.mock.calls.length).toBe(callsAtRejection);
+    expect(abortedAtCall.length).toBeGreaterThan(0);
+    expect(abortedAtCall).not.toContain(true);
+  });
+
+  it('releases its sleep timer on timeout instead of leaving it pending for intervalMs', async () => {
+    const timeouts = (): number => process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
+    const before = timeouts();
+    await expect(
+      waitForAuthMail({
+        baseUrl: 'http://localhost:54324',
+        address: 'nobody@vivienda-e2e.test',
+        timeoutMs: 30,
+        intervalMs: 60_000,
+        fetchImpl: mailpitStub(),
+      }),
+    ).rejects.toThrow(/within 30 ms/);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(timeouts()).toBeLessThanOrEqual(before);
+  });
+
+  it('finds the mail when it sits beyond the first page of the inbox', async () => {
+    const others = Array.from({ length: 50 }, (_, i) => ({
+      ID: `other-${i}`,
+      To: [{ Address: 'someone.else@vivienda-e2e.test' }],
+      Subject: 'Other',
+      Created: '2026-10-28T15:10:00.000Z',
+    }));
+    const target = {
+      ID: 'msg-otp-new',
+      To: [{ Address: 'carlos.candidato@vivienda-e2e.test' }],
+      Subject: 'Your code',
+      Created: '2026-10-28T15:00:00.000Z',
+    };
+    const fetchImpl = vi.fn(async (input: string): Promise<Response> => {
+      const url = new URL(input);
+      if (url.pathname === '/api/v1/messages') {
+        const start = Number(url.searchParams.get('start') ?? '0');
+        const page = start === 0 ? others : start === 50 ? [target] : [];
+        return okJson({ total: 51, start, count: page.length, messages_count: 51, messages: page });
+      }
+      if (url.pathname === '/api/v1/message/msg-otp-new') return okJson(sample.messages['msg-otp-new']);
+      return new Response('not found', { status: 404 });
+    });
+    const m = await waitForAuthMail({
+      baseUrl: 'http://127.0.0.1:54324',
+      address: 'carlos.candidato@vivienda-e2e.test',
+      timeoutMs: 1_000,
+      intervalMs: 10,
+      fetchImpl,
+    });
+    expect(m.id).toBe('msg-otp-new');
+  });
 });
