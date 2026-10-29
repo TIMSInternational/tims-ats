@@ -258,6 +258,24 @@ describe('reconcileInventory: playwright and xunit keys', () => {
     });
   });
 
+  it('REGRESSION (Codex r14): a --grep run that omits a property-reference test under a tagged describe fails the gate', () => {
+    const src =
+      "test.describe('J1 journey', { tag: '@finding:syn-a' }, () => {\n  test('included', async () => {});\n  test('omitted', checks.mustDeny);\n});";
+    const scanned = inv(scanFile('e2e/specs/j1.spec.ts', src).entries);
+    const pw = collectPlaywrightReport(pwReport('included'), { runExitCode: 0, checkoutRoot: '/abs/repo' });
+    const rec = reconcileInventory(scanned, pw.observations, ALL, KNOWN);
+    expect(rec.observations.map((o) => o.test)).toEqual([expect.stringContaining('J1 journey › omitted')]);
+    const report = buildReport({
+      findings: [finding('syn-a')] as never,
+      observations: [...pw.observations, ...rec.observations],
+      sha: 'a'.repeat(40),
+      generatedAt: new Date('2026-10-29T00:00:00Z'),
+      untrusted: [...pw.untrusted, ...rec.untrusted],
+    });
+    expect(report.rows[0]?.status).toBe('NOT-RUN');
+    expect(launchGate(report, { missingInputs: [] }).exitCode).toBe(1);
+  });
+
   it('a Playwright entry whose spec is absent is NOT-RUN and untrusted', () => {
     const pw = collectPlaywrightReport(pwReport('another step'), { runExitCode: 0, checkoutRoot: '/abs/repo' });
     const r = reconcileInventory(inv([pwEntry]), pw.observations, ALL, KNOWN);

@@ -150,6 +150,35 @@ describe('scanFile: playwright', () => {
     expect(pick(scanFile('e2e/specs/j.spec.ts', src).entries).map((e) => e.name)).toEqual(['J @finding:syn-a › s']);
   });
 
+  it('REGRESSION (Codex r14): a test whose body is a property reference is still a declaration that inherits the tag', () => {
+    const src =
+      "test.describe('J @finding:syn-a', () => {\n  test('included', async () => {});\n  test('omitted', checks.mustDeny);\n  test('called', makeBody());\n});";
+    expect(pick(scanFile('e2e/specs/j.spec.ts', src).entries).map((e) => e.name)).toEqual([
+      'J @finding:syn-a › included',
+      'J @finding:syn-a › omitted',
+      'J @finding:syn-a › called',
+    ]);
+  });
+
+  it('under a tag, a test call the scanner cannot read (spread arguments, unknown test.<prop>) is UNRESOLVABLE', () => {
+    const src =
+      "test.describe('J @finding:syn-a', () => {\n  test(...row);\n  test.custom('x');\n  test.use({ locale: 'es' });\n  test.describe.configure({ mode: 'serial' });\n  test('s', async () => {});\n});";
+    expect(pick(scanFile('e2e/specs/j.spec.ts', src).entries)).toEqual([
+      { id: 'syn-a', source: 'playwright', name: null },
+      { id: 'syn-a', source: 'playwright', name: 'J @finding:syn-a › s' },
+      { id: 'syn-a', source: 'playwright', name: null },
+    ]);
+  });
+
+  it('test.skip(condition, reasonVariable) under a tag cannot be told from a declaration: UNRESOLVABLE (fail closed)', () => {
+    const src =
+      "test.describe('J @finding:syn-a', () => {\n  test.skip(isMobile, reason);\n  test('s', async () => {});\n});";
+    expect(pick(scanFile('e2e/specs/j.spec.ts', src).entries).map((e) => e.name)).toEqual([
+      null,
+      'J @finding:syn-a › s',
+    ]);
+  });
+
   it('a non-literal tag option cannot be attributed (unattributable), and its literal elsewhere is UNRESOLVABLE', () => {
     const r = scanFile('e2e/specs/j.spec.ts', "const tag = '@finding:syn-a';\ntest('s', { tag }, async () => {});");
     expect(pick(r.entries)).toEqual([{ id: 'syn-a', source: 'playwright', name: null }]);

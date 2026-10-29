@@ -15,13 +15,20 @@
  *   - A title built at runtime (template substitution, a variable, `.each` / `.for` formatting): the test
  *     carries its tags under a name nobody can predict. Any tag in its title path becomes an
  *     UNRESOLVABLE entry (name null), which no evidence satisfies: that finding is NOT-RUN.
+ *   - A test call whose body is any expression (a function, a reference such as `checks.mustDeny`, a
+ *     call) is a declaration. A test/it call the scanner cannot read as a declaration or as a Playwright
+ *     annotation (`test.skip(cond, 'reason')`) under a tag is an UNRESOLVABLE entry for the inherited
+ *     ids: spread arguments, no body, or `test.skip(cond, reasonVariable)`, which cannot be told apart
+ *     from a declaration with a runtime title.
  *   - A tagged describe that calls an unknown function at statement level (a helper may declare tests
- *     there), or holds no statically visible test: UNRESOLVABLE entry for its ids.
+ *     there; `test.<prop>` other than use, hooks, setTimeout and describe counts), or holds no
+ *     statically visible test: UNRESOLVABLE entry for its ids.
  *   - A complete tag anywhere else in a scanned file (comment, constant, test body, hook title): the
  *     scanner cannot tell what it binds, so it is an UNRESOLVABLE entry.
- *   - A tag prefix followed by something that builds the id at runtime (`${`, a quote, `{`, end of
- *     file), or a non-literal Playwright `tag` option: no id can be attributed, so it is reported as
- *     unattributable, which inventory.ts turns into an untrusted run.
+ *   - An incomplete tag (anything but `[finding:<slug>]`, or `@finding:<slug>` before whitespace; a
+ *     `<placeholder>` excepted), whose id may be built or extended at runtime, or a non-literal
+ *     Playwright `tag` option: no id can be attributed, so it is reported as unattributable, which
+ *     inventory.ts turns into an untrusted run.
  *   - NOT detected: a tag assembled without the literal prefix text (e.g. from character codes), a tag
  *     that lives in a file the scan does not read (non-code files, scripts/reaudit/), tests declared by a
  *     helper called from a describe other than as a statement-level call, and omitted ROWS of a theory or

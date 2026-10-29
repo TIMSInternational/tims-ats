@@ -65,7 +65,29 @@ function kindOf(c: Callee): Kind | null {
 
 const isFnLiteral = (n: ts.Node | undefined): boolean => !!n && (ts.isArrowFunction(n) || ts.isFunctionExpression(n));
 /** A test body: a function literal or a reference to one. */
-const isFn = (n: ts.Node | undefined): boolean => isFnLiteral(n) || (!!n && ts.isIdentifier(n));
+const isStringish = (n: ts.Node): boolean =>
+  ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateExpression(n);
+/**
+ * Could be a test body: anything but a string, number, boolean, null or object literal (the title,
+ * a reason, details). A function literal, a reference (`fn`, `checks.mustDeny`) or a call that returns
+ * one all count, so a declaration is never missed because of how its body is written.
+ */
+const isBodyLike = (n: ts.Node): boolean =>
+  !isStringish(n) &&
+  !ts.isNumericLiteral(n) &&
+  !ts.isObjectLiteralExpression(n) &&
+  n.kind !== ts.SyntaxKind.TrueKeyword &&
+  n.kind !== ts.SyntaxKind.FalseKeyword &&
+  n.kind !== ts.SyntaxKind.NullKeyword;
+/** Playwright's in-describe annotations: test.skip/fixme/fail/slow([condition][, 'reason']). Never a test. */
+const ANNOTATIONS = new Set(['skip', 'fixme', 'fail', 'slow']);
+function isAnnotation(c: Callee, args: ts.NodeArray<ts.Expression>): boolean {
+  if (!ANNOTATIONS.has(c.props[c.props.length - 1] ?? '')) return false;
+  if (args.length > 0 && isStringish(args[0] as ts.Expression)) return false; // a titled call
+  return args.slice(1).every((a) => isStringish(a));
+}
+/** test.<prop> statements in a describe body that cannot declare tests. */
+const INERT_TEST_PROPS = new Set(['use', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll', 'setTimeout', 'describe']);
 
 interface Segment {
   /** null = dynamic. '' = no title (anonymous Playwright describe). */
@@ -166,7 +188,13 @@ function walk(ctx: Ctx, node: ts.Node, path: readonly Segment[]): number {
       return describeBody(ctx, [...path, { title: '', optionIds: [], at }], args[args.length - 1]);
     }
     // test(title, [details,] body). Playwright's test.skip(condition, reason) has no body: not a test.
-    const declares = args.length >= 2 && !isFnLiteral(args[0]) && args.slice(1).some((a) => isFn(a));
+    const declares = args.length >= 2 && !isFnLiteral(args[0]) && args.slice(1).some((a) => isBodyLike(a));
+    if (kind === 'test' && callee && !declares && !isAnnotation(callee, args)) {
+      // A test call the scanner cannot read (spread arguments, no body, ...): what it binds under the
+      // enclosing tags is unknown, so they are UNRESOLVABLE here. Its own literal tags stay leftovers.
+      emit(ctx, pathIds(ctx, path), at, null, 'a test call the scanner cannot read');
+      return 0;
+    }
     if (kind === 'test' && declares) {
       const title = runtimeTitle ? null : staticText(args[0]);
       if (title !== null) consume(ctx, args[0] as ts.Expression);
@@ -196,7 +224,10 @@ function describeBody(ctx: Ctx, path: readonly Segment[], body: ts.Node | undefi
       if (e && ts.isAwaitExpression(e)) e = e.expression;
       if (!e || !ts.isCallExpression(e)) continue;
       const c = calleeOf(e.expression);
-      if (c && (TEST_ROOTS.has(c.root) || DESCRIBE_ROOTS.has(c.root) || INERT_ROOTS.has(c.root))) continue;
+      if (c && (DESCRIBE_ROOTS.has(c.root) || INERT_ROOTS.has(c.root))) continue;
+      // test/it calls: declarations and unreadable ones are handled by walk(); only test.<prop>
+      // helpers other than the known inert ones (test.use, hooks, test.describe.configure) are suspect.
+      if (c && TEST_ROOTS.has(c.root) && (kindOf(c) !== null || INERT_TEST_PROPS.has(c.props[0] ?? ''))) continue;
       emit(
         ctx,
         ids,
