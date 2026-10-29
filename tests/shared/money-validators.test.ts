@@ -68,7 +68,14 @@ describe('vacancySalarySchema', () => {
   });
 
   it.each([Infinity, -Infinity, NaN])('rejects the non-finite amount %s', (v) => {
-    expect(vacancySalarySchema.safeParse({ ...base, min: v }).success).toBe(false);
+    const r = vacancySalarySchema.safeParse({ ...base, min: v });
+    expect(r.success).toBe(false);
+    // Rejected AS non-finite, not only by the bounds: zod 3 reports `not_finite` via
+    // `.finite()`, zod 4 rejects ±Infinity and NaN as `invalid_type`.
+    if (!r.success) {
+      const codes = r.error.issues.filter((i) => i.path.join('.') === 'min').map((i) => String(i.code));
+      expect(codes.some((c) => c === 'not_finite' || c === 'invalid_type')).toBe(true);
+    }
   });
 
   it('rejects a missing or unknown period', () => {
