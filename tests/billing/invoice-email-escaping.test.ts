@@ -46,6 +46,7 @@ vi.mock('../../packages/api/src/trpc', () => {
 });
 
 import {
+  buildInvoiceLineItemsHtml,
   buildNewInvoiceEmailHtml,
   buildPaymentReminderEmailHtml,
 } from '../../packages/api/src/routers/platform/invoices.helpers';
@@ -135,6 +136,31 @@ describe('buildPaymentReminderEmailHtml escapes interpolated values', () => {
     const html = buildPaymentReminderEmailHtml({ ...base, invNum: 'A&B', amountFormatted: '"1"' });
     expect(html).toContain('A&amp;B');
     expect(html).toContain('&quot;1&quot;');
+  });
+});
+
+describe('buildInvoiceLineItemsHtml escapes every cell', () => {
+  // The money formatter is injected, so each formatted cell is escaped independently of
+  // what the formatter returns (defence in depth; Intl output is not trusted to be markup-free).
+  const formatMoney = (v: number) => (v === 10 ? '<i>unit</i>' : v === 20 ? '<u>total</u>' : String(v));
+  const row = { description: 'Service', quantity: 2, unitPrice: 10, total: 20 };
+
+  it('escapes the formatted unit price', () => {
+    const html = buildInvoiceLineItemsHtml([row], formatMoney);
+    expect(html).toContain('&lt;i&gt;unit&lt;/i&gt;');
+    expect(html).not.toContain('<i>unit</i>');
+  });
+
+  it('escapes the formatted total', () => {
+    const html = buildInvoiceLineItemsHtml([row], formatMoney);
+    expect(html).toContain('&lt;u&gt;total&lt;/u&gt;');
+    expect(html).not.toContain('<u>total</u>');
+  });
+
+  it('emits one table row per line item with four cells each', () => {
+    const html = buildInvoiceLineItemsHtml([row, { ...row, description: 'Other' }], formatMoney);
+    expect(html.match(/<tr>/g)).toHaveLength(2);
+    expect(html.match(/<td /g)).toHaveLength(8);
   });
 });
 
