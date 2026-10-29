@@ -478,6 +478,19 @@ describe('runCli — the binding inventory', () => {
     expect(report.rows[0].status).toBe('NOT-RUN');
   });
 
+  it('a check in a source that was not supplied keeps the finding NOT-RUN (no FIXED-VERIFIED from a sibling source)', async () => {
+    inventory = {
+      sha: HEAD,
+      entries: [{ id: 'syn-a', source: 'xunit', file: 'services/T/A.cs', line: 9, name: 'x [finding:syn-a]' }],
+      unattributable: [],
+    };
+    const { vt } = inputs('passed');
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env()))).toBe(0);
+    expect(lines.join('\n')).not.toContain('UNTRUSTED RUN');
+    const report = JSON.parse(readFileSync(lines.find((l) => l.endsWith('.json'))!.replace('report: ', ''), 'utf8'));
+    expect(report.rows[0].status).toBe('NOT-RUN');
+  });
+
   it('an unattributable tag occurrence fails --gate launch', async () => {
     inventory = { sha: HEAD, entries: [], unattributable: ['x.test.ts:4'] };
     const { pw, vt, trxDir } = inputs('passed');

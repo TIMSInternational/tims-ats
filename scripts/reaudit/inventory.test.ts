@@ -270,6 +270,13 @@ describe('readInventory (real git)', () => {
     ]);
   });
 
+  it('an unattributable occurrence in a committed file is reported with its file and line', () => {
+    put('tests/dyn.test.ts', "const id = 'syn-a';\nit(`x [finding:${id}]`, () => {});\n");
+    g('add', '.');
+    g('commit', '-q', '-m', 'one');
+    expect(readInventory(root, g('rev-parse', 'HEAD')).unattributable).toEqual(['tests/dyn.test.ts:2']);
+  });
+
   it('a repository with no tags at all is an empty inventory', () => {
     put('a.test.ts', "it('x', () => {});\n");
     g('add', '.');
