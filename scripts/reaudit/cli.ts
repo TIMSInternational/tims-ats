@@ -20,9 +20,10 @@
  * current checkout with uncommitted or untracked (not ignored) files. Provenance guards against stale or
  * copied evidence; it is not a signature against a hand-forged manifest.
  *
- * An untrusted Playwright run (a failed test with no @finding tag, a global error, or a non-zero exit
- * the report does not explain) turns every FIXED-VERIFIED from every source into NOT-RUN and fails
- * --gate launch (exit 1).
+ * An untrusted run turns every FIXED-VERIFIED from every source into NOT-RUN and fails --gate launch
+ * (exit 1): a Playwright run with a failed test that has no @finding tag, a global error, or a non-zero
+ * exit its report does not explain; and ANY failed Vitest or .NET run (their reports cannot attribute
+ * every failure: unhandled errors, files that fail to load, projects that write no TRX).
  *
  * Exit codes: 0 ok / gate passed · 1 gate failed · 2 cannot run (missing or invalid input, refused
  * path). Every unexpected error is exit 2: this tool fails closed.
@@ -33,8 +34,8 @@ import { fileURLToPath } from 'node:url';
 import { loadPrivateBindings, nameBindings, unknownBindingIds } from './bindings';
 import { runOwnerChecks } from './collect-owner';
 import { collectPlaywrightReport } from './collect-playwright';
-import { collectVitest } from './collect-vitest';
-import { collectXunitFiles } from './collect-xunit';
+import { collectVitestReport } from './collect-vitest';
+import { collectXunitRun } from './collect-xunit';
 import { evidenceDrift, type EvidenceDrift } from './evidence-drift';
 import { loadFindings } from './findings-source';
 import { readGitState } from './git-state';
@@ -175,15 +176,21 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
     observations.push(...pw.observations);
     untrusted.push(...pw.untrusted);
   }
-  if (vtEv && args.vitest)
-    observations.push(
-      ...collectVitest(parseJson(vtEv, args.vitest, '--vitest'), nameBindings(bindings, 'vitest'), {
-        runExitCode: vtEv.manifest.exitCode,
-      }),
-    );
+  if (vtEv && args.vitest) {
+    const vt = collectVitestReport(parseJson(vtEv, args.vitest, '--vitest'), nameBindings(bindings, 'vitest'), {
+      runExitCode: vtEv.manifest.exitCode,
+    });
+    observations.push(...vt.observations);
+    untrusted.push(...vt.untrusted);
+  }
   if (trxEv && args.trx) {
     const files = [...trxEv.files].map(([name, bytes]) => ({ name, xml: bytes.toString('utf8') }));
-    observations.push(...collectXunitFiles(files, nameBindings(bindings, 'xunit'), resolve(args.trx)));
+    const xu = collectXunitRun(files, nameBindings(bindings, 'xunit'), {
+      runExitCode: trxEv.manifest.exitCode,
+      where: resolve(args.trx),
+    });
+    observations.push(...xu.observations);
+    untrusted.push(...xu.untrusted);
   }
   if (checksDir) {
     const ids = ownerCheckIds(checksDir, bindings.ownerChecks, new Set(findings.map((f) => f.id)));

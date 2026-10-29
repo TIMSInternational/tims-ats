@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { collectXunitTrx, collectXunitDir, XunitReportError } from './collect-xunit';
+import { collectXunitTrx, collectXunitDir, collectXunitRun, XunitReportError } from './collect-xunit';
 import { statusById } from './status';
 
 // `dotnet test --logger trx` output. A C# test binds through a `[finding:<id>]` tag in its xUnit
@@ -279,5 +279,48 @@ describe('collectXunitDir', () => {
 
   it('a directory with no .trx files throws (nothing ran is not a pass)', () => {
     expect(() => collectXunitDir(dir)).toThrow(/no \.trx/i);
+  });
+});
+
+// Round-7 class: `dotnet test` over several projects writes one TRX per project that RAN. A project that
+// fails to build or crashes before its logger runs writes nothing, and only the exit status shows it.
+// So any failed .NET run untrusts the whole report.
+describe('collectXunitRun: a failed run untrusts the whole report', () => {
+  const passing = trx([{ id: 'g1', name: 'ideal [finding:syn-a]', outcome: 'Passed' }]);
+
+  it('a passing TRX with a non-zero recorded exit (another project never wrote one) → untrusted', () => {
+    const out = collectXunitRun([{ name: 'a.trx', xml: passing }], undefined, { runExitCode: 1 });
+    expect(out.untrusted.join('\n')).toMatch(/exit/);
+  });
+
+  it('a failing tagged result → untrusted as well (the same exit may hide a missing project)', () => {
+    const failing = trx([{ id: 'g2', name: 'b [finding:syn-b]', outcome: 'Failed' }], 'Failed');
+    const out = collectXunitRun(
+      [
+        { name: 'a.trx', xml: passing },
+        { name: 'b.trx', xml: failing },
+      ],
+      undefined,
+      { runExitCode: 1 },
+    );
+    expect(out.untrusted.length).toBeGreaterThan(0);
+    expect(statusById(out.observations).get('syn-b')).toBe('REGRESSED');
+  });
+
+  it('exit 0 alongside a failed result is a contradiction → rejected', () => {
+    const failing = trx([{ id: 'g2', name: 'b [finding:syn-b]', outcome: 'Failed' }], 'Failed');
+    expect(() => collectXunitRun([{ name: 'b.trx', xml: failing }], undefined, { runExitCode: 0 })).toThrow(
+      XunitReportError,
+    );
+  });
+
+  it('a clean run (exit 0, every result passed) is trusted', () => {
+    const out = collectXunitRun([{ name: 'a.trx', xml: passing }], undefined, { runExitCode: 0 });
+    expect(out.untrusted).toEqual([]);
+    expect(statusById(out.observations).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('no exit status at all → untrusted', () => {
+    expect(collectXunitRun([{ name: 'a.trx', xml: passing }]).untrusted.length).toBeGreaterThan(0);
   });
 });

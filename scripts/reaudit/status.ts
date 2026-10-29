@@ -21,6 +21,13 @@ export interface Observation {
   test: string;
 }
 
+/** A collector's output: observations, plus why the run cannot be trusted as proof of any pass. */
+export interface Collection {
+  observations: Observation[];
+  /** Non-empty: the report turns every FIXED-VERIFIED (every source) into NOT-RUN and the gate fails. */
+  untrusted: string[];
+}
+
 export const REAUDIT_STATUSES: readonly ReauditStatus[] = [
   'FIXED-VERIFIED',
   'OPEN-CONFIRMED',

@@ -507,3 +507,50 @@ describe('runCli — an untrusted Playwright run blocks every pass', () => {
     expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(1);
   });
 });
+
+// Round-7 class: a failed Vitest or .NET run reaches report-level distrust, so another source's pass
+// cannot carry the gate.
+describe('runCli — a failed Vitest or .NET run blocks every pass', () => {
+  const taggedTrx = `<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="r" name="s" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Results><UnitTestResult testId="g1" testName="ideal [finding:syn-a]" outcome="Passed" /></Results>
+  <TestDefinitions><UnitTest name="ideal [finding:syn-a]" id="g1"></UnitTest></TestDefinitions>
+  <ResultSummary outcome="Completed"><Counters total="1" /></ResultSummary>
+</TestRun>`;
+
+  it('xUnit pass + recorded .NET exit 1 (a project that wrote no TRX) → gate 1, the id is NOT-RUN', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    writeFileSync(join(trxDir, 'unit.trx'), taggedTrx);
+    stamp('xunit', trxDir, { exitCode: 1 });
+    const e = env();
+    expect(await runCli(all(pw, vt, trxDir), ctx(e))).toBe(1);
+    const report = JSON.parse(readFileSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'), 'utf8')) as {
+      rows: { id: string; status: string }[];
+    };
+    expect(report.rows.find((r) => r.id === 'syn-a')?.status).toBe('NOT-RUN');
+  });
+
+  it('xUnit pass + a Vitest file that failed before discovery (exit 1) → gate 1, the id is NOT-RUN', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    writeFileSync(
+      vt,
+      JSON.stringify({
+        success: false,
+        testResults: [{ name: '/abs/broken.test.ts', status: 'failed', message: 'boom', assertionResults: [] }],
+      }),
+    );
+    stamp('vitest', vt, { exitCode: 1 });
+    writeFileSync(join(trxDir, 'unit.trx'), taggedTrx);
+    stamp('xunit', trxDir);
+    const e = env();
+    const argv = all(pw, vt, trxDir);
+    argv[argv.indexOf('--vitest-exit') + 1] = '1';
+    expect(await runCli(argv, ctx(e))).toBe(1);
+    const report = JSON.parse(readFileSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'), 'utf8')) as {
+      rows: { id: string; status: string }[];
+      untrusted: string[];
+    };
+    expect(report.rows.find((r) => r.id === 'syn-a')?.status).toBe('NOT-RUN');
+    expect(report.untrusted.join('\n')).toContain('broken.test.ts');
+  });
+});

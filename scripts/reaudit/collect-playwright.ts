@@ -25,7 +25,7 @@
  * failed test is a contradiction and rejects the report.
  */
 import { z } from 'zod';
-import { SLUG_RE, type Observation, type ObservedStatus } from './status';
+import { SLUG_RE, type Collection, type Observation, type ObservedStatus } from './status';
 
 export class PlaywrightReportError extends Error {
   constructor(message: string) {
@@ -165,11 +165,7 @@ function walk(suite: Suite, parents: string[], acc: Walked): void {
   for (const child of suite.suites ?? []) walk(child, path, acc);
 }
 
-export interface PlaywrightCollection {
-  observations: Observation[];
-  /** Why the run cannot be trusted as evidence of any pass. Empty = trusted. */
-  untrusted: string[];
-}
+export type PlaywrightCollection = Collection;
 
 export function collectPlaywrightReport(raw: unknown, opts: { runExitCode?: number } = {}): PlaywrightCollection {
   const parsed = reportSchema.safeParse(raw);

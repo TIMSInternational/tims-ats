@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectVitest, VitestReportError } from './collect-vitest';
+import { collectVitest, collectVitestReport, VitestReportError } from './collect-vitest';
 import { statusById } from './status';
 
 // Shape of `npx vitest run --reporter=json --outputFile=<f>` (jest-compatible JSON).
@@ -213,5 +213,48 @@ describe('collectVitest', () => {
 
   it('input that is not a vitest JSON report is rejected loudly', () => {
     expect(() => collectVitest({ suites: [] })).toThrow(VitestReportError);
+  });
+});
+
+// Round-7 class: a Vitest run failure must reach REPORT-level distrust. The JSON cannot attribute every
+// failure (unhandled errors are absent; a file that fails to load has no assertions, so the tagged checks
+// in it never appear), so ANY failed run untrusts the whole report, not just Vitest's own passes.
+describe('collectVitestReport: a failed run untrusts the whole report', () => {
+  const pass = { ancestorTitles: ['s'], title: 'ok [finding:syn-a]', status: 'passed' };
+
+  it('a file that failed before discovery (no assertions) → untrusted, naming the file', () => {
+    const r = vitestJson([pass]);
+    r.success = false;
+    r.testResults.push({
+      name: '/abs/tests/broken.test.ts',
+      status: 'failed',
+      message: 'SyntaxError',
+      assertionResults: [],
+    });
+    const out = collectVitestReport(r, undefined, { runExitCode: 1 });
+    expect(out.untrusted.join('\n')).toContain('broken.test.ts');
+  });
+
+  it('a green report with a non-zero exit (unhandled error) → untrusted', () => {
+    expect(collectVitestReport(vitestJson([pass]), undefined, { runExitCode: 1 }).untrusted.length).toBeGreaterThan(0);
+  });
+
+  it('a failing TAGGED assertion still untrusts the report (the same run may hide an unhandled error)', () => {
+    const r = vitestJson([pass, { ancestorTitles: ['s'], title: 'b [finding:syn-b]', status: 'failed' }]);
+    r.success = false;
+    r.testResults[0]!.status = 'failed';
+    const out = collectVitestReport(r, undefined, { runExitCode: 1 });
+    expect(out.untrusted.length).toBeGreaterThan(0);
+    expect(statusById(out.observations).get('syn-b')).toBe('REGRESSED');
+  });
+
+  it('a clean run (exit 0, every file passed) is trusted', () => {
+    const out = collectVitestReport(vitestJson([pass]), undefined, { runExitCode: 0 });
+    expect(out.untrusted).toEqual([]);
+    expect(statusById(out.observations).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('no exit status at all → untrusted (the JSON alone cannot show an unhandled error)', () => {
+    expect(collectVitestReport(vitestJson([pass])).untrusted.length).toBeGreaterThan(0);
   });
 });

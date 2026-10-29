@@ -20,9 +20,14 @@
  * When a file genuinely failed, the non-zero exit is already explained, so an unhandled error in the
  * same run cannot be ruled out. Passes in OTHER, passed files are therefore distrusted as well: any
  * failed run (failed file, `success: false`, or non-zero exit) makes every pass in it NOT-RUN.
+ *
+ * Nor can a failure be attributed to a binding: a file that fails to load has no assertions, so the
+ * tagged checks in it never appear. collectVitestReport therefore returns an untrusted-run reason for
+ * ANY failed run (and for a missing exit status), which the report applies to every source: no
+ * finding is FIXED-VERIFIED and --gate launch fails.
  */
 import { z } from 'zod';
-import { tagIds, type Observation, type ObservedStatus } from './status';
+import { tagIds, type Collection, type Observation, type ObservedStatus } from './status';
 
 export { tagIds };
 
@@ -40,7 +45,13 @@ const assertionSchema = z.object({
 });
 const reportSchema = z.object({
   success: z.boolean().optional(),
-  testResults: z.array(z.object({ status: z.string().max(50), assertionResults: z.array(assertionSchema) })),
+  testResults: z.array(
+    z.object({
+      name: z.string().max(4096).optional(),
+      status: z.string().max(50),
+      assertionResults: z.array(assertionSchema),
+    }),
+  ),
 });
 const STALE = new Set(['skipped', 'todo', 'pending', 'disabled']);
 
@@ -61,6 +72,14 @@ export function collectVitest(
   extraNameBindings?: ReadonlyMap<string, readonly string[]>,
   opts: VitestRunOptions = {},
 ): Observation[] {
+  return collectVitestReport(raw, extraNameBindings, opts).observations;
+}
+
+export function collectVitestReport(
+  raw: unknown,
+  extraNameBindings?: ReadonlyMap<string, readonly string[]>,
+  opts: VitestRunOptions = {},
+): Collection {
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success)
     throw new VitestReportError('not a vitest JSON report (expected testResults[].status and .assertionResults[])');
@@ -87,5 +106,12 @@ export function collectVitest(
     if (seen.has(name)) continue;
     for (const id of ids) out.push({ id, status: 'NOT-RUN', source: 'vitest', test: name });
   }
-  return out;
+  const reasons: string[] = [];
+  if (exit === undefined) reasons.push('vitest: no run exit status; the JSON alone cannot show an unhandled error');
+  else if (exit !== 0) reasons.push(`vitest: the run exited ${exit}`);
+  if (parsed.data.success === false) reasons.push('vitest: the report says success: false');
+  for (const f of parsed.data.testResults) {
+    if (f.status === 'failed') reasons.push(`vitest: ${f.name ?? '(unnamed file)'} failed`);
+  }
+  return { observations: out, untrusted: reasons };
 }

@@ -17,10 +17,16 @@
  * A finished run can still carry a run-level failure. The xUnit adapter writes one `Error` RunInfo per
  * failed test (`<name> [FAIL]`); any other `Error` RunInfo, or a `Failed` summary with no failing
  * result, is unexplained, and every pass in that file is downgraded to NOT-RUN.
+ *
+ * `dotnet test` over several projects writes one TRX per project that RAN: a project that fails to build
+ * or crashes before its logger runs writes none, and only the exit status shows it. collectXunitRun
+ * therefore returns an untrusted-run reason for ANY failed run (non-zero exit, a failing result, an
+ * unexplained run-level failure, or no exit status), which the report applies to every source. Exit 0
+ * alongside a failing result is a contradiction and is rejected.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { tagIds, type Observation, type ObservedStatus } from './status';
+import { tagIds, type Collection, type Observation, type ObservedStatus } from './status';
 
 export class XunitReportError extends Error {
   constructor(message: string) {
@@ -92,10 +98,18 @@ function idsFor(name: string, extraNameBindings: ReadonlyMap<string, readonly st
   return ids;
 }
 
+interface TrxStats {
+  failing: number;
+  /** Files whose run reports a failure no failed result explains. */
+  unexplained: string[];
+}
+
 function readTrx(
   xml: string,
   extraNameBindings: ReadonlyMap<string, readonly string[]> | undefined,
   seen: Set<string>,
+  stats: TrxStats = { failing: 0, unexplained: [] },
+  where = 'TRX',
 ): Observation[] {
   const resultTags = [...xml.matchAll(/<UnitTestResult\b([^>]*?)\/?>/g)];
   const runOutcome = assertComplete(xml, resultTags.length);
@@ -113,6 +127,8 @@ function readTrx(
   });
   const failingNames = results.filter((r) => FAILING.has(r.outcome)).map((r) => r.name);
   const untrusted = hasUnexplainedFailure(xml, runOutcome, failingNames);
+  stats.failing += failingNames.length;
+  if (untrusted) stats.unexplained.push(where);
 
   const out: Observation[] = [];
   const reported = new Set<string>();
@@ -172,11 +188,41 @@ export function collectXunitFiles(
   extraNameBindings?: ReadonlyMap<string, readonly string[]>,
   where = 'the TRX input',
 ): Observation[] {
+  return readFiles(files, extraNameBindings, where).observations;
+}
+
+function readFiles(
+  files: readonly { name: string; xml: string }[],
+  extraNameBindings: ReadonlyMap<string, readonly string[]> | undefined,
+  where: string,
+): { observations: Observation[]; stats: TrxStats } {
   const trx = files.filter((f) => f.name.endsWith('.trx'));
   if (trx.length === 0) throw new XunitReportError(`no .trx files in ${where} (nothing ran is not a pass)`);
   const seen = new Set<string>();
+  const stats: TrxStats = { failing: 0, unexplained: [] };
   const out = [...trx]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-    .flatMap((f) => readTrx(f.xml, extraNameBindings, seen));
-  return [...out, ...notRunBindings(extraNameBindings, seen)];
+    .flatMap((f) => readTrx(f.xml, extraNameBindings, seen, stats, f.name));
+  return { observations: [...out, ...notRunBindings(extraNameBindings, seen)], stats };
+}
+
+/** collectXunitFiles plus the run's exit status: any failed .NET run is an untrusted-run reason. */
+export function collectXunitRun(
+  files: readonly { name: string; xml: string }[],
+  extraNameBindings?: ReadonlyMap<string, readonly string[]>,
+  opts: { runExitCode?: number; where?: string } = {},
+): Collection {
+  const { observations, stats } = readFiles(files, extraNameBindings, opts.where ?? 'the TRX input');
+  const exit = opts.runExitCode;
+  if (exit === 0 && stats.failing > 0) {
+    throw new XunitReportError(`dotnet test exited 0 but the TRX holds ${stats.failing} failing result(s)`);
+  }
+  const reasons: string[] = [];
+  if (exit === undefined) reasons.push('xunit: no run exit status; a project that wrote no TRX cannot be ruled out');
+  else if (exit !== 0) {
+    reasons.push(`xunit: dotnet test exited ${exit} (a project that failed to build or crashed writes no TRX)`);
+  }
+  if (stats.failing > 0) reasons.push(`xunit: ${stats.failing} failing result(s)`);
+  for (const f of stats.unexplained) reasons.push(`xunit: ${f} reports a run-level failure no result explains`);
+  return { observations, untrusted: reasons };
 }
