@@ -116,4 +116,20 @@ describe('packages/api/src/lib/ics is a re-export of the shared module, not a co
     expect(apiIcs.formatIcsUtc).toBe(sharedIcs.formatIcsUtc);
     expect(apiIcs.sequenceFromUpdatedAt).toBe(sharedIcs.sequenceFromUpdatedAt);
   });
+
+  it('keeps the emailed REQUEST ORGANIZER and ATTENDEE lines byte-identical after the move', () => {
+    const lines = unfold(
+      apiIcs.buildIcs({
+        ...publishEvent(),
+        method: 'REQUEST',
+        organizer: { name: 'ACME Talent', email: 'noreply@tims.example' },
+        attendees: [{ name: 'Ana Gómez', email: 'ana@example.com' }],
+      }),
+    );
+    expect(lines).toContain('METHOD:REQUEST');
+    expect(lines).toContain('ORGANIZER;CN="ACME Talent":mailto:noreply@tims.example');
+    expect(lines).toContain(
+      'ATTENDEE;CN="Ana Gómez";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=FALSE:mailto:ana@example.com',
+    );
+  });
 });
