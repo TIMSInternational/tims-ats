@@ -107,7 +107,7 @@ The profile is four nullable columns on `organizations`: `country` (ISO 3166-1 a
 C# is the only FX source. The TypeScript Frankfurter path is deleted once its C# replacements are live and verified.
 
 - **Age policy.** A pin older than `StaleAfterDays` (default 3) is used, but marked stale. A pin older than
-  `MaxPinAgeDays` (default 7) is not used at all.
+  `MaxPinAgeDays` (default 7) is not used at all, once expiry is enabled (see D-25-3b for when).
 - **Provenance.** Every conversion returns `{ rate, rateDate, source, stale }`. The source comes from a closed set.
 - **Fallback.** A composite gateway can add a fallback provider. The primary provider's pin always wins for a given
   day. A fallback write never overwrites a primary row, and a primary write replaces a fallback row. So a reader sees
@@ -171,9 +171,18 @@ currency codes only, never tenant data, but it is still registered before use.
 **Why.** A frozen issue rate must be a real rate. An email must never precede a refusal. Money received must always
 be recordable.
 
-**Note on live behaviour.** The age policy is not behind a feature flag. The compensation and DEI FX reads already run
-on C#, so the age policy changes them on deploy. The FX PR therefore needs a read-only freshness check before merge
-and documents the configuration rollback (raise `Fx__MaxPinAgeDays`).
+**Note on live behaviour.** The compensation and DEI FX reads already run on C#, and today they do not fail soft in
+the way described above: when a conversion is unavailable, `CompensationFxReadUseCase` drops the FX-derived surface
+entirely (for example, `GetBandDistributionAsync` returns an empty list,
+`Tims.Application/Compensation/CompensationFxReadUseCase.cs:44-48`) instead of showing per-currency totals with an
+explanation. Enforcing a maximum pin age before those consumers change would turn any later refresh outage into blank
+reports, and a freshness check at merge time cannot prevent that. So the age policy ships in two steps:
+
+- **Stale marking** ships with the FX service (Phase A). It only adds provenance; every pin that is used today is still
+  used.
+- **Expiry** (refusing a pin older than `MaxPinAgeDays`) ships disabled, and is enabled only after every consumer of the
+  converter renders the per-currency fallback above. That is a Phase B exit criterion. Until then an expired pin is
+  used and marked stale. Rolling back is a configuration change that disables expiry again.
 
 ### D-25-4 Where the profile lives, and the billing currency
 
@@ -285,9 +294,14 @@ Every phase is additive until the last one. Each step is behind a flag or a dual
 ### Phase A: foundations (no behaviour change for users)
 
 - The `Money`, `SalaryTerms` and locale-default value objects, with fixtures shared by both stacks.
-- The FX service with its age policy, provenance and fallback gateway, and two new read endpoints behind a flag. The
-  age policy itself is live on deploy (D-25-3b).
-- A disclosure on the invoice KPI cards, using the provenance the current payload already returns.
+- The FX service with provenance, stale marking and the fallback gateway, and two new read endpoints behind a flag.
+  Stale marking is live on deploy; pin expiry ships disabled (D-25-3b).
+- A disclosure on the invoice KPI cards. **Prerequisite:** the current `getInvoiceKpis` payload cannot support §3.5. It
+  returns one `converted` flag and one `ratesAsOf`, the older of the collected and outstanding dates, with no source and
+  no stale flag (`packages/api/src/routers/platform/invoices.ts:64-71`). The disclosure PR first extends the payload with
+  a rate date, source and stale flag for each converted figure. Because that payload is served by `packages/api`, the
+  extension is either a minimal, labelled change under the narrow `packages/api` exception for launch fixes, or waits for the C# invoice KPI read in
+  Phase C; the disclosure does not ship on the current fields.
 
 ### Phase B: typed columns, dual-write and snapshots
 
@@ -298,7 +312,8 @@ Every phase is additive until the last one. Each step is behind a flag or a dual
 - The locale profile columns, their editors and provisioning presets.
 - `SalaryTerms` on offers and typed salary columns on vacancies, dual-written next to the legacy `Float` and JSON.
 - Minor-unit columns on compensation tables, plus a pay period.
-- Minor-unit columns and FX snapshots on invoices, written by the invoice transitions.
+- Minor-unit columns and FX snapshots on invoices, written by the invoice transitions. Invoices that already left draft
+  before this PR never transition again, so they get a one-off snapshot backfill (below).
 - Compensation and DEI read the tenant base currency and disclose their rates.
 
 During this phase, readers stay on the legacy columns unless a PR says otherwise.
@@ -308,10 +323,28 @@ During this phase, readers stay on the legacy columns unless a PR says otherwise
 - Callers of the interim `formatMoney` move onto `Money`, `SalaryTerms` and the typed profile. Public pages (offer
   signing, careers) get the tenant locale from their own payloads.
 - New C# reads for invoice KPIs, export and organization outstanding sum the frozen snapshots, with no FX call at read
-  time.
+  time. They switch only after the invoice snapshot backfill below has run and its coverage has been reported.
 - The TypeScript FX path is deleted after the C# dashboard and invoice reads have been live and verified for at least
   one billing cycle. This deletion is the one step that is hard to undo, so it ships last.
 - Dropping the legacy `Float` columns happens in a later wave, after every reader has switched.
+
+### Invoice snapshot backfill (existing invoices)
+
+The snapshot-only reads in Phase C would otherwise leave every invoice issued or paid before Phase B without a
+snapshot, and its treatment in totals undefined. The rule:
+
+- **Eligibility.** Invoices with status other than `draft`. Void invoices are backfilled too, for history, but stay
+  excluded from KPIs (D-25-8). Drafts get no snapshot; they are quoted when they leave draft.
+- **Issue snapshot.** The point-in-time quote (§3.4) for the latest pin on or before `invoice_date`, recorded with that
+  pin's own date and source, so the snapshot never claims a rate it did not use.
+- **Settlement snapshot.** For paid invoices, the same quote on or before `paid_at`.
+- **Unavailable historical rate.** When no pin exists on or before the date, the snapshot stays empty. Nothing is
+  guessed from a later rate.
+- **Visible accounting.** A read that sums snapshots never drops an invoice silently. Invoices without a snapshot are
+  reported as a separate per-currency total with their count, and the KPI says they are not converted. The same rule
+  covers payments recorded without a settlement snapshot (D-25-3b).
+- **Mechanics.** An idempotent, owner-run backfill with check, apply and rollback modes. Rollback clears only the rows it
+  wrote. Its coverage report (backfilled, without rate, by currency) is attached to the Phase C switch PR.
 
 ## 6. Consequences
 
