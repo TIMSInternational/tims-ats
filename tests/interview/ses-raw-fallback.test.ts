@@ -26,7 +26,12 @@ vi.mock('../../packages/api/node_modules/@aws-sdk/client-ses', () => ({
     constructor(readonly input: unknown) {}
   },
 }));
-vi.mock('@tims/shared', () => ({
+// The real .ics builder (WP-19 moved it into @tims/shared; packages/api/src/lib/ics re-exports it), so the
+// raw MIME path still carries a genuine calendar part.
+vi.mock('@tims/shared', async () => ({
+  ...(await vi.importActual<typeof import('../../packages/shared/src/calendar/ics')>(
+    '../../packages/shared/src/calendar/ics',
+  )),
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
   getAppUrl: () => 'https://ats.example.test',
 }));
