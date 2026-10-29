@@ -153,9 +153,12 @@ team. If yes, it is a note on the offer, tracked as a follow-up.
 ### D-25-3 FX provider of record and fallback
 
 **Decision.** ExchangeRate-API stays primary, because it is already pinned, fresh and documents CRC and COP (see
-[the provider swap record](fx-provider-swap-2026-07-28.md)). The fallback is `none` at first. The code supports two
-optional fallbacks: the Banco Central de Costa Rica reference rate (recommended, needs a registered token) and
-Frankfurter v2 (keyless).
+[the provider swap record](fx-provider-swap-2026-07-28.md)). The fallback is `none` at first. Two fallbacks are
+**planned, not implemented**: the Banco Central de Costa Rica reference rate (recommended, needs a registered token)
+and Frankfurter v2 (keyless). Today `IFxRateGateway` is bound directly to `ExchangeRateApiGateway`
+(`FxServiceCollectionExtensions.cs`), so there is no recovery path yet. Prerequisites before either is usable: a
+fallback adapter and a composite gateway with tests, the provider added to the subprocessor register, and (for BCCR)
+the token provisioned as a secret.
 
 **Why.** It avoids adding a third provider before the subprocessor register is updated. A fallback provider receives
 currency codes only, never tenant data, but it is still registered before use.
@@ -300,7 +303,14 @@ model. There is no backfill.
 
 ## 5. Migration phases
 
-Every phase is additive until the last one. Each step is behind a flag or a dual-write, so a revert is safe.
+Every phase is additive until the last one. Each step is behind a flag or a dual-write, so a revert is safe,
+with one boundary: **once an offer with non-legacy `SalaryTerms` exists** (yearly with aguinaldo, 13/14 payments, or
+net), its legacy `salary` column no longer states the agreement (the worked example in §3.2 stores CRC 12 000 000 for
+a CRC 13 000 000 agreement). From that point the candidate-facing readers that render `SalaryTerms` are not
+revertible; a rollback may only disable _creating_ such terms. Enabling the Phase B flag therefore requires (1) the
+upgraded readers shipped and declared a no-revert boundary in the enabling PR, and (2) a check that lists non-legacy
+offers, so that any emergency revert of the readers is preceded by withdrawing or re-issuing those offers in legacy
+shape.
 
 ### Phase A: foundations (no behaviour change for users)
 
