@@ -118,4 +118,67 @@ public sealed class ReportingReadTests(ReportingReadFixture fixture)
         Assert.Equal(ReportingReadFixture.OrgATotalApplications, buckets.Sum(b => b.Count)); // all 4 in range
         Assert.Equal(4, buckets[5].Count); // June is the newest bucket
     }
+
+    // ---- recruiter-data-78: a converted offer (accepted, then convertToEmployee) is a hire. ----
+    // OrgC's only hire has status 'converted'; a reporting query that counts only 'accepted' drops it.
+
+    [Fact]
+    public async Task Kpis_count_converted_offer_as_accepted()
+    {
+        var data = await NewRepo().GetKpiDataAsync(ReportingReadFixture.OrgC.ToString(), FromAllTime, CancellationToken.None);
+
+        Assert.Equal(ReportingReadFixture.OrgCOffersSent, data.OffersSent);
+        Assert.Equal(ReportingReadFixture.OrgCHires, data.OffersAccepted);
+        Assert.Single(data.Accepted); // OrgCHires == 1: the converted offer
+
+        var view = KpiViewBuilder.Build(new KpiViewInput("1Y", data.Accepted, data.OffersSent, data.OffersAccepted, data.TotalApplications, data.Rejected));
+        Assert.NotNull(view.TimeToFillDays);
+        Assert.Equal(ReportingReadFixture.OrgCKpiTtf, view.TimeToFillDays);
+        Assert.Equal(ReportingReadFixture.OrgCKpiTth, view.TimeToHireDays);
+        Assert.Equal(ReportingReadFixture.OrgCHires, view.Hires);
+        Assert.Equal(ReportingReadFixture.OrgCOfferAcceptRatePct, view.OfferAcceptRatePct);
+    }
+
+    [Fact]
+    public async Task Funnel_counts_converted_offer_as_hire()
+    {
+        var data = await NewRepo().GetFunnelDataAsync(ReportingReadFixture.OrgC.ToString(), CancellationToken.None);
+
+        Assert.Equal(ReportingReadFixture.OrgCHires, data.TotalHired);
+    }
+
+    [Fact]
+    public async Task SourceBreakdown_counts_converted_hire_source()
+    {
+        var data = await NewRepo().GetSourceDataAsync(ReportingReadFixture.OrgC.ToString(), FromAllTime, CancellationToken.None);
+
+        Assert.Equal(new[] { ReportingReadFixture.OrgCHireSource }, data.HireSources);
+    }
+
+    [Fact]
+    public async Task RecruiterSla_includes_converted_offer_in_ttf()
+    {
+        var data = await NewRepo().GetRecruiterDataAsync(ReportingReadFixture.OrgC.ToString(), FromAllTime, CancellationToken.None);
+
+        Assert.Single(data.Accepted); // OrgCHires == 1: the converted offer
+
+        var nowMs = new DateTimeOffset(2026, 7, 27, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+        var row = Assert.Single(RecruiterSlaViewBuilder.Build(new RecruiterSlaInput(nowMs, data.Vacancies, data.AppCounts, data.Accepted, data.Active)));
+        Assert.Equal("Cleo Converter", row.Name);
+        Assert.Equal(ReportingReadFixture.OrgCKpiTtf, row.AvgTtfDays);
+    }
+
+    [Fact]
+    public async Task Declined_offer_is_not_counted()
+    {
+        // Negative control: widening the hire set must stop at 'converted'. OrgC also holds a DECLINED offer
+        // (from a linkedin application); it is a sent offer, never a hire.
+        var kpi = await NewRepo().GetKpiDataAsync(ReportingReadFixture.OrgC.ToString(), FromAllTime, CancellationToken.None);
+        var funnel = await NewRepo().GetFunnelDataAsync(ReportingReadFixture.OrgC.ToString(), CancellationToken.None);
+        var sources = await NewRepo().GetSourceDataAsync(ReportingReadFixture.OrgC.ToString(), FromAllTime, CancellationToken.None);
+
+        Assert.Equal(ReportingReadFixture.OrgCHires, kpi.OffersAccepted);
+        Assert.Equal(ReportingReadFixture.OrgCHires, funnel.TotalHired);
+        Assert.DoesNotContain(ReportingReadFixture.OrgCDeclinedSource, sources.HireSources);
+    }
 }
