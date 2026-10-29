@@ -168,6 +168,33 @@ describe('collectVitest', () => {
     expect(() => collectVitest(j)).toThrow(VitestReportError);
   });
 
+  // Vitest 4.1.7's JSON reporter computes `success` from failed tests/suites only; an unhandled error
+  // leaves `success: true` and every file `passed`, and shows up ONLY in the runner's exit status.
+  it('a non-zero runner exit with an all-green report (an unhandled error) makes every pass NOT-RUN', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'ok [finding:syn-a]', status: 'passed' }]);
+    expect(j.success).toBe(true);
+    expect(statusById(collectVitest(j, undefined, { runExitCode: 1 })).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('runner exit 0 with an all-green report keeps a pass FIXED-VERIFIED', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'ok [finding:syn-a]', status: 'passed' }]);
+    expect(statusById(collectVitest(j, undefined, { runExitCode: 0 })).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('runner exit 0 contradicting a failed file is rejected (the report and the exit code disagree)', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'red [finding:syn-a]', status: 'failed' }]);
+    j.success = false;
+    j.testResults[0]!.status = 'failed';
+    expect(() => collectVitest(j, undefined, { runExitCode: 0 })).toThrow(VitestReportError);
+  });
+
+  it('a non-zero runner exit never hides a red: a failing bound test stays REGRESSED', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'red [finding:syn-a]', status: 'failed' }]);
+    j.success = false;
+    j.testResults[0]!.status = 'failed';
+    expect(statusById(collectVitest(j, undefined, { runExitCode: 1 })).get('syn-a')).toBe('REGRESSED');
+  });
+
   it('input that is not a vitest JSON report is rejected loudly', () => {
     expect(() => collectVitest({ suites: [] })).toThrow(VitestReportError);
   });

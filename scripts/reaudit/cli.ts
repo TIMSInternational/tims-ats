@@ -2,8 +2,11 @@
 /**
  * Re-audit CLI.
  *
- *   pnpm exec tsx scripts/reaudit/cli.ts --playwright <json> --vitest <json> --trx <dir>
- *     [--with-owner-checks] [--gate launch] [--evidence-base <rev>]
+ *   pnpm exec tsx scripts/reaudit/cli.ts --playwright <json> --vitest <json> --vitest-exit <status>
+ *     --trx <dir> [--with-owner-checks] [--gate launch] [--evidence-base <rev>]
+ *
+ * --vitest-exit is required with --vitest: the exit status of the `vitest run` that wrote the JSON.
+ * Vitest's JSON report omits unhandled errors; only the exit status shows them.
  *
  * Private locations come ONLY from the environment; no private path is baked into this public repo:
  *   REAUDIT_FINDINGS (required) · REAUDIT_OUT_DIR (required) · REAUDIT_BINDINGS · REAUDIT_WP_INDEX ·
@@ -39,6 +42,7 @@ export interface CliContext {
 interface CliArgs {
   playwright?: string;
   vitest?: string;
+  vitestExit?: number;
   trx?: string;
   withOwnerChecks: boolean;
   gate?: 'launch';
@@ -47,7 +51,7 @@ interface CliArgs {
 
 class UsageError extends Error {}
 
-const VALUE_FLAGS = new Set(['--playwright', '--vitest', '--trx', '--gate', '--evidence-base']);
+const VALUE_FLAGS = new Set(['--playwright', '--vitest', '--vitest-exit', '--trx', '--gate', '--evidence-base']);
 
 function parseArgs(argv: readonly string[]): CliArgs {
   const args: CliArgs = { withOwnerChecks: false };
@@ -60,7 +64,12 @@ function parseArgs(argv: readonly string[]): CliArgs {
     if (!VALUE_FLAGS.has(flag)) throw new UsageError(`unknown argument: ${flag}`);
     const value = argv[++i];
     if (value === undefined || value.startsWith('--')) throw new UsageError(`${flag} needs a value`);
-    if (flag === '--playwright') args.playwright = value;
+    if (flag === '--vitest-exit') {
+      if (!/^\d{1,3}$/.test(value) || Number(value) > 255) {
+        throw new UsageError(`--vitest-exit must be a process exit status 0-255 (got "${value}")`);
+      }
+      args.vitestExit = Number(value);
+    } else if (flag === '--playwright') args.playwright = value;
     else if (flag === '--vitest') args.vitest = value;
     else if (flag === '--trx') args.trx = value;
     else if (flag === '--evidence-base') args.evidenceBase = value;
@@ -93,6 +102,10 @@ function ownerCheckIds(dir: string, bound: readonly string[], findingIds: Readon
 
 async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   const args = parseArgs(argv);
+  if (args.vitest && args.vitestExit === undefined) {
+    throw new UsageError('--vitest needs --vitest-exit <status> (the JSON report omits unhandled errors)');
+  }
+  if (!args.vitest && args.vitestExit !== undefined) throw new UsageError('--vitest-exit needs --vitest');
   if (!args.playwright && !args.vitest && !args.trx && !args.withOwnerChecks) {
     throw new UsageError('no inputs: pass at least one of --playwright, --vitest, --trx, --with-owner-checks');
   }
@@ -119,7 +132,11 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   const observations: Observation[] = [];
   if (args.playwright) observations.push(...collectPlaywright(readJson(args.playwright, '--playwright')));
   if (args.vitest)
-    observations.push(...collectVitest(readJson(args.vitest, '--vitest'), nameBindings(bindings, 'vitest')));
+    observations.push(
+      ...collectVitest(readJson(args.vitest, '--vitest'), nameBindings(bindings, 'vitest'), {
+        runExitCode: args.vitestExit,
+      }),
+    );
   if (args.trx) observations.push(...collectXunitDir(resolve(args.trx), nameBindings(bindings, 'xunit')));
   if (checksDir) {
     const ids = ownerCheckIds(checksDir, bindings.ownerChecks, new Set(findings.map((f) => f.id)));

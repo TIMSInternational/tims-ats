@@ -34,6 +34,35 @@ function report(tests: ReturnType<typeof testEntry>[], nested = false) {
 const open = (id: string): Annotation => ({ type: 'finding-open', description: id });
 const fixed = (id: string): Annotation => ({ type: 'finding-fixed', description: id });
 
+describe('collectPlaywright: top-level (global) errors', () => {
+  const globalError = { message: 'Error: globalTeardown failed', stack: 'Error: globalTeardown failed' };
+
+  it('a pass in a report with a global error is NOT-RUN, never FIXED-VERIFIED', () => {
+    const r = report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);
+    (r.errors as unknown[]).push(globalError);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a global error never hides a red: a failed fixed-binding stays REGRESSED', () => {
+    const r = report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'failed' }] })]);
+    (r.errors as unknown[]).push(globalError);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('REGRESSED');
+  });
+
+  it('an empty errors array leaves a pass FIXED-VERIFIED', () => {
+    const r = report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('a report without a top-level errors array is rejected (cannot tell whether the run errored)', () => {
+    const r: Record<string, unknown> = report([
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+    ]);
+    delete r.errors;
+    expect(() => collectPlaywright(r)).toThrow(PlaywrightReportError);
+  });
+});
+
 describe('collectPlaywright', () => {
   it('finding-open annotation on a passing test → OPEN-CONFIRMED', () => {
     const r = report([testEntry({ annotations: [open('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);

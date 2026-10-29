@@ -9,6 +9,11 @@
  *
  * Only the LAST attempt (highest `retry`) counts. A test that never produced a result is NOT-RUN,
  * and a skipped test bound to an id is STALE-BINDING — neither is ever a pass.
+ *
+ * Top-level `errors` (global setup/teardown failures, errors outside any test) can coexist with
+ * passing tests. A report with any such error is not trusted evidence of a pass: every FIXED-VERIFIED
+ * becomes NOT-RUN. A failure is never downgraded. The `errors` array is required, so a report that
+ * cannot say whether the run errored is rejected.
  */
 import { z } from 'zod';
 import { SLUG_RE, type Observation, type ObservedStatus } from './status';
@@ -48,7 +53,8 @@ const suiteSchema: z.ZodType<Suite> = z.lazy(() =>
   }),
 );
 
-const reportSchema = z.object({ suites: z.array(suiteSchema) });
+const globalErrorSchema = z.object({ message: z.string().max(20000).optional() });
+const reportSchema = z.object({ suites: z.array(suiteSchema), errors: z.array(globalErrorSchema) });
 
 type PwTest = z.infer<typeof testSchema>;
 type Annotation = z.infer<typeof annotationSchema>;
@@ -114,5 +120,6 @@ export function collectPlaywright(raw: unknown): Observation[] {
   }
   const out: Observation[] = [];
   for (const suite of parsed.data.suites) walk(suite, [], out);
-  return out;
+  if (parsed.data.errors.length === 0) return out;
+  return out.map((o) => (o.status === 'FIXED-VERIFIED' ? { ...o, status: 'NOT-RUN' } : o));
 }

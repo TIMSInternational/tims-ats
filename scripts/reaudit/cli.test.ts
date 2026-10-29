@@ -118,18 +118,18 @@ describe('runCli — refusal paths (exit 2)', () => {
 
   it('an unknown flag → 2', async () => {
     const { vt } = inputs();
-    expect(await runCli(['--vitest', vt, '--bogus'], ctx(env()))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0', '--bogus'], ctx(env()))).toBe(2);
     expect(lines.join('\n')).toContain('--bogus');
   });
 
   it('--gate with anything but "launch" → 2', async () => {
     const { vt } = inputs();
-    expect(await runCli(['--vitest', vt, '--gate', 'release'], ctx(env()))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0', '--gate', 'release'], ctx(env()))).toBe(2);
   });
 
   it('--gate launch requires all three inputs; a missing one → 2 and it is named', async () => {
     const { vt } = inputs();
-    expect(await runCli(['--vitest', vt, '--gate', 'launch'], ctx(env()))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0', '--gate', 'launch'], ctx(env()))).toBe(2);
     const out = lines.join('\n');
     expect(out).toContain('--playwright');
     expect(out).toContain('--trx');
@@ -137,7 +137,7 @@ describe('runCli — refusal paths (exit 2)', () => {
 
   it('an input file that does not exist → 2 and the path is named', async () => {
     const missing = join(priv, 'absent.json');
-    expect(await runCli(['--vitest', missing], ctx(env()))).toBe(2);
+    expect(await runCli(['--vitest', missing, '--vitest-exit', '0'], ctx(env()))).toBe(2);
     expect(lines.join('\n')).toContain(missing);
   });
 
@@ -145,7 +145,7 @@ describe('runCli — refusal paths (exit 2)', () => {
     const { vt } = inputs();
     const e = env();
     delete e.REAUDIT_FINDINGS;
-    expect(await runCli(['--vitest', vt], ctx(e))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(e))).toBe(2);
     expect(lines.join('\n')).toContain('REAUDIT_FINDINGS');
   });
 
@@ -153,13 +153,15 @@ describe('runCli — refusal paths (exit 2)', () => {
     const { vt } = inputs();
     const e = env();
     delete e.REAUDIT_OUT_DIR;
-    expect(await runCli(['--vitest', vt], ctx(e))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(e))).toBe(2);
     expect(lines.join('\n')).toContain('REAUDIT_OUT_DIR');
   });
 
   it('REAUDIT_OUT_DIR inside the repo → 2, and nothing is written into the repo', async () => {
     const { vt } = inputs();
-    expect(await runCli(['--vitest', vt], ctx(env({ REAUDIT_OUT_DIR: join(repo, 'out') })))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env({ REAUDIT_OUT_DIR: join(repo, 'out') })))).toBe(
+      2,
+    );
     expect(readdirSync(repo)).toEqual([]);
     expect(lines.join('\n')).toMatch(/REAUDIT_OUT_DIR is inside the repository/);
   });
@@ -168,19 +170,39 @@ describe('runCli — refusal paths (exit 2)', () => {
     const { vt } = inputs();
     const inside = join(repo, 'findings.json');
     writeFileSync(inside, JSON.stringify([finding('syn-a')]));
-    expect(await runCli(['--vitest', vt], ctx(env({ REAUDIT_FINDINGS: inside })))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env({ REAUDIT_FINDINGS: inside })))).toBe(2);
   });
 
   it('--with-owner-checks without REAUDIT_OWNER_CHECKS_DIR → 2', async () => {
     const { vt } = inputs();
-    expect(await runCli(['--vitest', vt, '--with-owner-checks'], ctx(env()))).toBe(2);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0', '--with-owner-checks'], ctx(env()))).toBe(2);
     expect(lines.join('\n')).toContain('REAUDIT_OWNER_CHECKS_DIR');
+  });
+
+  it('--vitest without --vitest-exit → 2 and the missing flag is named (the JSON alone cannot show an unhandled error)', async () => {
+    const { vt } = inputs();
+    expect(await runCli(['--vitest', vt], ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain('--vitest-exit');
+  });
+
+  it('--vitest-exit that is not an exit status → 2', async () => {
+    const { vt } = inputs();
+    for (const bad of ['x', '-1', '256', '1.5', '']) {
+      lines = [];
+      expect(await runCli(['--vitest', vt, '--vitest-exit', bad], ctx(env()))).toBe(2);
+      expect(lines.join('\n')).toContain('--vitest-exit');
+    }
+  });
+
+  it('--vitest-exit without --vitest → 2', async () => {
+    const { pw } = inputs();
+    expect(await runCli(['--playwright', pw, '--vitest-exit', '0'], ctx(env()))).toBe(2);
   });
 
   it('a corrupt input report → 2 (not silently treated as zero tests)', async () => {
     const bad = join(priv, 'bad.json');
     writeFileSync(bad, '{"not":"a vitest report"}');
-    expect(await runCli(['--vitest', bad], ctx(env()))).toBe(2);
+    expect(await runCli(['--vitest', bad, '--vitest-exit', '0'], ctx(env()))).toBe(2);
   });
 });
 
@@ -188,7 +210,12 @@ describe('runCli — happy paths', () => {
   it('--gate launch: the only launch P1 is FIXED-VERIFIED → 0, and the report is written outside the repo', async () => {
     const { pw, vt, trxDir } = inputs('passed');
     const e = env();
-    expect(await runCli(['--playwright', pw, '--vitest', vt, '--trx', trxDir, '--gate', 'launch'], ctx(e))).toBe(0);
+    expect(
+      await runCli(
+        ['--playwright', pw, '--vitest', vt, '--vitest-exit', '0', '--trx', trxDir, '--gate', 'launch'],
+        ctx(e),
+      ),
+    ).toBe(0);
     const outDir = e.REAUDIT_OUT_DIR as string;
     expect(readdirSync(outDir).sort()).toEqual(['2026-10-28-01234567.json', '2026-10-28-01234567.md']);
     expect(readdirSync(repo)).toEqual([]);
@@ -196,8 +223,64 @@ describe('runCli — happy paths', () => {
 
   it('--gate launch: the launch P1 is REGRESSED → 1', async () => {
     const { pw, vt, trxDir } = inputs('failed');
-    expect(await runCli(['--playwright', pw, '--vitest', vt, '--trx', trxDir, '--gate', 'launch'], ctx(env()))).toBe(1);
+    expect(
+      await runCli(
+        ['--playwright', pw, '--vitest', vt, '--vitest-exit', '1', '--trx', trxDir, '--gate', 'launch'],
+        ctx(env()),
+      ),
+    ).toBe(1);
     expect(lines.join('\n')).toContain('syn-a');
+  });
+
+  it('--gate launch: green vitest JSON but a non-zero vitest exit (unhandled error) → 1, the id is NOT-RUN', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const e = env();
+    expect(
+      await runCli(
+        ['--playwright', pw, '--vitest', vt, '--vitest-exit', '1', '--trx', trxDir, '--gate', 'launch'],
+        ctx(e),
+      ),
+    ).toBe(1);
+    const report = JSON.parse(readFileSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'), 'utf8')) as {
+      rows: { id: string; status: string }[];
+    };
+    expect(report.rows.find((r) => r.id === 'syn-a')?.status).toBe('NOT-RUN');
+  });
+
+  it('--gate launch: a Playwright global error turns a green journey pass into a failed gate', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    writeFileSync(
+      pw,
+      JSON.stringify({
+        config: {},
+        suites: [
+          {
+            title: 'j.spec.ts',
+            specs: [
+              {
+                title: 'step',
+                tests: [
+                  {
+                    projectName: 'recruiter',
+                    expectedStatus: 'passed',
+                    annotations: [{ type: 'finding-fixed', description: 'syn-a' }],
+                    results: [{ retry: 0, status: 'passed' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        errors: [{ message: 'Error: globalTeardown failed' }],
+        stats: {},
+      }),
+    );
+    expect(
+      await runCli(
+        ['--playwright', pw, '--vitest', vt, '--vitest-exit', '0', '--trx', trxDir, '--gate', 'launch'],
+        ctx(env()),
+      ),
+    ).toBe(1);
   });
 
   it('declared owner bindings without --with-owner-checks are NOT-RUN, so the gate cannot pass', async () => {
@@ -205,7 +288,12 @@ describe('runCli — happy paths', () => {
     const bindingsPath = join(priv, 'bindings.json');
     writeFileSync(bindingsPath, JSON.stringify({ version: 1, tests: [], ownerChecks: ['syn-a'] }));
     const e = env({ REAUDIT_BINDINGS: bindingsPath });
-    expect(await runCli(['--playwright', pw, '--vitest', vt, '--trx', trxDir, '--gate', 'launch'], ctx(e))).toBe(1);
+    expect(
+      await runCli(
+        ['--playwright', pw, '--vitest', vt, '--vitest-exit', '0', '--trx', trxDir, '--gate', 'launch'],
+        ctx(e),
+      ),
+    ).toBe(1);
     const report = JSON.parse(readFileSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'), 'utf8')) as {
       rows: { id: string; status: string }[];
     };
@@ -215,7 +303,7 @@ describe('runCli — happy paths', () => {
   it('without --gate, one input is enough; exit 0 and the report is written', async () => {
     const { vt } = inputs('failed');
     const e = env();
-    expect(await runCli(['--vitest', vt], ctx(e))).toBe(0);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '1'], ctx(e))).toBe(0);
     expect(existsSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'))).toBe(true);
   });
 });

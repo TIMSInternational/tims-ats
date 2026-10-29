@@ -8,8 +8,17 @@
  *
  * A file can fail OUTSIDE its assertions (a throwing afterAll leaves the file `failed` with an empty
  * message while every assertion still reads `passed`), and a run can fail with no failed file at all
- * (an unhandled error sets `success: false`). A pass from such a file, or from such a run, is not
- * trusted evidence and becomes NOT-RUN. A failing assertion is never downgraded.
+ * (`success: false`). A pass from such a file, or from such a run, is not trusted evidence and becomes
+ * NOT-RUN. A failing assertion is never downgraded.
+ *
+ * The JSON report CANNOT show an unhandled error: Vitest 4.1.7's reporter computes `success` from
+ * failed tests and suites only, so a run with an unhandled error reports every file `passed` and
+ * `success: true`. Only the runner's exit status carries it. Pass that status as `runExitCode`; a
+ * non-zero exit with no failed file makes every pass NOT-RUN, and exit 0 alongside a failed file is a
+ * contradiction and is rejected. The CLI requires it (`--vitest-exit`).
+ *
+ * Residual: when a file genuinely failed, the non-zero exit is already explained, so an unhandled
+ * error in the same run is indistinguishable from that failure. Passes in OTHER passed files are kept.
  */
 import { z } from 'zod';
 import { tagIds, type Observation, type ObservedStatus } from './status';
@@ -41,14 +50,27 @@ function statusFor(status: string): ObservedStatus {
   return 'NOT-RUN';
 }
 
-export function collectVitest(raw: unknown, extraNameBindings?: ReadonlyMap<string, readonly string[]>): Observation[] {
+export interface VitestRunOptions {
+  /** The `vitest run` process exit status. Undefined only for callers with no process (unit tests). */
+  runExitCode?: number;
+}
+
+export function collectVitest(
+  raw: unknown,
+  extraNameBindings?: ReadonlyMap<string, readonly string[]>,
+  opts: VitestRunOptions = {},
+): Observation[] {
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success)
     throw new VitestReportError('not a vitest JSON report (expected testResults[].status and .assertionResults[])');
   const out: Observation[] = [];
   const seen = new Set<string>();
   const anyFileFailed = parsed.data.testResults.some((f) => f.status === 'failed');
-  const runFailedUnexplained = parsed.data.success === false && !anyFileFailed;
+  const exit = opts.runExitCode;
+  if (exit === 0 && (anyFileFailed || parsed.data.success === false)) {
+    throw new VitestReportError('vitest exited 0 but the report shows a failure; the report and exit code disagree');
+  }
+  const runFailedUnexplained = (parsed.data.success === false || (exit !== undefined && exit !== 0)) && !anyFileFailed;
   for (const file of parsed.data.testResults) {
     const untrusted = file.status === 'failed' || runFailedUnexplained;
     for (const a of file.assertionResults) {
