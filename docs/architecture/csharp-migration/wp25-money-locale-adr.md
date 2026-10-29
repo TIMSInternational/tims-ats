@@ -165,6 +165,14 @@ currency codes only, never tenant data, but it is still registered before use.
 **Decision.**
 
 - **Reports fail soft.** With no usable rate they show per-currency totals and say so.
+- **Per-currency totals are new cohorts, and are suppressed like any other.** On compensation and DEI surfaces each
+  currency partition is a group: it is published only when it passes the same contributor floor and complement
+  (differencing) checks that the surface already applies to its converted aggregate (for example
+  `Tims.Application/Compensation/CompensationFxReadUseCase.cs:112-113`). A partition below the floor is not shown on
+  its own, and the remaining partitions are suppressed too when publishing them would let the hidden one be derived
+  from the converted or headcount totals. Fixtures cover a single employee paid in a currency nobody else uses, and a
+  differencing case where the other partitions plus the total would reveal it. The fallback is not enabled on a
+  surface until those fixtures pass.
 - **Issuing an invoice fails closed.** Leaving draft without a rate returns `409 fx_unavailable`. The quote runs before
   any email is sent, so a refusal never follows a delivered email.
 - **Recording a payment never fails on FX.** The payment is stored, the settlement snapshot stays empty, and the KPI
@@ -325,7 +333,11 @@ Every phase is additive until the last one. Each step is behind a flag or a dual
 - Minor-unit columns on compensation tables, plus a pay period.
 - Minor-unit columns and FX snapshots on invoices, written by the invoice transitions. Invoices that already left draft
   before this PR never transition again, so they get a one-off snapshot backfill (below).
-- Compensation and DEI read the tenant base currency and disclose their rates.
+- Compensation and DEI read the tenant base currency and disclose their rates. **Prerequisite:** FX discovery pins
+  only the currencies it finds in `employee_compensations`, `salary_bands`, `companies` and `invoices`
+  (`Tims.Infrastructure/Fx/FxRateWriteRepository.cs:27`), and a profile write reaches `companies` only for an
+  organization with exactly one active company (§3.3). So `organizations.base_currency` is added to the discovery
+  set, with a test that a base currency used by no other table gets a pin, before any reader converts into it.
 
 During this phase, readers stay on the legacy columns unless a PR says otherwise.
 
@@ -346,6 +358,9 @@ snapshot, and its treatment in totals undefined. The rule:
 
 - **Eligibility.** Invoices with status other than `draft`. Void invoices are backfilled too, for history, but stay
   excluded from KPIs (D-25-8). Drafts get no snapshot; they are quoted when they leave draft.
+- **Missing snapshots only.** The issue and settlement snapshots are backfilled separately, and each write is
+  conditional on that snapshot still being empty at write time. An invoice issued or paid after Phase B deployed
+  already has its live snapshot, and the backfill never replaces it.
 - **Issue snapshot.** The point-in-time quote (§3.4) for the latest pin on or before `invoice_date`, recorded with that
   pin's own date and source, so the snapshot never claims a rate it did not use.
 - **Settlement snapshot.** For paid invoices, the same quote on or before `paid_at`.
@@ -354,8 +369,10 @@ snapshot, and its treatment in totals undefined. The rule:
 - **Visible accounting.** A read that sums snapshots never drops an invoice silently. Invoices without a snapshot are
   reported as a separate per-currency total with their count, and the KPI says they are not converted. The same rule
   covers payments recorded without a settlement snapshot (D-25-3b).
-- **Mechanics.** An idempotent, owner-run backfill with check, apply and rollback modes. Rollback clears only the rows it
-  wrote. Its coverage report (backfilled, without rate, by currency) is attached to the Phase C switch PR.
+- **Mechanics.** An idempotent, owner-run backfill with check, apply and rollback modes. It records the snapshot values
+  it wrote for each invoice. Rollback clears a snapshot only while it still holds exactly those values, so a snapshot
+  that a live transition has since changed or rewritten (a reverted and re-recorded payment, for example) is kept. Its
+  coverage report (backfilled, already snapshotted, without rate, by currency) is attached to the Phase C switch PR.
 
 ## 6. Consequences
 
