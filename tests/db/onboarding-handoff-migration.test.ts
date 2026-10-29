@@ -19,6 +19,12 @@ const MIGRATION = join(REPO_ROOT, 'packages/db/prisma/migrations/20261102120000_
 const ROLLBACK = join(REPO_ROOT, 'packages/db/prisma/manual/2026-11-02-onboarding-hire-handoff.ROLLBACK.sql');
 const ONBOARDING_SCHEMA = join(REPO_ROOT, 'packages/db/prisma/schema/onboarding.prisma');
 const USER_SCHEMA = join(REPO_ROOT, 'packages/db/prisma/schema/user.prisma');
+/**
+ * The production-schema baseline. The Playwright E2E stack (scripts/e2e/up.sh) loads THIS file as
+ * its schema, never `prisma db push`, so a Prisma column missing here breaks every `create()` on
+ * the model there (Prisma's INSERT ... RETURNING names every scalar column).
+ */
+const BASELINE = join(REPO_ROOT, 'packages/db/baseline/prod-public-schema.sql');
 
 /** The exact column set this PR adds, per table. Pinned: adding or dropping one must fail. */
 const EXPECTED_COLUMNS: Record<string, string[]> = {
@@ -187,5 +193,58 @@ describe('(4) Prisma schema maps the new fields to exactly these snake_case colu
   it('(5) OnboardingPlan declares @@index([managerId])', () => {
     const block = modelBlock(readFileSync(ONBOARDING_SCHEMA, 'utf8'), 'OnboardingPlan');
     expect(block).toMatch(/@@index\(\[managerId\]\)/);
+  });
+});
+
+/** Column name -> declared type, from the pg_dump CREATE TABLE block for `table` in the baseline. */
+function baselineColumns(table: string): Map<string, string> {
+  const baseline = readSql(BASELINE);
+  const match = new RegExp(`CREATE TABLE public\\.${table} \\(\\n([\\s\\S]*?)\\n\\);`).exec(baseline);
+  if (!match) throw new Error(`CREATE TABLE public.${table} not found in the baseline`);
+  const cols = new Map<string, string>();
+  for (const line of match[1].split('\n')) {
+    const m = /^\s+"?(\w+)"?\s+(.*?),?$/.exec(line);
+    if (m) cols.set(m[1], m[2]);
+  }
+  return cols;
+}
+
+describe('(6) the E2E/prod schema baseline mirrors the migration', () => {
+  // Regression: PR #388 first added these fields to Prisma without mirroring them in the baseline.
+  // The E2E stack loads the baseline, so offer.convertToEmployee's onboardingPlan.create() failed
+  // with "column onboarding_plans.manager_id does not exist" and the hire journey never completed.
+  for (const [model, table] of [
+    ['OnboardingPlan', 'onboarding_plans'],
+    ['OnboardingTask', 'onboarding_tasks'],
+  ] as const) {
+    it(`every scalar ${model} column exists in public.${table}`, () => {
+      const cols = baselineColumns(table);
+      const m = Prisma.dmmf.datamodel.models.find((x) => x.name === model);
+      expect(m, `model ${model}`).toBeDefined();
+      const missing = m!.fields
+        .filter((f) => f.kind === 'scalar' || f.kind === 'enum')
+        .map((f) => f.dbName ?? f.name)
+        .filter((c) => !cols.has(c));
+      expect(missing, 'columns Prisma will SELECT/RETURN that the baseline lacks').toEqual([]);
+    });
+  }
+
+  it('types the four new baseline columns as the migration does, all nullable', () => {
+    const plans = baselineColumns('onboarding_plans');
+    const tasks = baselineColumns('onboarding_tasks');
+    expect(plans.get('manager_id')).toBe('uuid');
+    expect(plans.get('first_day_info')).toBe('jsonb');
+    expect(plans.get('welcome_sent_at')).toBe('timestamp(3) without time zone');
+    expect(tasks.get('resource_url')).toBe('character varying(2048)');
+  });
+
+  it('carries the manager_id index and the SET NULL foreign key', () => {
+    const baseline = readSql(BASELINE);
+    expect(baseline).toContain(
+      'CREATE INDEX onboarding_plans_manager_id_idx ON public.onboarding_plans USING btree (manager_id);',
+    );
+    expect(baseline).toContain(
+      'ADD CONSTRAINT onboarding_plans_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE SET NULL;',
+    );
   });
 });
