@@ -29,8 +29,10 @@
  *
  * NOT PROVABLE here: a hand-forged manifest and report (provenance is not a signature); tests excluded by
  * COMMITTED configuration (vitest include/exclude, Playwright testMatch/testIgnore/grep in config, a
- * committed .runsettings or Directory.Build.props filter); and, for .NET, completeness beyond the
- * canonical argv and the exit status (a TRX does not record the command or the project list).
+ * committed .runsettings or Directory.Build.props filter); the contents of the few environment variables
+ * record.ts passes through (canonical.ts allowlist, e.g. a PATH whose `npx` is not the real one); and,
+ * for .NET, completeness beyond the canonical argv, the environment and the exit status (a TRX does not
+ * record the command or the project list).
  *
  * An untrusted run turns every FIXED-VERIFIED from every source into NOT-RUN and fails --gate launch
  * (exit 1): a Playwright run with an unexpected outcome in a test that has no @finding tag (a

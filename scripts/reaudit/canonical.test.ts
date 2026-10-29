@@ -103,21 +103,39 @@ describe('canonicalArgv / canonicalOutput', () => {
   });
 });
 
-describe('canonicalEnv', () => {
+describe('canonicalEnv: an allowlist, not a denylist', () => {
   const base = {
     PATH: '/bin',
+    HOME: '/home/u',
     PLAYWRIGHT_BROWSERS_PATH: '/browsers',
+    DOCKER_HOST: 'unix:///d.sock',
+    // Each of these can filter or alter a canonical run, and none is on the allowlist.
     PW_TEST_SOURCE_TRANSFORM: '/x.js',
-    PWTEST_SHARD: '1/2',
     PLAYWRIGHT_LAST_RUN_OUTPUT_FILE: '/x.json',
     VITEST_FILTER: 'x',
-    VSTEST_TESTCASE_FILTER: 'x',
+    // Codex r16: MSBuild reads every environment variable as a property (case-insensitively), so these
+    // reach `dotnet test`: a test-case filter, a runsettings file, and "skip the build" (stale assemblies).
+    VSTestTestCaseFilter: 'FullyQualifiedName~Sibling',
+    VSTestSetting: '/x.runsettings',
+    VSTestNoBuild: 'true',
+    Configuration: 'Stale',
+    NODE_OPTIONS: '--require /x.js',
+    npm_config_registry: 'https://x.invalid',
     CI: '',
   };
 
-  it('drops the runners’ own variables (except the browser install path) and sets CI=true', () => {
-    const env = canonicalEnv('vitest', '/o.json', base);
-    expect(env).toEqual({ PATH: '/bin', PLAYWRIGHT_BROWSERS_PATH: '/browsers', CI: 'true' });
+  it('keeps only allowlisted variables, and sets CI=true', () => {
+    expect(canonicalEnv('xunit', '/o', base)).toEqual({
+      PATH: '/bin',
+      HOME: '/home/u',
+      PLAYWRIGHT_BROWSERS_PATH: '/browsers',
+      DOCKER_HOST: 'unix:///d.sock',
+      CI: 'true',
+    });
+  });
+
+  it('a variable spelled like an allowlisted one in another case is still dropped', () => {
+    expect(canonicalEnv('xunit', '/o', { Path: '/bin', home: '/h' })).toEqual({ CI: 'true' });
   });
 
   it('points the Playwright JSON reporter at the output', () => {

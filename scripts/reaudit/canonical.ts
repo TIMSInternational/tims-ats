@@ -15,11 +15,15 @@
  * leave a bound check out while a sibling's pass stands for the finding. Accepting only complete runs
  * closes that by construction instead of by inferring, from source, which checks should have run.
  *
- * The environment is neutralised as far as it is known to filter or alter a run: variables of the
- * runners' own namespaces are dropped (VITEST*, PW_*, PWTEST_*, PLAYWRIGHT_* except
- * PLAYWRIGHT_BROWSERS_PATH, VSTEST_*), and CI=true is set, which makes Vitest refuse `.only`
- * (allowOnly defaults to !CI) and turns on the repo Playwright config's `forbidOnly: isCI`. The reports
- * then show the effective setting and the collectors refuse a run where `.only` was allowed.
+ * The environment is an ALLOWLIST (ALLOWED_ENV), not a denylist: anything else is dropped, because
+ * runners read configuration from the environment in ways that cannot be enumerated (MSBuild, under
+ * `dotnet test`, reads EVERY variable as a property, so VSTestTestCaseFilter, VSTestSetting or
+ * VSTestNoBuild in the caller's shell would filter the run or skip the build). The allowed names are
+ * process plumbing (PATH, HOME, temp dirs, locale, tool and browser install locations, the Docker socket
+ * for Testcontainers). CI=true is then set, which makes Vitest refuse `.only` (allowOnly defaults to
+ * !CI) and turns on the repo Playwright config's `forbidOnly: isCI`; the reports show the effective
+ * setting and the collectors refuse a run where `.only` was allowed. Not controlled: the CONTENTS of
+ * allowed variables (e.g. a PATH whose `npx` or `dotnet` is not the real one).
  */
 import { isAbsolute } from 'node:path';
 import type { EvidenceKind } from './provenance';
@@ -64,18 +68,32 @@ export function canonicalOutput(kind: EvidenceKind, argv: readonly string[]): st
   return output;
 }
 
-const DROPPED_ENV = /^(?:VITEST|PW_|PWTEST_|PLAYWRIGHT_|VSTEST_)/;
-const KEPT_ENV = new Set(['PLAYWRIGHT_BROWSERS_PATH']);
+/** Process plumbing only; matched case-sensitively, so `Path` or `home` is dropped too. */
+const ALLOWED_ENV = new Set([
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'LANG',
+  'LC_ALL',
+  'TERM',
+  'PNPM_HOME',
+  'DOTNET_ROOT',
+  'NUGET_PACKAGES',
+  'PLAYWRIGHT_BROWSERS_PATH',
+  'DOCKER_HOST',
+]);
 
-/** The child environment for a canonical run: filter-capable runner variables dropped, CI=true. */
 export type Env = Record<string, string | undefined>;
 
+/** The child environment for a canonical run: allowlisted variables only, plus CI=true. */
 export function canonicalEnv(kind: EvidenceKind, output: string, base: Env): Env {
   const env: Env = {};
-  for (const [k, v] of Object.entries(base)) {
-    if (DROPPED_ENV.test(k) && !KEPT_ENV.has(k)) continue;
-    env[k] = v;
-  }
+  for (const [k, v] of Object.entries(base)) if (ALLOWED_ENV.has(k)) env[k] = v;
   env.CI = 'true';
   if (kind === 'playwright') env.PLAYWRIGHT_JSON_OUTPUT_FILE = output;
   return env;

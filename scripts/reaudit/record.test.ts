@@ -236,14 +236,16 @@ describe('runRecord', () => {
 });
 
 describe('runRecord: only the canonical full-suite command', () => {
-  it('runs the canonical argv itself, at the checkout root, with CI=true and runner filter variables dropped', () => {
+  it('runs the canonical argv itself, at the checkout root, with CI=true and only allowlisted variables', () => {
     mkdirSync(join(repo, 'sub'));
     const out = join(priv, 'vitest.json');
     process.env.VITEST_REAUDIT_PROBE = 'x';
+    process.env.VSTestTestCaseFilter = 'FullyQualifiedName~Sibling';
     try {
       expect(rec('vitest', out, nodeWriting({ [out]: '{}' }), [], join(repo, 'sub'))).toBe(0);
     } finally {
       delete process.env.VITEST_REAUDIT_PROBE;
+      delete process.env.VSTestTestCaseFilter;
     }
     expect(spawned).toHaveLength(1);
     const [cmd, ...args] = canonicalArgv('vitest', out);
@@ -252,6 +254,8 @@ describe('runRecord: only the canonical full-suite command', () => {
     expect(spawned[0]?.cwd).toBe(git('rev-parse', '--show-toplevel'));
     expect(spawned[0]?.env.CI).toBe('true');
     expect(spawned[0]?.env.VITEST_REAUDIT_PROBE).toBeUndefined();
+    expect(spawned[0]?.env.VSTestTestCaseFilter).toBeUndefined();
+    expect(spawned[0]?.env.PATH).toBe(process.env.PATH);
   });
 
   it('the manifest records the exact argv that ran', () => {
