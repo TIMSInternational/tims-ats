@@ -365,8 +365,15 @@ During this phase, readers stay on the legacy columns unless a PR says otherwise
 
 - Callers of the interim `formatMoney` move onto `Money`, `SalaryTerms` and the typed profile. Public pages (offer
   signing, careers) get the tenant locale from their own payloads.
-- New C# reads for invoice KPIs, export and organization outstanding sum the frozen snapshots, with no FX call at read
-  time. They switch only after the invoice snapshot backfill below has run and its coverage has been reported.
+- **Every** read that converts invoice or payment amounts sums the frozen snapshots, with no FX call at read time.
+  That is not only the new C# reads for invoice KPIs, export and organization outstanding: at the time of writing the
+  platform dashboard revenue in `PlatformDashboardFxUseCase.cs` and the TypeScript `routers/platform/dashboard.ts`,
+  `dashboard-churn.ts` and `invoices.ts` (via `packages/api/src/lib/currency.ts`) also convert paid invoices at current
+  pins. The switching PR re-runs the search for FX consumers (`IFxRateProvider` / `FxMoneyConverter` in C#,
+  `lib/currency` in TypeScript), classifies each hit as historical money (must read snapshots) or current money (may
+  convert live, e.g. compensation bands and DEI pay views), and adds a fixture per historical reader proving that a
+  rate refresh cannot change already-settled revenue. They switch only after the invoice snapshot backfill below has
+  run and its coverage has been reported.
 - The TypeScript FX path is deleted after the C# dashboard and invoice reads have been live and verified for at least
   one billing cycle. This deletion is the one step that is hard to undo, so it ships last.
 - Dropping the legacy `Float` columns happens in a later wave, after every reader has switched.
