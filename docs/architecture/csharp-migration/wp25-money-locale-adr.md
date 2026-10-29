@@ -81,7 +81,8 @@ Conversions between the two periods:
 - A **monthly** amount is one regular payment. The annual equivalent is `monthly × paymentsPerYear`, which is exact.
 - The legacy `offers.salary` column keeps its meaning, `12 × monthly`, where `monthly` is the entered amount or the
   derived monthly equivalent above. It is dual-written so that existing readers and KPIs stay stable until the C#
-  offer port.
+  offer port. It cannot hold a yearly figure that includes aguinaldo, or the basis, so terms that differ from the
+  legacy shape are not creatable until the candidate-facing readers render `SalaryTerms` (Phase B gate, §5).
 
 Worked example: a yearly CRC 13 000 000 with 13 payments gives a monthly equivalent of CRC 1 000 000 and a legacy
 `salary` of CRC 12 000 000. The annual equivalent shown to the user stays CRC 13 000 000. The shared
@@ -139,7 +140,8 @@ with 2 decimal places, even though summaries display it with none (D-25-9).
 ### D-25-2 Aguinaldo default for Costa Rica
 
 **Decision.** `paymentsPerYear` defaults to 13 when the tenant country is `CR`, and 12 elsewhere. The recruiter can
-change it per offer. The annual equivalent is labelled "incluye aguinaldo".
+change it per offer. The annual equivalent is labelled "incluye aguinaldo". This default takes effect only once
+the candidate-facing readers render `SalaryTerms`; before that, offers are created with 12 payments (Phase B gate).
 
 **Why.** The aguinaldo, a thirteenth monthly payment, is mandatory for employees in Costa Rica. An annual figure of
 `12 × monthly` understates it.
@@ -311,6 +313,15 @@ Every phase is additive until the last one. Each step is behind a flag or a dual
   and [table ownership](../table-ownership.md)).
 - The locale profile columns, their editors and provisioning presets.
 - `SalaryTerms` on offers and typed salary columns on vacancies, dual-written next to the legacy `Float` and JSON.
+  **Gate on candidate-facing readers.** The legacy column cannot carry the new agreement: a yearly CRC 13 000 000
+  with 13 payments is written as `salary = 12 000 000` (§3.2), and `basis` has no legacy field. The offer letter
+  (`apps/web/app/(admin)/recruitment/offers/_components/offer-letter.tsx`), the candidate dashboard
+  (`apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-offer.tsx`) and the public signing page
+  (`apps/web/app/offers/sign/[token]/page.tsx`) all render only that legacy value. So the columns and the
+  dual-write may ship, but the offer form keeps creating terms equivalent to the legacy shape (`monthly`, 12
+  payments, `gross`) until those three readers and their payloads render `SalaryTerms`. Entering a yearly amount,
+  13 or 14 payments, or a `net` basis stays disabled behind a flag until then. The reader switch is the exit
+  criterion for that flag, and it can land in Phase B ahead of the rest of Phase C.
 - Minor-unit columns on compensation tables, plus a pay period.
 - Minor-unit columns and FX snapshots on invoices, written by the invoice transitions. Invoices that already left draft
   before this PR never transition again, so they get a one-off snapshot backfill (below).
