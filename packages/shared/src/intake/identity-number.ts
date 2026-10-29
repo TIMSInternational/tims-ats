@@ -9,11 +9,12 @@ export type IdentityNumberValidation = 'ok' | 'invalid_format';
 /** Longest raw input considered at all; anything longer is invalid without further work. */
 export const IDENTITY_NUMBER_RAW_MAX_LENGTH = 40;
 
-const PATTERNS: Record<IdentityNumberType, RegExp> = {
-  cedula_fisica: /^[1-9][0-9]{8}$/,
-  dimex: /^[0-9]{11,12}$/,
-  pasaporte: /^[A-Z0-9]{6,20}$/,
-};
+/** A Map, not an object literal: an object lookup would also match inherited keys such as `constructor`. */
+const PATTERNS: ReadonlyMap<string, RegExp> = new Map<IdentityNumberType, RegExp>([
+  ['cedula_fisica', /^[1-9][0-9]{8}$/],
+  ['dimex', /^[0-9]{11,12}$/],
+  ['pasaporte', /^[A-Z0-9]{6,20}$/],
+]);
 
 /** Removes whitespace and dashes; passports are upper-cased. Does not validate. */
 export function normalizeIdentityNumber(type: IdentityNumberType, raw: string): string {
@@ -23,7 +24,7 @@ export function normalizeIdentityNumber(type: IdentityNumberType, raw: string): 
 
 export function validateIdentityNumber(type: IdentityNumberType, raw: string): IdentityNumberValidation {
   if (typeof raw !== 'string' || raw.length > IDENTITY_NUMBER_RAW_MAX_LENGTH) return 'invalid_format';
-  const pattern = PATTERNS[type];
+  const pattern = PATTERNS.get(type);
   if (!pattern) return 'invalid_format';
   return pattern.test(normalizeIdentityNumber(type, raw)) ? 'ok' : 'invalid_format';
 }

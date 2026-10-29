@@ -14,14 +14,15 @@ export const INTAKE_ALLOWED_CONTENT_TYPES = [
 ] as const;
 export type IntakeContentType = (typeof INTAKE_ALLOWED_CONTENT_TYPES)[number];
 
-const BY_EXTENSION: Record<string, IntakeContentType> = {
-  pdf: 'application/pdf',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  heic: 'image/heic',
-  heif: 'image/heif',
-};
+/** A Map, not an object literal: an object lookup would also match inherited keys such as `constructor`. */
+const BY_EXTENSION: ReadonlyMap<string, IntakeContentType> = new Map<string, IntakeContentType>([
+  ['pdf', 'application/pdf'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['png', 'image/png'],
+  ['heic', 'image/heic'],
+  ['heif', 'image/heif'],
+]);
 
 /** Browser types that carry no information and defer to the extension. */
 const UNKNOWN_BROWSER_TYPES = new Set(['', 'application/octet-stream']);
@@ -30,7 +31,7 @@ const HEIF_FAMILY = new Set<string>(['image/heic', 'image/heif']);
 export function resolveIntakeContentType(fileName: string, browserType: string): IntakeContentType | null {
   const dot = fileName.lastIndexOf('.');
   if (dot <= 0 || dot === fileName.length - 1) return null;
-  const resolved = BY_EXTENSION[fileName.slice(dot + 1).toLowerCase()];
+  const resolved = BY_EXTENSION.get(fileName.slice(dot + 1).toLowerCase());
   if (!resolved) return null;
   const claimed = (browserType ?? '').trim().toLowerCase();
   if (UNKNOWN_BROWSER_TYPES.has(claimed) || claimed === resolved) return resolved;

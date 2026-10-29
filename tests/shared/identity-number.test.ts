@@ -52,6 +52,15 @@ describe('validateIdentityNumber — golden cases', () => {
   }
 });
 
+describe('validateIdentityNumber — unknown runtime types', () => {
+  it('rejects a type named after an inherited object property instead of throwing', () => {
+    for (const type of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'cedula_juridica']) {
+      const unknownType = type as Parameters<typeof validateIdentityNumber>[0];
+      expect(validateIdentityNumber(unknownType, '123456789')).toBe('invalid_format');
+    }
+  });
+});
+
 describe('normalizeIdentityNumber', () => {
   it('strips spaces and dashes', () => {
     expect(normalizeIdentityNumber('cedula_fisica', ' 1-2345 6789 ')).toBe('123456789');

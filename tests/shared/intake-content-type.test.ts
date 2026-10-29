@@ -56,4 +56,11 @@ describe('resolveIntakeContentType', () => {
     expect(resolveIntakeContentType('a.pdf.exe', '')).toBeNull();
     expect(resolveIntakeContentType('titulo.v2.pdf', '')).toBe('application/pdf');
   });
+
+  it('rejects extensions named after inherited object properties', () => {
+    for (const ext of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+      expect(resolveIntakeContentType(`a.${ext}`, '')).toBeNull();
+      expect(resolveIntakeContentType(`a.${ext}`, 'application/octet-stream')).toBeNull();
+    }
+  });
 });
