@@ -100,7 +100,7 @@ export function formatMoney(amount: number, currency: string, opts: FormatMoneyO
 
   const display = opts.display ?? 'auto';
   const useSymbol = display === 'symbol' || (display === 'auto' && homeCurrencyOf(locale) === code);
-  const digits = opts.fractionDigits ?? (DISPLAY_ZERO_DECIMAL.has(code) ? 0 : 2);
+  const digits = opts.fractionDigits ?? (DISPLAY_ZERO_DECIMAL.has(code) ? 0 : isoMinorUnits(code));
   return clean(
     new Intl.NumberFormat(locale, {
       style: 'currency',
@@ -109,6 +109,13 @@ export function formatMoney(amount: number, currency: string, opts: FormatMoneyO
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     }).format(amount),
+  );
+}
+
+/** The ISO minor units Intl knows for a currency (2 for USD, 3 for KWD). */
+function isoMinorUnits(code: string): number {
+  return (
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits ?? 2
   );
 }
 

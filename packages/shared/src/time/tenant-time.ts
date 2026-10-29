@@ -107,19 +107,60 @@ function offsetMs(tz: string, ms: number): number {
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
 
-/**
- * Converts a wall-clock date and time in `tz` to the UTC instant. Two passes so an
- * offset change between the first guess and the answer (DST) is corrected.
- * Throws RangeError on malformed input or an unknown zone.
- */
-export function zonedWallTimeToUtc(date: string, time: string, tz: string): Date {
+/** Parses YYYY-MM-DD and HH:MM[:SS] into wall parts; null for any out-of-range field. */
+function parseWallParts(date: string, time: string): WallParts | null {
   const d = DATE_RE.exec(date);
   const t = TIME_RE.exec(time);
-  if (!d || !t || !isIanaTimeZone(tz)) throw new RangeError('invalid wall time or time zone');
-  const guess = Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3]), Number(t[1]), Number(t[2]), Number(t[3] ?? 0));
+  if (!d || !t) return null;
+  const p: WallParts = {
+    year: Number(d[1]),
+    month: Number(d[2]),
+    day: Number(d[3]),
+    hour: Number(t[1]),
+    minute: Number(t[2]),
+    second: Number(t[3] ?? 0),
+  };
+  const daysInMonth = new Date(Date.UTC(p.year, p.month, 0)).getUTCDate();
+  const isValid =
+    p.month >= 1 &&
+    p.month <= 12 &&
+    p.day >= 1 &&
+    p.day <= daysInMonth &&
+    p.hour <= 23 &&
+    p.minute <= 59 &&
+    p.second <= 59;
+  return isValid ? p : null;
+}
+
+function sameWallTime(a: WallParts, b: WallParts): boolean {
+  return (
+    a.year === b.year &&
+    a.month === b.month &&
+    a.day === b.day &&
+    a.hour === b.hour &&
+    a.minute === b.minute &&
+    a.second === b.second
+  );
+}
+
+/**
+ * Converts a wall-clock date and time in `tz` to the UTC instant. Two offset passes
+ * handle a DST change between the first guess and the answer; every candidate is then
+ * checked by converting back, so a result never names a different wall time.
+ * Policy: a wall time skipped by a spring-forward gap does not exist and is rejected;
+ * a repeated (fall-back) wall time resolves to one of its two instants.
+ * Throws RangeError on malformed or out-of-range input, a nonexistent wall time, or an
+ * unknown zone.
+ */
+export function zonedWallTimeToUtc(date: string, time: string, tz: string): Date {
+  const wall = parseWallParts(date, time);
+  if (!wall || !isIanaTimeZone(tz)) throw new RangeError('invalid wall time or time zone');
+  const guess = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
   const first = guess - offsetMs(tz, guess);
   const second = guess - offsetMs(tz, first);
-  return new Date(second);
+  const match = [second, first].find((ms) => sameWallTime(wallPartsInZone(new Date(ms), tz), wall));
+  if (match === undefined) throw new RangeError('wall time does not exist in this time zone');
+  return new Date(match);
 }
 
 /** Today's date in `tz` as YYYY-MM-DD. */

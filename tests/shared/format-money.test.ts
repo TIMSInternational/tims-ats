@@ -71,3 +71,22 @@ describe('formatMoney', () => {
     }
   });
 });
+
+describe('formatMoney currency precision', () => {
+  it.each([
+    ['KWD', 'KWD 1,234.567'],
+    ['BHD', 'BHD 1,234.567'],
+    ['TND', 'TND 1,234.567'],
+  ])('keeps the three ISO minor units of %s', (code, expected) => {
+    expect(formatMoney(1234.567, code, { ui: 'en' })).toBe(expected);
+  });
+
+  it('still shows two decimals for USD and none for CRC', () => {
+    expect(formatMoney(1234.567, 'USD', { ui: 'en' })).toBe('$1,234.57');
+    expect(formatMoney(1234.567, 'CRC', { ui: 'en' })).toBe('CRC 1,235');
+  });
+
+  it('lets an explicit fractionDigits override the currency default', () => {
+    expect(formatMoney(1234.567, 'KWD', { ui: 'en', fractionDigits: 0 })).toBe('KWD 1,235');
+  });
+});

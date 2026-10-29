@@ -90,6 +90,42 @@ describe('zonedWallTimeToUtc', () => {
     expect(zonedWallTimeToUtc('2026-10-25', '01:30', 'Europe/Madrid').toISOString()).toBe('2026-10-24T23:30:00.000Z');
     expect(zonedWallTimeToUtc('2026-10-25', '04:00', 'Europe/Madrid').toISOString()).toBe('2026-10-25T03:00:00.000Z');
   });
+
+  it('converts valid times on either side of a spring-forward gap', () => {
+    expect(zonedWallTimeToUtc('2026-03-08', '01:30', 'America/New_York').toISOString()).toBe(
+      '2026-03-08T06:30:00.000Z',
+    );
+    expect(zonedWallTimeToUtc('2026-03-08', '03:30', 'America/New_York').toISOString()).toBe(
+      '2026-03-08T07:30:00.000Z',
+    );
+    expect(zonedWallTimeToUtc('2026-03-29', '03:30', 'Europe/Madrid').toISOString()).toBe('2026-03-29T01:30:00.000Z');
+  });
+
+  it.each([
+    ['2026-03-08', '02:30', 'America/New_York'],
+    ['2026-03-29', '02:30', 'Europe/Madrid'],
+  ])('rejects %s %s in %s, a wall time the spring-forward gap skips', (date, time, tz) => {
+    expect(() => zonedWallTimeToUtc(date, time, tz)).toThrow(RangeError);
+  });
+
+  it.each([
+    ['2026-02-31', '10:00'],
+    ['2026-13-01', '10:00'],
+    ['2026-00-10', '10:00'],
+    ['2026-11-00', '10:00'],
+    ['2026-11-03', '24:00'],
+    ['2026-11-03', '99:99'],
+    ['2026-11-03', '10:60'],
+    ['2026-11-03', '10:00:60'],
+  ])('rejects the out-of-range calendar or clock value %s %s instead of normalising it', (date, time) => {
+    expect(() => zonedWallTimeToUtc(date, time, 'America/Costa_Rica')).toThrow(RangeError);
+  });
+
+  it('accepts a real leap day', () => {
+    expect(zonedWallTimeToUtc('2028-02-29', '10:00', 'America/Costa_Rica').toISOString()).toBe(
+      '2028-02-29T16:00:00.000Z',
+    );
+  });
 });
 
 describe('todayInZone', () => {
