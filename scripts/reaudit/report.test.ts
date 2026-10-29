@@ -169,6 +169,33 @@ describe('launchGate (--gate launch)', () => {
     expect(launchGate(launch('FIXED-VERIFIED'), { missingInputs: ['--trx'] }).exitCode).toBe(2);
   });
 
+  it('an untrusted run: every FIXED-VERIFIED becomes NOT-RUN, the reasons are kept, and the gate fails (1)', () => {
+    const findings = parseFindings([f('syn-x'), f('syn-y', { severity: 'P3', launchScope: 'post-launch' })]);
+    const r = buildReport({
+      findings,
+      observations: [obs('syn-x', 'FIXED-VERIFIED'), obs('syn-y', 'FIXED-VERIFIED')],
+      sha: SHA,
+      generatedAt: AT,
+      untrusted: ['playwright: [recruiter] j › setup failed with no finding tag'],
+    });
+    expect(r.rows.map((row) => row.status)).toEqual(['NOT-RUN', 'NOT-RUN']);
+    expect(r.untrusted).toEqual(['playwright: [recruiter] j › setup failed with no finding tag']);
+    expect(renderMarkdown(r)).toContain('setup failed with no finding tag');
+    expect(launchGate(r, { missingInputs: [] }).exitCode).toBe(1);
+  });
+
+  it('an untrusted run fails the gate even when no launch P0/P1 row exists to fail', () => {
+    const findings = parseFindings([f('syn-y', { severity: 'P3' })]);
+    const r = buildReport({ findings, observations: [], sha: SHA, generatedAt: AT, untrusted: ['x'] });
+    expect(launchGate(r, { missingInputs: [] }).exitCode).toBe(1);
+  });
+
+  it('a trusted run keeps FIXED-VERIFIED and an empty untrusted list', () => {
+    const r = launch('FIXED-VERIFIED');
+    expect(r.untrusted).toEqual([]);
+    expect(r.rows[0]?.status).toBe('FIXED-VERIFIED');
+  });
+
   it('exit 2 when the report has no findings at all (nothing checked is not a pass)', () => {
     const empty = buildReport({ findings: [], observations: [], sha: SHA, generatedAt: AT });
     expect(launchGate(empty, { missingInputs: [] }).exitCode).toBe(2);

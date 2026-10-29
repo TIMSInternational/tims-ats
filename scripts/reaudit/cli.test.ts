@@ -10,9 +10,11 @@ import {
   realpathSync,
   utimesSync,
 } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runCli } from './cli';
+import { gitContext, runCli } from './cli';
+import { manifestPathFor, writeProvenance, type EvidenceKind } from './provenance';
 
 // `pnpm exec tsx scripts/reaudit/cli.ts --playwright <json> --vitest <json> --trx <dir>
 //    [--with-owner-checks] [--gate launch]`
@@ -72,7 +74,26 @@ const trx = `<?xml version="1.0" encoding="utf-8"?>
   <ResultSummary outcome="Completed"><Counters total="1" /></ResultSummary>
 </TestRun>`;
 
-function inputs(vitestStatus = 'passed') {
+const HEAD = '0123456789abcdef0123456789abcdef01234567';
+const OLD = 'fedcba9876543210fedcba9876543210fedcba98';
+
+/** Records provenance for `output` the way scripts/reaudit/record.ts does after a run (replacing any). */
+function stamp(
+  kind: EvidenceKind,
+  output: string,
+  over: { sha?: string; exitCode?: number; dirtyPaths?: string[] } = {},
+): void {
+  rmSync(manifestPathFor(output, kind), { force: true });
+  writeProvenance({
+    kind,
+    output,
+    headSha: over.sha ?? HEAD,
+    exitCode: over.exitCode ?? 0,
+    dirtyPaths: over.dirtyPaths ?? [],
+  });
+}
+
+function inputs(vitestStatus = 'passed', vitestExit = vitestStatus === 'passed' ? 0 : 1) {
   const pw = join(priv, 'pw.json');
   const vt = join(priv, 'vitest.json');
   const trxDir = join(priv, 'trx');
@@ -80,6 +101,9 @@ function inputs(vitestStatus = 'passed') {
   writeFileSync(pw, JSON.stringify(playwrightJson));
   writeFileSync(vt, JSON.stringify(vitestJson(vitestStatus)));
   writeFileSync(join(trxDir, 'unit.trx'), trx);
+  stamp('playwright', pw);
+  stamp('vitest', vt, { exitCode: vitestExit });
+  stamp('xunit', trxDir);
   return { pw, vt, trxDir };
 }
 
@@ -89,17 +113,12 @@ function env(extra: Record<string, string> = {}): Record<string, string | undefi
   return { REAUDIT_FINDINGS: findingsPath, REAUDIT_OUT_DIR: join(priv, 'out'), ...extra };
 }
 
-// HEAD's commit time. Inputs written by the tests are newer, as evidence produced from HEAD must be.
-const HEAD_COMMITTED_AT = new Date('2026-01-01T00:00:00Z');
-const BEFORE_HEAD = new Date('2025-12-31T00:00:00Z');
-
-function ctx(e: Record<string, string | undefined>, over: { treeDirty?: boolean } = {}) {
+function ctx(e: Record<string, string | undefined>, over: { dirtyPaths?: string[] } = {}) {
   return {
     env: e,
     repoRoot: repo,
-    headSha: '0123456789abcdef0123456789abcdef01234567',
-    headCommittedAt: HEAD_COMMITTED_AT,
-    treeDirty: over.treeDirty ?? false,
+    headSha: HEAD,
+    dirtyPaths: over.dirtyPaths ?? [],
     now: new Date('2026-10-28T12:00:00Z'),
     log: (s: string) => lines.push(s),
     err: (s: string) => lines.push(s),
@@ -209,64 +228,148 @@ describe('runCli — refusal paths (exit 2)', () => {
   it('a corrupt input report → 2 (not silently treated as zero tests)', async () => {
     const bad = join(priv, 'bad.json');
     writeFileSync(bad, '{"not":"a vitest report"}');
+    stamp('vitest', bad);
     expect(await runCli(['--vitest', bad, '--vitest-exit', '0'], ctx(env()))).toBe(2);
   });
 });
 
-describe('runCli — evidence provenance (exit 2)', () => {
-  const all = (pw: string, vt: string, trxDir: string) => [
-    '--playwright',
-    pw,
-    '--vitest',
-    vt,
-    '--vitest-exit',
-    '0',
-    '--trx',
-    trxDir,
-    '--gate',
-    'launch',
-  ];
+const all = (pw: string, vt: string, trxDir: string) => [
+  '--playwright',
+  pw,
+  '--vitest',
+  vt,
+  '--vitest-exit',
+  '0',
+  '--trx',
+  trxDir,
+  '--gate',
+  'launch',
+];
 
-  it('a Playwright report older than the HEAD commit → 2 naming the file (old evidence is not HEAD evidence)', async () => {
+describe('runCli — evidence provenance (exit 2)', () => {
+  it('a Playwright report recorded at another commit → 2 naming the file (old evidence is not HEAD evidence)', async () => {
     const { pw, vt, trxDir } = inputs('passed');
-    utimesSync(pw, BEFORE_HEAD, BEFORE_HEAD);
+    stamp('playwright', pw, { sha: OLD });
     expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
     expect(lines.join('\n')).toContain(pw);
+    expect(lines.join('\n')).toContain(OLD);
   });
 
-  it('a Vitest report older than the HEAD commit → 2 naming the file', async () => {
+  it('a Vitest report recorded at another commit → 2 naming the file', async () => {
     const { pw, vt, trxDir } = inputs('passed');
-    utimesSync(vt, BEFORE_HEAD, BEFORE_HEAD);
+    stamp('vitest', vt, { sha: OLD });
     expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
     expect(lines.join('\n')).toContain(vt);
   });
 
-  it('a TRX file older than the HEAD commit → 2 naming the file', async () => {
+  it('a TRX directory recorded at another commit → 2 naming it', async () => {
     const { pw, vt, trxDir } = inputs('passed');
-    const t = join(trxDir, 'unit.trx');
-    utimesSync(t, BEFORE_HEAD, BEFORE_HEAD);
+    stamp('xunit', trxDir, { sha: OLD });
     expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
-    expect(lines.join('\n')).toContain(t);
+    expect(lines.join('\n')).toContain(trxDir);
+  });
+
+  it('a report with no provenance manifest → 2 (an unrecorded report is not evidence of anything)', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    rmSync(manifestPathFor(pw, 'playwright'));
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain(pw);
+  });
+
+  it('a newer-looking copy of an old report is still refused: timestamps are not provenance', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    stamp('vitest', vt, { sha: OLD });
+    const future = new Date(Date.now() + 86_400_000);
+    utimesSync(vt, future, future);
+    utimesSync(manifestPathFor(vt, 'vitest'), future, future);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+  });
+
+  it('evidence of HEAD with an old mtime is accepted (mtime plays no part)', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const old = new Date('2001-01-01T00:00:00Z');
+    utimesSync(vt, old, old);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(0);
   });
 
   it('stale evidence is refused without --gate too, and no report is written', async () => {
     const { vt } = inputs('passed');
-    utimesSync(vt, BEFORE_HEAD, BEFORE_HEAD);
+    stamp('vitest', vt, { sha: OLD });
     const e = env();
     expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(e))).toBe(2);
     expect(existsSync(e.REAUDIT_OUT_DIR as string)).toBe(false);
   });
 
-  it('an unreadable HEAD commit time → 2 (freshness cannot be checked, so it is not assumed)', async () => {
+  it('--vitest-exit that disagrees with the recorded exit status → 2', async () => {
+    const { vt } = inputs('passed', 1);
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain('--vitest-exit');
+  });
+
+  it('--gate launch with evidence recorded on a dirty tree → 2 naming the dirty path', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    stamp('playwright', pw, { dirtyPaths: ['e2e/specs/extra.spec.ts'] });
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain('e2e/specs/extra.spec.ts');
+  });
+
+  it('without --gate, evidence recorded on a dirty tree is accepted', async () => {
     const { vt } = inputs('passed');
-    const c = { ...ctx(env()), headCommittedAt: new Date('not a date') };
-    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], c)).toBe(2);
+    stamp('vitest', vt, { dirtyPaths: ['x.ts'] });
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env()))).toBe(0);
   });
 
   it('--gate launch on a working tree with uncommitted changes → 2 (the evidence is not of HEAD)', async () => {
     const { pw, vt, trxDir } = inputs('passed');
-    expect(await runCli(all(pw, vt, trxDir), ctx(env(), { treeDirty: true }))).toBe(2);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env(), { dirtyPaths: ['untracked.ts'] }))).toBe(2);
     expect(lines.join('\n')).toMatch(/uncommitted/);
+  });
+});
+
+// main() builds its context from REAL git: this runs that code in a throwaway repository.
+describe('gitContext + runCli (real git)', () => {
+  let gitRepo: string;
+  const g = (...a: string[]) =>
+    execFileSync('git', a, { cwd: gitRepo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  beforeEach(() => {
+    gitRepo = join(root, 'gitrepo');
+    mkdirSync(gitRepo);
+    g('init', '-q');
+    g('config', 'user.email', 't@example.invalid');
+    g('config', 'user.name', 't');
+    g('config', 'commit.gpgsign', 'false');
+    writeFileSync(join(gitRepo, '.gitignore'), 'ignored/\n');
+    g('add', '.');
+    g('commit', '-q', '-m', 'init');
+  });
+
+  const run = async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const base = gitContext(gitRepo);
+    for (const [k, p] of [
+      ['playwright', pw],
+      ['vitest', vt],
+      ['xunit', trxDir],
+    ] as const)
+      stamp(k, p, { sha: base.headSha });
+    return runCli(all(pw, vt, trxDir), { ...ctx(env()), ...base });
+  };
+
+  it('a clean checkout → the gate runs (0)', async () => {
+    expect(gitContext(gitRepo).dirtyPaths).toEqual([]);
+    expect(await run()).toBe(0);
+  });
+
+  it('an UNTRACKED file in the checkout → the gate refuses (2)', async () => {
+    writeFileSync(join(gitRepo, 'extra.spec.ts'), 'x');
+    expect(gitContext(gitRepo).dirtyPaths).toEqual(['extra.spec.ts']);
+    expect(await run()).toBe(2);
+  });
+
+  it('a gitignored file does not count', async () => {
+    mkdirSync(join(gitRepo, 'ignored'));
+    writeFileSync(join(gitRepo, 'ignored', 'results.json'), '{}');
+    expect(await run()).toBe(0);
   });
 });
 
@@ -297,7 +400,7 @@ describe('runCli — happy paths', () => {
   });
 
   it('--gate launch: green vitest JSON but a non-zero vitest exit (unhandled error) → 1, the id is NOT-RUN', async () => {
-    const { pw, vt, trxDir } = inputs('passed');
+    const { pw, vt, trxDir } = inputs('passed', 1);
     const e = env();
     expect(
       await runCli(
@@ -323,6 +426,7 @@ describe('runCli — happy paths', () => {
             specs: [
               {
                 title: 'step',
+                tags: ['finding:syn-a'],
                 tests: [
                   {
                     projectName: 'recruiter',
@@ -339,6 +443,7 @@ describe('runCli — happy paths', () => {
         stats: {},
       }),
     );
+    stamp('playwright', pw);
     expect(
       await runCli(
         ['--playwright', pw, '--vitest', vt, '--vitest-exit', '0', '--trx', trxDir, '--gate', 'launch'],
@@ -369,5 +474,36 @@ describe('runCli — happy paths', () => {
     const e = env();
     expect(await runCli(['--vitest', vt, '--vitest-exit', '1'], ctx(e))).toBe(0);
     expect(existsSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'))).toBe(true);
+  });
+});
+
+describe('runCli — an untrusted Playwright run blocks every pass', () => {
+  const pwWith = (pw: string, specs: unknown[]) =>
+    writeFileSync(pw, JSON.stringify({ config: {}, suites: [{ title: 'j.spec.ts', specs }], errors: [], stats: {} }));
+  const spec = (title: string, tags: string[], status: string) => ({
+    title,
+    tags,
+    tests: [{ projectName: 'recruiter', expectedStatus: 'passed', annotations: [], results: [{ retry: 0, status }] }],
+  });
+
+  it('an untagged failing journey test → gate 1, and even a vitest-verified id is NOT-RUN', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    pwWith(pw, [spec('setup step', [], 'failed')]);
+    stamp('playwright', pw, { exitCode: 1 });
+    const e = env();
+    expect(await runCli(all(pw, vt, trxDir), ctx(e))).toBe(1);
+    const report = JSON.parse(readFileSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'), 'utf8')) as {
+      rows: { id: string; status: string }[];
+      untrusted: string[];
+    };
+    expect(report.rows.find((r) => r.id === 'syn-a')?.status).toBe('NOT-RUN');
+    expect(report.untrusted.join('\n')).toContain('setup step');
+    expect(lines.join('\n')).toContain('setup step');
+  });
+
+  it('a Playwright run that exited non-zero with an all-green JSON → gate 1', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    stamp('playwright', pw, { exitCode: 1 });
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(1);
   });
 });

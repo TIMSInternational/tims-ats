@@ -40,6 +40,8 @@ export interface ReauditReport {
   unknownIds: string[];
   /** FIXED-VERIFIED ids whose cited evidence files are all unchanged since the evidence base. */
   suspiciousFixes: string[];
+  /** Why the evidence run cannot be trusted as proof of any pass. Non-empty = no row is FIXED-VERIFIED. */
+  untrusted: string[];
 }
 
 export interface BuildReportInput {
@@ -50,6 +52,8 @@ export interface BuildReportInput {
   wpIndex?: WpIndex;
   /** Per-id evidence drift, when an evidence base was supplied. */
   drift?: ReadonlyMap<string, readonly EvidenceDrift[]>;
+  /** Untrusted-run reasons from the collectors. Any reason turns every FIXED-VERIFIED into NOT-RUN. */
+  untrusted?: readonly string[];
 }
 
 const UNASSIGNED = 'unassigned';
@@ -60,8 +64,12 @@ function bump(rollup: Rollup, key: string, status: ReauditStatus): void {
 }
 
 export function buildReport(input: BuildReportInput): ReauditReport {
+  const untrusted = [...(input.untrusted ?? [])];
+  const observations: readonly Observation[] = untrusted.length
+    ? input.observations.map((o) => (o.status === 'FIXED-VERIFIED' ? { ...o, status: 'NOT-RUN' as const } : o))
+    : input.observations;
   const byId = new Map<string, Observation[]>();
-  for (const o of input.observations) {
+  for (const o of observations) {
     const list = byId.get(o.id) ?? [];
     list.push(o);
     byId.set(o.id, list);
@@ -101,6 +109,7 @@ export function buildReport(input: BuildReportInput): ReauditReport {
     rollups,
     unknownIds,
     suspiciousFixes: rows.filter((r) => r.suspiciousFix).map((r) => r.id),
+    untrusted,
   };
 }
 
@@ -118,6 +127,9 @@ function cell(s: string): string {
 
 export function renderMarkdown(r: ReauditReport): string {
   const out = [`# Re-audit report`, '', `- Commit: \`${r.sha}\``, `- Generated: ${r.generatedAt}`, ''];
+  if (r.untrusted.length) {
+    out.push('## UNTRUSTED RUN: no finding is FIXED-VERIFIED', '', ...r.untrusted.map((u) => `- ${cell(u)}`), '');
+  }
   out.push('## Rollups', '');
   out.push(...rollupTable('persona', r.rollups.persona), ...rollupTable('severity', r.rollups.severity));
   out.push(...rollupTable('launchScope', r.rollups.launchScope), ...rollupTable('lens', r.rollups.lens));
@@ -145,14 +157,17 @@ export interface GateResult {
   failing: string[];
 }
 
-/** `--gate launch`: every launch-v1 P0/P1 must be FIXED-VERIFIED. Missing input or no findings = 2. */
+/**
+ * `--gate launch`: every launch-v1 P0/P1 must be FIXED-VERIFIED and the run must be trusted.
+ * Missing input or no findings = 2.
+ */
 export function launchGate(r: ReauditReport, opts: { missingInputs: readonly string[] }): GateResult {
   const failing = r.rows
     .filter((row) => row.launchScope === 'launch-v1' && (row.severity === 'P0' || row.severity === 'P1'))
     .filter((row) => row.status !== 'FIXED-VERIFIED')
     .map((row) => row.id);
   if (opts.missingInputs.length > 0 || r.rows.length === 0) return { exitCode: 2, failing };
-  return { exitCode: failing.length > 0 ? 1 : 0, failing };
+  return { exitCode: failing.length > 0 || r.untrusted.length > 0 ? 1 : 0, failing };
 }
 
 export function writeReport(

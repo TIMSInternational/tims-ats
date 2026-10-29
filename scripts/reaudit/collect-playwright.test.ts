@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { collectPlaywright, PlaywrightReportError } from './collect-playwright';
+import { collectPlaywright, collectPlaywrightReport, PlaywrightReportError } from './collect-playwright';
 import { statusById } from './status';
 
-// Contract with e2e/lib/findings.ts (PR-4): `expectIdeal(id)` pushes an annotation
+// Contract with e2e/lib/findings.ts (PR-4):
+//   BINDING (static, known before the test runs): the test declares `@finding:<id>` as a Playwright tag,
+//   in its title or via `{ tag: '@finding:<id>' }` on the test or an enclosing describe. The JSON reporter
+//   writes it to `spec.tags` (without the "@") for EVERY test, including failed, skipped and never-run ones.
+//   EVIDENCE (runtime): `expectIdeal(id)` pushes
 //   { type: 'finding-open',  description: id }  when the id is open and the ideal did NOT hold, or
 //   { type: 'finding-fixed', description: id }  when the id is fixed and the ideal assertion ran.
 // `requires(id)` pushes `finding-requires` and then calls test.fixme(). The JSON report is the
@@ -10,18 +14,27 @@ import { statusById } from './status';
 
 type Annotation = { type: string; description?: string };
 type Result = { retry: number; status: string; annotations?: Annotation[] };
+type Entry = ReturnType<typeof testEntry>;
 
-function testEntry(opts: { annotations?: Annotation[]; results: Result[]; expectedStatus?: string }) {
+/** Unless `tags` is given, a test declares exactly the ids its finding-open/finding-fixed annotations name. */
+function testEntry(opts: { annotations?: Annotation[]; results: Result[]; expectedStatus?: string; tags?: string[] }) {
+  const runtime = [...(opts.annotations ?? []), ...opts.results.flatMap((r) => r.annotations ?? [])];
+  const declared = runtime
+    .filter((a) => a.type === 'finding-open' || a.type === 'finding-fixed')
+    .map((a) => `finding:${a.description ?? ''}`);
   return {
-    projectName: 'recruiter',
-    expectedStatus: opts.expectedStatus ?? 'passed',
-    annotations: opts.annotations ?? [],
-    results: opts.results,
+    tags: opts.tags ?? [...new Set(declared)],
+    test: {
+      projectName: 'recruiter',
+      expectedStatus: opts.expectedStatus ?? 'passed',
+      annotations: opts.annotations ?? [],
+      results: opts.results,
+    },
   };
 }
 
-function report(tests: ReturnType<typeof testEntry>[], nested = false) {
-  const specs = tests.map((t, i) => ({ title: `step ${i}`, tests: [t] }));
+function report(tests: Entry[], nested = false) {
+  const specs = tests.map((t, i) => ({ title: `step ${i}`, tags: t.tags, tests: [t.test] }));
   const inner = { title: 'J1 journey', file: 'recruiter/j1.spec.ts', specs, suites: [] };
   return {
     config: {},
@@ -156,7 +169,8 @@ describe('collectPlaywright', () => {
     expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('NOT-RUN');
   });
 
-  it('retries: an open binding recorded only on an earlier attempt is NOT-RUN, not OPEN-CONFIRMED', () => {
+  it('retries: an open id recorded only on an earlier attempt, final attempt failed → REGRESSED, not OPEN-CONFIRMED', () => {
+    // The tag binds the test; its final attempt failed, so the bound check failed.
     const r = report([
       testEntry({
         results: [
@@ -165,7 +179,7 @@ describe('collectPlaywright', () => {
         ],
       }),
     ]);
-    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('NOT-RUN');
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('REGRESSED');
   });
 
   it('retries: a binding present on the final attempt keeps its normal status', () => {
@@ -226,5 +240,125 @@ describe('collectPlaywright', () => {
 
   it('input that is not a Playwright JSON report is rejected loudly', () => {
     expect(() => collectPlaywright({ testResults: [] })).toThrow(PlaywrightReportError);
+  });
+});
+
+// Round-6 class: a binding that exists only at runtime is lost when the test fails before recording it,
+// so a sibling pass wins. Bindings are therefore STATIC (`spec.tags`), and a failure whose binding cannot
+// be determined (an untagged test) makes the whole report untrusted.
+describe('collectPlaywright: static bindings and untrusted runs', () => {
+  const tagged = (...ids: string[]) => ids.map((id) => `finding:${id}`);
+
+  it('a tagged test that fails on its first attempt before any annotation → REGRESSED beats a sibling pass', () => {
+    const r = report([
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+      testEntry({ tags: tagged('syn-a'), results: [{ retry: 0, status: 'failed' }] }),
+    ]);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('REGRESSED');
+  });
+
+  for (const status of ['failed', 'timedOut', 'interrupted']) {
+    it(`an UNTAGGED ${status} test makes the report untrusted: a sibling pass is NOT-RUN and the reason names the test`, () => {
+      const r = report([
+        testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+        testEntry({ tags: [], results: [{ retry: 0, status }] }),
+      ]);
+      const out = collectPlaywrightReport(r);
+      expect(statusById(out.observations).get('syn-a')).toBe('NOT-RUN');
+      expect(out.untrusted.join('\n')).toContain('step 1');
+    });
+  }
+
+  it('an untagged test that passed, was skipped, or never ran does not make the report untrusted', () => {
+    const r = report([
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+      testEntry({ tags: [], results: [{ retry: 0, status: 'passed' }] }),
+      testEntry({ tags: [], expectedStatus: 'skipped', results: [{ retry: 0, status: 'skipped' }] }),
+      testEntry({ tags: [], results: [] }),
+      testEntry({
+        tags: [],
+        results: [
+          { retry: 0, status: 'failed' },
+          { retry: 1, status: 'passed' },
+        ],
+      }),
+    ]);
+    const out = collectPlaywrightReport(r);
+    expect(out.untrusted).toEqual([]);
+    expect(statusById(out.observations).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('a global error is an untrusted-run reason too', () => {
+    const r = report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);
+    (r.errors as unknown[]).push({ message: 'Error: globalSetup failed' });
+    expect(collectPlaywrightReport(r).untrusted.join('\n')).toMatch(/globalSetup failed/);
+  });
+
+  it('a non-zero Playwright exit with no failed test and no global error → untrusted (the JSON hides why)', () => {
+    const r = report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);
+    const out = collectPlaywrightReport(r, { runExitCode: 1 });
+    expect(out.untrusted.join('\n')).toMatch(/exit/);
+    expect(statusById(out.observations).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a non-zero exit explained by a failed TAGGED test is not an extra untrusted reason', () => {
+    const r = report([
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+      testEntry({ tags: tagged('syn-b'), results: [{ retry: 0, status: 'failed' }] }),
+    ]);
+    const out = collectPlaywrightReport(r, { runExitCode: 1 });
+    expect(out.untrusted).toEqual([]);
+    expect(statusById(out.observations).get('syn-a')).toBe('FIXED-VERIFIED');
+    expect(statusById(out.observations).get('syn-b')).toBe('REGRESSED');
+  });
+
+  it('exit 0 with a failed test is a contradiction → rejected', () => {
+    const r = report([testEntry({ tags: tagged('syn-a'), results: [{ retry: 0, status: 'failed' }] })]);
+    expect(() => collectPlaywrightReport(r, { runExitCode: 0 })).toThrow(PlaywrightReportError);
+  });
+
+  it('a runtime finding-fixed annotation for an id the test does not declare as a tag → rejected', () => {
+    const r = report([
+      testEntry({ tags: tagged('syn-b'), annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+    ]);
+    expect(() => collectPlaywright(r)).toThrow(/syn-a/);
+  });
+
+  it('a runtime finding-open annotation for an undeclared id → rejected', () => {
+    const r = report([
+      testEntry({ tags: [], results: [{ retry: 0, status: 'passed', annotations: [open('syn-a')] }] }),
+    ]);
+    expect(() => collectPlaywright(r)).toThrow(PlaywrightReportError);
+  });
+
+  it('a tagged test that passed without recording finding-fixed on its final attempt → NOT-RUN', () => {
+    const r = report([testEntry({ tags: tagged('syn-a'), results: [{ retry: 0, status: 'passed' }] })]);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a tagged test that never ran → NOT-RUN; a skipped one → STALE-BINDING (no annotation needed)', () => {
+    const r = report([
+      testEntry({ tags: tagged('syn-a'), results: [] }),
+      testEntry({ tags: tagged('syn-b'), expectedStatus: 'skipped', results: [{ retry: 0, status: 'skipped' }] }),
+    ]);
+    const s = statusById(collectPlaywright(r));
+    expect(s.get('syn-a')).toBe('NOT-RUN');
+    expect(s.get('syn-b')).toBe('STALE-BINDING');
+  });
+
+  it('a spec without a tags array is rejected (bindings could not be determined)', () => {
+    const r = report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);
+    delete (r.suites[0]?.specs[0] as { tags?: string[] }).tags;
+    expect(() => collectPlaywright(r)).toThrow(PlaywrightReportError);
+  });
+
+  it('a finding tag with an invalid id is rejected loudly', () => {
+    const r = report([testEntry({ tags: ['finding:Not A Slug'], results: [{ retry: 0, status: 'passed' }] })]);
+    expect(() => collectPlaywright(r)).toThrow(PlaywrightReportError);
+  });
+
+  it('other tags are ignored', () => {
+    const r = report([testEntry({ tags: ['smoke', 'slow'], results: [{ retry: 0, status: 'passed' }] })]);
+    expect(collectPlaywright(r)).toEqual([]);
   });
 });

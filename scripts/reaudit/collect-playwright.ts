@@ -1,24 +1,28 @@
 /**
  * Collects per-finding observations from a Playwright `json` reporter file.
  *
- * Contract with the journey helpers (e2e/lib/findings.ts, added later in WP-02):
+ * BINDING is static. A test is bound to a finding when it declares the Playwright tag `@finding:<id>`
+ * (in its title, or `{ tag }` on the test or an enclosing describe). The JSON reporter writes tags to
+ * `spec.tags` for every test, including tests that failed before doing anything, were skipped or never
+ * ran, so a binding cannot be lost by a test failing early. `spec.tags` is required.
+ *
+ * EVIDENCE is runtime, from the journey helpers (e2e/lib/findings.ts, PR-4), read from the FINAL attempt:
  *   finding-open     <id>  the id is open and the ideal did NOT hold            -> OPEN-CONFIRMED
- *   finding-fixed    <id>  the id is fixed and the ideal assertion ran          -> FIXED-VERIFIED,
- *                          or REGRESSED when the test's final attempt failed
- *   finding-requires <id>  the step needs an unavailable dependency (test.fixme) -> STALE-BINDING
+ *   finding-fixed    <id>  the id is fixed and the ideal assertion ran          -> FIXED-VERIFIED
+ *   finding-requires <id>  the step needs an unavailable dependency (test.fixme) -> STALE-BINDING / NOT-RUN
+ * A finding-open / finding-fixed annotation for an id the test does not declare as a tag is a broken
+ * contract and rejects the report.
  *
- * Only the LAST attempt (highest `retry`) counts. A test that never produced a result is NOT-RUN,
- * and a skipped test bound to an id is STALE-BINDING — neither is ever a pass.
+ * Per tagged id, from the final attempt (highest `retry`): no result -> NOT-RUN; skipped -> STALE-BINDING;
+ * failed / timedOut / interrupted -> REGRESSED (OPEN-CONFIRMED if the final attempt recorded finding-open
+ * for it); passed -> FIXED-VERIFIED with finding-fixed, OPEN-CONFIRMED with finding-open, else NOT-RUN.
  *
- * Runtime annotations live on the attempt that pushed them, so a retry that fails before reaching
- * `expectIdeal` carries none. Bindings are therefore read from EVERY attempt. A binding that the final
- * attempt did not record has no trustworthy final evidence: a `finding-fixed` id is REGRESSED when the
- * final attempt failed, and anything else is NOT-RUN — never a pass, never OPEN-CONFIRMED.
- *
- * Top-level `errors` (global setup/teardown failures, errors outside any test) can coexist with
- * passing tests. A report with any such error is not trusted evidence of a pass: every FIXED-VERIFIED
- * becomes NOT-RUN. A failure is never downgraded. The `errors` array is required, so a report that
- * cannot say whether the run errored is rejected.
+ * UNTRUSTED RUN. The report is untrusted when (a) any test with NO finding tag ended failed / timedOut /
+ * interrupted (its binding cannot be determined, so it may be the check for any id), (b) the report has
+ * top-level `errors` (global setup/teardown), or (c) the run's exit status is non-zero and no failed test
+ * explains it. Then every FIXED-VERIFIED becomes NOT-RUN and the reasons are returned, so the CLI can
+ * distrust every source and fail the launch gate. A failure is never downgraded. Exit 0 alongside a
+ * failed test is a contradiction and rejects the report.
  */
 import { z } from 'zod';
 import { SLUG_RE, type Observation, type ObservedStatus } from './status';
@@ -42,7 +46,11 @@ const testSchema = z.object({
   annotations: z.array(annotationSchema).optional(),
   results: z.array(resultSchema),
 });
-const specSchema = z.object({ title: z.string().max(2000), tests: z.array(testSchema) });
+const specSchema = z.object({
+  title: z.string().max(2000),
+  tags: z.array(z.string().max(500)).max(200),
+  tests: z.array(testSchema),
+});
 
 interface Suite {
   title: string;
@@ -62,10 +70,12 @@ const globalErrorSchema = z.object({ message: z.string().max(20000).optional() }
 const reportSchema = z.object({ suites: z.array(suiteSchema), errors: z.array(globalErrorSchema) });
 
 type PwTest = z.infer<typeof testSchema>;
+type PwSpec = z.infer<typeof specSchema>;
 type Annotation = z.infer<typeof annotationSchema>;
 
 const FINDING_TYPES = new Set(['finding-open', 'finding-fixed', 'finding-requires']);
 const FAILED = new Set(['failed', 'timedOut', 'interrupted']);
+const TAG_PREFIX = 'finding:';
 
 function findingAnnotations(annotations: readonly Annotation[], where: string): { type: string; id: string }[] {
   const out: { type: string; id: string }[] = [];
@@ -83,48 +93,85 @@ function findingAnnotations(annotations: readonly Annotation[], where: string): 
   return out;
 }
 
-function statusFor(type: string, test: PwTest): ObservedStatus {
-  const last = [...test.results].sort((a, b) => b.retry - a.retry)[0];
+/** The ids a spec declares with `@finding:<id>` tags (the JSON reporter strips the "@"). */
+function taggedIds(spec: PwSpec, where: string): string[] {
+  const ids: string[] = [];
+  for (const tag of spec.tags) {
+    const t = tag.replace(/^@/, '');
+    if (!t.startsWith(TAG_PREFIX)) continue;
+    const id = t.slice(TAG_PREFIX.length);
+    if (!SLUG_RE.test(id)) throw new PlaywrightReportError(`tag "${tag}" in ${where} has no valid finding id`);
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+interface Walked {
+  observations: Observation[];
+  /** Tests that failed without any finding tag. */
+  unboundFailures: string[];
+  anyFailed: boolean;
+}
+
+function statusFor(
+  id: string,
+  last: PwTest['results'][number] | undefined,
+  test: PwTest,
+  evidence: Set<string>,
+): ObservedStatus {
   if (!last) return 'NOT-RUN';
   if (last.status === 'skipped' || test.expectedStatus === 'skipped') return 'STALE-BINDING';
-  if (type === 'finding-requires') return 'NOT-RUN';
-  if (type === 'finding-open') return 'OPEN-CONFIRMED';
+  if (evidence.has(`finding-open\u0000${id}`)) return 'OPEN-CONFIRMED';
   if (FAILED.has(last.status)) return 'REGRESSED';
-  if (last.status === 'passed') return 'FIXED-VERIFIED';
+  if (last.status === 'passed' && evidence.has(`finding-fixed\u0000${id}`)) return 'FIXED-VERIFIED';
   return 'NOT-RUN';
 }
 
-function collectTest(test: PwTest, titlePath: string[], out: Observation[]): void {
+function collectTest(spec: PwSpec, test: PwTest, titlePath: string[], acc: Walked): void {
   const name = [test.projectName ? `[${test.projectName}]` : '', titlePath.join(' › ')].filter(Boolean).join(' ');
-  const [last, ...earlier] = [...test.results].sort((a, b) => b.retry - a.retry);
-  const key = (type: string, id: string) => `${type}\u0000${id}`;
-  const seen = new Set<string>();
-  for (const { type, id } of findingAnnotations([...(test.annotations ?? []), ...(last?.annotations ?? [])], name)) {
-    if (seen.has(key(type, id))) continue;
-    seen.add(key(type, id));
-    out.push({ id, status: statusFor(type, test), source: 'playwright', test: name });
+  const ids = taggedIds(spec, name);
+  const last = [...test.results].sort((a, b) => b.retry - a.retry)[0];
+  const failed = last !== undefined && FAILED.has(last.status);
+  if (failed) acc.anyFailed = true;
+  if (failed && ids.length === 0) acc.unboundFailures.push(name);
+
+  // Every runtime finding-open / finding-fixed, on any attempt, must name a declared id.
+  const everyAttempt = [...(test.annotations ?? []), ...test.results.flatMap((r) => r.annotations ?? [])];
+  for (const { type, id } of findingAnnotations(everyAttempt, name)) {
+    if (type !== 'finding-requires' && !ids.includes(id)) {
+      throw new PlaywrightReportError(
+        `${name} records "${type}" for ${id} but does not declare the tag @finding:${id}: bindings must be static`,
+      );
+    }
   }
-  const lastFailed = last !== undefined && FAILED.has(last.status);
-  for (const { type, id } of findingAnnotations(
-    earlier.flatMap((r) => r.annotations ?? []),
-    name,
-  )) {
-    if (seen.has(key(type, id))) continue;
-    seen.add(key(type, id));
-    const status: ObservedStatus = type === 'finding-fixed' && lastFailed ? 'REGRESSED' : 'NOT-RUN';
-    out.push({ id, status, source: 'playwright', test: name });
+  const finalAnnotations = findingAnnotations([...(test.annotations ?? []), ...(last?.annotations ?? [])], name);
+  const evidence = new Set(finalAnnotations.map((a) => `${a.type}\u0000${a.id}`));
+  for (const id of ids)
+    acc.observations.push({ id, status: statusFor(id, last, test, evidence), source: 'playwright', test: name });
+
+  // `requires()` names a dependency, not the test's own binding: it is never a pass.
+  for (const { id } of finalAnnotations.filter((a) => a.type === 'finding-requires')) {
+    if (ids.includes(id)) continue;
+    const skipped = last !== undefined && (last.status === 'skipped' || test.expectedStatus === 'skipped');
+    acc.observations.push({ id, status: skipped ? 'STALE-BINDING' : 'NOT-RUN', source: 'playwright', test: name });
   }
 }
 
-function walk(suite: Suite, parents: string[], out: Observation[]): void {
+function walk(suite: Suite, parents: string[], acc: Walked): void {
   const path = suite.title ? [...parents, suite.title] : parents;
   for (const spec of suite.specs ?? []) {
-    for (const test of spec.tests) collectTest(test, [...path, spec.title], out);
+    for (const test of spec.tests) collectTest(spec, test, [...path, spec.title], acc);
   }
-  for (const child of suite.suites ?? []) walk(child, path, out);
+  for (const child of suite.suites ?? []) walk(child, path, acc);
 }
 
-export function collectPlaywright(raw: unknown): Observation[] {
+export interface PlaywrightCollection {
+  observations: Observation[];
+  /** Why the run cannot be trusted as evidence of any pass. Empty = trusted. */
+  untrusted: string[];
+}
+
+export function collectPlaywrightReport(raw: unknown, opts: { runExitCode?: number } = {}): PlaywrightCollection {
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
@@ -132,8 +179,28 @@ export function collectPlaywright(raw: unknown): Observation[] {
       `not a Playwright JSON report (${first ? `${first.path.join('.') || '(root)'}: ${first.message}` : 'invalid'})`,
     );
   }
-  const out: Observation[] = [];
-  for (const suite of parsed.data.suites) walk(suite, [], out);
-  if (parsed.data.errors.length === 0) return out;
-  return out.map((o) => (o.status === 'FIXED-VERIFIED' ? { ...o, status: 'NOT-RUN' } : o));
+  const acc: Walked = { observations: [], unboundFailures: [], anyFailed: false };
+  for (const suite of parsed.data.suites) walk(suite, [], acc);
+
+  const untrusted: string[] = acc.unboundFailures.map((t) => `playwright: ${t} failed and has no @finding tag`);
+  for (const e of parsed.data.errors) {
+    untrusted.push(`playwright: global error: ${(e.message ?? '(no message)').split('\n')[0]}`);
+  }
+  const exit = opts.runExitCode;
+  if (exit === 0 && acc.anyFailed) {
+    throw new PlaywrightReportError('the Playwright run exited 0 but its report has a failed test');
+  }
+  if (exit !== undefined && exit !== 0 && !acc.anyFailed && parsed.data.errors.length === 0) {
+    untrusted.push(`playwright: the run exited ${exit} but its report shows no failure`);
+  }
+  if (untrusted.length === 0) return { observations: acc.observations, untrusted };
+  const observations = acc.observations.map((o) =>
+    o.status === 'FIXED-VERIFIED' ? { ...o, status: 'NOT-RUN' as const } : o,
+  );
+  return { observations, untrusted };
+}
+
+/** Observations only (see collectPlaywrightReport for the untrusted-run reasons). */
+export function collectPlaywright(raw: unknown, opts: { runExitCode?: number } = {}): Observation[] {
+  return collectPlaywrightReport(raw, opts).observations;
 }

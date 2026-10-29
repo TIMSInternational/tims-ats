@@ -159,8 +159,24 @@ export function collectXunitDir(
   const files = readdirSync(dir)
     .filter((f) => f.endsWith('.trx'))
     .sort();
-  if (files.length === 0) throw new XunitReportError(`no .trx files in ${dir} (nothing ran is not a pass)`);
+  return collectXunitFiles(
+    files.map((f) => ({ name: f, xml: readFileSync(join(dir, f), 'utf8') })),
+    extraNameBindings,
+    dir,
+  );
+}
+
+/** Like collectXunitDir, over already-read (provenance-verified) contents. Only `.trx` names count. */
+export function collectXunitFiles(
+  files: readonly { name: string; xml: string }[],
+  extraNameBindings?: ReadonlyMap<string, readonly string[]>,
+  where = 'the TRX input',
+): Observation[] {
+  const trx = files.filter((f) => f.name.endsWith('.trx'));
+  if (trx.length === 0) throw new XunitReportError(`no .trx files in ${where} (nothing ran is not a pass)`);
   const seen = new Set<string>();
-  const out = files.flatMap((f) => readTrx(readFileSync(join(dir, f), 'utf8'), extraNameBindings, seen));
+  const out = [...trx]
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .flatMap((f) => readTrx(f.xml, extraNameBindings, seen));
   return [...out, ...notRunBindings(extraNameBindings, seen)];
 }

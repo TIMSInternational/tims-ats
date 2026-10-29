@@ -12,24 +12,34 @@
  *   REAUDIT_FINDINGS (required) · REAUDIT_OUT_DIR (required) · REAUDIT_BINDINGS · REAUDIT_WP_INDEX ·
  *   REAUDIT_OWNER_CHECKS_DIR (required with --with-owner-checks).
  *
- * Evidence must be of HEAD: every input report must be newer than HEAD's commit time (a report from an
- * earlier revision is refused, exit 2), and --gate launch refuses a tree with uncommitted changes.
+ * Evidence must be of HEAD. Every input must be produced through scripts/reaudit/record.ts, which writes
+ * a provenance manifest (tested git SHA, dirty flag, exit status, SHA-256 of each report). An input with
+ * no manifest, a manifest naming another commit, or a report whose bytes no longer match is refused
+ * (exit 2); the collectors parse the exact bytes that were verified. --vitest-exit must equal the
+ * recorded vitest exit status. --gate launch also refuses evidence recorded on a dirty checkout and a
+ * current checkout with uncommitted or untracked (not ignored) files. Provenance guards against stale or
+ * copied evidence; it is not a signature against a hand-forged manifest.
+ *
+ * An untrusted Playwright run (a failed test with no @finding tag, a global error, or a non-zero exit
+ * the report does not explain) turns every FIXED-VERIFIED from every source into NOT-RUN and fails
+ * --gate launch (exit 1).
  *
  * Exit codes: 0 ok / gate passed · 1 gate failed · 2 cannot run (missing or invalid input, refused
  * path). Every unexpected error is exit 2: this tool fails closed.
  */
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPrivateBindings, nameBindings, unknownBindingIds } from './bindings';
 import { runOwnerChecks } from './collect-owner';
-import { collectPlaywright } from './collect-playwright';
+import { collectPlaywrightReport } from './collect-playwright';
 import { collectVitest } from './collect-vitest';
-import { collectXunitDir } from './collect-xunit';
+import { collectXunitFiles } from './collect-xunit';
 import { evidenceDrift, type EvidenceDrift } from './evidence-drift';
 import { loadFindings } from './findings-source';
+import { readGitState } from './git-state';
 import { assertOutsideRepo } from './paths';
+import { verifyProvenance, type EvidenceKind, type VerifiedEvidence } from './provenance';
 import { buildReport, launchGate, loadWpIndex, writeReport } from './report';
 import { SLUG_RE, type Observation } from './status';
 
@@ -37,10 +47,8 @@ export interface CliContext {
   env: Record<string, string | undefined>;
   repoRoot: string;
   headSha: string;
-  /** HEAD's committer time: evidence written before it cannot be evidence of HEAD. */
-  headCommittedAt: Date;
-  /** Tracked files differ from HEAD, so evidence produced from this tree is not of HEAD. */
-  treeDirty: boolean;
+  /** Paths `git status` reports (untracked included, ignored excluded). Non-empty: not a checkout of HEAD. */
+  dirtyPaths: readonly string[];
   now: Date;
   log: (s: string) => void;
   err: (s: string) => void;
@@ -86,39 +94,19 @@ function parseArgs(argv: readonly string[]): CliArgs {
   return args;
 }
 
-function readJson(path: string, label: string): unknown {
+function verified(kind: EvidenceKind, path: string, flag: string, ctx: CliContext, gate: boolean): VerifiedEvidence {
   const p = resolve(path);
-  if (!existsSync(p)) throw new UsageError(`${label} input not found: ${p}`);
+  if (!existsSync(p)) throw new UsageError(`${flag} input not found: ${p}`);
+  return verifyProvenance({ kind, evidence: p, headSha: ctx.headSha, requireClean: gate });
+}
+
+function parseJson(v: VerifiedEvidence, path: string, flag: string): unknown {
+  const bytes = [...v.files.values()][0];
   try {
-    return JSON.parse(readFileSync(p, 'utf8'));
+    return JSON.parse((bytes ?? Buffer.alloc(0)).toString('utf8'));
   } catch (e) {
-    throw new UsageError(`${label} input is not valid JSON: ${p} (${(e as Error).message})`);
+    throw new UsageError(`${flag} input is not valid JSON: ${resolve(path)} (${(e as Error).message})`);
   }
-}
-
-function assertFreshEvidence(paths: readonly string[], headCommittedAt: Date): void {
-  if (Number.isNaN(headCommittedAt.getTime())) throw new UsageError('cannot read the HEAD commit time');
-  for (const p of paths) {
-    if (!existsSync(p)) continue;
-    if (statSync(p).mtimeMs < headCommittedAt.getTime()) {
-      throw new UsageError(
-        `evidence predates the HEAD commit (${headCommittedAt.toISOString()}), so it is not evidence of HEAD: ${p}`,
-      );
-    }
-  }
-}
-
-function evidenceFiles(args: CliArgs): string[] {
-  const files: string[] = [];
-  if (args.playwright) files.push(resolve(args.playwright));
-  if (args.vitest) files.push(resolve(args.vitest));
-  if (args.trx) {
-    const dir = resolve(args.trx);
-    if (existsSync(dir) && statSync(dir).isDirectory()) {
-      for (const f of readdirSync(dir)) if (f.endsWith('.trx')) files.push(join(dir, f));
-    }
-  }
-  return files;
 }
 
 function ownerCheckIds(dir: string, bound: readonly string[], findingIds: ReadonlySet<string>): string[] {
@@ -146,11 +134,23 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
     ctx.err(`--gate launch needs every input; missing: ${missingInputs.join(', ')}`);
     return 2;
   }
-  if (args.gate === 'launch' && ctx.treeDirty) {
-    ctx.err('--gate launch refuses a working tree with uncommitted changes: the evidence would not be of HEAD');
+  const gate = args.gate === 'launch';
+  if (gate && ctx.dirtyPaths.length > 0) {
+    ctx.err(
+      `--gate launch refuses a working tree with uncommitted or untracked changes (${ctx.dirtyPaths.slice(0, 20).join(', ')}): ` +
+        'the evidence would not be of HEAD',
+    );
     return 2;
   }
-  assertFreshEvidence(evidenceFiles(args), ctx.headCommittedAt);
+  // Provenance first: nothing is read, collected or written from evidence that is not of HEAD.
+  const pwEv = args.playwright ? verified('playwright', args.playwright, '--playwright', ctx, gate) : undefined;
+  const vtEv = args.vitest ? verified('vitest', args.vitest, '--vitest', ctx, gate) : undefined;
+  const trxEv = args.trx ? verified('xunit', args.trx, '--trx', ctx, gate) : undefined;
+  if (vtEv && vtEv.manifest.exitCode !== args.vitestExit) {
+    throw new UsageError(
+      `--vitest-exit ${args.vitestExit} disagrees with the recorded vitest exit status ${vtEv.manifest.exitCode}`,
+    );
+  }
 
   const outDirEnv = ctx.env.REAUDIT_OUT_DIR;
   if (!outDirEnv) throw new UsageError('REAUDIT_OUT_DIR is not set (absolute directory outside the repository)');
@@ -167,14 +167,24 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   const wpIndex = loadWpIndex({ path: ctx.env.REAUDIT_WP_INDEX, repoRoot: ctx.repoRoot });
 
   const observations: Observation[] = [];
-  if (args.playwright) observations.push(...collectPlaywright(readJson(args.playwright, '--playwright')));
-  if (args.vitest)
+  const untrusted: string[] = [];
+  if (pwEv && args.playwright) {
+    const pw = collectPlaywrightReport(parseJson(pwEv, args.playwright, '--playwright'), {
+      runExitCode: pwEv.manifest.exitCode,
+    });
+    observations.push(...pw.observations);
+    untrusted.push(...pw.untrusted);
+  }
+  if (vtEv && args.vitest)
     observations.push(
-      ...collectVitest(readJson(args.vitest, '--vitest'), nameBindings(bindings, 'vitest'), {
-        runExitCode: args.vitestExit,
+      ...collectVitest(parseJson(vtEv, args.vitest, '--vitest'), nameBindings(bindings, 'vitest'), {
+        runExitCode: vtEv.manifest.exitCode,
       }),
     );
-  if (args.trx) observations.push(...collectXunitDir(resolve(args.trx), nameBindings(bindings, 'xunit')));
+  if (trxEv && args.trx) {
+    const files = [...trxEv.files].map(([name, bytes]) => ({ name, xml: bytes.toString('utf8') }));
+    observations.push(...collectXunitFiles(files, nameBindings(bindings, 'xunit'), resolve(args.trx)));
+  }
   if (checksDir) {
     const ids = ownerCheckIds(checksDir, bindings.ownerChecks, new Set(findings.map((f) => f.id)));
     observations.push(...runOwnerChecks({ enabled: true, checksDir, ids }));
@@ -196,7 +206,15 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
     drift = new Map(findings.map((f) => [f.id, evidenceDrift({ repoRoot: ctx.repoRoot, base, evidence: f.evidence })]));
   }
 
-  const report = buildReport({ findings, observations, sha: ctx.headSha, generatedAt: ctx.now, wpIndex, drift });
+  const report = buildReport({
+    findings,
+    observations,
+    sha: ctx.headSha,
+    generatedAt: ctx.now,
+    wpIndex,
+    drift,
+    untrusted,
+  });
   const paths = writeReport(report, { outDir, repoRoot: ctx.repoRoot });
   ctx.log(`report: ${paths.json}`);
   ctx.log(`report: ${paths.md}`);
@@ -214,13 +232,17 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   );
   if (staleBindings.length) ctx.err(`private bindings name ids not in the findings file: ${staleBindings.join(', ')}`);
   if (report.suspiciousFixes.length) ctx.err(`fixed but evidence unchanged: ${report.suspiciousFixes.join(', ')}`);
+  for (const reason of report.untrusted) ctx.err(`UNTRUSTED RUN (no finding is FIXED-VERIFIED): ${reason}`);
 
-  if (args.gate !== 'launch') return 0;
-  const gate = launchGate(report, { missingInputs });
-  if (gate.exitCode === 0) ctx.log('gate launch: PASS (every launch-v1 P0/P1 is FIXED-VERIFIED)');
-  else if (gate.exitCode === 1) ctx.err(`gate launch: FAIL, not FIXED-VERIFIED: ${gate.failing.join(', ')}`);
+  if (!gate) return 0;
+  const result = launchGate(report, { missingInputs });
+  if (result.exitCode === 0) ctx.log('gate launch: PASS (every launch-v1 P0/P1 is FIXED-VERIFIED)');
+  else if (result.exitCode === 1)
+    ctx.err(
+      `gate launch: FAIL${report.untrusted.length ? ' (untrusted run)' : ''}, not FIXED-VERIFIED: ${result.failing.join(', ')}`,
+    );
   else ctx.err('gate launch: NOT RUN (missing input or no findings), which is not a pass');
-  return gate.exitCode;
+  return result.exitCode;
 }
 
 export async function runCli(argv: readonly string[], ctx: CliContext): Promise<number> {
@@ -232,17 +254,19 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
   }
 }
 
+/** The git part of main()'s context, read with the real git binary (see git-state.ts). */
+export function gitContext(cwd: string): Pick<CliContext, 'repoRoot' | 'headSha' | 'dirtyPaths'> {
+  const s = readGitState(cwd);
+  return { repoRoot: s.repoRoot, headSha: s.headSha, dirtyPaths: s.dirtyPaths };
+}
+
 // No top-level await: tsx runs this package as CommonJS.
 function main(): void {
-  const git = (...a: string[]) => execFileSync('git', a, { encoding: 'utf8' }).trim();
   let ctx: CliContext;
   try {
     ctx = {
       env: process.env,
-      repoRoot: git('rev-parse', '--show-toplevel'),
-      headSha: git('rev-parse', 'HEAD'),
-      headCommittedAt: new Date(git('log', '-1', '--format=%cI', 'HEAD')),
-      treeDirty: git('status', '--porcelain', '--untracked-files=no') !== '',
+      ...gitContext(process.cwd()),
       now: new Date(),
       log: (s) => console.log(s),
       err: (s) => console.error(s),
