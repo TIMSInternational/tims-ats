@@ -251,15 +251,21 @@ aguinaldo default. Keeping both support-managed stops a tenant from silently cha
   subtotal 750000, tax 97500, total 847500), a tax that lands on .5 minor at an even digit (rounds down), and one at
   an odd digit (rounds up). A half-up mutation must turn at least one case red.
 - PostgreSQL `round()` on `numeric` rounds half away from zero, so the backfills use an explicit half-even expression.
-- **Legacy invoices are not recomputed.** Today's inputs allow sub-minor unit prices
-  (`invoices.schemas.ts`), so a stored line can be internally consistent in floats but not in minor units (quantity 2
-  × 0.015 stored as total 0.03 becomes unit price 2 minor, while the stored total is 3 minor). For any invoice that
-  left draft before the minor-unit columns existed, the **stored totals are authoritative**: the backfill converts each
-  stored amount (unit price, line total, subtotal, tax, total) independently, half-even, and never derives one from
-  another. Such rows carry a `legacyRounding` marker, are exempt from the `quantity × unitPriceMinor` invariant (which
-  applies only to invoices created after the switch, whose inputs are validated to the ISO exponent), and the coverage
-  report counts rows where the invariant would not hold. The backfill fixture includes this sub-minor case and asserts
-  the stored total is preserved.
+- **Legacy invoices are not recomputed.** Today's inputs allow sub-minor unit prices (`invoices.schemas.ts`, and
+  `createDraftInvoice` in `entitlement.repository.ts` stores float prices with no exponent check), so a stored line can
+  be consistent in floats but not in minor units (quantity 2 × 0.015 stored as total 0.03 becomes unit price 2 minor
+  against a stored total of 3 minor). The rule is by **existence, not status**: every invoice row that exists before
+  the minor-unit columns, draft or not, is backfilled by converting each stored amount (unit price, line total,
+  subtotal, tax, total) independently, half-even, never deriving one from another, and carries a `legacyRounding`
+  marker that exempts it from the `quantity × unitPriceMinor` invariant. That invariant applies only to rows created
+  after the switch, whose inputs are validated to the ISO exponent.
+- **Legacy drafts.** A `legacyRounding` draft is not issued as is. The issue transition re-validates it: if every unit
+  price is already at the ISO exponent, totals are recomputed under the new rule, the marker is cleared, and the draft
+  issues normally; if any unit price has sub-minor precision, issuing is refused with a message asking the user to edit
+  the line. Issued and paid legacy rows keep the marker for good.
+- The coverage report counts legacy rows where the invariant would not hold, split into drafts and issued. The backfill
+  fixtures cover the sub-minor case for an issued invoice (stored total preserved) and for a draft that crosses the
+  boundary (issue refused until edited; an exponent-clean draft recomputes and issues).
 
 **The one exception.** The existing `roundMoney` / `CompensationKernels.RoundMoney` (half-up with an `EPSILON` bias)
 stays as it is. Its golden fixtures (`contracts/compensation-fixtures/convert-money.json`, `sum-money.json`) are the
