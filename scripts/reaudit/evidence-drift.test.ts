@@ -29,6 +29,7 @@ describe('parseEvidenceRef', () => {
     expect(parseEvidenceRef('apps/web/app/api/trpc/[trpc]/route.ts:136-160')?.path).toBe(
       'apps/web/app/api/trpc/[trpc]/route.ts',
     );
+    expect(parseEvidenceRef('[locale]/page.tsx:3')?.path).toBe('[locale]/page.tsx');
   });
 
   it('prose evidence (no path:line) → null', () => {
@@ -38,6 +39,11 @@ describe('parseEvidenceRef', () => {
 
   it('a reversed range is rejected (null), not silently swapped', () => {
     expect(parseEvidenceRef('a.tsx:20-10')).toBeNull();
+  });
+
+  it('a dangling or chained range is rejected (null), not truncated to its first line', () => {
+    expect(parseEvidenceRef('a.tsx:10-')).toBeNull();
+    expect(parseEvidenceRef('a.tsx:10-20-30')).toBeNull();
   });
 });
 

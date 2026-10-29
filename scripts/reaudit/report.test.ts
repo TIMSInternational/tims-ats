@@ -127,6 +127,9 @@ describe('buildReport', () => {
     for (const id of ['syn-a', 'syn-b', 'syn-c', 'syn-d']) expect(md).toContain(id);
     expect(md).toContain('REGRESSED');
     expect(md).toContain('UNBOUND');
+    expect(md).toContain(
+      '| persona | FIXED-VERIFIED | OPEN-CONFIRMED | REGRESSED | NOT-RUN | STALE-BINDING | UNBOUND |',
+    );
   });
 });
 

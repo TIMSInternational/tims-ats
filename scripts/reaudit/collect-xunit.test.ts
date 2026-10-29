@@ -9,12 +9,15 @@ import { statusById } from './status';
 // logger writes as a Property (Key=Finding) on the UnitTest definition. The implementation stage must
 // confirm this against one real `dotnet test --logger trx` run and record the evidence in the PR body.
 
-type Def = { id: string; name: string; finding?: string[]; outcome: string };
+type Def = { id: string; name: string; finding?: string[]; otherTraits?: [string, string][]; outcome: string };
 
 function trx(defs: Def[]): string {
   const definitions = defs
     .map((d) => {
-      const props = (d.finding ?? []).map((f) => `<Property><Key>Finding</Key><Value>${f}</Value></Property>`).join('');
+      const props = [
+        ...(d.otherTraits ?? []).map(([k, v]) => `<Property><Key>${k}</Key><Value>${v}</Value></Property>`),
+        ...(d.finding ?? []).map((f) => `<Property><Key>Finding</Key><Value>${f}</Value></Property>`),
+      ].join('');
       return `<UnitTest name="${d.name}" id="${d.id}"><Properties>${props}</Properties><TestMethod className="Syn" name="${d.name}" /></UnitTest>`;
     })
     .join('\n');
@@ -64,7 +67,7 @@ describe('collectXunitTrx', () => {
   });
 
   it('a test without a Finding trait binds nothing', () => {
-    const x = trx([{ id: 'g1', name: 'Syn.Plain', outcome: 'Passed' }]);
+    const x = trx([{ id: 'g1', name: 'Syn.Plain', otherTraits: [['Category', 'syn-a']], outcome: 'Passed' }]);
     expect(collectXunitTrx(x)).toEqual([]);
   });
 

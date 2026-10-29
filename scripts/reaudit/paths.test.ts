@@ -63,7 +63,7 @@ describe('assertOutsideRepo', () => {
   });
 
   it('returns the resolved absolute path when outside', () => {
-    expect(assertOutsideRepo(join(outside, 'a', '..', 'b.json'), repo, 'x')).toBe(join(outside, 'b.json'));
+    expect(assertOutsideRepo(`${outside}/a/../b.json`, repo, 'x')).toBe(join(outside, 'b.json'));
   });
 
   it('refuses a relative path rather than guessing a base directory', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runOwnerChecks, type OwnerCheckRunner } from './collect-owner';
@@ -90,6 +90,7 @@ describe('runOwnerChecks', () => {
     const byId = statusById(obs);
     expect(byId.get('syn-a')).toBe('NOT-RUN');
     expect(byId.get('syn-b')).toBe('NOT-RUN');
+    expect(obs.every((o) => o.test.includes('checks directory missing'))).toBe(true);
     expect(run).not.toHaveBeenCalled();
   });
 
@@ -102,8 +103,12 @@ describe('runOwnerChecks', () => {
   });
 
   it('an id that is not a slug is never turned into a path', () => {
-    const run = fakeRunner({});
-    const byId = statusById(runOwnerChecks({ enabled: true, checksDir: dir, ids: ['../../etc/x'], run }));
+    const checksDir = join(dir, 'checks');
+    mkdirSync(checksDir);
+    writeFileSync(join(dir, 'escape.sh'), '#!/usr/bin/env bash\nexit 0\n');
+    const run = fakeRunner({ escape: { exitCode: 0, stdout: 'RESULT: FIXED' } });
+    const byId = statusById(runOwnerChecks({ enabled: true, checksDir, ids: ['../escape', '../../etc/x'], run }));
+    expect(byId.get('../escape')).toBe('NOT-RUN');
     expect(byId.get('../../etc/x')).toBe('NOT-RUN');
     expect(run).not.toHaveBeenCalled();
   });

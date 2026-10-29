@@ -120,6 +120,16 @@ describe('collectPlaywright', () => {
     expect(collectPlaywright(r)).toEqual([]);
   });
 
+  it('finding-requires is never a pass: NOT-RUN when the test ran, STALE-BINDING when it was skipped', () => {
+    const req = { type: 'finding-requires', description: 'syn-a' };
+    const ran = report([testEntry({ annotations: [req], results: [{ retry: 0, status: 'passed' }] })]);
+    expect(statusById(collectPlaywright(ran)).get('syn-a')).toBe('NOT-RUN');
+    const skipped = report([
+      testEntry({ annotations: [req], expectedStatus: 'skipped', results: [{ retry: 0, status: 'skipped' }] }),
+    ]);
+    expect(statusById(collectPlaywright(skipped)).get('syn-a')).toBe('STALE-BINDING');
+  });
+
   it('a test with no results at all (never ran) binds as NOT-RUN, never as a pass', () => {
     const r = report([testEntry({ annotations: [fixed('syn-a')], results: [] })]);
     expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('NOT-RUN');

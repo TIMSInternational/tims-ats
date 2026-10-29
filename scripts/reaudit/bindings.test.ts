@@ -76,6 +76,11 @@ describe('loadPrivateBindings', () => {
     expect(() => loadPrivateBindings({ path: put(bad), repoRoot: repo })).toThrow(BindingsError);
   });
 
+  it('rejects an unknown key inside a test binding', () => {
+    const bad = { ...valid, tests: [{ id: 'syn-sec-1', source: 'vitest', name: 'x', extra: 1 }] };
+    expect(() => loadPrivateBindings({ path: put(bad), repoRoot: repo })).toThrow(BindingsError);
+  });
+
   it('rejects invalid JSON', () => {
     expect(() => loadPrivateBindings({ path: put('{'), repoRoot: repo })).toThrow(BindingsError);
   });
@@ -88,6 +93,15 @@ describe('nameBindings', () => {
     expect(v.get('security denies cross-org read')).toEqual(['syn-sec-1', 'syn-sec-2']);
     expect(v.has('Syn.Gate.Denies')).toBe(false);
     expect(nameBindings(b, 'xunit').get('Syn.Gate.Denies')).toEqual(['syn-sec-3']);
+  });
+
+  it('a repeated binding lists its id once', () => {
+    const dup = {
+      ...valid,
+      tests: [...valid.tests, { id: 'syn-sec-1', source: 'vitest', name: 'security denies cross-org read' }],
+    };
+    const b = loadPrivateBindings({ path: put(dup), repoRoot: repo });
+    expect(nameBindings(b, 'vitest').get('security denies cross-org read')).toEqual(['syn-sec-1', 'syn-sec-2']);
   });
 });
 

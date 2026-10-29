@@ -35,6 +35,14 @@ describe('extractStepTitles', () => {
   it('a file with no steps yields an empty list', () => {
     expect(extractStepTitles('export const x = 1;')).toEqual([]);
   });
+
+  it('ignores calls that merely end in "test(" (regex .test, latest, attest)', () => {
+    expect(extractStepTitles("const ok = /x/.test('nope'); latest('nope'); attest('nope');")).toEqual([]);
+  });
+
+  it('unescapes an escaped quote of the same style', () => {
+    expect(extractStepTitles("await test.step('it\\'s done', async () => {});")).toEqual(["it's done"]);
+  });
 });
 
 describe('renderWalkthrough', () => {
