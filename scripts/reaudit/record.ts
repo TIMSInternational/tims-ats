@@ -4,7 +4,8 @@
  *
  *   pnpm exec tsx scripts/reaudit/record.ts --kind <playwright|vitest|xunit> --output <path> -- <command...>
  *
- *   e.g. record.ts --kind vitest --output /tmp/r/vitest.json -- npx vitest run --reporter=json --outputFile=/tmp/r/vitest.json
+ *   e.g. record.ts --kind vitest --output /tmp/r/vitest.json -- npx vitest run
+ *          --reporter=./scripts/reaudit/vitest-json-reporter.ts --outputFile=/tmp/r/vitest.json
  *        record.ts --kind xunit --output /tmp/r/trx -- dotnet test --logger trx --results-directory /tmp/r/trx
  *
  * Reports are private (test names, errors, diagnostics), so --output and its manifest must be OUTSIDE
@@ -20,7 +21,7 @@
  * Exit 2 when it cannot record (usage, git, spawn, HEAD moved, no report): no manifest is written.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync } from 'node:fs';
 import { constants } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,7 +74,8 @@ export function runRecord(argv: readonly string[], io: RecordIo): number {
     const before = readGitState(io.cwd);
     assertOutsideRepo(output, before.repoRoot, 'record --output');
     assertOutsideRepo(manifest, before.repoRoot, 'record manifest');
-    if (existsSync(output) || existsSync(manifest)) {
+    // lstat, not existsSync: a dangling symlink "does not exist" but a write through it lands elsewhere.
+    if ([output, manifest].some((p) => lstatSync(p, { throwIfNoEntry: false }) !== undefined)) {
       io.err(`record: ${output} already exists; remove it so the report can only come from this run`);
       return 2;
     }

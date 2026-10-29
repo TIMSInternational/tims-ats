@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  readFileSync,
+  realpathSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runRecord } from './record';
@@ -95,6 +104,35 @@ describe('runRecord', () => {
       expect(existsSync(marker)).toBe(false);
       expect(lines.join('\n')).toMatch(/inside the repository/);
     }
+  });
+
+  it('an --output that is a DANGLING symlink into the checkout → 2, the command never runs, nothing lands in the repo', () => {
+    const out = join(priv, 'report.json');
+    const target = join(repo, 'private-report.json');
+    symlinkSync(target, out);
+    const marker = join(priv, 'ran');
+    const code = runRecord(
+      ['--kind', 'vitest', '--output', out, '--', ...nodeWriting({ [out]: '{}', [marker]: 'x' })],
+      io(),
+    );
+    expect(code).toBe(2);
+    expect(existsSync(marker)).toBe(false);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it('an --output that is a dangling symlink to a harmless place is still an existing entry → 2', () => {
+    const out = join(priv, 'report.json');
+    symlinkSync(join(priv, 'nowhere.json'), out);
+    expect(runRecord(['--kind', 'vitest', '--output', out, '--', ...nodeWriting({ [out]: '{}' })], io())).toBe(2);
+    expect(existsSync(join(priv, 'nowhere.json'))).toBe(false);
+  });
+
+  it('a manifest path that is a dangling symlink → 2 before the command runs', () => {
+    const out = join(priv, 'vitest.json');
+    symlinkSync(join(priv, 'elsewhere'), manifestPathFor(out, 'vitest'));
+    const marker = join(priv, 'ran');
+    expect(runRecord(['--kind', 'vitest', '--output', out, '--', ...nodeWriting({ [marker]: 'x' })], io())).toBe(2);
+    expect(existsSync(marker)).toBe(false);
   });
 
   it('an --output inside a SIBLING worktree of the same repository → 2', () => {

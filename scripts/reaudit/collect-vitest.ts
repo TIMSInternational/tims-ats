@@ -1,5 +1,12 @@
 /**
- * Collects per-finding observations from `vitest run --reporter=json` output.
+ * Collects per-finding observations from a Vitest JSON report written by the harness's own reporter:
+ *
+ *   npx vitest run --reporter=./scripts/reaudit/vitest-json-reporter.ts --outputFile=<abs path>
+ *
+ * That reporter is the stock JSON reporter plus `fails` on every assertion and a top-level `reaudit`
+ * marker. `test.fails` inverts a result (the body throws, the test reports `passed`, exit 0) and the
+ * stock report omits the flag, so a stock report is rejected and a bound `test.fails` test is NOT-RUN,
+ * never FIXED-VERIFIED.
  *
  * A test binds when its FULL name (every ancestor describe title + the leaf title) contains
  * `[finding:<slug>]`. Private bindings may additionally bind an untagged test by its exact full name.
@@ -42,8 +49,11 @@ const assertionSchema = z.object({
   ancestorTitles: z.array(z.string().max(2000)),
   title: z.string().max(2000),
   status: z.string().max(50),
+  fails: z.boolean(),
 });
+export const VITEST_REPORT_MARKER = { reporter: 'reaudit-vitest-json', version: 1 } as const;
 const reportSchema = z.object({
+  reaudit: z.object({ reporter: z.literal(VITEST_REPORT_MARKER.reporter), version: z.literal(1) }).strict(),
   success: z.boolean().optional(),
   testResults: z.array(
     z.object({
@@ -81,8 +91,19 @@ export function collectVitestReport(
   opts: VitestRunOptions = {},
 ): Collection {
   const parsed = reportSchema.safeParse(raw);
-  if (!parsed.success)
-    throw new VitestReportError('not a vitest JSON report (expected testResults[].status and .assertionResults[])');
+  if (!parsed.success) {
+    const raw0 = raw as { reaudit?: unknown } | null;
+    if (raw0 && typeof raw0 === 'object' && !('reaudit' in raw0)) {
+      throw new VitestReportError(
+        'a stock Vitest JSON report cannot show test.fails; run Vitest with ' +
+          '--reporter=./scripts/reaudit/vitest-json-reporter.ts',
+      );
+    }
+    const first = parsed.error.issues[0];
+    throw new VitestReportError(
+      `not a reaudit Vitest JSON report (${first ? `${first.path.join('.') || '(root)'}: ${first.message}` : 'invalid'})`,
+    );
+  }
   const out: Observation[] = [];
   const seen = new Set<string>();
   const anyFileFailed = parsed.data.testResults.some((f) => f.status === 'failed');
@@ -97,7 +118,8 @@ export function collectVitestReport(
       seen.add(fullName);
       const ids = tagIds(fullName);
       for (const extra of extraNameBindings?.get(fullName) ?? []) if (!ids.includes(extra)) ids.push(extra);
-      const raw = statusFor(a.status);
+      // A test.fails "pass" means the body threw: never evidence that the ideal holds.
+      const raw = a.fails ? 'NOT-RUN' : statusFor(a.status);
       const status = untrusted && raw === 'FIXED-VERIFIED' ? 'NOT-RUN' : raw;
       for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName });
     }

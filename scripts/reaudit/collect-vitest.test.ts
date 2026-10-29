@@ -1,13 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { collectVitest, collectVitestReport, VitestReportError } from './collect-vitest';
+import { collectVitest, collectVitestReport, VITEST_REPORT_MARKER, VitestReportError } from './collect-vitest';
 import { statusById } from './status';
 
-// Shape of `npx vitest run --reporter=json --outputFile=<f>` (jest-compatible JSON).
+// Shape of `npx vitest run --reporter=./scripts/reaudit/vitest-json-reporter.ts --outputFile=<f>`: the
+// stock jest-compatible JSON plus `fails` on every assertion and a top-level `reaudit` marker.
 // A test binds when its FULL name (ancestor describe titles + leaf title) contains `[finding:<id>]`.
 
-type Assertion = { ancestorTitles: string[]; title: string; status: string };
+type Assertion = { ancestorTitles: string[]; title: string; status: string; fails?: boolean };
 
 function vitestJson(assertions: Assertion[]): {
+  reaudit: typeof VITEST_REPORT_MARKER;
   numTotalTests: number;
   success: boolean;
   testResults: {
@@ -18,6 +20,7 @@ function vitestJson(assertions: Assertion[]): {
   }[];
 } {
   return {
+    reaudit: VITEST_REPORT_MARKER,
     numTotalTests: assertions.length,
     success: true,
     testResults: [
@@ -26,6 +29,7 @@ function vitestJson(assertions: Assertion[]): {
         status: 'passed',
         assertionResults: assertions.map((a) => ({
           ...a,
+          fails: a.fails ?? false,
           fullName: [...a.ancestorTitles, a.title].join(' '),
         })),
       },
@@ -155,6 +159,7 @@ describe('collectVitest', () => {
           ancestorTitles: ['o'],
           title: 'ok too [finding:syn-b]',
           status: 'passed',
+          fails: false,
           fullName: 'o ok too [finding:syn-b]',
         },
       ],
@@ -258,5 +263,40 @@ describe('collectVitestReport: a failed run untrusts the whole report', () => {
     expect(collectVitestReport(vitestJson([pass])).untrusted).toEqual([
       'vitest: no run exit status; the JSON alone cannot show an unhandled error',
     ]);
+  });
+});
+
+// Round-9 class: Vitest's `test.fails` inverts the result — the body THROWS and the test reports
+// `passed`, exit 0. The stock JSON reporter omits the flag, so the harness requires its own reporter
+// (scripts/reaudit/vitest-json-reporter.ts), which adds `fails` per assertion and a marker.
+describe('collectVitest: test.fails and the reaudit reporter', () => {
+  it('a bound test.fails test that "passed" is NEVER FIXED-VERIFIED (NOT-RUN)', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'ideal [finding:syn-a]', status: 'passed', fails: true }]);
+    expect(statusById(collectVitest(j, undefined, { runExitCode: 0 })).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a test.fails test bound only by a private name binding is NOT-RUN too', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'plain', status: 'passed', fails: true }]);
+    const b = new Map([['s plain', ['syn-a']]]);
+    expect(statusById(collectVitest(j, b, { runExitCode: 0 })).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('an ordinary passing bound test stays FIXED-VERIFIED', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'ideal [finding:syn-a]', status: 'passed', fails: false }]);
+    expect(statusById(collectVitest(j, undefined, { runExitCode: 0 })).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('a stock Vitest JSON report (no reaudit marker) is rejected: it cannot show test.fails', () => {
+    const j: Record<string, unknown> = vitestJson([
+      { ancestorTitles: ['s'], title: 'x [finding:syn-a]', status: 'passed' },
+    ]);
+    delete j.reaudit;
+    expect(() => collectVitest(j)).toThrow(/vitest-json-reporter/);
+  });
+
+  it('an assertion without the fails flag is rejected', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'x [finding:syn-a]', status: 'passed' }]);
+    delete (j.testResults[0]!.assertionResults[0] as { fails?: boolean }).fails;
+    expect(() => collectVitest(j)).toThrow(VitestReportError);
   });
 });

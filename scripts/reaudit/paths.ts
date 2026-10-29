@@ -7,7 +7,9 @@
  *
  * Containment is decided on REAL paths (symlinks resolved), not lexically, so a link that sits
  * outside the repo but points into it is still treated as inside. Paths that do not exist yet are
- * handled by resolving the deepest existing ancestor and re-appending the missing tail.
+ * handled by resolving the deepest existing ancestor and re-appending the missing tail. "Existing"
+ * means the directory entry exists (lstat), so a DANGLING symlink is followed to its target, which is
+ * where anything written through it would land; a symlink loop throws.
  *
  * "The repo" is every checkout of it, not only the one running the harness: from a linked worktree,
  * the main checkout and every sibling worktree are the same public repository. When `repoRoot` holds
@@ -21,6 +23,7 @@ import {
   existsSync,
   lstatSync,
   openSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -35,18 +38,32 @@ export class OutsideRepoError extends Error {
   }
 }
 
-/** Resolves symlinks on the longest existing prefix of `p`, keeping any not-yet-created tail. */
-function realResolve(p: string): string {
+const MAX_SYMLINK_HOPS = 40;
+
+/**
+ * Resolves symlinks on the longest existing prefix of `p`, keeping any not-yet-created tail. A dangling
+ * symlink in that prefix is followed through its link text (it does not "exist" to existsSync, but a
+ * write through it lands at its target).
+ */
+function realResolve(p: string, hops = 0): string {
+  if (hops > MAX_SYMLINK_HOPS) throw new OutsideRepoError(`too many symbolic links resolving ${p}`);
   const abs = resolve(p);
   const tail: string[] = [];
   let cur = abs;
-  while (!existsSync(cur)) {
+  for (;;) {
+    const entry = lstatSync(cur, { throwIfNoEntry: false });
+    if (entry) {
+      if (entry.isSymbolicLink() && !existsSync(cur)) {
+        const target = resolve(dirname(cur), readlinkSync(cur));
+        return realResolve(join(target, ...tail), hops + 1);
+      }
+      return join(realpathSync(cur), ...tail);
+    }
     const parent = dirname(cur);
     if (parent === cur) return abs;
     tail.unshift(basename(cur));
     cur = parent;
   }
-  return join(realpathSync(cur), ...tail);
 }
 
 function within(target: string, root: string): boolean {

@@ -65,6 +65,39 @@ describe('isInsideRepo', () => {
     expect(() => assertOutsideRepo(join(repo, '..private'), repo, 'output directory')).toThrow(OutsideRepoError);
   });
 
+  // A dangling symlink does not "exist" to existsSync, so a lexical walk would treat it as a not-yet-created
+  // name outside the repo; whatever then writes through it lands at the link's target.
+  it('a DANGLING symlink outside the repo whose target is inside it is inside', () => {
+    const link = join(outside, 'report.json');
+    symlinkSync(join(repo, 'private-report.json'), link);
+    expect(isInsideRepo(link, repo)).toBe(true);
+    expect(() => assertOutsideRepo(link, repo, 'record --output')).toThrow(OutsideRepoError);
+  });
+
+  it('a path under a DANGLING directory symlink into the repo is inside', () => {
+    const link = join(outside, 'reports');
+    symlinkSync(join(repo, 'not-yet-created'), link);
+    expect(isInsideRepo(join(link, 'r.json'), repo)).toBe(true);
+  });
+
+  it('a relative dangling symlink is resolved against its own directory', () => {
+    const link = join(outside, 'rel');
+    symlinkSync('../repo/x.json', link);
+    expect(isInsideRepo(link, repo)).toBe(true);
+  });
+
+  it('a symlink loop fails closed (throws) instead of hanging or passing', () => {
+    symlinkSync(join(outside, 'b'), join(outside, 'a'));
+    symlinkSync(join(outside, 'a'), join(outside, 'b'));
+    expect(() => isInsideRepo(join(outside, 'a'), repo)).toThrow(OutsideRepoError);
+  });
+
+  it('a dangling symlink whose target is outside the repo is outside', () => {
+    const link = join(outside, 'ok');
+    symlinkSync(join(outside, 'nowhere', 'x.json'), link);
+    expect(isInsideRepo(link, repo)).toBe(false);
+  });
+
   it('a plain path outside is not inside', () => {
     expect(isInsideRepo(join(outside, 'findings.json'), repo)).toBe(false);
   });

@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitContext, runCli } from './cli';
+import { VITEST_REPORT_MARKER } from './collect-vitest';
 import { manifestPathFor, writeProvenance, type EvidenceKind } from './provenance';
 
 // `pnpm exec tsx scripts/reaudit/cli.ts --playwright <json> --vitest <json> --trx <dir>
@@ -47,6 +48,7 @@ const finding = (id: string, severity = 'P1') => ({
 });
 
 const vitestJson = (status: string) => ({
+  reaudit: VITEST_REPORT_MARKER,
   numTotalTests: 1,
   success: status === 'passed',
   testResults: [
@@ -59,6 +61,7 @@ const vitestJson = (status: string) => ({
           title: 'ideal holds [finding:syn-a]',
           fullName: 's ideal holds [finding:syn-a]',
           status,
+          fails: false,
         },
       ],
     },
@@ -535,6 +538,7 @@ describe('runCli — a failed Vitest or .NET run blocks every pass', () => {
     writeFileSync(
       vt,
       JSON.stringify({
+        reaudit: VITEST_REPORT_MARKER,
         success: false,
         testResults: [{ name: '/abs/broken.test.ts', status: 'failed', message: 'boom', assertionResults: [] }],
       }),
