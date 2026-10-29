@@ -255,6 +255,8 @@ describe('collectVitestReport: a failed run untrusts the whole report', () => {
   });
 
   it('no exit status at all → untrusted (the JSON alone cannot show an unhandled error)', () => {
-    expect(collectVitestReport(vitestJson([pass])).untrusted.length).toBeGreaterThan(0);
+    expect(collectVitestReport(vitestJson([pass])).untrusted).toEqual([
+      'vitest: no run exit status; the JSON alone cannot show an unhandled error',
+    ]);
   });
 });

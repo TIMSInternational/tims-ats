@@ -303,7 +303,7 @@ describe('collectXunitRun: a failed run untrusts the whole report', () => {
       undefined,
       { runExitCode: 1 },
     );
-    expect(out.untrusted.length).toBeGreaterThan(0);
+    expect(out.untrusted.join('\n')).toContain('1 failing result');
     expect(statusById(out.observations).get('syn-b')).toBe('REGRESSED');
   });
 
@@ -314,6 +314,15 @@ describe('collectXunitRun: a failed run untrusts the whole report', () => {
     );
   });
 
+  it('exit 0 but a run-level Error RunInfo no result explains → untrusted, naming the file', () => {
+    const odd = passing.replace(
+      '</ResultSummary>',
+      '<RunInfos><RunInfo outcome="Error"><Text>Testhost process exited unexpectedly</Text></RunInfo></RunInfos></ResultSummary>',
+    );
+    const out = collectXunitRun([{ name: 'odd.trx', xml: odd }], undefined, { runExitCode: 0 });
+    expect(out.untrusted.join('\n')).toContain('odd.trx');
+  });
+
   it('a clean run (exit 0, every result passed) is trusted', () => {
     const out = collectXunitRun([{ name: 'a.trx', xml: passing }], undefined, { runExitCode: 0 });
     expect(out.untrusted).toEqual([]);
@@ -321,6 +330,8 @@ describe('collectXunitRun: a failed run untrusts the whole report', () => {
   });
 
   it('no exit status at all → untrusted', () => {
-    expect(collectXunitRun([{ name: 'a.trx', xml: passing }]).untrusted.length).toBeGreaterThan(0);
+    expect(collectXunitRun([{ name: 'a.trx', xml: passing }]).untrusted).toEqual([
+      'xunit: no run exit status; a project that wrote no TRX cannot be ruled out',
+    ]);
   });
 });
