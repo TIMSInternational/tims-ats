@@ -638,7 +638,7 @@ describe('runCli — only complete, unfiltered runs are evidence (exit 2)', () =
     expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(0);
   });
 
-  it('Codex r11: a [finding:syn-a] check in a file the run did not report → 2, even though its sibling passed', async () => {
+  it('Codex r11: a tagged check in a file the run did not report → 2, even though its sibling passed', async () => {
     const { pw, vt, trxDir } = inputs('passed');
     const j = vitestJson('passed');
     j.reaudit = vitestRun(['/abs/synthetic.test.ts', '/abs/other.test.ts']);
