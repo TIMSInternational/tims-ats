@@ -492,6 +492,37 @@ describe('runCli — the binding inventory', () => {
     expect(report.rows[0].status).toBe('NOT-RUN');
   });
 
+  it('a Playwright check is matched through the recorded checkout root and the report rootDir (gate 0)', async () => {
+    inventory = {
+      sha: HEAD,
+      entries: [{ id: 'syn-a', source: 'playwright', file: 'e2e/specs/j.spec.ts', line: 2, name: 'J › step' }],
+      unattributable: [],
+    };
+    const { pw, vt, trxDir } = inputs('passed');
+    const spec = {
+      title: 'step',
+      file: 'specs/j.spec.ts',
+      tags: ['finding:syn-a'],
+      tests: [
+        {
+          projectName: 'p',
+          expectedStatus: 'passed',
+          annotations: [{ type: 'finding-fixed', description: 'syn-a' }],
+          results: [{ retry: 0, status: 'passed' }],
+        },
+      ],
+    };
+    const file = {
+      title: 'specs/j.spec.ts',
+      file: 'specs/j.spec.ts',
+      specs: [],
+      suites: [{ title: 'J', specs: [spec] }],
+    };
+    writeFileSync(pw, JSON.stringify({ ...playwrightJson, config: { rootDir: '/abs/e2e' }, suites: [file] }));
+    stamp('playwright', pw);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(0);
+  });
+
   it('an unattributable tag occurrence fails --gate launch', async () => {
     inventory = { sha: HEAD, entries: [], unattributable: ['x.test.ts:4'] };
     const { pw, vt, trxDir } = inputs('passed');
