@@ -1,0 +1,200 @@
+{
+  "description": "Candidate identity numbers (cedula fisica, DIMEX, pasaporte). ONE golden, TWO stacks: TS normalizeIdentityNumber / validateIdentityNumber / maskIdentityNumber (packages/shared/src/intake/identity-number.ts, asserted by tests/shared/identity-number.test.ts) and the C# IdentityNumber mirror (WP-26 PR-4). `normalized` is asserted only where present. The mask is fixed-width so it never reveals the length. Synthetic numbers only.",
+  "cases": [
+    {
+      "name": "cedula fisica with dashes is accepted",
+      "type": "cedula_fisica",
+      "raw": "1-2345-6789",
+      "expected": {
+        "result": "ok",
+        "normalized": "123456789"
+      }
+    },
+    {
+      "name": "cedula fisica as plain digits is accepted",
+      "type": "cedula_fisica",
+      "raw": "102340567",
+      "expected": {
+        "result": "ok",
+        "normalized": "102340567"
+      }
+    },
+    {
+      "name": "cedula fisica with spaces is accepted",
+      "type": "cedula_fisica",
+      "raw": " 1 0234 0567 ",
+      "expected": {
+        "result": "ok",
+        "normalized": "102340567"
+      }
+    },
+    {
+      "name": "cedula fisica starting with 9 is accepted",
+      "type": "cedula_fisica",
+      "raw": "912345678",
+      "expected": {
+        "result": "ok",
+        "normalized": "912345678"
+      }
+    },
+    {
+      "name": "cedula fisica with a leading 0 is rejected",
+      "type": "cedula_fisica",
+      "raw": "012345678",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "cedula juridica (10 digits) is rejected as a cedula fisica",
+      "type": "cedula_fisica",
+      "raw": "3101123456",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "cedula fisica with 8 digits is rejected",
+      "type": "cedula_fisica",
+      "raw": "12345678",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "cedula fisica with a letter is rejected",
+      "type": "cedula_fisica",
+      "raw": "12345678A",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "empty cedula fisica is rejected",
+      "type": "cedula_fisica",
+      "raw": "",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "DIMEX with 11 digits is accepted",
+      "type": "dimex",
+      "raw": "15520012345",
+      "expected": {
+        "result": "ok",
+        "normalized": "15520012345"
+      }
+    },
+    {
+      "name": "DIMEX with 12 digits is accepted",
+      "type": "dimex",
+      "raw": "155200123456",
+      "expected": {
+        "result": "ok",
+        "normalized": "155200123456"
+      }
+    },
+    {
+      "name": "DIMEX with dashes and spaces is normalized",
+      "type": "dimex",
+      "raw": "155-2001 2345",
+      "expected": {
+        "result": "ok",
+        "normalized": "15520012345"
+      }
+    },
+    {
+      "name": "DIMEX with 10 digits is rejected",
+      "type": "dimex",
+      "raw": "1552001234",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "DIMEX with 13 digits is rejected",
+      "type": "dimex",
+      "raw": "1552001234567",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "passport with letters and digits is accepted",
+      "type": "pasaporte",
+      "raw": "AB123456",
+      "expected": {
+        "result": "ok",
+        "normalized": "AB123456"
+      }
+    },
+    {
+      "name": "passport of 6 characters is accepted",
+      "type": "pasaporte",
+      "raw": "A12345",
+      "expected": {
+        "result": "ok",
+        "normalized": "A12345"
+      }
+    },
+    {
+      "name": "passport of 20 characters is accepted",
+      "type": "pasaporte",
+      "raw": "A1234567890123456789",
+      "expected": {
+        "result": "ok",
+        "normalized": "A1234567890123456789"
+      }
+    },
+    {
+      "name": "short lowercase passport with a dash is rejected",
+      "type": "pasaporte",
+      "raw": "ab-12",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "passport of 5 characters is rejected",
+      "type": "pasaporte",
+      "raw": "A1234",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "passport of 21 characters is rejected",
+      "type": "pasaporte",
+      "raw": "A12345678901234567890",
+      "expected": {
+        "result": "invalid_format"
+      }
+    },
+    {
+      "name": "passport with a symbol is rejected",
+      "type": "pasaporte",
+      "raw": "AB12345$",
+      "expected": {
+        "result": "invalid_format"
+      }
+    }
+  ],
+  "maskCases": [
+    {
+      "name": "cedula keeps only the last 4 digits",
+      "input": "123456789",
+      "expected": "•••••6789"
+    },
+    {
+      "name": "DIMEX keeps only the last 4 digits",
+      "input": "155200123456",
+      "expected": "•••••3456"
+    },
+    {
+      "name": "passport keeps only the last 4 characters",
+      "input": "AB123456",
+      "expected": "•••••3456"
+    }
+  ]
+}
