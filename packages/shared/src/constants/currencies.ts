@@ -2,8 +2,9 @@ export const DEFAULT_CURRENCY = 'USD';
 export const PLATFORM_BILLING_CURRENCY = 'USD';
 
 export const POPULAR_CURRENCY_CODES = [
-  'COP',
+  'CRC',
   'USD',
+  'COP',
   'EUR',
   'MXN',
   'BRL',
@@ -37,9 +38,42 @@ const FALLBACK_CURRENCY_CODES = [
 
 export type CurrencyCode = string;
 
+/**
+ * Normalises a code and falls back to `fallback` (USD) when it is not ISO-4217.
+ * @deprecated for display; use parseCurrencyCode + formatMoney. Kept unchanged
+ * because the FX code and its parity twins depend on the fallback.
+ */
 export function normalizeCurrencyCode(code: string | null | undefined, fallback = DEFAULT_CURRENCY): CurrencyCode {
   const normalized = (code ?? '').trim().toUpperCase();
   return isCurrencyCode(normalized) ? normalized : fallback;
+}
+
+/**
+ * Strict parse: trims and upper-cases, then returns the ISO-4217 code or null.
+ * Never falls back to USD, so an unknown value stays visibly unknown.
+ */
+export function parseCurrencyCode(code: string | null | undefined): CurrencyCode | null {
+  const normalized = (code ?? '').trim().toUpperCase();
+  return isKnownCurrencyCode(normalized) ? normalized : null;
+}
+
+let knownCurrencyCodes: ReadonlySet<string> | null = null;
+
+/**
+ * Stricter than isCurrencyCode: Intl formats ANY well-formed 3-letter code (e.g. "ZZZ"),
+ * so this also requires the code to be in the runtime's ISO-4217 list (or the bundled
+ * fallback list when Intl.supportedValuesOf is unavailable).
+ */
+export function isKnownCurrencyCode(code: string | null | undefined): code is CurrencyCode {
+  if (!isCurrencyCode(code)) return false;
+  if (!knownCurrencyCodes) {
+    const intl = Intl as typeof Intl & { supportedValuesOf?: (key: 'currency') => string[] };
+    const codes = typeof intl.supportedValuesOf === 'function'
+      ? intl.supportedValuesOf('currency')
+      : [...FALLBACK_CURRENCY_CODES];
+    knownCurrencyCodes = new Set(codes.map((c) => c.toUpperCase()));
+  }
+  return knownCurrencyCodes.has(code);
 }
 
 export function supportedCurrencyCodes(): CurrencyCode[] {
