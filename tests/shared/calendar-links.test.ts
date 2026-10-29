@@ -17,9 +17,10 @@ function unfold(ics: string): string[] {
   return ics.replace(/\r\n /g, '').split('\r\n');
 }
 
+// The candidate's own copy: a plain RFC 5545 entry (no METHOD), because the browser has no organizer
+// mailbox and RFC 5546 §3.2.1 requires ORGANIZER (and forbids ATTENDEE) whenever METHOD:PUBLISH is set.
 function publishEvent(overrides: Record<string, unknown> = {}) {
   return {
-    method: 'PUBLISH' as const,
     uid: interviewIcsUid(INTERVIEW_ID, HOST),
     sequence: 3,
     start: new Date('2026-11-06T16:00:00.000Z'),
@@ -32,10 +33,11 @@ function publishEvent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('shared ICS: PUBLISH events for the candidate portal', () => {
-  it('builds a PUBLISH event without organizer or attendees, with METHOD:PUBLISH and no ORGANIZER/ATTENDEE lines', () => {
+describe('shared ICS: calendar entries for the candidate portal', () => {
+  it('builds an organizer-less entry as a plain calendar object: no METHOD, no ORGANIZER/ATTENDEE lines', () => {
     const lines = unfold(buildIcs(publishEvent()));
-    expect(lines).toContain('METHOD:PUBLISH');
+    expect(lines).toContain('BEGIN:VCALENDAR');
+    expect(lines.some((l) => l.startsWith('METHOD'))).toBe(false);
     expect(lines.some((l) => l.startsWith('ORGANIZER'))).toBe(false);
     expect(lines.some((l) => l.startsWith('ATTENDEE'))).toBe(false);
     expect(lines).toContain('STATUS:CONFIRMED');
@@ -43,7 +45,45 @@ describe('shared ICS: PUBLISH events for the candidate portal', () => {
     expect(lines).toContain('DTEND:20261106T170000Z');
   });
 
-  it('escapes , ; and newlines in a PUBLISH event (RFC 5545 §3.3.11)', () => {
+  it('builds METHOD:PUBLISH only with an ORGANIZER line and never with ATTENDEE lines (RFC 5546 §3.2.1)', () => {
+    const lines = unfold(
+      buildIcs({
+        ...publishEvent(),
+        method: 'PUBLISH',
+        organizer: { name: 'ACME Talent', email: 'noreply@tims.example' },
+      }),
+    );
+    expect(lines).toContain('METHOD:PUBLISH');
+    expect(lines).toContain('ORGANIZER;CN="ACME Talent":mailto:noreply@tims.example');
+    expect(lines.some((l) => l.startsWith('ATTENDEE'))).toBe(false);
+  });
+
+  it('rejects a PUBLISH without an organizer or with attendees, at the type level and at runtime', () => {
+    // @ts-expect-error PUBLISH requires an organizer
+    expect(() => buildIcs({ ...publishEvent(), method: 'PUBLISH' })).toThrow('Invalid calendar PUBLISH');
+    expect(() =>
+      // @ts-expect-error PUBLISH must not carry attendees
+      buildIcs({
+        ...publishEvent(),
+        method: 'PUBLISH',
+        organizer: { name: 'ACME Talent', email: 'noreply@tims.example' },
+        attendees: [{ name: 'Ana', email: 'ana@example.com' }],
+      }),
+    ).toThrow('Invalid calendar PUBLISH');
+  });
+
+  it('rejects an organizer or attendees on a METHOD-less entry (a scheduling object needs a METHOD)', () => {
+    expect(() =>
+      // @ts-expect-error a plain entry carries no organizer
+      buildIcs({ ...publishEvent(), organizer: { name: 'ACME Talent', email: 'noreply@tims.example' } }),
+    ).toThrow('Invalid calendar entry');
+    expect(() =>
+      // @ts-expect-error a plain entry carries no attendees
+      buildIcs({ ...publishEvent(), attendees: [{ name: 'Ana', email: 'ana@example.com' }] }),
+    ).toThrow('Invalid calendar entry');
+  });
+
+  it('escapes , ; and newlines in a calendar entry (RFC 5545 §3.3.11)', () => {
     expect(escapeIcsText('a,b;c\nd')).toBe('a\\,b\\;c\\nd');
     const lines = unfold(buildIcs(publishEvent()));
     expect(lines).toContain('SUMMARY:Entrevista: Analista\\, Senior\\; Costa Rica');

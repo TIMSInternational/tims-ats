@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // Minimal RFC 5545 iCalendar builder for interview invites (iTIP REQUEST / CANCEL by email)
-// and candidate-portal "add to calendar" downloads (PUBLISH)
+// and candidate-portal "add to calendar" downloads (a plain, METHOD-less calendar entry)
 // ---------------------------------------------------------------------------
 // Pure and dependency-free. Every dynamic value is either TEXT-escaped (§3.3.11),
 // parameter-quoted (§3.2) or validated (mailto/URI), and every content line is
@@ -30,12 +30,16 @@ type IcsEventBase = {
 
 /**
  * REQUEST / CANCEL are iTIP scheduling messages and always carry an organizer and attendees.
- * PUBLISH is a plain calendar entry (the candidate's own copy), so both are optional there.
+ * PUBLISH (RFC 5546 §3.2.1) requires exactly one organizer and forbids attendees.
+ * With no method the result is a plain RFC 5545 calendar entry (no METHOD line), which is not an
+ * iTIP object and so carries neither: that is the candidate's own copy, built in the browser,
+ * where no organizer mailbox is available.
  */
 export type IcsEvent = IcsEventBase &
   (
     | { method: IcsScheduleMethod; organizer: IcsParty; attendees: IcsParty[] }
-    | { method: 'PUBLISH'; organizer?: IcsParty; attendees?: IcsParty[] }
+    | { method: 'PUBLISH'; organizer: IcsParty; attendees?: never }
+    | { method?: undefined; organizer?: never; attendees?: never }
   );
 
 const CRLF = '\r\n';
@@ -124,13 +128,20 @@ function assertUri(url: string): string {
 export function buildIcs(event: IcsEvent): string {
   if (!/^[A-Za-z0-9._@-]{1,255}$/.test(event.uid)) throw new Error('Invalid calendar UID');
   if (!Number.isInteger(event.sequence) || event.sequence < 0) throw new Error('Invalid calendar SEQUENCE');
+  // Runtime guards for callers that bypass the type (casts, plain JS): never emit an invalid object.
+  if (event.method === 'PUBLISH' && (!event.organizer || event.attendees !== undefined)) {
+    throw new Error('Invalid calendar PUBLISH');
+  }
+  if (event.method === undefined && (event.organizer !== undefined || event.attendees !== undefined)) {
+    throw new Error('Invalid calendar entry');
+  }
   const cancel = event.method === 'CANCEL';
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'PRODID:-//TIMS International//TIMS ATS//ES',
     'VERSION:2.0',
     'CALSCALE:GREGORIAN',
-    `METHOD:${event.method}`,
+    ...(event.method ? [`METHOD:${event.method}`] : []),
     'BEGIN:VEVENT',
     `UID:${event.uid}`,
     `SEQUENCE:${event.sequence}`,
