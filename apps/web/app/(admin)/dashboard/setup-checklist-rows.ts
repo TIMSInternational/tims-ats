@@ -11,14 +11,24 @@ export interface SetupChecklistRow {
   label: string;
   done: boolean;
   href: string | null;
+  /** False for a row the viewer cannot act on (support-owned): it never blocks completion. */
+  countsTowardCompletion: boolean;
 }
 
 export interface SetupChecklistLabels {
   companyStructureReady: string;
+  companyStructureBySupport: string;
   teamInvited: string;
   brandingSet: string;
   firstVacancyPosted: string;
   firstVacancyPublished: string;
+}
+
+/** What the viewer can do, and which surfaces are switched on, for the row links. */
+export interface SetupChecklistContext {
+  canManageBranding: boolean;
+  canInviteTeam: boolean;
+  invitationsEnabled: boolean;
 }
 
 // Pure derivation, kept in its own plain .ts module (no JSX) so it can be
@@ -40,19 +50,54 @@ export interface SetupChecklistLabels {
 // links to /settings/branding at all, but this widget's "Go" link is a raw
 // route link independent of the nav manifest, so it must gate itself rather
 // than rely on nav-invisibility to hide a dead end.
+//
+// "companyStructureReady" (company-admin-journeys-21) means "a Company exists". No tenant surface
+// creates a Company: /settings/business-units manages units and teams, and creating a unit with no
+// Company is refused (company_required). So while NOT done the row is always support-owned: the
+// support label, and excluded from completion, so it can no longer keep the widget open (or re-open
+// it every 7 days). It never carries a link: not done there is nothing in-app to complete it with,
+// and done rows render no link at all.
 export function deriveSetupChecklistRows(
   items: SetupChecklistItems,
   labels: SetupChecklistLabels,
-  canManageBranding: boolean,
-  canInviteTeam = false,
-  invitationsEnabled = false,
+  ctx: SetupChecklistContext,
 ): SetupChecklistRow[] {
-  const teamInviteHref = canInviteTeam && invitationsEnabled ? '/settings/users' : null;
+  const teamInviteHref = ctx.canInviteTeam && ctx.invitationsEnabled ? '/settings/users' : null;
+  const structureBySupport = !items.companyStructureReady;
   return [
-    { key: 'companyStructureReady', label: labels.companyStructureReady, done: items.companyStructureReady, href: null },
-    { key: 'teamInvited', label: labels.teamInvited, done: items.teamInvited, href: teamInviteHref },
-    { key: 'brandingSet', label: labels.brandingSet, done: items.brandingSet, href: canManageBranding ? '/settings/branding' : null },
-    { key: 'firstVacancyPosted', label: labels.firstVacancyPosted, done: items.firstVacancyPosted, href: '/recruitment/vacancies' },
-    { key: 'firstVacancyPublished', label: labels.firstVacancyPublished, done: items.firstVacancyPublished, href: '/recruitment/vacancies' },
+    {
+      key: 'companyStructureReady',
+      label: structureBySupport ? labels.companyStructureBySupport : labels.companyStructureReady,
+      done: items.companyStructureReady,
+      href: null,
+      countsTowardCompletion: !structureBySupport,
+    },
+    { key: 'teamInvited', label: labels.teamInvited, done: items.teamInvited, href: teamInviteHref, countsTowardCompletion: true },
+    {
+      key: 'brandingSet',
+      label: labels.brandingSet,
+      done: items.brandingSet,
+      href: ctx.canManageBranding ? '/settings/branding' : null,
+      countsTowardCompletion: true,
+    },
+    {
+      key: 'firstVacancyPosted',
+      label: labels.firstVacancyPosted,
+      done: items.firstVacancyPosted,
+      href: '/recruitment/vacancies',
+      countsTowardCompletion: true,
+    },
+    {
+      key: 'firstVacancyPublished',
+      label: labels.firstVacancyPublished,
+      done: items.firstVacancyPublished,
+      href: '/recruitment/vacancies',
+      countsTowardCompletion: true,
+    },
   ];
+}
+
+/** Client-side completion: every row that counts is done. Support-owned rows are ignored. */
+export function isSetupComplete(rows: readonly SetupChecklistRow[]): boolean {
+  return rows.every((row) => !row.countsTowardCompletion || row.done);
 }

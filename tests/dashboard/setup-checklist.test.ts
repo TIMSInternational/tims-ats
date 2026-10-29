@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { deriveSetupChecklistRows } from '../../apps/web/app/(admin)/dashboard/setup-checklist-rows';
+import {
+  deriveSetupChecklistRows,
+  type SetupChecklistContext,
+} from '../../apps/web/app/(admin)/dashboard/setup-checklist-rows';
 
 const LABELS = {
   companyStructureReady: 'Company structure ready',
+  companyStructureBySupport: 'Company structure: set up by TIMS support',
   teamInvited: 'Invite your team',
   brandingSet: 'Set your candidate-portal branding',
   firstVacancyPosted: 'Post your first vacancy',
@@ -17,9 +21,23 @@ const ALL_FALSE = {
   firstVacancyPublished: false,
 };
 
+// Every capability off by default (fail-closed); each case opts in to what it needs.
+const ctx = (overrides: Partial<SetupChecklistContext> = {}): SetupChecklistContext => ({
+  canManageBranding: false,
+  canInviteTeam: false,
+  invitationsEnabled: false,
+  ...overrides,
+});
+
+const row = (rows: ReturnType<typeof deriveSetupChecklistRows>, key: string) => {
+  const found = rows.find((r) => r.key === key);
+  if (!found) throw new Error(`row ${key} missing`);
+  return found;
+};
+
 describe('deriveSetupChecklistRows', () => {
   it('returns exactly 5 rows, in the fixed sprint order', () => {
-    const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, true);
+    const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, ctx({ canManageBranding: true }));
     expect(rows.map((r) => r.key)).toEqual([
       'companyStructureReady',
       'teamInvited',
@@ -33,21 +51,19 @@ describe('deriveSetupChecklistRows', () => {
     const rows = deriveSetupChecklistRows(
       { ...ALL_FALSE, brandingSet: true, firstVacancyPosted: true },
       LABELS,
-      true,
+      ctx({ canManageBranding: true }),
     );
-    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
-    expect(byKey.brandingSet.done).toBe(true);
-    expect(byKey.brandingSet.label).toBe(LABELS.brandingSet);
-    expect(byKey.firstVacancyPosted.done).toBe(true);
-    expect(byKey.teamInvited.done).toBe(false);
+    expect(row(rows, 'brandingSet').done).toBe(true);
+    expect(row(rows, 'brandingSet').label).toBe(LABELS.brandingSet);
+    expect(row(rows, 'firstVacancyPosted').done).toBe(true);
+    expect(row(rows, 'teamInvited').done).toBe(false);
   });
 
   it('gives brandingSet, firstVacancyPosted, firstVacancyPublished real deep links', () => {
-    const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, true);
-    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
-    expect(byKey.brandingSet.href).toBe('/settings/branding');
-    expect(byKey.firstVacancyPosted.href).toBe('/recruitment/vacancies');
-    expect(byKey.firstVacancyPublished.href).toBe('/recruitment/vacancies');
+    const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, ctx({ canManageBranding: true }));
+    expect(row(rows, 'brandingSet').href).toBe('/settings/branding');
+    expect(row(rows, 'firstVacancyPosted').href).toBe('/recruitment/vacancies');
+    expect(row(rows, 'firstVacancyPublished').href).toBe('/recruitment/vacancies');
   });
 
   it('brandingSet gets no deep link when the viewer lacks organization:update (hr_admin) — the settings page always 403s their save', () => {
@@ -56,36 +72,84 @@ describe('deriveSetupChecklistRows', () => {
     // link is a raw route link independent of hr_admin's own nav manifest
     // (which never surfaces /settings/branding at all), so it must self-gate
     // rather than rely on nav-invisibility to avoid a dead-end link.
-    const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, false);
-    expect(rows.find((r) => r.key === 'brandingSet')?.href).toBeNull();
+    const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, ctx({ canManageBranding: false }));
+    expect(row(rows, 'brandingSet').href).toBeNull();
     // The other real links are unaffected by this flag.
-    expect(rows.find((r) => r.key === 'firstVacancyPosted')?.href).toBe('/recruitment/vacancies');
+    expect(row(rows, 'firstVacancyPosted').href).toBe('/recruitment/vacancies');
   });
 
-  it('companyStructureReady never gets a deep link (auto-satisfied by provisioning, no page to send the admin to)', () => {
-    const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, true);
-    const row = rows.find((r) => r.key === 'companyStructureReady');
-    expect(row?.href).toBeNull();
+  // company-admin-journeys-21: this row used to be hard-coded `href: null` AND counted toward
+  // completion, so with no company the admin had a row they could never complete, and the dismissed
+  // widget came back every 7 days.
+  describe('companyStructureReady (company-admin-journeys-21)', () => {
+    // `companyStructureReady` is "a Company exists" (organization.getSetupStatus). No tenant surface
+    // creates a Company: /settings/business-units manages units and teams, and creating a unit with
+    // no Company is refused (company_required). So a NOT-done row is support-owned whatever the
+    // viewer can do — a "Go" link there could never complete it. A DONE row renders no link either
+    // (the widget never links done rows), so the row never carries an href.
+    // The last entry carries the org-structure flag + organization:update the row was once gated on:
+    // they must not bring a link back (the derivation no longer reads them at all).
+    const everyCtx: SetupChecklistContext[] = [
+      ctx(),
+      ctx({ canManageBranding: true, canInviteTeam: true, invitationsEnabled: true }),
+      { ...ctx({ canManageBranding: true }), orgStructureEnabled: true, canManageStructure: true } as SetupChecklistContext,
+    ];
 
-    const rowsDone = deriveSetupChecklistRows({ ...ALL_FALSE, companyStructureReady: true }, LABELS, true);
-    expect(rowsDone.find((r) => r.key === 'companyStructureReady')?.href).toBeNull();
+    it('NOT done: support-owned for every viewer (no link, support label, excluded from completion)', () => {
+      for (const c of everyCtx) {
+        const structure = row(deriveSetupChecklistRows(ALL_FALSE, LABELS, c), 'companyStructureReady');
+        expect(structure.href).toBeNull();
+        expect(structure.label).toBe(LABELS.companyStructureBySupport);
+        expect(structure.countsTowardCompletion).toBe(false);
+      }
+    });
+
+    it('DONE: original label, counts toward completion, and no href (a done row never renders one)', () => {
+      for (const c of everyCtx) {
+        const structure = row(
+          deriveSetupChecklistRows({ ...ALL_FALSE, companyStructureReady: true }, LABELS, c),
+          'companyStructureReady',
+        );
+        expect(structure.done).toBe(true);
+        expect(structure.href).toBeNull();
+        expect(structure.label).toBe(LABELS.companyStructureReady);
+        expect(structure.countsTowardCompletion).toBe(true);
+      }
+    });
+  });
+
+  it('every row other than the structure row always counts toward completion', () => {
+    for (const c of [ctx(), ctx({ canManageBranding: true, canInviteTeam: true, invitationsEnabled: true })]) {
+      const rows = deriveSetupChecklistRows(ALL_FALSE, LABELS, c);
+      for (const key of ['teamInvited', 'brandingSet', 'firstVacancyPosted', 'firstVacancyPublished']) {
+        expect(row(rows, key).countsTowardCompletion).toBe(true);
+      }
+    }
   });
 
   it('teamInvited links to /settings/users only for viewers who can create users AND with the flag on', () => {
-    const incomplete = deriveSetupChecklistRows(ALL_FALSE, LABELS, true, true, true);
-    expect(incomplete.find((r) => r.key === 'teamInvited')?.href).toBe('/settings/users');
-    const complete = deriveSetupChecklistRows({ ...ALL_FALSE, teamInvited: true }, LABELS, true, true, true);
-    expect(complete.find((r) => r.key === 'teamInvited')?.href).toBe('/settings/users');
+    const on = ctx({ canManageBranding: true, canInviteTeam: true, invitationsEnabled: true });
+    expect(row(deriveSetupChecklistRows(ALL_FALSE, LABELS, on), 'teamInvited').href).toBe('/settings/users');
+    expect(row(deriveSetupChecklistRows({ ...ALL_FALSE, teamInvited: true }, LABELS, on), 'teamInvited').href).toBe(
+      '/settings/users',
+    );
   });
 
   it('teamInvited stays status-only with user:create when the tenant-invitations flag is OFF (no dead end)', () => {
-    expect(deriveSetupChecklistRows(ALL_FALSE, LABELS, true, true, false).find((r) => r.key === 'teamInvited')?.href).toBeNull();
-    // Flag omitted = off (fail-closed default).
-    expect(deriveSetupChecklistRows(ALL_FALSE, LABELS, true, true).find((r) => r.key === 'teamInvited')?.href).toBeNull();
+    expect(
+      row(
+        deriveSetupChecklistRows(ALL_FALSE, LABELS, ctx({ canInviteTeam: true, invitationsEnabled: false })),
+        'teamInvited',
+      ).href,
+    ).toBeNull();
   });
 
-  it('teamInvited stays status-only (no dead-end link) when the viewer lacks user:create or the flag is omitted', () => {
-    expect(deriveSetupChecklistRows(ALL_FALSE, LABELS, true, false, true).find((r) => r.key === 'teamInvited')?.href).toBeNull();
-    expect(deriveSetupChecklistRows(ALL_FALSE, LABELS, true).find((r) => r.key === 'teamInvited')?.href).toBeNull();
+  it('teamInvited stays status-only (no dead-end link) when the viewer lacks user:create', () => {
+    expect(
+      row(
+        deriveSetupChecklistRows(ALL_FALSE, LABELS, ctx({ canInviteTeam: false, invitationsEnabled: true })),
+        'teamInvited',
+      ).href,
+    ).toBeNull();
   });
 });
