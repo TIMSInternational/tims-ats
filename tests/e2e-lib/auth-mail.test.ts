@@ -110,6 +110,14 @@ describe('extractOtp', () => {
     expect(() => extractOtp(message('msg-magic-link'))).toThrow(/no .*code/i);
   });
 
+  it('ignores digit runs inside a bare URL in the text body', () => {
+    const link = 'http://127.0.0.1:54321/auth/v1/verify?token=730418&type=magiclink';
+    const withCode = { ...message('msg-otp-new'), text: `Tu código es 482915. O ingresa: ${link}`, html: '' };
+    expect(extractOtp(withCode)).toBe('482915');
+    const linkOnly = { ...message('msg-otp-new'), text: `Ingresa: ${link}`, html: '' };
+    expect(() => extractOtp(linkOnly)).toThrow(/no .*code/i);
+  });
+
   it('throws when two different codes appear (ambiguous mail is a test bug, not a guess)', () => {
     const m = { ...message('msg-otp-new'), text: 'Código 482915. Código anterior 103774.' };
     expect(() => extractOtp(m)).toThrow(/ambiguous|more than one/i);
@@ -171,6 +179,8 @@ describe('assertLocalUrl', () => {
     'https://evil.example/?next=http://localhost:3000',
     'javascript:alert(1)//localhost',
     'file:///etc/hosts',
+    'ftp://localhost/',
+    'ws://localhost:3000/',
     'http://10.0.0.5/',
     'not a url',
   ])('refuses %s', (raw) => {

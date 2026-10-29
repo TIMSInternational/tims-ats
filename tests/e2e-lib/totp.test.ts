@@ -113,6 +113,10 @@ describe('hotp / totp: input bounds', () => {
     expect(() => hotp(RFC_KEY, counter)).toThrow(/counter/i);
   });
 
+  it('rejects a negative bigint counter with the counter error, not a Buffer RangeError', () => {
+    expect(() => hotp(RFC_KEY, -1n)).toThrow(/counter must be a non-negative integer/i);
+  });
+
   it('rejects a time before the Unix epoch and an invalid Date', () => {
     expect(() => totp(RFC_KEY, { time: new Date(-1000) })).toThrow(/time/i);
     expect(() => totp(RFC_KEY, { time: new Date(Number.NaN) })).toThrow(/time/i);
