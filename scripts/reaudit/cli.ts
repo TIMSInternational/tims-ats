@@ -168,20 +168,33 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// No top-level await: tsx runs this package as CommonJS.
+function main(): void {
   const git = (...a: string[]) => execFileSync('git', a, { encoding: 'utf8' }).trim();
-  let code = 2;
+  let ctx: CliContext;
   try {
-    code = await runCli(process.argv.slice(2), {
+    ctx = {
       env: process.env,
       repoRoot: git('rev-parse', '--show-toplevel'),
       headSha: git('rev-parse', 'HEAD'),
       now: new Date(),
       log: (s) => console.log(s),
       err: (s) => console.error(s),
-    });
+    };
   } catch (e) {
     console.error(`reaudit: ${(e as Error).message}`);
+    process.exitCode = 2;
+    return;
   }
-  process.exitCode = code;
+  runCli(process.argv.slice(2), ctx).then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (e: unknown) => {
+      console.error(`reaudit: ${(e as Error).message}`);
+      process.exitCode = 2;
+    },
+  );
 }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
