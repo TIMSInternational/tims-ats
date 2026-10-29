@@ -79,7 +79,7 @@ const createCaller = t.createCallerFactory(
 const ctx = { user: { organizationId: 'org-1', id: 'u-1' }, access: {} };
 const caller = () => createCaller(ctx) as unknown as EngagementCaller;
 
-const UUID = '11111111-1111-1111-1111-111111111111';
+const UUID = '11111111-1111-4111-8111-111111111111';
 
 beforeEach(() => vi.clearAllMocks());
 

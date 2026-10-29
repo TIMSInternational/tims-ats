@@ -11,7 +11,7 @@ describe('external/candidate are NOT staff-assignable roles (codex high)', () =>
   });
 
   it('assignRoleSchema rejects external and candidate', () => {
-    const base = { userId: '11111111-1111-1111-1111-111111111111' };
+    const base = { userId: '11111111-1111-4111-8111-111111111111' };
     expect(assignRoleSchema.safeParse({ ...base, roleSlug: 'external' }).success).toBe(false);
     expect(assignRoleSchema.safeParse({ ...base, roleSlug: 'candidate' }).success).toBe(false);
     expect(assignRoleSchema.safeParse({ ...base, roleSlug: 'recruiter' }).success).toBe(true);
