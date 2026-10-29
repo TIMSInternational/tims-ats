@@ -43,7 +43,12 @@ function run(labels: string[] | string, body: string) {
   const res = spawnSync('bash', [SCRIPT], {
     encoding: 'utf8',
     cwd: ROOT,
-    env: { PATH: process.env.PATH ?? '/usr/bin:/bin', PR_LABELS_JSON: labelsJson, BODY: body },
+    env: {
+      PATH: process.env.PATH ?? '/usr/bin:/bin',
+      NODE_ENV: 'test',
+      PR_LABELS_JSON: labelsJson,
+      BODY: body,
+    },
   });
   return { status: res.status, out: `${res.stdout}${res.stderr}` };
 }
