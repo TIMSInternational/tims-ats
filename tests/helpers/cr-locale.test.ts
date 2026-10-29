@@ -72,6 +72,25 @@ describe('crDateTime', () => {
     // Passes the zoned-ISO shape check, so only the invalid-date guard can reject it.
     expect(() => crDateTime('2026-11-16T25:00:00Z')).toThrow(/unparseable/);
   });
+
+  it('refuses an overflow calendar day that Date would silently roll into the next month', () => {
+    // new Date('2026-02-30T14:30:00Z') is 2026-03-02, a plausible but wrong expected value.
+    expect(() => crDateTime('2026-02-30T14:30:00Z')).toThrow(/impossible calendar date/);
+    expect(() => crDateTime('2026-04-31T14:30:00Z')).toThrow(/impossible calendar date/);
+    expect(() => crDate('2026-02-30T14:30:00Z')).toThrow(/impossible calendar date/);
+    expect(() => bogotaRendering('2026-02-30T14:30:00Z')).toThrow(/impossible calendar date/);
+  });
+
+  it('refuses February 29 in a non-leap year but accepts it in a leap year', () => {
+    expect(() => crDateTime('2026-02-29T14:30:00Z')).toThrow(/impossible calendar date/);
+    expect(() => crDateTime('2028-02-29T14:30:00Z')).not.toThrow();
+  });
+
+  it('checks the calendar day as written, before any offset is applied', () => {
+    // The written day is valid even though the instant falls on the next UTC day.
+    expect(() => crDateTime('2026-02-28T23:30:00-06:00')).not.toThrow();
+    expect(() => crDateTime('2026-02-30T08:00:00-06:00')).toThrow(/impossible calendar date/);
+  });
 });
 
 describe('bogotaRendering', () => {

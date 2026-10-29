@@ -24,6 +24,15 @@ function parseZonedInstant(iso: string): Date {
   if (Number.isNaN(date.getTime())) {
     throw new Error(`cr-locale: unparseable timestamp "${iso}"`);
   }
+  // Date rolls an overflow day (2026-02-30) into the next month instead of failing, so check
+  // the calendar date as written, before the offset is applied.
+  const year = Number(iso.slice(0, 4));
+  const month = Number(iso.slice(5, 7));
+  const day = Number(iso.slice(8, 10));
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth) {
+    throw new Error(`cr-locale: impossible calendar date in "${iso}"`);
+  }
   return date;
 }
 
