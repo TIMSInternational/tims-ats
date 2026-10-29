@@ -79,12 +79,13 @@ const isBodyLike = (n: ts.Node): boolean =>
   n.kind !== ts.SyntaxKind.TrueKeyword &&
   n.kind !== ts.SyntaxKind.FalseKeyword &&
   n.kind !== ts.SyntaxKind.NullKeyword;
-/** Playwright's in-describe annotations: test.skip/fixme/fail/slow([condition][, 'reason']). Never a test. */
+/** Playwright's in-describe annotations: test.skip/fixme/fail/slow([condition][, reason]). Never a test. */
 const ANNOTATIONS = new Set(['skip', 'fixme', 'fail', 'slow']);
 function isAnnotation(c: Callee, args: ts.NodeArray<ts.Expression>): boolean {
   if (!ANNOTATIONS.has(c.props[c.props.length - 1] ?? '')) return false;
-  if (args.length > 0 && isStringish(args[0] as ts.Expression)) return false; // a titled call
-  return args.slice(1).every((a) => isStringish(a));
+  // A titled call (`it.skip('x')`) is a test without a readable body, not an annotation. Later
+  // arguments need no check: a call with a body-like one is already a declaration.
+  return !(args.length > 0 && isStringish(args[0] as ts.Expression));
 }
 /** test.<prop> statements in a describe body that cannot declare tests. */
 const INERT_TEST_PROPS = new Set(['use', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll', 'setTimeout', 'describe']);

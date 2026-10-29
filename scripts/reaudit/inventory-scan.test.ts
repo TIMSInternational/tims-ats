@@ -82,6 +82,11 @@ describe('scanFile: vitest', () => {
     expect(pick(scanFile('tests/a.test.ts', src).entries).map((e) => e.name)).toEqual(['g [finding:syn-a] x']);
   });
 
+  it('under a tag, a titled test call with no body (it.skip(title)) is UNRESOLVABLE, not an annotation', () => {
+    const src = "describe('g [finding:syn-a]', () => {\n  it.skip('pending check');\n  it('x', () => {});\n});";
+    expect(pick(scanFile('tests/a.test.ts', src).entries).map((e) => e.name)).toEqual([null, 'g [finding:syn-a] x']);
+  });
+
   it('a tagged describe with no statically visible test is UNRESOLVABLE', () => {
     const src = "describe('g [finding:syn-a]', () => {});";
     expect(pick(scanFile('tests/a.test.ts', src).entries)).toEqual([{ id: 'syn-a', source: 'vitest', name: null }]);
