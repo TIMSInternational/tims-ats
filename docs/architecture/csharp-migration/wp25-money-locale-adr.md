@@ -308,7 +308,7 @@ with one boundary: **once an offer with non-legacy `SalaryTerms` exists** (yearl
 net), its legacy `salary` column no longer states the agreement (the worked example in §3.2 stores CRC 12 000 000 for
 a CRC 13 000 000 agreement). From that point the candidate-facing readers that render `SalaryTerms` are not
 revertible; a rollback may only disable _creating_ such terms. Enabling the Phase B flag therefore requires (1) the
-upgraded readers shipped and declared a no-revert boundary in the enabling PR, and (2) a check that lists non-legacy
+upgraded readers (the full inventory below) shipped and declared a no-revert boundary in the enabling PR, and (2) a check that lists non-legacy
 offers, so that any emergency revert of the readers is preceded by withdrawing or re-issuing those offers in legacy
 shape.
 
@@ -338,7 +338,15 @@ shape.
   (`apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-offer.tsx`) and the public signing page
   (`apps/web/app/offers/sign/[token]/page.tsx`) all render only that legacy value. So the columns and the
   dual-write may ship, but the offer form keeps creating terms equivalent to the legacy shape (`monthly`, 12
-  payments, `gross`) until those three readers and their payloads render `SalaryTerms`. Entering a yearly amount,
+  payments, `gross`) until **every** reader of `offers.salary` that a candidate, an approver or a model sees renders
+  `SalaryTerms`, not just those three. The inventory at the time of writing (`offer.salary` /
+  `formatAnnualOfferSalary` outside tests) also includes the offer table, detail view and KPI data in
+  `apps/web/app/(admin)/recruitment/offers/_components/`, `apps/web/lib/offer-salary.ts`, the candidate FAQ context
+  (`packages/api/src/services/candidate-portal.service.ts`, which passes `salary` and `salary / 12` to the model whose
+  prompt in `packages/ai/src/agents/candidate-faq.ts` reads them as annual and monthly pay) and the data-request
+  export (`packages/api/src/routers/platform/data-requests.ts`). The enabling PR must re-run that search, list every
+  hit with how it now consumes `SalaryTerms` (FAQ: context, prompt and fixtures; export: period, payments and basis),
+  and add a test that fails if a new `offer.salary` reader appears outside an allowlist. Entering a yearly amount,
   13 or 14 payments, or a `net` basis stays disabled behind a flag until then. The reader switch is the exit
   criterion for that flag, and it can land in Phase B ahead of the rest of Phase C.
 - Minor-unit columns on compensation tables, plus a pay period.
