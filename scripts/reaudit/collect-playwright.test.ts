@@ -346,10 +346,11 @@ describe('collectPlaywright: static bindings and untrusted runs', () => {
     expect(s.get('syn-b')).toBe('STALE-BINDING');
   });
 
-  it('a spec without a tags array is rejected (bindings could not be determined)', () => {
-    const r = report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);
+  it('a spec without a tags array is rejected (bindings could not be determined), even with no annotations', () => {
+    // No annotation in play, so only the required-tags rule can reject it (not the undeclared-id rule).
+    const r = report([testEntry({ tags: [], results: [{ retry: 0, status: 'passed' }] })]);
     delete (r.suites[0]?.specs[0] as { tags?: string[] }).tags;
-    expect(() => collectPlaywright(r)).toThrow(PlaywrightReportError);
+    expect(() => collectPlaywright(r)).toThrow(/tags/);
   });
 
   it('a finding tag with an invalid id is rejected loudly', () => {

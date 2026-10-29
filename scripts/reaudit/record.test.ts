@@ -101,6 +101,24 @@ describe('runRecord', () => {
     expect(m.dirtyPaths).toEqual(['extra.spec.ts']);
   });
 
+  it('an untracked file present at the start stays recorded as dirty even if the run deletes it', () => {
+    writeFileSync(join(repo, 'extra.spec.ts'), 'x');
+    const out = join(repo, 'ignored', 'vitest.json');
+    runRecord(
+      [
+        '--kind',
+        'vitest',
+        '--output',
+        out,
+        '--',
+        ...nodeWriting({ 'ignored/vitest.json': '{}' }, 0, `fs.rmSync('extra.spec.ts');`),
+      ],
+      io(),
+    );
+    const m = JSON.parse(readFileSync(manifestPathFor(out, 'vitest'), 'utf8')) as Record<string, unknown>;
+    expect(m.dirtyPaths).toEqual(['extra.spec.ts']);
+  });
+
   it('an untracked file the run creates (other than its own report) is recorded as dirty', () => {
     const out = join(repo, 'ignored', 'vitest.json');
     runRecord(
