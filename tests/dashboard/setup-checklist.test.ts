@@ -83,9 +83,25 @@ describe('deriveSetupChecklistRows', () => {
   // company-admin-journeys-21: this row used to be hard-coded `href: null`, so with no company the
   // admin had a row they could never complete, and the dismissed widget came back every 7 days.
   describe('companyStructureReady (company-admin-journeys-21)', () => {
-    it('links to /settings/business-units when the org-structure flag is on AND the viewer holds organization:update', () => {
+    // `companyStructureReady` is "a Company exists" (organization.getSetupStatus). No tenant surface
+    // creates a Company: /settings/business-units manages units and teams, and creating a unit with
+    // no Company is refused (company_required). So a NOT-done row is support-owned even with the
+    // flag on and organization:update — a "Go" link there could never complete it.
+    it('NOT done, flag on AND organization:update: still support-owned (the linked page cannot create a Company)', () => {
       const rows = deriveSetupChecklistRows(
         ALL_FALSE,
+        LABELS,
+        ctx({ orgStructureEnabled: true, canManageStructure: true }),
+      );
+      const structure = row(rows, 'companyStructureReady');
+      expect(structure.href).toBeNull();
+      expect(structure.label).toBe(LABELS.companyStructureBySupport);
+      expect(structure.countsTowardCompletion).toBe(false);
+    });
+
+    it('DONE, flag on AND organization:update: links to /settings/business-units to manage the structure', () => {
+      const rows = deriveSetupChecklistRows(
+        { ...ALL_FALSE, companyStructureReady: true },
         LABELS,
         ctx({ orgStructureEnabled: true, canManageStructure: true }),
       );
@@ -93,6 +109,16 @@ describe('deriveSetupChecklistRows', () => {
       expect(structure.href).toBe('/settings/business-units');
       expect(structure.label).toBe(LABELS.companyStructureReady);
       expect(structure.countsTowardCompletion).toBe(true);
+    });
+
+    it('DONE but flag off or no organization:update: no link (no dead end)', () => {
+      for (const c of [ctx({ canManageStructure: true }), ctx({ orgStructureEnabled: true })]) {
+        const structure = row(
+          deriveSetupChecklistRows({ ...ALL_FALSE, companyStructureReady: true }, LABELS, c),
+          'companyStructureReady',
+        );
+        expect(structure.href).toBeNull();
+      }
     });
 
     it('flag OFF: status-only, labelled as support-owned, and excluded from completion', () => {

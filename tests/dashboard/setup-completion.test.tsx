@@ -114,13 +114,29 @@ describe('SetupChecklist widget completion', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('stays visible when the structure row is actionable (flag on + organization:update) and not done', () => {
+  it('hides even with flag on + organization:update when only the structure row is open (no in-app way to create a Company)', () => {
     state.orgStructureEnabled = true;
     state.data = status({ companyStructureReady: false }, false);
+    const { container } = render(<SetupChecklist />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('flag on + organization:update with another row open: a NOT-done structure row has no link and reads support-owned', () => {
+    state.orgStructureEnabled = true;
+    state.data = status({ companyStructureReady: false, brandingSet: false }, false);
     render(<SetupChecklist />);
-    expect(screen.getByText(en.setupChecklist.title)).toBeTruthy();
-    const go = screen.getByRole('link', { name: en.setupChecklist.goTo });
-    expect(go.getAttribute('href')).toBe('/settings/business-units');
+    expect(screen.getByText(en.setupChecklist.companyStructureBySupport)).toBeTruthy();
+    const hrefs = screen.queryAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(hrefs).not.toContain('/settings/business-units');
+  });
+
+  it('flag on + organization:update with another row open: a DONE structure row renders no Go link (done rows never do)', () => {
+    state.orgStructureEnabled = true;
+    state.data = status({ brandingSet: false }, false);
+    render(<SetupChecklist />);
+    const hrefs = screen.queryAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('/settings/branding');
+    expect(hrefs).not.toContain('/settings/business-units');
   });
 
   it('flag on but the viewer lacks organization:update (hr_admin): support label, no link, not counted', () => {

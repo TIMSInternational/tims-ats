@@ -55,18 +55,21 @@ export interface SetupChecklistContext {
 // route link independent of the nav manifest, so it must gate itself rather
 // than rely on nav-invisibility to hide a dead end.
 //
-// "companyStructureReady" (company-admin-journeys-21) links to /settings/business-units only when
-// the org-structure surface is on AND the viewer holds organization:update. Otherwise the admin
-// cannot complete it themselves: while not done it reads as support-owned and does not count
-// toward completion, so it can no longer keep the widget open (or re-opening every 7 days).
+// "companyStructureReady" (company-admin-journeys-21) means "a Company exists". No tenant surface
+// creates a Company: /settings/business-units manages units and teams, and creating a unit with no
+// Company is refused (company_required). So while NOT done the row is always support-owned: no
+// link, the support label, and excluded from completion, so it can no longer keep the widget open
+// (or re-open it every 7 days). Once done, it links to /settings/business-units only when the
+// org-structure surface is on AND the viewer holds organization:update (manage the structure).
 export function deriveSetupChecklistRows(
   items: SetupChecklistItems,
   labels: SetupChecklistLabels,
   ctx: SetupChecklistContext,
 ): SetupChecklistRow[] {
   const teamInviteHref = ctx.canInviteTeam && ctx.invitationsEnabled ? '/settings/users' : null;
-  const structureHref = ctx.orgStructureEnabled && ctx.canManageStructure ? '/settings/business-units' : null;
-  const structureBySupport = structureHref === null && !items.companyStructureReady;
+  const structureBySupport = !items.companyStructureReady;
+  const structureHref =
+    !structureBySupport && ctx.orgStructureEnabled && ctx.canManageStructure ? '/settings/business-units' : null;
   return [
     {
       key: 'companyStructureReady',
