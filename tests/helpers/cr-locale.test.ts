@@ -67,6 +67,11 @@ describe('crDateTime', () => {
   it('refuses an unparseable timestamp', () => {
     expect(() => crDateTime('not-a-date')).toThrow();
   });
+
+  it('refuses a well-shaped but impossible timestamp (hour 25), not just a malformed one', () => {
+    // Passes the zoned-ISO shape check, so only the invalid-date guard can reject it.
+    expect(() => crDateTime('2026-11-16T25:00:00Z')).toThrow(/unparseable/);
+  });
 });
 
 describe('bogotaRendering', () => {
