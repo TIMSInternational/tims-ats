@@ -29,10 +29,6 @@ export interface SetupChecklistContext {
   canManageBranding: boolean;
   canInviteTeam: boolean;
   invitationsEnabled: boolean;
-  /** The org-structure management surface is on (the /settings/business-units gate). */
-  orgStructureEnabled: boolean;
-  /** organization:update — what the C# org-structure create/update endpoints require. */
-  canManageStructure: boolean;
 }
 
 // Pure derivation, kept in its own plain .ts module (no JSX) so it can be
@@ -57,10 +53,10 @@ export interface SetupChecklistContext {
 //
 // "companyStructureReady" (company-admin-journeys-21) means "a Company exists". No tenant surface
 // creates a Company: /settings/business-units manages units and teams, and creating a unit with no
-// Company is refused (company_required). So while NOT done the row is always support-owned: no
-// link, the support label, and excluded from completion, so it can no longer keep the widget open
-// (or re-open it every 7 days). Once done, it links to /settings/business-units only when the
-// org-structure surface is on AND the viewer holds organization:update (manage the structure).
+// Company is refused (company_required). So while NOT done the row is always support-owned: the
+// support label, and excluded from completion, so it can no longer keep the widget open (or re-open
+// it every 7 days). It never carries a link: not done there is nothing in-app to complete it with,
+// and done rows render no link at all.
 export function deriveSetupChecklistRows(
   items: SetupChecklistItems,
   labels: SetupChecklistLabels,
@@ -68,14 +64,12 @@ export function deriveSetupChecklistRows(
 ): SetupChecklistRow[] {
   const teamInviteHref = ctx.canInviteTeam && ctx.invitationsEnabled ? '/settings/users' : null;
   const structureBySupport = !items.companyStructureReady;
-  const structureHref =
-    !structureBySupport && ctx.orgStructureEnabled && ctx.canManageStructure ? '/settings/business-units' : null;
   return [
     {
       key: 'companyStructureReady',
       label: structureBySupport ? labels.companyStructureBySupport : labels.companyStructureReady,
       done: items.companyStructureReady,
-      href: structureHref,
+      href: null,
       countsTowardCompletion: !structureBySupport,
     },
     { key: 'teamInvited', label: labels.teamInvited, done: items.teamInvited, href: teamInviteHref, countsTowardCompletion: true },

@@ -9,7 +9,6 @@ import { toast } from '../../../lib/toast';
 import { ErrorState } from '../../../components';
 import { deriveSetupChecklistRows, isSetupComplete } from './setup-checklist-rows';
 import { isTenantInvitationsEnabled } from '../../../lib/platform-api/tenant-invitations';
-import { isOrgStructureViaCSharp } from '../../../lib/platform-api/org-structure';
 
 function CheckIcon({ done }: { done: boolean }) {
   return (
@@ -33,8 +32,6 @@ export function SetupChecklist() {
   const canManageBranding = can('organization', 'update');
   const canInviteTeam = can('user', 'create');
   const invitationsEnabled = isTenantInvitationsEnabled();
-  const orgStructureEnabled = isOrgStructureViaCSharp();
-  const canManageStructure = can('organization', 'update');
 
   // Optimistic client-side hide the instant "hide for now" is clicked, backed
   // by the real dismissSetupChecklist mutation (per Task 4 brief). Reverted on
@@ -67,7 +64,7 @@ export function SetupChecklist() {
           firstVacancyPosted: sc.firstVacancyPosted,
           firstVacancyPublished: sc.firstVacancyPublished,
         },
-        { canManageBranding, canInviteTeam, invitationsEnabled, orgStructureEnabled, canManageStructure },
+        { canManageBranding, canInviteTeam, invitationsEnabled },
       )
     : [];
 

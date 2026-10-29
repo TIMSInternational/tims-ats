@@ -114,7 +114,7 @@ describe('SetupChecklist widget completion', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('hides even with flag on + organization:update when only the structure row is open (no in-app way to create a Company)', () => {
+  it('hides with the org-structure flag on + organization:update when only the structure row is open (no in-app way to create a Company)', () => {
     state.orgStructureEnabled = true;
     state.data = status({ companyStructureReady: false }, false);
     const { container } = render(<SetupChecklist />);
@@ -130,7 +130,7 @@ describe('SetupChecklist widget completion', () => {
     expect(hrefs).not.toContain('/settings/business-units');
   });
 
-  it('flag on + organization:update with another row open: a DONE structure row renders no Go link (done rows never do)', () => {
+  it('flag on + organization:update with another row open: a DONE structure row renders no link (the row never carries one)', () => {
     state.orgStructureEnabled = true;
     state.data = status({ brandingSet: false }, false);
     render(<SetupChecklist />);
@@ -165,8 +165,6 @@ describe('SetupChecklist widget completion', () => {
       canManageBranding: true,
       canInviteTeam: true,
       invitationsEnabled: true,
-      orgStructureEnabled: true,
-      canManageStructure: true,
     });
     expect(rows.find((x) => x.key === 'teamInvited')?.done).toBe(false);
     expect(isSetupComplete(rows)).toBe(false);
@@ -174,8 +172,6 @@ describe('SetupChecklist widget completion', () => {
       canManageBranding: true,
       canInviteTeam: true,
       invitationsEnabled: true,
-      orgStructureEnabled: true,
-      canManageStructure: true,
     });
     expect(doneRows.find((x) => x.key === 'teamInvited')?.done).toBe(true);
 

@@ -30,12 +30,12 @@ describe('feature-flag wiring at the call sites', () => {
     expect(src).toMatch(ctxProp('invitationsEnabled'));
   });
 
-  it('setup-checklist passes isOrgStructureViaCSharp() and organization:update into the row context', () => {
+  it('setup-checklist does not gate the structure row on the org-structure flag (the row never links)', () => {
+    // company-admin-journeys-21: no tenant surface creates a Company, so the structure row has no
+    // link to gate. Behaviour is pinned in tests/dashboard/setup-checklist.test.ts.
     const src = read('apps/web/app/(admin)/dashboard/setup-checklist.tsx');
-    expect(src).toMatch(/const orgStructureEnabled = isOrgStructureViaCSharp\(\);/);
-    expect(src).toMatch(/const canManageStructure = can\('organization', 'update'\);/);
-    expect(src).toMatch(ctxProp('orgStructureEnabled'));
-    expect(src).toMatch(ctxProp('canManageStructure'));
+    expect(src).not.toMatch(/isOrgStructureViaCSharp/);
+    expect(read('apps/web/app/(admin)/dashboard/setup-checklist-rows.ts')).not.toMatch(/business-units'/);
   });
 });
 
