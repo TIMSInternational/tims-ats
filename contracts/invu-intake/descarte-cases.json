@@ -1,0 +1,4853 @@
+{
+  "description": "Paso 1 descarte matrix (WP-26). Spec for the C# DescarteEvaluator (PR-8, Tims.UnitTests/Intake/DescarteFixtureTests); its shape is checked by vitest in PR-8. Built on the register defaults: an uploaded but unreviewed document counts as cumple with verified=false (D-26-G). Rules: the latest non-superseded human decision wins (verified=true, source=human, never subsanable). Otherwise derived per kind: document = accepted (verified) > received > rejected (no_cumple, subsanable while the window is open) > none (no_cumple, missingDocument, subsanable while open), superseded files ignored; min_academic_degree and min_relevant_years compare against minValue (intake years, else the candidate profile; absent = revision; never subsanable); college_membership needs college and licence; declaration needs declaredAt with a known text version (verified); manual = revision. Window: until_deadline = now < deadline (null deadline = open while published), days_after_request = now < requestedAt + days, closed = never. Bucket: any knockout no_cumple -> incompleto when every failing knockout is subsanable, else no_cumple; otherwise any revision -> revision; otherwise cumple. Non-knockout requirements only affect the bucket through revision and are scored as desirableMet/desirableTotal. Synthetic data only.",
+  "cases": [
+    {
+      "name": "all present and received: cumple, documents unverified",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "accepted documents are verified",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "accepted",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "accepted",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "mandatory document missing, window open: incompleto",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "incompleto",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "mandatory document missing, deadline passed: no_cumple",
+      "now": "2026-11-21T00:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "deadline instant itself is closed",
+      "now": "2026-11-20T23:59:59.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "null deadline on a published vacancy keeps the window open",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": null
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "incompleto",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "null deadline on a closed vacancy: window closed",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "closed",
+        "applicationDeadline": null
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "subsanar mode closed: missing document is final",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "closed",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "days after request, inside the window",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "days_after_request",
+        "subsanarDays": 5,
+        "subsanarRequestedAt": "2026-11-03T12:00:00.000Z"
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "incompleto",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "days after request, window elapsed",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "days_after_request",
+        "subsanarDays": 2,
+        "subsanarRequestedAt": "2026-11-03T12:00:00.000Z"
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "rejected document, window open: incompleto",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "rejected",
+          "reviewReason": "ilegible"
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "incompleto",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "file check failed counts as rejected",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "rejected",
+          "reviewReason": "file_check_failed"
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "incompleto",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "superseded document does not count",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "superseded",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "incompleto",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "an accepted document wins over an older rejected one",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "rejected",
+          "reviewReason": "ilegible"
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "accepted",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "degree below the knockout minimum: no_cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "bachillerato_universitario",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "degree above the minimum: cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "doctorado",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "degree missing: revision",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": null,
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "revision",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "revision",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "degree below a desirable minimum leaves the bucket and lowers the score",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000012-0000-4000-8000-000000000012",
+          "kind": "min_academic_degree",
+          "label": "Maestria deseable",
+          "isKnockout": false,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "maestria"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000012-0000-4000-8000-000000000012",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 1
+      }
+    },
+    {
+      "name": "desirable degree met counts toward the score",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000012-0000-4000-8000-000000000012",
+          "kind": "min_academic_degree",
+          "label": "Maestria deseable",
+          "isKnockout": false,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "maestria"
+        }
+      ],
+      "intake": {
+        "academicDegree": "maestria",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000012-0000-4000-8000-000000000012",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 1,
+        "desirableTotal": 1
+      }
+    },
+    {
+      "name": "missing desirable document does not change the bucket",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000011-0000-4000-8000-000000000011",
+          "kind": "document",
+          "label": "Certificacion deseable",
+          "isKnockout": false,
+          "documentType": "certificacion",
+          "maxFiles": 1,
+          "minValue": null
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000011-0000-4000-8000-000000000011",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": true,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 1
+      }
+    },
+    {
+      "name": "years from intake meet the minimum",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000008-0000-4000-8000-000000000008",
+          "kind": "min_relevant_years",
+          "label": "Anos minimos",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "3"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000008-0000-4000-8000-000000000008",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "years below the minimum: no_cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000008-0000-4000-8000-000000000008",
+          "kind": "min_relevant_years",
+          "label": "Anos minimos",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "8"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000008-0000-4000-8000-000000000008",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "years fall back to the candidate profile",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000008-0000-4000-8000-000000000008",
+          "kind": "min_relevant_years",
+          "label": "Anos minimos",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "3"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": null,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": 4
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000008-0000-4000-8000-000000000008",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "intake years take precedence over the profile",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000008-0000-4000-8000-000000000008",
+          "kind": "min_relevant_years",
+          "label": "Anos minimos",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "3"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 1,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": 10
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000008-0000-4000-8000-000000000008",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "years missing everywhere: revision",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000008-0000-4000-8000-000000000008",
+          "kind": "min_relevant_years",
+          "label": "Anos minimos",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "3"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": null,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "revision",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000008-0000-4000-8000-000000000008",
+            "status": "revision",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "desirable years missing still sends the application to revision",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000013-0000-4000-8000-000000000013",
+          "kind": "min_relevant_years",
+          "label": "Anos deseables",
+          "isKnockout": false,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "3"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": null,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "revision",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000013-0000-4000-8000-000000000013",
+            "status": "revision",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 1
+      }
+    },
+    {
+      "name": "college and licence present: cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000009-0000-4000-8000-000000000009",
+          "kind": "college_membership",
+          "label": "Incorporado al colegio",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000009-0000-4000-8000-000000000009",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "licence missing: no_cumple and not subsanable",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000009-0000-4000-8000-000000000009",
+          "kind": "college_membership",
+          "label": "Incorporado al colegio",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": null,
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000009-0000-4000-8000-000000000009",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "declaration missing: no_cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": null,
+        "declaredAt": null
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "declaration with an unknown text version: no_cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v999",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "no intake row at all: missing declaration is final",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": null,
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "revision",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "manual requirement undecided: revision",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000010-0000-4000-8000-000000000010",
+          "kind": "manual",
+          "label": "Prueba externa",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "revision",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000010-0000-4000-8000-000000000010",
+            "status": "revision",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "manual requirement decided cumple by a human",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000010-0000-4000-8000-000000000010",
+          "kind": "manual",
+          "label": "Prueba externa",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [
+        {
+          "requirementId": "00000010-0000-4000-8000-000000000010",
+          "status": "cumple",
+          "reason": null,
+          "decidedAt": "2026-11-04T09:00:00.000Z",
+          "supersededAt": null
+        }
+      ],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000010-0000-4000-8000-000000000010",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "human"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "human cumple overrides a derived no_cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "tecnico",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [
+        {
+          "requirementId": "00000007-0000-4000-8000-000000000007",
+          "status": "cumple",
+          "reason": "equivalencia aprobada",
+          "decidedAt": "2026-11-04T09:00:00.000Z",
+          "supersededAt": null
+        }
+      ],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "human"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "human no_cumple on a document is final even with the window open",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "status": "no_cumple",
+          "reason": "no corresponde",
+          "decidedAt": "2026-11-04T09:00:00.000Z",
+          "supersededAt": null
+        }
+      ],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "human"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "superseded decision is ignored",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "tecnico",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [
+        {
+          "requirementId": "00000007-0000-4000-8000-000000000007",
+          "status": "cumple",
+          "reason": null,
+          "decidedAt": "2026-11-03T09:00:00.000Z",
+          "supersededAt": "2026-11-04T09:00:00.000Z"
+        }
+      ],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "latest live decision wins",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000010-0000-4000-8000-000000000010",
+          "kind": "manual",
+          "label": "Prueba externa",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [
+        {
+          "requirementId": "00000010-0000-4000-8000-000000000010",
+          "status": "cumple",
+          "reason": null,
+          "decidedAt": "2026-11-03T09:00:00.000Z",
+          "supersededAt": "2026-11-04T09:00:00.000Z"
+        },
+        {
+          "requirementId": "00000010-0000-4000-8000-000000000010",
+          "status": "revision",
+          "reason": null,
+          "decidedAt": "2026-11-04T09:00:00.000Z",
+          "supersededAt": null
+        }
+      ],
+      "expected": {
+        "bucket": "revision",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000010-0000-4000-8000-000000000010",
+            "status": "revision",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "human"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "one subsanable and one final knockout failure: no_cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "tecnico",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "no_cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "knockout subsanable failure outranks a revision",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        },
+        {
+          "id": "00000010-0000-4000-8000-000000000010",
+          "kind": "manual",
+          "label": "Prueba externa",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "incompleto",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "no_cumple",
+            "verified": false,
+            "subsanable": true,
+            "missingDocument": true,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000010-0000-4000-8000-000000000010",
+            "status": "revision",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "no requirements at all: cumple",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    },
+    {
+      "name": "several files on one requirement, one accepted",
+      "now": "2026-11-05T12:00:00.000Z",
+      "vacancy": {
+        "status": "published",
+        "applicationDeadline": "2026-11-20T23:59:59.000Z"
+      },
+      "policy": {
+        "subsanarMode": "until_deadline",
+        "subsanarDays": null,
+        "subsanarRequestedAt": null
+      },
+      "requirements": [
+        {
+          "id": "00000001-0000-4000-8000-000000000001",
+          "kind": "document",
+          "label": "CV",
+          "isKnockout": true,
+          "documentType": "cv",
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000002-0000-4000-8000-000000000002",
+          "kind": "document",
+          "label": "Titulo",
+          "isKnockout": true,
+          "documentType": "titulo",
+          "maxFiles": 3,
+          "minValue": null
+        },
+        {
+          "id": "00000006-0000-4000-8000-000000000006",
+          "kind": "declaration",
+          "label": "Declaracion",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": null
+        },
+        {
+          "id": "00000007-0000-4000-8000-000000000007",
+          "kind": "min_academic_degree",
+          "label": "Grado minimo",
+          "isKnockout": true,
+          "documentType": null,
+          "maxFiles": 1,
+          "minValue": "licenciatura"
+        }
+      ],
+      "intake": {
+        "academicDegree": "licenciatura",
+        "relevantYears": 5,
+        "professionalCollege": "Colegio de Ejemplo",
+        "collegeLicense": "A-1",
+        "declarationTextVersion": "invu-decl-v0",
+        "declaredAt": "2026-11-02T10:00:00.000Z"
+      },
+      "candidate": {
+        "yearsExperience": null
+      },
+      "documents": [
+        {
+          "requirementId": "00000001-0000-4000-8000-000000000001",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "received",
+          "reviewReason": null
+        },
+        {
+          "requirementId": "00000002-0000-4000-8000-000000000002",
+          "reviewStatus": "accepted",
+          "reviewReason": null
+        }
+      ],
+      "decisions": [],
+      "expected": {
+        "bucket": "cumple",
+        "requirements": [
+          {
+            "requirementId": "00000001-0000-4000-8000-000000000001",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000002-0000-4000-8000-000000000002",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000006-0000-4000-8000-000000000006",
+            "status": "cumple",
+            "verified": true,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          },
+          {
+            "requirementId": "00000007-0000-4000-8000-000000000007",
+            "status": "cumple",
+            "verified": false,
+            "subsanable": false,
+            "missingDocument": false,
+            "source": "derived"
+          }
+        ],
+        "desirableMet": 0,
+        "desirableTotal": 0
+      }
+    }
+  ]
+}

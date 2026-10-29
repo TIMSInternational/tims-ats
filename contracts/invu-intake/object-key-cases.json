@@ -1,0 +1,129 @@
+{
+  "description": "Candidate intake object keys. ONE golden, TWO stacks: TS parseIntakeObjectKey (packages/shared/src/intake/object-key.ts, asserted by tests/shared/intake-object-key.test.ts) and the C# IntakeObjectKey mirror (WP-26 PR-4). A key is accepted only when it belongs to the given organization and vacancy; every other shape parses to null. Synthetic identifiers only.",
+  "organizationId": "11111111-1111-4111-8111-111111111111",
+  "vacancyId": "33333333-3333-4333-8333-333333333333",
+  "cases": [
+    {
+      "name": "own org, vacancy and requirement, pdf",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": {
+        "requirementId": "44444444-4444-4444-8444-444444444444",
+        "ext": "pdf"
+      }
+    },
+    {
+      "name": "own key, jpg",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.jpg",
+      "expected": {
+        "requirementId": "44444444-4444-4444-8444-444444444444",
+        "ext": "jpg"
+      }
+    },
+    {
+      "name": "own key, png",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.png",
+      "expected": {
+        "requirementId": "44444444-4444-4444-8444-444444444444",
+        "ext": "png"
+      }
+    },
+    {
+      "name": "own key, heic",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.heic",
+      "expected": {
+        "requirementId": "44444444-4444-4444-8444-444444444444",
+        "ext": "heic"
+      }
+    },
+    {
+      "name": "another organization is rejected",
+      "key": "candidate-docs/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "another vacancy is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/66666666-6666-4666-8666-666666666666/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "extra path segment is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/extra/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "extra trailing segment is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf/x.pdf",
+      "expected": null
+    },
+    {
+      "name": "uppercase requirement UUID is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/ABCDEFAB-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "uppercase file UUID is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/ABCDEFAB-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "executable extension is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.exe",
+      "expected": null
+    },
+    {
+      "name": "uppercase extension is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.PDF",
+      "expected": null
+    },
+    {
+      "name": "double extension is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf.exe",
+      "expected": null
+    },
+    {
+      "name": "docx is not an intake extension",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.docx",
+      "expected": null
+    },
+    {
+      "name": "parent-directory segment is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/../44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "leading slash is rejected",
+      "key": "/candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "wrong prefix is rejected",
+      "key": "cv/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "non-UUID requirement is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/requirement-1/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "requirement of UUID length but wrong dash layout is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/444444444444-4444-4444-8444-44444444/55555555-5555-4555-8555-555555555555.pdf",
+      "expected": null
+    },
+    {
+      "name": "trailing newline is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555.pdf\n",
+      "expected": null
+    },
+    {
+      "name": "empty key is rejected",
+      "key": "",
+      "expected": null
+    },
+    {
+      "name": "key longer than 300 characters is rejected",
+      "key": "candidate-docs/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/55555555-5555-4555-8555-555555555555aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf",
+      "expected": null
+    }
+  ]
+}
