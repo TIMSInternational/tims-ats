@@ -8,10 +8,15 @@
  * stock report omits the flag, so a stock report is rejected and a bound `test.fails` test is NOT-RUN,
  * never FIXED-VERIFIED.
  *
+ * ONLY A COMPLETE, UNFILTERED RUN IS EVIDENCE. The reporter also records the run (`reaudit.run`): its
+ * active filters, whether `.only` was allowed, and every test file Vitest's own glob selects. A report
+ * with any filter, with `.only` allowed, or whose files are not exactly the globbed files (a multiset:
+ * once per project) is refused, so no bound check can be left out of the run while a sibling passes.
+ *
  * A test binds when its FULL name (every ancestor describe title + the leaf title) contains
  * `[finding:<slug>]`. Private bindings may additionally bind an untagged test by its exact full name.
  * A private binding whose test is absent from the report (renamed, deleted, filtered out) yields
- * NOT-RUN for its id, so a sibling binding's pass cannot mask a check that never ran.
+ * NOT-RUN for its id.
  *
  * A file can fail OUTSIDE its assertions (a throwing afterAll leaves the file `failed` with an empty
  * message while every assertion still reads `passed`), and a run can fail with no failed file at all
@@ -34,7 +39,7 @@
  * finding is FIXED-VERIFIED and --gate launch fails.
  */
 import { z } from 'zod';
-import { repoRelative, tagIds, type Collection, type Observation, type ObservedStatus } from './status';
+import { tagIds, type Collection, type Observation, type ObservedStatus } from './status';
 
 export { tagIds };
 
@@ -51,9 +56,18 @@ const assertionSchema = z.object({
   status: z.string().max(50),
   fails: z.boolean(),
 });
-export const VITEST_REPORT_MARKER = { reporter: 'reaudit-vitest-json', version: 1 } as const;
+export const VITEST_REPORT_MARKER = { reporter: 'reaudit-vitest-json', version: 2 } as const;
+const runSchema = z
+  .object({
+    filters: z.array(z.string().max(4096)).max(100),
+    allowOnly: z.boolean(),
+    modules: z.array(z.string().max(4096)).max(20000),
+  })
+  .strict();
 const reportSchema = z.object({
-  reaudit: z.object({ reporter: z.literal(VITEST_REPORT_MARKER.reporter), version: z.literal(1) }).strict(),
+  reaudit: z
+    .object({ reporter: z.literal(VITEST_REPORT_MARKER.reporter), version: z.literal(2), run: runSchema })
+    .strict(),
   success: z.boolean().optional(),
   testResults: z.array(
     z.object({
@@ -75,8 +89,40 @@ function statusFor(status: string): ObservedStatus {
 export interface VitestRunOptions {
   /** The `vitest run` process exit status. Undefined only for callers with no process (unit tests). */
   runExitCode?: number;
-  /** The recorded checkout root of the run (provenance manifest). Without it no inventory entry matches. */
-  checkoutRoot?: string;
+}
+
+/** Refuses a filtered run, one that allowed `.only`, and one whose files are not every globbed file. */
+function assertComplete(report: z.infer<typeof reportSchema>): void {
+  const { filters, allowOnly, modules } = report.reaudit.run;
+  if (filters.length > 0) {
+    throw new VitestReportError(`a filtered Vitest run is not evidence (${filters.join('; ')}); run the full suite`);
+  }
+  if (allowOnly) {
+    throw new VitestReportError('the Vitest run allowed .only, so it may have skipped bound tests; run with CI=true');
+  }
+  const ran = report.testResults.map((f) => f.name ?? '(unnamed file)');
+  const missing = multisetMinus(modules, ran);
+  const extra = multisetMinus(ran, modules);
+  if (missing.length || extra.length) {
+    throw new VitestReportError(
+      'the Vitest report does not hold exactly the files the run selected' +
+        (missing.length ? `; not reported: ${missing.slice(0, 20).join(', ')}` : '') +
+        (extra.length ? `; not selected: ${extra.slice(0, 20).join(', ')}` : ''),
+    );
+  }
+}
+
+/** Items of `a` left after removing one occurrence per item of `b`. */
+function multisetMinus(a: readonly string[], b: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const x of b) counts.set(x, (counts.get(x) ?? 0) + 1);
+  const out: string[] = [];
+  for (const x of a) {
+    const n = counts.get(x) ?? 0;
+    if (n > 0) counts.set(x, n - 1);
+    else out.push(x);
+  }
+  return out;
 }
 
 export function collectVitest(
@@ -106,6 +152,7 @@ export function collectVitestReport(
       `not a reaudit Vitest JSON report (${first ? `${first.path.join('.') || '(root)'}: ${first.message}` : 'invalid'})`,
     );
   }
+  assertComplete(parsed.data);
   const out: Observation[] = [];
   const seen = new Set<string>();
   const anyFileFailed = parsed.data.testResults.some((f) => f.status === 'failed');
@@ -123,8 +170,7 @@ export function collectVitestReport(
       // A test.fails "pass" means the body threw: never evidence that the ideal holds.
       const raw = a.fails ? 'NOT-RUN' : statusFor(a.status);
       const status = untrusted && raw === 'FIXED-VERIFIED' ? 'NOT-RUN' : raw;
-      const key = { file: repoRelative(opts.checkoutRoot, file.name), name: fullName };
-      for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName, key });
+      for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName });
     }
   }
   for (const [name, ids] of extraNameBindings ?? []) {

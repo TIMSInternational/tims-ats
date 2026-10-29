@@ -8,8 +8,6 @@
  *   STALE-BINDING   a bound check is skipped / fixme / todo
  *   UNBOUND         nothing checks this id
  */
-import { posix } from 'node:path';
-
 export type ObservedStatus = 'FIXED-VERIFIED' | 'OPEN-CONFIRMED' | 'REGRESSED' | 'NOT-RUN' | 'STALE-BINDING';
 export type ReauditStatus = ObservedStatus | 'UNBOUND';
 export type ObservationSource = 'playwright' | 'vitest' | 'xunit' | 'owner';
@@ -20,18 +18,6 @@ export interface Observation {
   source: ObservationSource;
   /** Human-readable name of the test or check that produced this observation. */
   test: string;
-  /**
-   * The check as the evidence names it, for reconciling against the source inventory (inventory.ts).
-   * Set ONLY on observations backed by an entry in the evidence, never on a synthesised NOT-RUN.
-   */
-  key?: EvidenceKey;
-}
-
-export interface EvidenceKey {
-  /** Repository-relative, resolved against the recorded checkout root (repoRelative); none for TRX. */
-  file?: string;
-  /** Vitest full name · Playwright title path below the file (" › ") · TRX test name. */
-  name: string;
 }
 
 /** A collector's output: observations, plus why the run cannot be trusted as proof of any pass. */
@@ -58,21 +44,6 @@ const PRECEDENCE: readonly ObservedStatus[] = [
   'STALE-BINDING',
   'FIXED-VERIFIED',
 ];
-
-/**
- * `file` relative to the checkout `root` the run happened in, with "/" separators, or undefined when it
- * is not inside that checkout (or either is missing). Evidence files are matched to source files by
- * this exact path, never by suffix.
- */
-export function repoRelative(root: string | undefined, file: string | undefined): string | undefined {
-  if (!root || !file) return undefined;
-  const r = posix.normalize(root.replace(/\\/g, '/'));
-  const f = posix.normalize(file.replace(/\\/g, '/'));
-  if (!posix.isAbsolute(r) || !posix.isAbsolute(f)) return undefined;
-  const rel = posix.relative(r, f);
-  if (rel === '' || rel === '..' || rel.startsWith('../') || posix.isAbsolute(rel)) return undefined;
-  return rel;
-}
 
 /** Lowercase slug: what every finding id, persona and binding id must look like. */
 export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

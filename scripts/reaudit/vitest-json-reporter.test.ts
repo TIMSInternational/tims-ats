@@ -3,9 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { collectVitest, collectVitestReport } from './collect-vitest';
-import { reconcileInventory } from './inventory';
-import { scanFile } from './inventory-scan';
+import { collectVitest, collectVitestReport, VitestReportError } from './collect-vitest';
 import { statusById } from './status';
 
 // Integration: runs the REAL installed Vitest on a fixture with a tagged `test.fails` test. Proves the
@@ -25,13 +23,28 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function runVitest(reporterArg: string, out: string, extra: string[] = []): number | null {
+/** Runs the real Vitest on a fixture config, with CI=true unless `ci` is false (record.ts sets CI=true). */
+function runVitest(
+  reporterArg: string,
+  out: string,
+  extra: string[] = [],
+  opts: { config?: string; ci?: boolean } = {},
+): number | null {
   const env = Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith('VITEST')),
+    Object.entries(process.env).filter(([k]) => !k.startsWith('VITEST') && k !== 'CI'),
   ) as NodeJS.ProcessEnv;
+  if (opts.ci !== false) env.CI = 'true';
   const r = spawnSync(
     process.execPath,
-    [vitestBin, 'run', '--config', fixtureConfig, `--reporter=${reporterArg}`, `--outputFile=${out}`, ...extra],
+    [
+      vitestBin,
+      'run',
+      '--config',
+      opts.config ?? fixtureConfig,
+      `--reporter=${reporterArg}`,
+      `--outputFile=${out}`,
+      ...extra,
+    ],
     { cwd: repoRoot, env, encoding: 'utf8' },
   );
   return r.status;
@@ -66,40 +79,49 @@ describe('vitest-json-reporter (real Vitest run)', () => {
   }, 60_000);
 });
 
-describe('binding inventory against a real Vitest report', () => {
-  const rel = 'scripts/reaudit/fixtures/vitest-fails/fails.fixture.ts';
-  const inventory = () => ({
-    sha: 'a'.repeat(40),
-    entries: scanFile(rel, readFileSync(join(repoRoot, rel), 'utf8')).entries,
-    unattributable: [],
-  });
-  const known = new Set(['syn-a', 'syn-b']);
+// Evidence is accepted only from a complete, unfiltered run (canonical.ts). The reporter records the
+// run's active filters, whether `.only` was allowed, and every file Vitest's own glob selects; the
+// collector refuses a filtered or incomplete run. These run the REAL installed Vitest.
+describe('vitest-json-reporter: the run record (real Vitest run)', () => {
+  const dupConfig = join(__dirname, 'fixtures', 'vitest-dup', 'vitest.config.ts');
+  const dupDir = join(__dirname, 'fixtures', 'vitest-dup');
+  const name = 'security denies cross-org read';
+  const priv = new Map([[name, ['syn-private']]]);
+  type RunReport = { reaudit: { run: { filters: string[]; allowOnly: boolean; modules: string[] } } };
+  const read = (out: string) => JSON.parse(readFileSync(out, 'utf8')) as RunReport;
 
-  it('the names the scanner derives from the source are the names the real reporter writes', () => {
-    const out = join(dir, 'inv-full.json');
-    expect(runVitest(reporter, out)).toBe(0);
-    const vt = collectVitestReport(JSON.parse(readFileSync(out, 'utf8')), undefined, {
-      runExitCode: 0,
-      checkoutRoot: repoRoot,
-    });
-    expect(inventory().entries.map((e) => e.name)).toEqual([
-      'fixture ideal [finding:syn-a]',
-      'fixture ideal [finding:syn-b]',
-    ]);
-    expect(reconcileInventory(inventory(), vt.observations, new Set(['vitest']), known)).toEqual({
-      observations: [],
-      untrusted: [],
-    });
+  it('a full run records no filters, .only refused under CI, and every globbed file; the collector accepts it', () => {
+    const out = join(dir, 'dup-full.json');
+    expect(runVitest(reporter, out, [], { config: dupConfig })).toBe(1);
+    const r = read(out);
+    expect(r.reaudit.run.filters).toEqual([]);
+    expect(r.reaudit.run.allowOnly).toBe(false);
+    expect(r.reaudit.run.modules).toEqual([join(dupDir, 'a.fixture.ts'), join(dupDir, 'b.fixture.ts')]);
+    const vt = collectVitestReport(r, priv, { runExitCode: 1 });
+    expect(statusById(vt.observations).get('syn-private')).toBe('REGRESSED');
   }, 60_000);
 
-  it('a -t filter does NOT drop a check from its file: Vitest reports it skipped, so it is STALE-BINDING (whole-file omission is what the inventory catches)', () => {
-    const out = join(dir, 'inv-filtered.json');
+  it('Codex r15, for real: the same private name in two files, a file filter omits the failing one → refused', () => {
+    const out = join(dir, 'dup-a-only.json');
+    expect(runVitest(reporter, out, ['a.fixture.ts'], { config: dupConfig })).toBe(0);
+    const r = read(out);
+    expect(r.reaudit.run.filters.join(' ')).toContain('a.fixture.ts');
+    expect(() => collectVitestReport(r, priv, { runExitCode: 0 })).toThrow(VitestReportError);
+  }, 60_000);
+
+  it('a -t filter is recorded and refused (Vitest reports the other tests skipped, not absent)', () => {
+    const out = join(dir, 'fails-t.json');
     expect(runVitest(reporter, out, ['-t', 'syn-a'])).toBe(0);
-    const vt = collectVitestReport(JSON.parse(readFileSync(out, 'utf8')), undefined, {
-      runExitCode: 0,
-      checkoutRoot: repoRoot,
-    });
-    expect(statusById(vt.observations).get('syn-b')).toBe('STALE-BINDING');
-    expect(reconcileInventory(inventory(), vt.observations, new Set(['vitest']), known).untrusted).toEqual([]);
+    const r = read(out);
+    expect(r.reaudit.run.filters.join(' ')).toContain('syn-a');
+    expect(() => collectVitestReport(r, undefined, { runExitCode: 0 })).toThrow(/syn-a/);
+  }, 60_000);
+
+  it('a run without CI allows .only, and is refused', () => {
+    const out = join(dir, 'fails-noci.json');
+    expect(runVitest(reporter, out, [], { ci: false })).toBe(0);
+    const r = read(out);
+    expect(r.reaudit.run.allowOnly).toBe(true);
+    expect(() => collectVitestReport(r, undefined, { runExitCode: 0 })).toThrow(/only/);
   }, 60_000);
 });

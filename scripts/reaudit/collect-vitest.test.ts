@@ -8,8 +8,15 @@ import { statusById } from './status';
 
 type Assertion = { ancestorTitles: string[]; title: string; status: string; fails?: boolean };
 
+type RunInfo = { filters: string[]; allowOnly: boolean; modules: string[] };
+
+/**
+ * `reaudit.run` is what the reporter records about the run: active filters, whether `.only` was allowed,
+ * and every test file Vitest's own glob selects. Unless a test overrides it, `modules` follows the
+ * report's files (a complete run), so tests that add files stay complete.
+ */
 function vitestJson(assertions: Assertion[]): {
-  reaudit: typeof VITEST_REPORT_MARKER;
+  reaudit: typeof VITEST_REPORT_MARKER & { run: RunInfo };
   numTotalTests: number;
   success: boolean;
   testResults: {
@@ -19,14 +26,24 @@ function vitestJson(assertions: Assertion[]): {
     assertionResults: (Assertion & { fullName: string })[];
   }[];
 } {
-  return {
-    reaudit: VITEST_REPORT_MARKER,
+  const report = {
+    reaudit: {
+      ...VITEST_REPORT_MARKER,
+      run: {
+        filters: [] as string[],
+        allowOnly: false,
+        get modules(): string[] {
+          return report.testResults.map((r) => r.name);
+        },
+      } as RunInfo,
+    },
     numTotalTests: assertions.length,
     success: true,
     testResults: [
       {
         name: '/abs/tests/synthetic.test.ts',
         status: 'passed',
+        message: undefined as string | undefined,
         assertionResults: assertions.map((a) => ({
           ...a,
           fails: a.fails ?? false,
@@ -35,6 +52,7 @@ function vitestJson(assertions: Assertion[]): {
       },
     ],
   };
+  return report;
 }
 
 describe('collectVitest', () => {
@@ -298,5 +316,79 @@ describe('collectVitest: test.fails and the reaudit reporter', () => {
     const j = vitestJson([{ ancestorTitles: ['s'], title: 'x [finding:syn-a]', status: 'passed' }]);
     delete (j.testResults[0]!.assertionResults[0] as { fails?: boolean }).fails;
     expect(() => collectVitest(j)).toThrow(VitestReportError);
+  });
+});
+
+// Evidence comes only from a COMPLETE, UNFILTERED run (canonical.ts). The reaudit reporter records the
+// run's active filters, whether `.only` was allowed, and every test file Vitest's glob selects; the
+// collector refuses a report that is filtered or does not hold every one of those files.
+describe('collectVitestReport: only a complete, unfiltered run is evidence', () => {
+  const twoFiles = (bStatus = 'passed') => {
+    const j = vitestJson([{ ancestorTitles: ['security'], title: 'denies cross-org read', status: 'passed' }]);
+    j.testResults[0]!.name = '/abs/tests/a.test.ts';
+    j.testResults.push({
+      name: '/abs/tests/b.test.ts',
+      status: bStatus,
+      message: undefined,
+      assertionResults: [
+        {
+          ancestorTitles: ['security'],
+          title: 'denies cross-org read',
+          status: bStatus,
+          fails: false,
+          fullName: 'security denies cross-org read',
+        },
+      ],
+    });
+    return j;
+  };
+  const priv = new Map([['security denies cross-org read', ['syn-private']]]);
+
+  it('Codex r15: the same private full name in two files, one file omitted from the run → refused', () => {
+    const j = twoFiles();
+    j.testResults.pop();
+    j.reaudit.run = { ...j.reaudit.run, modules: ['/abs/tests/a.test.ts', '/abs/tests/b.test.ts'] };
+    expect(() => collectVitestReport(j, priv, { runExitCode: 0 })).toThrow(/b\.test\.ts/);
+    expect(() => collectVitestReport(j, priv, { runExitCode: 0 })).toThrow(VitestReportError);
+  });
+
+  it('control: both files in the run, the omitted one failing → REGRESSED (a sibling pass cannot mask it)', () => {
+    const vt = collectVitestReport(twoFiles('failed'), priv, { runExitCode: 1 });
+    expect(statusById(vt.observations).get('syn-private')).toBe('REGRESSED');
+  });
+
+  it('a file in the report that Vitest’s glob did not select is refused too (the counts must reconcile)', () => {
+    const j = twoFiles();
+    j.reaudit.run = { ...j.reaudit.run, modules: ['/abs/tests/a.test.ts'] };
+    expect(() => collectVitestReport(j, priv, { runExitCode: 0 })).toThrow(VitestReportError);
+  });
+
+  it('the same file run by two projects must appear twice (a multiset, not a set)', () => {
+    const j = twoFiles();
+    j.reaudit.run = {
+      ...j.reaudit.run,
+      modules: ['/abs/tests/a.test.ts', '/abs/tests/a.test.ts', '/abs/tests/b.test.ts'],
+    };
+    expect(() => collectVitestReport(j, priv, { runExitCode: 0 })).toThrow(VitestReportError);
+  });
+
+  it('a run with any active filter is refused, naming it', () => {
+    for (const filter of ['-t syn-a', 'files tests/a.test.ts', '--project node', '--shard 1/2']) {
+      const j = twoFiles();
+      j.reaudit.run = { ...j.reaudit.run, filters: [filter] };
+      expect(() => collectVitestReport(j, priv, { runExitCode: 0 })).toThrow(filter);
+    }
+  });
+
+  it('a run that allowed `.only` is refused (record.ts sets CI=true, which makes Vitest refuse .only)', () => {
+    const j = twoFiles();
+    j.reaudit.run = { ...j.reaudit.run, allowOnly: true };
+    expect(() => collectVitestReport(j, priv, { runExitCode: 0 })).toThrow(/only/);
+  });
+
+  it('a report without the run record (an older reaudit reporter) is refused', () => {
+    const j = twoFiles() as unknown as { reaudit: Record<string, unknown> };
+    delete j.reaudit.run;
+    expect(() => collectVitestReport(j, priv, { runExitCode: 0 })).toThrow(VitestReportError);
   });
 });

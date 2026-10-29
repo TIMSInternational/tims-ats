@@ -12,21 +12,31 @@
  *   REAUDIT_FINDINGS (required) · REAUDIT_OUT_DIR (required) · REAUDIT_BINDINGS · REAUDIT_WP_INDEX ·
  *   REAUDIT_OWNER_CHECKS_DIR (required with --with-owner-checks).
  *
- * Evidence must be of HEAD. Every input must be produced through scripts/reaudit/record.ts, which writes
- * a provenance manifest (tested git SHA, dirty flag, exit status, checkout root, SHA-256 of each report). An input with
- * no manifest, a manifest naming another commit, or a report whose bytes no longer match is refused
- * (exit 2); the collectors parse the exact bytes that were verified. --vitest-exit must equal the
- * recorded vitest exit status. --gate launch also refuses evidence recorded on a dirty checkout and a
- * current checkout with uncommitted or untracked (not ignored) files. Evidence inputs, like every other
- * private path, must be outside every checkout of the repository (exit 2). Provenance guards against stale or
- * copied evidence; it is not a signature against a hand-forged manifest.
+ * THE GUARANTEE. Evidence must come from a full, unfiltered run at the recorded SHA on a clean tree; a
+ * finding is FIXED-VERIFIED only if every check bound to it passed in that run.
+ *
+ * Every input must be produced through scripts/reaudit/record.ts, which runs the one canonical full-suite
+ * command per kind (canonical.ts) and writes a provenance manifest (argv, tested git SHA, dirty flag, exit
+ * status, checkout root, SHA-256 of each report). An input with no manifest, a manifest naming another
+ * commit or a non-canonical command, or a report whose bytes no longer match is refused (exit 2); the
+ * collectors parse the exact bytes that were verified. A report that shows a filtered or incomplete run
+ * is refused too (exit 2): Vitest (via the reaudit reporter) must show no active filter, `.only` not
+ * allowed, and exactly the files its glob selects; Playwright must show forbidOnly, no shard, no
+ * grepInvert, and a test from every configured project. --vitest-exit must equal the recorded vitest exit
+ * status. --gate launch also refuses evidence recorded on a dirty checkout and a current checkout with
+ * uncommitted or untracked (not ignored) files. Evidence inputs, like every other private path, must be
+ * outside every checkout of the repository (exit 2).
+ *
+ * NOT PROVABLE here: a hand-forged manifest and report (provenance is not a signature); tests excluded by
+ * COMMITTED configuration (vitest include/exclude, Playwright testMatch/testIgnore/grep in config, a
+ * committed .runsettings or Directory.Build.props filter); and, for .NET, completeness beyond the
+ * canonical argv and the exit status (a TRX does not record the command or the project list).
  *
  * An untrusted run turns every FIXED-VERIFIED from every source into NOT-RUN and fails --gate launch
- * (exit 1): a public check the committed source declares (a `[finding:<id>]` / `@finding:<id>` tag, see
- * inventory.ts) that the evidence does not show, or a tag the source scan cannot attribute; a Playwright run with an unexpected outcome in a test that has no @finding tag (a
- * `test.fail()` test that fails is expected), a global error, or a non-zero
- * exit its report does not explain; and ANY failed Vitest or .NET run (their reports cannot attribute
- * every failure: unhandled errors, files that fail to load, projects that write no TRX).
+ * (exit 1): a Playwright run with an unexpected outcome in a test that has no @finding tag (a
+ * `test.fail()` test that fails is expected), a global error, or a non-zero exit its report does not
+ * explain; and ANY failed Vitest or .NET run (their reports cannot attribute every failure: unhandled
+ * errors, files that fail to load, projects that write no TRX).
  *
  * Exit codes: 0 ok / gate passed · 1 gate failed · 2 cannot run (missing or invalid input, refused
  * path). Every unexpected error is exit 2: this tool fails closed.
@@ -42,8 +52,6 @@ import { collectXunitRun } from './collect-xunit';
 import { evidenceDrift, type EvidenceDrift } from './evidence-drift';
 import { loadFindings } from './findings-source';
 import { readGitState } from './git-state';
-import { readInventory, reconcileInventory, type BindingInventory } from './inventory';
-import type { InventorySource } from './inventory-scan';
 import { assertOutsideRepo } from './paths';
 import { manifestPathFor, verifyProvenance, type EvidenceKind, type VerifiedEvidence } from './provenance';
 import { buildReport, launchGate, loadWpIndex, writeReport } from './report';
@@ -58,8 +66,6 @@ export interface CliContext {
   now: Date;
   log: (s: string) => void;
   err: (s: string) => void;
-  /** The public bindings the committed source declares at `sha` (inventory.ts). Throws if unreadable. */
-  readInventory: (sha: string) => BindingInventory;
 }
 
 interface CliArgs {
@@ -183,7 +189,6 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   if (pwEv && args.playwright) {
     const pw = collectPlaywrightReport(parseJson(pwEv, args.playwright, '--playwright'), {
       runExitCode: pwEv.manifest.exitCode,
-      checkoutRoot: pwEv.manifest.checkoutRoot,
     });
     observations.push(...pw.observations);
     untrusted.push(...pw.untrusted);
@@ -191,7 +196,6 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   if (vtEv && args.vitest) {
     const vt = collectVitestReport(parseJson(vtEv, args.vitest, '--vitest'), nameBindings(bindings, 'vitest'), {
       runExitCode: vtEv.manifest.exitCode,
-      checkoutRoot: vtEv.manifest.checkoutRoot,
     });
     observations.push(...vt.observations);
     untrusted.push(...vt.untrusted);
@@ -205,20 +209,6 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
     observations.push(...xu.observations);
     untrusted.push(...xu.untrusted);
   }
-  // Every public check the source declares must be in the evidence: a filtered or partial run cannot
-  // let a sibling's pass stand for a check that never ran (inventory.ts).
-  const supplied = new Set<InventorySource>();
-  if (pwEv) supplied.add('playwright');
-  if (vtEv) supplied.add('vitest');
-  if (trxEv) supplied.add('xunit');
-  const inv = reconcileInventory(
-    ctx.readInventory(ctx.headSha),
-    observations,
-    supplied,
-    new Set(findings.map((f) => f.id)),
-  );
-  observations.push(...inv.observations);
-  untrusted.push(...inv.untrusted);
   if (checksDir) {
     const ids = ownerCheckIds(checksDir, bindings.ownerChecks, new Set(findings.map((f) => f.id)));
     observations.push(...runOwnerChecks({ enabled: true, checksDir, ids }));
@@ -289,14 +279,9 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
 }
 
 /** The git part of main()'s context, read with the real git binary (see git-state.ts). */
-export function gitContext(cwd: string): Pick<CliContext, 'repoRoot' | 'headSha' | 'dirtyPaths' | 'readInventory'> {
+export function gitContext(cwd: string): Pick<CliContext, 'repoRoot' | 'headSha' | 'dirtyPaths'> {
   const s = readGitState(cwd);
-  return {
-    repoRoot: s.repoRoot,
-    headSha: s.headSha,
-    dirtyPaths: s.dirtyPaths,
-    readInventory: (sha) => readInventory(s.repoRoot, sha),
-  };
+  return { repoRoot: s.repoRoot, headSha: s.headSha, dirtyPaths: s.dirtyPaths };
 }
 
 // No top-level await: tsx runs this package as CommonJS.

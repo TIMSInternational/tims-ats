@@ -37,7 +37,14 @@ function report(tests: Entry[], nested = false) {
   const specs = tests.map((t, i) => ({ title: `step ${i}`, tags: t.tags, tests: [t.test] }));
   const inner = { title: 'J1 journey', file: 'recruiter/j1.spec.ts', specs, suites: [] };
   return {
-    config: {},
+    // What the canonical run reports: forbidOnly on (record.ts sets CI=true), no shard, no grepInvert,
+    // and every configured project ran at least one test.
+    config: {
+      forbidOnly: true,
+      shard: null as unknown,
+      grepInvert: null as unknown,
+      projects: [...new Set(tests.map((t) => t.test.projectName))].map((name) => ({ name })),
+    },
     suites: nested ? [{ title: 'recruiter/j1.spec.ts', specs: [], suites: [inner] }] : [inner],
     errors: [],
     stats: {},
@@ -414,5 +421,48 @@ describe('collectPlaywright: expected failures (test.fail())', () => {
       ]);
       expect(statusById(collectPlaywright(r)).get('syn-a')).not.toBe('FIXED-VERIFIED');
     }
+  });
+});
+
+// Evidence comes only from a COMPLETE, UNFILTERED run (canonical.ts). Where the JSON report shows how
+// the run was configured, a run that could have left a bound test out is refused.
+describe('collectPlaywrightReport: only a complete, unfiltered run is evidence', () => {
+  const passing = () =>
+    report([testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] })]);
+
+  it('control: the canonical configuration is accepted', () => {
+    expect(statusById(collectPlaywright(passing())).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('a run without forbidOnly (so `.only` could have narrowed it) is refused', () => {
+    for (const forbidOnly of [false, undefined]) {
+      const r = passing();
+      (r.config as Record<string, unknown>).forbidOnly = forbidOnly;
+      expect(() => collectPlaywright(r)).toThrow(/forbidOnly/);
+    }
+  });
+
+  it('a sharded run is refused', () => {
+    const r = passing();
+    r.config.shard = { current: 1, total: 2 };
+    expect(() => collectPlaywright(r)).toThrow(/shard/);
+  });
+
+  it('a run with grepInvert is refused', () => {
+    const r = passing();
+    r.config.grepInvert = [{ s: 'syn' }];
+    expect(() => collectPlaywright(r)).toThrow(/grepInvert/);
+  });
+
+  it('a configured project that ran no test (a --project filter, or a project left out) is refused', () => {
+    const r = passing();
+    r.config.projects.push({ name: 'candidate' });
+    expect(() => collectPlaywright(r)).toThrow(/candidate/);
+  });
+
+  it('a report without the run configuration is refused', () => {
+    const r: Record<string, unknown> = passing();
+    delete r.config;
+    expect(() => collectPlaywright(r)).toThrow(PlaywrightReportError);
   });
 });

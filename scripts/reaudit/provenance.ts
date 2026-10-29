@@ -1,20 +1,23 @@
 /**
- * Evidence provenance: which commit a report was produced from.
+ * Evidence provenance: which commit, and which command, a report was produced from.
  *
- * The evidence-producing step (scripts/reaudit/record.ts) wraps the test command and, after it exits,
- * writes a manifest next to the report: the git SHA the run started and ended at (the same, or no
- * manifest is written), whether the checkout was dirty (untracked files included), the run's exit status,
- * the absolute checkout root (report file paths are resolved against it), and a SHA-256 of every report file. The collector accepts a report only when its manifest names the
- * current HEAD and every hash still matches, and it parses the exact bytes it hashed.
+ * The evidence-producing step (scripts/reaudit/record.ts) runs the canonical full-suite command
+ * (canonical.ts) and, after it exits, writes a manifest next to the report: the exact argv it ran, the
+ * git SHA the run started and ended at (the same, or no manifest is written), whether the checkout was
+ * dirty (untracked files included), the run's exit status, the absolute checkout root, and a SHA-256 of
+ * every report file. The collector accepts a report only when its manifest names the current HEAD, its
+ * argv is the canonical command writing to this very evidence path, and every hash still matches; it
+ * parses the exact bytes it hashed.
  *
  * File timestamps play no part. What this proves: the report bytes are the ones a recorded run wrote,
- * and that run started and ended at the named commit. What it does not prove: it is not a signature.
- * Someone who hand-writes a manifest can lie in it; the manifest guards against stale or copied
- * evidence, not against forgery.
+ * and that run was the canonical, unfiltered command and started and ended at the named commit. What it
+ * does not prove: it is not a signature. Someone who hand-writes a manifest can lie in it (including the
+ * argv); the manifest guards against stale, copied or filtered evidence, not against forgery.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
+import { canonicalOutput } from './canonical';
 import { z } from 'zod';
 import { FULL_SHA_RE } from './git-state';
 
@@ -40,12 +43,15 @@ const MAX_LISTED_DIRTY = 200;
 
 const manifestSchema = z
   .object({
-    version: z.literal(1),
+    /** 2: the manifest records the argv. Version-1 manifests (no argv) are refused: re-record. */
+    version: z.literal(2),
     kind: z.enum(['playwright', 'vitest', 'xunit']),
     headSha: z.string().regex(FULL_SHA_RE),
     dirty: z.boolean(),
     dirtyPaths: z.array(z.string().min(1).max(4096)).max(MAX_LISTED_DIRTY),
     exitCode: z.number().int().min(0).max(255),
+    /** The exact command record.ts ran; must be the canonical full-suite command (canonical.ts). */
+    argv: z.array(z.string().max(4096)).min(1).max(64),
     /** Absolute toplevel of the checkout the run happened in: report paths are resolved against it. */
     checkoutRoot: z.string().min(1).max(4096).refine(isAbsolute, { message: 'checkoutRoot must be absolute' }),
     recordedAt: z.string().datetime(),
@@ -73,6 +79,14 @@ function dirReportFiles(dir: string): string[] {
   return names;
 }
 
+function samePath(a: string, b: string): boolean {
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return false;
+  }
+}
+
 function readRegularFile(p: string): Buffer {
   const st = lstatSync(p);
   if (st.isSymbolicLink() || !st.isFile()) throw new ProvenanceError(`evidence must be a regular file: ${p}`);
@@ -87,6 +101,8 @@ export interface WriteProvenanceInput {
   exitCode: number;
   /** Absolute toplevel of the checkout the run happened in. */
   checkoutRoot: string;
+  /** The exact command that ran. */
+  argv: readonly string[];
 }
 
 /** Hashes the report(s) at `output` and writes the manifest. Never overwrites an existing manifest. */
@@ -96,13 +112,14 @@ export function writeProvenance(input: WriteProvenanceInput): ProvenanceManifest
   const base = isDirKind(kind) ? output : join(output, '..');
   if (names.length === 0) throw new ProvenanceError(`no report files in ${output}`);
   const manifest = manifestSchema.parse({
-    version: 1,
+    version: 2,
     kind,
     headSha: input.headSha,
     dirty: input.dirtyPaths.length > 0,
     dirtyPaths: input.dirtyPaths.slice(0, MAX_LISTED_DIRTY),
     exitCode: input.exitCode,
     checkoutRoot: input.checkoutRoot,
+    argv: [...input.argv],
     recordedAt: new Date().toISOString(),
     files: names.map((name) => ({ name, sha256: sha256(readRegularFile(join(base, name))) })),
   });
@@ -154,6 +171,16 @@ export function verifyProvenance(input: VerifyProvenanceInput): VerifiedEvidence
     throw new ProvenanceError(
       `evidence was produced at ${m.headSha}, HEAD is ${headSha}, so it is not evidence of HEAD: ${evidence}`,
     );
+  }
+  const ranOutput = canonicalOutput(kind, m.argv);
+  if (ranOutput === undefined) {
+    throw new ProvenanceError(
+      `${mPath} records a command that is not the canonical full-suite ${kind} run (a filtered or partial run ` +
+        `cannot show that every bound check ran): ${JSON.stringify(m.argv)}`,
+    );
+  }
+  if (ranOutput !== '' && !samePath(ranOutput, evidence)) {
+    throw new ProvenanceError(`${mPath} records a run that wrote ${ranOutput}, not ${evidence}`);
   }
   if (input.requireClean && m.dirty) {
     throw new ProvenanceError(

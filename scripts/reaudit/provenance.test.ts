@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, realpathSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { canonicalArgv } from './canonical';
 import { manifestPathFor, ProvenanceError, verifyProvenance, writeProvenance } from './provenance';
 
 // Provenance replaces the old "report is newer than HEAD's commit time" heuristic. The step that runs the
@@ -30,6 +31,7 @@ function fileEvidence(kind: 'playwright' | 'vitest' = 'vitest', over: Partial<{ 
     dirtyPaths: over.dirty ?? [],
     exitCode: 0,
     checkoutRoot: '/abs/repo',
+    argv: canonicalArgv(kind, p),
   });
   return p;
 }
@@ -39,7 +41,15 @@ function trxEvidence() {
   mkdirSync(d);
   writeFileSync(join(d, 'a.trx'), '<a/>');
   writeFileSync(join(d, 'b.trx'), '<b/>');
-  writeProvenance({ kind: 'xunit', output: d, headSha: HEAD, dirtyPaths: [], exitCode: 0, checkoutRoot: '/abs/repo' });
+  writeProvenance({
+    kind: 'xunit',
+    output: d,
+    headSha: HEAD,
+    dirtyPaths: [],
+    exitCode: 0,
+    checkoutRoot: '/abs/repo',
+    argv: canonicalArgv('xunit', d),
+  });
   return d;
 }
 
@@ -185,7 +195,59 @@ describe('writeProvenance', () => {
   it('never overwrites an existing manifest (a stale manifest cannot be silently refreshed)', () => {
     const p = fileEvidence();
     expect(() =>
-      writeProvenance({ kind: 'vitest', output: p, headSha: HEAD, dirtyPaths: [], exitCode: 0, checkoutRoot: '/r' }),
+      writeProvenance({
+        kind: 'vitest',
+        output: p,
+        headSha: HEAD,
+        dirtyPaths: [],
+        exitCode: 0,
+        checkoutRoot: '/r',
+        argv: canonicalArgv('vitest', p),
+      }),
     ).toThrow();
+  });
+});
+
+describe('verifyProvenance: only evidence from the canonical full-suite command', () => {
+  const rewrite = (m: string, over: Record<string, unknown>) => {
+    const good = JSON.parse(readFileSync(m, 'utf8')) as Record<string, unknown>;
+    writeFileSync(m, JSON.stringify({ ...good, ...over }));
+  };
+
+  it('a manifest whose recorded argv is filtered is refused, for every kind', () => {
+    const vt = fileEvidence('vitest');
+    rewrite(manifestPathFor(vt, 'vitest'), { argv: [...canonicalArgv('vitest', vt), 'tests/a.test.ts'] });
+    expect(() => verifyProvenance({ kind: 'vitest', evidence: vt, headSha: HEAD, requireClean: true })).toThrow(
+      /canonical/,
+    );
+    const pw = fileEvidence('playwright');
+    rewrite(manifestPathFor(pw, 'playwright'), { argv: [...canonicalArgv('playwright', pw), '--grep', 'x'] });
+    expect(() => verifyProvenance({ kind: 'playwright', evidence: pw, headSha: HEAD, requireClean: true })).toThrow(
+      /canonical/,
+    );
+    const tx = trxEvidence();
+    rewrite(manifestPathFor(tx, 'xunit'), { argv: [...canonicalArgv('xunit', tx), '--filter', 'X'] });
+    expect(() => verifyProvenance({ kind: 'xunit', evidence: tx, headSha: HEAD, requireClean: true })).toThrow(
+      /canonical/,
+    );
+  });
+
+  it('a manifest whose canonical argv wrote somewhere else is refused (the evidence is not that run’s output)', () => {
+    const vt = fileEvidence('vitest');
+    rewrite(manifestPathFor(vt, 'vitest'), { argv: canonicalArgv('vitest', join(dir, 'other.json')) });
+    expect(() => verifyProvenance({ kind: 'vitest', evidence: vt, headSha: HEAD, requireClean: true })).toThrow(
+      /other\.json/,
+    );
+  });
+
+  it('a manifest without an argv (recorded before this rule, version 1) is refused', () => {
+    const vt = fileEvidence('vitest');
+    const m = manifestPathFor(vt, 'vitest');
+    const good = JSON.parse(readFileSync(m, 'utf8')) as Record<string, unknown>;
+    delete good.argv;
+    writeFileSync(m, JSON.stringify({ ...good, version: 1 }));
+    expect(() => verifyProvenance({ kind: 'vitest', evidence: vt, headSha: HEAD, requireClean: true })).toThrow(
+      ProvenanceError,
+    );
   });
 });

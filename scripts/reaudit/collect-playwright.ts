@@ -21,6 +21,13 @@
  * An UNEXPECTED outcome is Playwright's own notion: the final status differs from `expectedStatus`
  * (a `test.fail()` test that fails is expected; one that passes, or times out, is not).
  *
+ * ONLY A COMPLETE, UNFILTERED RUN IS EVIDENCE. The argv is pinned by canonical.ts; where the report shows
+ * the run's configuration, the collector refuses one that could have left a bound test out:
+ * `config.forbidOnly` must be true (record.ts sets CI=true, which the repo config turns into forbidOnly,
+ * so `.only` fails the run), `config.shard` and `config.grepInvert` must be null, and every configured
+ * project must have run at least one test. `config.grep` is serialised as `{}` whatever it is, so a grep
+ * set in COMMITTED config cannot be seen here; the CLI's --grep is refused by the argv check.
+ *
  * UNTRUSTED RUN. The report is untrusted when (a) any test with NO finding tag had an unexpected outcome
  * (its binding cannot be determined, so it may be the check for any id), (b) the report has top-level
  * `errors` (global setup/teardown), or (c) the run's exit status is non-zero and no unexpected outcome
@@ -29,8 +36,7 @@
  * unexpected outcome is a contradiction and rejects the report.
  */
 import { z } from 'zod';
-import { posix } from 'node:path';
-import { repoRelative, SLUG_RE, type Collection, type Observation, type ObservedStatus } from './status';
+import { SLUG_RE, type Collection, type Observation, type ObservedStatus } from './status';
 
 export class PlaywrightReportError extends Error {
   constructor(message: string) {
@@ -53,8 +59,6 @@ const testSchema = z.object({
 });
 const specSchema = z.object({
   title: z.string().max(2000),
-  /** Relative to the Playwright config's rootDir. Optional: without it no inventory entry can match. */
-  file: z.string().max(4096).optional(),
   tags: z.array(z.string().max(500)).max(200),
   tests: z.array(testSchema),
 });
@@ -74,9 +78,15 @@ const suiteSchema: z.ZodType<Suite> = z.lazy(() =>
 );
 
 const globalErrorSchema = z.object({ message: z.string().max(20000).optional() });
-/** `config.rootDir` (absolute, at the time of the run): `spec.file` is relative to it. */
+/** The run's configuration, as far as the JSON reporter writes it (see the header). */
+const configSchema = z.object({
+  forbidOnly: z.boolean(),
+  shard: z.unknown(),
+  grepInvert: z.unknown(),
+  projects: z.array(z.object({ name: z.string().max(200) })).max(100),
+});
 const reportSchema = z.object({
-  config: z.object({ rootDir: z.string().max(4096).optional() }).optional(),
+  config: configSchema,
   suites: z.array(suiteSchema),
   errors: z.array(globalErrorSchema),
 });
@@ -123,8 +133,8 @@ interface Walked {
   /** Tests with an unexpected outcome and no finding tag. */
   unboundFailures: string[];
   anyUnexpected: boolean;
-  checkoutRoot?: string;
-  rootDir?: string;
+  /** Projects that ran at least one test. */
+  projectsRun: Set<string>;
 }
 
 function statusFor(
@@ -142,9 +152,9 @@ function statusFor(
   return 'NOT-RUN';
 }
 
-/** `titlePath[0]` is the file suite's title; the key name is the path below it (see inventory-scan.ts). */
 function collectTest(spec: PwSpec, test: PwTest, titlePath: string[], acc: Walked): void {
   const name = [test.projectName ? `[${test.projectName}]` : '', titlePath.join(' › ')].filter(Boolean).join(' ');
+  acc.projectsRun.add(test.projectName ?? '');
   const ids = taggedIds(spec, name);
   const last = [...test.results].sort((a, b) => b.retry - a.retry)[0];
   const expected = test.expectedStatus ?? 'passed';
@@ -164,10 +174,8 @@ function collectTest(spec: PwSpec, test: PwTest, titlePath: string[], acc: Walke
   }
   const finalAnnotations = findingAnnotations([...(test.annotations ?? []), ...(last?.annotations ?? [])], name);
   const evidence = new Set(finalAnnotations.map((a) => `${a.type}\u0000${a.id}`));
-  const abs = acc.rootDir && spec.file ? posix.join(acc.rootDir.replace(/\\/g, '/'), spec.file) : undefined;
-  const key = { file: repoRelative(acc.checkoutRoot, abs), name: titlePath.slice(1).join(' › ') };
   for (const id of ids) {
-    acc.observations.push({ id, status: statusFor(id, last, test, evidence), source: 'playwright', test: name, key });
+    acc.observations.push({ id, status: statusFor(id, last, test, evidence), source: 'playwright', test: name });
   }
 
   // `requires()` names a dependency, not the test's own binding: it is never a pass.
@@ -188,10 +196,7 @@ function walk(suite: Suite, parents: string[], acc: Walked): void {
 
 export type PlaywrightCollection = Collection;
 
-export function collectPlaywrightReport(
-  raw: unknown,
-  opts: { runExitCode?: number; checkoutRoot?: string } = {},
-): PlaywrightCollection {
+export function collectPlaywrightReport(raw: unknown, opts: { runExitCode?: number } = {}): PlaywrightCollection {
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
@@ -199,14 +204,20 @@ export function collectPlaywrightReport(
       `not a Playwright JSON report (${first ? `${first.path.join('.') || '(root)'}: ${first.message}` : 'invalid'})`,
     );
   }
-  const acc: Walked = {
-    observations: [],
-    unboundFailures: [],
-    anyUnexpected: false,
-    checkoutRoot: opts.checkoutRoot,
-    rootDir: parsed.data.config?.rootDir,
-  };
+  const { config } = parsed.data;
+  if (!config.forbidOnly) {
+    throw new PlaywrightReportError(
+      'the Playwright run did not have forbidOnly, so .only may have narrowed it; record it with CI=true (record.ts)',
+    );
+  }
+  if (config.shard !== null) throw new PlaywrightReportError('a sharded Playwright run is not evidence');
+  if (config.grepInvert !== null) throw new PlaywrightReportError('a Playwright run with grepInvert is not evidence');
+  const acc: Walked = { observations: [], unboundFailures: [], anyUnexpected: false, projectsRun: new Set() };
   for (const suite of parsed.data.suites) walk(suite, [], acc);
+  const idle = config.projects.map((p) => p.name).filter((n) => !acc.projectsRun.has(n));
+  if (idle.length) {
+    throw new PlaywrightReportError(`configured Playwright projects ran no test (not a full run): ${idle.join(', ')}`);
+  }
 
   const untrusted: string[] = acc.unboundFailures.map(
     (t) => `playwright: ${t}: an unexpected outcome in a test with no @finding tag`,

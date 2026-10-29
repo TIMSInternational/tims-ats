@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitContext, runCli } from './cli';
 import { VITEST_REPORT_MARKER } from './collect-vitest';
-import type { BindingInventory } from './inventory';
+import { canonicalArgv } from './canonical';
 import { manifestPathFor, writeProvenance, type EvidenceKind } from './provenance';
 
 // `pnpm exec tsx scripts/reaudit/cli.ts --playwright <json> --vitest <json> --trx <dir>
@@ -30,9 +30,6 @@ let root: string;
 let repo: string;
 let priv: string;
 let lines: string[];
-/** What the injected source scan returns (the real one reads git; see the real-git suite). */
-let inventory: BindingInventory;
-let inventorySha: string | undefined;
 
 const finding = (id: string, severity = 'P1') => ({
   id,
@@ -52,8 +49,14 @@ const finding = (id: string, severity = 'P1') => ({
   verification: null,
 });
 
+/** A complete, unfiltered run as the reaudit reporter records it (see collect-vitest.ts). */
+const vitestRun = (modules: string[], filters: string[] = []) => ({
+  ...VITEST_REPORT_MARKER,
+  run: { filters, allowOnly: false, modules },
+});
+
 const vitestJson = (status: string) => ({
-  reaudit: VITEST_REPORT_MARKER,
+  reaudit: vitestRun(['/abs/synthetic.test.ts']),
   numTotalTests: 1,
   success: status === 'passed',
   testResults: [
@@ -73,7 +76,14 @@ const vitestJson = (status: string) => ({
   ],
 });
 
-const playwrightJson = { config: {}, suites: [], errors: [], stats: {} };
+/** The run configuration the canonical Playwright run reports (see collect-playwright.ts). */
+const pwConfig = (projects: string[] = []) => ({
+  forbidOnly: true,
+  shard: null,
+  grepInvert: null,
+  projects: projects.map((name) => ({ name })),
+});
+const playwrightJson = { config: pwConfig(), suites: [], errors: [], stats: {} };
 
 const trx = `<?xml version="1.0" encoding="utf-8"?>
 <TestRun id="r" name="s" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
@@ -89,7 +99,7 @@ const OLD = 'fedcba9876543210fedcba9876543210fedcba98';
 function stamp(
   kind: EvidenceKind,
   output: string,
-  over: { sha?: string; exitCode?: number; dirtyPaths?: string[] } = {},
+  over: { sha?: string; exitCode?: number; dirtyPaths?: string[]; argv?: string[] } = {},
 ): void {
   rmSync(manifestPathFor(output, kind), { force: true });
   writeProvenance({
@@ -99,6 +109,7 @@ function stamp(
     exitCode: over.exitCode ?? 0,
     dirtyPaths: over.dirtyPaths ?? [],
     checkoutRoot: '/abs',
+    argv: over.argv ?? canonicalArgv(kind, output),
   });
 }
 
@@ -131,10 +142,6 @@ function ctx(e: Record<string, string | undefined>, over: { dirtyPaths?: string[
     now: new Date('2026-10-28T12:00:00Z'),
     log: (s: string) => lines.push(s),
     err: (s: string) => lines.push(s),
-    readInventory: (sha: string) => {
-      inventorySha = sha;
-      return inventory;
-    },
   };
 }
 
@@ -145,8 +152,6 @@ beforeEach(() => {
   mkdirSync(repo, { recursive: true });
   mkdirSync(priv, { recursive: true });
   lines = [];
-  inventory = { sha: HEAD, entries: [], unattributable: [] };
-  inventorySha = undefined;
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -421,142 +426,6 @@ describe('gitContext + runCli (real git)', () => {
     writeFileSync(join(gitRepo, 'ignored', 'results.json'), '{}');
     expect(await run()).toBe(0);
   });
-
-  const commitChecks = (files: Record<string, string>) => {
-    for (const [name, body] of Object.entries(files)) writeFileSync(join(gitRepo, name), body);
-    g('add', '.');
-    g('commit', '-q', '-m', 'checks');
-  };
-
-  it('REGRESSION (Codex r11): a committed [finding:syn-a] check omitted from the evidence → gate 1, even though its sibling passed', async () => {
-    commitChecks({
-      'synthetic.test.ts': "describe('s', () => {\n  it('ideal holds [finding:syn-a]', () => {});\n});\n",
-      'other.test.ts': "describe('s', () => {\n  it('second check [finding:syn-a]', () => {});\n});\n",
-    });
-    expect(await run()).toBe(1);
-    const out = lines.join('\n');
-    expect(out).toContain('other.test.ts:2');
-    const report = JSON.parse(readFileSync(lines.find((l) => l.endsWith('.json'))!.replace('report: ', ''), 'utf8'));
-    expect(report.rows[0].status).toBe('NOT-RUN');
-  });
-
-  it('control: when the only committed check is the one recorded, the gate passes (0)', async () => {
-    commitChecks({
-      'synthetic.test.ts': "describe('s', () => {\n  it('ideal holds [finding:syn-a]', () => {});\n});\n",
-    });
-    expect(await run()).toBe(0);
-  });
-});
-
-describe('runCli — the binding inventory', () => {
-  const twoChecks = (): BindingInventory => ({
-    sha: HEAD,
-    entries: [
-      {
-        id: 'syn-a',
-        source: 'vitest',
-        file: 'synthetic.test.ts',
-        line: 3,
-        offset: 40,
-        name: 's ideal holds [finding:syn-a]',
-      },
-      {
-        id: 'syn-a',
-        source: 'vitest',
-        file: 'other.test.ts',
-        line: 7,
-        offset: 90,
-        name: 's second check [finding:syn-a]',
-      },
-    ],
-    unattributable: [],
-  });
-
-  it('is read at the verified HEAD sha', async () => {
-    const { pw, vt, trxDir } = inputs('passed');
-    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(0);
-    expect(inventorySha).toBe(HEAD);
-  });
-
-  it('an inventoried check absent from the evidence → the finding is NOT-RUN and --gate launch fails (1)', async () => {
-    inventory = twoChecks();
-    const { pw, vt, trxDir } = inputs('passed');
-    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(1);
-    expect(lines.join('\n')).toMatch(/UNTRUSTED RUN.*other\.test\.ts:7/);
-  });
-
-  it('without --gate the report is still written, with the finding NOT-RUN (exit 0)', async () => {
-    inventory = twoChecks();
-    const { vt } = inputs('passed');
-    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env()))).toBe(0);
-    const report = JSON.parse(readFileSync(lines.find((l) => l.endsWith('.json'))!.replace('report: ', ''), 'utf8'));
-    expect(report.rows[0].status).toBe('NOT-RUN');
-  });
-
-  it('a check in a source that was not supplied keeps the finding NOT-RUN (no FIXED-VERIFIED from a sibling source)', async () => {
-    inventory = {
-      sha: HEAD,
-      entries: [
-        { id: 'syn-a', source: 'xunit', file: 'services/T/A.cs', line: 9, offset: 300, name: 'x [finding:syn-a]' },
-      ],
-      unattributable: [],
-    };
-    const { vt } = inputs('passed');
-    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(env()))).toBe(0);
-    expect(lines.join('\n')).not.toContain('UNTRUSTED RUN');
-    const report = JSON.parse(readFileSync(lines.find((l) => l.endsWith('.json'))!.replace('report: ', ''), 'utf8'));
-    expect(report.rows[0].status).toBe('NOT-RUN');
-  });
-
-  it('a Playwright check is matched through the recorded checkout root and the report rootDir (gate 0)', async () => {
-    inventory = {
-      sha: HEAD,
-      entries: [
-        { id: 'syn-a', source: 'playwright', file: 'e2e/specs/j.spec.ts', line: 2, offset: 30, name: 'J › step' },
-      ],
-      unattributable: [],
-    };
-    const { pw, vt, trxDir } = inputs('passed');
-    const spec = {
-      title: 'step',
-      file: 'specs/j.spec.ts',
-      tags: ['finding:syn-a'],
-      tests: [
-        {
-          projectName: 'p',
-          expectedStatus: 'passed',
-          annotations: [{ type: 'finding-fixed', description: 'syn-a' }],
-          results: [{ retry: 0, status: 'passed' }],
-        },
-      ],
-    };
-    const file = {
-      title: 'specs/j.spec.ts',
-      file: 'specs/j.spec.ts',
-      specs: [],
-      suites: [{ title: 'J', specs: [spec] }],
-    };
-    writeFileSync(pw, JSON.stringify({ ...playwrightJson, config: { rootDir: '/abs/e2e' }, suites: [file] }));
-    stamp('playwright', pw);
-    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(0);
-  });
-
-  it('an unattributable tag occurrence fails --gate launch', async () => {
-    inventory = { sha: HEAD, entries: [], unattributable: ['x.test.ts:4'] };
-    const { pw, vt, trxDir } = inputs('passed');
-    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(1);
-    expect(lines.join('\n')).toContain('x.test.ts:4');
-  });
-
-  it('an inventory that cannot be read → 2 (never treated as empty)', async () => {
-    const { pw, vt, trxDir } = inputs('passed');
-    const c = ctx(env());
-    c.readInventory = () => {
-      throw new Error('git grep failed');
-    };
-    expect(await runCli(all(pw, vt, trxDir), c)).toBe(2);
-    expect(lines.join('\n')).toContain('git grep failed');
-  });
 });
 
 describe('runCli — happy paths', () => {
@@ -605,7 +474,7 @@ describe('runCli — happy paths', () => {
     writeFileSync(
       pw,
       JSON.stringify({
-        config: {},
+        config: pwConfig(['recruiter']),
         suites: [
           {
             title: 'j.spec.ts',
@@ -665,7 +534,15 @@ describe('runCli — happy paths', () => {
 
 describe('runCli — an untrusted Playwright run blocks every pass', () => {
   const pwWith = (pw: string, specs: unknown[]) =>
-    writeFileSync(pw, JSON.stringify({ config: {}, suites: [{ title: 'j.spec.ts', specs }], errors: [], stats: {} }));
+    writeFileSync(
+      pw,
+      JSON.stringify({
+        config: pwConfig(['recruiter']),
+        suites: [{ title: 'j.spec.ts', specs }],
+        errors: [],
+        stats: {},
+      }),
+    );
   const spec = (title: string, tags: string[], status: string) => ({
     title,
     tags,
@@ -721,7 +598,7 @@ describe('runCli — a failed Vitest or .NET run blocks every pass', () => {
     writeFileSync(
       vt,
       JSON.stringify({
-        reaudit: VITEST_REPORT_MARKER,
+        reaudit: vitestRun(['/abs/broken.test.ts']),
         success: false,
         testResults: [{ name: '/abs/broken.test.ts', status: 'failed', message: 'boom', assertionResults: [] }],
       }),
@@ -739,5 +616,86 @@ describe('runCli — a failed Vitest or .NET run blocks every pass', () => {
     };
     expect(report.rows.find((r) => r.id === 'syn-a')?.status).toBe('NOT-RUN');
     expect(report.untrusted.join('\n')).toContain('broken.test.ts');
+  });
+});
+
+// Evidence is accepted only from the canonical full-suite command (canonical.ts) and only when the run
+// shows it was complete. This replaced inferring, from committed source, which checks should have run.
+describe('runCli — only complete, unfiltered runs are evidence (exit 2)', () => {
+  it('a manifest recording a FILTERED command is refused for every kind, naming the input', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    for (const [kind, path, argv] of [
+      ['vitest', vt, [...canonicalArgv('vitest', vt), 'synthetic.test.ts']],
+      ['playwright', pw, [...canonicalArgv('playwright', pw), '--grep', '@finding:syn-a']],
+      ['xunit', trxDir, [...canonicalArgv('xunit', trxDir), '--filter', 'Category!=LiveNetwork']],
+    ] as const) {
+      lines = [];
+      stamp(kind, path, { argv: [...argv] });
+      expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+      expect(lines.join('\n')).toMatch(/canonical/);
+      stamp(kind, path);
+    }
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(0);
+  });
+
+  it('Codex r11: a [finding:syn-a] check in a file the run did not report → 2, even though its sibling passed', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const j = vitestJson('passed');
+    j.reaudit = vitestRun(['/abs/synthetic.test.ts', '/abs/other.test.ts']);
+    writeFileSync(vt, JSON.stringify(j));
+    stamp('vitest', vt);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain('/abs/other.test.ts');
+  });
+
+  it('Codex r15: one private full name in two files, one file omitted → 2 (no FIXED-VERIFIED, no gate pass)', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const name = 'security denies cross-org read';
+    const bindingsPath = join(priv, 'bindings.json');
+    writeFileSync(
+      bindingsPath,
+      JSON.stringify({ version: 1, tests: [{ id: 'syn-a', source: 'vitest', name }], ownerChecks: [] }),
+    );
+    const j = {
+      reaudit: vitestRun(['/abs/tests/a.test.ts', '/abs/tests/b.test.ts']),
+      success: true,
+      testResults: [
+        {
+          name: '/abs/tests/a.test.ts',
+          status: 'passed',
+          assertionResults: [
+            {
+              ancestorTitles: ['security'],
+              title: 'denies cross-org read',
+              fullName: name,
+              status: 'passed',
+              fails: false,
+            },
+          ],
+        },
+      ],
+    };
+    writeFileSync(vt, JSON.stringify(j));
+    stamp('vitest', vt);
+    const e = env({ REAUDIT_BINDINGS: bindingsPath });
+    expect(await runCli(all(pw, vt, trxDir), ctx(e))).toBe(2);
+    expect(lines.join('\n')).toContain('/abs/tests/b.test.ts');
+    expect(existsSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'))).toBe(false);
+  });
+
+  it('a filtered Vitest run (the reporter saw -t) is refused even under the canonical argv', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const j = vitestJson('passed');
+    j.reaudit = vitestRun(['/abs/synthetic.test.ts'], ['-t syn']);
+    writeFileSync(vt, JSON.stringify(j));
+    stamp('vitest', vt);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+  });
+
+  it('a Playwright run without forbidOnly is refused', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    writeFileSync(pw, JSON.stringify({ ...playwrightJson, config: { ...pwConfig(), forbidOnly: false } }));
+    stamp('playwright', pw);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
   });
 });
