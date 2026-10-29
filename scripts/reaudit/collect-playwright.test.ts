@@ -127,6 +127,59 @@ describe('collectPlaywright', () => {
     expect(statusById(collectPlaywright(r)).get('syn-b')).toBe('OPEN-CONFIRMED');
   });
 
+  // A runtime annotation is recorded on the attempt that pushed it. A retry that fails before reaching
+  // the annotation must not erase the binding, or a sibling pass for the same id would win.
+  it('retries: a fixed binding recorded only on an earlier attempt, final attempt failed → REGRESSED', () => {
+    const r = report([
+      testEntry({
+        results: [
+          { retry: 0, status: 'failed', annotations: [fixed('syn-a')] },
+          { retry: 1, status: 'failed', annotations: [] },
+        ],
+      }),
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+    ]);
+    const obs = collectPlaywright(r);
+    expect(obs.filter((o) => o.id === 'syn-a').map((o) => o.status)).toContain('REGRESSED');
+    expect(statusById(obs).get('syn-a')).toBe('REGRESSED');
+  });
+
+  it('retries: a binding recorded only on an earlier attempt, final attempt passed → NOT-RUN (never a pass)', () => {
+    const r = report([
+      testEntry({
+        results: [
+          { retry: 0, status: 'failed', annotations: [fixed('syn-a')] },
+          { retry: 1, status: 'passed', annotations: [] },
+        ],
+      }),
+    ]);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('retries: an open binding recorded only on an earlier attempt is NOT-RUN, not OPEN-CONFIRMED', () => {
+    const r = report([
+      testEntry({
+        results: [
+          { retry: 0, status: 'passed', annotations: [open('syn-a')] },
+          { retry: 1, status: 'failed', annotations: [] },
+        ],
+      }),
+    ]);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('retries: a binding present on the final attempt keeps its normal status', () => {
+    const r = report([
+      testEntry({
+        results: [
+          { retry: 0, status: 'failed', annotations: [fixed('syn-a')] },
+          { retry: 1, status: 'passed', annotations: [fixed('syn-a')] },
+        ],
+      }),
+    ]);
+    expect(statusById(collectPlaywright(r)).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
   it('walks nested suites and records the full title path', () => {
     const r = report([testEntry({ annotations: [open('syn-a')], results: [{ retry: 0, status: 'passed' }] })], true);
     const obs = collectPlaywright(r);

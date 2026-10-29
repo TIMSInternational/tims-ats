@@ -142,7 +142,9 @@ describe('collectVitest', () => {
     expect(statusById(collectVitest(j)).get('syn-a')).toBe('NOT-RUN');
   });
 
-  it('a pass in a PASSED file stays FIXED-VERIFIED when a different file failed', () => {
+  // A failed file already explains a non-zero exit, so an unhandled error in the same run cannot be
+  // ruled out from the JSON. Every pass in such a run is distrusted, not only those in the failed file.
+  it('a pass in a PASSED file is NOT-RUN when a different file failed (an unhandled error cannot be ruled out)', () => {
     const j = vitestJson([{ ancestorTitles: ['s'], title: 'ok [finding:syn-a]', status: 'passed' }]);
     j.success = false;
     j.testResults.push({
@@ -158,8 +160,22 @@ describe('collectVitest', () => {
       ],
     });
     const byId = statusById(collectVitest(j));
-    expect(byId.get('syn-a')).toBe('FIXED-VERIFIED');
+    expect(byId.get('syn-a')).toBe('NOT-RUN');
     expect(byId.get('syn-b')).toBe('NOT-RUN');
+  });
+
+  it('a failed unbound file plus a non-zero exit leaves no pass in any other file FIXED-VERIFIED', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'critical [finding:syn-a]', status: 'passed' }]);
+    j.success = false;
+    j.testResults.push({ name: '/abs/tests/other.test.ts', status: 'failed', assertionResults: [] });
+    expect(statusById(collectVitest(j, undefined, { runExitCode: 1 })).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a failed file never hides a red elsewhere: a failing bound test in a passed-status file stays REGRESSED', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'red [finding:syn-a]', status: 'failed' }]);
+    j.success = false;
+    j.testResults.push({ name: '/abs/tests/other.test.ts', status: 'failed', assertionResults: [] });
+    expect(statusById(collectVitest(j, undefined, { runExitCode: 1 })).get('syn-a')).toBe('REGRESSED');
   });
 
   it('a file entry without a status is rejected (cannot tell whether it completed)', () => {

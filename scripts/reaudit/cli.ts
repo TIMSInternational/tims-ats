@@ -12,12 +12,15 @@
  *   REAUDIT_FINDINGS (required) · REAUDIT_OUT_DIR (required) · REAUDIT_BINDINGS · REAUDIT_WP_INDEX ·
  *   REAUDIT_OWNER_CHECKS_DIR (required with --with-owner-checks).
  *
+ * Evidence must be of HEAD: every input report must be newer than HEAD's commit time (a report from an
+ * earlier revision is refused, exit 2), and --gate launch refuses a tree with uncommitted changes.
+ *
  * Exit codes: 0 ok / gate passed · 1 gate failed · 2 cannot run (missing or invalid input, refused
  * path). Every unexpected error is exit 2: this tool fails closed.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPrivateBindings, nameBindings, unknownBindingIds } from './bindings';
 import { runOwnerChecks } from './collect-owner';
@@ -34,6 +37,10 @@ export interface CliContext {
   env: Record<string, string | undefined>;
   repoRoot: string;
   headSha: string;
+  /** HEAD's committer time: evidence written before it cannot be evidence of HEAD. */
+  headCommittedAt: Date;
+  /** Tracked files differ from HEAD, so evidence produced from this tree is not of HEAD. */
+  treeDirty: boolean;
   now: Date;
   log: (s: string) => void;
   err: (s: string) => void;
@@ -89,6 +96,31 @@ function readJson(path: string, label: string): unknown {
   }
 }
 
+function assertFreshEvidence(paths: readonly string[], headCommittedAt: Date): void {
+  if (Number.isNaN(headCommittedAt.getTime())) throw new UsageError('cannot read the HEAD commit time');
+  for (const p of paths) {
+    if (!existsSync(p)) continue;
+    if (statSync(p).mtimeMs < headCommittedAt.getTime()) {
+      throw new UsageError(
+        `evidence predates the HEAD commit (${headCommittedAt.toISOString()}), so it is not evidence of HEAD: ${p}`,
+      );
+    }
+  }
+}
+
+function evidenceFiles(args: CliArgs): string[] {
+  const files: string[] = [];
+  if (args.playwright) files.push(resolve(args.playwright));
+  if (args.vitest) files.push(resolve(args.vitest));
+  if (args.trx) {
+    const dir = resolve(args.trx);
+    if (existsSync(dir) && statSync(dir).isDirectory()) {
+      for (const f of readdirSync(dir)) if (f.endsWith('.trx')) files.push(join(dir, f));
+    }
+  }
+  return files;
+}
+
 function ownerCheckIds(dir: string, bound: readonly string[], findingIds: ReadonlySet<string>): string[] {
   const ids = new Set(bound);
   if (existsSync(dir)) {
@@ -114,6 +146,11 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
     ctx.err(`--gate launch needs every input; missing: ${missingInputs.join(', ')}`);
     return 2;
   }
+  if (args.gate === 'launch' && ctx.treeDirty) {
+    ctx.err('--gate launch refuses a working tree with uncommitted changes: the evidence would not be of HEAD');
+    return 2;
+  }
+  assertFreshEvidence(evidenceFiles(args), ctx.headCommittedAt);
 
   const outDirEnv = ctx.env.REAUDIT_OUT_DIR;
   if (!outDirEnv) throw new UsageError('REAUDIT_OUT_DIR is not set (absolute directory outside the repository)');
@@ -204,6 +241,8 @@ function main(): void {
       env: process.env,
       repoRoot: git('rev-parse', '--show-toplevel'),
       headSha: git('rev-parse', 'HEAD'),
+      headCommittedAt: new Date(git('log', '-1', '--format=%cI', 'HEAD')),
+      treeDirty: git('status', '--porcelain', '--untracked-files=no') !== '',
       now: new Date(),
       log: (s) => console.log(s),
       err: (s) => console.error(s),

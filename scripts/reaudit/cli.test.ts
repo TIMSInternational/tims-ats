@@ -8,6 +8,7 @@ import {
   readFileSync,
   existsSync,
   realpathSync,
+  utimesSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -88,11 +89,17 @@ function env(extra: Record<string, string> = {}): Record<string, string | undefi
   return { REAUDIT_FINDINGS: findingsPath, REAUDIT_OUT_DIR: join(priv, 'out'), ...extra };
 }
 
-function ctx(e: Record<string, string | undefined>) {
+// HEAD's commit time. Inputs written by the tests are newer, as evidence produced from HEAD must be.
+const HEAD_COMMITTED_AT = new Date('2026-01-01T00:00:00Z');
+const BEFORE_HEAD = new Date('2025-12-31T00:00:00Z');
+
+function ctx(e: Record<string, string | undefined>, over: { treeDirty?: boolean } = {}) {
   return {
     env: e,
     repoRoot: repo,
     headSha: '0123456789abcdef0123456789abcdef01234567',
+    headCommittedAt: HEAD_COMMITTED_AT,
+    treeDirty: over.treeDirty ?? false,
     now: new Date('2026-10-28T12:00:00Z'),
     log: (s: string) => lines.push(s),
     err: (s: string) => lines.push(s),
@@ -203,6 +210,63 @@ describe('runCli — refusal paths (exit 2)', () => {
     const bad = join(priv, 'bad.json');
     writeFileSync(bad, '{"not":"a vitest report"}');
     expect(await runCli(['--vitest', bad, '--vitest-exit', '0'], ctx(env()))).toBe(2);
+  });
+});
+
+describe('runCli — evidence provenance (exit 2)', () => {
+  const all = (pw: string, vt: string, trxDir: string) => [
+    '--playwright',
+    pw,
+    '--vitest',
+    vt,
+    '--vitest-exit',
+    '0',
+    '--trx',
+    trxDir,
+    '--gate',
+    'launch',
+  ];
+
+  it('a Playwright report older than the HEAD commit → 2 naming the file (old evidence is not HEAD evidence)', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    utimesSync(pw, BEFORE_HEAD, BEFORE_HEAD);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain(pw);
+  });
+
+  it('a Vitest report older than the HEAD commit → 2 naming the file', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    utimesSync(vt, BEFORE_HEAD, BEFORE_HEAD);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain(vt);
+  });
+
+  it('a TRX file older than the HEAD commit → 2 naming the file', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const t = join(trxDir, 'unit.trx');
+    utimesSync(t, BEFORE_HEAD, BEFORE_HEAD);
+    expect(await runCli(all(pw, vt, trxDir), ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toContain(t);
+  });
+
+  it('stale evidence is refused without --gate too, and no report is written', async () => {
+    const { vt } = inputs('passed');
+    utimesSync(vt, BEFORE_HEAD, BEFORE_HEAD);
+    const e = env();
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], ctx(e))).toBe(2);
+    expect(existsSync(e.REAUDIT_OUT_DIR as string)).toBe(false);
+  });
+
+  it('an unreadable HEAD commit time → 2 (freshness cannot be checked, so it is not assumed)', async () => {
+    const { vt } = inputs('passed');
+    const c = { ...ctx(env()), headCommittedAt: new Date('not a date') };
+    expect(await runCli(['--vitest', vt, '--vitest-exit', '0'], c)).toBe(2);
+  });
+
+  it('--gate launch on a working tree with uncommitted changes → 2 (the evidence is not of HEAD)', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    expect(await runCli(all(pw, vt, trxDir), ctx(env(), { treeDirty: true }))).toBe(2);
+    expect(lines.join('\n')).toMatch(/uncommitted/);
   });
 });
 

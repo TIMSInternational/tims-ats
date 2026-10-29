@@ -10,6 +10,11 @@
  * Only the LAST attempt (highest `retry`) counts. A test that never produced a result is NOT-RUN,
  * and a skipped test bound to an id is STALE-BINDING — neither is ever a pass.
  *
+ * Runtime annotations live on the attempt that pushed them, so a retry that fails before reaching
+ * `expectIdeal` carries none. Bindings are therefore read from EVERY attempt. A binding that the final
+ * attempt did not record has no trustworthy final evidence: a `finding-fixed` id is REGRESSED when the
+ * final attempt failed, and anything else is NOT-RUN — never a pass, never OPEN-CONFIRMED.
+ *
  * Top-level `errors` (global setup/teardown failures, errors outside any test) can coexist with
  * passing tests. A report with any such error is not trusted evidence of a pass: every FIXED-VERIFIED
  * becomes NOT-RUN. A failure is never downgraded. The `errors` array is required, so a report that
@@ -91,14 +96,23 @@ function statusFor(type: string, test: PwTest): ObservedStatus {
 
 function collectTest(test: PwTest, titlePath: string[], out: Observation[]): void {
   const name = [test.projectName ? `[${test.projectName}]` : '', titlePath.join(' › ')].filter(Boolean).join(' ');
-  const last = [...test.results].sort((a, b) => b.retry - a.retry)[0];
-  const annotations = [...(test.annotations ?? []), ...(last?.annotations ?? [])];
+  const [last, ...earlier] = [...test.results].sort((a, b) => b.retry - a.retry);
+  const key = (type: string, id: string) => `${type}\u0000${id}`;
   const seen = new Set<string>();
-  for (const { type, id } of findingAnnotations(annotations, name)) {
-    const key = `${type}\u0000${id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+  for (const { type, id } of findingAnnotations([...(test.annotations ?? []), ...(last?.annotations ?? [])], name)) {
+    if (seen.has(key(type, id))) continue;
+    seen.add(key(type, id));
     out.push({ id, status: statusFor(type, test), source: 'playwright', test: name });
+  }
+  const lastFailed = last !== undefined && FAILED.has(last.status);
+  for (const { type, id } of findingAnnotations(
+    earlier.flatMap((r) => r.annotations ?? []),
+    name,
+  )) {
+    if (seen.has(key(type, id))) continue;
+    seen.add(key(type, id));
+    const status: ObservedStatus = type === 'finding-fixed' && lastFailed ? 'REGRESSED' : 'NOT-RUN';
+    out.push({ id, status, source: 'playwright', test: name });
   }
 }
 
