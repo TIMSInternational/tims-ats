@@ -54,6 +54,20 @@ describe('computeMissingRequirements', () => {
     );
   });
 
+  it('does not list knockout requirements that are not documents (checked server-side)', () => {
+    const declaration: IntakeRequirementInput = {
+      id: 'd1',
+      kind: 'declaration',
+      documentType: null,
+      isKnockout: true,
+      maxFiles: 1,
+    };
+    const degree: IntakeRequirementInput = { ...declaration, id: 'g1', kind: 'min_academic_degree' };
+    expect(computeMissingRequirements([declaration, degree, doc('r1', true)], [])).toEqual([
+      { requirementId: 'r1', reason: 'missing' },
+    ]);
+  });
+
   it('keeps the requirement order of the vacancy', () => {
     expect(computeMissingRequirements([doc('b', true), doc('a', true)], [])).toEqual([
       { requirementId: 'b', reason: 'missing' },

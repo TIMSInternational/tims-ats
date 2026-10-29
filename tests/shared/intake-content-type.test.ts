@@ -42,11 +42,18 @@ describe('resolveIntakeContentType', () => {
     expect(resolveIntakeContentType('a.html', 'text/html')).toBeNull();
   });
 
-  it('rejects a file name without an extension', () => {
+  it('rejects a file name without an extension, even one spelled like an extension', () => {
     expect(resolveIntakeContentType('documento', 'application/pdf')).toBeNull();
+    expect(resolveIntakeContentType('pdf', '')).toBeNull();
+  });
+
+  it('rejects a name that is only an extension or ends with a dot', () => {
+    expect(resolveIntakeContentType('.pdf', '')).toBeNull();
+    expect(resolveIntakeContentType('titulo.', 'application/pdf')).toBeNull();
   });
 
   it('uses only the last extension', () => {
     expect(resolveIntakeContentType('a.pdf.exe', '')).toBeNull();
+    expect(resolveIntakeContentType('titulo.v2.pdf', '')).toBe('application/pdf');
   });
 });

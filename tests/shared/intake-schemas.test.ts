@@ -113,9 +113,21 @@ describe('intakeSubmissionSchema — bounds', () => {
     expect(parses({ ...valid(), collegeLicense: 'l'.repeat(41) })).toBe(false);
   });
 
-  it('rejects relevantYears outside 0..60', () => {
+  it('rejects relevantYears outside 0..60 and fractional years', () => {
     expect(parses({ ...valid(), relevantYears: -1 })).toBe(false);
     expect(parses({ ...valid(), relevantYears: 61 })).toBe(false);
+    expect(parses({ ...valid(), relevantYears: 2.5 })).toBe(false);
+  });
+
+  it('rejects a whitespace-only professional college or licence', () => {
+    expect(parses({ ...valid(), professionalCollege: '   ' })).toBe(false);
+    expect(parses({ ...valid(), collegeLicense: '   ' })).toBe(false);
+  });
+
+  it('rejects an identity number of the wrong format even within the length bound', () => {
+    expect(parses({ ...valid(), identity: { type: 'cedula_fisica', number: '12345' } })).toBe(false);
+    expect(parses({ ...valid(), identity: { type: 'dimex', number: '123456789' } })).toBe(false);
+    expect(parses({ ...valid(), identity: { type: 'pasaporte', number: 'AB12345$' } })).toBe(false);
   });
 
   it('rejects an unknown academic degree', () => {

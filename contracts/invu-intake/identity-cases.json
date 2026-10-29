@@ -148,6 +148,15 @@
       }
     },
     {
+      "name": "lowercase passport is upper-cased and accepted",
+      "type": "pasaporte",
+      "raw": "ab 123-456",
+      "expected": {
+        "result": "ok",
+        "normalized": "AB123456"
+      }
+    },
+    {
       "name": "short lowercase passport with a dash is rejected",
       "type": "pasaporte",
       "raw": "ab-12",
@@ -195,6 +204,11 @@
       "name": "passport keeps only the last 4 characters",
       "input": "AB123456",
       "expected": "•••••3456"
+    },
+    {
+      "name": "a value of 4 characters or fewer is masked entirely",
+      "input": "1234",
+      "expected": "•••••••••"
     }
   ]
 }

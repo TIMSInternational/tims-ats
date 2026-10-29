@@ -59,6 +59,14 @@ describe('buildIntakeObjectKey', () => {
     expect(a).not.toBe(b);
   });
 
+  it('refuses ids that are not lowercase UUIDs and extensions outside the allow-list', () => {
+    const base = { organizationId, vacancyId, requirementId: REQUIREMENT_ID, ext: 'pdf' as const };
+    expect(() => buildIntakeObjectKey({ ...base, organizationId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA' })).toThrow();
+    expect(() => buildIntakeObjectKey({ ...base, vacancyId: '../other' })).toThrow();
+    expect(() => buildIntakeObjectKey({ ...base, requirementId: 'requirement-1' })).toThrow();
+    expect(() => buildIntakeObjectKey({ ...base, ext: 'exe' as unknown as 'pdf' })).toThrow();
+  });
+
   it('a key built for one organization does not parse for another', () => {
     const key = buildIntakeObjectKey({ organizationId, vacancyId, requirementId: REQUIREMENT_ID, ext: 'pdf' });
     expect(parseIntakeObjectKey(key, '22222222-2222-4222-8222-222222222222', vacancyId)).toBeNull();
