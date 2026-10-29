@@ -151,6 +151,7 @@ describe('runCli — refusal paths (exit 2)', () => {
     const { vt } = inputs();
     expect(await runCli(['--vitest', vt], ctx(env({ REAUDIT_OUT_DIR: join(repo, 'out') })))).toBe(2);
     expect(readdirSync(repo)).toEqual([]);
+    expect(lines.join('\n')).toMatch(/REAUDIT_OUT_DIR is inside the repository/);
   });
 
   it('REAUDIT_FINDINGS inside the repo → 2', async () => {

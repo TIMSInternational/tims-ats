@@ -123,6 +123,11 @@ describe('evidenceDrift (temp git repo)', () => {
   it('an unknown base revision throws instead of reporting everything unchanged', () => {
     expect(() => evidenceDrift({ repoRoot: repo, base: 'deadbeefdeadbeef', evidence: ['docs/keep.md:1'] })).toThrow();
   });
+
+  it('a base that names an object but not a commit (a tree) throws too', () => {
+    const tree = git('rev-parse', `${base}^{tree}`);
+    expect(() => evidenceDrift({ repoRoot: repo, base: tree, evidence: ['docs/keep.md:1'] })).toThrow();
+  });
 });
 
 describe('isSuspiciousFix', () => {
