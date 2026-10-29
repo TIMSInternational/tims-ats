@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 // the sidebars would silently hide Equipo even with the flag on), following tests/access/role-aware-ui.test.ts.
 const read = (p: string) => readFileSync(fileURLToPath(new URL(`../../${p}`, import.meta.url)), 'utf8');
 
+// A property of the deriveSetupChecklistRows context object whose value is the same-named local
+// (shorthand `name` or `name: name`), not an overridden literal.
+const ctxProp = (name: string) =>
+  new RegExp(`deriveSetupChecklistRows\\([^;]*[{,]\\s*${name}(?:\\s*:\\s*${name})?\\s*[,}][^;]*\\)`);
+
 describe('feature-flag wiring at the call sites', () => {
   it.each(['apps/web/app/(admin)/sidebar.tsx', 'apps/web/app/(admin)/participant-sidebar.tsx'])(
     '%s passes isNavFeatureOn to computeVisibleSections',
@@ -20,15 +25,17 @@ describe('feature-flag wiring at the call sites', () => {
     const src = read('apps/web/app/(admin)/dashboard/setup-checklist.tsx');
     expect(src).toMatch(/const invitationsEnabled = isTenantInvitationsEnabled\(\);/);
     // PR-G (WP-16) replaced the positional booleans with a context object; the pin follows the call
-    // site: the real flag must still be what is passed as `invitationsEnabled`.
-    expect(src).toMatch(/deriveSetupChecklistRows\([^;]*\binvitationsEnabled\b[^;]*\)/);
+    // site: the real flag must still be what is passed as `invitationsEnabled`. The property must be
+    // shorthand (or `invitationsEnabled: invitationsEnabled`), so `invitationsEnabled: false` fails.
+    expect(src).toMatch(ctxProp('invitationsEnabled'));
   });
 
   it('setup-checklist passes isOrgStructureViaCSharp() and organization:update into the row context', () => {
     const src = read('apps/web/app/(admin)/dashboard/setup-checklist.tsx');
     expect(src).toMatch(/const orgStructureEnabled = isOrgStructureViaCSharp\(\);/);
     expect(src).toMatch(/const canManageStructure = can\('organization', 'update'\);/);
-    expect(src).toMatch(/deriveSetupChecklistRows\([^;]*\borgStructureEnabled\b[^;]*\bcanManageStructure\b[^;]*\)/);
+    expect(src).toMatch(ctxProp('orgStructureEnabled'));
+    expect(src).toMatch(ctxProp('canManageStructure'));
   });
 });
 
