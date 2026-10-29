@@ -14,6 +14,8 @@ public sealed class PlatformAuditEventsSchemaTests(PlatformAuditEventsSchemaFixt
 {
     private const string TableExists = "SELECT to_regclass('public.platform_audit_events') IS NOT NULL";
 
+    private const string PrecheckMessage = "platform_audit_events requires public.tims_append_only_guard()";
+
     private static readonly string[] TenantRoles = ["app_tenant", "anon", "authenticated"];
 
     private readonly PlatformAuditEventsSchemaFixture _fixture = fixture;
@@ -192,11 +194,31 @@ public sealed class PlatformAuditEventsSchemaTests(PlatformAuditEventsSchemaFixt
         var sql = await File.ReadAllTextAsync(ManualScriptPath());
         var cs = await _fixture.FreshDatabaseAsync(withGuard: false);
 
-        await Assert.ThrowsAsync<PostgresException>(() => ExecAsync(cs, sql));
+        // The precheck must be what stops it: without it the script still fails later, at CREATE TRIGGER, with a
+        // "function does not exist" error that names neither the cause nor the fix.
+        var refused = await Assert.ThrowsAsync<PostgresException>(() => ExecAsync(cs, sql));
+        Assert.Equal("P0001", refused.SqlState);
+        Assert.Contains(PrecheckMessage, refused.MessageText, StringComparison.Ordinal);
 
         Assert.False(await ScalarAsync<bool>(cs, TableExists));
         // Two steps: Postgres resolves a relation at parse time, so a single query referencing a history table that
         // was never created (or was rolled back with the failed batch) errors instead of returning false.
+        if (await ScalarAsync<bool>(cs, "SELECT to_regclass('public.\"__EFMigrationsHistory\"') IS NOT NULL"))
+        {
+            Assert.Equal(0L, await ScalarAsync<long>(cs, "SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        }
+    }
+
+    [Fact]
+    public async Task Ef_migration_refuses_to_run_without_the_shared_guard_and_leaves_nothing_behind()
+    {
+        var cs = await _fixture.FreshDatabaseAsync(withGuard: false);
+
+        var refused = await Assert.ThrowsAsync<PostgresException>(() => ApplyEfMigrationAsync(cs));
+        Assert.Equal("P0001", refused.SqlState);
+        Assert.Contains(PrecheckMessage, refused.MessageText, StringComparison.Ordinal);
+
+        Assert.False(await ScalarAsync<bool>(cs, TableExists));
         if (await ScalarAsync<bool>(cs, "SELECT to_regclass('public.\"__EFMigrationsHistory\"') IS NOT NULL"))
         {
             Assert.Equal(0L, await ScalarAsync<long>(cs, "SELECT count(*) FROM \"__EFMigrationsHistory\""));
