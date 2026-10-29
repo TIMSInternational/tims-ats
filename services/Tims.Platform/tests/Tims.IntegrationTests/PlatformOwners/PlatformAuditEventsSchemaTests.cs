@@ -175,7 +175,7 @@ public sealed class PlatformAuditEventsSchemaTests(PlatformAuditEventsSchemaFixt
               SELECT 'col ' || column_name || ' ' || data_type || ' ' || is_nullable || ' ' || coalesce(column_default, '') AS x
               FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'platform_audit_events'
               UNION ALL SELECT 'idx ' || indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'platform_audit_events'
-              UNION ALL SELECT 'trg ' || tgname || ' ' || tgenabled FROM pg_trigger
+              UNION ALL SELECT 'trg ' || tgname || ' ' || tgenabled::text FROM pg_trigger
                 WHERE tgrelid = 'public.platform_audit_events'::regclass AND NOT tgisinternal
               UNION ALL SELECT 'pol ' || policyname || ' ' || permissive || ' ' || array_to_string(roles, ',') FROM pg_policies
                 WHERE schemaname = 'public' AND tablename = 'platform_audit_events'
@@ -195,9 +195,12 @@ public sealed class PlatformAuditEventsSchemaTests(PlatformAuditEventsSchemaFixt
         await Assert.ThrowsAsync<PostgresException>(() => ExecAsync(cs, sql));
 
         Assert.False(await ScalarAsync<bool>(cs, TableExists));
-        Assert.False(await ScalarAsync<bool>(
-            cs,
-            "SELECT to_regclass('public.\"__EFMigrationsHistory\"') IS NOT NULL AND EXISTS (SELECT 1 FROM \"__EFMigrationsHistory\")"));
+        // Two steps: Postgres resolves a relation at parse time, so a single query referencing a history table that
+        // was never created (or was rolled back with the failed batch) errors instead of returning false.
+        if (await ScalarAsync<bool>(cs, "SELECT to_regclass('public.\"__EFMigrationsHistory\"') IS NOT NULL"))
+        {
+            Assert.Equal(0L, await ScalarAsync<long>(cs, "SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        }
     }
 
     [Fact]
