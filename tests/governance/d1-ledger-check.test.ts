@@ -115,6 +115,12 @@ describe('check-d1-ledger.sh — mutation proof', () => {
     expect(run([LABEL], 'We should add Port-issue: #90 later').status).toBe(1);
   });
 
+  it('labelled, Port-issue key ending a prose line (valid ref, but not line-anchored): FAILS', () => {
+    // Pins the start-of-line anchor on its own: the value here is a valid port issue, so only the
+    // anchor can reject it (the mid-line case above is also rejected by its trailing words).
+    expect(run([LABEL], 'Tracked later, see Port-issue: #90').status).toBe(1);
+  });
+
   it('a lookalike label (d1-exception-pending) does not trigger the check', () => {
     expect(run(['d1-exception-pending'], 'no ledger line').status).toBe(0);
   });
