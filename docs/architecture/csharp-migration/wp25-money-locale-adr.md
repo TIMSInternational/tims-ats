@@ -251,6 +251,15 @@ aguinaldo default. Keeping both support-managed stops a tenant from silently cha
   subtotal 750000, tax 97500, total 847500), a tax that lands on .5 minor at an even digit (rounds down), and one at
   an odd digit (rounds up). A half-up mutation must turn at least one case red.
 - PostgreSQL `round()` on `numeric` rounds half away from zero, so the backfills use an explicit half-even expression.
+- **Legacy invoices are not recomputed.** Today's inputs allow sub-minor unit prices
+  (`invoices.schemas.ts`), so a stored line can be internally consistent in floats but not in minor units (quantity 2
+  × 0.015 stored as total 0.03 becomes unit price 2 minor, while the stored total is 3 minor). For any invoice that
+  left draft before the minor-unit columns existed, the **stored totals are authoritative**: the backfill converts each
+  stored amount (unit price, line total, subtotal, tax, total) independently, half-even, and never derives one from
+  another. Such rows carry a `legacyRounding` marker, are exempt from the `quantity × unitPriceMinor` invariant (which
+  applies only to invoices created after the switch, whose inputs are validated to the ISO exponent), and the coverage
+  report counts rows where the invariant would not hold. The backfill fixture includes this sub-minor case and asserts
+  the stored total is preserved.
 
 **The one exception.** The existing `roundMoney` / `CompensationKernels.RoundMoney` (half-up with an `EPSILON` bias)
 stays as it is. Its golden fixtures (`contracts/compensation-fixtures/convert-money.json`, `sum-money.json`) are the
