@@ -15,7 +15,8 @@
  * repository, and refuses an --output (or its manifest) that already exists, so the report can only
  * come from this run. After: refuses if HEAD moved or no report was written, then writes the manifest
  * (see provenance.ts) with the run's exit status, the SHA, and whether the checkout was dirty at the
- * start or became dirty during the run. Exits with the command's own status, so `$?` is the test run's status.
+ * start or became dirty during the run. Not detected: a change made AND reverted entirely within the
+ * run (git status is read only before and after it). Exits with the command's own status, so `$?` is the test run's status.
  * Exit 2 when it cannot record (usage, git, spawn, HEAD moved, no report): no manifest is written.
  */
 import { spawnSync } from 'node:child_process';
