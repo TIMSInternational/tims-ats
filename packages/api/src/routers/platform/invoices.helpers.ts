@@ -1,5 +1,6 @@
 import { InvoiceStatus } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import { escapeHtml } from '@tims/shared';
 
 export const invoiceListSelect = {
   id: true,
@@ -80,6 +81,15 @@ export function buildInvoiceWhere(input: {
   return where;
 }
 
+export function buildInvoiceLineItemsHtml(
+  lineItems: ReadonlyArray<{ description: string; quantity: number; unitPrice: number; total: number }>,
+  formatMoney: (value: number) => string,
+): string {
+  return lineItems.map(li =>
+    `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${escapeHtml(li.description)}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${escapeHtml(String(li.quantity))}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${escapeHtml(formatMoney(li.unitPrice))}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${escapeHtml(formatMoney(li.total))}</td></tr>`
+  ).join('');
+}
+
 export function buildNewInvoiceEmailHtml(params: {
   organizationName: string;
   amtFmt: string;
@@ -88,7 +98,12 @@ export function buildNewInvoiceEmailHtml(params: {
   lineItemsHtml: string;
   memo?: string;
 }): string {
-  const { organizationName, amtFmt, invNum, dueFmt, lineItemsHtml, memo } = params;
+  const { lineItemsHtml } = params;
+  const organizationName = escapeHtml(params.organizationName);
+  const amtFmt = escapeHtml(params.amtFmt);
+  const invNum = escapeHtml(params.invNum);
+  const dueFmt = escapeHtml(params.dueFmt);
+  const memo = params.memo ? escapeHtml(params.memo) : undefined;
   return `
             <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:40px 20px;">
               <div style="text-align:center;margin-bottom:32px;">
@@ -120,7 +135,11 @@ export function buildPaymentReminderEmailHtml(params: {
   dueDate?: Date | null;
   description?: string | null;
 }): string {
-  const { organizationName, invNum, amountFormatted, dueDate, description } = params;
+  const { dueDate } = params;
+  const organizationName = escapeHtml(params.organizationName);
+  const invNum = escapeHtml(params.invNum);
+  const amountFormatted = escapeHtml(params.amountFormatted);
+  const description = params.description ? escapeHtml(params.description) : null;
   return `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
             <div style="text-align: center; margin-bottom: 32px;">
