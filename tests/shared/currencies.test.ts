@@ -17,6 +17,10 @@ describe('POPULAR_CURRENCY_CODES', () => {
     expect(codes[0]).toBe('CRC');
     expect(codes[1]).toBe('USD');
   });
+
+  it('offers every code parseCurrencyCode accepts, including fund codes', () => {
+    expect(supportedCurrencyCodes()).toEqual(expect.arrayContaining(['CLF', 'UYW', 'VED']));
+  });
 });
 
 describe('parseCurrencyCode', () => {
@@ -31,6 +35,19 @@ describe('parseCurrencyCode', () => {
       expect(parseCurrencyCode(raw)).toBeNull();
     },
   );
+
+  // Intl.supportedValuesOf('currency') omits ISO-4217 fund codes (CLF, UYW, ...) and VED,
+  // so the strict parser must not use it as the whole allowlist.
+  it.each(['CLF', 'UYW', 'UYI', 'BOV', 'CHE', 'CHW', 'COU', 'MXV', 'USN', 'VED'])(
+    'accepts the ISO-4217 code %s that Intl does not list',
+    (raw) => {
+      expect(parseCurrencyCode(raw.toLowerCase())).toBe(raw);
+    },
+  );
+
+  it.each(['XXX', 'XTS'])('rejects the non-currency ISO code %s', (raw) => {
+    expect(parseCurrencyCode(raw)).toBeNull();
+  });
 });
 
 describe('normalizeCurrencyCode (unchanged, still used by the FX parity twins)', () => {

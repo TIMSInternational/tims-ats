@@ -140,4 +140,12 @@ describe('formatZonedDateTime', () => {
     expect(out).toMatch(/10:00/);
     expect(out).not.toMatch(/16:00/);
   });
+
+  it.each(['es_CR', 'not a locale!', '--'])(
+    'falls back to es-CR instead of throwing for the malformed tenant locale %j',
+    (tenantLocale) => {
+      const out = formatZonedDateTime(AT, { timeZone: 'America/Costa_Rica', ui: 'es', tenantLocale });
+      expect(out).toBe(formatZonedDateTime(AT, { timeZone: 'America/Costa_Rica', ui: 'es', tenantLocale: 'es-CR' }));
+    },
+  );
 });

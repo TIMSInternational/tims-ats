@@ -90,3 +90,10 @@ describe('formatMoney currency precision', () => {
     expect(formatMoney(1234.567, 'KWD', { ui: 'en', fractionDigits: 0 })).toBe('KWD 1,235');
   });
 });
+
+describe('formatMoney with four-decimal ISO codes', () => {
+  it('keeps the ISO minor units of CLF and UYW instead of truncating to 2', () => {
+    expect(formatMoney(40.1234, 'CLF', { ui: 'en' })).toBe('CLF 40.1234');
+    expect(formatMoney(40.1234, 'uyw', { ui: 'en' })).toBe('UYW 40.1234');
+  });
+});

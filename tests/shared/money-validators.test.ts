@@ -20,6 +20,7 @@ const base = { currency: 'CRC', period: 'monthly' as const };
 describe('currencyCodeSchema', () => {
   it('normalises case and whitespace', () => {
     expect(currencyCodeSchema.parse(' crc ')).toBe('CRC');
+    expect(currencyCodeSchema.parse('clf')).toBe('CLF');
   });
 
   it.each(['colones', '₡', '', 'ZZZ'])('rejects %j', (raw) => {
