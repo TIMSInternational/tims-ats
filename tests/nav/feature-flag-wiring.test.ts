@@ -19,7 +19,16 @@ describe('feature-flag wiring at the call sites', () => {
   it('setup-checklist passes isTenantInvitationsEnabled() as the invitationsEnabled argument', () => {
     const src = read('apps/web/app/(admin)/dashboard/setup-checklist.tsx');
     expect(src).toMatch(/const invitationsEnabled = isTenantInvitationsEnabled\(\);/);
-    expect(src).toMatch(/canInviteTeam,\s*invitationsEnabled,\s*\)/);
+    // PR-G (WP-16) replaced the positional booleans with a context object; the pin follows the call
+    // site: the real flag must still be what is passed as `invitationsEnabled`.
+    expect(src).toMatch(/deriveSetupChecklistRows\([^;]*\binvitationsEnabled\b[^;]*\)/);
+  });
+
+  it('setup-checklist passes isOrgStructureViaCSharp() and organization:update into the row context', () => {
+    const src = read('apps/web/app/(admin)/dashboard/setup-checklist.tsx');
+    expect(src).toMatch(/const orgStructureEnabled = isOrgStructureViaCSharp\(\);/);
+    expect(src).toMatch(/const canManageStructure = can\('organization', 'update'\);/);
+    expect(src).toMatch(/deriveSetupChecklistRows\([^;]*\borgStructureEnabled\b[^;]*\bcanManageStructure\b[^;]*\)/);
   });
 });
 
