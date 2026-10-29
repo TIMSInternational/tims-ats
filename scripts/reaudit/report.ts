@@ -57,6 +57,18 @@ export interface BuildReportInput {
 }
 
 const UNASSIGNED = 'unassigned';
+const SEVERITY_ORDER = ['P0', 'P1', 'P2', 'P3'];
+
+/**
+ * The severity the report, rollups and gate use: the MORE severe of the reported severity and the
+ * verification pass's `correctedSeverity`. An upgrade therefore reaches the launch gate; a downgrade
+ * never silently drops a finding from it (change the findings file itself to do that).
+ */
+export function effectiveSeverity(f: Pick<Finding, 'severity' | 'verification'>): string {
+  const corrected = f.verification?.correctedSeverity;
+  if (!corrected) return f.severity;
+  return SEVERITY_ORDER.indexOf(corrected) < SEVERITY_ORDER.indexOf(f.severity) ? corrected : f.severity;
+}
 
 function bump(rollup: Rollup, key: string, status: ReauditStatus): void {
   const counts = (rollup[key] ??= {});
@@ -80,8 +92,9 @@ export function buildReport(input: BuildReportInput): ReauditReport {
     const obs = byId.get(f.id) ?? [];
     const status = mergeStatuses(obs.map((o) => o.status));
     const wp = input.wpIndex?.[f.id] ?? UNASSIGNED;
+    const severity = effectiveSeverity(f);
     bump(rollups.persona, f.persona, status);
-    bump(rollups.severity, f.severity, status);
+    bump(rollups.severity, severity, status);
     bump(rollups.launchScope, f.launchScope, status);
     bump(rollups.lens, f.lens, status);
     bump(rollups.wp, wp, status);
@@ -89,7 +102,7 @@ export function buildReport(input: BuildReportInput): ReauditReport {
       id: f.id,
       title: f.title,
       persona: f.persona,
-      severity: f.severity,
+      severity,
       launchScope: f.launchScope,
       lens: f.lens,
       wp,

@@ -8,6 +8,7 @@ import {
   readFileSync,
   existsSync,
   realpathSync,
+  symlinkSync,
   utimesSync,
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -272,6 +273,27 @@ describe('runCli — evidence provenance (exit 2)', () => {
     expect(lines.join('\n')).toContain(trxDir);
   });
 
+  it('evidence inside the repository → 2 naming the input, even with a valid manifest', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const inside = join(repo, 'vitest.json');
+    writeFileSync(inside, readFileSync(vt));
+    stamp('vitest', inside);
+    const argv = all(pw, inside, trxDir);
+    expect(await runCli(argv, ctx(env()))).toBe(2);
+    expect(lines.join('\n')).toMatch(/--vitest.*inside the repository/);
+  });
+
+  it('a TRX directory reached through a directory symlink into the repository → 2', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const insideDir = join(repo, 'trx');
+    mkdirSync(insideDir);
+    writeFileSync(join(insideDir, 'unit.trx'), readFileSync(join(trxDir, 'unit.trx')));
+    stamp('xunit', insideDir);
+    const link = join(priv, 'trx-link');
+    symlinkSync(insideDir, link);
+    expect(await runCli(all(pw, vt, link), ctx(env()))).toBe(2);
+  });
+
   it('a report with no provenance manifest → 2 (an unrecorded report is not evidence of anything)', async () => {
     const { pw, vt, trxDir } = inputs('passed');
     rmSync(manifestPathFor(pw, 'playwright'));
@@ -367,6 +389,20 @@ describe('gitContext + runCli (real git)', () => {
     writeFileSync(join(gitRepo, 'extra.spec.ts'), 'x');
     expect(gitContext(gitRepo).dirtyPaths).toEqual(['extra.spec.ts']);
     expect(await run()).toBe(2);
+  });
+
+  it('evidence inside a SIBLING worktree of the checkout → 2', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const base = gitContext(gitRepo);
+    const sib = join(root, 'sibling-wt');
+    g('worktree', 'add', '-q', '--detach', sib);
+    const inside = join(sib, 'pw.json');
+    writeFileSync(inside, readFileSync(pw));
+    stamp('playwright', inside, { sha: base.headSha });
+    stamp('vitest', vt, { sha: base.headSha });
+    stamp('xunit', trxDir, { sha: base.headSha });
+    expect(await runCli(all(inside, vt, trxDir), { ...ctx(env()), ...base })).toBe(2);
+    expect(lines.join('\n')).toMatch(/inside the repository/);
   });
 
   it('a gitignored file does not count', async () => {

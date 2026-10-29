@@ -17,7 +17,8 @@
  * no manifest, a manifest naming another commit, or a report whose bytes no longer match is refused
  * (exit 2); the collectors parse the exact bytes that were verified. --vitest-exit must equal the
  * recorded vitest exit status. --gate launch also refuses evidence recorded on a dirty checkout and a
- * current checkout with uncommitted or untracked (not ignored) files. Provenance guards against stale or
+ * current checkout with uncommitted or untracked (not ignored) files. Evidence inputs, like every other
+ * private path, must be outside every checkout of the repository (exit 2). Provenance guards against stale or
  * copied evidence; it is not a signature against a hand-forged manifest.
  *
  * An untrusted run turns every FIXED-VERIFIED from every source into NOT-RUN and fails --gate launch
@@ -41,7 +42,7 @@ import { evidenceDrift, type EvidenceDrift } from './evidence-drift';
 import { loadFindings } from './findings-source';
 import { readGitState } from './git-state';
 import { assertOutsideRepo } from './paths';
-import { verifyProvenance, type EvidenceKind, type VerifiedEvidence } from './provenance';
+import { manifestPathFor, verifyProvenance, type EvidenceKind, type VerifiedEvidence } from './provenance';
 import { buildReport, launchGate, loadWpIndex, writeReport } from './report';
 import { SLUG_RE, type Observation } from './status';
 
@@ -98,6 +99,10 @@ function parseArgs(argv: readonly string[]): CliArgs {
 
 function verified(kind: EvidenceKind, path: string, flag: string, ctx: CliContext, gate: boolean): VerifiedEvidence {
   const p = resolve(path);
+  // Evidence is private (test names, errors): it must live outside every checkout, like every other
+  // private path. assertOutsideRepo resolves symlinks, so a link into a checkout is refused too.
+  assertOutsideRepo(p, ctx.repoRoot, flag);
+  assertOutsideRepo(manifestPathFor(p, kind), ctx.repoRoot, `${flag} provenance manifest`);
   if (!existsSync(p)) throw new UsageError(`${flag} input not found: ${p}`);
   return verifyProvenance({ kind, evidence: p, headSha: ctx.headSha, requireClean: gate });
 }

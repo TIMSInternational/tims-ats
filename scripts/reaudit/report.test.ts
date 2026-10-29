@@ -196,6 +196,26 @@ describe('launchGate (--gate launch)', () => {
     expect(r.rows[0]?.status).toBe('FIXED-VERIFIED');
   });
 
+  // Round-10: a verified severity upgrade must reach the gate. The gate (and rows and rollups) use the
+  // MORE severe of `severity` and `verification.correctedSeverity`: a downgrade never drops a finding.
+  const verified = (severity: string, correctedSeverity: string) => ({
+    severity,
+    verification: { id: 'syn-x', verdict: 'confirmed', correctedSeverity, note: 'n' },
+  });
+
+  it('a launch-v1 P2 verified as P0 and left UNBOUND fails the gate (1)', () => {
+    const r = launch(null, verified('P2', 'P0'));
+    expect(r.rows[0]?.severity).toBe('P0');
+    expect(r.rollups.severity.P0).toEqual({ UNBOUND: 1 });
+    expect(launchGate(r, { missingInputs: [] }).exitCode).toBe(1);
+  });
+
+  it('a launch-v1 P0 "corrected" to P3 still gates as P0 (a downgrade does not drop it)', () => {
+    const r = launch('OPEN-CONFIRMED', verified('P0', 'P3'));
+    expect(r.rows[0]?.severity).toBe('P0');
+    expect(launchGate(r, { missingInputs: [] }).exitCode).toBe(1);
+  });
+
   it('exit 2 when the report has no findings at all (nothing checked is not a pass)', () => {
     const empty = buildReport({ findings: [], observations: [], sha: SHA, generatedAt: AT });
     expect(launchGate(empty, { missingInputs: [] }).exitCode).toBe(2);
