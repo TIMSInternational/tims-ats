@@ -36,6 +36,21 @@ const FALLBACK_CURRENCY_CODES = [
   'ZAR', 'ZMW', 'ZWG',
 ] as const;
 
+/**
+ * ISO-4217 List One codes that Intl.supportedValuesOf('currency') omits: the fund and
+ * index units (CLF, UYW, ...) and VED. Intl still formats them with their ISO minor units.
+ * Non-currency codes (XXX, XTS) and precious metals are deliberately not listed.
+ */
+const ISO_CODES_MISSING_FROM_INTL = ['BOV', 'CHE', 'CHW', 'CLF', 'COU', 'MXV', 'USN', 'UYI', 'UYW', 'VED'] as const;
+
+function runtimeCurrencyCodes(): string[] {
+  const intl = Intl as typeof Intl & { supportedValuesOf?: (key: 'currency') => string[] };
+  const codes = typeof intl.supportedValuesOf === 'function'
+    ? intl.supportedValuesOf('currency')
+    : [...FALLBACK_CURRENCY_CODES];
+  return [...codes, ...ISO_CODES_MISSING_FROM_INTL];
+}
+
 export type CurrencyCode = string;
 
 /**
@@ -62,27 +77,18 @@ let knownCurrencyCodes: ReadonlySet<string> | null = null;
 /**
  * Stricter than isCurrencyCode: Intl formats ANY well-formed 3-letter code (e.g. "ZZZ"),
  * so this also requires the code to be in the runtime's ISO-4217 list (or the bundled
- * fallback list when Intl.supportedValuesOf is unavailable).
+ * fallback list when Intl.supportedValuesOf is unavailable) plus the ISO codes Intl omits.
  */
 export function isKnownCurrencyCode(code: string | null | undefined): code is CurrencyCode {
   if (!isCurrencyCode(code)) return false;
   if (!knownCurrencyCodes) {
-    const intl = Intl as typeof Intl & { supportedValuesOf?: (key: 'currency') => string[] };
-    const codes = typeof intl.supportedValuesOf === 'function'
-      ? intl.supportedValuesOf('currency')
-      : [...FALLBACK_CURRENCY_CODES];
-    knownCurrencyCodes = new Set(codes.map((c) => c.toUpperCase()));
+    knownCurrencyCodes = new Set(runtimeCurrencyCodes().map((c) => c.toUpperCase()));
   }
   return knownCurrencyCodes.has(code);
 }
 
 export function supportedCurrencyCodes(): CurrencyCode[] {
-  const intl = Intl as typeof Intl & { supportedValuesOf?: (key: 'currency') => string[] };
-  const codes = typeof intl.supportedValuesOf === 'function'
-    ? intl.supportedValuesOf('currency')
-    : [...FALLBACK_CURRENCY_CODES];
-
-  return Array.from(new Set([...POPULAR_CURRENCY_CODES, ...codes]))
+  return Array.from(new Set([...POPULAR_CURRENCY_CODES, ...runtimeCurrencyCodes()]))
     .map((code) => code.toUpperCase())
     .filter(isCurrencyCode)
     .sort((a, b) => {

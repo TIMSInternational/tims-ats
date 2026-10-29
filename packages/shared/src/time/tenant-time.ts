@@ -182,7 +182,8 @@ export interface FormatZonedDateTimeOptions {
 /** Renders an instant in the tenant zone (never the server or browser zone). */
 export function formatZonedDateTime(date: Date, opts: FormatZonedDateTimeOptions): string {
   if (Number.isNaN(date.getTime())) return '—';
-  const locale = opts.ui === 'en' ? 'en-US' : opts.tenantLocale?.trim() || 'es-CR';
+  const tenant = opts.tenantLocale?.trim();
+  const locale = opts.ui === 'en' ? 'en-US' : tenant && isSupportedLocale(tenant) ? tenant : 'es-CR';
   const style = opts.style ?? 'datetime';
   const timeZone = isIanaTimeZone(opts.timeZone) ? opts.timeZone : FALLBACK_TIMEZONE;
   const out = new Intl.DateTimeFormat(locale, {
@@ -191,4 +192,13 @@ export function formatZonedDateTime(date: Date, opts: FormatZonedDateTimeOptions
     ...(style !== 'date' ? { timeStyle: 'short' as const } : {}),
   }).format(date);
   return out.replace(/[  ]/g, ' ');
+}
+
+/** False for a malformed tag such as "es_CR", which Intl rejects with a RangeError. */
+function isSupportedLocale(locale: string): boolean {
+  try {
+    return Intl.DateTimeFormat.supportedLocalesOf([locale]).length > 0;
+  } catch {
+    return false;
+  }
 }
