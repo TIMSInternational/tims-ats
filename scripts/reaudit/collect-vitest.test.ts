@@ -7,7 +7,16 @@ import { statusById } from './status';
 
 type Assertion = { ancestorTitles: string[]; title: string; status: string };
 
-function vitestJson(assertions: Assertion[]) {
+function vitestJson(assertions: Assertion[]): {
+  numTotalTests: number;
+  success: boolean;
+  testResults: {
+    name: string;
+    status: string;
+    message?: string;
+    assertionResults: (Assertion & { fullName: string })[];
+  }[];
+} {
   return {
     numTotalTests: assertions.length,
     success: true,
@@ -99,6 +108,64 @@ describe('collectVitest', () => {
     const [o] = collectVitest(j);
     expect(o?.source).toBe('vitest');
     expect(o?.test).toBe('outer leaf [finding:syn-a]');
+  });
+
+  // Real vitest JSON for a failed afterAll: the FILE is failed with an empty message, `success` is
+  // false, and the assertion itself still reads "passed".
+  it('a passing bound test in a FILE that failed outside its assertions (e.g. afterAll) is NOT-RUN', () => {
+    const j = vitestJson([{ ancestorTitles: ['probe'], title: 'bound passes [finding:syn-a]', status: 'passed' }]);
+    j.success = false;
+    (j.testResults[0] as { status: string; message?: string }).status = 'failed';
+    (j.testResults[0] as { status: string; message?: string }).message = '';
+    const obs = collectVitest(j);
+    expect(statusById(obs).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a private name binding in a failed file is NOT-RUN too', () => {
+    const j = vitestJson([{ ancestorTitles: ['security'], title: 'present check', status: 'passed' }]);
+    j.success = false;
+    j.testResults[0]!.status = 'failed';
+    const extra = new Map([['security present check', ['syn-private']]]);
+    expect(statusById(collectVitest(j, extra)).get('syn-private')).toBe('NOT-RUN');
+  });
+
+  it('a failing bound test in a failed file is still REGRESSED (a downgrade never hides a red)', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'red [finding:syn-a]', status: 'failed' }]);
+    j.success = false;
+    j.testResults[0]!.status = 'failed';
+    expect(statusById(collectVitest(j)).get('syn-a')).toBe('REGRESSED');
+  });
+
+  it('success:false with no failed file (an unhandled error) makes every pass NOT-RUN', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'ok [finding:syn-a]', status: 'passed' }]);
+    j.success = false;
+    expect(statusById(collectVitest(j)).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a pass in a PASSED file stays FIXED-VERIFIED when a different file failed', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'ok [finding:syn-a]', status: 'passed' }]);
+    j.success = false;
+    j.testResults.push({
+      name: '/abs/tests/other.test.ts',
+      status: 'failed',
+      assertionResults: [
+        {
+          ancestorTitles: ['o'],
+          title: 'ok too [finding:syn-b]',
+          status: 'passed',
+          fullName: 'o ok too [finding:syn-b]',
+        },
+      ],
+    });
+    const byId = statusById(collectVitest(j));
+    expect(byId.get('syn-a')).toBe('FIXED-VERIFIED');
+    expect(byId.get('syn-b')).toBe('NOT-RUN');
+  });
+
+  it('a file entry without a status is rejected (cannot tell whether it completed)', () => {
+    const j = vitestJson([{ ancestorTitles: ['s'], title: 'ok [finding:syn-a]', status: 'passed' }]);
+    delete (j.testResults[0] as { status?: string }).status;
+    expect(() => collectVitest(j)).toThrow(VitestReportError);
   });
 
   it('input that is not a vitest JSON report is rejected loudly', () => {

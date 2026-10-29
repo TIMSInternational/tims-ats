@@ -1,17 +1,22 @@
 /**
  * Collects per-finding observations from `dotnet test --logger trx` files.
  *
- * A test binds through `[Trait("Finding", "<id>")]`, which the TRX logger writes as
- * `<Property><Key>Finding</Key><Value>id</Value></Property>` inside the UnitTest definition's
- * `<Properties>`. Results are joined to definitions by `testId`. TRX is a small, fixed, machine-
- * written dialect, so it is read with targeted patterns rather than a general XML parser. Because of
- * that, an incomplete document (no closing `</TestRun>`, e.g. an interrupted run) is rejected, and so
- * is one whose `<Counters total>` disagrees with the results it contains. A private binding whose test
- * is absent from every file read yields NOT-RUN, so a sibling binding's pass cannot mask it.
+ * A test binds through a `[finding:<id>]` tag in its xUnit DisplayName
+ * (`[Fact(DisplayName = "... [finding:<id>]")]`), the same convention as vitest titles. The VSTest
+ * TRX logger (verified on 17.14.1 with xunit.runner.visualstudio 3.1.4, see
+ * fixtures/vstest-17.14.1-xunit-3.1.4.trx) writes the DisplayName as both the UnitTest `name` and the
+ * result `testName`, and does NOT serialise xUnit traits, so `[Trait("Finding", ...)]` cannot bind.
+ *
+ * TRX is a small, fixed, machine-written dialect, so it is read with targeted patterns rather than a
+ * general XML parser. Fail closed: a document without a closing `</TestRun>`, without a ResultSummary
+ * outcome, with a run outcome other than Completed / Passed / Failed (an aborted, timed-out or crashed
+ * run), or whose `<Counters total>` disagrees with its results is rejected. A tagged definition with no
+ * result, and a private binding whose test is absent from every file read, yield NOT-RUN, so a sibling
+ * binding's pass cannot mask a check that never ran.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { SLUG_RE, type Observation, type ObservedStatus } from './status';
+import { tagIds, type Observation, type ObservedStatus } from './status';
 
 export class XunitReportError extends Error {
   constructor(message: string) {
@@ -43,20 +48,29 @@ function statusFor(outcome: string): ObservedStatus {
   return 'NOT-RUN';
 }
 
-interface Definition {
-  name: string;
-  findings: string[];
-}
+/** Run outcomes of a run that finished: every test it held reported. Anything else is not evidence. */
+const FINISHED_RUN = new Set(['Completed', 'Passed', 'Failed']);
 
 function assertComplete(xml: string, resultCount: number): void {
   if (!/<TestRun\b/.test(xml)) throw new XunitReportError('not a TRX document (no <TestRun> element)');
   if (!/<\/TestRun>\s*$/.test(xml)) {
     throw new XunitReportError('incomplete TRX document (no closing </TestRun>); an interrupted run is not evidence');
   }
+  const outcome = /<ResultSummary\b[^>]*?\boutcome\s*=\s*"([^"]*)"/.exec(xml)?.[1];
+  if (outcome === undefined) throw new XunitReportError('TRX has no ResultSummary outcome; cannot tell it finished');
+  if (!FINISHED_RUN.has(outcome)) {
+    throw new XunitReportError(`TRX run outcome is ${outcome}; an unfinished run is not evidence`);
+  }
   const total = /<Counters\b[^>]*?\btotal\s*=\s*"(\d+)"/.exec(xml)?.[1];
   if (total !== undefined && Number(total) !== resultCount) {
     throw new XunitReportError(`TRX Counters total=${total} but the document holds ${resultCount} results`);
   }
+}
+
+function idsFor(name: string, extraNameBindings: ReadonlyMap<string, readonly string[]> | undefined): string[] {
+  const ids = tagIds(name);
+  for (const extra of extraNameBindings?.get(name) ?? []) if (!ids.includes(extra)) ids.push(extra);
+  return ids;
 }
 
 function readTrx(
@@ -67,30 +81,25 @@ function readTrx(
   const resultTags = [...xml.matchAll(/<UnitTestResult\b([^>]*?)\/?>/g)];
   assertComplete(xml, resultTags.length);
 
-  const definitions = new Map<string, Definition>();
-  for (const m of xml.matchAll(/<UnitTest\b([^>]*?)(?:\/>|>([\s\S]*?)<\/UnitTest>)/g)) {
+  const definitions = new Map<string, string>();
+  for (const m of xml.matchAll(/<UnitTest\b([^>]*?)\/?>/g)) {
     const a = attrs(m[1] ?? '');
-    if (!a.id) continue;
-    const findings: string[] = [];
-    const body = m[2] ?? '';
-    for (const p of body.matchAll(/<Property>\s*<Key>([\s\S]*?)<\/Key>\s*<Value>([\s\S]*?)<\/Value>\s*<\/Property>/g)) {
-      if (decode(p[1] ?? '').trim() !== 'Finding') continue;
-      const id = decode(p[2] ?? '').trim();
-      if (SLUG_RE.test(id) && !findings.includes(id)) findings.push(id);
-    }
-    definitions.set(a.id, { name: a.name ?? '', findings });
+    if (a.id) definitions.set(a.id, a.name ?? '');
   }
 
   const out: Observation[] = [];
+  const reported = new Set<string>();
   for (const m of resultTags) {
     const a = attrs(m[1] ?? '');
-    const def = a.testId ? definitions.get(a.testId) : undefined;
-    const name = def?.name || a.testName || '';
+    if (a.testId) reported.add(a.testId);
+    const name = (a.testId ? definitions.get(a.testId) : undefined) || a.testName || '';
     seen.add(name);
-    const ids = [...(def?.findings ?? [])];
-    for (const extra of extraNameBindings?.get(name) ?? []) if (!ids.includes(extra)) ids.push(extra);
     const status = statusFor(a.outcome ?? '');
-    for (const id of ids) out.push({ id, status, source: 'xunit', test: name });
+    for (const id of idsFor(name, extraNameBindings)) out.push({ id, status, source: 'xunit', test: name });
+  }
+  for (const [testId, name] of definitions) {
+    if (reported.has(testId)) continue;
+    for (const id of tagIds(name)) out.push({ id, status: 'NOT-RUN', source: 'xunit', test: name });
   }
   return out;
 }

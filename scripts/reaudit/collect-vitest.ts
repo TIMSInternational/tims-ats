@@ -5,9 +5,16 @@
  * `[finding:<slug>]`. Private bindings may additionally bind an untagged test by its exact full name.
  * A private binding whose test is absent from the report (renamed, deleted, filtered out) yields
  * NOT-RUN for its id, so a sibling binding's pass cannot mask a check that never ran.
+ *
+ * A file can fail OUTSIDE its assertions (a throwing afterAll leaves the file `failed` with an empty
+ * message while every assertion still reads `passed`), and a run can fail with no failed file at all
+ * (an unhandled error sets `success: false`). A pass from such a file, or from such a run, is not
+ * trusted evidence and becomes NOT-RUN. A failing assertion is never downgraded.
  */
 import { z } from 'zod';
-import { SLUG_RE, type Observation, type ObservedStatus } from './status';
+import { tagIds, type Observation, type ObservedStatus } from './status';
+
+export { tagIds };
 
 export class VitestReportError extends Error {
   constructor(message: string) {
@@ -22,10 +29,9 @@ const assertionSchema = z.object({
   status: z.string().max(50),
 });
 const reportSchema = z.object({
-  testResults: z.array(z.object({ assertionResults: z.array(assertionSchema) })),
+  success: z.boolean().optional(),
+  testResults: z.array(z.object({ status: z.string().max(50), assertionResults: z.array(assertionSchema) })),
 });
-
-const TAG_RE = /\[finding:([^\]]*)\]/g;
 const STALE = new Set(['skipped', 'todo', 'pending', 'disabled']);
 
 function statusFor(status: string): ObservedStatus {
@@ -35,28 +41,23 @@ function statusFor(status: string): ObservedStatus {
   return 'NOT-RUN';
 }
 
-export function tagIds(name: string): string[] {
-  const ids: string[] = [];
-  for (const m of name.matchAll(TAG_RE)) {
-    const id = m[1] ?? '';
-    if (SLUG_RE.test(id) && !ids.includes(id)) ids.push(id);
-  }
-  return ids;
-}
-
 export function collectVitest(raw: unknown, extraNameBindings?: ReadonlyMap<string, readonly string[]>): Observation[] {
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success)
-    throw new VitestReportError('not a vitest JSON report (expected testResults[].assertionResults[])');
+    throw new VitestReportError('not a vitest JSON report (expected testResults[].status and .assertionResults[])');
   const out: Observation[] = [];
   const seen = new Set<string>();
+  const anyFileFailed = parsed.data.testResults.some((f) => f.status === 'failed');
+  const runFailedUnexplained = parsed.data.success === false && !anyFileFailed;
   for (const file of parsed.data.testResults) {
+    const untrusted = file.status === 'failed' || runFailedUnexplained;
     for (const a of file.assertionResults) {
       const fullName = [...a.ancestorTitles, a.title].join(' ');
       seen.add(fullName);
       const ids = tagIds(fullName);
       for (const extra of extraNameBindings?.get(fullName) ?? []) if (!ids.includes(extra)) ids.push(extra);
-      const status = statusFor(a.status);
+      const raw = statusFor(a.status);
+      const status = untrusted && raw === 'FIXED-VERIFIED' ? 'NOT-RUN' : raw;
       for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName });
     }
   }

@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+  readdirSync,
+  readFileSync,
+  existsSync,
+  realpathSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli } from './cli';
@@ -58,7 +67,8 @@ const playwrightJson = { config: {}, suites: [], errors: [], stats: {} };
 const trx = `<?xml version="1.0" encoding="utf-8"?>
 <TestRun id="r" name="s" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
   <Results><UnitTestResult testId="g1" testName="Syn.Plain" outcome="Passed" /></Results>
-  <TestDefinitions><UnitTest name="Syn.Plain" id="g1"><Properties></Properties></UnitTest></TestDefinitions>
+  <TestDefinitions><UnitTest name="Syn.Plain" id="g1"></UnitTest></TestDefinitions>
+  <ResultSummary outcome="Completed"><Counters total="1" /></ResultSummary>
 </TestRun>`;
 
 function inputs(vitestStatus = 'passed') {
@@ -188,6 +198,18 @@ describe('runCli — happy paths', () => {
     const { pw, vt, trxDir } = inputs('failed');
     expect(await runCli(['--playwright', pw, '--vitest', vt, '--trx', trxDir, '--gate', 'launch'], ctx(env()))).toBe(1);
     expect(lines.join('\n')).toContain('syn-a');
+  });
+
+  it('declared owner bindings without --with-owner-checks are NOT-RUN, so the gate cannot pass', async () => {
+    const { pw, vt, trxDir } = inputs('passed');
+    const bindingsPath = join(priv, 'bindings.json');
+    writeFileSync(bindingsPath, JSON.stringify({ version: 1, tests: [], ownerChecks: ['syn-a'] }));
+    const e = env({ REAUDIT_BINDINGS: bindingsPath });
+    expect(await runCli(['--playwright', pw, '--vitest', vt, '--trx', trxDir, '--gate', 'launch'], ctx(e))).toBe(1);
+    const report = JSON.parse(readFileSync(join(e.REAUDIT_OUT_DIR as string, '2026-10-28-01234567.json'), 'utf8')) as {
+      rows: { id: string; status: string }[];
+    };
+    expect(report.rows.find((r) => r.id === 'syn-a')?.status).toBe('NOT-RUN');
   });
 
   it('without --gate, one input is enough; exit 0 and the report is written', async () => {

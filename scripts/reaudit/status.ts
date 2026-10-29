@@ -42,6 +42,18 @@ const PRECEDENCE: readonly ObservedStatus[] = [
 /** Lowercase slug: what every finding id, persona and binding id must look like. */
 export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+const TAG_RE = /\[finding:([^\]]*)\]/g;
+
+/** Ids named by `[finding:<slug>]` tags in a test name (vitest titles, xUnit DisplayNames). */
+export function tagIds(name: string): string[] {
+  const ids: string[] = [];
+  for (const m of name.matchAll(TAG_RE)) {
+    const id = m[1] ?? '';
+    if (SLUG_RE.test(id) && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 export function mergeStatuses(statuses: readonly ObservedStatus[]): ReauditStatus {
   if (statuses.length === 0) return 'UNBOUND';
   let best = PRECEDENCE.length - 1;

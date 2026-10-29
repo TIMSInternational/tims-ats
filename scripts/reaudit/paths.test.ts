@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assertOutsideRepo, isInsideRepo, OutsideRepoError } from './paths';
@@ -56,6 +57,53 @@ describe('isInsideRepo', () => {
 
   it('a plain path outside is not inside', () => {
     expect(isInsideRepo(join(outside, 'findings.json'), repo)).toBe(false);
+  });
+});
+
+describe('isInsideRepo — git worktrees', () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', ['-c', 'user.email=t@example.invalid', '-c', 'user.name=t', ...args], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  let main: string;
+  let wt: string;
+  let sib: string;
+
+  beforeEach(() => {
+    main = join(root, 'main');
+    wt = join(root, 'wt');
+    sib = join(root, 'sib');
+    mkdirSync(main);
+    git(main, 'init', '-q');
+    git(main, 'commit', '-q', '--allow-empty', '-m', 'init');
+    git(main, 'worktree', 'add', '-q', wt);
+    git(main, 'worktree', 'add', '-q', sib);
+  });
+
+  it('from a worktree, a path inside the MAIN checkout is inside (it is the same public repo)', () => {
+    expect(isInsideRepo(join(main, 'private-audit-output'), wt)).toBe(true);
+    expect(() => assertOutsideRepo(join(main, 'private-audit-output'), wt, 'REAUDIT_OUT_DIR')).toThrow(
+      OutsideRepoError,
+    );
+  });
+
+  it('from a worktree, a path inside a SIBLING worktree is inside', () => {
+    expect(isInsideRepo(join(sib, 'out.json'), wt)).toBe(true);
+  });
+
+  it('from the main checkout, a path inside a linked worktree is inside', () => {
+    expect(isInsideRepo(join(wt, 'out.json'), main)).toBe(true);
+  });
+
+  it('a path outside every checkout is still outside', () => {
+    expect(isInsideRepo(join(outside, 'out.json'), wt)).toBe(false);
+  });
+
+  it('a .git that git cannot read fails closed instead of guarding only the one root', () => {
+    writeFileSync(join(repo, '.git'), 'gitdir: /nonexistent/reaudit-broken\n');
+    expect(() => isInsideRepo(join(outside, 'out.json'), repo)).toThrow(OutsideRepoError);
   });
 });
 

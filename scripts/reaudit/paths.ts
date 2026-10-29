@@ -8,7 +8,12 @@
  * Containment is decided on REAL paths (symlinks resolved), not lexically, so a link that sits
  * outside the repo but points into it is still treated as inside. Paths that do not exist yet are
  * handled by resolving the deepest existing ancestor and re-appending the missing tail.
+ *
+ * "The repo" is every checkout of it, not only the one running the harness: from a linked worktree,
+ * the main checkout and every sibling worktree are the same public repository. When `repoRoot` holds
+ * a `.git`, the roots come from `git worktree list`; if git cannot list them, the guard fails closed.
  */
+import { execFileSync } from 'node:child_process';
 import { closeSync, constants, existsSync, openSync, realpathSync, writeSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -33,13 +38,35 @@ function realResolve(p: string): string {
   return join(realpathSync(cur), ...tail);
 }
 
-export function isInsideRepo(p: string, repoRoot: string): boolean {
-  const target = realResolve(p);
-  const root = realResolve(repoRoot);
+function within(target: string, root: string): boolean {
   const rel = relative(root, target);
   if (rel === '') return true;
   // A whole `..` segment, not a prefix: `<repo>/..private` is a directory INSIDE the repo.
   return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+/** Every checkout of the repository at `repoRoot`: itself plus each worktree git knows about. */
+export function checkoutRoots(repoRoot: string): string[] {
+  const roots = [realResolve(repoRoot)];
+  if (!existsSync(join(repoRoot, '.git'))) return roots;
+  let listing: string;
+  try {
+    listing = execFileSync('git', ['-C', repoRoot, 'worktree', 'list', '--porcelain'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch {
+    throw new OutsideRepoError(`cannot list the worktrees of ${repoRoot}; refusing to guess which paths are public`);
+  }
+  for (const line of listing.split('\n')) {
+    if (line.startsWith('worktree ')) roots.push(realResolve(line.slice('worktree '.length)));
+  }
+  return [...new Set(roots)];
+}
+
+export function isInsideRepo(p: string, repoRoot: string): boolean {
+  const target = realResolve(p);
+  return checkoutRoots(repoRoot).some((root) => within(target, root));
 }
 
 /**

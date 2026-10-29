@@ -124,6 +124,16 @@ async function run(argv: readonly string[], ctx: CliContext): Promise<number> {
   if (checksDir) {
     const ids = ownerCheckIds(checksDir, bindings.ownerChecks, new Set(findings.map((f) => f.id)));
     observations.push(...runOwnerChecks({ enabled: true, checksDir, ids }));
+  } else {
+    // A declared owner binding that was not executed is a check that did not run, never an absence.
+    for (const id of bindings.ownerChecks) {
+      observations.push({
+        id,
+        status: 'NOT-RUN',
+        source: 'owner',
+        test: 'owner check (not executed: no --with-owner-checks)',
+      });
+    }
   }
 
   let drift: Map<string, EvidenceDrift[]> | undefined;
