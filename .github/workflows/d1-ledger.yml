@@ -1,0 +1,42 @@
+name: D-1 ledger
+
+# A PR labelled `d1-exception` (owner decision D-1: a narrow packages/api exception for the launch
+# spine and security fixes) must name the C# port issue it pays into, on a `Port-issue: #NN` line.
+# Logic lives in scripts/ci/check-d1-ledger.sh; wiring and behaviour are pinned by
+# tests/governance/d1-ledger-check.test.ts.
+#
+# Same shape as ci.yml's verification-gate: the PR body (and here the labels) reach the script only
+# through env, never through a `${{ }}` expression inside `run:`.
+
+on:
+  # `push` exists only to satisfy the repo-wide trigger convention (tests/governance/ci-triggers.test.ts);
+  # the job is skipped on it, because there is no PR body or label outside a pull_request event.
+  push:
+    branches: [main]
+  # NO `branches:` filter: a stacked PR must not silently skip the check. `labeled`/`unlabeled` and
+  # `edited` re-run it when the label or the body changes, not only on a new commit.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+concurrency:
+  group: d1-ledger-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  d1-ledger:
+    name: D-1 exception names a port issue
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Require a Port-issue line on d1-exception PRs
+        env:
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: bash scripts/ci/check-d1-ledger.sh
