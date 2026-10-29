@@ -101,6 +101,16 @@ describe('check-d1-ledger.sh — mutation proof', () => {
     expect(run([LABEL], '  port-issue:   #77').status).toBe(0);
   });
 
+  it.each(['#074', '#090', '#0250'])('labelled, leading zero %s is read as base 10 (not octal): passes', (ref) => {
+    const r = run([LABEL], `Port-issue: ${ref}`);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(`port issue #${Number(ref.slice(1))}`);
+  });
+
+  it('labelled, CRLF line endings (as GitHub stores edited bodies): passes', () => {
+    expect(run([LABEL], '## Summary\r\nMinimal fix.\r\n\r\nPort-issue: #90\r\n').status).toBe(0);
+  });
+
   it.each(['#73', '#102', '#9', '#7', '#740', '#1010', '#249', '#2500', '#', 'none', 'TBD'])(
     'labelled, `Port-issue: %s` (not a port issue): FAILS',
     (ref) => {
@@ -129,6 +139,13 @@ describe('check-d1-ledger.sh — mutation proof', () => {
   it('a lookalike label (d1-exception-pending) does not trigger the check', () => {
     expect(run(['d1-exception-pending'], 'no ledger line').status).toBe(0);
   });
+
+  it.each(['x"d1-exception"', 'not-d1-exception'])(
+    'a label that merely contains or resembles the name (%s) does not trigger the check',
+    (label) => {
+      expect(run([label], 'no ledger line').status).toBe(0);
+    },
+  );
 
   it('the body is data, never code: a command substitution in it does not execute', () => {
     const dir = mkdtempSync(join(tmpdir(), 'd1-ledger-'));
@@ -172,6 +189,14 @@ describe('d1-ledger.yml — workflow wiring is pinned', () => {
     );
     // ci-triggers.test.ts: a stacked PR must not silently skip the check.
     expect(pr.branches).toBeUndefined();
+  });
+
+  it('the job runs only on pull_request events (push exists for the trigger convention only)', () => {
+    const jobs = Object.values(load().jobs ?? {});
+    expect(jobs.length).toBeGreaterThan(0);
+    for (const job of jobs) {
+      expect(job.if ?? '', 'job must be gated to pull_request').toMatch(/github\.event_name\s*==\s*'pull_request'/);
+    }
   });
 
   it('has its own concurrency group, distinct from ci.yml', () => {
