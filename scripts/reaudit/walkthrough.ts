@@ -6,10 +6,10 @@
  *     --persona <persona> --specs <dir of *.spec.ts>
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertOutsideRepo } from './paths';
+import { assertOutsideRepo, writeFileOutsideRepo } from './paths';
 import { SLUG_RE } from './status';
 
 export class WalkthroughError extends Error {
@@ -57,7 +57,7 @@ export function writeWalkthrough(opts: {
   const dir = assertOutsideRepo(opts.outDir, opts.repoRoot, 'walkthrough output directory');
   mkdirSync(dir, { recursive: true });
   const p = join(dir, `walkthrough-${opts.persona}.md`);
-  writeFileSync(p, opts.markdown);
+  writeFileOutsideRepo(p, opts.markdown, opts.repoRoot, 'walkthrough file');
   return p;
 }
 

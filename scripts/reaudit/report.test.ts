@@ -8,6 +8,7 @@ import {
   existsSync,
   readdirSync,
   realpathSync,
+  symlinkSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -202,6 +203,23 @@ describe('writeReport', () => {
     expect(paths.md).toBe(join(out, '2026-10-28-01234567.md'));
     expect(JSON.parse(readFileSync(paths.json, 'utf8')).rows[0].id).toBe('syn-a');
     expect(readFileSync(paths.md, 'utf8')).toContain('syn-a');
+  });
+
+  it('refuses to follow a pre-existing report-file symlink into the repo, leaving the target untouched', () => {
+    mkdirSync(out, { recursive: true });
+    const target = join(repo, 'tracked.txt');
+    writeFileSync(target, 'tracked\n');
+    symlinkSync(target, join(out, '2026-10-28-01234567.json'));
+    expect(() => writeReport(report(), { outDir: out, repoRoot: repo })).toThrow();
+    expect(readFileSync(target, 'utf8')).toBe('tracked\n');
+  });
+
+  it('refuses a dangling report-file symlink (it would create a file inside the repo)', () => {
+    mkdirSync(out, { recursive: true });
+    const target = join(repo, 'leak.json');
+    symlinkSync(target, join(out, '2026-10-28-01234567.json'));
+    expect(() => writeReport(report(), { outDir: out, repoRoot: repo })).toThrow();
+    expect(existsSync(target)).toBe(false);
   });
 
   it('refuses an output dir inside the repo and writes nothing', () => {

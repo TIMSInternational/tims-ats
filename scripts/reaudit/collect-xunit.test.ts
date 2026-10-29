@@ -77,6 +77,38 @@ describe('collectXunitTrx', () => {
     expect(statusById(collectXunitTrx(x, extra)).get('syn-private')).toBe('FIXED-VERIFIED');
   });
 
+  it('a private binding whose test is ABSENT from the TRX is NOT-RUN, so a sibling pass cannot mask it', () => {
+    const x = trx([{ id: 'g1', name: 'Syn.Present', outcome: 'Passed' }]);
+    const extra = new Map([
+      ['Syn.Present', ['syn-private']],
+      ['Syn.Missing', ['syn-private']],
+    ]);
+    const obs = collectXunitTrx(x, extra);
+    expect(obs).toContainEqual({ id: 'syn-private', status: 'NOT-RUN', source: 'xunit', test: 'Syn.Missing' });
+    expect(statusById(obs).get('syn-private')).toBe('NOT-RUN');
+  });
+
+  it('a truncated TRX (no closing </TestRun>) is rejected, never read as a partial pass', () => {
+    const full = trx([{ id: 'g1', name: 'Syn.Passes', finding: ['syn-a'], outcome: 'Passed' }]);
+    const cut = full.slice(0, full.indexOf('</Results>'));
+    expect(() => collectXunitTrx(cut)).toThrow(XunitReportError);
+    expect(() => collectXunitTrx(cut)).toThrow(/incomplete/i);
+  });
+
+  it('a TRX whose ResultSummary total disagrees with the results it contains is rejected', () => {
+    const full = trx([{ id: 'g1', name: 'Syn.Passes', finding: ['syn-a'], outcome: 'Passed' }]);
+    const lying = full.replace(
+      '</TestRun>',
+      '<ResultSummary outcome="Failed"><Counters total="2" /></ResultSummary>\n</TestRun>',
+    );
+    expect(() => collectXunitTrx(lying)).toThrow(/total/i);
+    const honest = full.replace(
+      '</TestRun>',
+      '<ResultSummary outcome="Completed"><Counters total="1" /></ResultSummary>\n</TestRun>',
+    );
+    expect(statusById(collectXunitTrx(honest)).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
   it('a document that is not a TRX TestRun is rejected loudly', () => {
     expect(() => collectXunitTrx('<html></html>')).toThrow(XunitReportError);
   });
@@ -103,6 +135,18 @@ describe('collectXunitDir', () => {
   it('a missing directory throws with the path', () => {
     const p = join(dir, 'absent');
     expect(() => collectXunitDir(p)).toThrow(p);
+  });
+
+  it('a private binding is reconciled ACROSS files: present in one file is not NOT-RUN', () => {
+    writeFileSync(join(dir, 'a.trx'), trx([{ id: 'g1', name: 'A', outcome: 'Passed' }]));
+    writeFileSync(join(dir, 'b.trx'), trx([{ id: 'g2', name: 'B', outcome: 'Passed' }]));
+    const extra = new Map([
+      ['A', ['syn-private']],
+      ['B', ['syn-private']],
+    ]);
+    expect(statusById(collectXunitDir(dir, extra)).get('syn-private')).toBe('FIXED-VERIFIED');
+    const missing = new Map([...extra, ['C', ['syn-private']]]);
+    expect(statusById(collectXunitDir(dir, missing)).get('syn-private')).toBe('NOT-RUN');
   });
 
   it('a directory with no .trx files throws (nothing ran is not a pass)', () => {

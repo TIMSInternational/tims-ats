@@ -9,8 +9,8 @@
  * outside the repo but points into it is still treated as inside. Paths that do not exist yet are
  * handled by resolving the deepest existing ancestor and re-appending the missing tail.
  */
-import { existsSync, realpathSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { closeSync, constants, existsSync, openSync, realpathSync, writeSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export class OutsideRepoError extends Error {
   constructor(message: string) {
@@ -38,7 +38,8 @@ export function isInsideRepo(p: string, repoRoot: string): boolean {
   const root = realResolve(repoRoot);
   const rel = relative(root, target);
   if (rel === '') return true;
-  return !rel.startsWith('..') && !isAbsolute(rel);
+  // A whole `..` segment, not a prefix: `<repo>/..private` is a directory INSIDE the repo.
+  return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 /**
@@ -53,4 +54,29 @@ export function assertOutsideRepo(p: string, repoRoot: string, label: string): s
     throw new OutsideRepoError(`${label} is inside the repository (${p}); private paths must live outside it`);
   }
   return resolve(p);
+}
+
+/**
+ * Writes `data` to the file `p`, which must be outside the repository. The final path component is
+ * opened with O_NOFOLLOW, so a pre-existing symlink at the destination (live or dangling) is refused
+ * instead of followed: a predictable report name in the output directory cannot be pointed back
+ * into the repository.
+ */
+export function writeFileOutsideRepo(p: string, data: string, repoRoot: string, label: string): void {
+  const dest = assertOutsideRepo(p, repoRoot, label);
+  let fd: number;
+  try {
+    fd = openSync(dest, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP' || code === 'EMLINK') {
+      throw new OutsideRepoError(`${label} is a symlink (${dest}); refusing to follow it`);
+    }
+    throw e;
+  }
+  try {
+    writeSync(fd, data);
+  } finally {
+    closeSync(fd);
+  }
 }

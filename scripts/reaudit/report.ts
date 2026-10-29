@@ -5,13 +5,13 @@
  * plus rollups by persona, severity, launchScope, lens and WP. The report is private: it is written
  * only OUTSIDE the repository, as `<yyyy-mm-dd>-<sha8>.{json,md}`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { EvidenceDrift } from './evidence-drift';
 import { isSuspiciousFix } from './evidence-drift';
 import type { Finding } from './findings-source';
-import { assertOutsideRepo } from './paths';
+import { assertOutsideRepo, writeFileOutsideRepo } from './paths';
 import { REAUDIT_STATUSES, mergeStatuses, type Observation, type ReauditStatus } from './status';
 
 export type WpIndex = Record<string, string>;
@@ -164,8 +164,8 @@ export function writeReport(
   const base = `${r.generatedAt.slice(0, 10)}-${r.sha.slice(0, 8)}`;
   const json = join(dir, `${base}.json`);
   const md = join(dir, `${base}.md`);
-  writeFileSync(json, `${JSON.stringify(r, null, 2)}\n`);
-  writeFileSync(md, renderMarkdown(r));
+  writeFileOutsideRepo(json, `${JSON.stringify(r, null, 2)}\n`, opts.repoRoot, 'report file');
+  writeFileOutsideRepo(md, renderMarkdown(r), opts.repoRoot, 'report file');
   return { json, md };
 }
 

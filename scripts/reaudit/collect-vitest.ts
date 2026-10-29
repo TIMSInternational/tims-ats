@@ -3,6 +3,8 @@
  *
  * A test binds when its FULL name (every ancestor describe title + the leaf title) contains
  * `[finding:<slug>]`. Private bindings may additionally bind an untagged test by its exact full name.
+ * A private binding whose test is absent from the report (renamed, deleted, filtered out) yields
+ * NOT-RUN for its id, so a sibling binding's pass cannot mask a check that never ran.
  */
 import { z } from 'zod';
 import { SLUG_RE, type Observation, type ObservedStatus } from './status';
@@ -47,14 +49,20 @@ export function collectVitest(raw: unknown, extraNameBindings?: ReadonlyMap<stri
   if (!parsed.success)
     throw new VitestReportError('not a vitest JSON report (expected testResults[].assertionResults[])');
   const out: Observation[] = [];
+  const seen = new Set<string>();
   for (const file of parsed.data.testResults) {
     for (const a of file.assertionResults) {
       const fullName = [...a.ancestorTitles, a.title].join(' ');
+      seen.add(fullName);
       const ids = tagIds(fullName);
       for (const extra of extraNameBindings?.get(fullName) ?? []) if (!ids.includes(extra)) ids.push(extra);
       const status = statusFor(a.status);
       for (const id of ids) out.push({ id, status, source: 'vitest', test: fullName });
     }
+  }
+  for (const [name, ids] of extraNameBindings ?? []) {
+    if (seen.has(name)) continue;
+    for (const id of ids) out.push({ id, status: 'NOT-RUN', source: 'vitest', test: name });
   }
   return out;
 }

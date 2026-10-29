@@ -78,6 +78,22 @@ describe('collectVitest', () => {
     expect(statusById(collectVitest(j, extra)).get('syn-private')).toBe('FIXED-VERIFIED');
   });
 
+  it('a private binding whose test is ABSENT from the report is NOT-RUN, so a sibling pass cannot mask it', () => {
+    const j = vitestJson([{ ancestorTitles: ['security'], title: 'present check', status: 'passed' }]);
+    const extra = new Map([
+      ['security present check', ['syn-private']],
+      ['security renamed or filtered check', ['syn-private']],
+    ]);
+    const obs = collectVitest(j, extra);
+    expect(obs).toContainEqual({
+      id: 'syn-private',
+      status: 'NOT-RUN',
+      source: 'vitest',
+      test: 'security renamed or filtered check',
+    });
+    expect(statusById(obs).get('syn-private')).toBe('NOT-RUN');
+  });
+
   it('observations carry source and full test name', () => {
     const j = vitestJson([{ ancestorTitles: ['outer'], title: 'leaf [finding:syn-a]', status: 'passed' }]);
     const [o] = collectVitest(j);

@@ -49,6 +49,11 @@ describe('isInsideRepo', () => {
     expect(isInsideRepo(join(link, 'report.json'), repo)).toBe(true);
   });
 
+  it('a directory INSIDE the repo whose name starts with ".." is inside (not a parent traversal)', () => {
+    expect(isInsideRepo(join(repo, '..private', 'findings.json'), repo)).toBe(true);
+    expect(() => assertOutsideRepo(join(repo, '..private'), repo, 'output directory')).toThrow(OutsideRepoError);
+  });
+
   it('a plain path outside is not inside', () => {
     expect(isInsideRepo(join(outside, 'findings.json'), repo)).toBe(false);
   });

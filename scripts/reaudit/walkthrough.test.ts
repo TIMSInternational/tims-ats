@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { extractStepTitles, renderWalkthrough, writeWalkthrough, WalkthroughError } from './walkthrough';
@@ -79,6 +88,16 @@ describe('writeWalkthrough', () => {
       writeWalkthrough({ persona: 'recruiter', markdown: 'x', outDir: join(repo, 'out'), repoRoot: repo }),
     ).toThrow(/inside the repository/i);
     expect(readdirSync(repo)).toEqual([]);
+  });
+
+  it('refuses to follow a pre-existing walkthrough-file symlink into the repo', () => {
+    const out = join(root, 'private');
+    mkdirSync(out, { recursive: true });
+    const target = join(repo, 'tracked.md');
+    writeFileSync(target, 'tracked\n');
+    symlinkSync(target, join(out, 'walkthrough-recruiter.md'));
+    expect(() => writeWalkthrough({ persona: 'recruiter', markdown: 'x', outDir: out, repoRoot: repo })).toThrow();
+    expect(readFileSync(target, 'utf8')).toBe('tracked\n');
   });
 
   it('refuses an unknown persona (it becomes part of a file name)', () => {
