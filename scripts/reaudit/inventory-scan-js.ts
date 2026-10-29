@@ -72,7 +72,8 @@ interface Segment {
   title: string | null;
   /** Ids from `{ tag }` (playwright); null = a tag option the scan cannot read. */
   optionIds: string[];
-  line: number;
+  /** Offset of the declaring call in the file. */
+  at: number;
 }
 
 interface Ctx {
@@ -136,9 +137,11 @@ function evidenceName(ctx: Ctx, path: readonly Segment[]): string | null {
   return ctx.source === 'playwright' ? titles.filter((t) => t !== '').join(' › ') : titles.join(' ');
 }
 
-function emit(ctx: Ctx, ids: readonly string[], line: number, name: string | null, why?: string): void {
+/** `at` is the offset of the declaration: it, not the line, tells two declarations apart. */
+function emit(ctx: Ctx, ids: readonly string[], at: number, name: string | null, why?: string): void {
+  const line = ctx.sf.getLineAndCharacterOfPosition(at).line + 1;
   for (const id of ids) {
-    const e: InventoryEntry = { id, source: ctx.source, file: ctx.file, line, name };
+    const e: InventoryEntry = { id, source: ctx.source, file: ctx.file, line, offset: at, name };
     if (name === null) e.why = why ?? 'the test title is built at runtime';
     ctx.out.entries.push(e);
   }
@@ -150,25 +153,26 @@ function walk(ctx: Ctx, node: ts.Node, path: readonly Segment[]): number {
     const callee = calleeOf(node.expression);
     const kind = callee ? kindOf(callee) : null;
     const args = node.arguments;
-    const line = ctx.sf.getLineAndCharacterOfPosition(node.getStart(ctx.sf)).line + 1;
+    const at = node.getStart(ctx.sf);
+    const line = ctx.sf.getLineAndCharacterOfPosition(at).line + 1;
     const runtimeTitle = !!callee && (callee.props.includes('each') || callee.props.includes('for'));
     if (kind === 'describe' && args.length >= 1 && !isFnLiteral(args[0])) {
       const title = runtimeTitle ? null : staticText(args[0]);
       if (title !== null) consume(ctx, args[0] as ts.Expression);
-      const seg: Segment = { title, optionIds: optionIds(ctx, args.length > 2 ? args[1] : undefined, line), line };
+      const seg: Segment = { title, optionIds: optionIds(ctx, args.length > 2 ? args[1] : undefined, line), at };
       return describeBody(ctx, [...path, seg], args[args.length - 1]);
     }
     if (kind === 'describe' && args.length >= 1) {
-      return describeBody(ctx, [...path, { title: '', optionIds: [], line }], args[args.length - 1]);
+      return describeBody(ctx, [...path, { title: '', optionIds: [], at }], args[args.length - 1]);
     }
     // test(title, [details,] body). Playwright's test.skip(condition, reason) has no body: not a test.
     const declares = args.length >= 2 && !isFnLiteral(args[0]) && args.slice(1).some((a) => isFn(a));
     if (kind === 'test' && declares) {
       const title = runtimeTitle ? null : staticText(args[0]);
       if (title !== null) consume(ctx, args[0] as ts.Expression);
-      const seg: Segment = { title, optionIds: optionIds(ctx, args.length > 2 ? args[1] : undefined, line), line };
+      const seg: Segment = { title, optionIds: optionIds(ctx, args.length > 2 ? args[1] : undefined, line), at };
       const full = [...path, seg];
-      emit(ctx, pathIds(ctx, full), line, evidenceName(ctx, full));
+      emit(ctx, pathIds(ctx, full), at, evidenceName(ctx, full));
       return 1; // a test body cannot declare tests: not descended
     }
   }
@@ -181,10 +185,10 @@ function walk(ctx: Ctx, node: ts.Node, path: readonly Segment[]): number {
 
 function describeBody(ctx: Ctx, path: readonly Segment[], body: ts.Node | undefined): number {
   const ids = pathIds(ctx, path);
-  const line = path[path.length - 1]?.line ?? 1;
+  const at = path[path.length - 1]?.at ?? 0;
   const n = body ? walk(ctx, body, path) : 0;
   if (ids.length === 0) return n;
-  if (n === 0) emit(ctx, ids, line, null, 'a tagged describe with no statically visible test');
+  if (n === 0) emit(ctx, ids, at, null, 'a tagged describe with no statically visible test');
   const fnBody = body && (ts.isArrowFunction(body) || ts.isFunctionExpression(body)) ? body.body : undefined;
   if (fnBody && ts.isBlock(fnBody)) {
     for (const st of fnBody.statements) {
@@ -193,7 +197,13 @@ function describeBody(ctx: Ctx, path: readonly Segment[], body: ts.Node | undefi
       if (!e || !ts.isCallExpression(e)) continue;
       const c = calleeOf(e.expression);
       if (c && (TEST_ROOTS.has(c.root) || DESCRIBE_ROOTS.has(c.root) || INERT_ROOTS.has(c.root))) continue;
-      emit(ctx, ids, line, null, `the tagged describe calls ${c?.root ?? 'an expression'}(), which may declare tests`);
+      emit(
+        ctx,
+        ids,
+        st.getStart(ctx.sf),
+        null,
+        `the tagged describe calls ${c?.root ?? 'an expression'}(), which may declare tests`,
+      );
     }
   }
   return n;

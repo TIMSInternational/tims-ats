@@ -7,7 +7,7 @@ import { collectPlaywrightReport } from './collect-playwright';
 import { collectVitestReport, VITEST_REPORT_MARKER } from './collect-vitest';
 import { collectXunitRun } from './collect-xunit';
 import { readInventory, reconcileInventory, type BindingInventory } from './inventory';
-import type { InventoryEntry } from './inventory-scan';
+import { scanFile, type InventoryEntry } from './inventory-scan';
 import { buildReport, launchGate } from './report';
 import { statusById, type Observation } from './status';
 
@@ -18,6 +18,8 @@ const entry = (over: Partial<InventoryEntry> & Pick<InventoryEntry, 'file' | 'na
   id: 'syn-a',
   source: 'vitest',
   line: 1,
+  // Distinct lines are distinct declarations unless a test says otherwise.
+  offset: (over.line ?? 1) * 1000,
   ...over,
 });
 const inv = (entries: InventoryEntry[], unattributable: string[] = []): BindingInventory => ({
@@ -286,6 +288,38 @@ describe('reconcileInventory: playwright and xunit keys', () => {
     const r = reconcileInventory(two, xu.observations, ALL, KNOWN);
     expect(r.observations.map((o) => o.status)).toEqual(['NOT-RUN', 'NOT-RUN']);
     expect(r.untrusted.join('\n')).toMatch(/ambiguous/);
+  });
+
+  it('REGRESSION (Codex r13): two xUnit declarations on the SAME line are still ambiguous', () => {
+    const cs =
+      'public class T { [Fact(DisplayName = "ideal [finding:syn-a]")] public void A() {} [Fact(DisplayName = "ideal [finding:syn-a]")] public void B() {} }';
+    const scanned = scanFile('services/T/A.cs', cs).entries;
+    expect(scanned.map((e) => e.line)).toEqual([1, 1]);
+    const xu = collectXunitRun([{ name: 'a.trx', xml: trx(['ideal [finding:syn-a]']) }], undefined, { runExitCode: 0 });
+    const r = reconcileInventory(inv(scanned), xu.observations, ALL, KNOWN);
+    expect(r.observations.map((o) => o.status)).toEqual(['NOT-RUN', 'NOT-RUN']);
+    expect(r.untrusted.join('\n')).toMatch(/ambiguous/);
+  });
+
+  it('REGRESSION (Codex r13): two Vitest declarations with one name on the SAME line are ambiguous', () => {
+    const src = "it('x [finding:syn-a]', () => {}); it('x [finding:syn-a]', () => {});";
+    const scanned = scanFile('tests/one.test.ts', src).entries;
+    const vt = collectVitestReport(
+      {
+        reaudit: VITEST_REPORT_MARKER,
+        success: true,
+        testResults: [
+          {
+            name: '/abs/repo/tests/one.test.ts',
+            status: 'passed',
+            assertionResults: [{ ancestorTitles: [], title: 'x [finding:syn-a]', status: 'passed', fails: false }],
+          },
+        ],
+      },
+      undefined,
+      { runExitCode: 0, checkoutRoot: '/abs/repo' },
+    );
+    expect(reconcileInventory(inv(scanned), vt.observations, ALL, KNOWN).observations).toHaveLength(2);
   });
 
   it('a DisplayName that is a theory-row prefix of another declaration is ambiguous too', () => {

@@ -452,8 +452,22 @@ describe('runCli — the binding inventory', () => {
   const twoChecks = (): BindingInventory => ({
     sha: HEAD,
     entries: [
-      { id: 'syn-a', source: 'vitest', file: 'synthetic.test.ts', line: 3, name: 's ideal holds [finding:syn-a]' },
-      { id: 'syn-a', source: 'vitest', file: 'other.test.ts', line: 7, name: 's second check [finding:syn-a]' },
+      {
+        id: 'syn-a',
+        source: 'vitest',
+        file: 'synthetic.test.ts',
+        line: 3,
+        offset: 40,
+        name: 's ideal holds [finding:syn-a]',
+      },
+      {
+        id: 'syn-a',
+        source: 'vitest',
+        file: 'other.test.ts',
+        line: 7,
+        offset: 90,
+        name: 's second check [finding:syn-a]',
+      },
     ],
     unattributable: [],
   });
@@ -482,7 +496,9 @@ describe('runCli — the binding inventory', () => {
   it('a check in a source that was not supplied keeps the finding NOT-RUN (no FIXED-VERIFIED from a sibling source)', async () => {
     inventory = {
       sha: HEAD,
-      entries: [{ id: 'syn-a', source: 'xunit', file: 'services/T/A.cs', line: 9, name: 'x [finding:syn-a]' }],
+      entries: [
+        { id: 'syn-a', source: 'xunit', file: 'services/T/A.cs', line: 9, offset: 300, name: 'x [finding:syn-a]' },
+      ],
       unattributable: [],
     };
     const { vt } = inputs('passed');
@@ -495,7 +511,9 @@ describe('runCli — the binding inventory', () => {
   it('a Playwright check is matched through the recorded checkout root and the report rootDir (gate 0)', async () => {
     inventory = {
       sha: HEAD,
-      entries: [{ id: 'syn-a', source: 'playwright', file: 'e2e/specs/j.spec.ts', line: 2, name: 'J › step' }],
+      entries: [
+        { id: 'syn-a', source: 'playwright', file: 'e2e/specs/j.spec.ts', line: 2, offset: 30, name: 'J › step' },
+      ],
       unattributable: [],
     };
     const { pw, vt, trxDir } = inputs('passed');

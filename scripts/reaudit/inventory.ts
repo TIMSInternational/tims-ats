@@ -70,7 +70,8 @@ function matches(e: InventoryEntry, key: EvidenceKey): boolean {
 /** Names one evidence entry could satisfy both of. TRX carries no file, so xUnit compares across files. */
 function collide(a: InventoryEntry, b: InventoryEntry): boolean {
   if (a.source !== b.source || a.name === null || b.name === null) return false;
-  if (a.file === b.file && a.line === b.line) return false; // the same declaration (bound to several ids)
+  // The same declaration bound to several ids. Offset, not line: two declarations can share a line.
+  if (a.file === b.file && a.offset === b.offset) return false;
   if (a.source !== 'xunit') return a.file === b.file && a.name === b.name;
   return a.name === b.name || a.name.startsWith(`${b.name}(`) || b.name.startsWith(`${a.name}(`);
 }

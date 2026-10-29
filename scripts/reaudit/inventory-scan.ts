@@ -65,7 +65,7 @@ function scanCs(file: string, text: string): FileScan {
     if (ids.length === 0) continue;
     consumed.push({ start: m.index, end: m.index + m[0].length });
     const line = lineAt(text, m.index);
-    for (const id of ids) out.entries.push({ id, source: 'xunit', file, line, name });
+    for (const id of ids) out.entries.push({ id, source: 'xunit', file, line, offset: m.index, name });
   }
   leftovers(file, text, 'xunit', consumed, out);
   return out;

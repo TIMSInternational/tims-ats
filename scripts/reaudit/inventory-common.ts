@@ -8,6 +8,8 @@ export interface InventoryEntry {
   /** Repository-relative path of the declaring file. */
   file: string;
   line: number;
+  /** Character offset of the declaration: what tells two declarations on one line apart. */
+  offset: number;
   /** The exact name the evidence must show; null = cannot be resolved statically (never satisfied). */
   name: string | null;
   why?: string;
@@ -65,7 +67,15 @@ export function leftovers(
     const { id, open } = tagAt(text, i, m[0]);
     const line = lineAt(text, i);
     if (id)
-      out.entries.push({ id, source, file, line, name: null, why: 'tag outside a statically resolvable test title' });
+      out.entries.push({
+        id,
+        source,
+        file,
+        line,
+        offset: i,
+        name: null,
+        why: 'tag outside a statically resolvable test title',
+      });
     // Any other incomplete tag may have its id (or a suffix of it) built at runtime: fail closed.
     if (open) out.unattributable.push(`${file}:${line}`);
   }
