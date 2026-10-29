@@ -83,18 +83,12 @@ describe('zonedWallTimeToUtc', () => {
   });
 
   it('converts Bogotá wall time (UTC-5) to UTC', () => {
-    expect(zonedWallTimeToUtc('2026-11-03', '10:00', 'America/Bogota').toISOString()).toBe(
-      '2026-11-03T15:00:00.000Z',
-    );
+    expect(zonedWallTimeToUtc('2026-11-03', '10:00', 'America/Bogota').toISOString()).toBe('2026-11-03T15:00:00.000Z');
   });
 
   it('corrects across the Madrid DST boundary (01:30 CEST on 2026-10-25 is 23:30Z the day before)', () => {
-    expect(zonedWallTimeToUtc('2026-10-25', '01:30', 'Europe/Madrid').toISOString()).toBe(
-      '2026-10-24T23:30:00.000Z',
-    );
-    expect(zonedWallTimeToUtc('2026-10-25', '04:00', 'Europe/Madrid').toISOString()).toBe(
-      '2026-10-25T03:00:00.000Z',
-    );
+    expect(zonedWallTimeToUtc('2026-10-25', '01:30', 'Europe/Madrid').toISOString()).toBe('2026-10-24T23:30:00.000Z');
+    expect(zonedWallTimeToUtc('2026-10-25', '04:00', 'Europe/Madrid').toISOString()).toBe('2026-10-25T03:00:00.000Z');
   });
 });
 

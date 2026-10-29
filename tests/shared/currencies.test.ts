@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  POPULAR_CURRENCY_CODES,
-  supportedCurrencyCodes,
-  parseCurrencyCode,
-  normalizeCurrencyCode,
-} from '@tims/shared';
+import { POPULAR_CURRENCY_CODES, supportedCurrencyCodes, parseCurrencyCode, normalizeCurrencyCode } from '@tims/shared';
 
 // WP-09 PR-1. Findings: company-admin-spec-38, recruiter-spec-52, recruiter-data-76
 // (CRC is not a popular choice) and platform-owner-data-69 / company-admin-data-64
