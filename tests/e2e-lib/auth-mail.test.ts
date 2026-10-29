@@ -256,4 +256,75 @@ describe('waitForAuthMail (fetch injected, no network)', () => {
       }),
     ).rejects.toThrow(/500/);
   });
+
+  it('asks fetch not to follow redirects, so a hop off localhost is never requested', async () => {
+    const fetchImpl = mailpitStub();
+    await waitForAuthMail({
+      baseUrl: 'http://127.0.0.1:54324',
+      address: 'carlos.candidato@vivienda-e2e.test',
+      timeoutMs: 1_000,
+      intervalMs: 10,
+      fetchImpl,
+    });
+    expect(fetchImpl.mock.calls.length).toBeGreaterThan(0);
+    for (const call of fetchImpl.mock.calls as unknown as [string, RequestInit | undefined][]) {
+      expect(call[1]?.redirect).toBe('error');
+    }
+  });
+
+  it('refuses a redirect response instead of following it', async () => {
+    const fetchImpl = vi.fn(
+      async (): Promise<Response> =>
+        new Response(null, { status: 302, headers: { location: 'https://mail.vivienda-e2e.test/api/v1/messages' } }),
+    );
+    await expect(
+      waitForAuthMail({
+        baseUrl: 'http://localhost:54324',
+        address: 'carlos.candidato@vivienda-e2e.test',
+        timeoutMs: 1_000,
+        intervalMs: 10,
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/redirect/i);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds the whole wait by timeoutMs even when a request never settles', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchImpl = vi.fn((_input: string, init?: RequestInit): Promise<Response> => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    });
+    const started = Date.now();
+    await expect(
+      waitForAuthMail({
+        baseUrl: 'http://localhost:54324',
+        address: 'carlos.candidato@vivienda-e2e.test',
+        timeoutMs: 50,
+        intervalMs: 10,
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/carlos\.candidato@vivienda-e2e\.test/);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it('bounds the wait when the response body never finishes', async () => {
+    const fetchImpl = vi.fn(
+      async (): Promise<Response> =>
+        new Response(new ReadableStream({ start() {} }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    await expect(
+      waitForAuthMail({
+        baseUrl: 'http://localhost:54324',
+        address: 'carlos.candidato@vivienda-e2e.test',
+        timeoutMs: 50,
+        intervalMs: 10,
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/within 50 ms/);
+  });
 });

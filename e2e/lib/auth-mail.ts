@@ -167,31 +167,57 @@ export interface WaitForAuthMailOptions {
   since?: Date;
   timeoutMs?: number;
   intervalMs?: number;
-  fetchImpl?: (input: string) => Promise<Response>;
+  /** Called with `redirect: 'error'` and an abort signal; a redirect response is refused, never followed. */
+  fetchImpl?: (input: string, init: RequestInit) => Promise<Response>;
 }
 
-async function getJson(fetchImpl: (input: string) => Promise<Response>, url: string): Promise<unknown> {
-  const res = await fetchImpl(url);
-  if (!res.ok) throw new Error(`[e2e] Mailpit returned HTTP ${res.status} for ${new URL(url).pathname}`);
+type FetchImpl = (input: string, init: RequestInit) => Promise<Response>;
+
+/** Settle with `work`, or reject with `onTimeout()` once `deadline` passes, whichever comes first. */
+function beforeDeadline<T>(work: Promise<T>, deadline: number, onTimeout: () => Error): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(onTimeout()), Math.max(0, deadline - Date.now()));
+  });
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+}
+
+async function getJson(fetchImpl: FetchImpl, url: string, signal: AbortSignal): Promise<unknown> {
+  const res = await fetchImpl(url, { redirect: 'error', signal });
+  const path = new URL(url).pathname;
+  if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+    throw new Error(`[e2e] refusing a Mailpit redirect (HTTP ${res.status}) for ${path}`);
+  }
+  if (!res.ok) throw new Error(`[e2e] Mailpit returned HTTP ${res.status} for ${path}`);
   return res.json();
 }
 
-/** Poll Mailpit until a mail for `address` (newer than `since`) arrives; return the full message. */
+/**
+ * Poll Mailpit until a mail for `address` (newer than `since`) arrives; return the full message.
+ * `timeoutMs` bounds the whole wait: requests, body reads and sleeps.
+ */
 export async function waitForAuthMail(options: WaitForAuthMailOptions): Promise<MailpitMessage> {
   const { address, since, timeoutMs = 30_000, intervalMs = 500 } = options;
   const base = assertLocalUrl(options.baseUrl);
-  const fetchImpl = options.fetchImpl ?? ((input: string) => fetch(input));
+  const fetchImpl: FetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
   const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const list = parseMailpitList(await getJson(fetchImpl, new URL('/api/v1/messages', base).href));
-    const hit = pickLatestFor(list, address, since);
-    if (hit) {
-      const url = new URL(`/api/v1/message/${encodeURIComponent(hit.id)}`, base).href;
-      return parseMailpitMessage(await getJson(fetchImpl, url));
+  const controller = new AbortController();
+  const timedOut = (): Error => {
+    controller.abort();
+    return new Error(`[e2e] no auth mail for ${address} within ${timeoutMs} ms`);
+  };
+  const poll = async (): Promise<MailpitMessage> => {
+    for (;;) {
+      const listUrl = new URL('/api/v1/messages', base).href;
+      const list = parseMailpitList(await getJson(fetchImpl, listUrl, controller.signal));
+      const hit = pickLatestFor(list, address, since);
+      if (hit) {
+        const url = new URL(`/api/v1/message/${encodeURIComponent(hit.id)}`, base).href;
+        return parseMailpitMessage(await getJson(fetchImpl, url, controller.signal));
+      }
+      if (controller.signal.aborted || Date.now() >= deadline) throw timedOut();
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
-    if (Date.now() >= deadline) {
-      throw new Error(`[e2e] no auth mail for ${address} within ${timeoutMs} ms`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
+  };
+  return beforeDeadline(poll(), deadline, timedOut);
 }
