@@ -14,15 +14,19 @@
  * contract and rejects the report.
  *
  * Per tagged id, from the final attempt (highest `retry`): no result -> NOT-RUN; skipped -> STALE-BINDING;
+ * a `test.fail()` test (expectedStatus `failed`) -> NOT-RUN whatever happened (never a pass);
  * failed / timedOut / interrupted -> REGRESSED (OPEN-CONFIRMED if the final attempt recorded finding-open
  * for it); passed -> FIXED-VERIFIED with finding-fixed, OPEN-CONFIRMED with finding-open, else NOT-RUN.
  *
- * UNTRUSTED RUN. The report is untrusted when (a) any test with NO finding tag ended failed / timedOut /
- * interrupted (its binding cannot be determined, so it may be the check for any id), (b) the report has
- * top-level `errors` (global setup/teardown), or (c) the run's exit status is non-zero and no failed test
+ * An UNEXPECTED outcome is Playwright's own notion: the final status differs from `expectedStatus`
+ * (a `test.fail()` test that fails is expected; one that passes, or times out, is not).
+ *
+ * UNTRUSTED RUN. The report is untrusted when (a) any test with NO finding tag had an unexpected outcome
+ * (its binding cannot be determined, so it may be the check for any id), (b) the report has top-level
+ * `errors` (global setup/teardown), or (c) the run's exit status is non-zero and no unexpected outcome
  * explains it. Then every FIXED-VERIFIED becomes NOT-RUN and the reasons are returned, so the CLI can
- * distrust every source and fail the launch gate. A failure is never downgraded. Exit 0 alongside a
- * failed test is a contradiction and rejects the report.
+ * distrust every source and fail the launch gate. A failure is never downgraded. Exit 0 alongside an
+ * unexpected outcome is a contradiction and rejects the report.
  */
 import { z } from 'zod';
 import { SLUG_RE, type Collection, type Observation, type ObservedStatus } from './status';
@@ -108,9 +112,9 @@ function taggedIds(spec: PwSpec, where: string): string[] {
 
 interface Walked {
   observations: Observation[];
-  /** Tests that failed without any finding tag. */
+  /** Tests with an unexpected outcome and no finding tag. */
   unboundFailures: string[];
-  anyFailed: boolean;
+  anyUnexpected: boolean;
 }
 
 function statusFor(
@@ -121,6 +125,7 @@ function statusFor(
 ): ObservedStatus {
   if (!last) return 'NOT-RUN';
   if (last.status === 'skipped' || test.expectedStatus === 'skipped') return 'STALE-BINDING';
+  if (test.expectedStatus === 'failed') return 'NOT-RUN';
   if (evidence.has(`finding-open\u0000${id}`)) return 'OPEN-CONFIRMED';
   if (FAILED.has(last.status)) return 'REGRESSED';
   if (last.status === 'passed' && evidence.has(`finding-fixed\u0000${id}`)) return 'FIXED-VERIFIED';
@@ -131,9 +136,11 @@ function collectTest(spec: PwSpec, test: PwTest, titlePath: string[], acc: Walke
   const name = [test.projectName ? `[${test.projectName}]` : '', titlePath.join(' › ')].filter(Boolean).join(' ');
   const ids = taggedIds(spec, name);
   const last = [...test.results].sort((a, b) => b.retry - a.retry)[0];
-  const failed = last !== undefined && FAILED.has(last.status);
-  if (failed) acc.anyFailed = true;
-  if (failed && ids.length === 0) acc.unboundFailures.push(name);
+  const expected = test.expectedStatus ?? 'passed';
+  const unexpected =
+    last !== undefined && last.status !== expected && !(last.status === 'skipped' || expected === 'skipped');
+  if (unexpected) acc.anyUnexpected = true;
+  if (unexpected && ids.length === 0) acc.unboundFailures.push(`${name} (${last?.status}, expected ${expected})`);
 
   // Every runtime finding-open / finding-fixed, on any attempt, must name a declared id.
   const everyAttempt = [...(test.annotations ?? []), ...test.results.flatMap((r) => r.annotations ?? [])];
@@ -175,18 +182,20 @@ export function collectPlaywrightReport(raw: unknown, opts: { runExitCode?: numb
       `not a Playwright JSON report (${first ? `${first.path.join('.') || '(root)'}: ${first.message}` : 'invalid'})`,
     );
   }
-  const acc: Walked = { observations: [], unboundFailures: [], anyFailed: false };
+  const acc: Walked = { observations: [], unboundFailures: [], anyUnexpected: false };
   for (const suite of parsed.data.suites) walk(suite, [], acc);
 
-  const untrusted: string[] = acc.unboundFailures.map((t) => `playwright: ${t} failed and has no @finding tag`);
+  const untrusted: string[] = acc.unboundFailures.map(
+    (t) => `playwright: ${t}: an unexpected outcome in a test with no @finding tag`,
+  );
   for (const e of parsed.data.errors) {
     untrusted.push(`playwright: global error: ${(e.message ?? '(no message)').split('\n')[0]}`);
   }
   const exit = opts.runExitCode;
-  if (exit === 0 && acc.anyFailed) {
-    throw new PlaywrightReportError('the Playwright run exited 0 but its report has a failed test');
+  if (exit === 0 && acc.anyUnexpected) {
+    throw new PlaywrightReportError('the Playwright run exited 0 but its report has an unexpected outcome');
   }
-  if (exit !== undefined && exit !== 0 && !acc.anyFailed && parsed.data.errors.length === 0) {
+  if (exit !== undefined && exit !== 0 && !acc.anyUnexpected && parsed.data.errors.length === 0) {
     untrusted.push(`playwright: the run exited ${exit} but its report shows no failure`);
   }
   if (untrusted.length === 0) return { observations: acc.observations, untrusted };

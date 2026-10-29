@@ -62,15 +62,16 @@ export function checkoutRoots(repoRoot: string): string[] {
   if (!existsSync(join(repoRoot, '.git'))) return roots;
   let listing: string;
   try {
-    listing = execFileSync('git', ['-C', repoRoot, 'worktree', 'list', '--porcelain'], {
+    // -z: NUL-delimited, so a worktree path containing a newline is read whole, not truncated.
+    listing = execFileSync('git', ['-C', repoRoot, 'worktree', 'list', '--porcelain', '-z'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch {
     throw new OutsideRepoError(`cannot list the worktrees of ${repoRoot}; refusing to guess which paths are public`);
   }
-  for (const line of listing.split('\n')) {
-    if (line.startsWith('worktree ')) roots.push(realResolve(line.slice('worktree '.length)));
+  for (const field of listing.split('\0')) {
+    if (field.startsWith('worktree ')) roots.push(realResolve(field.slice('worktree '.length)));
   }
   return [...new Set(roots)];
 }

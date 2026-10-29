@@ -363,3 +363,56 @@ describe('collectPlaywright: static bindings and untrusted runs', () => {
     expect(collectPlaywright(r)).toEqual([]);
   });
 });
+
+// Round-8: Playwright's `test.fail()` makes a final `failed` the EXPECTED outcome (the run exits 0).
+// Run-level judgements use Playwright's own notion of an unexpected outcome (final status differs
+// from expectedStatus); a test.fail() test is never a pass for a finding it is tagged with.
+describe('collectPlaywright: expected failures (test.fail())', () => {
+  const tagged = (...ids: string[]) => ids.map((id) => `finding:${id}`);
+
+  it('an untagged expected failure beside a finding pass, run exit 0 → accepted, trusted, FIXED-VERIFIED', () => {
+    const r = report([
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+      testEntry({ tags: [], expectedStatus: 'failed', results: [{ retry: 0, status: 'failed' }] }),
+    ]);
+    const out = collectPlaywrightReport(r, { runExitCode: 0 });
+    expect(out.untrusted).toEqual([]);
+    expect(statusById(out.observations).get('syn-a')).toBe('FIXED-VERIFIED');
+  });
+
+  it('an expected failure does not explain a non-zero exit → untrusted', () => {
+    const r = report([
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+      testEntry({ tags: [], expectedStatus: 'failed', results: [{ retry: 0, status: 'failed' }] }),
+    ]);
+    expect(collectPlaywrightReport(r, { runExitCode: 1 }).untrusted.join('\n')).toMatch(/exit/);
+  });
+
+  it('an untagged test.fail() test that unexpectedly PASSED is an unexpected outcome → untrusted', () => {
+    const r = report([
+      testEntry({ annotations: [fixed('syn-a')], results: [{ retry: 0, status: 'passed' }] }),
+      testEntry({ tags: [], expectedStatus: 'failed', results: [{ retry: 0, status: 'passed' }] }),
+    ]);
+    const out = collectPlaywrightReport(r, { runExitCode: 1 });
+    expect(out.untrusted.join('\n')).toContain('step 1');
+    expect(statusById(out.observations).get('syn-a')).toBe('NOT-RUN');
+  });
+
+  it('a timedOut test with expectedStatus failed is still unexpected', () => {
+    const r = report([testEntry({ tags: [], expectedStatus: 'failed', results: [{ retry: 0, status: 'timedOut' }] })]);
+    expect(() => collectPlaywrightReport(r, { runExitCode: 0 })).toThrow(PlaywrightReportError);
+  });
+
+  it('a TAGGED test.fail() test is never a pass for its finding, whatever its outcome', () => {
+    for (const status of ['failed', 'passed']) {
+      const r = report([
+        testEntry({
+          tags: tagged('syn-a'),
+          expectedStatus: 'failed',
+          results: [{ retry: 0, status, annotations: [fixed('syn-a')] }],
+        }),
+      ]);
+      expect(statusById(collectPlaywright(r)).get('syn-a')).not.toBe('FIXED-VERIFIED');
+    }
+  });
+});

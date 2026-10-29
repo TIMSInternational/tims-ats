@@ -21,7 +21,8 @@
  * copied evidence; it is not a signature against a hand-forged manifest.
  *
  * An untrusted run turns every FIXED-VERIFIED from every source into NOT-RUN and fails --gate launch
- * (exit 1): a Playwright run with a failed test that has no @finding tag, a global error, or a non-zero
+ * (exit 1): a Playwright run with an unexpected outcome in a test that has no @finding tag (a
+ * `test.fail()` test that fails is expected), a global error, or a non-zero
  * exit its report does not explain; and ANY failed Vitest or .NET run (their reports cannot attribute
  * every failure: unhandled errors, files that fail to load, projects that write no TRX).
  *

@@ -7,19 +7,24 @@
  *   e.g. record.ts --kind vitest --output /tmp/r/vitest.json -- npx vitest run --reporter=json --outputFile=/tmp/r/vitest.json
  *        record.ts --kind xunit --output /tmp/r/trx -- dotnet test --logger trx --results-directory /tmp/r/trx
  *
- * Before the command: reads HEAD and `git status` (untracked included) and refuses an --output (or its
- * manifest) that already exists, so the report can only come from this run. After: refuses if HEAD
- * moved or no report was written, then writes the manifest (see provenance.ts) with the run's exit
- * status, the SHA, and whether the checkout was dirty at the start or became dirty during the run (the
- * run's own report excluded). Exits with the command's own status, so `$?` is the test run's status.
+ * Reports are private (test names, errors, diagnostics), so --output and its manifest must be OUTSIDE
+ * every checkout of the repository (paths.ts: this checkout, the main one and every sibling worktree);
+ * a relative --output resolves against the working directory.
+ *
+ * Before the command: reads HEAD and `git status` (untracked included), refuses an --output inside the
+ * repository, and refuses an --output (or its manifest) that already exists, so the report can only
+ * come from this run. After: refuses if HEAD moved or no report was written, then writes the manifest
+ * (see provenance.ts) with the run's exit status, the SHA, and whether the checkout was dirty at the
+ * start or became dirty during the run. Exits with the command's own status, so `$?` is the test run's status.
  * Exit 2 when it cannot record (usage, git, spawn, HEAD moved, no report): no manifest is written.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { constants } from 'node:os';
-import { relative, resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readGitState } from './git-state';
+import { assertOutsideRepo } from './paths';
 import { EVIDENCE_KINDS, manifestPathFor, writeProvenance, type EvidenceKind } from './provenance';
 
 export interface RecordIo {
@@ -53,12 +58,6 @@ function parse(argv: readonly string[]): { kind: EvidenceKind; output: string; c
   return { kind, output, command };
 }
 
-/** Dirty paths minus the run's own report (a file, or everything under a directory) and its manifest. */
-function withoutOwnOutput(paths: readonly string[], repoRoot: string, output: string, manifest: string): string[] {
-  const own = [output, manifest].map((p) => relative(repoRoot, p).split(sep).join('/'));
-  return paths.filter((p) => !own.some((o) => !o.startsWith('..') && (p === o || p.startsWith(`${o}/`))));
-}
-
 export function runRecord(argv: readonly string[], io: RecordIo): number {
   let args: ReturnType<typeof parse>;
   try {
@@ -70,11 +69,13 @@ export function runRecord(argv: readonly string[], io: RecordIo): number {
   const output = resolve(io.cwd, args.output);
   const manifest = manifestPathFor(output, args.kind);
   try {
+    const before = readGitState(io.cwd);
+    assertOutsideRepo(output, before.repoRoot, 'record --output');
+    assertOutsideRepo(manifest, before.repoRoot, 'record manifest');
     if (existsSync(output) || existsSync(manifest)) {
       io.err(`record: ${output} already exists; remove it so the report can only come from this run`);
       return 2;
     }
-    const before = readGitState(io.cwd);
     const [cmd, ...rest] = args.command as [string, ...string[]];
     const child = spawnSync(cmd, rest, { cwd: io.cwd, stdio: 'inherit' });
     if (child.error) {
@@ -92,9 +93,7 @@ export function runRecord(argv: readonly string[], io: RecordIo): number {
       io.err(`record: the command wrote no report at ${output}; nothing recorded`);
       return 2;
     }
-    const dirtyPaths = [
-      ...new Set([...before.dirtyPaths, ...withoutOwnOutput(after.dirtyPaths, after.repoRoot, output, manifest)]),
-    ].sort();
+    const dirtyPaths = [...new Set([...before.dirtyPaths, ...after.dirtyPaths])].sort();
     writeProvenance({ kind: args.kind, output, headSha: before.headSha, dirtyPaths, exitCode });
     io.log(
       `record: ${args.kind} evidence at ${before.headSha}${dirtyPaths.length ? ' (DIRTY checkout)' : ''}, exit ${exitCode}`,

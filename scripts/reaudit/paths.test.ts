@@ -107,6 +107,13 @@ describe('isInsideRepo — git worktrees', () => {
     expect(isInsideRepo(join(wt, 'out.json'), main)).toBe(true);
   });
 
+  it('a sibling worktree whose path contains a NEWLINE is still a checkout (worktree list is read NUL-delimited)', () => {
+    const odd = join(root, 'nl\nwt');
+    git(main, 'worktree', 'add', '-q', '--detach', odd);
+    expect(isInsideRepo(join(odd, 'out.json'), wt)).toBe(true);
+    expect(() => assertOutsideRepo(join(odd, 'out.json'), wt, 'REAUDIT_OUT_DIR')).toThrow(OutsideRepoError);
+  });
+
   it('a path outside every checkout is still outside', () => {
     expect(isInsideRepo(join(outside, 'out.json'), wt)).toBe(false);
   });
