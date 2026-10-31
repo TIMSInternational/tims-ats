@@ -77,15 +77,23 @@ describe('DynamoDB rate-limit contract (shared with C#)', () => {
   });
 
   it('uses the frozen budget for every category', async () => {
-    const { LIMITS } = await import('../../packages/api/src/middleware/rate-limit');
-    const windowMs = { '1m': 60_000, '5m': 300_000 } as const;
+    const { LIMITS, TS_ONLY_CATEGORIES } = await import('../../packages/api/src/middleware/rate-limit');
+    const windowMs: Record<string, number> = { '1m': 60_000, '5m': 300_000 };
     const budgets = Object.fromEntries(
       Object.entries(CONTRACT.budgets).filter(([key]) => !key.startsWith('$')),
     );
-    expect(Object.keys(LIMITS).sort()).toEqual(Object.keys(budgets).sort());
-    for (const [category, { requests, window }] of Object.entries(LIMITS)) {
+    // TS-only tiers (CV-upload presign) are not part of the cross-stack contract; every other tier is.
+    const shared = Object.entries(LIMITS).filter(([category]) => !TS_ONLY_CATEGORIES.has(category as keyof typeof LIMITS));
+    expect(shared.map(([category]) => category).sort()).toEqual(Object.keys(budgets).sort());
+    for (const [category, { requests, window }] of shared) {
       expect({ tokens: requests, windowMs: windowMs[window] }, category).toEqual(budgets[category]);
     }
+  });
+
+  it('declares only the CV-upload tiers as TS-only, and none of them is in the contract', async () => {
+    const { TS_ONLY_CATEGORIES } = await import('../../packages/api/src/middleware/rate-limit');
+    expect([...TS_ONLY_CATEGORIES].sort()).toEqual(['cvUpload', 'cvUploadVacancy']);
+    for (const category of TS_ONLY_CATEGORIES) expect(CONTRACT.budgets, category).not.toHaveProperty(category);
   });
 
   it('reads with ConsistentRead and claims with the frozen claim condition and prefix', async () => {
