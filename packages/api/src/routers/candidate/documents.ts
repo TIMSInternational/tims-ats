@@ -5,6 +5,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { candidateDocumentsService } from '../../services/candidate-documents.service';
 import { candidateAiService } from '../../services/candidate-ai.service';
 import { assertScoped } from '../../access';
+import { clientIpFrom } from '../../lib/client-ip';
 
 export const candidateDocumentsRouter = router({
   uploadDocument: permissionProcedure('candidate', 'update')
@@ -24,6 +25,25 @@ export const candidateDocumentsRouter = router({
         input.type,
         input.fileName,
         input.fileSize,
+      );
+    }),
+
+  // Signed, 5-minute link to open/download a stored candidate file (staff). A mutation, not a query:
+  // each call issues a credential and writes an access-log row, so it must never be cached or
+  // refetched on focus.
+  getDocumentUrl: permissionProcedure('candidate', 'read')
+    .input(z.object({ candidateId: z.string().uuid(), documentId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return candidateDocumentsService.getDocumentDownloadUrl(
+        ctx.user.organizationId,
+        input.candidateId,
+        input.documentId,
+        {
+          actorId: ctx.user.impersonatorId ?? ctx.user.id,
+          ipAddress: clientIpFrom(ctx.headers),
+          userAgent: ctx.headers.get('user-agent'),
+        },
       );
     }),
 

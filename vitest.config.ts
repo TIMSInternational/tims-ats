@@ -31,6 +31,7 @@ export default defineConfig({
       // and its tests, which hit the identical mismatch for these two packages.
       '@aws-sdk/client-s3': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/client-s3'),
       '@aws-sdk/s3-presigned-post': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/s3-presigned-post'),
+      '@aws-sdk/s3-request-presigner': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/s3-request-presigner'),
       // `import 'server-only'` throws when imported outside the Next.js server bundler
       // (its default export is a hard `throw`). Alias it to an empty module so the
       // pure, unit-testable core of server-only helpers can be imported under vitest.
