@@ -9,6 +9,7 @@ export type { ScopedEntity } from './entity-policies';
 export { assertScoped } from './scoped-probe';
 export { requireOrgScope } from './org-gate';
 export { assertSubjectInScope } from './write-rules';
+export { assertUsersInOrg } from './org-user-reference';
 export { CLASSIFICATION, dataClassOf, fieldsVisibleTo, DATA_CLASS_RANK } from './classification';
 export type { DataClass } from './classification';
 export { selectFor } from './select-for';
