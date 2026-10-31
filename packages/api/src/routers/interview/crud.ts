@@ -3,6 +3,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { getAppUrl } from '@tims/shared';
 import { interviewEmailService } from '../../services/interview-email.service';
 import { clearedJoinTokenColumns, issueJoinToken } from '../../services/interview-join-token';
 import { scopeWhereFor, assertScoped } from '../../access';
@@ -201,6 +202,11 @@ export const interviewCrudRouter = router({
         }
       }
 
+      // The invitation email (join link + staff room link) is built from the app origin. Validate it
+      // BEFORE the write so a misconfigured NEXT_PUBLIC_APP_URL fails the request instead of saving an
+      // interview whose fire-and-forget email then silently never goes out.
+      getAppUrl();
+
       // Video: mint the candidate join token; only its SHA-256 is persisted (same write).
       // An external meetingUrl (Zoom/Meet/…) is kept as the link and gets no token; see candidateJoinApplies.
       const joinToken = issueJoinToken(data.type, data.scheduledAt, data.duration, { meetingUrl: data.meetingUrl });
@@ -288,6 +294,10 @@ export const interviewCrudRouter = router({
           message: 'No se puede reprogramar una entrevista cancelada o completada',
         });
       }
+
+      // Validate the link origin BEFORE the write: the update below revokes the old join link, so a
+      // misconfiguration discovered only in the fire-and-forget email would strand the candidate.
+      getAppUrl();
 
       // New link on every reschedule: overwriting the hash revokes the old one.
       const joinToken = issueJoinToken(existing.type, data.scheduledAt, data.duration ?? existing.duration, {

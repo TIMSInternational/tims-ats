@@ -81,10 +81,10 @@ vi.mock('@tims/db', () => ({
   runTenantTransaction: (_o: string, f: (tx: unknown) => unknown) => f({}),
 }));
 
-const ORG_A = '11111111-1111-1111-1111-111111111111';
-const ORG_B = '22222222-2222-2222-2222-222222222222';
-const TYPE_ID = '7a000000-0000-0000-0000-00000000c0de';
-const ASSIGNMENT_ID = '33333333-3333-3333-3333-333333333333';
+const ORG_A = '11111111-1111-4111-8111-111111111111';
+const ORG_B = '22222222-2222-4222-8222-222222222222';
+const TYPE_ID = '7a000000-0000-4000-8000-00000000c0de';
+const ASSIGNMENT_ID = '33333333-3333-4333-8333-333333333333';
 
 // The body POST /assessments/types returns (AssessmentTypeWriteEndpointTests.Create_Admin_Is200_... asserts
 // code/organizationId/isActive/createdAt on this exact shape).

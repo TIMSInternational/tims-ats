@@ -1,8 +1,8 @@
 ---
 paths:
-  - "packages/api/**"
-  - "packages/auth/**"
-  - "packages/shared/**"
+  - 'packages/api/**'
+  - 'packages/auth/**'
+  - 'packages/shared/**'
 ---
 
 # API — Service Layer Pattern & Security
@@ -16,6 +16,7 @@ Router (input validation) → Service (business logic) → Repository (Prisma qu
 ```
 
 **Router** — validates input via Zod, calls service, returns result. No Prisma imports. No business logic.
+
 ```typescript
 // routers/candidate.ts
 merge: permissionProcedure('candidate', 'delete')
@@ -24,6 +25,7 @@ merge: permissionProcedure('candidate', 'delete')
 ```
 
 **Service** — orchestrates operations, enforces domain rules, calls repositories.
+
 ```typescript
 // services/candidate.service.ts
 async merge(orgId: string, primaryId: string, duplicateId: string) {
@@ -35,6 +37,7 @@ async merge(orgId: string, primaryId: string, duplicateId: string) {
 ```
 
 **Repository** — only place that imports `db`. Encapsulates queries, joins, transactions.
+
 ```typescript
 // repositories/candidate.repository.ts
 async findByIds(orgId: string, ids: string[]) {
@@ -43,6 +46,7 @@ async findByIds(orgId: string, ids: string[]) {
 ```
 
 **API folder structure:**
+
 ```
 packages/api/src/
   trpc.ts              → tRPC init + middleware
@@ -60,42 +64,49 @@ packages/api/src/
 ## Security Requirements
 
 ### SQL Injection
+
 - **NEVER `$executeRawUnsafe` with interpolation.** Use `$executeRaw` template literals.
 
 ### Multi-Tenancy (Defense in Depth) — BOTH layers live (updated 2026-06-05)
+
 1. **Primary — IMPLEMENTED:** Application-level `WHERE organizationId = ctx.user.organizationId` on every tenant query.
 2. **Secondary — IMPLEMENTED (RLS is live, verified):** Postgres RLS is enabled. Migration `20260604100000_enable_rls_tenant_isolation` applies `ENABLE` + `FORCE ROW LEVEL SECURITY` + a fail-closed `tenant_isolation` policy on **81 tables** (3 global catalogs — `ai_agents`, `permissions`, `platform_owner_emails` — are intentionally exempt). Policy reads `NULLIF(current_setting('app.current_org_id', true), '')::uuid`, so an unset GUC hides all rows.
 3. **Enforcement — WIRED IN:** `packages/db/src/tenant-client.ts` (`tenantDb`) wraps each tenant op in a transaction that runs `SET LOCAL ROLE app_tenant` + `set_config('app.current_org_id', …, true)`. `trpc.ts` `runWithTenant(orgId)` sets the context per request; `app_tenant` is NOLOGIN/NOBYPASSRLS; platform owners run on the privileged `db`. Gated by `RLS_ENFORCED=true` (set in prod). Verified live: cross-org read/write blocked, unset GUC fails closed.
+
 - **IDOR prevention (still required):** even with RLS, every query/mutation taking a resource id MUST verify it belongs to `ctx.user.organizationId` (`findFirst({ where: { id, organizationId } })`) — defense in depth, and platform/privileged-`db` paths aren't RLS-scoped.
 
 ### Rate Limiting (Per-Tenant)
-- **Upstash Redis** with sliding window. Three tiers:
-  - Tenant: 1000 req/min per org (noisy neighbor prevention)
-  - User: 100 req/min per user
-  - Expensive: 10 AI calls/min per org
-- **Fallback to in-memory** for local dev when Upstash env vars missing.
+
+- **DynamoDB** (`middleware/rate-limit-store.ts`, one on-demand table) with sliding window. Tiers in
+  `middleware/rate-limit.ts` `LIMITS`: 300 queries/min and 30 mutations/min per user, 10 auth
+  mutations/5 min, 10 AI calls/min per org, 5 exports/5 min. Runbook: `docs/runbooks/production-rate-limits.md`.
+- **Fallback to in-memory** for local dev and previews when `RATE_LIMIT_DYNAMODB_*` is unset; Vercel
+  production refuses to start without it.
 
 ### Input Validation
+
 - **Bound all strings** (`.max(500)` descriptions, `.max(100)` names). No unbounded `z.string()`.
 - **Bound all arrays** (`.max(50)` line items). Validate email with `.email()`.
 - **Sanitize HTML** in email templates. Never inject raw user input.
 
 ### Secrets
+
 - **Zod env validation** (`lib/env.ts`). Fail fast on missing vars in production.
 - **Never return tokens** in API responses.
 
 ### RBAC
+
 - Least-privilege is live: every role (including `hr_admin`) is DB-checked against `rolePermission` grants via `buildAccessForUser` in `trpc.ts`. The old `hr_admin` denylist short-circuit and silent platform/super_admin bypass have been removed — see `docs/WAVE-2.5-ACCESS-CONTROL.md`.
 
 ## Caching (Upstash Redis)
 
-| Data | TTL | Strategy |
-|------|-----|----------|
-| Feature flags | 5 min | Cache-aside, invalidate on update |
-| Org settings | 10 min | Cache-aside |
-| Dashboard KPIs | 30-60 sec | Stale-while-revalidate |
-| User session/roles | 5 min | Cache-aside |
-| Permission checks | 5 min | Cache-aside |
+| Data               | TTL       | Strategy                          |
+| ------------------ | --------- | --------------------------------- |
+| Feature flags      | 5 min     | Cache-aside, invalidate on update |
+| Org settings       | 10 min    | Cache-aside                       |
+| Dashboard KPIs     | 30-60 sec | Stale-while-revalidate            |
+| User session/roles | 5 min     | Cache-aside                       |
+| Permission checks  | 5 min     | Cache-aside                       |
 
 Cache keys: `trpc:{orgId}:{path}:{inputHash}`. Invalidate by org prefix on writes.
 
@@ -112,20 +123,21 @@ Cache keys: `trpc:{orgId}:{path}:{inputHash}`. Invalidate by org prefix on write
 // Bedrock: 5 failures → open for 30s. SES: 3 failures → open for 60s.
 const result = await bedrockCircuit.execute(
   () => aiService.analyze(data),
-  () => ({ result: null, source: 'fallback', message: 'AI temporarily unavailable' })
+  () => ({ result: null, source: 'fallback', message: 'AI temporarily unavailable' }),
 );
 ```
+
 App continues working when AI is down. Graceful degradation, not crashes.
 
 ## Background Jobs (Trigger.dev)
 
-| Queue | Concurrency | Use Case |
-|-------|------------|----------|
-| `cv-parse` | 20 | AI CV parsing |
-| `email-send` | 50 | SES dispatch |
-| `report-generate` | 5 | Heavy KPI reports |
-| `ai-batch` | 10 | Other AI calls |
-| `export` | 3 | Large CSV/XLSX |
+| Queue             | Concurrency | Use Case          |
+| ----------------- | ----------- | ----------------- |
+| `cv-parse`        | 20          | AI CV parsing     |
+| `email-send`      | 50          | SES dispatch      |
+| `report-generate` | 5           | Heavy KPI reports |
+| `ai-batch`        | 10          | Other AI calls    |
+| `export`          | 3           | Large CSV/XLSX    |
 
 Dead letter queue + `onFailure` hooks for persistent failure alerting.
 

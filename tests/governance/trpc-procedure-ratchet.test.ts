@@ -41,8 +41,13 @@ import { appRouter } from '@tims/api';
 /**
  * Measured 2026-08-31 at `7d1e6a94` + PR #249, exactly, from the router.
  * MAY ONLY EVER DECREASE.
+ *
+ * ONE recorded exception: 353 → 354 on 2026-10-28 for `candidate.getDocumentUrl` (staff CV download,
+ * a launch-blocking recruitment-spine gap). Raised under owner decision D-1, which grants a narrow
+ * survival-rule exception for launch-blocking recruitment-spine fixes only. It is not headroom: the
+ * exact-equality test below still pins it, and the procedure is owed a C# port like every other.
  */
-const PROCEDURE_CEILING = 353;
+const PROCEDURE_CEILING = 354;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.
