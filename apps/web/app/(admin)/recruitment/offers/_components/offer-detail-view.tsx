@@ -28,7 +28,16 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const router = useRouter();
   const can = useCan();
   const utils = trpc.useUtils();
-  const offer = trpc.offer.getById.useQuery({ id: offerId });
+  const offer = trpc.offer.getById.useQuery(
+    { id: offerId },
+    {
+      // The candidate accepts in another session. Refresh when staff return to this offer,
+      // while it is awaiting a decision, or when the window regains focus.
+      refetchOnMount: 'always',
+      refetchInterval: (query) => (query.state.data?.status === 'sent' ? 30_000 : false),
+      refetchOnWindowFocus: (query) => (query.state.data?.status === 'sent' ? 'always' : false),
+    },
+  );
   const [showLetterModal, setShowLetterModal] = useState(false);
   const [showSigningModal, setShowSigningModal] = useState(false);
   const [signingUrl, setSigningUrl] = useState('');
