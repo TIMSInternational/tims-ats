@@ -131,7 +131,7 @@ vi.mock('../../packages/api/src/access', () => ({
 
 const ORG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 const VACANCY_ID = '99999999-9999-4999-8999-999999999999';
-const APPROVER_ID = '11111111-1111-1111-1111-111111111111';
+const APPROVER_ID = '11111111-1111-4111-8111-111111111111';
 
 beforeEach(() => {
   vi.clearAllMocks();

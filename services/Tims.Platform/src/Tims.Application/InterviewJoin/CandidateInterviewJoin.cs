@@ -127,10 +127,9 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
     /// <summary>Pure window/status evaluation. Returns null when the interview is joinable right now.</summary>
     public static CandidateJoinResult? Evaluate(CandidateJoinInterview interview, DateTime nowUtc)
     {
-        // #329 item 5: a rejected/withdrawn application or a suspended organization revokes the link immediately,
-        // not at scheduled end + grace. Answered as `cancelled` so the page reveals nothing about WHY (the
-        // candidate must not learn of a rejection, or of the org's account state, from a video link).
-        if (interview.ApplicationClosed || interview.OrganizationInactive)
+        // A closed application, suspended organization, or withdrawn recruitment consent revokes the link
+        // immediately. Answer `cancelled` without disclosing which state caused the revocation.
+        if (interview.ApplicationClosed || interview.OrganizationInactive || interview.ConsentWithdrawn)
             return new(CandidateJoinOutcomes.Cancelled);
         if (interview.Status == "cancelled" || interview.CancelledAt is not null)
             return new(CandidateJoinOutcomes.Cancelled);
@@ -153,6 +152,15 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
 
         var now = clock.GetUtcNow();
         var result = Evaluate(interview, now.UtcDateTime) ?? await ReadyAsync(interview, now, ct);
+        if (result.Outcome == CandidateJoinOutcomes.Ready)
+        {
+            // Room creation and token minting involve an external call. A withdrawal or cancellation committed
+            // during that call must not receive the newly minted URL, even if the first lookup was joinable.
+            var current = await repository.FindByTokenHashAsync(HashToken(token), ct);
+            result = current is null || current.Id != interview.Id
+                ? new(CandidateJoinOutcomes.Cancelled)
+                : Evaluate(current, clock.GetUtcNow().UtcDateTime) ?? result;
+        }
         var recorded = await repository.RecordAsync(
             new(interview.Id, interview.OrganizationId, result.Outcome, ipAddress, userAgent), ct);
         // Fail closed: a join that cannot be audited is not handed out.

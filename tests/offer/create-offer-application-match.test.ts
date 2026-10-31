@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
-const CANDIDATE_ID = '22222222-2222-2222-2222-222222222222';
-const VACANCY_ID = '33333333-3333-3333-3333-333333333333';
-const APPLICATION_ID = '44444444-4444-4444-4444-444444444444';
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
+const CANDIDATE_ID = '22222222-2222-4222-8222-222222222222';
+const VACANCY_ID = '33333333-3333-4333-8333-333333333333';
+const APPLICATION_ID = '44444444-4444-4444-8444-444444444444';
 
 const candidateFindFirst = vi.fn();
 const applicationFindFirst = vi.fn();
@@ -31,7 +31,7 @@ async function caller() {
   const { offerCrudRouter } = await import('../../packages/api/src/routers/offer/crud');
   return createCallerFactory(router({ offer: offerCrudRouter }))({
     user: {
-      id: '55555555-5555-5555-5555-555555555555',
+      id: '55555555-5555-4555-8555-555555555555',
       organizationId: ORG_ID,
       roles: ['hr_admin'],
       isPlatformOwner: false,
@@ -94,7 +94,7 @@ describe('offer creation application integrity', () => {
 });
 
 describe('offer salary bounds', () => {
-  const OFFER_ID = '66666666-6666-6666-6666-666666666666';
+  const OFFER_ID = '66666666-6666-4666-8666-666666666666';
 
   it.each([Infinity, -Infinity, Number.NaN, 1e300, 1_000_000_000_001, 0, -5])(
     'create rejects a non-finite, out-of-range or non-positive salary %s before writing',
