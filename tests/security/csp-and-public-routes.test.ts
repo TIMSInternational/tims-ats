@@ -47,6 +47,10 @@ afterEach(() => {
 });
 
 describe('F5 — CV upload S3 origin in connect-src', () => {
+  // Pure presigning tests compare the SDK's normal regional URL with CSP policy. No request is
+  // sent; temporarily remove the suite-wide loopback endpoint while keeping dummy credentials.
+  beforeEach(() => vi.stubEnv('AWS_ENDPOINT_URL', undefined));
+
   // Ground truth: the origin the installed SDK's createPresignedPost really returns.
   async function sdkOrigin(bucket: string, region: string): Promise<string> {
     const client = new S3Client({ region, credentials: { accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'x' } });
