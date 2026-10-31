@@ -115,9 +115,13 @@ data decision:
 | `PERMISSION_CACHE_UPSTASH_ENABLED=true` | Cache-aside / permission cache, `packages/api/src/lib/cache.ts` | Tenant access decisions (org/user ids, roles, grants), feature-flag and entitlement reads, dashboard KPIs |
 
 Only the exact string `true` enables a flag; any other value, or absence, keeps that
-cache in per-process memory (the behavior production has today). With the memory backend,
-permission-cache invalidation is per instance: another instance can serve a revoked grant
-until its TTL expires. Record the subprocessor decision (cf. #40) before setting either flag.
+cache in per-process memory (the behavior production has today). The memory backend's
+invalidation is per instance, so it never holds authorization entries (`tims:access:`,
+`tims:perm:`, `tims:entitlements:`, `tims:flagcheck:`): without the flag those are always
+read from the database, so a revoked role, entitlement or flag applies on every instance at
+once. Only dashboard KPIs are cached in memory. Setting the flag moves both to Upstash and
+restores caching of authorization reads. Record the subprocessor decision (cf. #40) before
+setting either flag.
 
 ## Rollback
 

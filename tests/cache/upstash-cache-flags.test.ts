@@ -84,6 +84,66 @@ describe('permission cache (packages/api/src/lib/cache.ts)', () => {
   });
 });
 
+// Codex re-review of #358: the memory backend invalidates only its own instance, so it must
+// never hold authorization entries, or one worker keeps serving a revoked grant for its TTL.
+describe('permission cache: authorization entries never live in per-instance memory', () => {
+  const AUTHZ_KEYS = [
+    'tims:access:org-a:admin:candidates:read',
+    'tims:perm:org-a:u1:candidates:read',
+    'tims:entitlements:org-a',
+    'tims:flagcheck:org-a:new-dashboard',
+  ];
+
+  async function memoryCache() {
+    vi.resetModules();
+    stubCredentials();
+    vi.stubEnv('PERMISSION_CACHE_UPSTASH_ENABLED', '');
+    vi.doMock(API_REDIS, fakeRedis([], 'api'));
+    return import('../../packages/api/src/lib/cache');
+  }
+
+  it.each(AUTHZ_KEYS)('memory backend never caches %s', async (key) => {
+    const mod = await memoryCache();
+    await mod.cacheSet(key, { allowed: true }, 300);
+    expect(await mod.cacheGet(key)).toBeNull();
+  });
+
+  it('memory backend still caches dashboard KPIs', async () => {
+    const mod = await memoryCache();
+    await mod.cacheSet('tims:kpis:learning:org-a', { n: 3 }, 45);
+    expect(await mod.cacheGet('tims:kpis:learning:org-a')).toEqual({ n: 3 });
+  });
+
+  it('a revocation on one worker is never hidden by another worker\'s memory', async () => {
+    const workerB = await memoryCache();
+    await workerB.cacheSet('tims:entitlements:org-a', [{ module: 'learning', enabled: true }], 300);
+    const workerA = await memoryCache();
+    await workerA.cacheInvalidatePrefix('tims:entitlements:org-a');
+    expect(await workerB.cacheGet('tims:entitlements:org-a')).toBeNull();
+  });
+
+  it('the shared backend still caches authorization entries', async () => {
+    vi.resetModules();
+    stubCredentials();
+    vi.stubEnv('PERMISSION_CACHE_UPSTASH_ENABLED', 'true');
+    const writes: string[] = [];
+    vi.doMock(API_REDIS, () => ({
+      Redis: class {
+        get() {
+          return Promise.resolve(null);
+        }
+        set(key: string) {
+          writes.push(key);
+          return Promise.resolve('OK');
+        }
+      },
+    }));
+    const mod = await import('../../packages/api/src/lib/cache');
+    await mod.cacheSet('tims:access:org-a:admin:candidates:read', { allowed: true }, 300);
+    expect(writes).toEqual(['tims:access:org-a:admin:candidates:read']);
+  });
+});
+
 describe('AI response cache (packages/ai/src/cache.ts)', () => {
   it.each([undefined, '', 'false', 'yes'])('stays in memory with Upstash credentials set and flag=%s', async (flag) => {
     vi.resetModules();
