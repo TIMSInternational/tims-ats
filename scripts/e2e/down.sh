@@ -21,7 +21,7 @@ if [ -f "$E2E_STATE/web.pid" ]; then
   rm -f "$E2E_STATE/web.pid"
 fi
 
-for c in api caddy localstack redis; do
+for c in api caddy localstack redis; do  # redis: stacks brought up before the DynamoDB move
   docker rm -f "$E2E_NAME-$c" >/dev/null 2>&1 && e2e_log "removed container $E2E_NAME-$c"
 done
 docker network rm "$E2E_NETWORK" >/dev/null 2>&1

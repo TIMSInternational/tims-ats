@@ -22,7 +22,7 @@ export function ConsentWithdrawModal({ candidateId, onClose }: { candidateId: st
   const schema = useMemo(
     () =>
       z.object({
-        channel: z.enum(CONSENT_WITHDRAWAL_CHANNELS, { errorMap: () => ({ message: m.channelRequired }) }),
+        channel: z.enum(CONSENT_WITHDRAWAL_CHANNELS, { error: m.channelRequired }),
         reason: z.string().trim().max(CONSENT_WITHDRAWAL_REASON_MAX, m.reasonTooLong),
         requestDeletion: z.boolean(),
       }),

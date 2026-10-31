@@ -7,7 +7,6 @@ import { PlatformSidebar } from './platform-sidebar';
 import { ParticipantSidebar } from './participant-sidebar';
 import { pickSidebarVariant, type Shell } from '../../lib/nav/manifest';
 import { Navbar } from './navbar/index';
-import { SupportChat } from './support-chat';
 import { ImpersonationBanner } from './impersonation-banner';
 import { TRPCProvider } from '../../lib/trpc-provider';
 import { I18nProvider } from '../../lib/i18n';
@@ -32,7 +31,6 @@ export function AdminShell({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [mounted, setMounted] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
@@ -89,7 +87,6 @@ export function AdminShell({
           <ImpersonationBanner />
           <Navbar
             isPlatformOwner={isPlatformOwner}
-            onHelpClick={() => setChatOpen(!chatOpen)}
             onMenuClick={() => setMobileOpen(true)}
           />
           <main className="flex-1 min-h-0 flex flex-col bg-[var(--content-bg-panel)] border border-[var(--content-border-default)] rounded-[var(--r-lg)] overflow-hidden">
@@ -101,7 +98,6 @@ export function AdminShell({
           </main>
         </div>
       </div>
-      <SupportChat open={chatOpen} onClose={() => setChatOpen(false)} />
       </PermissionsProvider>
     </TRPCProvider>
     </I18nProvider>

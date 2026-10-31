@@ -47,6 +47,10 @@ afterEach(() => {
 });
 
 describe('F5 — CV upload S3 origin in connect-src', () => {
+  // Pure presigning tests compare the SDK's normal regional URL with CSP policy. No request is
+  // sent; temporarily remove the suite-wide loopback endpoint while keeping dummy credentials.
+  beforeEach(() => vi.stubEnv('AWS_ENDPOINT_URL', undefined));
+
   // Ground truth: the origin the installed SDK's createPresignedPost really returns.
   async function sdkOrigin(bucket: string, region: string): Promise<string> {
     const client = new S3Client({ region, credentials: { accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'x' } });
@@ -249,7 +253,7 @@ describe('env schema — CV_UPLOADS_REGION with CV_UPLOADS_BUCKET', () => {
 });
 
 describe('bearer-link pages never leak their token (Referer / shared cache)', () => {
-  it.each(['/offers/sign/tok_abc', '/interview/join/tok_abc', '/accept-invitation', '/reset-password'])(
+  it.each(['/offers/sign/tok_abc', '/interview/join/tok_abc', '/ai-interview/tok_abc', '/accept-invitation', '/reset-password'])(
     '%s gets referrer-policy no-referrer + cache-control no-store',
     async (path) => {
       const middleware = await loadMiddleware();
@@ -261,7 +265,38 @@ describe('bearer-link pages never leak their token (Referer / shared cache)', ()
     },
   );
 
-  it.each(['/careers/acme/v1', '/offers/signatures', '/interview/joiner'])('%s is not treated as a bearer-link page', async (path) => {
+  it('the middleware and the Sentry redactor share one bearer-link route list (lib/security/bearer-links.ts)', async () => {
+    const { BEARER_QUERY_PATHS, BEARER_TOKEN_PATH_PREFIXES, isBearerLinkPathname } = await import(
+      '../../apps/web/lib/security/bearer-links'
+    );
+    expect([...BEARER_QUERY_PATHS, ...BEARER_TOKEN_PATH_PREFIXES].sort()).toEqual(
+      ['/accept-invitation', '/ai-interview/', '/interview/join/', '/offers/sign/', '/reset-password'].sort(),
+    );
+    const middleware = await loadMiddleware();
+    const paths = [...BEARER_QUERY_PATHS, ...BEARER_TOKEN_PATH_PREFIXES.map((p) => `${p}tok_abc`)];
+    for (const path of [...paths, '/careers/acme/v1', '/ai-interviewer', '/offers/signatures']) {
+      const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));
+      expect(res.headers.get('referrer-policy') === 'no-referrer', path).toBe(isBearerLinkPathname(path));
+    }
+  });
+
+  it('every route the middleware classifies as a bearer link is in the shared list (reverse parity)', async () => {
+    const { BEARER_QUERY_PATHS, BEARER_TOKEN_PATH_PREFIXES } = await import('../../apps/web/lib/security/bearer-links');
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const src = readFileSync(resolve(__dirname, '../../apps/web/middleware.ts'), 'utf8');
+    const body = /function isBearerLinkPathname\(pathname: string\): boolean \{([\s\S]*?)\n\}/.exec(src)?.[1] ?? '';
+    expect(body).not.toBe('');
+    const exact = [...body.matchAll(/pathname === '([^']+)'/g)].map((m) => m[1]).sort();
+    const prefixes = [...body.matchAll(/pathname\.startsWith\('([^']+)'\)/g)].map((m) => m[1]).sort();
+    // Any other kind of check would escape this comparison, so the body may contain only these two forms.
+    const clauses = body.split('||').map((c) => c.replace(/[\s();]|return/g, '')).filter(Boolean);
+    expect(clauses.length).toBe(exact.length + prefixes.length);
+    expect(exact).toEqual([...BEARER_QUERY_PATHS].sort());
+    expect(prefixes).toEqual([...BEARER_TOKEN_PATH_PREFIXES].sort());
+  });
+
+  it.each(['/careers/acme/v1', '/offers/signatures', '/interview/joiner', '/ai-interviewer'])('%s is not treated as a bearer-link page', async (path) => {
     const middleware = await loadMiddleware();
     const res = await middleware(new NextRequest(`https://app.tims.com${path}`, { headers: { host: 'app.tims.com' } }));
     expect(res.headers.get('referrer-policy')).toBeNull();

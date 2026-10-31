@@ -1,5 +1,6 @@
 import 'server-only';
 import { z } from 'zod';
+import { checkAppOrigin } from '@tims/shared';
 
 // Optional secret that treats an empty string (a common Vercel / .env placeholder)
 // the same as absent — so an unset-but-present-empty var never fails validation.
@@ -22,17 +23,40 @@ const baseEnvSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
 
   // Platform
-  PLATFORM_EMAIL_FROM: z.string().email().default('noreply@nexadev.ai'),
-  NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+  PLATFORM_EMAIL_FROM: z.string().email().default('noreply@timssuite.com'),
+  // Public origin for outbound bearer links (invitations, offer signing, interview join, resets).
+  // Blank is treated as absent here; getAppUrl() then THROWS in a production build (#50) and falls
+  // back to the canonical prod origin only in development/test. The origin rule itself (https and no
+  // loopback on a Vercel deployment; https under NODE_ENV=production except loopback; origin only, a
+  // trailing slash is normalised) is enforced by the superRefine below via the SAME checkAppOrigin
+  // that getAppUrl() uses at runtime, so boot-time and link-time validation cannot drift.
+  NEXT_PUBLIC_APP_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().max(2048).optional(),
+  ),
+  // Set by Vercel: 'production' | 'preview' | 'development'. Only used to tighten the origin rule.
+  VERCEL_ENV: z.string().max(32).optional(),
+  // Client-bundle mirror of VERCEL_ENV (apps/web/next.config.ts). Read for the same origin rule.
+  NEXT_PUBLIC_VERCEL_ENV: z.string().max(32).optional(),
 
   // Daily.co human video interviews. Missing/blank key keeps the room-creation
   // endpoint fail-closed; DAILY_API_URL is optional for tests/proxies.
   DAILY_API_KEY: optionalSecret(),
   DAILY_API_URL: optionalUrl(),
 
-  // Upstash Redis (rate limiting — optional for local dev)
+  // Shared rate-limit store (DynamoDB). Required together; required in Vercel production
+  // (packages/api/src/middleware/rate-limit-store.ts validates and enforces both).
+  RATE_LIMIT_DYNAMODB_TABLE: z.string().max(255).optional(),
+  RATE_LIMIT_DYNAMODB_REGION: z.string().max(32).optional(),
+  // Upstash Redis — NOT used by the rate limiter. Only the two optional caches below can
+  // use it, each behind its own explicit opt-in ('true'); default off = per-process memory.
+  // See docs/runbooks/production-rate-limits.md before enabling either.
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+  // Only the exact string 'true' enables; any other value is OFF. Deliberately not a strict
+  // enum: a typo in an optional cache opt-in must not fail production env validation.
+  AI_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
+  PERMISSION_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
 
   // Cloudflare Turnstile (CAPTCHA on public apply form — optional; enforced only
   // when both keys are set)
@@ -92,7 +116,15 @@ const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 
-const envSchema = baseEnvSchema;
+export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
+  if (env.NEXT_PUBLIC_APP_URL === undefined) return;
+  const result = checkAppOrigin(env.NEXT_PUBLIC_APP_URL, {
+    NODE_ENV: env.NODE_ENV,
+    VERCEL_ENV: env.VERCEL_ENV,
+    NEXT_PUBLIC_VERCEL_ENV: env.NEXT_PUBLIC_VERCEL_ENV,
+  });
+  if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['NEXT_PUBLIC_APP_URL'], message: result.message });
+});
 
 export type Env = z.infer<typeof envSchema>;
 

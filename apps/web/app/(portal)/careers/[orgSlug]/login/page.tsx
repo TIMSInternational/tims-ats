@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { getAuthRedirectUrl } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
+import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../../../lib/auth/canonical-auth-origin';
 
 // Candidate portal login — passwordless magic link. We always show the same
 // "check your email" confirmation regardless of whether the email maps to a
@@ -17,17 +19,28 @@ export default function PortalLoginPage() {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useCanonicalAuthOrigin();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ensureCanonicalAuthOrigin()) return;
     const value = email.trim();
     if (!value || !value.includes('@')) return;
     setBusy(true);
     setError('');
+    // Magic-link email: always the configured app origin (#50).
+    let emailRedirectTo: string;
+    try {
+      emailRedirectTo = getAuthRedirectUrl('/auth/callback', { next: `/careers/${orgSlug}/dashboard` });
+    } catch {
+      setBusy(false);
+      setError(t.portalAuth.errorGeneric);
+      return;
+    }
     const supabase = createSupabaseBrowserClient();
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: value,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/careers/${orgSlug}/dashboard` },
+      options: { emailRedirectTo },
     });
     setBusy(false);
     if (otpError) {
@@ -45,7 +58,7 @@ export default function PortalLoginPage() {
             <span className="text-white text-xl font-bold">T</span>
           </div>
           <h1 className="text-[22px] font-bold text-[#1F114C]">{t.portalAuth.loginTitle}</h1>
-          <p className="text-[13px] text-[#8B8B8B] mt-1">{t.portalAuth.loginSubtitle}</p>
+          <p className="text-[13px] text-muted mt-1">{t.portalAuth.loginSubtitle}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
@@ -82,7 +95,7 @@ export default function PortalLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={t.portalAuth.emailPlaceholder}
-                  className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
+                  className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
                 />
               </div>
               <button
@@ -99,7 +112,7 @@ export default function PortalLoginPage() {
         <div className="text-center mt-5">
           <Link
             href={`/careers/${orgSlug}`}
-            className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline"
+            className="text-[13px] text-muted hover:text-[#585858] hover:underline"
           >
             {t.portalAuth.backToJobs}
           </Link>

@@ -2,7 +2,6 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { toast } from '../../../lib/toast';
 import { ErrorState } from '../../../components';
 
 export function AlertsPendingPanel() {
@@ -56,12 +55,6 @@ export function AlertsPendingPanel() {
                     {rd.assignedAgo} {daysAgo(test.assignedAt)} {rd.days}
                   </p>
                 </div>
-                <button
-                  onClick={() => toast(rd.resendComingSoon, { type: 'info' })}
-                  className="text-xs text-[#DD0C15] hover:underline"
-                >
-                  {rd.resend}
-                </button>
               </div>
             ))}
             {tests.length > 3 && (
@@ -88,12 +81,6 @@ export function AlertsPendingPanel() {
                       {rd.evaluator}: {sc.role}
                     </p>
                   </div>
-                  <button
-                    onClick={() => toast(rd.remindComingSoon, { type: 'info' })}
-                    className="text-xs text-[#1F114C] hover:underline"
-                  >
-                    {rd.remind}
-                  </button>
                 </div>
               ))}
               {scorecards.length > 2 && (

@@ -99,7 +99,7 @@ const KNOWN_DEBT = new Set<string>([
   // scanner only treats a single word as prose when it carries a Spanish accent. Restoring the
   // accents (fix/es-accents) made them detectable. Remove each entry when it moves to t.*.
   'apps/web/app/(admin)/people/onboarding/onboarding-table.tsx:138:jsx-text',
-  'apps/web/app/(admin)/people/performance/page.tsx:69:jsx-text',
+  'apps/web/app/(admin)/people/performance/page.tsx:68:jsx-text',
   'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:67:jsx-text',
   'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:68:jsx-text',
   'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:150:jsx-text',

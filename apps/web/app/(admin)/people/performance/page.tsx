@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { toast } from '../../../../lib/toast';
 import { usePermissions } from '../../../../lib/permissions';
 import { PerformanceKpis } from './performance-kpis';
 import { LowProgressAlertsPanel } from './low-progress-alerts';
@@ -70,9 +69,6 @@ export default function PerformancePage() {
             <option>Comercial</option>
             <option>Operaciones</option>
           </select>
-          <button onClick={() => toast(t.performance.exportComingSoon, { type: 'info' })} className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">
-            {t.performance.export}
-          </button>
           <button onClick={() => setShowOkr(true)} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
             {t.performance.newOkr}
           </button>

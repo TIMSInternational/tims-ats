@@ -16,85 +16,44 @@ const STAGE_COLORS = [
   'bg-[#1F114C] text-white',
 ];
 
-type Period = '7d' | '30d' | '90d' | 'all';
-
 interface PipelineFunnelProps {
-  totalApplications: number;
   vacancies: VacancyListItem[];
 }
 
-export function PipelineFunnel({ totalApplications, vacancies }: PipelineFunnelProps) {
+/**
+ * Pipeline-by-stage for ONE published vacancy, from `pipeline.getFunnel`.
+ * The funnel API is per-vacancy and returns aggregate (all-time) counts, so
+ * the card offers no "all vacancies" or period filter, and it never fills in
+ * estimated stage counts: no data renders an explicit empty state.
+ */
+export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
 
-  const [selectedVacancyId, setSelectedVacancyId] = useState<string>('all');
-  const [period, setPeriod] = useState<Period>('30d');
+  const [selectedVacancyId, setSelectedVacancyId] = useState<string | null>(null);
   const [vacancyDropdownOpen, setVacancyDropdownOpen] = useState(false);
 
   const vacancyList = vacancies ?? [];
-
-  // Fetch funnel for selected vacancy (or first vacancy if "all")
-  const targetVacancyId = selectedVacancyId !== 'all'
-    ? selectedVacancyId
-    : vacancyList[0]?.id ?? null;
+  const selectedVacancy =
+    vacancyList.find((v) => v.id === selectedVacancyId) ?? vacancyList[0] ?? null;
+  const targetVacancyId = selectedVacancy?.id ?? null;
 
   const funnelQuery = trpc.pipeline.getFunnel.useQuery(
-    { vacancyId: targetVacancyId! },
+    { vacancyId: targetVacancyId ?? '' },
     { enabled: !!targetVacancyId, staleTime: 30_000 },
   );
 
-  const selectedVacancyName = useMemo(() => {
-    if (selectedVacancyId === 'all') return rd.allVacancies;
-    return vacancyList.find((v) => v.id === selectedVacancyId)?.title ?? rd.allVacancies;
-  }, [selectedVacancyId, vacancyList, rd.allVacancies]);
-
-  const periodLabel: Record<Period, string> = {
-    '7d': rd.last7Days ?? '7 días',
-    '30d': rd.last30Days,
-    '90d': rd.last90Days ?? '90 días',
-    'all': rd.allTime ?? 'Todo',
-  };
-
-  // Build stages from API data or fallback
   const stages = useMemo(() => {
-    if (funnelQuery.data?.funnel?.length) {
-      const funnel = funnelQuery.data.funnel;
-      const funnelTotal = funnelQuery.data.totalApplications || 1;
-
-      // Filter by period
-      const now = Date.now();
-      const periodMs: Record<Period, number> = {
-        '7d': 7 * 86400000,
-        '30d': 30 * 86400000,
-        '90d': 90 * 86400000,
-        'all': Infinity,
-      };
-      const cutoff = period === 'all' ? 0 : now - periodMs[period];
-
-      // Note: the funnel API returns aggregate counts, not per-date.
-      // Period filtering would require a backend change. For now we show
-      // all data but label it with the selected period.
-      const result = funnel.map((s) => ({
-        label: s.stageName,
-        count: s.currentCount,
-        pct: s.conversionRate > 0 ? `${s.conversionRate}%` : '',
-      }));
-      result.unshift({ label: rd.applied, count: funnelTotal, pct: '' });
-      return result;
-    }
-
-    // Fallback proportional data
-    const total = Math.max(totalApplications, 1);
-    return [
-      { label: rd.applied, count: total, pct: '' },
-      { label: rd.preselection, count: Math.round(total * 0.53), pct: '53%' },
-      { label: rd.evalPca, count: Math.round(total * 0.28), pct: '53%' },
-      { label: rd.evalMil, count: Math.round(total * 0.20), pct: '71%' },
-      { label: rd.interview, count: Math.round(total * 0.12), pct: '63%' },
-      { label: rd.offer, count: Math.round(total * 0.04), pct: '36%' },
-      { label: rd.hired, count: Math.round(total * 0.02), pct: '53%' },
-    ];
-  }, [funnelQuery.data, totalApplications, rd, period]);
+    const data = funnelQuery.data;
+    if (!data?.funnel?.length) return [];
+    const result = data.funnel.map((s) => ({
+      label: s.stageName,
+      count: s.currentCount,
+      pct: s.conversionRate > 0 ? `${s.conversionRate}%` : '',
+    }));
+    result.unshift({ label: rd.applied, count: data.totalApplications, pct: '' });
+    return result;
+  }, [funnelQuery.data, rd.applied]);
 
   const maxCount = Math.max(...stages.map((s) => s.count), 1);
 
@@ -102,68 +61,48 @@ export function PipelineFunnel({ totalApplications, vacancies }: PipelineFunnelP
     <div className="w-full md:flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-4">
         <span className="text-base font-semibold text-[#1F114C]">{rd.pipelineByStage}</span>
-        <div className="flex gap-2">
-          {/* Vacancy filter dropdown */}
+        {selectedVacancy && (
           <div className="relative">
             <button
               onClick={() => setVacancyDropdownOpen(!vacancyDropdownOpen)}
+              aria-expanded={vacancyDropdownOpen}
               className="flex items-center gap-2 bg-[#F6F6F6] hover:bg-[#EDEDED] rounded-lg px-3 h-8 transition-colors max-w-[200px]"
             >
-              <span className="text-[12px] text-[#1F114C] truncate">{selectedVacancyName}</span>
-              <svg className={`w-3.5 h-3.5 text-[#1F114C] shrink-0 transition-transform ${vacancyDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <span className="text-[12px] text-[#1F114C] truncate">{selectedVacancy.title}</span>
+              <svg aria-hidden="true" className={`w-3.5 h-3.5 text-[#1F114C] shrink-0 transition-transform ${vacancyDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                 <path d="m19.5 8.25-7.5 7.5-7.5-7.5" />
               </svg>
             </button>
             {vacancyDropdownOpen && (
               <div className="absolute right-0 top-full mt-1 w-[280px] bg-white rounded-lg shadow-lg border border-[#EDEDED] z-50 max-h-[260px] overflow-y-auto py-1">
-                <button
-                  onClick={() => { setSelectedVacancyId('all'); setVacancyDropdownOpen(false); }}
-                  className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] transition ${selectedVacancyId === 'all' ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
-                >
-                  {rd.allVacancies}
-                </button>
                 {vacancyList.map((v) => (
                   <button
                     key={v.id}
                     onClick={() => { setSelectedVacancyId(v.id); setVacancyDropdownOpen(false); }}
-                    className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] transition truncate ${selectedVacancyId === v.id ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
+                    className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] transition truncate ${selectedVacancy.id === v.id ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
                   >
                     {v.title}
                   </button>
                 ))}
-                {vacancyList.length === 0 && (
-                  <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">{rd.noVacanciesPublished}</p>
-                )}
               </div>
             )}
           </div>
-
-          {/* Period filter */}
-          <div className="flex bg-[#F6F6F6] rounded-lg overflow-hidden">
-            {(['7d', '30d', '90d', 'all'] as Period[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-2.5 h-8 text-[11px] font-medium transition-colors ${
-                  period === p ? 'bg-[#1F114C] text-white' : 'text-[#585858] hover:text-[#1F114C]'
-                }`}
-              >
-                {periodLabel[p]}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Funnel bars */}
-      {funnelQuery.isLoading && targetVacancyId ? (
+      {!targetVacancyId ? (
+        <p className="text-[12px] text-muted py-6 text-center">{rd.noVacanciesPublished}</p>
+      ) : funnelQuery.isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" style={{ width: `${100 - i * 12}%` }} />
           ))}
         </div>
-      ) : funnelQuery.isError && targetVacancyId ? (
+      ) : funnelQuery.isError ? (
         <ErrorState onRetry={() => funnelQuery.refetch()} />
+      ) : stages.length === 0 ? (
+        <p className="text-[12px] text-muted py-6 text-center">{rd.noPipelineData}</p>
       ) : (
         <div className="space-y-2">
           {stages.map((stage, idx) => {
@@ -178,7 +117,7 @@ export function PipelineFunnel({ totalApplications, vacancies }: PipelineFunnelP
                 </div>
                 <span className="text-xs text-[#585858] w-28 shrink-0">
                   {stage.label}{' '}
-                  {stage.pct && <span className="text-[10px] text-[#8B8B8B]">{stage.pct}</span>}
+                  {stage.pct && <span className="text-[10px] text-muted">{stage.pct}</span>}
                 </span>
               </div>
             );

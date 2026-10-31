@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { getAuthRedirectUrl } from '@tims/shared';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../lib/auth/canonical-auth-origin';
 
 type AccountType = 'candidate' | 'company';
 
@@ -18,9 +20,11 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  useCanonicalAuthOrigin();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ensureCanonicalAuthOrigin()) return;
     setError('');
 
     if (password.length < 12 || password.length > 128) {
@@ -29,6 +33,15 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
     }
 
     setLoading(true);
+    // Confirmation email link: always the configured app origin (#50).
+    let emailRedirectTo: string;
+    try {
+      emailRedirectTo = getAuthRedirectUrl('/auth/callback');
+    } catch {
+      setError(t.auth.authEmailLinkUnavailable);
+      setLoading(false);
+      return;
+    }
     const supabase = createSupabaseBrowserClient();
 
     const { error: signUpError } = await supabase.auth.signUp({
@@ -41,7 +54,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
           account_type: accountType,
           company_name: accountType === 'company' ? companyName : undefined,
         },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo,
       },
     });
 
@@ -102,7 +115,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
     <>
       {/* Header with back button */}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors">
+        <button aria-label={t.common.back} onClick={onBack} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors">
           <svg className="w-4 h-4 text-[#585858]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="M15 19l-7-7 7-7" />
           </svg>

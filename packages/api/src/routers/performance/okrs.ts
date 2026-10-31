@@ -111,6 +111,17 @@ export const performanceOkrsRouter = router({
         throw new Error('Usuario referenciado no encontrado en esta organizacion');
       }
 
+      // The optional team is a tenant reference too: without this, an OKR could be
+      // linked to another organization's team row.
+      if (input.teamId) {
+        const teamInOrg = await db.team.count({
+          where: { id: input.teamId, organizationId: ctx.user.organizationId },
+        });
+        if (teamInOrg === 0) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Equipo no encontrado en esta organizacion' });
+        }
+      }
+
       // Narrow scopes may only create OKRs for users inside their subject set
       // (no row exists yet, so the target itself is the thing to authorize).
       await assertSubjectInScope(

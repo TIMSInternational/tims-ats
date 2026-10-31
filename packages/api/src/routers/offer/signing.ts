@@ -3,6 +3,7 @@ import { router, publicProcedure, anyPermissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { getAppUrl } from '@tims/shared';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
 import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
@@ -13,16 +14,6 @@ import { assertNoRejectedApproval } from './rejected-approval-guard';
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
   return email.trim().toLowerCase();
-}
-
-// The emailed signing URL is a live bearer token (salary/terms + accept/decline), so in production it
-// must never travel over plain http (#322). http is tolerated outside production, and for a loopback
-// host (a local `next start` runs with NODE_ENV=production; a loopback link never leaves the machine).
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-function isAllowedSigningOrigin(url: URL): boolean {
-  if (url.protocol === 'https:') return true;
-  if (url.protocol !== 'http:') return false;
-  return process.env.NODE_ENV !== 'production' || LOOPBACK_HOSTS.has(url.hostname);
 }
 
 // Public signing-token procedures run with NO tenant in scope (the candidate has no
@@ -119,17 +110,13 @@ export const offerSigningRouter = router({
         }
       }
 
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
-      if (!baseUrl) {
+      if (!process.env.NEXT_PUBLIC_APP_URL?.trim()) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no está configurada' });
       }
       let appUrl: URL;
       try {
-        appUrl = new URL(baseUrl);
+        appUrl = new URL(getAppUrl());
       } catch {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
-      }
-      if (!isAllowedSigningOrigin(appUrl)) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no es válida' });
       }
 

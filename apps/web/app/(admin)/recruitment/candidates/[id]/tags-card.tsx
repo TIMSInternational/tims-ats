@@ -53,6 +53,7 @@ export function TagsCard({ tags, candidateId }: { tags: Tag[]; candidateId: stri
               {tag.source === 'ai' && 'IA: '}
               {tag.tag}
               <button
+                aria-label={`${t.common.removeTag}: ${tag.tag}`}
                 onClick={() => removeTag.mutate({ candidateId, tag: tag.tag })}
                 className="opacity-60 hover:opacity-100 ml-0.5"
                 disabled={removeTag.isPending}

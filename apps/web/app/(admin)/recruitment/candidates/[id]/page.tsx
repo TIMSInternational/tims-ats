@@ -157,7 +157,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           </div>
         );
       case 'tabDocuments':
-        return <DocumentsCard documents={c.documents} />;
+        return <DocumentsCard documents={c.documents} candidateId={id} />;
       case 'tabValidations':
         return (
           <div className="space-y-4">
