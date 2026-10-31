@@ -217,10 +217,10 @@ export const portalRouter = router({
         // Explicit, prior data-processing authorization (Ley 1581). Required: a submission
         // without it — or against a superseded consent text — is rejected before any write.
         consentAccepted: z.literal(true, {
-          errorMap: () => ({ message: 'Debes autorizar el tratamiento de tus datos personales para aplicar.' }),
+          error: 'Debes autorizar el tratamiento de tus datos personales para aplicar.',
         }),
         consentTextVersion: z.literal(APPLICATION_CONSENT_TEXT_VERSION, {
-          errorMap: () => ({ message: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.' }),
+          error: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.',
         }),
         // Locale the consent text was shown in; the server hashes ITS canonical copy (#313).
         consentLocale: z.enum(APPLICATION_CONSENT_LOCALES).default('es'),

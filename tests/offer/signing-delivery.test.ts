@@ -10,8 +10,8 @@ vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () =
   },
 }));
 
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
-const OFFER_ID = '22222222-2222-2222-2222-222222222222';
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
+const OFFER_ID = '22222222-2222-4222-8222-222222222222';
 const updatedAt = new Date('2026-09-28T10:00:00Z');
 const findOffer = vi.fn();
 const updateOffer = vi.fn();
@@ -46,7 +46,7 @@ async function caller() {
   const { offerSigningRouter } = await import('../../packages/api/src/routers/offer/signing');
   return createCallerFactory(router({ offer: offerSigningRouter }))({
     user: {
-      id: '33333333-3333-3333-3333-333333333333',
+      id: '33333333-3333-4333-8333-333333333333',
       organizationId: ORG_ID,
       roles: ['hr_admin'],
       isPlatformOwner: false,
