@@ -26,6 +26,8 @@ const PUBLIC_PATHS = [
   // this must never bounce to staff /login — regardless of which host serves it.
   '/offers/sign',
   '/logout',
+  // Crawler policy (app/robots.ts). Must be reachable without a session.
+  '/robots.txt',
 ];
 
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -80,6 +82,7 @@ export async function middleware(request: NextRequest) {
     if (isBearerLinkPathname(request.nextUrl.pathname)) {
       res.headers.set('referrer-policy', 'no-referrer');
       res.headers.set('cache-control', 'no-store');
+      res.headers.set('x-robots-tag', 'noindex, nofollow, noarchive');
     }
     return res;
   };

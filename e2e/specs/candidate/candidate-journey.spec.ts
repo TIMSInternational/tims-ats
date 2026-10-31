@@ -315,7 +315,8 @@ test('the approved offer is sent for signature; the candidate receives the signi
   signingLink = linkContaining(mail, '/offers/sign/');
   expect(new URL(signingLink).hostname).toBe('localhost');
   // Leave a cached "sent" offer behind before the candidate accepts elsewhere.
-  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  // The dialog's icon X is also named 'Cerrar' (aria-label, #377); click the visible text button.
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).filter({ hasText: 'Cerrar' }).click();
   await navigateStaff(page, '/dashboard');
 });
 

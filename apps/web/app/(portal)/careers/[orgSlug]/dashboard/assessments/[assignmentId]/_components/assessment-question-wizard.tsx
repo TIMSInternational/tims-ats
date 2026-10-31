@@ -84,7 +84,7 @@ export function AssessmentQuestionWizard({
   };
 
   if (questionsQuery.isLoading) {
-    return <p className="text-center text-[13px] text-[#8B8B8B] p-8">{t.assessmentPlayer.loading}</p>;
+    return <p className="text-center text-[13px] text-muted p-8">{t.assessmentPlayer.loading}</p>;
   }
   if (questionsQuery.isError || !questionsQuery.data) {
     return <p className="text-center text-[13px] text-[#B42318] p-8">{t.assessmentPlayer.loadError}</p>;
@@ -121,7 +121,7 @@ export function AssessmentQuestionWizard({
   return (
     <div className="min-h-screen bg-[#FAFAFA] p-4">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6 space-y-5">
-        <div className="flex items-center justify-between text-[12px] text-[#8B8B8B]">
+        <div className="flex items-center justify-between text-[12px] text-muted">
           <span>
             {t.assessmentPlayer.questionLabel} {currentIndex + 1} {t.assessmentPlayer.ofLabel} {total}
           </span>
