@@ -20,7 +20,8 @@ export interface AgentDef {
   cacheTtlSeconds: number;
 }
 
-// Model choice (owner decision D-10): every live agent runs on Claude Haiku 4.5.
+// Model choice (owner decision D-10): every agent invoked through invokeAgent runs on Claude
+// Haiku 4.5 (the live voice interview is the exception: see 'ai-voice-interview' below).
 // The runtime model comes from THIS registry (invokeAgent reads AGENT_REGISTRY),
 // not from the ai_agents row: resolveAgentId only writes `model` when it first
 // creates a row, so an older row may still carry a stale label.
