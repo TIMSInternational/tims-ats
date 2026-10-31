@@ -4,7 +4,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
-import { scopeWhereFor, assertScoped, assertSubjectInScope } from '../../access';
+import { scopeWhereFor, assertScoped, assertSubjectInScope, assertUsersInOrg } from '../../access';
 
 export const performanceCoachingRouter = router({
   // 11.6 — List coaching sessions
@@ -68,6 +68,7 @@ export const performanceCoachingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertUsersInOrg(ctx.user.organizationId, [input.employeeId, input.leaderId]);
       // Narrow scopes may only schedule coaching for employees in their subject set.
       await assertSubjectInScope(
         ctx.access,
@@ -226,6 +227,9 @@ export const performanceCoachingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // assertSubjectInScope is a no-op for organization/company scope, so the
+      // employee's tenant membership must be checked explicitly (#344 sibling).
+      await assertUsersInOrg(ctx.user.organizationId, [input.employeeId]);
       // Codex: the committed employee must be in the caller's subject set; an
       // optional parent session must itself be in scope.
       await assertSubjectInScope(ctx.access, ctx.user.id, input.employeeId, 'No puedes crear compromisos para este usuario');

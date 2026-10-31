@@ -1,4 +1,6 @@
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { getAuthRedirectUrl } from '@tims/shared';
+import { ensureCanonicalAuthOrigin } from '../../lib/auth/canonical-auth-origin';
 import { z } from 'zod';
 
 export const invitationSchema = z.object({
@@ -56,8 +58,16 @@ export function invitationSocialSignIn(provider: 'google' | 'azure', token: stri
   });
 }
 
-export function invitationRecovery(email: string, token: string) {
+// Emailed link: always the configured app origin (#50). Throws AppOriginConfigError when
+// the origin is misconfigured; callers already treat a rejection as a failed send.
+export function invitationRecoveryRedirect(token: string) {
+  return getAuthRedirectUrl('/auth/callback', { invitation: token, recovery: '1' });
+}
+
+export async function invitationRecovery(email: string, token: string) {
+  // Never start the PKCE flow off the configured origin; the page is navigating there instead (#50).
+  if (!ensureCanonicalAuthOrigin()) return new Promise<never>(() => {});
   return createSupabaseBrowserClient().auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/auth/callback?invitation=${encodeURIComponent(token)}&recovery=1`,
+    redirectTo: invitationRecoveryRedirect(token),
   });
 }

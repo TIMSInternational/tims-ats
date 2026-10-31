@@ -105,6 +105,9 @@ export const invitationsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Resolve + validate the link origin BEFORE any write: a misconfigured NEXT_PUBLIC_APP_URL must fail
+      // the request cleanly, not after the org + invitation rows (with a live token) were committed.
+      const appUrl = getAppUrl();
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -157,7 +160,6 @@ export const invitationsRouter = router({
         select: invitationListSelect,
       });
 
-      const appUrl = getAppUrl();
       await sendEmail({
         to: input.email,
         subject: `Invitacion para administrar ${input.organizationName} en TIMS ATS`,
@@ -176,6 +178,8 @@ export const invitationsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Validate the link origin before the invitation row (a live bearer token) is written.
+      const appUrl = getAppUrl();
       const org = await db.organization.findUnique({ where: { id: input.organizationId }, select: { name: true, isActive: true, deletedAt: true } });
       if (!org?.isActive || org.deletedAt) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
       const roleSlug = input.roleSlug ?? 'employee';
@@ -204,7 +208,6 @@ export const invitationsRouter = router({
         select: invitationListSelect,
       });
 
-      const appUrl = getAppUrl();
       await sendEmail({
         to: input.email,
         subject: `Invitacion para unirte a ${org.name} en TIMS ATS`,

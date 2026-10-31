@@ -23,7 +23,7 @@ import { resolveAgentId, AGENT_REGISTRY } from './registry';
 // Budget/circuit/timeout failures THROW (fail-closed). A malformed AI response
 // is NOT a system failure — it returns the agent's
 // obviously-degraded fallback (rule #4), never fabricated data. A fallback is
-// flagged `degraded: true`, never cached, and reported via logger.warn. It is
+// flagged `validated: false`, never cached, and reported via logger.warn. It is
 // also passed to logInvocation as success:false, but the usage-log table has no
 // success column yet, so that flag is not stored (see logger.ts).
 // ---------------------------------------------------------------------------
@@ -54,8 +54,8 @@ export interface InvokeAgentResult<TOutput> {
   data: TOutput;
   model: string;
   cached: boolean;
-  /** True when `data` is the agent's fallback, not a validated model answer. */
-  degraded: boolean;
+  /** False when Bedrock returned malformed output and the agent fallback was used. */
+  validated: boolean;
   inputTokens: number;
   outputTokens: number;
 }
@@ -100,7 +100,7 @@ export async function invokeAgent<TInput, TOutput>(
       cached: true,
       userId,
     });
-    return { data: cached, model, cached: true, degraded: false, inputTokens: 0, outputTokens: 0 };
+    return { data: cached, model, cached: true, validated: true, inputTokens: 0, outputTokens: 0 };
   }
 
   // 3. PII — message is built (and sanitized/wrapped) by the agent; a final
@@ -138,20 +138,19 @@ export async function invokeAgent<TInput, TOutput>(
 
   // 5. Validate — extract + Zod-parse; malformed ⇒ fallback (fail-soft).
   let data: TOutput;
-  let degraded = false;
+  let validated = false;
   try {
     const jsonMatch = result.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       data = schema.parse(JSON.parse(jsonMatch[0]));
+      validated = true;
     } else {
       data = fallback(result.text);
-      degraded = true;
     }
   } catch {
     data = fallback(result.text);
-    degraded = true;
   }
-  if (degraded) logger.warn({ agent: slug, reason: 'invalid_output' }, 'AI agent degraded to fallback');
+  if (!validated) logger.warn({ agent: slug, reason: 'invalid_output' }, 'AI agent degraded to fallback');
 
   // 6. Log every real call (we paid for it regardless of parse outcome).
   await logInvocation({
@@ -162,20 +161,19 @@ export async function invokeAgent<TInput, TOutput>(
     costUsd: cost,
     latencyMs: result.latencyMs,
     model: result.model,
-    success: !degraded,
+    success: validated,
     cached: false,
     userId,
   });
 
-  // Cache only validated results (setCached no-ops when ttl ⇐ 0) — a fallback
-  // must never be served from cache in place of a real answer.
-  if (!degraded) await setCached(slug, orgId, input, data, ttl);
+  // A malformed response must not poison the cache (even for non-PII agents).
+  if (validated) await setCached(slug, orgId, input, data, ttl);
 
   return {
     data,
     model: result.model,
     cached: false,
-    degraded,
+    validated,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
   };

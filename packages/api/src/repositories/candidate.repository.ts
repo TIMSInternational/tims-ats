@@ -356,6 +356,15 @@ export const candidateRepository = {
     });
   },
 
+  // Staff download: the document only if it belongs to THIS candidate AND this org. Both predicates are
+  // explicit (not left to RLS alone) so a document id from another candidate or tenant resolves to null.
+  async findCandidateDocumentFile(orgId: string, candidateId: string, documentId: string) {
+    return db.candidateDocument.findFirst({
+      where: { id: documentId, candidateId, organizationId: orgId },
+      select: { id: true, fileName: true, fileUrl: true },
+    });
+  },
+
   // The CV document already recorded for this candidate + uploaded object key, if any —
   // public apply records it unparsed in the application transaction; processing reuses it,
   // and a retry never duplicates the row or the AI call.

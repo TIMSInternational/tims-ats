@@ -1,51 +1,60 @@
 # Rate-limit shared key layout (frozen contract)
 
-This freezes the Redis key layout + budgets that let the **C# limiter and the TS
-`@upstash/ratelimit` limiter share the same buckets**. Verified against
-`node_modules/@upstash/ratelimit@2.0.8` (single-region `RegionRatelimit`,
-`Ratelimit.slidingWindow`). Any change here MUST be made in lockstep on both stacks or the
-buckets silently diverge.
+This freezes the item layout + budgets that let the **C# limiter and the TS limiter share the same
+buckets** in ONE DynamoDB table (2026-10-22: both stacks moved off Upstash Redis together). The exact
+partition keys, attribute names and DynamoDB expressions are machine-checked in
+[`dynamodb.json`](./dynamodb.json), which both suites assert:
+`tests/ratelimit/dynamodb-contract.test.ts` (TS) and `DynamoDbKeyLayoutFixtureTests` +
+`DynamoDbContractFixtureTests` (C#). Any change here MUST be made in lockstep on both stacks or the
+buckets silently diverge — a caller would get a separate budget on each stack.
 
 ## Categories → budget (sliding window)
 
-| category | tokens | window   | windowMs |
-| -------- | ------ | -------- | -------- |
-| mutation | 30     | 1m       | 60000    |
-| query    | 100    | 1m       | 60000    |
-| auth     | 10     | 5m       | 300000   |
-| ai       | 10     | 1m       | 60000    |
-| export   | 5      | 5m       | 300000   |
+| category | tokens | window | windowMs |
+| -------- | ------ | ------ | -------- |
+| mutation | 30     | 1m     | 60000    |
+| query    | 300    | 1m     | 60000    |
+| auth     | 10     | 5m     | 300000   |
+| ai       | 10     | 1m     | 60000    |
+| export   | 5      | 5m     | 300000   |
 
 Source: TS `LIMITS` in `packages/api/src/middleware/rate-limit.ts`; C# `RateLimits` in
-`Tims.Domain.RateLimiting`.
+`Tims.Domain.RateLimiting`. Frozen in `dynamodb.json` (`budgets`) and asserted by both suites. `query`
+was raised from 100 to 300 on 2026-10-23, when the shared limit first applied across all instances and
+both stacks.
 
-## Key structure
-
-```
-prefix       = "tims:ratelimit:{category}"                 -- Upstash Ratelimit.prefix option
-getKey(id)   = "{prefix}:{identifier}"                     -- [prefix, identifier].join(":")
-bucket       = floor(now_ms / windowMs)                    -- computed in JS/C# (Math.floor(now/windowSize)), NOT in Lua
-currentKey   = "{prefix}:{identifier}:{bucket}"            -- [getKey(id), currentWindow].join(":")
-previousKey  = "{prefix}:{identifier}:{bucket - 1}"
-dynamicLimitKey = ""                                       -- TIMS does not enable dynamic limits
-```
-
-So a resolved key is exactly:
+## Item structure
 
 ```
-tims:ratelimit:{category}:{identifier}:{bucket}
+table            = one on-demand table (prod: tims-ats-ratelimit, us-west-2); partition key `pk` (S); TTL `expiresAt`
+pk               = "rl#{category}#{lowercase hex sha256(utf8 identifier)}"   -- the raw identifier never reaches the table
+bucket           = floor(now_ms / windowMs)                                   -- computed in TS/C#
+counter          = attribute "w{bucket}" (N) on that ONE item — one per window
+expiresAt        = ceil((bucket + 2) * windowMs / 1000) + 60                  -- outlives the next window
 ```
 
-## EVAL contract
+Code: TS `packages/api/src/middleware/rate-limit-store.ts`; C#
+`Tims.Infrastructure.RateLimiting.DynamoDbRateLimitStore` + `Tims.Domain.RateLimiting.RateLimits`.
 
-- Script: the verbatim single-region `slidingWindowLimitScript` (SHA
-  `977fb636fb5ceb7e98a96d1b3a1272ba018efdae`). Reproduced in
-  `Tims.Infrastructure.RateLimiting.RedisSlidingWindowRateLimiter.SlidingWindowLimitScript`.
-- `KEYS = [currentKey, previousKey, dynamicLimitKey=""]`
-- `ARGV = [tokens, now_ms, windowMs, incrementBy=1]`
-- Return `{ remaining, effectiveLimit }`. `success = remaining >= 0` (Lua returns `{-1, limit}`
-  when throttled). `reset = (bucket + 1) * windowMs`.
-- On first INCRBY of a window: `PEXPIRE currentKey (windowMs * 2 + 1000)`.
+## Admission contract (the algorithm both stacks run)
+
+Same decision as `@upstash/ratelimit`'s single-region `slidingWindow`, made atomic with one conditional
+write instead of a Lua script:
+
+1. Strongly consistent `GetItem(pk)`; read `w{bucket}` (current) and `w{bucket-1}` (previous).
+2. `allowed = tokens - floor(previous * (1 - (now % windowMs) / windowMs))`; if `current >= allowed`, deny
+   WITHOUT writing (a denied request is not counted). `reset = (bucket + 1) * windowMs`.
+3. `UpdateItem` with `ADD #cur :one SET #e = :exp` (plus `REMOVE` of counters older than the previous
+   window) under the condition in `dynamodb.json`: the current window has room, the previous window is
+   exactly what was weighed (`#prev = :prevSeen`, or absent), and no later window exists.
+4. A conditional failure means the item moved: re-read and decide again, at most 3 attempts; if still
+   contended, DENY with a 1 s retry hint (the store is healthy — never fall through to an outage path).
+5. A later window already present on the item (another instance's clock is ahead) is adopted, and the
+   previous window then counts in full.
+6. No SDK retries (an increment is not idempotent); each store call is bounded to 1 s.
+
+Claims (one write, no counter): `PutItem` with `attribute_not_exists(pk) OR #e <= :now` — the TS
+application-email cap (`ae#sha256(address)`, 24 h) and the C# relay nonce (`relay#sha256(nonce)`, 90 s).
 
 ## Identifier shape (per-caller bucket)
 
@@ -59,15 +68,13 @@ Built by `Tims.Domain.RateLimiting.RateLimitIdentity.For` / TS `trpc.ts`:
 
 ## Cross-stack sharing — verified, not deploy-only
 
-Because both stacks EVAL the identical Lua on identical keys, sharing is proven **locally** by the
-Redis Testcontainer integration test (`RedisSlidingWindowRateLimiterTests`): it runs the C#
-limiter, then `GET`s the exact `tims:ratelimit:{category}:{identifier}:{bucket}` counter and
-asserts the value a TS reader would also see.
+The C# suite runs the store against a real DynamoDB engine (DynamoDB Local, `DynamoDbRateLimitStoreTests`):
+it inspects the exact items written, and proves C# honors an item written in the TS shape
+(`Honors_an_item_written_by_the_TS_stack`). Both suites assert the same `dynamodb.json`, so the TS store
+addresses the same items with the same expressions.
 
 ## Deploy-verify note
 
-Against the real Upstash instance this is a *confirmation*, not a risk: point both stacks at the
-same Upstash Redis (TCP endpoint), issue N requests from each, and confirm the shared counter at
-`tims:ratelimit:{category}:{identifier}:{bucket}` reflects the combined total (i.e. the (N_ts +
-N_cs)-th request over the limit is throttled regardless of which stack sent it). Upstash Redis
-supports `EVAL`, so no REST-client obstacle exists.
+After both stacks are deployed against the production table, issue N requests from each surface as one
+caller and confirm the item `rl#{category}#sha256(identifier)` carries the combined count in `w{bucket}`
+(the (N_ts + N_cs)-th request over the limit is throttled regardless of which stack sent it).

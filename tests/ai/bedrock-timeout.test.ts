@@ -53,7 +53,7 @@ describe('bedrockGenerate timeout', () => {
   });
 
   it('returns normally when the call finishes before the deadline', async () => {
-    generateTextMock.mockResolvedValue({ text: '{}', usage: { promptTokens: 3, completionTokens: 2 } });
+    generateTextMock.mockResolvedValue({ text: '{}', usage: { inputTokens: 3, outputTokens: 2 } });
     const r = await bedrockGenerate('haiku', 'sys', 'msg', 100);
     expect(r).toMatchObject({ text: '{}', inputTokens: 3, outputTokens: 2 });
   });

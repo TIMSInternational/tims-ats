@@ -42,9 +42,15 @@ import { readdirSync } from 'fs';
 import { resolve } from 'path';
 import { VACANCY_WRITER_SYSTEM_PROMPT, vacancyWriterOutputSchema } from '../../packages/ai/src/agents/vacancy-writer';
 
+/** The .max() of a zod 4 string or array: a `max_length` check in its definition. */
+function ownMax(schema: z.ZodTypeAny): number | undefined {
+  const checks = (schema._zod.def as { checks?: Array<{ _zod: { def: { check: string; maximum?: number } } }> })
+    .checks ?? [];
+  return checks.map((c) => c._zod.def).find((d) => d.check === 'max_length')?.maximum;
+}
+
 /** Collect "path: max" for every string/array maximum in a Zod schema. */
 function collectMaxima(schema: z.ZodTypeAny, path = '$'): Array<{ path: string; max: number }> {
-  const def = schema._def as { typeName?: string };
   if (schema instanceof z.ZodObject) {
     return Object.entries(schema.shape as Record<string, z.ZodTypeAny>).flatMap(([k, v]) =>
       collectMaxima(v, `${path}.${k}`),
@@ -54,15 +60,14 @@ function collectMaxima(schema: z.ZodTypeAny, path = '$'): Array<{ path: string; 
     return collectMaxima(schema.unwrap() as z.ZodTypeAny, path);
   }
   if (schema instanceof z.ZodArray) {
-    const own = schema._def.maxLength ? [{ path: `${path}[]count`, max: schema._def.maxLength.value }] : [];
+    const max = ownMax(schema);
+    const own = max === undefined ? [] : [{ path: `${path}[]count`, max }];
     return [...own, ...collectMaxima(schema.element as z.ZodTypeAny, `${path}[]`)];
   }
   if (schema instanceof z.ZodString) {
-    return schema._def.checks
-      .filter((c) => c.kind === 'max')
-      .map((c) => ({ path, max: (c as { value: number }).value }));
+    const max = ownMax(schema);
+    return max === undefined ? [] : [{ path, max }];
   }
-  if (def.typeName === 'ZodNumber' || def.typeName === 'ZodEnum') return [];
   return [];
 }
 

@@ -52,7 +52,7 @@ export async function generateVacancyDescription(
   title: string,
   context?: string,
 ): Promise<VacancyDescriptionVariants & { model: string; tokensUsed: number }> {
-  const { data, model, inputTokens, outputTokens, degraded } = await invokeAgent({
+  const { data, model, inputTokens, outputTokens, validated } = await invokeAgent({
     slug: 'vacancy-writer',
     orgId,
     input: { title, context: context ?? null },
@@ -62,7 +62,7 @@ export async function generateVacancyDescription(
       return `${wrapAsData('job_data', body)}\n\nGenerate the 3 variants (formal, social, whatsapp) of a professional job description for this position.`;
     },
     schema: vacancyWriterOutputSchema,
-    // Never surfaced: a degraded result is turned into an error below, so raw
+    // Never surfaced: an unvalidated result is turned into an error below, so raw
     // (possibly oversized or JSON) model text or an empty timeout result can
     // never be offered to the recruiter as a description to apply.
     fallback: () => ({
@@ -74,7 +74,7 @@ export async function generateVacancyDescription(
     maxTokens: 3072,
   });
 
-  if (degraded) {
+  if (!validated) {
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: 'No se pudo generar la descripción con IA. Intenta de nuevo.',

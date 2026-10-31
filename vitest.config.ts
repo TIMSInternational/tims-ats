@@ -35,6 +35,7 @@ export default defineConfig({
       ai: resolve(__dirname, 'packages/ai/node_modules/ai'),
       '@aws-sdk/client-s3': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/client-s3'),
       '@aws-sdk/s3-presigned-post': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/s3-presigned-post'),
+      '@aws-sdk/s3-request-presigner': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/s3-request-presigner'),
       // `import 'server-only'` throws when imported outside the Next.js server bundler
       // (its default export is a hard `throw`). Alias it to an empty module so the
       // pure, unit-testable core of server-only helpers can be imported under vitest.
@@ -90,6 +91,7 @@ export default defineConfig({
           name: { label: 'node', color: 'green' },
           environment: 'node',
           include: ['tests/**/*.test.ts', 'scripts/**/*.test.ts'],
+          setupFiles: ['./tests/setup/aws-test-boundary.ts'],
         },
       },
       {
@@ -99,7 +101,7 @@ export default defineConfig({
           name: { label: 'web-components', color: 'magenta' },
           environment: 'happy-dom',
           include: ['tests/**/*.test.tsx'],
-          setupFiles: ['./tests/setup/component-test-setup.ts'],
+          setupFiles: ['./tests/setup/aws-test-boundary.ts', './tests/setup/component-test-setup.ts'],
           // Node v25.9.0's --experimental-webstorage defines a native globalThis.localStorage
           // stub by default that shadows happy-dom's real window.localStorage even under this
           // correctly-configured project (confirmed by direct reproduction). Disabling it here

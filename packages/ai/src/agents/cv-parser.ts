@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
@@ -54,7 +53,14 @@ export const cvParserOutputSchema = z.object({
 export type ParsedCVData = z.infer<typeof cvParserOutputSchema>;
 
 const EMPTY_CV: ParsedCVData = {
-  name: null, email: null, phone: null, skills: [], experience: [], education: [], languages: [], summary: null,
+  name: null,
+  email: null,
+  phone: null,
+  skills: [],
+  experience: [],
+  education: [],
+  languages: [],
+  summary: null,
 };
 
 export async function parseCV(
@@ -63,7 +69,7 @@ export async function parseCV(
 ): Promise<{ data: ParsedCVData; model: string; confidence: number }> {
   // CV text contains candidate PII — the registry sets cacheTtlSeconds=0 for
   // cv-parser, so invokeAgent never caches raw input here.
-  const { data, model, degraded } = await invokeAgent({
+  const { data, model, validated } = await invokeAgent({
     slug: 'cv-parser',
     orgId,
     input: { cvText: cvText.slice(0, 8000) },
@@ -75,16 +81,11 @@ export async function parseCV(
     maxTokens: 2048,
   });
 
-  // A degraded parse (unparseable or over-limit output) must not be persisted
-  // as an empty "parsed" CV over the candidate's existing data — fail instead.
-  // The portal apply flow already tolerates a parse failure.
-  if (degraded) {
-    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'No se pudo analizar el CV. Intenta de nuevo.' });
-  }
+  // A malformed model response is metered but is not a parsed CV. Leaving the
+  // document unparsed allows the durable retry path to recover it later.
+  if (!validated) throw new Error('CV parser returned invalid structured output');
 
-  const filledFields = Object.values(data).filter(
-    (v) => v !== null && (Array.isArray(v) ? v.length > 0 : true),
-  ).length;
+  const filledFields = Object.values(data).filter((v) => v !== null && (Array.isArray(v) ? v.length > 0 : true)).length;
   const confidence = Math.min(filledFields / 8, 1);
 
   return { data, model, confidence };

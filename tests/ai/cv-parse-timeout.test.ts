@@ -54,7 +54,7 @@ describe('CV parse failures never overwrite candidate data', () => {
       inputTokens: 1, outputTokens: 1, model: 'haiku', latencyMs: 1,
     });
 
-    await expect(candidateAiService.parseCV('org-1', 'cv text', 'doc-1', 'cand-1')).rejects.toThrow('No se pudo analizar el CV');
+    await expect(candidateAiService.parseCV('org-1', 'cv text', 'doc-1', 'cand-1')).rejects.toThrow('CV parser returned invalid structured output');
 
     expect(candidateRepository.updateDocumentParsedData).not.toHaveBeenCalled();
     expect(candidateRepository.updateCandidateParsedFields).not.toHaveBeenCalled();

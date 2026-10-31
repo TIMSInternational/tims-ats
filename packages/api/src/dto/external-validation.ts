@@ -6,7 +6,7 @@ export const ExternalValidationSubmitInput = z.object({
   validationId: z.string().uuid(),
   status: z.enum(['passed', 'failed']),
   result: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .refine((r) => JSON.stringify(r).length <= 100_000, 'result payload too large'),
   notes: z.string().max(5000).optional(),
 });

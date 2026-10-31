@@ -11,10 +11,39 @@ import { logger } from '@tims/shared';
 //
 // Fail-soft by design: any Redis error is logged and treated as a miss / no-op,
 // so a cache outage degrades to direct DB reads rather than failing requests.
+//
+// Backend: per-process memory by default. Upstash Redis is used ONLY when
+// PERMISSION_CACHE_UPSTASH_ENABLED is exactly 'true' AND the Upstash REST credentials
+// are set. The credentials exist for the rate limiter; putting tenant access decisions
+// (org/user ids, roles, permission grants), feature-flag/entitlement reads and dashboard
+// KPIs at the Upstash subprocessor is a separate data decision that must be opted into
+// explicitly. See docs/runbooks/production-rate-limits.md.
+//
+// The memory backend's invalidation is per-instance, so it never holds AUTHORIZATION
+// entries: another instance would keep serving a revoked role, entitlement or flag until
+// its TTL. Keys under SHARED_ONLY_PREFIXES are cached only in the shared store; with the
+// memory backend they are always a miss (read from the DB). Other keys (dashboard KPIs)
+// still use memory, where a few seconds of per-instance staleness is harmless.
 // ---------------------------------------------------------------------------
 
+const SHARED_ONLY_PREFIXES = [
+  'tims:access:', // access decisions (packages/api/src/access/build.ts)
+  'tims:perm:', // legacy boolean permission entries
+  'tims:entitlements:', // module entitlements (entitlement.service.ts)
+  'tims:flagcheck:', // feature-flag checks (routers/featureFlag.ts)
+] as const;
+
+function isSharedOnly(key: string): boolean {
+  return SHARED_ONLY_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+/** True only when the cache-aside layer was explicitly opted into the shared Upstash store. */
+export function isPermissionCacheUpstashEnabled(): boolean {
+  return process.env.PERMISSION_CACHE_UPSTASH_ENABLED === 'true';
+}
+
 const redis =
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  isPermissionCacheUpstashEnabled() && process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
     ? new Redis({
         url: process.env.UPSTASH_REDIS_REST_URL,
         token: process.env.UPSTASH_REDIS_REST_TOKEN,
@@ -33,6 +62,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
       const raw = await redis.get<string>(key);
       return raw ? (JSON.parse(raw) as T) : null;
     }
+    if (isSharedOnly(key)) return null;
     const entry = memoryStore.get(key);
     if (!entry) return null;
     if (entry.expiresAt < Date.now()) {
@@ -54,6 +84,7 @@ export async function cacheSet<T>(key: string, value: T, ttlSeconds: number): Pr
       await redis.set(key, serialized, { ex: ttlSeconds });
       return;
     }
+    if (isSharedOnly(key)) return;
     memoryStore.set(key, { value: serialized, expiresAt: Date.now() + ttlSeconds * 1000 });
   } catch (err) {
     logger.warn({ err, key }, 'cache write failed — continuing without cache');

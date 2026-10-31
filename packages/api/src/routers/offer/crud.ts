@@ -127,8 +127,8 @@ export const offerCrudRouter = router({
         currency: currencyCode.default('USD'),
         startDate: z.date(),
         contractType: z.string().max(100),
-        benefits: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
-        terms: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
+        benefits: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
+        terms: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         expiresAt: z.date().optional(),
       })
     )
@@ -187,8 +187,8 @@ export const offerCrudRouter = router({
         currency: currencyCode.optional(),
         startDate: z.date().optional(),
         contractType: z.string().max(100).optional(),
-        benefits: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
-        terms: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
+        benefits: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
+        terms: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         expiresAt: z.date().optional(),
       })
     )

@@ -15,7 +15,7 @@ import {
 } from '@tims/shared';
 import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/application-consent-evidence';
 import { emailService } from '../services/email.service';
-import { consumeApplicationEmailQuota } from '../middleware/rate-limit';
+import { checkRateLimit, consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
 // The ONE public response of portal.applyToVacancy, whatever happened server-side.
 const APPLY_ACKNOWLEDGMENT = { received: true } as const;
@@ -161,11 +161,10 @@ export const portalRouter = router({
           salary: true,
           positions: true,
           priority: true,
-          settings: true,
           createdAt: true,
-          company: { select: { id: true, name: true } },
+          company: { select: { name: true } },
           unit: { select: { name: true } },
-          organization: { select: { name: true, logo: true } },
+          organization: { select: { name: true } },
           jobProfile: {
             select: { competencies: true, requirements: true },
           },
@@ -173,12 +172,34 @@ export const portalRouter = router({
       });
       if (!vacancy) return null;
       const applicantCount = await db.application.count({ where: { vacancyId: vacancy.id } });
-      return { ...vacancy, applicantCount };
+      // Anonymous endpoint: return ONLY the fields the public careers page renders, built
+      // explicitly so internal columns (e.g. vacancy `settings`) can never ride along.
+      return {
+        id: vacancy.id,
+        organizationId: vacancy.organizationId,
+        title: vacancy.title,
+        description: vacancy.description,
+        location: vacancy.location,
+        remotePolicy: vacancy.remotePolicy,
+        contractType: vacancy.contractType,
+        salary: vacancy.salary,
+        positions: vacancy.positions,
+        priority: vacancy.priority,
+        createdAt: vacancy.createdAt,
+        company: vacancy.company ? { name: vacancy.company.name } : null,
+        unit: vacancy.unit ? { name: vacancy.unit.name } : null,
+        organization: { name: vacancy.organization.name },
+        jobProfile: vacancy.jobProfile
+          ? { competencies: vacancy.jobProfile.competencies, requirements: vacancy.jobProfile.requirements }
+          : null,
+        applicantCount,
+      };
     }),
 
   // Get a presigned S3 POST for the candidate to upload a CV directly, before
   // applying. Server-enforced size cap + content-type via the POST policy's
-  // conditions (not merely trusted from the client).
+  // conditions (not merely trusted from the client). Rate limited per client by
+  // publicProcedure's `cvUpload` tier, and per vacancy below.
   getCvUploadUrl: publicProcedure
     .input(
       z.object({
@@ -188,6 +209,8 @@ export const portalRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
+      // Lowercased: Postgres treats UUID case variants as one vacancy, so the quota key must too.
+      await checkRateLimit(`vacancy:${input.vacancyId.toLowerCase()}`, 'cvUploadVacancy');
       const vacancy = await db.vacancy.findFirstOrThrow({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
         select: { organizationId: true },
@@ -217,10 +240,10 @@ export const portalRouter = router({
         // Explicit, prior data-processing authorization (Ley 1581). Required: a submission
         // without it — or against a superseded consent text — is rejected before any write.
         consentAccepted: z.literal(true, {
-          errorMap: () => ({ message: 'Debes autorizar el tratamiento de tus datos personales para aplicar.' }),
+          error: 'Debes autorizar el tratamiento de tus datos personales para aplicar.',
         }),
         consentTextVersion: z.literal(APPLICATION_CONSENT_TEXT_VERSION, {
-          errorMap: () => ({ message: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.' }),
+          error: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.',
         }),
         // Locale the consent text was shown in; the server hashes ITS canonical copy (#313).
         consentLocale: z.enum(APPLICATION_CONSENT_LOCALES).default('es'),

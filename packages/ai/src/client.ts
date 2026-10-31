@@ -91,7 +91,7 @@ export async function bedrockGenerate(
       model: MODELS[model],
       system: systemPrompt,
       prompt: userMessage,
-      maxTokens,
+      maxOutputTokens: maxTokens,
       abortSignal: controller.signal,
       ...(guardrail ? { providerOptions: guardrail } : {}),
     });
@@ -113,8 +113,8 @@ export async function bedrockGenerate(
 
     return {
       text: result.text,
-      inputTokens: result.usage?.promptTokens ?? 0,
-      outputTokens: result.usage?.completionTokens ?? 0,
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
       model,
       latencyMs: Date.now() - start,
     };
