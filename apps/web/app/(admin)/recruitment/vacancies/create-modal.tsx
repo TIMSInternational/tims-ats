@@ -99,7 +99,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
     });
   };
 
-  const stepLabels = ['Informacion basica', 'Descripcion del cargo', 'Compensacion y ajustes'];
+  const stepLabels = ['Información básica', 'Descripción del cargo', 'Compensación y ajustes'];
 
   return (
     <Modal title={t.vacancies.createNewVacancy} onClose={onClose} maxWidth="max-w-2xl">

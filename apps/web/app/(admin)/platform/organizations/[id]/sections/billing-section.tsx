@@ -64,8 +64,8 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
             <div><span className="text-xs text-[#8B8B8B]">Empresa</span><p className="text-sm text-[#333] mt-0.5">{bp.companyName || '\u2014'}</p></div>
             <div><span className="text-xs text-[#8B8B8B]">{t.invoices.taxId}</span><p className="text-sm text-[#333] mt-0.5">{bp.taxId || '\u2014'}</p></div>
             <div><span className="text-xs text-[#8B8B8B]">{t.invoices.billingEmail}</span><p className="text-sm text-[#333] mt-0.5">{bp.billingEmail || '\u2014'}</p></div>
-            <div><span className="text-xs text-[#8B8B8B]">Direccion</span><p className="text-sm text-[#333] mt-0.5">{bp.address || '\u2014'}</p></div>
-            <div><span className="text-xs text-[#8B8B8B]">Telefono</span><p className="text-sm text-[#333] mt-0.5">{bp.billingPhone || '\u2014'}</p></div>
+            <div><span className="text-xs text-[#8B8B8B]">Dirección</span><p className="text-sm text-[#333] mt-0.5">{bp.address || '\u2014'}</p></div>
+            <div><span className="text-xs text-[#8B8B8B]">Teléfono</span><p className="text-sm text-[#333] mt-0.5">{bp.billingPhone || '\u2014'}</p></div>
             <div><span className="text-xs text-[#8B8B8B]">Ciudad</span><p className="text-sm text-[#333] mt-0.5">{bp.city || '\u2014'}{bp.state ? `, ${bp.state}` : ''}</p></div>
           </div>
         ) : (

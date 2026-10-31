@@ -51,8 +51,8 @@ describe('Onboarding dashboard data integrity', () => {
       </I18nProvider>,
     );
     const updatedCell = screen.getByText('Beta Tester').closest('tr')!.querySelectorAll('td')[6];
-    expect(within(updatedCell).getByText(/Dia 30 ✓/)).toBeInTheDocument();
-    expect(updatedCell).not.toHaveTextContent('Dia 1');
+    expect(within(updatedCell).getByText(/Día 30 ✓/)).toBeInTheDocument();
+    expect(updatedCell).not.toHaveTextContent(/D[ií]a 1(?!\d)/);
 
     rerender(
       <I18nProvider>
@@ -71,7 +71,7 @@ describe('Onboarding dashboard data integrity', () => {
       </I18nProvider>,
     );
     const pendingCell = screen.getByText('Beta Tester').closest('tr')!.querySelectorAll('td')[6];
-    expect(within(pendingCell).getByText('Dia 30 Pendiente')).toBeInTheDocument();
+    expect(within(pendingCell).getByText('Día 30 Pendiente')).toBeInTheDocument();
   });
 
   it('counts incomplete tasks as tasks, not documents', () => {

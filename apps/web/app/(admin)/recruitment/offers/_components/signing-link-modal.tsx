@@ -44,7 +44,7 @@ export function SigningLinkModal({ signingUrl, emailDeliveryAccepted, recipientE
                 <p className="text-[12px] text-[#8B8B8B]">{emailDeliveryAccepted ? t.offers.offerEmailProviderAccepted : t.offers.offerEmailUnconfirmed}</p>
               </div>
             </div>
-            <button onClick={onClose} className="text-[#8B8B8B] hover:text-[#333] transition">
+            <button aria-label={t.common.close} onClick={onClose} className="text-[#8B8B8B] hover:text-[#333] transition">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                 <path d="M6 18L18 6M6 6l12 12" />
               </svg>

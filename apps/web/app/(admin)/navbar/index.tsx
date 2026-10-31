@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useI18n } from '../../../lib/i18n';
 import { SearchCommand } from './search-command';
 import { NotificationDropdown } from './notification-dropdown';
+import { SupportEmailLink } from './support-email-link';
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
   useEffect(() => {
@@ -17,7 +18,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
   }, [ref, handler]);
 }
 
-export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { isPlatformOwner?: boolean; onHelpClick?: () => void; onMenuClick?: () => void }) {
+export function Navbar({ isPlatformOwner = false, onMenuClick }: { isPlatformOwner?: boolean; onMenuClick?: () => void }) {
   const pathname = usePathname();
   const { locale, setLocale, t } = useI18n();
 
@@ -59,16 +60,8 @@ export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { 
 
         <NotificationDropdown onOpen={() => setLangOpen(false)} />
 
-        {/* Help */}
-        <button
-          onClick={onHelpClick}
-          className="w-8 h-8 rounded-[var(--r-md)] hidden md:flex items-center justify-center hover:bg-[var(--chrome-hover)] transition-colors"
-          title={t.nav.helpCenter}
-        >
-          <svg className="w-[16px] h-[16px] text-[var(--chrome-text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-          </svg>
-        </button>
+        {/* Support: mailto link, hidden when no support address is configured */}
+        <SupportEmailLink />
 
         {/* Language */}
         <div ref={langRef} className="relative">
@@ -87,7 +80,7 @@ export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { 
           {langOpen && (
             <div className="absolute right-0 top-full mt-2 w-[140px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden py-1">
               {[
-                { code: 'ES' as const, label: 'Espanol', flag: '🇪🇸' },
+                { code: 'ES' as const, label: 'Español', flag: '🇪🇸' },
                 { code: 'EN' as const, label: 'English', flag: '🇺🇸' },
               ].map((l) => (
                 <button

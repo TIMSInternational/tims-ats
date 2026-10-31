@@ -39,7 +39,7 @@ export function AssessmentResultScreen({
           </p>
         )}
         {!hasPending && band === null && normSampleSize !== null && (
-          <p className="text-[13px] text-[#8B8B8B]">{t.assessmentPlayer.resultNoNormData}</p>
+          <p className="text-[13px] text-muted">{t.assessmentPlayer.resultNoNormData}</p>
         )}
         {hasPending && (
           <p className="text-[13px] text-[#B45309] bg-[#FFFBEB] rounded-xl p-3">

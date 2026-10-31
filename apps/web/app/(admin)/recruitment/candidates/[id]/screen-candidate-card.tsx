@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
+import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
 
 interface Vacancy { id: string; title: string }
 
@@ -55,6 +56,7 @@ export function ScreenCandidateCard({ candidateId, vacancies }: { candidateId: s
 
           {r && (
             <div className="mt-3 pt-3 border-t border-[#EDEDED] space-y-2 text-[12px]">
+              <AiSuggestionNotice />
               <div className="flex items-center justify-between">
                 <span className="text-[#8B8B8B]">{t.candidateAi.score}</span>
                 <span className="text-[18px] font-bold text-[#1F114C]">{r.score}<span className="text-[11px] text-[#8B8B8B] font-normal">/100</span></span>

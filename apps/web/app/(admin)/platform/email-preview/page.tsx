@@ -58,20 +58,20 @@ function signOff(contactEmail: string): string {
 
 function generatePreview(template: TemplateName): string {
   const company = 'TIMS International';
-  const candidate = 'Maria Fernanda Lopez';
+  const candidate = 'María Fernanda López';
   const vacancy = 'Gerente de Operaciones';
   const date = new Date(2026, 5, 10, 10, 0);
   const contact = 'rrhh@timsinternational.com';
 
   switch (template) {
     case 'interviewInvitation': {
-      const content = heading('Invitacion a Entrevista') +
+      const content = heading('Invitación a Entrevista') +
         paragraph(`Estimado/a ${candidate},`) +
         paragraph(`Nos complace informarle que ha sido seleccionado/a para una entrevista para el cargo de <strong>${vacancy}</strong> en ${company}.`) +
         detailsTable(
           detailRow('Fecha y hora', formatDate(date)) +
-          detailRow('Tipo', 'Entrevista tecnica') +
-          detailRow('Duracion', '60 minutos') +
+          detailRow('Tipo', 'Entrevista técnica') +
+          detailRow('Duración', '60 minutos') +
           detailRow('Enlace', `<a href="#" style="color:${BRAND.navy};">https://meet.daily.co/tims-interview-abc123</a>`)
         ) +
         paragraph('<strong>Recomendaciones:</strong><br>&#8226; Ingrese 5 minutos antes de la hora programada<br>&#8226; Tenga a la mano una copia de su hoja de vida<br>&#8226; Prepare preguntas sobre el cargo y la empresa') +
@@ -80,26 +80,26 @@ function generatePreview(template: TemplateName): string {
     }
     case 'interviewReschedule': {
       const oldDate = new Date(2026, 5, 8, 14, 0);
-      const content = heading('Reprogramacion de Entrevista') +
+      const content = heading('Reprogramación de Entrevista') +
         paragraph(`Estimado/a ${candidate},`) +
         paragraph(`Le informamos que su entrevista para el cargo de <strong>${vacancy}</strong> ha sido reprogramada.`) +
         detailsTable(
           detailRow('Fecha anterior', `<s style="color:${BRAND.muted};">${formatDate(oldDate)}</s>`) +
           detailRow('Nueva fecha', formatDate(date)) +
-          detailRow('Tipo', 'Entrevista tecnica') +
-          detailRow('Duracion', '60 minutos') +
+          detailRow('Tipo', 'Entrevista técnica') +
+          detailRow('Duración', '60 minutos') +
           detailRow('Enlace', `<a href="#" style="color:${BRAND.navy};">https://meet.daily.co/tims-interview-abc123</a>`)
         ) +
-        paragraph('Lamentamos cualquier inconveniente. Agradecemos su comprension.') +
+        paragraph('Lamentamos cualquier inconveniente. Agradecemos su comprensión.') +
         signOff(contact);
       return baseLayout(content, company);
     }
     case 'interviewCancellation': {
-      const content = heading('Cancelacion de Entrevista') +
+      const content = heading('Cancelación de Entrevista') +
         paragraph(`Estimado/a ${candidate},`) +
         paragraph(`Lamentamos informarle que la entrevista programada para el cargo de <strong>${vacancy}</strong> ha sido cancelada.`) +
-        detailsTable(detailRow('Motivo', 'La posicion ha sido cubierta internamente')) +
-        paragraph('Valoramos su interes en nuestra organizacion y le animamos a estar pendiente de futuras oportunidades.') +
+        detailsTable(detailRow('Motivo', 'La posición ha sido cubierta internamente')) +
+        paragraph('Valoramos su interés en nuestra organización y le animamos a estar pendiente de futuras oportunidades.') +
         signOff(contact);
       return baseLayout(content, company);
     }
@@ -109,7 +109,7 @@ function generatePreview(template: TemplateName): string {
         paragraph(`Nos complace extenderle una oferta formal para el cargo de <strong>${vacancy}</strong> en ${company}.`) +
         paragraph('Por favor revise los terminos de la oferta y, de estar de acuerdo, proceda a firmarla electronicamente.') +
         ctaButton('#', 'Revisar y Firmar Oferta') +
-        paragraph('<strong>Importante:</strong> Esta oferta tiene una vigencia de 5 dias calendario a partir de la fecha de envio.') +
+        paragraph('<strong>Importante:</strong> Esta oferta tiene una vigencia de 5 días calendario a partir de la fecha de envío.') +
         paragraph('Si tiene preguntas sobre los terminos, no dude en comunicarse con nosotros.') +
         paragraph('Cordialmente,<br>Equipo de Talento Humano');
       return baseLayout(content, company);
@@ -123,7 +123,7 @@ function generatePreview(template: TemplateName): string {
           detailRow('Cargo', vacancy) +
           detailRow('Aceptada el', formatDate(date))
         ) +
-        paragraph('<strong>Proximos pasos sugeridos:</strong><br>&#8226; Iniciar proceso de onboarding<br>&#8226; Solicitar documentacion de ingreso<br>&#8226; Coordinar fecha de inicio<br>&#8226; Notificar al equipo receptor') +
+        paragraph('<strong>Próximos pasos sugeridos:</strong><br>&#8226; Iniciar proceso de onboarding<br>&#8226; Solicitar documentación de ingreso<br>&#8226; Coordinar fecha de inicio<br>&#8226; Notificar al equipo receptor') +
         paragraph('Cordialmente,<br>Sistema TIMS ATS');
       return baseLayout(content, company);
     }
@@ -136,7 +136,7 @@ function generatePreview(template: TemplateName): string {
           detailRow('Cargo', vacancy) +
           detailRow('Declinada el', formatDate(date))
         ) +
-        paragraph('<strong>Acciones sugeridas:</strong><br>&#8226; Revisar candidatos finalistas alternativos<br>&#8226; Evaluar condiciones de la oferta frente al mercado<br>&#8226; Considerar reabrir la vacante si no hay mas candidatos') +
+        paragraph('<strong>Acciones sugeridas:</strong><br>&#8226; Revisar candidatos finalistas alternativos<br>&#8226; Evaluar condiciones de la oferta frente al mercado<br>&#8226; Considerar reabrir la vacante si no hay más candidatos') +
         paragraph('Cordialmente,<br>Sistema TIMS ATS');
       return baseLayout(content, company);
     }
@@ -144,9 +144,9 @@ function generatePreview(template: TemplateName): string {
 }
 
 const LABELS: Record<TemplateName, string> = {
-  interviewInvitation: 'Invitacion a Entrevista',
-  interviewReschedule: 'Reprogramacion de Entrevista',
-  interviewCancellation: 'Cancelacion de Entrevista',
+  interviewInvitation: 'Invitación a Entrevista',
+  interviewReschedule: 'Reprogramación de Entrevista',
+  interviewCancellation: 'Cancelación de Entrevista',
   offerSent: 'Oferta Enviada',
   offerAcceptedNotification: 'Oferta Aceptada (HR)',
   offerDeclinedNotification: 'Oferta Declinada (HR)',

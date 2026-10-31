@@ -40,15 +40,15 @@ export interface OnboardingPlan {
 
 const PHASE_TABS: { key: Phase; label: string }[] = [
   { key: 'all', label: 'Todos' },
-  { key: 'day1_30', label: 'Dia 1-30' },
-  { key: 'day31_60', label: 'Dia 31-60' },
-  { key: 'day61_90', label: 'Dia 61-90' },
+  { key: 'day1_30', label: 'Día 1-30' },
+  { key: 'day31_60', label: 'Día 31-60' },
+  { key: 'day61_90', label: 'Día 61-90' },
 ];
 
 const PHASE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  day1_30: { bg: 'bg-green-50', text: 'text-green-600', label: 'Dia 1-30' },
-  day31_60: { bg: 'bg-amber-50', text: 'text-amber-600', label: 'Dia 31-60' },
-  day61_90: { bg: 'bg-purple-50', text: 'text-[#5C4B99]', label: 'Dia 61-90' },
+  day1_30: { bg: 'bg-green-50', text: 'text-green-600', label: 'Día 1-30' },
+  day31_60: { bg: 'bg-amber-50', text: 'text-amber-600', label: 'Día 31-60' },
+  day61_90: { bg: 'bg-purple-50', text: 'text-[#5C4B99]', label: 'Día 61-90' },
   completed: { bg: 'bg-blue-50', text: 'text-blue-600', label: 'Completado' },
 };
 
@@ -135,7 +135,7 @@ export function OnboardingTable({
               <th className="text-left py-2.5 px-4 text-[#585858] font-medium w-[200px]">Colaborador</th>
               <th className="text-left py-2.5 px-3 text-[#585858] font-medium">Cargo</th>
               <th className="text-center py-2.5 px-3 text-[#585858] font-medium">Ingreso</th>
-              <th className="text-center py-2.5 px-3 text-[#585858] font-medium">Dia</th>
+              <th className="text-center py-2.5 px-3 text-[#585858] font-medium">Día</th>
               <th className="text-center py-2.5 px-3 text-[#585858] font-medium">Fase</th>
               <th className="text-center py-2.5 px-3 text-[#585858] font-medium">Tareas</th>
               <th className="text-center py-2.5 px-3 text-[#585858] font-medium">Check-in</th>
@@ -258,18 +258,18 @@ export function OnboardingTable({
                       <td className="py-3 px-3 text-center">
                         <div className="flex flex-col gap-0.5 items-center">
                           {hasCheckIn('day1') && (
-                            <CheckInBadge label="Dia 1" done={checkInDone('day1')} overdue={checkInOverdue('day1')} />
+                            <CheckInBadge label="Día 1" done={checkInDone('day1')} overdue={checkInOverdue('day1')} />
                           )}
                           {hasCheckIn('day30') && (
                             <CheckInBadge
-                              label="Dia 30"
+                              label="Día 30"
                               done={checkInDone('day30')}
                               overdue={checkInOverdue('day30')}
                             />
                           )}
                           {hasCheckIn('day60') && (
                             <CheckInBadge
-                              label="Dia 60"
+                              label="Día 60"
                               done={checkInDone('day60')}
                               overdue={checkInOverdue('day60')}
                             />
