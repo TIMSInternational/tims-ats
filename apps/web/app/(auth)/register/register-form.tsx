@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { getAuthRedirectUrl } from '@tims/shared';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../lib/auth/canonical-auth-origin';
 
 type AccountType = 'candidate' | 'company';
 
@@ -18,9 +20,11 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  useCanonicalAuthOrigin();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ensureCanonicalAuthOrigin()) return;
     setError('');
 
     if (password.length < 12 || password.length > 128) {
@@ -29,6 +33,15 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
     }
 
     setLoading(true);
+    // Confirmation email link: always the configured app origin (#50).
+    let emailRedirectTo: string;
+    try {
+      emailRedirectTo = getAuthRedirectUrl('/auth/callback');
+    } catch {
+      setError(t.auth.authEmailLinkUnavailable);
+      setLoading(false);
+      return;
+    }
     const supabase = createSupabaseBrowserClient();
 
     const { error: signUpError } = await supabase.auth.signUp({
@@ -41,7 +54,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
           account_type: accountType,
           company_name: accountType === 'company' ? companyName : undefined,
         },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo,
       },
     });
 
