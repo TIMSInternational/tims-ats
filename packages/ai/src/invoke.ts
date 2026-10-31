@@ -24,8 +24,8 @@ import { resolveAgentId, AGENT_REGISTRY } from './registry';
 // is NOT a system failure — it returns the agent's
 // obviously-degraded fallback (rule #4), never fabricated data. A fallback is
 // flagged `validated: false`, never cached, and reported via logger.warn. It is
-// also passed to logInvocation as success:false, but the usage-log table has no
-// success column yet, so that flag is not stored (see logger.ts).
+// also passed to logInvocation as success:false, stored in ai_agent_usage_logs.success (#356;
+// logger.ts retries without the column only on P2022, i.e. code deployed before its DDL).
 // ---------------------------------------------------------------------------
 
 // Defensive upper bound on the fully-built message. Agents already bound their
