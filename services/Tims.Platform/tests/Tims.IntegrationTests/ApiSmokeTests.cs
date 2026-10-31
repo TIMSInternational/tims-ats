@@ -7,7 +7,7 @@ namespace Tims.IntegrationTests;
 /// <summary>
 /// WP1.3 acceptance for the runtime conventions: boots the real Tims.Api host in-process
 /// (WebApplicationFactory) and proves /health, /ready (reflecting DB state), and the OpenAPI
-/// document actually work — closing the "container runs, /health 200, /ready reflects DB/Redis,
+/// document actually work — closing the "container runs, /health 200, /ready reflects DB/rate-limit store,
 /// OpenAPI generated" gate. A real Postgres (Testcontainers) backs the healthy-readiness case.
 /// </summary>
 public sealed class ApiSmokeTests : IAsyncLifetime
@@ -39,7 +39,7 @@ public sealed class ApiSmokeTests : IAsyncLifetime
         await using var factory = Factory(_postgres.GetConnectionString());
         using var client = factory.CreateClient();
 
-        // DB healthy; Redis unconfigured → Degraded → still 200 (readiness treats Degraded as ready).
+        // DB healthy; rate-limit store unconfigured → Degraded → still 200 (readiness treats Degraded as ready).
         var response = await client.GetAsync("/ready");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }

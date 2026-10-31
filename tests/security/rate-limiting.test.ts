@@ -11,10 +11,11 @@ describe('Rate Limiting', () => {
     expect(existsSync(RATE_LIMIT_FILE)).toBe(true);
   });
 
-  it('should use Upstash Redis (not just in-memory)', () => {
+  it('should use the shared DynamoDB store (not just in-memory)', () => {
     const content = readFileSync(RATE_LIMIT_FILE, 'utf8');
-    expect(content).toContain('@upstash/ratelimit');
-    expect(content).toContain('@upstash/redis');
+    expect(content).toContain("from './rate-limit-store'");
+    const store = readFileSync(join(ROOT, 'packages/api/src/middleware/rate-limit-store.ts'), 'utf8');
+    expect(store).toContain('@aws-sdk/client-dynamodb');
   });
 
   it('should have rate limit categories for auth, mutations, and queries', () => {
@@ -30,9 +31,10 @@ describe('Rate Limiting', () => {
     expect(content).toContain('checkRateLimit');
   });
 
-  it('should have fallback for local dev without Redis', () => {
-    const content = readFileSync(RATE_LIMIT_FILE, 'utf8');
+  it('should have fallback for local dev without the shared store', () => {
+    const store = readFileSync(join(ROOT, 'packages/api/src/middleware/rate-limit-store.ts'), 'utf8');
     // Should check for env vars and fallback gracefully
-    expect(content).toContain('UPSTASH_REDIS');
+    expect(store).toContain('RATE_LIMIT_DYNAMODB_TABLE');
+    expect(readFileSync(RATE_LIMIT_FILE, 'utf8')).toContain('checkMemoryRateLimit');
   });
 });

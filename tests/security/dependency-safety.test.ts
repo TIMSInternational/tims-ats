@@ -39,8 +39,10 @@ describe('Dependency & Supply Chain Safety', () => {
     expect(lockfile).toContain('@aws-sdk/client-ses');
   });
 
-  it('should have @upstash/ratelimit as a real dependency', () => {
+  it('should have @aws-sdk/client-dynamodb as a real, exactly pinned dependency', () => {
     const apiPkg = JSON.parse(readFileSync(join(ROOT, 'packages/api/package.json'), 'utf8'));
-    expect(apiPkg.dependencies?.['@upstash/ratelimit']).toBeDefined();
+    expect(apiPkg.dependencies?.['@aws-sdk/client-dynamodb']).toMatch(/^\d+\.\d+\.\d+$/);
+    const lockfile = readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8');
+    expect(lockfile).toContain('@aws-sdk/client-dynamodb');
   });
 });

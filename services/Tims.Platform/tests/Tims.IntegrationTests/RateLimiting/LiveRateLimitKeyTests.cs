@@ -5,25 +5,27 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-using StackExchange.Redis;
+using Tims.Domain.RateLimiting;
+using Tims.Infrastructure.RateLimiting;
 
 namespace Tims.IntegrationTests.RateLimiting;
 
 /// <summary>
 /// LIVE cross-stack rate-limit-key proof (Codex High#1/#2 + opus M1). Boots the REAL host with the
-/// Supabase JWT scheme, the seeded identity/api-key Postgres, and a live Redis, drives requests
+/// Supabase JWT scheme, the seeded identity/api-key Postgres, and a live DynamoDB Local, drives requests
 /// through the actual pipeline (UseAuthentication → PrincipalResolutionMiddleware → RateLimitMiddleware),
-/// and inspects the EXACT Redis bucket keys — the value a TS <c>@upstash/ratelimit</c> reader would
-/// also see. Proves the LIVE identifier matches TS:
+/// and inspects the EXACT shared items — the ones the TS store would also read. Proves the LIVE
+/// identifier matches TS:
 ///   • JWT staff → keyed on the TIMS <c>users.id</c>, NOT the Supabase <c>sub</c> (regression bite);
 ///   • AI-category staff → <c>org:{orgId}</c>;
 ///   • external API key → a per-key <c>apikey:{id}</c> bucket (enforced post-auth);
 ///   • anonymous → <c>ip:{last-xff-hop}</c>.
 /// </summary>
-[Collection(IdentityRedisCollection.Name)]
-public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, RedisRateLimitFixture redis)
+[Collection(IdentityRateLimitStoreCollection.Name)]
+public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, DynamoDbRateLimitFixture store)
 {
     private const string Issuer = "https://test-project.supabase.co/auth/v1";
     private const string Audience = "authenticated";
@@ -32,31 +34,36 @@ public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, RedisR
     private static readonly RsaSecurityKey PrivateKey = new(SigningRsa) { KeyId = "test-key-1" };
 
     private readonly IdentitySchemaFixture _identity = identity;
-    private readonly IConnectionMultiplexer _redis = redis.Connection;
-    private readonly string _redisConnectionString = redis.ConnectionString;
+    private readonly DynamoDbRateLimitFixture _store = store;
 
-    // A host on the identity DB (staff/ai/anon) with JWT + Redis wired.
+    // A host on the identity DB (staff/ai/anon) with JWT + the shared store wired.
     private WebApplicationFactory<Program> IdentityHost() => Host(_identity.IdentityConnectionString);
 
-    // A host on the api-key DB (external-whoami) with Redis wired.
+    // A host on the api-key DB (external-whoami) with the shared store wired.
     private WebApplicationFactory<Program> ApiKeyHost() => Host(_identity.ApiKeyConnectionString);
 
     private WebApplicationFactory<Program> Host(string databaseConnectionString) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", databaseConnectionString);
-            builder.UseSetting("Platform:RedisConnectionString", _redisConnectionString);
+            // Configure the store as production does, then point it at DynamoDB Local.
+            builder.UseSetting("Platform:RateLimitDynamoDbTable", DynamoDbRateLimitFixture.TableName);
+            builder.UseSetting("Platform:RateLimitDynamoDbRegion", "us-west-2");
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
 
             var publicJwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(
                 new RsaSecurityKey(SigningRsa.ExportParameters(false)) { KeyId = PrivateKey.KeyId });
             builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<DynamoDbRateLimitStore>();
+                services.AddSingleton(_store.Store());
                 services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
                 {
                     options.RequireHttpsMetadata = false;
                     options.TokenValidationParameters.IssuerSigningKeys = [publicJwk];
-                }));
+                });
+            });
         });
 
     private static string Mint(string sub)
@@ -72,13 +79,10 @@ public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, RedisR
         return new JsonWebTokenHandler().CreateToken(descriptor);
     }
 
-    // Count Redis keys matching a glob pattern (bucket-agnostic: the live host uses the wall clock,
-    // so we assert on the {category}:{identifier} shape across any window).
-    private int KeysMatching(string pattern)
-    {
-        var server = _redis.GetServer(_redis.GetEndPoints()[0]);
-        return server.Keys(pattern: pattern).Count();
-    }
+    // Whether the shared item for {category, identifier} exists (window-agnostic: the live host uses the
+    // wall clock; one item per category + identifier holds every window's counter).
+    private async Task<bool> HasItem(RateLimitCategory category, string identifier) =>
+        await _store.ItemAsync(RateLimits.PartitionKey(category, identifier)) is not null;
 
     // ---- JWT staff → keyed on the TIMS users.id, NEVER the Supabase `sub` --------------------
     [Fact]
@@ -93,9 +97,9 @@ public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, RedisR
 
         var userId = IdentityFixture.ActiveStaffUserId.ToString();
         // The bucket is keyed on the resolved TIMS users.id (TS `ctx.user.id`)...
-        Assert.True(KeysMatching($"tims:ratelimit:query:{userId}:*") >= 1, "expected a bucket keyed on the TIMS users.id");
+        Assert.True(await HasItem(RateLimitCategory.Query, userId), "expected a bucket keyed on the TIMS users.id");
         // ...and NEVER on the raw Supabase `sub` — a regression that keyed on `sub` makes this bite.
-        Assert.Equal(0, KeysMatching($"tims:ratelimit:query:{IdentityFixture.ActiveStaffSub}:*"));
+        Assert.False(await HasItem(RateLimitCategory.Query, IdentityFixture.ActiveStaffSub));
     }
 
     // ---- AI-category staff → org:{orgId} (cost-controlled per org) ----------------------------
@@ -111,10 +115,10 @@ public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, RedisR
         await client.SendAsync(request);
 
         var orgId = IdentityFixture.OrgA.ToString();
-        Assert.True(KeysMatching($"tims:ratelimit:ai:org:{orgId}:*") >= 1, "expected an AI bucket keyed on org:{orgId}");
+        Assert.True(await HasItem(RateLimitCategory.Ai, $"org:{orgId}"), "expected an AI bucket keyed on org:{orgId}");
         // AI is NOT keyed per-user, and never on the raw `sub`.
-        Assert.Equal(0, KeysMatching($"tims:ratelimit:ai:{IdentityFixture.ActiveStaffUserId}:*"));
-        Assert.Equal(0, KeysMatching($"tims:ratelimit:ai:{IdentityFixture.ActiveStaffSub}:*"));
+        Assert.False(await HasItem(RateLimitCategory.Ai, IdentityFixture.ActiveStaffUserId.ToString()));
+        Assert.False(await HasItem(RateLimitCategory.Ai, IdentityFixture.ActiveStaffSub));
     }
 
     // ---- Anonymous → ip:{last-xff-hop} (never the client-controlled first hop) ---------------
@@ -129,8 +133,8 @@ public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, RedisR
         request.Headers.Add("x-forwarded-for", "203.0.113.9, 198.51.100.23");
         await client.SendAsync(request);
 
-        Assert.True(KeysMatching("tims:ratelimit:query:ip:198.51.100.23:*") >= 1, "expected a bucket keyed on the last XFF hop");
-        Assert.Equal(0, KeysMatching("tims:ratelimit:query:ip:203.0.113.9:*")); // never the first (spoofable) hop
+        Assert.True(await HasItem(RateLimitCategory.Query, "ip:198.51.100.23"), "expected a bucket keyed on the last XFF hop");
+        Assert.False(await HasItem(RateLimitCategory.Query, "ip:203.0.113.9")); // never the first (spoofable) hop
     }
 
     // ---- External API key → per-key apikey:{id} bucket, enforced AFTER auth ------------------
@@ -146,6 +150,6 @@ public sealed class LiveRateLimitKeyTests(IdentitySchemaFixture identity, RedisR
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode); // auth still succeeds; per-key limit not exhausted
         var keyId = ApiKeyFixture.ValidKeyId.ToString();
-        Assert.True(KeysMatching($"tims:ratelimit:query:apikey:{keyId}:*") >= 1, "expected a per-key apikey:{id} bucket");
+        Assert.True(await HasItem(RateLimitCategory.Query, $"apikey:{keyId}"), "expected a per-key apikey:{id} bucket");
     }
 }

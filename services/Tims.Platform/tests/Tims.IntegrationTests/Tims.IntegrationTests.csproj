@@ -23,8 +23,10 @@
          REMOVE THIS PIN once a Testcontainers release resolves 2026.0.0 or later on its own. -->
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
-    <!-- WP2.6: a real Redis to prove the C# limiter writes the exact Upstash-shared keys. Same
-         Testcontainers family version already used for Postgres. -->
+    <!-- WP2.6: DynamoDB Local, to prove the C# limiter reads and writes the exact items the TS stack
+         does, against the real conditional-write engine. Same Testcontainers version as Postgres. -->
+    <PackageReference Include="Testcontainers.DynamoDb" Version="4.13.0" />
+    <!-- The relay-nonce rollback bridge's Redis (Http/RelayNonceBridgeTests.cs). -->
     <PackageReference Include="Testcontainers.Redis" Version="4.13.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
@@ -49,6 +51,11 @@
          gap where nothing on the C# side ever compared real output to these fixtures. -->
     <Content Include="..\..\..\..\contracts\access-review-fixtures\*.json">
       <Link>access-review-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- The shared DynamoDB rate-limit contract the TS suite also asserts (tests/ratelimit/dynamodb-contract.test.ts). -->
+    <Content Include="..\..\..\..\contracts\ratelimit-fixtures\dynamodb.json">
+      <Link>ratelimit-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

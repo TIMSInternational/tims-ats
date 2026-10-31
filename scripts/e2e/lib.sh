@@ -3,7 +3,7 @@
 # Shared configuration for the Playwright E2E stack (scripts/e2e/up.sh, down.sh, run.sh).
 #
 # Everything here is LOCAL-ONLY. The stack is a throwaway Supabase CLI project + the C# API
-# container + LocalStack (SES/S3) + Redis + `next start`, all on this machine. Nothing in it
+# container + LocalStack (SES/S3/DynamoDB) + `next start`, all on this machine. Nothing in it
 # may ever point at production or at the live Supabase project — `e2e_assert_local_url`
 # is the control for that and every URL the stack hands to a process goes through it.
 #

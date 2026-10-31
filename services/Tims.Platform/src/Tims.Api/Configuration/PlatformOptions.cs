@@ -25,11 +25,23 @@ public sealed class PlatformOptions
     public string DatabaseConnectionString { get; init; } = string.Empty;
 
     /// <summary>
-    /// Redis connection string (Upstash/StackExchange form). Optional in Phase 1: when
-    /// absent, the readiness probe reports Redis as "not configured" (Degraded, not fatal)
-    /// rather than pinging a server that does not exist yet.
+    /// ROLLBACK WINDOW ONLY: the Upstash Redis connection string pre-DynamoDB images used. When set, relay
+    /// nonces are also claimed in their Redis key (<c>LegacyRelayNonceBridge</c>) so a nonce is single-use
+    /// across old and new images. Nothing else reads it. Unset it once no such image can be rolled back to.
     /// </summary>
     public string? RedisConnectionString { get; init; }
+
+    /// <summary>
+    /// The shared rate-limit DynamoDB table (same table as the web app's
+    /// <c>RATE_LIMIT_DYNAMODB_TABLE</c>). Required together with <see cref="RateLimitDynamoDbRegion"/>.
+    /// Outside Development the host refuses to start without both; in Development, when both are absent,
+    /// the limiter is in-memory and readiness reports the store as "not configured" (Degraded). See
+    /// <c>RateLimitStoreSettings</c>.
+    /// </summary>
+    public string? RateLimitDynamoDbTable { get; init; }
+
+    /// <summary>The table's AWS region (e.g. <c>us-west-2</c>). No fallback to the host region.</summary>
+    public string? RateLimitDynamoDbRegion { get; init; }
 
     /// <summary>
     /// OTLP exporter endpoint for traces (the existing OTel/Sentry backend). Optional:
