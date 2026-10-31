@@ -1,49 +1,59 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-// With Upstash configured, a limiter TIMEOUT comes back as `{ success: true, reason: 'timeout' }`. The
-// CV-upload tiers must treat that as a rejection (fail closed); the existing tiers keep their behaviour.
-// The Upstash clients are faked at their resolved location (rate-limit.ts imports packages/api's copies).
+import { DYNAMODB_SDK, type FakeMode, installFakeDynamo, stubSharedStoreEnv } from './fake-dynamodb';
 
-const limitMock = vi.fn();
-vi.mock('../../packages/api/node_modules/@upstash/ratelimit', () => {
-  class Ratelimit {
-    static slidingWindow = vi.fn(() => ({}));
-    static fixedWindow = vi.fn(() => ({}));
-    limit = limitMock;
-  }
-  return { Ratelimit };
-});
-vi.mock('../../packages/api/node_modules/@upstash/redis', () => ({ Redis: class {} }));
+// #380 on the #358 DynamoDB store: each CV-upload presign URL is an S3 write, so when the shared
+// store is unavailable (its own ~1s deadline, or an error) the cvUpload and cvUploadVacancy tiers
+// fail CLOSED like auth/ai/export, instead of degrading to the per-instance memory limiter.
 
-async function loadLimiter() {
+const RATE_LIMIT = '../../packages/api/src/middleware/rate-limit';
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.doUnmock(DYNAMODB_SDK);
   vi.resetModules();
-  vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://upstash.example.test');
-  vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'test-token');
-  return import('../../packages/api/src/middleware/rate-limit');
+});
+
+async function loadWithFakeDynamo(mode: FakeMode) {
+  vi.resetModules();
+  stubSharedStoreEnv('production');
+  installFakeDynamo(mode);
+  return import(RATE_LIMIT);
 }
 
-describe('CV-upload rate-limit tiers fail closed on an Upstash timeout', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    limitMock.mockReset();
+describe.each([
+  ['hanging call (own deadline)', 'hang'],
+  ['store error', 'error'],
+] as const)('CV-upload tiers on a shared-store outage: %s', (_label, mode) => {
+  it.each(['cvUpload', 'cvUploadVacancy'] as const)('%s fails CLOSED', async (category) => {
+    vi.useFakeTimers();
+    const mod = await loadWithFakeDynamo(mode);
+    const p = mod.checkRateLimit('ip:203.0.113.9', category);
+    const assertion = expect(p).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
+    await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS);
+    await assertion;
   });
 
-  it.each(['cvUpload', 'cvUploadVacancy'] as const)('%s rejects a timeout result', async (category) => {
-    const mod = await loadLimiter();
-    limitMock.mockResolvedValue({ success: true, reason: 'timeout', reset: 0 });
-    await expect(mod.checkRateLimit('ip:203.0.113.9', category)).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' });
-    expect(limitMock).toHaveBeenCalledWith('ip:203.0.113.9');
+  it('the mutation tier still fails OPEN (unchanged by these tiers)', async () => {
+    vi.useFakeTimers();
+    const mod = await loadWithFakeDynamo(mode);
+    const p = mod.checkRateLimit('user-1', 'mutation');
+    await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS);
+    await expect(p).resolves.toBeUndefined();
   });
+});
 
-  it('a normal success still passes on the CV-upload tier', async () => {
-    const mod = await loadLimiter();
-    limitMock.mockResolvedValue({ success: true, reset: 0 });
+describe('CV-upload tiers with a healthy store', () => {
+  it('a request inside the budget passes', async () => {
+    const mod = await loadWithFakeDynamo('ok');
     await expect(mod.checkRateLimit('ip:203.0.113.9', 'cvUpload')).resolves.toBeUndefined();
   });
 
-  it('the existing mutation tier keeps its timeout behaviour (unchanged by this tier)', async () => {
-    const mod = await loadLimiter();
-    limitMock.mockResolvedValue({ success: true, reason: 'timeout', reset: 0 });
-    await expect(mod.checkRateLimit('user-1', 'mutation')).resolves.toBeUndefined();
+  it('portal.getCvUploadUrl maps to the cvUpload tier', async () => {
+    const mod = await loadWithFakeDynamo('ok');
+    expect(mod.getRateLimitCategory('portal.getCvUploadUrl', 'mutation')).toBe('cvUpload');
+    expect(mod.getRateLimitCategory('portal.getCvUploadUrl', 'query')).toBe('cvUpload');
   });
 });

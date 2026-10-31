@@ -51,7 +51,9 @@ const withRateLimit = t.middleware(async ({ ctx, next, path, type }) => {
     category === 'ai' && ctx.user?.organizationId
       ? `org:${ctx.user.organizationId}`
       : (ctx.user?.id ?? anonymousIdentifier(ctx.headers));
-  await checkRateLimit(identifier, category);
+  // `path` lets credential-like procedures reject during a shared-store outage instead of
+  // degrading to per-instance counters (see FAIL_CLOSED_PATHS in middleware/rate-limit.ts).
+  await checkRateLimit(identifier, category, { path });
   return next();
 });
 
@@ -287,7 +289,9 @@ const requireApiKey = t.middleware(async ({ ctx, next, path, type }) => {
   // and keys on source IP (no apiKeyId yet); a paid integration surface needs per-key
   // quotas too, so we add a second limit keyed on the resolved key id (defense in
   // depth — IP flood protection AND per-key throughput).
-  await checkRateLimit(`apikey:${principal.apiKeyId}`, getRateLimitCategory(path, type as 'query' | 'mutation'));
+  await checkRateLimit(`apikey:${principal.apiKeyId}`, getRateLimitCategory(path, type as 'query' | 'mutation'), {
+    path,
+  });
   // Fire-and-forget: must not block or change the timing of the request.
   touchApiKeyLastUsed(principal.apiKeyId);
   return runWithTenant(principal.organizationId, () =>

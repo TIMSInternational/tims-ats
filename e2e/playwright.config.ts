@@ -37,6 +37,12 @@ export default defineConfig({
   },
   projects: [
     {
+      // Cross-stack checks with no journey state: the TS and C# rate limiters share one budget.
+      name: 'platform',
+      testMatch: /platform\/.*\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
+    {
       name: 'company',
       testMatch: /company\/.*\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },

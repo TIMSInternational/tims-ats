@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TRPCError } from '@trpc/server';
 import { fetchRequestHandler } from '../../packages/api/node_modules/@trpc/server/adapters/fetch';
+import { DYNAMODB_SDK, installFakeDynamo } from '../ratelimit/fake-dynamodb';
 
 // The REAL errorFormatter in packages/api/src/trpc.ts, exercised over HTTP through the same fetch adapter
 // the Next route uses. INTERNAL_SERVER_ERROR text never reaches clients in production; Prisma not-found
@@ -20,6 +21,11 @@ class PrismaClientKnownRequestError extends Error {
 
 async function call(path: string, env: Record<string, string>) {
   vi.resetModules();
+  // Since #358, Vercel production refuses to load the rate limiter without the shared DynamoDB
+  // table; give every call a healthy fake store so the formatter, not the limiter, is under test.
+  installFakeDynamo('ok');
+  vi.stubEnv('RATE_LIMIT_DYNAMODB_TABLE', 'tims-ats-ratelimit');
+  vi.stubEnv('RATE_LIMIT_DYNAMODB_REGION', 'us-west-2');
   for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
   const { router, publicProcedure } = await import('../../packages/api/src/trpc');
   const appRouter = router({
@@ -53,7 +59,10 @@ const PROD = { NODE_ENV: 'production', VERCEL_ENV: 'production', UPSTASH_REDIS_R
 const DEV = { NODE_ENV: 'development', VERCEL_ENV: '', UPSTASH_REDIS_REST_URL: '', UPSTASH_REDIS_REST_TOKEN: '' };
 
 describe('tRPC errorFormatter — client-facing error text', () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.doUnmock(DYNAMODB_SDK);
+  });
 
   it('production: an unexpected error returns a generic message, no internal text, no stack', async () => {
     const { status, error } = await call('crash', PROD);

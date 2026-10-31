@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // `cvUpload` tier, keyed by trusted IP for anonymous callers) and per vacancy. Exercised through the
 // REAL publicProcedure middleware chain and the REAL in-memory limiter (no Upstash env).
 
-const VACANCY_A = '11111111-1111-1111-1111-111111111111';
-const VACANCY_B = '22222222-2222-2222-2222-222222222222';
+const VACANCY_A = '11111111-1111-4111-8111-111111111111'; // RFC 4122 v4 (zod 4 checks version/variant)
+const VACANCY_B = '22222222-2222-4222-8222-222222222222';
 const VACANCY_C = 'abcdef12-3456-4abc-8def-abcdefabcdef';
 const ORG_ID = '33333333-3333-3333-3333-333333333333';
 

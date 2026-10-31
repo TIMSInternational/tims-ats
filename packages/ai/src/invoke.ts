@@ -50,6 +50,8 @@ export interface InvokeAgentResult<TOutput> {
   data: TOutput;
   model: string;
   cached: boolean;
+  /** False when Bedrock returned malformed output and the agent fallback was used. */
+  validated: boolean;
   inputTokens: number;
   outputTokens: number;
 }
@@ -89,7 +91,7 @@ export async function invokeAgent<TInput, TOutput>(
       cached: true,
       userId,
     });
-    return { data: cached, model, cached: true, inputTokens: 0, outputTokens: 0 };
+    return { data: cached, model, cached: true, validated: true, inputTokens: 0, outputTokens: 0 };
   }
 
   // 3. PII — message is built (and sanitized/wrapped) by the agent; a final
@@ -104,9 +106,15 @@ export async function invokeAgent<TInput, TOutput>(
 
   // 5. Validate — extract + Zod-parse; malformed ⇒ fallback (fail-soft).
   let data: TOutput;
+  let validated = false;
   try {
     const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    data = jsonMatch ? schema.parse(JSON.parse(jsonMatch[0])) : fallback(result.text);
+    if (jsonMatch) {
+      data = schema.parse(JSON.parse(jsonMatch[0]));
+      validated = true;
+    } else {
+      data = fallback(result.text);
+    }
   } catch {
     data = fallback(result.text);
   }
@@ -120,18 +128,19 @@ export async function invokeAgent<TInput, TOutput>(
     costUsd: cost,
     latencyMs: result.latencyMs,
     model: result.model,
-    success: true,
+    success: validated,
     cached: false,
     userId,
   });
 
-  // Cache only validated results (setCached no-ops when ttl ⇐ 0).
-  await setCached(slug, orgId, input, data, ttl);
+  // A malformed response must not poison the cache (even for non-PII agents).
+  if (validated) await setCached(slug, orgId, input, data, ttl);
 
   return {
     data,
     model: result.model,
     cached: false,
+    validated,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
   };

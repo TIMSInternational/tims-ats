@@ -18,7 +18,7 @@ namespace Tims.IntegrationTests.RateLimiting;
 public sealed class RateLimitMiddlewareTests
 {
     private static RateLimitGuard InMemoryGuard() =>
-        new(redisLimiter: null,
+        new(sharedLimiter: null,
             new InMemorySlidingWindowRateLimiter(() => 1_000_000_000, startCleanupTimer: false),
             new TestHostEnvironment(Environments.Development));
 

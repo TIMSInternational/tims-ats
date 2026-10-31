@@ -122,7 +122,7 @@ beforeEach(() => {
 });
 
 const ORG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
-const APPROVER_ID = '11111111-1111-1111-1111-111111111111';
+const APPROVER_ID = '11111111-1111-4111-8111-111111111111';
 
 async function makeCaller() {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
@@ -186,7 +186,7 @@ describe('vacancy.submitForApproval — approver validation', () => {
   });
 
   it('rejects the whole submission if ANY of multiple approverIds fails validation', async () => {
-    const APPROVER_2 = '22222222-2222-2222-2222-222222222222';
+    const APPROVER_2 = '22222222-2222-4222-8222-222222222222';
     // Only APPROVER_ID comes back from the DB fetch; APPROVER_2 is missing entirely.
     mockDb.user.findMany.mockResolvedValue([{ id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] }]);
     const caller = await makeCaller();

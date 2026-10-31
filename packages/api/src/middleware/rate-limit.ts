@@ -1,68 +1,129 @@
 import { createHash } from 'node:crypto';
 
 import { TRPCError } from '@trpc/server';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { logger } from '@tims/shared';
+
+import {
+  SHARED_LIMIT_TIMEOUT_MS,
+  SharedLimiterTimeoutError,
+  createSharedStore,
+  readSharedStoreConfig,
+} from './rate-limit-store';
+
+export { SHARED_LIMIT_TIMEOUT_MS };
 
 // ---------------------------------------------------------------------------
-// Upstash Redis (production) — falls back to in-memory for local dev
+// Shared store (DynamoDB, see rate-limit-store.ts) — falls back to in-memory only outside
+// production. Vercel functions do not share process memory. A missing table in production
+// would silently disable auth, AI and application-email limits across instances.
 // ---------------------------------------------------------------------------
-const redis =
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-    ? new Redis({
-        url: process.env.UPSTASH_REDIS_REST_URL,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN,
-      })
-    : undefined;
+const sharedStoreConfig = readSharedStoreConfig(process.env);
+
+if (process.env.VERCEL_ENV === 'production' && !sharedStoreConfig) {
+  throw new Error('Production rate limiting requires the shared DynamoDB table (RATE_LIMIT_DYNAMODB_TABLE)');
+}
+
+const sharedStore = sharedStoreConfig ? createSharedStore(sharedStoreConfig) : undefined;
 
 // ---------------------------------------------------------------------------
 // Rate-limit definitions per category
 // ---------------------------------------------------------------------------
-const LIMITS = {
+export const LIMITS = {
   mutation: { requests: 30, window: '1m' as const }, // 30 mutations/min
-  query: { requests: 100, window: '1m' as const }, // 100 queries/min
+  query: { requests: 300, window: '1m' as const }, // 300 queries/min (one budget across both stacks)
   auth: { requests: 10, window: '5m' as const }, // 10 auth attempts/5min
   ai: { requests: 10, window: '1m' as const }, // 10 AI calls/min
   export: { requests: 5, window: '5m' as const }, // 5 exports/5min
   // Public CV-upload presign (portal.getCvUploadUrl): one legitimate application needs one URL,
   // so a tight per-client cap plus a per-vacancy ceiling bound how many upload URLs can be minted.
-  // Like every tier, these are shared across instances only when Upstash is configured; without it the
-  // in-memory fallback below enforces them per instance.
   cvUpload: { requests: 10, window: '10m' as const }, // 10 presigns/10min per client (IP when anonymous)
   cvUploadVacancy: { requests: 100, window: '10m' as const }, // 100 presigns/10min per vacancy
 } as const;
 
 export type RateLimitCategory = keyof typeof LIMITS;
 
-// Tiers whose limit must hold even when Upstash is slow: on a limiter timeout the Upstash client reports
-// `success: true, reason: 'timeout'`, which these tiers treat as a rejection (fail closed).
-const FAIL_CLOSED_ON_TIMEOUT: ReadonlySet<RateLimitCategory> = new Set<RateLimitCategory>([
+// Tiers only the TypeScript stack uses (the C# API serves no CV upload). They live in the same
+// DynamoDB table under their own `rl#{category}#...` keys, so they cannot collide with a shared
+// tier, and they are deliberately NOT in contracts/ratelimit-fixtures/dynamodb.json `budgets`
+// (that file is the cross-stack contract; tests/ratelimit/dynamodb-contract.test.ts excludes them).
+export const TS_ONLY_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set(['cvUpload', 'cvUploadVacancy']);
+
+// ---------------------------------------------------------------------------
+// Outage policy. Every shared-store call is bounded to SHARED_LIMIT_TIMEOUT_MS (the in-flight
+// request is aborted at the deadline) so a slow or unreachable store cannot stall every request.
+//
+// When the shared store is unavailable (timeout or error):
+//  - FAIL CLOSED (SERVICE_UNAVAILABLE) for the tiers where an unlimited burst is the
+//    attack or the cost: `auth`, `ai`, `export`, the CV-upload presign tiers
+//    (`cvUpload`, `cvUploadVacancy`: each URL is an S3 write), and the credential-like paths in
+//    FAIL_CLOSED_PATHS (invitation token, password reset, offer-signing token), which
+//    the tRPC middleware identifies by passing the procedure `path`. Login and MFA are performed by Supabase Auth directly,
+//    not through tRPC, so they are not governed by this limiter at all.
+//  - FAIL OPEN to the per-instance in-memory limiter for everything else
+//    (ordinary `query` / `mutation`), with a structured warning so the degradation
+//    is observable. The per-instance limiter still bounds a single instance.
+// ---------------------------------------------------------------------------
+const FAIL_CLOSED_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set([
+  'auth',
+  'ai',
+  'export',
   'cvUpload',
   'cvUploadVacancy',
 ]);
 
-// ---------------------------------------------------------------------------
-// Upstash limiters (one per category, created lazily)
-// ---------------------------------------------------------------------------
-function createUpstashLimiter(category: RateLimitCategory): Ratelimit | null {
-  if (!redis) return null;
-  const { requests, window } = LIMITS[category];
-  return new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(requests, window),
-    prefix: `tims:ratelimit:${category}`,
-  });
+// Lower-cased full tRPC paths of credential-like procedures that live outside `auth.*`:
+// every public procedure whose input carries a bearer token (tests/ratelimit/
+// fail-closed-token-coverage.test.ts scans the routers and fails if one is missing), plus the
+// operator password reset. Their tier (and limit) is unchanged; only the outage policy differs.
+const FAIL_CLOSED_PATHS: ReadonlySet<string> = new Set([
+  'platform.acceptinvitation',
+  'platform.getinvitationbytoken',
+  'platform.resetuserpassword',
+  'offer.acceptbytoken',
+  'offer.declinebytoken',
+  'offer.getbysigningtoken',
+  'aiinterview.recordconsent',
+  'aiinterview.start',
+]);
+
+/** True when a shared-store outage must reject this path instead of degrading. */
+export function isFailClosedPath(path: string): boolean {
+  return FAIL_CLOSED_PATHS.has(path.toLowerCase());
 }
 
-const upstashLimiters: Record<RateLimitCategory, Ratelimit | null> = {
-  mutation: createUpstashLimiter('mutation'),
-  query: createUpstashLimiter('query'),
-  auth: createUpstashLimiter('auth'),
-  ai: createUpstashLimiter('ai'),
-  export: createUpstashLimiter('export'),
-  cvUpload: createUpstashLimiter('cvUpload'),
-  cvUploadVacancy: createUpstashLimiter('cvUploadVacancy'),
-};
+// One warning per category+mode per interval, with a count of the suppressed ones, so an
+// outage is visible without one log line per request. Never logs the identifier (user id
+// or client IP), the request, or the raw error message (it can echo the table ARN or account).
+const OUTAGE_LOG_INTERVAL_MS = 10_000;
+const outageLog = new Map<string, { lastAt: number; suppressed: number }>();
+
+function logSharedLimiterOutage(
+  category: RateLimitCategory,
+  failClosed: boolean,
+  cause: 'timeout' | 'error',
+  err: unknown,
+): void {
+  const mode = failClosed ? 'fail_closed' : 'fail_open_memory';
+  const key = `${category}:${mode}`;
+  const now = Date.now();
+  const state = outageLog.get(key);
+  if (state && now - state.lastAt < OUTAGE_LOG_INTERVAL_MS) {
+    state.suppressed++;
+    return;
+  }
+  logger.warn(
+    {
+      event: 'ratelimit.shared_store_unavailable',
+      category,
+      mode,
+      cause,
+      errorName: err instanceof Error ? err.name : typeof err,
+      suppressedSinceLast: state?.suppressed ?? 0,
+    },
+    'Shared rate-limit store unavailable',
+  );
+  outageLog.set(key, { lastAt: now, suppressed: 0 });
+}
 
 // ---------------------------------------------------------------------------
 // In-memory fallback (local dev / missing env vars)
@@ -133,12 +194,36 @@ function checkMemoryRateLimit(identifier: string, category: RateLimitCategory): 
 // Public API — same interface as before, no changes needed in trpc.ts
 // ---------------------------------------------------------------------------
 
-export async function checkRateLimit(identifier: string, category: RateLimitCategory = 'query'): Promise<void> {
-  const upstash = upstashLimiters[category];
+export async function checkRateLimit(
+  identifier: string,
+  category: RateLimitCategory = 'query',
+  options: { path?: string } = {},
+): Promise<void> {
+  if (sharedStore) {
+    const { requests, window } = LIMITS[category];
+    let result: { success: boolean; reset: number } | undefined;
+    let outage: { cause: 'timeout' | 'error'; err: unknown } | undefined;
+    try {
+      result = await sharedStore.slidingWindow(`rl#${category}`, identifier, requests, windowToMs(window));
+    } catch (err) {
+      outage = { cause: err instanceof SharedLimiterTimeoutError ? 'timeout' : 'error', err };
+    }
 
-  if (upstash) {
-    const { success, reset, reason } = await upstash.limit(identifier);
-    if (!success || (reason === 'timeout' && FAIL_CLOSED_ON_TIMEOUT.has(category))) {
+    if (outage || !result) {
+      outage ??= { cause: 'error', err: undefined };
+      const failClosed =
+        FAIL_CLOSED_CATEGORIES.has(category) || (options.path !== undefined && isFailClosedPath(options.path));
+      logSharedLimiterOutage(category, failClosed, outage.cause, outage.err);
+      if (failClosed) {
+        throw new TRPCError({ code: 'SERVICE_UNAVAILABLE', message: 'El límite de solicitudes no está disponible.' });
+      }
+      // Fail open to the per-instance limiter: still bounded per function instance.
+      checkMemoryRateLimit(identifier, category);
+      return;
+    }
+
+    const { success, reset } = result;
+    if (!success) {
       const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
       throw new TRPCError({
         code: 'TOO_MANY_REQUESTS',
@@ -156,30 +241,18 @@ export async function checkRateLimit(identifier: string, category: RateLimitCate
 // Per-RECIPIENT cap for the unauthenticated "application received" email (#308).
 // The public apply form chooses the recipient address, so without a cap it could make
 // the platform mail any inbox repeatedly via our SES identity. At most ONE such email per
-// address per 24h, platform-wide. The key is sha256(lowercased address) — the raw
-// address never reaches Redis or memory keys.
-// Returns true only when a send is allowed. An Upstash timeout (the library then reports
-// success with reason 'timeout') is treated as NOT allowed; an Upstash error propagates
-// and the caller must treat it as NOT allowed too (fail closed — skip the email).
+// address per 24h (rolling), platform-wide. The key is sha256(lowercased address) — the raw
+// address never reaches the shared store or memory keys.
+// Returns true only when a send is allowed. A shared-store timeout or error propagates and
+// the caller must treat it as NOT allowed (fail closed — skip the email).
 // ---------------------------------------------------------------------------
 const APPLICATION_EMAIL_WINDOW_MS = 86_400_000;
-
-const applicationEmailLimiter = redis
-  ? new Ratelimit({
-      redis,
-      limiter: Ratelimit.fixedWindow(1, '24 h'),
-      prefix: 'tims:ratelimit:application-email',
-    })
-  : null;
 
 const applicationEmailMemory = new Map<string, number>();
 
 export async function consumeApplicationEmailQuota(recipientEmail: string): Promise<boolean> {
   const key = createHash('sha256').update(recipientEmail.trim().toLowerCase()).digest('hex');
-  if (applicationEmailLimiter) {
-    const { success, reason } = await applicationEmailLimiter.limit(key);
-    return success && reason !== 'timeout';
-  }
+  if (sharedStore) return sharedStore.claimOnce('ae', key, APPLICATION_EMAIL_WINDOW_MS);
   // Fallback: in-memory (local dev / tests) — per-process, same 1-per-24h semantics.
   const now = Date.now();
   const until = applicationEmailMemory.get(key);
