@@ -153,7 +153,7 @@ describe('invokeAgent (gated path)', () => {
     const actual = await vi.importActual<typeof import('../../packages/ai/src/client')>('../../packages/ai/src/client');
     vi.mocked(bedrockGenerate).mockRejectedValue(new BedrockTimeoutError(20_000));
     await expect(invokeAgent({ ...params, maxTokens: 1000 })).rejects.toBeInstanceOf(BedrockTimeoutError);
-    const inputTokens = Math.ceil(('sys'.length + 'built message'.length) / 2);
+    const inputTokens = Buffer.byteLength('sys') + Buffer.byteLength('built message') + 512;
     const logged = vi.mocked(logInvocation).mock.calls[0]![0];
     expect(logged).toMatchObject({ success: false, inputTokens, outputTokens: 1000 });
     expect(logged.costUsd).toBe(actual.calculateCost(logged.model as 'haiku' | 'sonnet', inputTokens, 1000));

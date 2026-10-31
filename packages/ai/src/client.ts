@@ -135,11 +135,16 @@ export function calculateCost(model: ModelId, inputTokens: number, outputTokens:
   return (inputTokens / 1000) * COST_PER_1K_INPUT[model] + (outputTokens / 1000) * COST_PER_1K_OUTPUT[model];
 }
 
+/** Tokens added by the request itself (role/turn framing, tool/guardrail scaffolding), charged on top. */
+const REQUEST_OVERHEAD_TOKENS = 512;
+
 /**
  * Upper bound on what one Bedrock call can be billed, used when the deadline wins: the request
  * may still complete (and be billed) after we stop waiting, and its usage is then never seen.
- * Output is capped by maxOutputTokens; input is over-estimated at 1 token per 2 characters
- * (Claude averages ~3.5). Charging this keeps the budget ledger fail-closed instead of free.
+ * Output is capped by maxOutputTokens. Input is bounded by the UTF-8 byte count: Claude's
+ * tokenizer is byte-level, so no token covers less than one byte, whatever the script or emoji
+ * density. Plus REQUEST_OVERHEAD_TOKENS. This over-charges a rare timeout (typical text is
+ * ~3.5 characters per token) so the budget ledger stays fail-closed instead of free.
  */
 export function maxCallUsage(
   model: ModelId,
@@ -147,6 +152,8 @@ export function maxCallUsage(
   userMessage: string,
   maxTokens: number,
 ): { inputTokens: number; outputTokens: number; costUsd: number } {
-  const inputTokens = Math.ceil((systemPrompt.length + userMessage.length) / 2);
+  const utf8 = new TextEncoder();
+  const inputTokens =
+    utf8.encode(systemPrompt).length + utf8.encode(userMessage).length + REQUEST_OVERHEAD_TOKENS;
   return { inputTokens, outputTokens: maxTokens, costUsd: calculateCost(model, inputTokens, maxTokens) };
 }

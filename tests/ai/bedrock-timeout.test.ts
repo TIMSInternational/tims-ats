@@ -65,14 +65,27 @@ describe('bedrockGenerate timeout', () => {
 });
 
 describe('maxCallUsage (timeout reservation)', () => {
-  it('bounds a late completion: output at maxOutputTokens, input over-estimated from length', async () => {
+  it('charges output at maxOutputTokens and input at the UTF-8 byte count plus request overhead', async () => {
     const { maxCallUsage, calculateCost } = await import('../../packages/ai/src/client');
-    // ~3.5 chars per token in practice, so 4,000 chars is ~1,150 tokens; the bound charges 2,000.
     const u = maxCallUsage('haiku', 'a'.repeat(1_000), 'b'.repeat(3_000), 1_024);
-    expect(u).toEqual({ inputTokens: 2_000, outputTokens: 1_024, costUsd: calculateCost('haiku', 2_000, 1_024) });
-    // Codex's late-success case (1,000 in / 1,000 out) is covered once the prompt is >= 2,000 chars
-    // and maxOutputTokens >= 1,000, which is what a 1,000-token prompt implies.
+    expect(u).toEqual({ inputTokens: 4_000 + 512, outputTokens: 1_024, costUsd: calculateCost('haiku', 4_512, 1_024) });
+  });
+
+  it('is an upper bound for token-dense input (emoji, CJK, accents): at least one token per byte', async () => {
+    const { maxCallUsage } = await import('../../packages/ai/src/client');
+    // A byte-level tokenizer can spend up to one token per byte on such text; never fewer bytes than tokens.
+    for (const dense of ['😀'.repeat(250), '漢字'.repeat(300), 'ñáéíóú'.repeat(200)]) {
+      const bytes = Buffer.byteLength(dense, 'utf8');
+      const u = maxCallUsage('sonnet', '', dense, 100);
+      expect(u.inputTokens).toBeGreaterThanOrEqual(bytes);
+      expect(u.inputTokens).toBeGreaterThan(dense.length); // more than one per JS character
+    }
+  });
+
+  it('covers Codex\'s late completion (1,000 in / 1,000 out) for a 1,000-token prompt', async () => {
+    const { maxCallUsage, calculateCost } = await import('../../packages/ai/src/client');
+    // A prompt that tokenizes to 1,000 tokens is at least 1,000 bytes.
+    const u = maxCallUsage('haiku', '', 'x'.repeat(1_000), 1_000);
     expect(u.costUsd).toBeGreaterThanOrEqual(calculateCost('haiku', 1_000, 1_000));
   });
 });
-
