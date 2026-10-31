@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { useI18n } from '../../../../../../lib/i18n';
 
 const inputCls =
@@ -33,26 +34,38 @@ export function ApplyModalStep1({
 }: ApplyModalStep1Props) {
   const { t } = useI18n();
   const p = t.portal;
+  const idBase = useId();
+  const ids = {
+    firstName: `${idBase}-first-name`,
+    lastName: `${idBase}-last-name`,
+    email: `${idBase}-email`,
+    phone: `${idBase}-phone`,
+    location: `${idBase}-location`,
+  };
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>{p.firstNameLabel}</label>
+          <label htmlFor={ids.firstName} className={labelCls}>{p.firstNameLabel}</label>
           <input
             type="text"
+            id={ids.firstName}
+            autoComplete="given-name"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
             maxLength={100}
             className={inputCls}
-            placeholder="Maria"
+            placeholder={p.firstNamePlaceholder}
             autoFocus
           />
         </div>
         <div>
-          <label className={labelCls}>{p.lastNameLabel}</label>
+          <label htmlFor={ids.lastName} className={labelCls}>{p.lastNameLabel}</label>
           <input
             type="text"
+            id={ids.lastName}
+            autoComplete="family-name"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
             maxLength={100}
@@ -63,9 +76,11 @@ export function ApplyModalStep1({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>{p.emailLabel}</label>
+          <label htmlFor={ids.email} className={labelCls}>{p.emailLabel}</label>
           <input
             type="email"
+            id={ids.email}
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             maxLength={254}
@@ -74,9 +89,11 @@ export function ApplyModalStep1({
           />
         </div>
         <div>
-          <label className={labelCls}>{p.phoneLabel}</label>
+          <label htmlFor={ids.phone} className={labelCls}>{p.phoneLabel}</label>
           <input
             type="tel"
+            id={ids.phone}
+            autoComplete="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             maxLength={30}
@@ -86,9 +103,10 @@ export function ApplyModalStep1({
         </div>
       </div>
       <div>
-        <label className={labelCls}>{p.locationLabel}</label>
+        <label htmlFor={ids.location} className={labelCls}>{p.locationLabel}</label>
         <input
           type="text"
+          id={ids.location}
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           maxLength={200}

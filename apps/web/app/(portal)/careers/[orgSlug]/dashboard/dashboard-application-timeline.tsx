@@ -15,18 +15,18 @@ export function DashboardApplicationTimeline({ orgSlug, applicationId }: { orgSl
   });
 
   if (isLoading) {
-    return <p className="text-[12px] text-[#8B8B8B] mt-3">{t.portalDashboard.timelineLoading}</p>;
+    return <p className="text-[12px] text-muted mt-3">{t.portalDashboard.timelineLoading}</p>;
   }
   if (isError || !data) {
     return <p className="text-[12px] text-[#B42318] mt-3">{t.portalDashboard.timelineError}</p>;
   }
   if (data.movements.length === 0) {
-    return <p className="text-[12px] text-[#8B8B8B] mt-3">{t.portalDashboard.timelineEmpty}</p>;
+    return <p className="text-[12px] text-muted mt-3">{t.portalDashboard.timelineEmpty}</p>;
   }
 
   return (
     <div className="mt-3 border-t border-[#EDEDED] pt-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8B8B8B] mb-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-2">
         {t.portalDashboard.timelineTitle}
       </p>
       <ol className="space-y-2">
@@ -35,7 +35,7 @@ export function DashboardApplicationTimeline({ orgSlug, applicationId }: { orgSl
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1F114C]" aria-hidden />
             <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="text-[13px] text-[#1F114C]">{m.toStage.name}</span>
-              <span className="text-[11px] text-[#8B8B8B]">{new Date(m.movedAt).toLocaleDateString()}</span>
+              <span className="text-[11px] text-muted">{new Date(m.movedAt).toLocaleDateString()}</span>
             </div>
           </li>
         ))}

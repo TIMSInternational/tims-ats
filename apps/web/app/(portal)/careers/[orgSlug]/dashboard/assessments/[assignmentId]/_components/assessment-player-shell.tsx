@@ -30,7 +30,7 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
     return (
       <>
         <AssessmentBackLink orgSlug={orgSlug} />
-        <p className="text-center text-[13px] text-[#8B8B8B] p-8">{t.assessmentPlayer.loading}</p>
+        <p className="text-center text-[13px] text-muted p-8">{t.assessmentPlayer.loading}</p>
       </>
     );
   }

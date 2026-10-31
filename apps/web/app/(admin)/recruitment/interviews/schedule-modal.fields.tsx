@@ -173,7 +173,7 @@ export function Step2Fields({
       <div>
         <label className={labelCls}>{t.interviews.scheduleFieldLocationLink}</label>
         <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={500} className={inputCls}
-          placeholder={interviewType === 'video' ? 'Se generara automaticamente con Daily.co' : interviewType === 'onsite' ? 'Oficina Bogota, Sala 3A' : 'Numero o enlace de reunion'} />
+          placeholder={interviewType === 'video' ? 'Se generará automáticamente con Daily.co' : interviewType === 'onsite' ? 'Oficina Bogotá, Sala 3A' : 'Número o enlace de reunión'} />
         {interviewType === 'video' && !location && (
           <p className="text-[10px] text-teal-600 mt-1">{t.interviews.scheduleFieldVideoAutoRoom}</p>
         )}

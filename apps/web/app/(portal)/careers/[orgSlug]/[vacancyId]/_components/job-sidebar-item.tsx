@@ -38,9 +38,9 @@ export function JobSidebarItem({ orgSlug, isActive, item }: JobSidebarItemProps)
           <p className={`truncate text-[13px] font-semibold ${isActive ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>
             {item.title}
           </p>
-          <p className="truncate text-[11px] text-[#8B8B8B]">{item.company?.name}</p>
+          <p className="truncate text-[11px] text-muted">{item.company?.name}</p>
           {item.location && (
-            <p className="text-[11px] text-[#8B8B8B]">
+            <p className="text-[11px] text-muted">
               {item.location}
               {item.remotePolicy === 'remote' ? ` (${p.remotePolicies.remote})` : ''}
             </p>
@@ -52,7 +52,7 @@ export function JobSidebarItem({ orgSlug, isActive, item }: JobSidebarItemProps)
             {contract && (
               <span className="rounded bg-[#F6F6F6] px-1.5 py-0.5 text-[10px] text-[#585858]">{contract}</span>
             )}
-            <span className="ml-auto text-[10px] text-[#8B8B8B]">{formatTimeAgo(item.createdAt, p)}</span>
+            <span className="ml-auto text-[10px] text-muted">{formatTimeAgo(item.createdAt, p)}</span>
           </div>
         </div>
       </div>

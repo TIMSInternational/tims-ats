@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { CvUploadField } from './cv-upload-field';
 import { useI18n } from '../../../../../../lib/i18n';
 import { EXPERIENCE_LEVELS } from '../_lib/experience-levels';
@@ -48,14 +49,23 @@ export function ApplyModalStep2({
 }: ApplyModalStep2Props) {
   const { t } = useI18n();
   const p = t.portal;
+  const idBase = useId();
+  const ids = {
+    currentTitle: `${idBase}-current-title`,
+    currentCompany: `${idBase}-current-company`,
+    yearsExperience: `${idBase}-years-experience`,
+    linkedinUrl: `${idBase}-linkedin`,
+    coverLetter: `${idBase}-cover-letter`,
+  };
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>{p.currentTitleLabel}</label>
+          <label htmlFor={ids.currentTitle} className={labelCls}>{p.currentTitleLabel}</label>
           <input
             type="text"
+            id={ids.currentTitle}
             value={currentTitle}
             onChange={(e) => setCurrentTitle(e.target.value)}
             maxLength={200}
@@ -64,9 +74,10 @@ export function ApplyModalStep2({
           />
         </div>
         <div>
-          <label className={labelCls}>{p.currentCompanyLabel}</label>
+          <label htmlFor={ids.currentCompany} className={labelCls}>{p.currentCompanyLabel}</label>
           <input
             type="text"
+            id={ids.currentCompany}
             value={currentCompany}
             onChange={(e) => setCurrentCompany(e.target.value)}
             maxLength={200}
@@ -77,8 +88,9 @@ export function ApplyModalStep2({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>{p.yearsExpLabel}</label>
+          <label htmlFor={ids.yearsExperience} className={labelCls}>{p.yearsExpLabel}</label>
           <select
+            id={ids.yearsExperience}
             value={yearsExperience}
             onChange={(e) => setYearsExperience(e.target.value)}
             className={`${inputCls} bg-white`}
@@ -91,9 +103,10 @@ export function ApplyModalStep2({
           </select>
         </div>
         <div>
-          <label className={labelCls}>LinkedIn</label>
+          <label htmlFor={ids.linkedinUrl} className={labelCls}>LinkedIn</label>
           <input
             type="url"
+            id={ids.linkedinUrl}
             value={linkedinUrl}
             onChange={(e) => setLinkedinUrl(e.target.value)}
             maxLength={2048}
@@ -103,8 +116,9 @@ export function ApplyModalStep2({
         </div>
       </div>
       <div>
-        <label className={labelCls}>{p.coverLetterLabel}</label>
+        <label htmlFor={ids.coverLetter} className={labelCls}>{p.coverLetterLabel}</label>
         <textarea
+          id={ids.coverLetter}
           value={coverLetter}
           onChange={(e) => setCoverLetter(e.target.value)}
           maxLength={5000}
@@ -112,7 +126,7 @@ export function ApplyModalStep2({
           className={textareaCls}
           placeholder={p.coverLetterPlaceholder}
         />
-        <p className="mt-1 text-right text-[10px] text-[#8B8B8B]">{coverLetter.length}/5000</p>
+        <p className="mt-1 text-right text-[10px] text-muted">{coverLetter.length}/5000</p>
       </div>
       <CvUploadField
         file={cvFile}

@@ -24,7 +24,7 @@ export function DashboardAssessments({ orgSlug }: { orgSlug: string }) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.assessLoading}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.assessLoading}</p>
       </section>
     );
   }
@@ -60,7 +60,7 @@ export function DashboardAssessments({ orgSlug }: { orgSlug: string }) {
       {header}
 
       {assignments.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.assessEmpty}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.assessEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {assignments.map((assignment) => {
@@ -74,7 +74,7 @@ export function DashboardAssessments({ orgSlug }: { orgSlug: string }) {
                       {assignment.assessmentType.name}
                     </p>
                     {assignment.assessmentType.duration !== null && (
-                      <p className="text-[11px] text-[#8B8B8B] mt-1">
+                      <p className="text-[11px] text-muted mt-1">
                         {assignment.assessmentType.duration} {t.portalDashboard.assessMinutes}
                       </p>
                     )}

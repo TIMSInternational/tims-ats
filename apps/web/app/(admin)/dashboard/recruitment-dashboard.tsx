@@ -5,7 +5,7 @@ import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
 import { RecruitingKpiStrip } from './recruiting-kpi-strip';
 import { PipelineFunnel, PipelineFunnelSkeleton } from './pipeline-funnel';
-import { VacanciesByDimension, VacanciesByDimensionSkeleton } from './vacancies-by-dimension';
+import { OpenVacanciesCard, OpenVacanciesCardSkeleton } from './open-vacancies-card';
 import { AlertsSlaPanel } from './alerts-sla-panel';
 import { AlertsPendingPanel } from './alerts-pending-panel';
 import { AlertsRiskPanel } from './alerts-risk-panel';
@@ -82,8 +82,6 @@ function RecruiterDashboard() {
 
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
   const kpiIsError = vacancyKpis.isError || candidateKpis.isError;
-  const totalApplications = vacancyKpis.data?.totalApplications ?? 0;
-  const totalOpen = vacancyKpis.data?.totalOpen ?? 0;
   const firstVacancyId = publishedVacancies.data?.items?.[0]?.id;
 
   return (
@@ -104,19 +102,25 @@ function RecruiterDashboard() {
           onRetry={() => { vacancyKpis.refetch(); candidateKpis.refetch(); }}
         />
 
-        {/* Pipeline + Vacancies by Dimension */}
+        {/* Pipeline + open vacancies */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
-          {isLoading ? (
+          {/* The funnel's vacancy list must have loaded too, or an empty list would read as "none published". */}
+          {isLoading || publishedVacancies.isLoading ? (
             <>
               <PipelineFunnelSkeleton />
-              <VacanciesByDimensionSkeleton />
+              <OpenVacanciesCardSkeleton />
             </>
           ) : publishedVacancies.isError ? (
             <ErrorState onRetry={() => publishedVacancies.refetch()} />
           ) : (
             <>
-              <PipelineFunnel totalApplications={totalApplications} vacancies={publishedVacancies.data?.items ?? []} />
-              <VacanciesByDimension totalOpen={totalOpen} />
+              <PipelineFunnel vacancies={publishedVacancies.data?.items ?? []} />
+              {/* Only the real count: a failed KPI query shows an error, never a default 0. */}
+              {vacancyKpis.data && !vacancyKpis.isError ? (
+                <OpenVacanciesCard totalOpen={vacancyKpis.data.totalOpen} />
+              ) : (
+                <ErrorState onRetry={() => vacancyKpis.refetch()} />
+              )}
             </>
           )}
         </div>

@@ -169,7 +169,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
             <button type="submit" disabled={!email || !orgId || createSingle.isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">
-              {createSingle.isPending ? t.common.saving : 'Enviar Invitacion'}
+              {createSingle.isPending ? t.common.saving : 'Enviar Invitación'}
             </button>
           </div>
         </form>
