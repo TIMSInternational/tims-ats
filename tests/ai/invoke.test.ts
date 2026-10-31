@@ -3,9 +3,12 @@ import { z } from 'zod';
 
 // Mock every dependency of the gated path so we test the orchestration logic
 // (order, fail-closed, fail-soft, cache short-circuit) without Bedrock or a DB.
-vi.mock('../../packages/ai/src/client', () => ({
+vi.mock('../../packages/ai/src/client', async () => ({
   bedrockGenerate: vi.fn(),
   calculateCost: vi.fn(() => 0.01),
+  // Real implementation: the timeout reservation is under test, not stubbed.
+  maxCallUsage: (await vi.importActual<typeof import('../../packages/ai/src/client')>('../../packages/ai/src/client'))
+    .maxCallUsage,
   BedrockTimeoutError: class BedrockTimeoutError extends Error {
     constructor(ms: number) {
       super(`timed out after ${ms}ms`);
@@ -140,9 +143,21 @@ describe('invokeAgent (gated path)', () => {
   it('a Bedrock timeout is logged as a failed call and rethrown (never turned into a fallback)', async () => {
     vi.mocked(bedrockGenerate).mockRejectedValue(new BedrockTimeoutError(20_000));
     await expect(invokeAgent(params)).rejects.toBeInstanceOf(BedrockTimeoutError);
-    expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ success: false, costUsd: 0 }));
+    expect(logInvocation).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     expect(setCached).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith({ agent: 'vacancy-writer', reason: 'timeout' }, expect.any(String));
+  });
+
+  it('a timed-out call is charged its worst case to the budget ledger, never $0 (Codex P2)', async () => {
+    // The request can still complete (and be billed) after the deadline; its usage is never seen.
+    const actual = await vi.importActual<typeof import('../../packages/ai/src/client')>('../../packages/ai/src/client');
+    vi.mocked(bedrockGenerate).mockRejectedValue(new BedrockTimeoutError(20_000));
+    await expect(invokeAgent({ ...params, maxTokens: 1000 })).rejects.toBeInstanceOf(BedrockTimeoutError);
+    const inputTokens = Math.ceil(('sys'.length + 'built message'.length) / 2);
+    const logged = vi.mocked(logInvocation).mock.calls[0]![0];
+    expect(logged).toMatchObject({ success: false, inputTokens, outputTokens: 1000 });
+    expect(logged.costUsd).toBe(actual.calculateCost(logged.model as 'haiku' | 'sonnet', inputTokens, 1000));
+    expect(logged.costUsd).toBeGreaterThan(0);
   });
 
   it('a cache entry that fails the current schema is treated as a miss, not served', async () => {

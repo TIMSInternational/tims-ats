@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { logger } from '@tims/shared';
-import { bedrockGenerate, calculateCost, BedrockTimeoutError, type ModelId, type InvokeResult } from './client';
+import {
+  bedrockGenerate,
+  calculateCost,
+  maxCallUsage,
+  BedrockTimeoutError,
+  type ModelId,
+  type InvokeResult,
+} from './client';
 import { checkBudget } from './budget';
 import { getCached, setCached } from './cache';
 import { logInvocation } from './logger';
@@ -120,12 +127,16 @@ export async function invokeAgent<TInput, TOutput>(
   } catch (error) {
     if (!(error instanceof BedrockTimeoutError)) throw error;
     logger.warn({ agent: slug, reason: 'timeout' }, 'AI agent call timed out');
+    // The call may still complete and be billed after the deadline, and its usage is lost, so
+    // the budget ledger is charged the most it could cost (never $0, which would let slow calls
+    // run outside checkBudget).
+    const worstCase = maxCallUsage(model, systemPrompt, userMessage, maxTokens);
     await logInvocation({
       agentId,
       organizationId: orgId,
-      inputTokens: 0,
-      outputTokens: 0,
-      costUsd: 0,
+      inputTokens: worstCase.inputTokens,
+      outputTokens: worstCase.outputTokens,
+      costUsd: worstCase.costUsd,
       latencyMs: Date.now() - started,
       model,
       success: false,

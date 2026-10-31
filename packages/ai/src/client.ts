@@ -134,3 +134,19 @@ const COST_PER_1K_OUTPUT: Record<ModelId, number> = {
 export function calculateCost(model: ModelId, inputTokens: number, outputTokens: number): number {
   return (inputTokens / 1000) * COST_PER_1K_INPUT[model] + (outputTokens / 1000) * COST_PER_1K_OUTPUT[model];
 }
+
+/**
+ * Upper bound on what one Bedrock call can be billed, used when the deadline wins: the request
+ * may still complete (and be billed) after we stop waiting, and its usage is then never seen.
+ * Output is capped by maxOutputTokens; input is over-estimated at 1 token per 2 characters
+ * (Claude averages ~3.5). Charging this keeps the budget ledger fail-closed instead of free.
+ */
+export function maxCallUsage(
+  model: ModelId,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+): { inputTokens: number; outputTokens: number; costUsd: number } {
+  const inputTokens = Math.ceil((systemPrompt.length + userMessage.length) / 2);
+  return { inputTokens, outputTokens: maxTokens, costUsd: calculateCost(model, inputTokens, maxTokens) };
+}

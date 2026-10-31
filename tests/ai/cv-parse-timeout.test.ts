@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../packages/ai/src/client', () => ({
   bedrockGenerate: vi.fn(),
   calculateCost: vi.fn(() => 0),
+  maxCallUsage: vi.fn(() => ({ inputTokens: 0, outputTokens: 0, costUsd: 0 })),
   BedrockTimeoutError: class BedrockTimeoutError extends Error {},
 }));
 vi.mock('../../packages/ai/src/budget', () => ({

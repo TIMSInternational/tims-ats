@@ -63,3 +63,16 @@ describe('bedrockGenerate timeout', () => {
     await expect(bedrockGenerate('haiku', 'sys', 'msg', 100)).rejects.toThrow('AccessDenied');
   });
 });
+
+describe('maxCallUsage (timeout reservation)', () => {
+  it('bounds a late completion: output at maxOutputTokens, input over-estimated from length', async () => {
+    const { maxCallUsage, calculateCost } = await import('../../packages/ai/src/client');
+    // ~3.5 chars per token in practice, so 4,000 chars is ~1,150 tokens; the bound charges 2,000.
+    const u = maxCallUsage('haiku', 'a'.repeat(1_000), 'b'.repeat(3_000), 1_024);
+    expect(u).toEqual({ inputTokens: 2_000, outputTokens: 1_024, costUsd: calculateCost('haiku', 2_000, 1_024) });
+    // Codex's late-success case (1,000 in / 1,000 out) is covered once the prompt is >= 2,000 chars
+    // and maxOutputTokens >= 1,000, which is what a 1,000-token prompt implies.
+    expect(u.costUsd).toBeGreaterThanOrEqual(calculateCost('haiku', 1_000, 1_000));
+  });
+});
+
