@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { bedrockGenerate, calculateCost, type ModelId } from './client';
+import { logger } from '@tims/shared';
+import {
+  bedrockGenerate,
+  calculateCost,
+  maxCallUsage,
+  BedrockTimeoutError,
+  type ModelId,
+  type InvokeResult,
+} from './client';
 import { checkBudget } from './budget';
 import { getCached, setCached } from './cache';
 import { logInvocation } from './logger';
@@ -19,9 +27,12 @@ import { resolveAgentId, AGENT_REGISTRY } from './registry';
 //   6. log      — every call (real or cached) is metered, then successful
 //                 results are written to the cache.
 //
-// Budget/circuit failures THROW (fail-closed). A malformed AI response is NOT a
-// system failure — it returns the agent's obviously-degraded fallback (rule #4),
-// never fabricated data.
+// Budget/circuit/timeout failures THROW (fail-closed). A malformed AI response
+// is NOT a system failure — it returns the agent's
+// obviously-degraded fallback (rule #4), never fabricated data. A fallback is
+// flagged `validated: false`, never cached, and reported via logger.warn. It is
+// also passed to logInvocation as success:false, stored in ai_agent_usage_logs.success (#356;
+// logger.ts retries without the column only on P2022, i.e. code deployed before its DDL).
 // ---------------------------------------------------------------------------
 
 // Defensive upper bound on the fully-built message. Agents already bound their
@@ -77,8 +88,13 @@ export async function invokeAgent<TInput, TOutput>(
   }
 
   // 2. Cache — org-scoped, TTL owned by the agent (0 ⇒ bypass).
-  const cached = await getCached<TOutput>(slug, orgId, input, ttl);
-  if (cached !== null) {
+  //    A hit is re-validated against the agent's current schema; an entry that
+  //    no longer satisfies it (e.g. written before an output bound existed) is
+  //    treated as a miss rather than served.
+  const cachedRaw = await getCached<unknown>(slug, orgId, input, ttl);
+  const cachedParse = cachedRaw === null ? null : schema.safeParse(cachedRaw);
+  if (cachedParse?.success) {
+    const cached = cachedParse.data;
     await logInvocation({
       agentId,
       organizationId: orgId,
@@ -100,8 +116,35 @@ export async function invokeAgent<TInput, TOutput>(
   let userMessage = buildUserMessage(input);
   if (userMessage.length > HARD_MESSAGE_CAP) userMessage = userMessage.slice(0, HARD_MESSAGE_CAP);
 
-  // 4. Bedrock — raw call via the circuit breaker.
-  const result = await bedrockGenerate(model, systemPrompt, userMessage, maxTokens);
+  // 4. Bedrock — raw call via the circuit breaker. A timeout is logged as a
+  //    failed call and then rethrown, exactly like any other Bedrock error:
+  //    callers that persist results must not store a fallback as if it were a
+  //    real answer.
+  const started = Date.now();
+  let result: InvokeResult;
+  try {
+    result = await bedrockGenerate(model, systemPrompt, userMessage, maxTokens);
+  } catch (error) {
+    if (!(error instanceof BedrockTimeoutError)) throw error;
+    logger.warn({ agent: slug, reason: 'timeout' }, 'AI agent call timed out');
+    // The call may still complete and be billed after the deadline, and its usage is lost, so
+    // the budget ledger is charged the most it could cost (never $0, which would let slow calls
+    // run outside checkBudget).
+    const worstCase = maxCallUsage(model, systemPrompt, userMessage, maxTokens);
+    await logInvocation({
+      agentId,
+      organizationId: orgId,
+      inputTokens: worstCase.inputTokens,
+      outputTokens: worstCase.outputTokens,
+      costUsd: worstCase.costUsd,
+      latencyMs: Date.now() - started,
+      model,
+      success: false,
+      cached: false,
+      userId,
+    });
+    throw error;
+  }
   const cost = calculateCost(model, result.inputTokens, result.outputTokens);
 
   // 5. Validate — extract + Zod-parse; malformed ⇒ fallback (fail-soft).
@@ -118,6 +161,7 @@ export async function invokeAgent<TInput, TOutput>(
   } catch {
     data = fallback(result.text);
   }
+  if (!validated) logger.warn({ agent: slug, reason: 'invalid_output' }, 'AI agent degraded to fallback');
 
   // 6. Log every real call (we paid for it regardless of parse outcome).
   await logInvocation({

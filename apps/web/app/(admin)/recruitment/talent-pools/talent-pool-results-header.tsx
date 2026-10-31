@@ -63,7 +63,7 @@ export function TalentPoolResultsHeader({ totalCount, filters, onFilterChange }:
                 className={`text-[10px] ${pill.style} px-2 py-0.5 rounded-full flex items-center gap-1`}
               >
                 {pill.label}
-                <button onClick={() => removePill(pill)} className="opacity-60 hover:opacity-100 ml-0.5">x</button>
+                <button aria-label={`${t.common.removeFilter}: ${pill.label}`} onClick={() => removePill(pill)} className="opacity-60 hover:opacity-100 ml-0.5">x</button>
               </span>
             ))}
           </div>
@@ -81,18 +81,6 @@ export function TalentPoolResultsHeader({ totalCount, filters, onFilterChange }:
           <option value="name">{tp.sortName}</option>
           <option value="experience">{tp.sortExperience}</option>
         </select>
-        <div className="flex bg-[#F6F6F6] rounded-lg overflow-hidden ml-2">
-          <button className="px-2.5 h-7 bg-[#1F114C] text-white text-[11px]">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" />
-            </svg>
-          </button>
-          <button className="px-2.5 h-7 text-[#585858] text-[11px]">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z" />
-            </svg>
-          </button>
-        </div>
       </div>
     </div>
   );

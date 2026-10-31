@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
-const SYSTEM_PROMPT = `You are a CV/resume parser for an HR platform. Extract structured data from CV text.
+export const CV_PARSER_SYSTEM_PROMPT = `You are a CV/resume parser for an HR platform. Extract structured data from CV text.
 
 Output format: JSON with the following structure:
 {
@@ -25,34 +25,32 @@ Rules:
 - Normalize phone numbers to international format
 - Skills should be individual items, not grouped
 - If information is not available, use null
-- Parse dates as years (not full dates)`;
+- Parse dates as years (not full dates)
+- Length limits: at most 100 skills, 30 experience entries, 20 education entries and 20 languages
+- Field limits: name, company, title, institution and degree under 200 characters; email under 320; phone under 50; each skill and language under 100; each experience description and the summary under 2000`;
 
-const outputSchema = z.object({
-  name: z.string().nullable(),
-  email: z.string().nullable(),
-  phone: z.string().nullable(),
-  skills: z.array(z.string()),
-  experience: z.array(
-    z.object({
-      company: z.string(),
-      title: z.string(),
-      startYear: z.number().nullable(),
-      endYear: z.number().nullable(),
-      description: z.string().nullable(),
-    }),
-  ),
-  education: z.array(
-    z.object({
-      institution: z.string(),
-      degree: z.string(),
-      year: z.number().nullable(),
-    }),
-  ),
-  languages: z.array(z.string()),
-  summary: z.string().nullable(),
+export const cvParserOutputSchema = z.object({
+  name: z.string().max(200).nullable(),
+  email: z.string().max(320).nullable(),
+  phone: z.string().max(50).nullable(),
+  skills: z.array(z.string().max(100)).max(100),
+  experience: z.array(z.object({
+    company: z.string().max(200),
+    title: z.string().max(200),
+    startYear: z.number().nullable(),
+    endYear: z.number().nullable(),
+    description: z.string().max(2000).nullable(),
+  })).max(30),
+  education: z.array(z.object({
+    institution: z.string().max(200),
+    degree: z.string().max(200),
+    year: z.number().nullable(),
+  })).max(20),
+  languages: z.array(z.string().max(100)).max(20),
+  summary: z.string().max(2000).nullable(),
 });
 
-export type ParsedCVData = z.infer<typeof outputSchema>;
+export type ParsedCVData = z.infer<typeof cvParserOutputSchema>;
 
 const EMPTY_CV: ParsedCVData = {
   name: null,
@@ -75,10 +73,10 @@ export async function parseCV(
     slug: 'cv-parser',
     orgId,
     input: { cvText: cvText.slice(0, 8000) },
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: CV_PARSER_SYSTEM_PROMPT,
     buildUserMessage: ({ cvText }) =>
       `${wrapAsData('cv_text', cvText)}\n\nParse this CV and extract structured data. Return JSON only.`,
-    schema: outputSchema,
+    schema: cvParserOutputSchema,
     fallback: () => EMPTY_CV,
     maxTokens: 2048,
   });

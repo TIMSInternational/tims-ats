@@ -10,7 +10,7 @@ vi.mock('@tims/db', () => ({
   },
 }));
 
-import { resolveAgentId } from '../../packages/ai/src/registry';
+import { resolveAgentId, AGENT_REGISTRY } from '../../packages/ai/src/registry';
 
 // A real agent invocation must promote a pre-existing 'stub' catalog row to
 // 'active' — the seedAiAgents admin mutation can create a slug's row as 'stub'
@@ -56,5 +56,20 @@ describe('resolveAgentId', () => {
 
     expect(first).toBe(second);
     expect(aiAgentUpsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Owner decision D-10: every live agent runs on Claude Haiku 4.5. The runtime
+// model is read from AGENT_REGISTRY by invokeAgent, so this pins the decision.
+describe('AGENT_REGISTRY model choice', () => {
+  it.each(Object.keys(AGENT_REGISTRY))('%s runs on haiku', (slug) => {
+    expect(AGENT_REGISTRY[slug]?.model).toBe('haiku');
+  });
+
+  it('creates new catalog rows with the haiku model label', async () => {
+    aiAgentUpsert.mockReset();
+    aiAgentUpsert.mockResolvedValue({ id: 'agent-uuid-2' });
+    await resolveAgentId('fit-explainer');
+    expect(aiAgentUpsert.mock.calls[0]?.[0].create.model).toBe('haiku');
   });
 });

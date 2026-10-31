@@ -105,7 +105,7 @@ export function ExitSimulator({ roles, t }: ExitSimulatorProps) {
                   </div>
                   <div className="flex-1">
                     <p className="text-[11px] font-medium text-[#333]">{s.user.firstName} {s.user.lastName}</p>
-                    <p className="text-[9px] text-[#8B8B8B]">{s.user.jobTitle ?? ''} &middot; {isReady ? 'Ready Now' : '1-2 Anos'}</p>
+                    <p className="text-[9px] text-[#8B8B8B]">{s.user.jobTitle ?? ''} &middot; {isReady ? 'Ready Now' : '1-2 Años'}</p>
                   </div>
                   <span className={`text-[9px] ${badgeBg} text-white px-2 py-0.5 rounded-full font-medium`}>
                     {t.readiness} {isReady ? '91%' : '64%'}
@@ -121,7 +121,7 @@ export function ExitSimulator({ roles, t }: ExitSimulatorProps) {
       ) : (
         <div className="bg-[#F6F6F6] rounded-lg p-6 text-center">
           <p className="text-[11px] text-[#8B8B8B]">
-            {selectedRole ? 'Cargando simulacion...' : 'Selecciona un rol para simular'}
+            {selectedRole ? 'Cargando simulación...' : 'Selecciona un rol para simular'}
           </p>
         </div>
       )}

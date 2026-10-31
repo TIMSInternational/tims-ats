@@ -32,7 +32,7 @@ export default function TeamIntelligencePage() {
               <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
             </svg>
             <span className="text-[12px] text-[#585858]">{t.teamIntel.teamSelector}:</span>
-            <span className="text-[12px] font-medium text-[#1F114C]">Tecnologia</span>
+            <span className="text-[12px] font-medium text-[#1F114C]">Tecnología</span>
             <svg className="w-3 h-3 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="m19.5 8.25-7.5 7.5-7.5-7.5" />
             </svg>

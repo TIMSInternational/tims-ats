@@ -18,6 +18,8 @@ import { ScoringStage } from './scoring-stage';
 import { ClosedStage } from './closed-stage';
 import { CallStateBridge } from './call-state-bridge';
 import type { DailyJoinErrorCategory } from './daily-join-error';
+import { RoomNotFound } from './room-not-found';
+import { shouldRetryInterviewQuery } from './room-load-error';
 
 function getInitials(name: string): string {
   return name
@@ -38,7 +40,7 @@ export default function InterviewRoomPage({
   const { t } = useI18n();
   const { id } = use(params);
 
-  const interview = trpc.interview.getById.useQuery({ id });
+  const interview = trpc.interview.getById.useQuery({ id }, { retry: shouldRetryInterviewQuery });
 
   // Scoring never requires video (#325). null = the default stage for this interview
   // (see below); set once the evaluator switches between lobby, scoring and the call.
@@ -117,14 +119,7 @@ export default function InterviewRoomPage({
   // Only when there is NO data: a failed background refetch (e.g. the getById.invalidate
   // after submitting a scorecard) must not tear down a live call or the unsaved draft.
   if (!interview.data) {
-    return (
-      <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
-        <div className="text-center">
-          <p className="text-white text-[14px] mb-2">{t.interviews.couldNotLoadInterview}</p>
-          <p className="text-white/50 text-[12px]">{interview.error?.message ?? t.interviews.roomInterviewNotFound}</p>
-        </div>
-      </div>
-    );
+    return <RoomNotFound error={interview.error} />;
   }
 
   const data = interview.data;

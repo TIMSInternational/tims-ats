@@ -65,7 +65,7 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
         let aiAction: string;
 
         if (isOverdue && days > 10) {
-          riskLabel = `Detenida ${days} dias en ${stage.name}`;
+          riskLabel = `Detenida ${days} días en ${stage.name}`;
           riskColor = 'text-[#DD0C15]';
           aiAction = 'Agendar entrevista urgente';
         } else if (isOverdue) {
@@ -73,7 +73,7 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
           riskColor = 'text-[#DD0C15]';
           aiAction = 'Revisar y avanzar candidato';
         } else {
-          riskLabel = `Sin movimiento hace ${days} dias`;
+          riskLabel = `Sin movimiento hace ${days} días`;
           riskColor = 'text-amber-500';
           aiAction = 'Contactar para seguimiento';
         }

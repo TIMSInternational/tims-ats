@@ -1,9 +1,9 @@
 export type Step = 1 | 2 | 3;
 
 export const INTERVIEW_TYPES = [
-  { value: 'phone', label: 'Telefonica', icon: '📞', desc: 'Llamada rapida de screening' },
+  { value: 'phone', label: 'Telefónica', icon: '📞', desc: 'Llamada rápida de screening' },
   { value: 'video', label: 'Videoconferencia', icon: '📹', desc: 'Entrevista por Daily.co / Meet' },
-  { value: 'technical', label: 'Tecnica', icon: '💻', desc: 'Evaluacion de habilidades tecnicas' },
+  { value: 'technical', label: 'Técnica', icon: '💻', desc: 'Evaluación de habilidades técnicas' },
   { value: 'cultural', label: 'Cultural', icon: '🤝', desc: 'Fit cultural y valores' },
   { value: 'panel', label: 'Panel', icon: '👥', desc: 'Multiples evaluadores simultaneos' },
   { value: 'onsite', label: 'Presencial', icon: '🏢', desc: 'Entrevista en oficina' },

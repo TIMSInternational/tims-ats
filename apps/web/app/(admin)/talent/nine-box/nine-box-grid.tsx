@@ -1,7 +1,6 @@
 'use client';
 
 import { CandidateAvatar } from '../../../../components';
-import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 
 /* ── Grid cell colour matrix (row-col, top-left = 3-1) ────────────── */
@@ -44,7 +43,6 @@ export function NineBoxGrid({ allPeople, selectedUserId, onSelectUser }: NineBox
           <select className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] bg-white">
             <option>{t.performance.quarterQ2_2026}</option><option>{t.performance.quarterQ1_2026}</option><option>2026</option>
           </select>
-          <button onClick={() => toast(t.nineBox.simulatorComingSoon, { type: 'info' })} className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] hover:bg-[#F6F6F6] transition">Simulador</button>
         </div>
       </div>
 

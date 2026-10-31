@@ -39,6 +39,21 @@ const MODELS = {
 
 export type ModelId = keyof typeof MODELS;
 
+/**
+ * Hard ceiling on one Bedrock call (including the SDK's own retries). Without
+ * it a hung call holds the request until the platform kills the function; the
+ * circuit breaker only opens after repeated failures.
+ */
+export const BEDROCK_TIMEOUT_MS = 20_000;
+
+/** Thrown when a Bedrock call exceeds BEDROCK_TIMEOUT_MS. */
+export class BedrockTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Bedrock call timed out after ${timeoutMs}ms`);
+    this.name = 'BedrockTimeoutError';
+  }
+}
+
 export interface InvokeResult {
   text: string;
   inputTokens: number;
@@ -61,13 +76,40 @@ export async function bedrockGenerate(
   const start = Date.now();
 
   return bedrockCircuit.execute(async () => {
-    const result = await generateText({
+    // Two layers: the abort signal cancels the in-flight HTTP request, and the
+    // deadline race bounds the WHOLE operation — the SDK's retry backoff does
+    // not observe the signal, so the signal alone can overrun the ceiling.
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new BedrockTimeoutError(BEDROCK_TIMEOUT_MS));
+      }, BEDROCK_TIMEOUT_MS);
+    });
+    const call = generateText({
       model: MODELS[model],
       system: systemPrompt,
       prompt: userMessage,
       maxOutputTokens: maxTokens,
+      abortSignal: controller.signal,
       ...(guardrail ? { providerOptions: guardrail } : {}),
     });
+    // If the deadline wins, the call may still reject later; observe it so it
+    // is not reported as an unhandled rejection.
+    call.catch(() => undefined);
+
+    let result: Awaited<ReturnType<typeof generateText>>;
+    try {
+      result = await Promise.race([call, deadline]);
+    } catch (error) {
+      // One typed error for every timeout path (still counted by the circuit
+      // breaker, since it is rethrown inside execute).
+      if (controller.signal.aborted) throw new BedrockTimeoutError(BEDROCK_TIMEOUT_MS);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
 
     return {
       text: result.text,
@@ -91,4 +133,27 @@ const COST_PER_1K_OUTPUT: Record<ModelId, number> = {
 
 export function calculateCost(model: ModelId, inputTokens: number, outputTokens: number): number {
   return (inputTokens / 1000) * COST_PER_1K_INPUT[model] + (outputTokens / 1000) * COST_PER_1K_OUTPUT[model];
+}
+
+/** Tokens added by the request itself (role/turn framing, tool/guardrail scaffolding), charged on top. */
+const REQUEST_OVERHEAD_TOKENS = 512;
+
+/**
+ * Upper bound on what one Bedrock call can be billed, used when the deadline wins: the request
+ * may still complete (and be billed) after we stop waiting, and its usage is then never seen.
+ * Output is capped by maxOutputTokens. Input is bounded by the UTF-8 byte count: Claude's
+ * tokenizer is byte-level, so no token covers less than one byte, whatever the script or emoji
+ * density. Plus REQUEST_OVERHEAD_TOKENS. This over-charges a rare timeout (typical text is
+ * ~3.5 characters per token) so the budget ledger stays fail-closed instead of free.
+ */
+export function maxCallUsage(
+  model: ModelId,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+): { inputTokens: number; outputTokens: number; costUsd: number } {
+  const utf8 = new TextEncoder();
+  const inputTokens =
+    utf8.encode(systemPrompt).length + utf8.encode(userMessage).length + REQUEST_OVERHEAD_TOKENS;
+  return { inputTokens, outputTokens: maxTokens, costUsd: calculateCost(model, inputTokens, maxTokens) };
 }
