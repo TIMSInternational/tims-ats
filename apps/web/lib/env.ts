@@ -23,7 +23,7 @@ const baseEnvSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
 
   // Platform
-  PLATFORM_EMAIL_FROM: z.string().email().default('noreply@nexadev.ai'),
+  PLATFORM_EMAIL_FROM: z.string().email().default('noreply@timssuite.com'),
   // Public origin for outbound bearer links (invitations, offer signing, interview join, resets).
   // Blank is treated as absent here; getAppUrl() then THROWS in a production build (#50) and falls
   // back to the canonical prod origin only in development/test. The origin rule itself (https and no

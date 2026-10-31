@@ -16,11 +16,11 @@ if (!to) {
   process.exit(1);
 }
 
-// Use default credential chain (~/.aws/credentials) — nexadev.ai verified in us-east-1
+// Use default credential chain (~/.aws/credentials) — timssuite.com verified in us-east-1
 const ses = new SESClient({ region: 'us-east-1' });
 
 // In SES sandbox, sender must be verified — override with recipient if needed
-const from = process.argv[3] || process.env.AWS_SES_FROM_EMAIL || process.env.PLATFORM_EMAIL_FROM || 'noreply@nexadev.ai';
+const from = process.argv[3] || process.env.AWS_SES_FROM_EMAIL || process.env.PLATFORM_EMAIL_FROM || 'noreply@timssuite.com';
 const company = 'TIMS International';
 const candidate = 'Maria Fernanda Lopez';
 const vacancy = 'Gerente de Operaciones';
