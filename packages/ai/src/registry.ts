@@ -94,6 +94,10 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   // AI Voice Interview — ElevenLabs conversational agent + post-call analysis.
   // Budget-gated via AiAgentOrgConfig.monthlyBudget; status starts as 'stub' until
   // the ElevenLabs integration is live.
+  // `model` here is a label only: the live voice conversation runs on whatever LLM the
+  // ElevenLabs agent (session.elevenlabsAgentId / ELEVENLABS_AGENT_ID) is configured with,
+  // and nothing in this repo sets it. Moving that agent to Haiku 4.5 (D-10) is done in
+  // ElevenLabs, not by this entry.
   'ai-voice-interview': {
     slug: 'ai-voice-interview',
     name: 'AI Voice Interview',
