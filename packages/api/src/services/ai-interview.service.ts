@@ -207,6 +207,9 @@ export const aiInterviewService = {
             latencyMs: payload.durationSeconds * 1000,
             cached: false,
           },
+          // Explicit select: an implicit RETURNING of every mapped column would
+          // fail this transaction on a database that lacks a newer column.
+          select: { id: true },
         });
       }
       return true;
