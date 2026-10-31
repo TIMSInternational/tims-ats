@@ -5,7 +5,7 @@ import {
 } from '../../packages/api/src/dto/external-validation';
 
 describe('ExternalValidationSubmitInput', () => {
-  const base = { validationId: '11111111-1111-1111-1111-111111111111', status: 'passed' as const, result: { checkedAt: '2026-07-13' } };
+  const base = { validationId: '11111111-1111-4111-8111-111111111111', status: 'passed' as const, result: { checkedAt: '2026-07-13' } };
   it('accepts a well-formed passed/failed submission', () => {
     expect(ExternalValidationSubmitInput.parse(base).status).toBe('passed');
     expect(ExternalValidationSubmitInput.parse({ ...base, status: 'failed' }).status).toBe('failed');

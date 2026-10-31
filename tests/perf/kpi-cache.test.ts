@@ -32,7 +32,7 @@ vi.mock('@tims/db', () => ({
       findUnique: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true, payload: null, organizationId: 'org-uuid-1' }),
       upsert: vi.fn().mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true }),
-      delete: vi.fn().mockResolvedValue({ id: 'c0000000-0000-0000-0000-000000000001', key: 'some_flag', organizationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' }),
+      delete: vi.fn().mockResolvedValue({ id: 'c0000000-0000-4000-8000-000000000001', key: 'some_flag', organizationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     organization: { findMany: vi.fn().mockResolvedValue([]) },
@@ -115,7 +115,7 @@ import { tenantDb, db } from '@tims/db';
 // ---------------------------------------------------------------------------
 
 const TEST_ORG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
-const TEST_USER_ID = 'b1ffcd00-0d1c-4f09-cc7e-7cc0ce491b22';
+const TEST_USER_ID = 'b1ffcd00-0d1c-4f09-8c7e-7cc0ce491b22';
 
 function baseUser() {
   return {
@@ -213,7 +213,7 @@ beforeEach(() => {
 
   // db (platform/privileged path) defaults
   vi.mocked(db.featureFlag.upsert).mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true } as never);
-  vi.mocked(db.featureFlag.delete).mockResolvedValue({ id: 'c0000000-0000-0000-0000-000000000001', key: 'some_flag', organizationId: TEST_ORG_ID } as never);
+  vi.mocked(db.featureFlag.delete).mockResolvedValue({ id: 'c0000000-0000-4000-8000-000000000001', key: 'some_flag', organizationId: TEST_ORG_ID } as never);
   vi.mocked(db.featureFlag.deleteMany).mockResolvedValue({ count: 0 });
   vi.mocked(db.organization.findMany).mockResolvedValue([]);
   vi.mocked(db.auditLog.create).mockResolvedValue(undefined as never);
@@ -296,8 +296,8 @@ describe('learning.getDashboardKpis — cache-aside', () => {
 // vacancy.getDashboardKpis — cache key encodes scope identity (userId) for sub-org
 // ---------------------------------------------------------------------------
 
-const USER_A = 'aaaa0000-0000-0000-0000-000000000001';
-const USER_B = 'bbbb0000-0000-0000-0000-000000000002';
+const USER_A = 'aaaa0000-0000-4000-8000-000000000001';
+const USER_B = 'bbbb0000-0000-4000-8000-000000000002';
 
 // buildAccessForUser is called by the permissionProcedure middleware keyed on ctx.user.
 // We need it to return scope='team' for USER_A/USER_B and scope='organization' for others.
@@ -437,7 +437,7 @@ describe('platform.system.updateFeatureFlag — cache invalidation (Finding 1)',
 // Finding 1b: platform.deleteFeatureFlag invalidates the deleted flag's org cache
 describe('platform.system.deleteFeatureFlag — cache invalidation (Finding 1)', () => {
   it('calls cacheInvalidatePrefix with the deleted flag org prefix', async () => {
-    const FLAG_ID = 'c0000000-0000-0000-0000-000000000001';
+    const FLAG_ID = 'c0000000-0000-4000-8000-000000000001';
     vi.mocked(db.featureFlag.delete).mockResolvedValue({
       id: FLAG_ID, key: 'ai_enabled', organizationId: TEST_ORG_ID,
     } as never);
