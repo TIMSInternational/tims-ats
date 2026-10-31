@@ -7,7 +7,7 @@ const ses = new SESClient({
   region: process.env.AWS_REGION || 'us-east-1',
 });
 
-const FROM_ADDRESS = process.env.PLATFORM_EMAIL_FROM || 'noreply@nexadev.ai';
+const FROM_ADDRESS = process.env.PLATFORM_EMAIL_FROM || 'noreply@timssuite.com';
 
 interface SendEmailParams {
   to: string | string[];

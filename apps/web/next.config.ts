@@ -8,6 +8,8 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // No `x-powered-by: Next.js` response header (do not advertise the framework).
+  poweredByHeader: false,
   // Mirror Vercel's server-only VERCEL_ENV into client bundles so getAppUrl()
   // (packages/shared/src/app-url.ts) can recognise a deployed environment in the
   // browser without depending on the project's "Automatically expose System

@@ -34,9 +34,19 @@ export const LIMITS = {
   auth: { requests: 10, window: '5m' as const }, // 10 auth attempts/5min
   ai: { requests: 10, window: '1m' as const }, // 10 AI calls/min
   export: { requests: 5, window: '5m' as const }, // 5 exports/5min
+  // Public CV-upload presign (portal.getCvUploadUrl): one legitimate application needs one URL,
+  // so a tight per-client cap plus a per-vacancy ceiling bound how many upload URLs can be minted.
+  cvUpload: { requests: 10, window: '10m' as const }, // 10 presigns/10min per client (IP when anonymous)
+  cvUploadVacancy: { requests: 100, window: '10m' as const }, // 100 presigns/10min per vacancy
 } as const;
 
 export type RateLimitCategory = keyof typeof LIMITS;
+
+// Tiers only the TypeScript stack uses (the C# API serves no CV upload). They live in the same
+// DynamoDB table under their own `rl#{category}#...` keys, so they cannot collide with a shared
+// tier, and they are deliberately NOT in contracts/ratelimit-fixtures/dynamodb.json `budgets`
+// (that file is the cross-stack contract; tests/ratelimit/dynamodb-contract.test.ts excludes them).
+export const TS_ONLY_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set(['cvUpload', 'cvUploadVacancy']);
 
 // ---------------------------------------------------------------------------
 // Outage policy. Every shared-store call is bounded to SHARED_LIMIT_TIMEOUT_MS (the in-flight
@@ -44,7 +54,8 @@ export type RateLimitCategory = keyof typeof LIMITS;
 //
 // When the shared store is unavailable (timeout or error):
 //  - FAIL CLOSED (SERVICE_UNAVAILABLE) for the tiers where an unlimited burst is the
-//    attack or the cost: `auth`, `ai`, `export`, and the credential-like paths in
+//    attack or the cost: `auth`, `ai`, `export`, the CV-upload presign tiers
+//    (`cvUpload`, `cvUploadVacancy`: each URL is an S3 write), and the credential-like paths in
 //    FAIL_CLOSED_PATHS (invitation token, password reset, offer-signing token), which
 //    the tRPC middleware identifies by passing the procedure `path`. Login and MFA are performed by Supabase Auth directly,
 //    not through tRPC, so they are not governed by this limiter at all.
@@ -52,7 +63,13 @@ export type RateLimitCategory = keyof typeof LIMITS;
 //    (ordinary `query` / `mutation`), with a structured warning so the degradation
 //    is observable. The per-instance limiter still bounds a single instance.
 // ---------------------------------------------------------------------------
-const FAIL_CLOSED_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set(['auth', 'ai', 'export']);
+const FAIL_CLOSED_CATEGORIES: ReadonlySet<RateLimitCategory> = new Set([
+  'auth',
+  'ai',
+  'export',
+  'cvUpload',
+  'cvUploadVacancy',
+]);
 
 // Lower-cased full tRPC paths of credential-like procedures that live outside `auth.*`:
 // every public procedure whose input carries a bearer token (tests/ratelimit/
@@ -286,6 +303,8 @@ export function getRateLimitCategory(path: string, type: 'query' | 'mutation'): 
   // candidate.applyToVacancy shares the same procedure name and never calls AI, so a
   // generic 'apply' keyword would incorrectly recategorize it too.
   if (p === 'portal.applytovacancy') return 'ai';
+  // Public presigned CV-upload URL: its own strict tier (exact path, like the line above).
+  if (p === 'portal.getcvuploadurl') return 'cvUpload';
   // AI-related endpoints
   if (AI_PATH_KEYWORDS.some((k) => p.includes(k))) return 'ai';
   // Export endpoints
