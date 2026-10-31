@@ -32,18 +32,22 @@ const outputSchema = z.object({
   email: z.string().nullable(),
   phone: z.string().nullable(),
   skills: z.array(z.string()),
-  experience: z.array(z.object({
-    company: z.string(),
-    title: z.string(),
-    startYear: z.number().nullable(),
-    endYear: z.number().nullable(),
-    description: z.string().nullable(),
-  })),
-  education: z.array(z.object({
-    institution: z.string(),
-    degree: z.string(),
-    year: z.number().nullable(),
-  })),
+  experience: z.array(
+    z.object({
+      company: z.string(),
+      title: z.string(),
+      startYear: z.number().nullable(),
+      endYear: z.number().nullable(),
+      description: z.string().nullable(),
+    }),
+  ),
+  education: z.array(
+    z.object({
+      institution: z.string(),
+      degree: z.string(),
+      year: z.number().nullable(),
+    }),
+  ),
   languages: z.array(z.string()),
   summary: z.string().nullable(),
 });
@@ -51,7 +55,14 @@ const outputSchema = z.object({
 export type ParsedCVData = z.infer<typeof outputSchema>;
 
 const EMPTY_CV: ParsedCVData = {
-  name: null, email: null, phone: null, skills: [], experience: [], education: [], languages: [], summary: null,
+  name: null,
+  email: null,
+  phone: null,
+  skills: [],
+  experience: [],
+  education: [],
+  languages: [],
+  summary: null,
 };
 
 export async function parseCV(
@@ -60,7 +71,7 @@ export async function parseCV(
 ): Promise<{ data: ParsedCVData; model: string; confidence: number }> {
   // CV text contains candidate PII — the registry sets cacheTtlSeconds=0 for
   // cv-parser, so invokeAgent never caches raw input here.
-  const { data, model } = await invokeAgent({
+  const { data, model, validated } = await invokeAgent({
     slug: 'cv-parser',
     orgId,
     input: { cvText: cvText.slice(0, 8000) },
@@ -72,9 +83,11 @@ export async function parseCV(
     maxTokens: 2048,
   });
 
-  const filledFields = Object.values(data).filter(
-    (v) => v !== null && (Array.isArray(v) ? v.length > 0 : true),
-  ).length;
+  // A malformed model response is metered but is not a parsed CV. Leaving the
+  // document unparsed allows the durable retry path to recover it later.
+  if (!validated) throw new Error('CV parser returned invalid structured output');
+
+  const filledFields = Object.values(data).filter((v) => v !== null && (Array.isArray(v) ? v.length > 0 : true)).length;
   const confidence = Math.min(filledFields / 8, 1);
 
   return { data, model, confidence };

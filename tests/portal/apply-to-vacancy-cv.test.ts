@@ -5,11 +5,11 @@ import {
   APPLICATION_CONSENT_TYPE,
 } from '../../packages/shared/src/constants/application-consent';
 
-const VACANCY_ID = '11111111-1111-1111-1111-111111111111';
-const ORG_ID = '22222222-2222-2222-2222-222222222222';
-const CANDIDATE_ID = '33333333-3333-3333-3333-333333333333';
-const STAGE_ID = '44444444-4444-4444-4444-444444444444';
-const APPLICATION_ID = '55555555-5555-5555-5555-555555555555';
+const VACANCY_ID = '11111111-1111-4111-8111-111111111111';
+const ORG_ID = '22222222-2222-4222-8222-222222222222';
+const CANDIDATE_ID = '33333333-3333-4333-8333-333333333333';
+const STAGE_ID = '44444444-4444-4444-8444-444444444444';
+const APPLICATION_ID = '55555555-5555-4555-8555-555555555555';
 
 const dbMocks = {
   vacancy: { findFirstOrThrow: vi.fn() },
@@ -386,7 +386,7 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
       candidates: [existingAna],
       consents: [
         { ...withdrawnConsent(), consentType: 'ai_interview' },
-        { ...withdrawnConsent(), organizationId: '99999999-9999-9999-9999-999999999999' },
+        { ...withdrawnConsent(), organizationId: '99999999-9999-4999-8999-999999999999' },
       ],
     });
     const caller = await makeCaller();

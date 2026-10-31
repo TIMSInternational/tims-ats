@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // fragment includes buddyId, so assertScoped alone lets a hire OR buddy reach
 // the plan. These tests pin what an own-scoped caller may then DO with it.
 
-const orgId = '11111111-1111-1111-1111-111111111111';
-const hireId = '22222222-2222-2222-2222-222222222222';
-const buddyId = '33333333-3333-3333-3333-333333333333';
-const leaderId = '44444444-4444-4444-4444-444444444444';
-const planId = '55555555-5555-5555-5555-555555555555';
-const taskId = '66666666-6666-6666-6666-666666666666';
-const checkInId = '77777777-7777-7777-7777-777777777777';
+const orgId = '11111111-1111-4111-8111-111111111111';
+const hireId = '22222222-2222-4222-8222-222222222222';
+const buddyId = '33333333-3333-4333-8333-333333333333';
+const leaderId = '44444444-4444-4444-8444-444444444444';
+const planId = '55555555-5555-4555-8555-555555555555';
+const taskId = '66666666-6666-4666-8666-666666666666';
+const checkInId = '77777777-7777-4777-8777-777777777777';
 const otherPlanId = '88888888-8888-8888-8888-888888888888';
 
 const h = vi.hoisted(() => ({

@@ -296,6 +296,7 @@
     "hidePasswords": "Hide passwords",
     "invalidPasswordSetupLink": "The password setup link is invalid or has expired",
     "passwordUpdateFailed": "We could not update your password. Request a new link and try again.",
+    "authEmailLinkUnavailable": "We cannot send email links right now. Please contact support.",
     "passwordMinLength": "Password must be between 12 and 128 characters",
     "emailAlreadyRegistered": "This email is already registered. Try signing in.",
     "confirmationSentTo": "We sent a confirmation link to",

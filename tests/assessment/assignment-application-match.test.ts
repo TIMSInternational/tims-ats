@@ -10,7 +10,7 @@ vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () =
   },
 }));
 
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
 const findType = vi.fn();
 const findCandidate = vi.fn();
 const findApplication = vi.fn();
@@ -42,7 +42,7 @@ async function caller() {
   const { assessmentRouter } = await import('../../packages/api/src/routers/assessment');
   return createCallerFactory(router({ assessment: assessmentRouter }))({
     user: {
-      id: '22222222-2222-2222-2222-222222222222', organizationId: ORG_ID,
+      id: '22222222-2222-4222-8222-222222222222', organizationId: ORG_ID,
       roles: ['hr_admin'], isPlatformOwner: false, impersonatorId: null,
       email: 'hr@example.com', isActive: true,
     },
@@ -51,9 +51,9 @@ async function caller() {
 }
 
 const input = {
-  candidateId: '33333333-3333-3333-3333-333333333333',
-  vacancyId: '44444444-4444-4444-4444-444444444444',
-  assessmentTypeId: '55555555-5555-5555-5555-555555555555',
+  candidateId: '33333333-3333-4333-8333-333333333333',
+  vacancyId: '44444444-4444-4444-8444-444444444444',
+  assessmentTypeId: '55555555-5555-4555-8555-555555555555',
 };
 
 beforeEach(() => {

@@ -97,7 +97,7 @@ export const learningRouter = router({
         type: z.string().max(100),
         category: z.string().max(100).optional(),
         duration: z.number().int().min(1).max(10_080),
-        content: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
+        content: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         isRequired: z.boolean().default(false),
       }),
     )
@@ -124,7 +124,7 @@ export const learningRouter = router({
         type: z.string().max(100).optional(),
         category: z.string().max(100).optional(),
         duration: z.number().int().min(1).max(10_080).optional(),
-        content: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
+        content: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         isRequired: z.boolean().optional(),
         isActive: z.boolean().optional(),
       }),

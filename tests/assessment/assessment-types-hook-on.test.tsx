@@ -14,10 +14,10 @@ vi.mock('@tims/auth/client', () => ({
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal('fetch', fetchMock);
 
-const TYPE_ID = '7a000000-0000-0000-0000-00000000c0de';
+const TYPE_ID = '7a000000-0000-4000-8000-00000000c0de';
 const row = {
   id: TYPE_ID,
-  organizationId: '11111111-1111-1111-1111-111111111111',
+  organizationId: '11111111-1111-4111-8111-111111111111',
   name: 'Logica',
   code: 'logica',
   description: null,

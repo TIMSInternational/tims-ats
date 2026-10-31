@@ -174,13 +174,13 @@ export function RouteAccessGuard({ children }: { children: React.ReactNode }) {
 
   // Resolve the path FIRST (codex: ungated routes — /dashboard, /settings,
   // /mfa… — must render immediately, never wait on a slow/hung sessionInfo).
-  const module = moduleForPath(pathname);
+  const routeModule = moduleForPath(pathname);
   // undefined (unmapped) or null → always allowed; the API stays the boundary.
-  if (module === undefined || module === null) return <>{children}</>;
+  if (routeModule === undefined || routeModule === null) return <>{children}</>;
 
   // Gated route: loading → neutral skeleton, never AccessDenied. Privileged →
   // straight in.
   if (isLoading && !isPrivileged) return <GuardSkeleton />;
 
-  return can(module, 'read') ? <>{children}</> : <AccessDenied />;
+  return can(routeModule, 'read') ? <>{children}</> : <AccessDenied />;
 }

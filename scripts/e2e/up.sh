@@ -22,7 +22,8 @@
 #   4. Seeds: prisma/seed.ts (catalog, orgs, the platform-owner users row) and
 #      prisma/seed-access.ts --apply (the 9-role permission matrix).
 #   5. The local auth user for the seeded platform owner, with a random password.
-#   6. Redis + LocalStack (SES, S3) containers; SES sender identities; the CV bucket.
+#   6. LocalStack (SES, S3, DynamoDB) container; SES sender identities; the CV bucket; the
+#      rate-limit table (same key schema and TTL attribute as production's tims-ats-ratelimit).
 #   7. The C# API container (prod Dockerfile + the throwaway CA in its trust store).
 #   8. Caddy: TLS in front of the API and of Supabase (for the API's invitation setup), plus the
 #      OIDC discovery document the API's JwtBearer handler reads.
@@ -178,18 +179,14 @@ create_owner() {
   e2e_log "platform-owner auth user created"
 }
 
-# ── 6. Redis + LocalStack ─────────────────────────────────────────────────────────────────
+# ── 6. LocalStack ─────────────────────────────────────────────────────────────────────────
 start_support() {
   docker network inspect "$E2E_NETWORK" >/dev/null 2>&1 || docker network create "$E2E_NETWORK" >/dev/null
-  if ! docker ps -q -f "name=^$E2E_NAME-redis$" | grep -q .; then
-    docker rm -f "$E2E_NAME-redis" >/dev/null 2>&1 || true
-    docker run -d --name "$E2E_NAME-redis" --network "$E2E_NETWORK" redis:7-alpine >/dev/null
-  fi
   if ! docker ps -q -f "name=^$E2E_NAME-localstack$" | grep -q .; then
     docker rm -f "$E2E_NAME-localstack" >/dev/null 2>&1 || true
     # Pinned: localstack/localstack:latest now requires an auth token; 3.8 does not.
     docker run -d --name "$E2E_NAME-localstack" --network "$E2E_NETWORK" \
-      -p "127.0.0.1:$E2E_LOCALSTACK_PORT:4566" -e SERVICES=ses,s3 \
+      -p "127.0.0.1:$E2E_LOCALSTACK_PORT:4566" -e SERVICES=ses,s3,dynamodb \
       localstack/localstack:3.8 >/dev/null
   fi
   e2e_wait_http "localstack" "$E2E_LOCALSTACK_URL/_localstack/health" 180
@@ -198,6 +195,10 @@ start_support() {
     docker exec "$E2E_NAME-localstack" awslocal ses verify-email-identity --email-address "$addr" >/dev/null
   done
   docker exec "$E2E_NAME-localstack" sh -c 'awslocal s3 mb s3://tims-cv-e2e >/dev/null 2>&1 || true'
+  # The shared rate-limit store the API uses (Platform__RateLimitDynamoDbTable below).
+  docker exec "$E2E_NAME-localstack" sh -c 'awslocal dynamodb describe-table --table-name tims-ats-ratelimit >/dev/null 2>&1 ||
+    awslocal dynamodb create-table --table-name tims-ats-ratelimit --billing-mode PAY_PER_REQUEST \
+      --attribute-definitions AttributeName=pk,AttributeType=S --key-schema AttributeName=pk,KeyType=HASH >/dev/null'
   docker exec "$E2E_NAME-localstack" awslocal s3api put-bucket-cors --bucket tims-cv-e2e \
     --cors-configuration "{\"CORSRules\":[{\"AllowedOrigins\":[\"$E2E_BASE_URL\"],\"AllowedMethods\":[\"POST\",\"PUT\",\"GET\"],\"AllowedHeaders\":[\"*\"]}]}"
 }
@@ -247,7 +248,8 @@ Platform__SupabaseJwtIssuer=$E2E_SUPABASE_DIRECT_URL/auth/v1
 Platform__SupabaseJwksMetadataAddress=http://$E2E_NAME-caddy:$E2E_OIDC_PORT/.well-known/openid-configuration
 Platform__AllowedCorsOrigins=$E2E_BASE_URL
 Platform__ImpersonationSecret=$(relay_secret)
-Platform__RedisConnectionString=$E2E_NAME-redis:6379
+Platform__RateLimitDynamoDbTable=tims-ats-ratelimit
+Platform__RateLimitDynamoDbRegion=us-east-1
 Email__Enabled=true
 Email__Region=us-east-1
 Email__FromAddress=noreply@tims.local
@@ -331,6 +333,8 @@ AWS_SECRET_ACCESS_KEY=test
 AWS_CONFIG_FILE=/dev/null
 AWS_SHARED_CREDENTIALS_FILE=/dev/null
 AWS_ENDPOINT_URL=$E2E_LOCALSTACK_URL
+RATE_LIMIT_DYNAMODB_TABLE=tims-ats-ratelimit
+RATE_LIMIT_DYNAMODB_REGION=us-east-1
 CV_UPLOADS_BUCKET=tims-cv-e2e
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA

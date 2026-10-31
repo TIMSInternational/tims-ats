@@ -7,6 +7,11 @@ Two end-to-end journeys, driven through the real UI against a throwaway, **local
 | `company`   | `specs/company/company-journey.spec.ts`     | platform owner creates a company → invites its admin → admin accepts → team invited and accepts → recruiter creates a vacancy → approval → published |
 | `candidate` | `specs/candidate/candidate-journey.spec.ts` | careers page → apply → pipeline → stage moves → interview → scorecard → offer → approval → signing link → signature → hire → onboarding plan         |
 
+A third project, `platform` (`specs/platform/shared-rate-limit.spec.ts`), has no journey state: it
+alternates authenticated queries between the web app and the C# API until the first 429 and asserts
+the other stack refuses too — both limiters draw on the one DynamoDB table (LocalStack
+`tims-ats-ratelimit`), so a caller has one budget, not one per stack.
+
 `candidate` depends on `company` (it applies to the vacancy `company` published). Each file is a
 `serial` story; every run uses a fresh run id, so every email, slug and title is unique and reruns
 never collide.
@@ -31,8 +36,8 @@ LocalStack `4577`.
 
 **Rate limits and rapid reruns.** The app's real rate limiters stay on. Two of them matter here:
 
-- The tRPC limiter is per user (100 queries/min). Every run — and every retry attempt — therefore
-  provisions its own platform owner (`lib/owner.ts`); all other personas are created per run anyway.
+- The query limiter is per user (300 queries/min, one budget shared by the web app and the C#
+  API). Every run — and every retry attempt — therefore provisions its own platform owner (`lib/owner.ts`); all other personas are created per run anyway.
 - The C# limiter keys unauthenticated calls on the trusted client IP, which only Vercel supplies
   (`x-real-ip`); locally every invitation-setup call (preview/register/complete — 9 per run) lands in
   one shared `anonymous` bucket of 30 mutations/min. A single run (and a CI retry) fits; **starting a

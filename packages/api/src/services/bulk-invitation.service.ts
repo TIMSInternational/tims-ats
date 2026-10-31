@@ -11,6 +11,9 @@ export async function bulkInviteUsers(organizationId: string, invitedById: strin
   // Best-effort synchronous delivery, not a durable job: stop starting work early
   // enough to finish in-flight DB operations and serialize before the 30s route cap.
   const deadline = Date.now() + 18_000;
+  // Resolve + validate the link origin once, BEFORE any pending invitation row (a live token) is
+  // written: inside the loop a misconfiguration was swallowed per-row, leaving orphan pending rows.
+  const appUrl = getAppUrl();
   const org = await bulkInvitationRepository.findOrganization(organizationId);
   if (!org) return null;
   const seen = new Set<string>();
@@ -42,7 +45,7 @@ export async function bulkInviteUsers(organizationId: string, invitedById: strin
           results[index] = { email: user.email, status: 'duplicate', message: 'Already invited' };
           continue;
         }
-        const url = `${getAppUrl()}/accept-invitation?token=${encodeURIComponent(token)}`;
+        const url = `${appUrl}/accept-invitation?token=${encodeURIComponent(token)}`;
         const timeout = Math.min(4_000, deadline - Date.now() - 3_000);
         const delivered = timeout > 0 && await sendEmail({
           to: user.email,
@@ -76,11 +79,12 @@ export async function bulkInviteUsers(organizationId: string, invitedById: strin
 }
 
 export async function resendInvitation(id: string) {
+  const appUrl = getAppUrl();
   const invitation = await bulkInvitationRepository.findForResend(id);
   if (!invitation) return { error: 'not_found' } as const;
   if (invitation.status === 'accepted' || invitation.status === 'revoked') return { error: 'invalid_status' } as const;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const url = `${getAppUrl()}/accept-invitation?token=${encodeURIComponent(invitation.token)}`;
+  const url = `${appUrl}/accept-invitation?token=${encodeURIComponent(invitation.token)}`;
   const delivered = await sendEmail({
     to: invitation.email, subject: `Recordatorio: Invitacion pendiente - ${invitation.organizationName || 'TIMS ATS'}`,
     html: renderInvitationEmail({ organization: invitation.organizationName || 'TIMS ATS', role: invitation.roleSlug, url, expiresAt, reminder: true }),
