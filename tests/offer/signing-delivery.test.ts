@@ -20,7 +20,8 @@ const countRejected = vi.fn();
 const sendOffer = vi.fn();
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
-vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', () => ({
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
   assertApplicationNotRejected: vi.fn(async () => undefined),
 }));
 
@@ -95,7 +96,13 @@ describe('offer signing-link delivery', () => {
     expect(result.candidateEmail).toBe('qa@example.test');
     expect(updateOffer).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: OFFER_ID, organizationId: ORG_ID, status: 'approved', updatedAt }),
+        where: expect.objectContaining({
+          id: OFFER_ID,
+          organizationId: ORG_ID,
+          status: 'approved',
+          updatedAt,
+          OR: [{ applicationId: null }, { application: { status: { not: 'rejected' } } }],
+        }),
       }),
     );
     expect(sendOffer).toHaveBeenCalledWith(

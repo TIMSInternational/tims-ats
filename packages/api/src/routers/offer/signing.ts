@@ -10,7 +10,7 @@ import { candidateConsentRepository } from '../../repositories/candidate-consent
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
-import { assertApplicationNotRejected } from './rejected-application-guard';
+import { assertApplicationNotRejected, NOT_REJECTED_APPLICATION } from './rejected-application-guard';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
@@ -164,6 +164,9 @@ export const offerSigningRouter = router({
             organizationId: ctx.user.organizationId,
             status: offer.status,
             updatedAt: offer.updatedAt,
+            // Re-checked in the same statement as the write: a rejection committed after the guard above
+            // makes this match 0 rows.
+            ...NOT_REJECTED_APPLICATION,
           },
           data: {
             status: 'sent',
@@ -313,7 +316,14 @@ export const offerSigningRouter = router({
       const transition = await db.offer.updateMany({
         // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
         // between (recipient changed) must leave the superseded link unable to accept/decline.
-        where: { id: offer.id, status: 'sent', settings: { path: ['signingToken'], equals: input.token } },
+        // The application is re-checked in the same statement too: a rejection committed after the guard
+        // makes this match 0 rows (and conversion re-checks inside its own transaction regardless).
+        where: {
+          id: offer.id,
+          status: 'sent',
+          settings: { path: ['signingToken'], equals: input.token },
+          ...NOT_REJECTED_APPLICATION,
+        },
         data: {
           status: 'accepted',
           respondedAt: now,
