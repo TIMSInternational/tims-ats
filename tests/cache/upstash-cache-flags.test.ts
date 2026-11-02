@@ -108,6 +108,14 @@ describe('permission cache: authorization entries never live in per-instance mem
     expect(await mod.cacheGet(key)).toBeNull();
   });
 
+  // A hire closes vacancies and invalidates the vacancy KPIs after commit; another instance's memory copy
+  // could not be invalidated, so these are shared-only too (memory backend = fresh DB read).
+  it('memory backend never caches vacancy KPIs (invalidated by hires)', async () => {
+    const mod = await memoryCache();
+    await mod.cacheSet('tims:kpis:vacancy:org-a:organization', { totalOpen: 3 }, 45);
+    expect(await mod.cacheGet('tims:kpis:vacancy:org-a:organization')).toBeNull();
+  });
+
   it('memory backend still caches dashboard KPIs', async () => {
     const mod = await memoryCache();
     await mod.cacheSet('tims:kpis:learning:org-a', { n: 3 }, 45);

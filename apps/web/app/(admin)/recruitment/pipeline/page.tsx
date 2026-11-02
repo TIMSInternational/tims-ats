@@ -13,7 +13,7 @@ import { PipelineTableView } from './pipeline-table-view';
 import { PipelineFilters, applyFilters, EMPTY_FILTERS, type PipelineFilterState } from './pipeline-filters';
 import { AddCandidateModal } from './add-candidate-modal';
 import { moveApplicationOptimistic } from './pipeline-optimistic';
-import { getNextActionForStage } from '../../../../lib/pipeline-next-actions';
+import { getNextActionForStage, visibleNextAction } from '../../../../lib/pipeline-next-actions';
 import { useCan } from '../../../../lib/permissions';
 import { RejectCandidateModal } from './reject-candidate-modal';
 import { usePipelineVacancySelection } from './use-pipeline-vacancy-selection';
@@ -105,7 +105,7 @@ export default function PipelinePage() {
       // stage-name matching gracefully returns null for org-custom stage
       // names, so unrecognized stages fall back to today's bare "moved" toast.
       const destinationStage = board.data?.stages.find((stage) => stage.id === variables.toStageId);
-      const nextAction = destinationStage ? getNextActionForStage(destinationStage.name) : null;
+      const nextAction = destinationStage ? visibleNextAction(getNextActionForStage(destinationStage.name)) : null;
 
       if (nextAction) {
         toast(t.pipeline.moved, {
