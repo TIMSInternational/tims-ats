@@ -26,6 +26,11 @@ public static class AuditImmutability
     /// grant it UPDATE/DELETE — some prod tables were historically over-granted, so we revoke explicitly.</summary>
     public const string TenantRole = "app_tenant";
 
+    /// <summary>The function-level <c>search_path</c> pin carried by every DDL statement that (re)creates the guard.
+    /// An empty path means unqualified names resolve only against <c>pg_catalog</c>, so no role can shadow a
+    /// built-in by creating an object in a schema earlier on its own path.</summary>
+    public const string PinnedSearchPath = "SET search_path = ''";
+
     public static string TriggerName(string table) => $"{table}_append_only";
 
     /// <summary>
@@ -57,7 +62,11 @@ public static class AuditImmutability
             "    RAISE EXCEPTION '% is append-only: % is not permitted', TG_TABLE_NAME, TG_OP\n" +
             "        USING ERRCODE = 'insufficient_privilege';\n" +
             "END;\n" +
-            "$$ LANGUAGE plpgsql;\n" +
+            // Pin search_path (Supabase lint 0011, function_search_path_mutable). The body needs nothing outside
+            // pg_catalog (always searched implicitly), so the empty path is the strictest safe value. It MUST live in
+            // this CREATE OR REPLACE: re-running a CREATE OR REPLACE without a SET clause RESETS proconfig, so an
+            // ALTER-only fix would be silently undone the next time this block is re-applied.
+            $"$$ LANGUAGE plpgsql {PinnedSearchPath};\n" +
             $"DROP TRIGGER IF EXISTS {trigger} ON {quoted};\n" +
             $"CREATE TRIGGER {trigger}\n" +
             $"    BEFORE UPDATE OR DELETE ON {quoted}\n" +
