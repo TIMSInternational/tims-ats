@@ -23,6 +23,11 @@ vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
   closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
 }));
 
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', () => ({
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+}));
+
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },

@@ -4,6 +4,7 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
+import { assertApplicationNotRejected } from './rejected-application-guard';
 import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
 import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
@@ -66,7 +67,10 @@ export const offerLifecycleRouter = router({
           });
           if (priorUser) return priorUser;
         }
-        throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida, pero no se encontro al empleado' });
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'La oferta ya fue convertida, pero no se encontro al empleado',
+        });
       }
 
       if (offer.status !== 'accepted') {
@@ -82,9 +86,22 @@ export const offerLifecycleRouter = router({
         offer.id,
         'Esta oferta fue rechazada en su cadena de aprobacion y no se puede convertir',
       );
+      await assertApplicationNotRejected(
+        db,
+        ctx.user.organizationId,
+        offer.id,
+        'El candidato fue descartado en el proceso; esta oferta no se puede convertir',
+      );
 
-      if (offer.validations.some((validation) => validation.isBlocking && !['passed', 'waived'].includes(validation.status))) {
-        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay validaciones obligatorias pendientes o fallidas' });
+      if (
+        offer.validations.some(
+          (validation) => validation.isBlocking && !['passed', 'waived'].includes(validation.status),
+        )
+      ) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Hay validaciones obligatorias pendientes o fallidas',
+        });
       }
       if (offer.legalChecks.some((check) => !check.completed)) {
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay verificaciones legales pendientes' });
