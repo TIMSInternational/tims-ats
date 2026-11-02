@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData, sanitizeInput } from '../pii';
+import { PROTECTED_ATTRIBUTES_RULE, CANDIDATE_LABEL } from '../fairness';
 
-const SYSTEM_PROMPT = `You are a FIT-score explainer for an HR recruitment platform.
+export const FIT_EXPLAINER_SYSTEM_PROMPT = `You are a FIT-score explainer for an HR recruitment platform.
 You receive a candidate's deterministic per-dimension FIT breakdown (0-100 scores,
 some may be null meaning unavailable data) plus an optional prior LLM screening
 judgment, and produce a short narrative explaining the score to a recruiter.
@@ -17,7 +18,9 @@ Rules:
 - If a dimension is null, say the data is unavailable — never guess a number for it
 - Do NOT recommend hire/no-hire — explain the score composition only
 - narrative must be under 1200 characters
-- Respond in Spanish unless the candidate/vacancy names suggest otherwise`;
+- Respond in Spanish unless the vacancy title is clearly in another language
+
+${PROTECTED_ATTRIBUTES_RULE}`;
 
 export const fitExplainerOutputSchema = z.object({
   narrative: z.string().max(1200),
@@ -37,9 +40,13 @@ export interface FitExplainerInput {
     experience: number | null;
     education: number | null;
     languages: number | null;
-    llmJudgment: { score: number; recommendation: string; reasoning: string; strengths: string[]; gaps: string[] } | null;
+    llmJudgment: { score: number | null; recommendation: string; reasoning: string; strengths: string[]; gaps: string[] } | null;
   };
-  candidateName: string;
+  /**
+   * Accepted for call-site compatibility but NEVER sent to the model: the
+   * prompt refers to "the candidate" (a name is a proxy for sex/ethnicity).
+   */
+  candidateName?: string;
   vacancyTitle: string;
 }
 
@@ -50,9 +57,10 @@ export async function explainFit(
   const { data, model } = await invokeAgent({
     slug: 'fit-explainer',
     orgId,
-    input,
-    systemPrompt: SYSTEM_PROMPT,
-    buildUserMessage: ({ overallScore, breakdown, candidateName, vacancyTitle }) => {
+    // candidateName is dropped here so it reaches neither the prompt nor the cache key.
+    input: { overallScore: input.overallScore, breakdown: input.breakdown, vacancyTitle: input.vacancyTitle },
+    systemPrompt: FIT_EXPLAINER_SYSTEM_PROMPT,
+    buildUserMessage: ({ overallScore, breakdown, vacancyTitle }) => {
       const summary = {
         overallScore,
         assessment: breakdown.assessment,
@@ -69,7 +77,7 @@ export async function explainFit(
         : '';
       const candidateContext = wrapAsData(
         'candidate_context',
-        `Candidate: ${sanitizeInput(candidateName, 200)}\nRole: ${sanitizeInput(vacancyTitle, 200)}`,
+        `Candidate: ${CANDIDATE_LABEL}\nRole: ${sanitizeInput(vacancyTitle, 200)}`,
       );
       return `${wrapAsData('fit_scores', JSON.stringify(summary))}\n\n${candidateContext}\n\n${judgmentBlock}\n\nExplain this FIT score. Return JSON.`;
     },

@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData, sanitizeInput } from '../pii';
+import { PROTECTED_ATTRIBUTES_RULE, CANDIDATE_LABEL } from '../fairness';
 
-const SYSTEM_PROMPT = `You are a candidate-vacancy matching assistant for an HR/ATS platform.
+export const CANDIDATE_MATCHER_SYSTEM_PROMPT = `You are a candidate-vacancy matching assistant for an HR/ATS platform.
 You receive a candidate's profile (title, skills, years of experience) and a bounded list of
 this organization's currently open vacancies (id + title only), and recommend which of those
 vacancies best fit the candidate, plus short next-step actions for a recruiter.
@@ -24,9 +25,12 @@ Rules:
 - matchScore reflects how well the candidate's title/skills/experience fit that vacancy's
   title alone — be conservative when little signal is available
 - suggestedActions must contain between 1 and 5 short, concrete recruiter actions (e.g.
-  "Schedule technical assessment"), grounded only in the given profile/vacancy data
+  "Schedule technical assessment"), grounded only in the given profile/vacancy data, each
+  under 200 characters
 - Do NOT fabricate candidate history, employers, or vacancy details you were not given
-- Respond in Spanish unless the candidate/vacancy names suggest otherwise`;
+- Respond in Spanish unless the vacancy titles are clearly in another language
+
+${PROTECTED_ATTRIBUTES_RULE}`;
 
 export const candidateMatcherOutputSchema = z.object({
   recommendedVacancies: z
@@ -53,8 +57,11 @@ export interface CandidateMatcherVacancy {
 }
 
 export interface CandidateMatcherInput {
+  /**
+   * Job-relevant fields only. The candidate's name and contact/demographic
+   * data are deliberately not part of this type; the prompt says "the candidate".
+   */
   candidateProfile: {
-    name: string;
     title?: string;
     skills?: string[];
     experience?: number;
@@ -73,10 +80,19 @@ export async function matchCandidate(
   const { data, model } = await invokeAgent({
     slug: 'candidate-matcher',
     orgId,
-    input,
-    systemPrompt: SYSTEM_PROMPT,
+    // Rebuild the input from job-relevant fields only, so an extra property a
+    // caller passes (e.g. a name) can never reach the prompt or the cache key.
+    input: {
+      candidateProfile: {
+        title: input.candidateProfile.title,
+        skills: input.candidateProfile.skills,
+        experience: input.candidateProfile.experience,
+      },
+      vacancies: input.vacancies.map((v) => ({ id: v.id, title: v.title })),
+    },
+    systemPrompt: CANDIDATE_MATCHER_SYSTEM_PROMPT,
     buildUserMessage: ({ candidateProfile, vacancies }) => {
-      const profile = `Name: ${sanitizeInput(candidateProfile.name, 200)}
+      const profile = `Candidate: ${CANDIDATE_LABEL}
 Title: ${candidateProfile.title ? sanitizeInput(candidateProfile.title, 200) : 'Not specified'}
 Skills: ${candidateProfile.skills?.length ? candidateProfile.skills.map((s) => sanitizeInput(s, 100)).join(', ') : 'Not specified'}
 Years of experience: ${candidateProfile.experience ?? 'Not specified'}`;

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData, sanitizeInput } from '../pii';
 
-const SYSTEM_PROMPT = `You are a recruitment pipeline optimizer for an HR/ATS platform.
+export const PIPELINE_OPTIMIZER_SYSTEM_PROMPT = `You are a recruitment pipeline optimizer for an HR/ATS platform.
 You receive a single candidate application's current pipeline position (candidate name,
 current stage name, stage order) and recommend the single highest-leverage next action a
 recruiter should take to keep the application moving.
@@ -20,7 +20,8 @@ Rules:
 - Ground the recommendation ONLY in the provided stage/candidate context — never invent
   facts about the candidate's skills, history, or documents you were not given
 - suggestedActions must contain between 1 and 3 items, ordered by priority (high first)
-- action must be a short snake_case identifier (e.g. "schedule_interview")
+- action must be a short snake_case identifier (e.g. "schedule_interview") under 50 characters;
+  label must be under 100 characters
 - confidence reflects how clear-cut the next step is given a stage name alone, not
   candidate quality — a well-defined stage (e.g. "Entrevistas") warrants higher confidence
   than an ambiguous/custom stage name
@@ -63,7 +64,7 @@ export async function suggestNextBestAction(
     slug: 'pipeline-optimizer',
     orgId,
     input,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: PIPELINE_OPTIMIZER_SYSTEM_PROMPT,
     buildUserMessage: ({ candidateName, currentStageName, currentStageOrder }) => {
       const context = wrapAsData(
         'application_context',

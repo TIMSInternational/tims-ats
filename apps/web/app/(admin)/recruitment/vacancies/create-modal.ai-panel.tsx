@@ -120,7 +120,7 @@ export function InclusiveCheckPanel({ text }: InclusiveCheckPanelProps) {
   });
 
   const canCheck = text.trim().length > 0;
-  const scoreColor = result ? (result.score >= 80 ? 'text-green-600' : result.score >= 50 ? 'text-amber-600' : 'text-[#DD0C15]') : '';
+  const scoreColor = result && result.score !== null ? (result.score >= 80 ? 'text-green-600' : result.score >= 50 ? 'text-amber-600' : 'text-[#DD0C15]') : '';
 
   return (
     <div className="space-y-2">
@@ -139,9 +139,11 @@ export function InclusiveCheckPanel({ text }: InclusiveCheckPanelProps) {
       {result && (
         <div className="rounded-lg border border-[#EDEDED] bg-[#FAFAFA] p-2.5 space-y-2">
           <p className="text-[11px] font-medium text-[#333]">
-            {t.vacancies.inclusiveScoreLabel}: <span className={scoreColor}>{result.score}/100</span>
+            {t.vacancies.inclusiveScoreLabel}: <span className={scoreColor}>{result.score === null ? t.vacancies.inclusiveScoreUnavailable : `${result.score}/100`}</span>
           </p>
-          {result.suggestions.length > 0 ? (
+          {result.score === null ? (
+            <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.inclusiveUnavailable}</p>
+          ) : result.suggestions.length > 0 ? (
             <ul className="space-y-1.5">
               {result.suggestions.map((s, i) => (
                 <li key={i} className="text-[10px] text-[#585858]">

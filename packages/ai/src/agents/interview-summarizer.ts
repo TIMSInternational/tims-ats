@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData, sanitizeInput } from '../pii';
 
-const SYSTEM_PROMPT = `You are an interview debrief assistant for an HR platform.
+export const INTERVIEW_SUMMARIZER_SYSTEM_PROMPT = `You are an interview debrief assistant for an HR platform.
 Summarize an interview from its evaluator scorecards into a structured debrief.
 
 Output format: JSON with the following structure:
@@ -18,16 +18,16 @@ Rules:
 - If evaluators disagree, say so explicitly in the summary
 - Do NOT output a hire/no-hire recommendation — that decision belongs to humans
 - Respond in the same language as the scorecard content (Spanish for Spanish scorecards)
-- Keep the summary under 120 words; max 5 items per array`;
+- Keep the summary under 120 words (and under 2000 characters); max 5 items per array, each item under 300 characters`;
 
-const outputSchema = z.object({
-  summary: z.string(),
-  keyPoints: z.array(z.string()).max(5),
-  strengths: z.array(z.string()).max(5),
-  concerns: z.array(z.string()).max(5),
+export const interviewSummarizerOutputSchema = z.object({
+  summary: z.string().max(2000),
+  keyPoints: z.array(z.string().max(300)).max(5),
+  strengths: z.array(z.string().max(300)).max(5),
+  concerns: z.array(z.string().max(300)).max(5),
 });
 
-export type InterviewSummaryResult = z.infer<typeof outputSchema>;
+export type InterviewSummaryResult = z.infer<typeof interviewSummarizerOutputSchema>;
 
 // Obviously degraded (rule #4) — never plausible fake content.
 const DEGRADED_FALLBACK: InterviewSummaryResult = {
@@ -74,7 +74,7 @@ export async function summarizeInterview(
     slug: 'interview-summarizer',
     orgId,
     input,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: INTERVIEW_SUMMARIZER_SYSTEM_PROMPT,
     buildUserMessage: ({ candidateName, vacancyTitle, interviewType, scorecards }) => {
       const header = `Candidate: ${sanitizeInput(candidateName)}
 Position: ${sanitizeInput(vacancyTitle)}
@@ -89,7 +89,7 @@ Notes: ${sanitizeInput(s.overallNotes ?? 'None', 500)}`,
         .join('\n\n');
       return `${wrapAsData('interview_context', header)}\n\n${wrapAsData('scorecards', cards)}\n\nSummarize this interview. Return JSON.`;
     },
-    schema: outputSchema,
+    schema: interviewSummarizerOutputSchema,
     fallback: () => DEGRADED_FALLBACK,
     maxTokens: 1024,
   });

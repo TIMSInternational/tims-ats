@@ -97,7 +97,6 @@ export const candidateAiService = {
     const { result, model } = await screenCandidateAgent(
       orgId,
       {
-        name: `${candidate.firstName} ${candidate.lastName}`,
         title: candidate.currentTitle ?? undefined,
         skills: toStringArray(candidate.skills),
         experience: candidate.yearsExperience ?? undefined,
@@ -148,7 +147,6 @@ export const candidateAiService = {
 
     const { result, model } = await matchCandidateAgent(orgId, {
       candidateProfile: {
-        name: `${candidate.firstName} ${candidate.lastName}`,
         title: candidate.currentTitle ?? undefined,
         skills: toStringArray(candidate.skills),
         experience: candidate.yearsExperience ?? undefined,

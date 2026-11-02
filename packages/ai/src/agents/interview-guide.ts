@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData, sanitizeInput } from '../pii';
 
-const SYSTEM_PROMPT = `You are an interview design assistant for an HR platform.
+export const INTERVIEW_GUIDE_SYSTEM_PROMPT = `You are an interview design assistant for an HR platform.
 Generate a structured interview guide tailored to a specific vacancy and candidate.
 
 Output format: JSON with the following structure:
@@ -19,22 +19,22 @@ Rules:
 - Behavioral questions must ask for concrete past examples (STAR-style)
 - Never include questions about protected characteristics (age, family, religion, health, origin)
 - Respond in the same language as the vacancy description (Spanish for Spanish vacancies)
-- Max 6 questions per section`;
+- Max 6 questions per section, each question under 500 characters; section titles under 200 characters`;
 
-const outputSchema = z.object({
+export const interviewGuideOutputSchema = z.object({
   sections: z
     .array(
       z.object({
-        title: z.string(),
+        title: z.string().max(200),
         duration: z.number().min(1).max(120),
-        questions: z.array(z.string()).min(1).max(6),
+        questions: z.array(z.string().max(500)).min(1).max(6),
       }),
     )
     .min(1)
     .max(6),
 });
 
-export type InterviewGuideResult = z.infer<typeof outputSchema>;
+export type InterviewGuideResult = z.infer<typeof interviewGuideOutputSchema>;
 
 // Obviously degraded (rule #4) — an empty guide that says why, never canned questions.
 const DEGRADED_FALLBACK: InterviewGuideResult = {
@@ -63,7 +63,7 @@ export async function generateInterviewGuide(
     slug: 'interview-guide',
     orgId,
     input,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: INTERVIEW_GUIDE_SYSTEM_PROMPT,
     buildUserMessage: ({ vacancyTitle, vacancyDescription, interviewType, durationMinutes, candidateTitle, candidateSkills }) => {
       const vacancy = `Position: ${sanitizeInput(vacancyTitle)}
 Description: ${sanitizeInput(vacancyDescription ?? 'Not provided')}`;
@@ -73,7 +73,7 @@ Candidate current title: ${sanitizeInput(candidateTitle ?? 'Not specified')}
 Candidate skills: ${sanitizeInput(candidateSkills?.join(', ') ?? 'Not specified')}`;
       return `${wrapAsData('vacancy', vacancy)}\n\n${wrapAsData('interview_context', context)}\n\nGenerate the interview guide. Return JSON.`;
     },
-    schema: outputSchema,
+    schema: interviewGuideOutputSchema,
     fallback: () => DEGRADED_FALLBACK,
     maxTokens: 1536,
   });

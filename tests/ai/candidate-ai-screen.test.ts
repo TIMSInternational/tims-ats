@@ -41,7 +41,7 @@ describe('candidateAiService.screenCandidate', () => {
 
     expect(screenCandidateAgent).toHaveBeenCalledWith(
       'org-1',
-      { name: 'Ana Gómez', title: 'Dev', skills: ['ts', 'react'], experience: 5 },
+      { title: 'Dev', skills: ['ts', 'react'], experience: 5 },
       { title: 'Senior Dev', requirements: ['5+ yrs', 'Build stuff'], skills: ['ts'] },
     );
     expect(r).toMatchObject({ score: 80, recommendation: 'advance', model: 'sonnet', fitScoreId: 'fitscore-1' });
@@ -78,7 +78,7 @@ describe('candidateAiService.screenCandidate', () => {
     await candidateAiService.screenCandidate('org-1', 'c1', 'v1');
     expect(screenCandidateAgent).toHaveBeenCalledWith(
       'org-1',
-      { name: 'Ana Gómez', title: undefined, skills: [], experience: undefined },
+      { title: undefined, skills: [], experience: undefined },
       { title: 'Senior Dev', requirements: [], skills: [] },
     );
   });

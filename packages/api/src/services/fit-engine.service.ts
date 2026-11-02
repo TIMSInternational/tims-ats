@@ -17,7 +17,7 @@ export const FIT_DIMENSIONS = ['assessment', 'interview', 'experience', 'educati
 export type FitDimension = (typeof FIT_DIMENSIONS)[number];
 
 export interface LlmJudgment {
-  score: number;
+  score: number | null;
   recommendation: string;
   reasoning: string;
   strengths: string[];

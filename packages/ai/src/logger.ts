@@ -32,6 +32,7 @@ export async function logInvocation(params: {
   costUsd: number;
   latencyMs: number;
   model: string;
+  /** Persisted to ai_agent_usage_logs.success (#356); invokeAgent also logs a PII-free warning. */
   success: boolean;
   cached?: boolean;
   userId?: string;
