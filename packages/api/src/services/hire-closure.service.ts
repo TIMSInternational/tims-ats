@@ -40,12 +40,20 @@ export async function closeHireRecords(
   // The offer's linked application, or — when the offer was created without the link — the candidate's
   // applications for this vacancy. A hire for a candidate whose application(s) were rejected is refused, and
   // because this runs inside the hire transaction the refusal rolls back the whole conversion.
-  const applications = await tx.application.findMany({
-    where: applicationId
-      ? { id: applicationId, organizationId, vacancyId }
-      : { organizationId, vacancyId, candidateId },
-    select: { id: true, status: true, currentStageId: true },
-  });
+  // Read under a row lock (FOR NO KEY UPDATE, the mode a status/stage UPDATE takes): a concurrent stage move
+  // or rejection either committed before (this read sees it) or waits for the hire to commit, so the stage
+  // recorded as the movement's source is the real one.
+  const applications = applicationId
+    ? await tx.$queryRaw<Array<{ id: string; status: string; currentStageId: string }>>`
+        SELECT id, status, current_stage_id AS "currentStageId" FROM applications
+        WHERE id = ${applicationId}::uuid AND organization_id = ${organizationId}::uuid
+          AND vacancy_id = ${vacancyId}::uuid
+        FOR NO KEY UPDATE`
+    : await tx.$queryRaw<Array<{ id: string; status: string; currentStageId: string }>>`
+        SELECT id, status, current_stage_id AS "currentStageId" FROM applications
+        WHERE organization_id = ${organizationId}::uuid AND vacancy_id = ${vacancyId}::uuid
+          AND candidate_id = ${candidateId}::uuid
+        FOR NO KEY UPDATE`;
   if (
     applications.length > 0 &&
     applications.every((candidateApplication) => candidateApplication.status === 'rejected')
