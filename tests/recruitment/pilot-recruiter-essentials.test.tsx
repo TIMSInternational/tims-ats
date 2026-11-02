@@ -22,7 +22,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
 import { RejectCandidateModal } from '../../apps/web/app/(admin)/recruitment/pipeline/reject-candidate-modal';
 import { RecruitingKpiStrip } from '../../apps/web/app/(admin)/dashboard/recruiting-kpi-strip';
 import { CreateOfferModal } from '../../apps/web/app/(admin)/recruitment/candidates/[id]/create-offer-modal';
-import { pickInitialVacancyId } from '../../apps/web/app/(admin)/recruitment/pipeline/pipeline-vacancy-select';
+import { resolveInitialVacancy } from '../../apps/web/app/(admin)/recruitment/pipeline/pipeline-vacancy-select';
 import { summarizeVacancyKpis } from '../../apps/web/app/(admin)/recruitment/vacancies/vacancy-kpis';
 import { buildPublicVacancyUrl, resolvePublicOrigin } from '../../apps/web/lib/public-vacancy-url';
 import { DEFAULT_TENANT_CURRENCY, defaultOfferCurrency } from '../../apps/web/lib/tenant-locale';
@@ -123,13 +123,21 @@ describe('RH-26 vacancy KPI totals', () => {
 
 describe('RH-11 pipeline ?vacancy= selection', () => {
   const list = [{ id: 'v1' }, { id: 'v2' }, { id: 'v3' }];
+  const loading = { status: 'loading' } as const;
+  const unavailable = { status: 'unavailable' } as const;
   it('selects the requested vacancy when it is in the list', () => {
-    expect(pickInitialVacancyId(list, 'v2')).toBe('v2');
+    expect(resolveInitialVacancy(list, 'v2', unavailable)).toEqual({ id: 'v2', notice: false });
   });
-  it('falls back to the first vacancy when the param is missing or unknown', () => {
-    expect(pickInitialVacancyId(list, null)).toBe('v1');
-    expect(pickInitialVacancyId(list, 'nope')).toBe('v1');
-    expect(pickInitialVacancyId([], 'v2')).toBeNull();
+  it('waits for the lookup, then selects a requested vacancy found outside the list', () => {
+    expect(resolveInitialVacancy(list, 'v9', loading)).toBeNull();
+    const found = { status: 'found', vacancy: { id: 'v9', title: 'Antigua' } } as const;
+    expect(resolveInitialVacancy(list, 'v9', found)).toEqual({ id: 'v9', notice: false });
+  });
+  it('falls back to the first vacancy with a notice only when the requested one is unavailable', () => {
+    expect(resolveInitialVacancy(list, null, unavailable)).toEqual({ id: 'v1', notice: false });
+    expect(resolveInitialVacancy(list, 'nope', unavailable)).toEqual({ id: 'v1', notice: true });
+    expect(resolveInitialVacancy([], null, unavailable)).toBeNull();
+    expect(resolveInitialVacancy([], 'v2', unavailable)).toEqual({ id: null, notice: true });
   });
 });
 

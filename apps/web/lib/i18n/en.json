@@ -1859,6 +1859,7 @@
     "willAddToFirstStage": "Will be added to the first stage",
     "iaReviewUrgent": "AI: Review urgently — SLA overdue",
     "iaAdvanceHighFit": "AI: Advance — high FIT score",
+    "requestedVacancyUnavailable": "The requested vacancy could not be opened; another vacancy is shown.",
     "selectVacancyFirst": "Select a vacancy first",
     "checklistIncompleteWarning": "Pending from the previous stage: {items}",
     "checklistTitle": "Stage checklist",

@@ -16,7 +16,7 @@ import { moveApplicationOptimistic } from './pipeline-optimistic';
 import { getNextActionForStage } from '../../../../lib/pipeline-next-actions';
 import { useCan } from '../../../../lib/permissions';
 import { RejectCandidateModal } from './reject-candidate-modal';
-import { pickInitialVacancyId } from './pipeline-vacancy-select';
+import { usePipelineVacancySelection } from './use-pipeline-vacancy-selection';
 
 type ViewMode = 'kanban' | 'list' | 'table';
 
@@ -25,12 +25,12 @@ export default function PipelinePage() {
   const can = useCan();
   const requestedVacancyId = useSearchParams().get('vacancy');
   const [rejectTarget, setRejectTarget] = useState<{ applicationId: string; candidateName: string } | null>(null);
-  const [selectedVacancyId, setSelectedVacancyId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [filters, setFilters] = useState<PipelineFilterState>(EMPTY_FILTERS);
   const [showAddCandidate, setShowAddCandidate] = useState(false);
 
-  const vacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' });
+  const { vacancies, options: vacancyList, selectedVacancyId, setSelectedVacancyId, isLoading: vacanciesLoading, showUnavailableNotice } =
+    usePipelineVacancySelection(requestedVacancyId);
   const board = trpc.pipeline.getBoard.useQuery(
     { vacancyId: selectedVacancyId!, status: 'active' },
     {
@@ -146,11 +146,6 @@ export default function PipelinePage() {
     ? (applicationId: string, candidateName: string) => setRejectTarget({ applicationId, candidateName })
     : undefined;
 
-  // Select the vacancy from ?vacancy= when it is in the list, else the first one.
-  const vacancyList = vacancies.data?.items ?? [];
-  if (vacancyList.length > 0 && !selectedVacancyId) {
-    setSelectedVacancyId(pickInitialVacancyId(vacancyList, requestedVacancyId));
-  }
   const selectedVacancyTitle = vacancyList.find((v) => v.id === selectedVacancyId)?.title ?? '';
 
   const filteredStages = useMemo(() => {
@@ -171,7 +166,7 @@ export default function PipelinePage() {
             vacancies={vacancyList}
             selectedId={selectedVacancyId}
             onSelect={setSelectedVacancyId}
-            isLoading={vacancies.isLoading}
+            isLoading={vacanciesLoading}
           />
           <PipelineFilters filters={filters} onChange={setFilters} />
         </div>
@@ -208,6 +203,11 @@ export default function PipelinePage() {
         </div>
       </div>
 
+      {showUnavailableNotice && (
+        <div role="status" className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-[12px] text-amber-800 shrink-0">
+          {t.pipeline.requestedVacancyUnavailable}
+        </div>
+      )}
       {/* Content area */}
       <div className={`flex-1 ${viewMode === 'kanban' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-y-auto'} p-4`}>
         {vacancies.isError ? (
