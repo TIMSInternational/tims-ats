@@ -34,6 +34,8 @@ interface KanbanCardProps {
   stageId: string;
   checklist?: unknown;
   onToggleChecklistItem?: (applicationId: string, stageId: string, itemKey: string, completed: boolean) => void;
+  /** Opens the reject modal. Omitted when the user lacks pipeline:update. */
+  onReject?: () => void;
 }
 
 interface ChecklistItem {
@@ -102,7 +104,7 @@ function formatSource(source: string): string {
   return map[source.toLowerCase()] ?? source;
 }
 
-export function KanbanCard({ application: app, isDragging, slaHours, stageId, checklist, onToggleChecklistItem }: KanbanCardProps) {
+export function KanbanCard({ application: app, isDragging, slaHours, stageId, checklist, onToggleChecklistItem, onReject }: KanbanCardProps) {
   const { t } = useI18n();
   const candidate = app.candidate;
   const fit = getPipelineFit(candidate);
@@ -151,6 +153,22 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
           >
             {Math.round(fitScore)}{fit?.isPartial ? '*' : ''}
           </div>
+        )}
+        {onReject && (
+          // A plain <button> inside the drag handle: @hello-pangea/dnd does not start a drag from
+          // interactive elements, and stopPropagation keeps a mouse press from arming one.
+          <button
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onReject(); }}
+            aria-label={t.rejectCandidateModal.actionLabel.replace('{name}', `${candidate.firstName} ${candidate.lastName}`)}
+            title={t.pipeline.reject}
+            className="shrink-0 rounded p-0.5 text-[#8B8B8B] hover:bg-red-50 hover:text-[#DD0C15] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DD0C15]/40"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         )}
       </div>
 

@@ -9,7 +9,8 @@ import { getPipelineFit } from '../../../../lib/pipeline-fit';
 interface PipelineListViewProps {
   stages: PipelineStageWithApps[];
   onMove: (applicationId: string, toStageId: string) => void;
-  onReject: (applicationId: string, reason: string) => void;
+  /** Opens the reject modal for one application. Omitted when the user lacks pipeline:update. */
+  onReject?: (applicationId: string, candidateName: string) => void;
 }
 
 const STAGE_COLORS: Record<number, string> = {
@@ -53,7 +54,7 @@ const STATUS_MAP: Record<string, { cls: string; label: string }> = {
   hired: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Contratado' },
 };
 
-export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
+export function PipelineListView({ stages, onMove, onReject }: PipelineListViewProps) {
   const { t } = useI18n();
   return (
     <div className="space-y-4 overflow-y-auto h-full pb-4">
@@ -139,6 +140,16 @@ export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
                       <Link href={`/recruitment/candidates/${c.id}`} className="text-[10px] text-[#585858] hover:text-[#1F114C] transition">
                         {t.pipeline.viewProfile}
                       </Link>
+                      {onReject && (
+                        <button
+                          type="button"
+                          onClick={() => onReject(app.id, `${c.firstName} ${c.lastName}`)}
+                          aria-label={t.rejectCandidateModal.actionLabel.replace('{name}', `${c.firstName} ${c.lastName}`)}
+                          className="text-[10px] text-[#DD0C15] hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium transition"
+                        >
+                          {t.pipeline.reject}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
