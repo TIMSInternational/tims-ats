@@ -7,7 +7,7 @@ import { TABS, visibleCandidateTabs } from '../../apps/web/app/(admin)/recruitme
 // candidate portal no longer lists assessments, so an assignment would be unreachable for the candidate).
 
 const { stub } = vi.hoisted(() => ({
-  stub: (name: string) => ({ [name]: () => null as unknown as JSX.Element }),
+  stub: (name: string) => ({ [name]: () => null }),
 }));
 vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: en, locale: 'EN' }) }));
 vi.mock('../../apps/web/lib/trpc', () => ({
