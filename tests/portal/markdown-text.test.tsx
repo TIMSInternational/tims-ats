@@ -97,3 +97,29 @@ describe('parseMarkdownLite heading performance (ReDoS guard)', () => {
     expect(elapsed).toBeLessThan(50);
   });
 });
+
+describe('ordered lists keep their source numbering (legal clauses)', () => {
+  it('a list starts at its first number, and one resuming after a paragraph keeps its number', () => {
+    const source = '5. Liability\n6. Indemnity\n\nA paragraph between clauses.\n\n7. Termination';
+    const lists = parseMarkdownLite(source).filter((b) => b.type === 'list');
+    expect(lists.map((b) => (b.type === 'list' ? b.start : null))).toEqual([5, 7]);
+
+    const { container } = render(<MarkdownText source={source} />);
+    const ols = [...container.querySelectorAll('ol')];
+    expect(ols.map((ol) => ol.getAttribute('start'))).toEqual(['5', '7']);
+    expect(ols.map((ol) => ol.querySelectorAll('li').length)).toEqual([2, 1]);
+  });
+
+  it('a list numbered from 1 (or written "1. 1. 1.") renders as a plain ordered list', () => {
+    const { container } = render(<MarkdownText source={'1. One\n1. Two\n1. Three'} />);
+    const ol = container.querySelector('ol');
+    expect(ol?.hasAttribute('start')).toBe(false);
+    expect(ol?.querySelectorAll('li')).toHaveLength(3);
+  });
+
+  it('bullet lists carry no start', () => {
+    const [list] = parseMarkdownLite('- a\n- b');
+    expect(list).toMatchObject({ type: 'list', ordered: false });
+    expect(list && 'start' in list).toBe(false);
+  });
+});

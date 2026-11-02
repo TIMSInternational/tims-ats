@@ -6,6 +6,7 @@ import { experienceLevelLabel } from '../_lib/experience-levels';
 import { formatFileSize } from '../_lib/format-file-size';
 import { SummaryRow } from './summary-row';
 import { ApplyConsentCheckbox } from './apply-consent-checkbox';
+import { ApplyLegalLinks } from './apply-legal-links';
 import { CvUploadFailedAlert } from './cv-upload-failed-alert';
 
 export interface ApplySummary {
@@ -102,6 +103,7 @@ export function ApplyModalReview({
         onChange={onConsentChange}
         disabled={submitting}
       />
+      <ApplyLegalLinks />
     </div>
   );
 }

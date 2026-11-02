@@ -4,6 +4,16 @@ import { parseMarkdownLite, type MdInline } from '../lib/markdown-lite';
 interface MarkdownTextProps {
   source: string;
   className?: string;
+  /**
+   * HTML level for a `#` heading (`##` and `###` follow). Defaults to 3 — the text sits under a
+   * card/page heading. A standalone document whose page owns no other headings can pass 1.
+   */
+  headingBase?: 1 | 3;
+  /**
+   * Parse bound. Defaults to MARKDOWN_LITE_MAX_LENGTH (user-authored descriptions). Repo-owned long documents
+   * (the legal pages) pass their own, larger, explicitly enforced limit instead of being silently cut.
+   */
+  maxLength?: number;
 }
 
 function renderInline(nodes: MdInline[], keyPrefix: string): ReactNode[] {
@@ -31,14 +41,14 @@ const HEADING_CLASS = {
  * Renders the small Markdown subset from `lib/markdown-lite` as React elements.
  * No HTML string is ever produced, so markup inside the source renders as literal text.
  */
-export function MarkdownText({ source, className }: MarkdownTextProps) {
-  const blocks = parseMarkdownLite(source);
+export function MarkdownText({ source, className, headingBase = 3, maxLength }: MarkdownTextProps) {
+  const blocks = parseMarkdownLite(source, maxLength);
   return (
     <div className={className}>
       {blocks.map((block, index) => {
         const key = `b${index}`;
         if (block.type === 'heading') {
-          const Tag = block.level === 1 ? 'h3' : block.level === 2 ? 'h4' : 'h5';
+          const Tag = `h${headingBase + block.level - 1}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5';
           return (
             <Tag key={key} className={HEADING_CLASS[block.level]}>
               {renderInline(block.content, key)}
@@ -48,7 +58,11 @@ export function MarkdownText({ source, className }: MarkdownTextProps) {
         if (block.type === 'list') {
           const ListTag = block.ordered ? 'ol' : 'ul';
           return (
-            <ListTag key={key} className={`space-y-1 pl-5 ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
+            <ListTag
+              key={key}
+              start={block.ordered && block.start !== 1 ? block.start : undefined}
+              className={`space-y-1 pl-5 ${block.ordered ? 'list-decimal' : 'list-disc'}`}
+            >
               {block.items.map((item, itemIndex) => (
                 <li key={`${key}-${itemIndex}`}>{renderInline(item, `${key}-${itemIndex}`)}</li>
               ))}

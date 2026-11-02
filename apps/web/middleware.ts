@@ -25,6 +25,9 @@ const PUBLIC_PATHS = [
   // declineByToken are public procedures). A candidate has no staff session, so
   // this must never bounce to staff /login — regardless of which host serves it.
   '/offers/sign',
+  // Platform legal pages (terms, privacy, subprocessors, AI processing): must be readable by
+  // candidates and prospects with no session. Each page 404s unless NEXT_PUBLIC_LEGAL_PAGES_ENABLED.
+  '/legal',
   '/logout',
 ];
 
