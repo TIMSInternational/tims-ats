@@ -7,6 +7,7 @@ import type { PickedUser } from '../../../../components/user-picker';
 import { Step1BasicInfo, Step2Description, Step3Compensation } from './create-modal.fields';
 import { VacancyOrgFields } from './create-modal.org-fields';
 import type { Step, VacancyFormData } from './create-modal.helpers';
+import { DEFAULT_TENANT_CURRENCY } from '../../../../lib/tenant-locale';
 
 interface CreateModalProps {
   onConfirm: (data: VacancyFormData) => void;
@@ -45,7 +46,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   // Step 3: Compensation & settings
   const [salaryMin, setSalaryMin] = useState('');
   const [salaryMax, setSalaryMax] = useState('');
-  const [currency, setCurrency] = useState('COP');
+  const [currency, setCurrency] = useState<string>(DEFAULT_TENANT_CURRENCY);
   const [salaryPeriod, setSalaryPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [slaTargetDays, setSlaTargetDays] = useState('30');
   const [autoPublish, setAutoPublish] = useState(false);

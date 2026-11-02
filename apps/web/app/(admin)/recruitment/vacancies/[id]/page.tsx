@@ -9,6 +9,7 @@ import { StatusBadge, ErrorState, Skeleton } from '../../../../../components';
 import { GeneralInfo } from './general-info';
 import { JobProfileCard } from './job-profile-card';
 import { ChannelsCard } from './channels-card';
+import { PublicUrlCard } from './public-url-card';
 import { CandidatesSummary } from './candidates-summary';
 import { SlaCard } from './sla-card';
 import { ApprovalChain } from './approval-chain';
@@ -84,13 +85,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
           <StatusBadge status={v.status} map={statusMap} />
         </div>
         <div className="flex items-center gap-3">
-          <Link
-            href={`/recruitment/vacancies/${id}`}
-            className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
-            {t.vacancies.editVacancy}
-          </Link>
+          {/* RH-09: the "Editar" link pointed at this same page; hidden until a real edit flow ships. */}
           <Link
             href={`/recruitment/pipeline?vacancy=${id}`}
             className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition"
@@ -106,6 +101,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
           {/* Left Column 65% */}
           <div className="w-full md:flex-[65] space-y-4">
             <GeneralInfo vacancy={v} />
+            <PublicUrlCard vacancyId={id} vacancyStatus={v.status} />
             {v.jobProfile && <JobProfileCard jobProfile={v.jobProfile} />}
             {v.status !== 'draft' && v.status !== 'pending_approval' && (
               <ChannelsCard vacancyId={id} vacancyStatus={v.status} channels={v.channels} />
