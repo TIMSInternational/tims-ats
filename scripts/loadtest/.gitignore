@@ -1,0 +1,5 @@
+# Never commit sessions or run output: they carry live session cookies / tenant data.
+sessions*.json
+*.sessions.json
+results/
+*.summary.json
