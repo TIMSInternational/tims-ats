@@ -68,7 +68,7 @@ vi.mock('../../apps/web/app/(admin)/dashboard/alerts-risk-panel', () => stub('Al
 import { RecruitmentDashboard } from '../../apps/web/app/(admin)/dashboard/recruitment-dashboard';
 
 const OUT_OF_SCOPE =
-  /^(trpc\.(performance|learning|engagement|compensation|ninebox|talent)\.|platform\.(engagement|compensation|ninebox)\.)/;
+  /^(trpc\.(performance|learning|engagement|compensation|ninebox|talent|assessment)\.|platform\.(engagement|compensation|ninebox)\.)/;
 
 function renderFor(role: string): string[] {
   calls.length = 0;
