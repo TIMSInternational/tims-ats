@@ -41,17 +41,22 @@ model Candidate {
 }
 
 model CandidateDocument {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  candidateId    String   @map("candidate_id") @db.Uuid
-  type           String
-  fileName       String   @map("file_name")
-  fileUrl        String   @map("file_url")
-  fileSize       Int?     @map("file_size")
-  parsedData     Json?    @map("parsed_data")
-  uploadedAt     DateTime @default(now()) @map("uploaded_at")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  candidateId        String    @map("candidate_id") @db.Uuid
+  type               String
+  fileName           String    @map("file_name")
+  fileUrl            String    @map("file_url")
+  fileSize           Int?      @map("file_size")
+  parsedData         Json?     @map("parsed_data")
+  cvParseAttempts    Int       @default(0) @map("cv_parse_attempts")
+  cvParseNextAt      DateTime? @map("cv_parse_next_at")
+  cvParseLeaseToken  String?   @map("cv_parse_lease_token") @db.Uuid
+  cvParseLeaseUntil  DateTime? @map("cv_parse_lease_until")
+  cvParseFailureCode String?   @map("cv_parse_failure_code") @db.VarChar(32)
+  uploadedAt         DateTime  @default(now()) @map("uploaded_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   candidate Candidate @relation(fields: [candidateId], references: [id])
 
