@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { assertApplicationNotRejected } from '../../packages/api/src/routers/offer/rejected-application-guard';
+import {
+  assertApplicationNotRejected,
+  NOT_REJECTED_APPLICATION,
+} from '../../packages/api/src/routers/offer/rejected-application-guard';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const OFFER = '22222222-2222-4222-8222-222222222222';
@@ -62,5 +65,11 @@ describe('assertApplicationNotRejected', () => {
     const c = client(null, ['rejected']);
     await expect(assertApplicationNotRejected(c as never, ORG, OFFER, 'no')).resolves.toBeUndefined();
     expect(c.application.findMany).not.toHaveBeenCalled();
+  });
+
+  it('NOT_REJECTED_APPLICATION lets unlinked offers through and blocks a rejected linked application', () => {
+    expect(NOT_REJECTED_APPLICATION).toEqual({
+      OR: [{ applicationId: null }, { application: { status: { not: 'rejected' } } }],
+    });
   });
 });

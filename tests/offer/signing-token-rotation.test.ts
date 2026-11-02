@@ -62,7 +62,8 @@ const updateMany = vi.fn(async ({ where, data }: { where: Where; data: Partial<R
 const sendOffer = vi.fn();
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
-vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', () => ({
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
   assertApplicationNotRejected: vi.fn(async () => undefined),
 }));
 
@@ -180,7 +181,13 @@ describe('signing-token rotation on re-send', () => {
     // Written through the compare-and-set, org-scoped.
     expect(updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        where: { id: OFFER_ID, organizationId: ORG_ID, status: 'sent', updatedAt: sentUpdatedAt },
+        where: {
+          id: OFFER_ID,
+          organizationId: ORG_ID,
+          status: 'sent',
+          updatedAt: sentUpdatedAt,
+          OR: [{ applicationId: null }, { application: { status: { not: 'rejected' } } }],
+        },
       }),
     );
     expect(sendOffer).toHaveBeenLastCalledWith(

@@ -23,6 +23,15 @@ export interface RejectedApplicationClient {
   };
 }
 
+/**
+ * Offer-write predicate: the offer's linked application is not rejected (offers without a link pass; the
+ * guard above handles those). Spread into an `offer.updateMany` where so the check runs in the same SQL
+ * statement as the write.
+ */
+export const NOT_REJECTED_APPLICATION = {
+  OR: [{ applicationId: null }, { application: { status: { not: 'rejected' } } }],
+} satisfies Prisma.OfferWhereInput;
+
 export async function assertApplicationNotRejected(
   client: RejectedApplicationClient,
   organizationId: string,
