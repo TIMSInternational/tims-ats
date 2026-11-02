@@ -24,6 +24,18 @@ const mockTx = {
   onboardingPlan: { create: vi.fn().mockResolvedValue({ id: 'plan-1' }) },
 };
 
+// The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
+vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
+  closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
+  HireRejectedApplicationError: class HireRejectedApplicationError extends Error {},
+}));
+
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+}));
+
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },

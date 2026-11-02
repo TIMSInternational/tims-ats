@@ -75,16 +75,25 @@ describe('offer creation application integrity', () => {
 
   it('creates a draft for a matching active application', async () => {
     await (await caller()).offer.create(input);
-    expect(offerCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ candidateId: CANDIDATE_ID, vacancyId: VACANCY_ID, applicationId: APPLICATION_ID, status: 'draft' }),
-    }));
+    expect(offerCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          candidateId: CANDIDATE_ID,
+          vacancyId: VACANCY_ID,
+          applicationId: APPLICATION_ID,
+          status: 'draft',
+        }),
+      }),
+    );
   });
 
   it('normalizes the currency to a trimmed upper-case ISO code', async () => {
     await (await caller()).offer.create({ ...input, currency: ' cop ' });
-    expect(offerCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ currency: 'COP' }),
-    }));
+    expect(offerCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ currency: 'COP' }),
+      }),
+    );
   });
 
   it.each(['COP$', 'PESOS', 'CO', ''])('rejects a non-ISO currency %j before writing', async (currency) => {
@@ -109,16 +118,23 @@ describe('offer salary bounds', () => {
     expect(offerCreate).toHaveBeenCalledTimes(1);
   });
 
-  it.each([Infinity, 1e300, 1_000_000_000_001])('update rejects salary %s before reading or writing', async (salary) => {
-    await expect((await caller()).offer.update({ id: OFFER_ID, salary })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    expect(offerFindFirst).not.toHaveBeenCalled();
-    expect(offerUpdate).not.toHaveBeenCalled();
-  });
+  it.each([Infinity, 1e300, 1_000_000_000_001])(
+    'update rejects salary %s before reading or writing',
+    async (salary) => {
+      await expect((await caller()).offer.update({ id: OFFER_ID, salary })).rejects.toMatchObject({
+        code: 'BAD_REQUEST',
+      });
+      expect(offerFindFirst).not.toHaveBeenCalled();
+      expect(offerUpdate).not.toHaveBeenCalled();
+    },
+  );
 
   it('update accepts an in-range salary on a draft', async () => {
     offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft' });
     offerUpdate.mockResolvedValue({ id: OFFER_ID, status: 'draft', salary: 96_000_000, settings: {} });
     await (await caller()).offer.update({ id: OFFER_ID, salary: 96_000_000 });
-    expect(offerUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ salary: 96_000_000 }) }));
+    expect(offerUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ salary: 96_000_000 }) }),
+    );
   });
 });

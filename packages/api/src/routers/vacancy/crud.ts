@@ -196,10 +196,12 @@ export const vacancyCrudRouter = router({
         teamId: z.string().uuid().optional(),
         assignedTo: z.string().uuid().optional(),
         search: z.string().max(200).optional(),
+        // Opt-in: most recently closed first (the dashboard funnel's filled vacancies). Default unchanged.
+        orderBy: z.enum(['created', 'closed']).default('created'),
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { cursor, limit, status, priority, companyId, businessUnitId, teamId, assignedTo, search } = input;
+      const { cursor, limit, status, priority, companyId, businessUnitId, teamId, assignedTo, search, orderBy } = input;
       const scopeWhere = await scopeWhereFor('vacancy', ctx.access, ctx.user.id);
 
       const where: Prisma.VacancyWhereInput = {
@@ -226,7 +228,10 @@ export const vacancyCrudRouter = router({
         : await db.vacancy.findMany({
             where,
             ...cursorPageArgs(limit, cursor),
-            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            orderBy:
+              orderBy === 'closed'
+                ? [{ closedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }]
+                : [{ createdAt: 'desc' }, { id: 'desc' }],
             select: vacancyListSelect,
           });
 

@@ -60,18 +60,30 @@ const updateMany = vi.fn(async ({ where, data }: { where: Where; data: Partial<R
   return { count: 1 };
 });
 const sendOffer = vi.fn();
+const eligibleCount = vi.fn(async (_args: unknown) => 1);
 
-vi.mock('@tims/db', () => ({
-  tenantDb: {
-    offer: { findFirst, findMany, updateMany },
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+  lockAndAssertApplicationNotRejected: vi.fn(async () => undefined),
+}));
+
+vi.mock('@tims/db', () => {
+  const tenantDb = {
+    offer: { findFirst, findMany, updateMany, count: eligibleCount },
     offerApproval: { count: countRejected },
     organization: { findFirst: vi.fn(async () => ({ name: 'Example Company' })) },
     user: { findMany: vi.fn(async () => []) },
-  },
-  runWithTenant: (_org: string, fn: () => unknown) => fn(),
-  // The public token procedures enter an explicit unscoped scope (signingTokenProcedure).
-  runUnscoped: (_reason: string, fn: () => unknown) => fn(),
-}));
+  };
+  return {
+    tenantDb,
+    runTenantTransaction: async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(tenantDb),
+    runWithTenant: (_org: string, fn: () => unknown) => fn(),
+    // The public token procedures enter an explicit unscoped scope (signingTokenProcedure).
+    runUnscoped: (_reason: string, fn: () => unknown) => fn(),
+  };
+});
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
   createAnchorLoader: vi.fn().mockReturnValue(null),
@@ -157,6 +169,20 @@ describe('signing-token rotation on re-send', () => {
     expect(sendOffer.mock.calls[1]![0].signingUrl).toBe(`https://example.test${first.signingUrl}`);
   });
 
+  it('refuses to re-send an existing link when the application was rejected after the guard', async () => {
+    const api = await caller();
+    await api.offer.generateSigningLink({ offerId: OFFER_ID }); // first send mints the token
+    sendOffer.mockClear();
+    eligibleCount.mockResolvedValueOnce(0); // rejection committed before the re-send
+    await expect(api.offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(sendOffer).not.toHaveBeenCalled();
+    expect(eligibleCount).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: OFFER_ID, status: 'sent', OR: expect.any(Array) }),
+      }),
+    );
+  });
+
   it('rotates when the candidate email changed: the old link dies, the new address gets the new link', async () => {
     const api = await caller();
     const first = await api.offer.generateSigningLink({ offerId: OFFER_ID });
@@ -175,7 +201,13 @@ describe('signing-token rotation on re-send', () => {
     // Written through the compare-and-set, org-scoped.
     expect(updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        where: { id: OFFER_ID, organizationId: ORG_ID, status: 'sent', updatedAt: sentUpdatedAt },
+        where: {
+          id: OFFER_ID,
+          organizationId: ORG_ID,
+          status: 'sent',
+          updatedAt: sentUpdatedAt,
+          OR: expect.any(Array),
+        },
       }),
     );
     expect(sendOffer).toHaveBeenLastCalledWith(

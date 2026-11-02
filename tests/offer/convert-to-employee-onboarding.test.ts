@@ -18,6 +18,24 @@ const mockOffer = {
   vacancy: { companyId: 'co-1', businessUnitId: 'bu-1', teamId: 'team-1' },
 };
 
+// The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
+vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
+  closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
+  HireRejectedApplicationError: class HireRejectedApplicationError extends Error {},
+}));
+
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+}));
+
+const cacheInvalidatePrefix = vi.hoisted(() => vi.fn(async (_prefix: string) => undefined));
+vi.mock('../../packages/api/src/lib/cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/lib/cache')>()),
+  cacheInvalidatePrefix,
+}));
+
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },
@@ -123,6 +141,10 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
       where: { id: OFFER_ID, organizationId: ORG_ID, status: 'accepted' },
       data: { status: 'converted' },
     });
+    // After commit, the tenant's server-side vacancy KPI cache is dropped (the hire may have closed it).
+    expect(cacheInvalidatePrefix).toHaveBeenCalledWith(`tims:kpis:vacancy:${ORG_ID}:`);
+    const { closeHireRecords } = await import('../../packages/api/src/services/hire-closure.service');
+    expect(closeHireRecords).toHaveBeenCalledWith(mockTx, expect.objectContaining({ organizationId: ORG_ID }));
   });
 
   it('refuses to convert an accepted offer whose approval chain holds a rejection', async () => {
@@ -192,6 +214,7 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     ).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(mockTx.user.create).not.toHaveBeenCalled();
     expect(mockTx.onboardingPlan.create).not.toHaveBeenCalled();
+    expect(cacheInvalidatePrefix).not.toHaveBeenCalled(); // nothing committed, nothing to drop
   });
 
   it('returns the existing hire on a safe retry without creating another employee', async () => {

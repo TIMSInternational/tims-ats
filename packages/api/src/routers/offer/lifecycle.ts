@@ -4,10 +4,13 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
+import { assertApplicationNotRejected } from './rejected-application-guard';
 import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
 import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
+import { closeHireRecords, HireRejectedApplicationError } from '../../services/hire-closure.service';
+import { cacheInvalidatePrefix } from '../../lib/cache';
 
 export const offerLifecycleRouter = router({
   // NOTE: offer send + e-signature live in offer/signing.ts — the REAL flow
@@ -65,7 +68,10 @@ export const offerLifecycleRouter = router({
           });
           if (priorUser) return priorUser;
         }
-        throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida, pero no se encontro al empleado' });
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'La oferta ya fue convertida, pero no se encontro al empleado',
+        });
       }
 
       if (offer.status !== 'accepted') {
@@ -81,9 +87,22 @@ export const offerLifecycleRouter = router({
         offer.id,
         'Esta oferta fue rechazada en su cadena de aprobacion y no se puede convertir',
       );
+      await assertApplicationNotRejected(
+        db,
+        ctx.user.organizationId,
+        offer.id,
+        'El candidato fue descartado en el proceso; esta oferta no se puede convertir',
+      );
 
-      if (offer.validations.some((validation) => validation.isBlocking && !['passed', 'waived'].includes(validation.status))) {
-        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay validaciones obligatorias pendientes o fallidas' });
+      if (
+        offer.validations.some(
+          (validation) => validation.isBlocking && !['passed', 'waived'].includes(validation.status),
+        )
+      ) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Hay validaciones obligatorias pendientes o fallidas',
+        });
       }
       if (offer.legalChecks.some((check) => !check.completed)) {
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay verificaciones legales pendientes' });
@@ -133,7 +152,7 @@ export const offerLifecycleRouter = router({
       // runTenantTransaction, not db.$transaction (#45 / prisma#17948): `db` is
       // `tenantDb`, so the outer wrapper never composed and this multi-write hire
       // flow (user + onboarding plan + tasks + offer status) was not atomic.
-      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
+      const hired = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
         // Claim the accepted offer before creating the employee. A concurrent
         // retry cannot create a second hire, and a later failure rolls this back.
         const claimed = await tx.offer.updateMany({
@@ -215,7 +234,32 @@ export const offerLifecycleRouter = router({
           fitScore,
         });
 
+        // Pilot: a confirmed hire closes its application and, once every position is covered, the vacancy —
+        // in this same transaction, so recruiters are not left with a "hired" candidate still active.
+        try {
+          await closeHireRecords(tx, {
+            organizationId: ctx.user.organizationId,
+            vacancyId: offer.vacancyId,
+            applicationId: offer.applicationId,
+            candidateId: offer.candidateId,
+            hiredById: ctx.user.id,
+          });
+        } catch (error) {
+          // Thrown inside the transaction, so the whole hire (user, plan, offer claim) rolls back.
+          if (error instanceof HireRejectedApplicationError) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: 'El candidato fue descartado en el proceso; esta oferta no se puede convertir',
+            });
+          }
+          throw error;
+        }
+
         return newUser;
       });
+      // After commit: the hire may have closed the vacancy and moved the application out of the active
+      // pipeline, so drop the tenant's cached vacancy KPIs (45 s server cache) before the client refetches.
+      await cacheInvalidatePrefix(`tims:kpis:vacancy:${ctx.user.organizationId}:`);
+      return hired;
     }),
 });
