@@ -16,6 +16,7 @@ export type HireClosureInput = {
   organizationId: string;
   vacancyId: string;
   applicationId: string | null;
+  candidateId: string;
   hiredById: string;
 };
 
@@ -25,25 +26,30 @@ export async function closeHireRecords(
   tx: Prisma.TransactionClient,
   input: HireClosureInput,
 ): Promise<HireClosureResult> {
-  const { organizationId, vacancyId, applicationId, hiredById } = input;
+  const { organizationId, vacancyId, applicationId, candidateId, hiredById } = input;
   let applicationClosed = false;
 
-  if (applicationId) {
-    const application = await tx.application.findFirst({
-      where: { id: applicationId, organizationId, vacancyId },
-      select: { id: true, status: true, currentStageId: true },
+  // The offer's linked application, or — when the offer was created without the link — the candidate's
+  // active application for this vacancy.
+  const application = await tx.application.findFirst({
+    where: applicationId
+      ? { id: applicationId, organizationId, vacancyId }
+      : { organizationId, vacancyId, candidateId, status: 'active' },
+    select: { id: true, status: true, currentStageId: true },
+  });
+  if (application && application.status === 'active') {
+    const finalStage = await tx.pipelineStage.findFirst({
+      where: { vacancyId, organizationId },
+      orderBy: { order: 'desc' },
+      select: { id: true },
     });
-    if (application && application.status === 'active') {
-      const finalStage = await tx.pipelineStage.findFirst({
-        where: { vacancyId, organizationId },
-        orderBy: { order: 'desc' },
-        select: { id: true },
-      });
-      await tx.application.update({
-        where: { id: application.id },
-        data: { status: 'hired', ...(finalStage ? { currentStageId: finalStage.id } : {}) },
-        select: { id: true },
-      });
+    // Conditional transition: only an application that is STILL active becomes hired. A rejection that
+    // committed after the read above is left untouched (and the reject writer is conditional the same way).
+    const transitioned = await tx.application.updateMany({
+      where: { id: application.id, organizationId, status: 'active' },
+      data: { status: 'hired', ...(finalStage ? { currentStageId: finalStage.id } : {}) },
+    });
+    if (transitioned.count === 1) {
       if (finalStage && finalStage.id !== application.currentStageId) {
         await tx.stageMovement.create({
           data: {

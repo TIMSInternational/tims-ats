@@ -222,6 +222,7 @@ export const offerLifecycleRouter = router({
           organizationId: ctx.user.organizationId,
           vacancyId: offer.vacancyId,
           applicationId: offer.applicationId,
+          candidateId: offer.candidateId,
           hiredById: ctx.user.id,
         });
 

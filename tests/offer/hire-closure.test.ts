@@ -15,6 +15,7 @@ type Opts = {
   finalStage?: { id: string } | null;
   vacancy?: { positions: number; status: string } | null;
   converted?: number;
+  transitioned?: number;
 };
 
 function tx(o: Opts = {}) {
@@ -27,7 +28,7 @@ function tx(o: Opts = {}) {
             ? { id: APP_ID, status: 'active', currentStageId: 'stage-oferta' }
             : o.application,
         ),
-      update: vi.fn().mockResolvedValue({ id: APP_ID }),
+      updateMany: vi.fn().mockResolvedValue({ count: o.transitioned ?? 1 }),
     },
     pipelineStage: {
       findFirst: vi.fn().mockResolvedValue(o.finalStage === undefined ? { id: 'stage-contratado' } : o.finalStage),
@@ -43,7 +44,8 @@ function tx(o: Opts = {}) {
   };
 }
 
-const input = { organizationId: ORG, vacancyId: VAC, applicationId: APP_ID, hiredById: HR };
+const CAND = '55555555-5555-4555-8555-555555555555';
+const input = { organizationId: ORG, vacancyId: VAC, applicationId: APP_ID, candidateId: CAND, hiredById: HR };
 
 describe('closeHireRecords', () => {
   it('marks the application hired, moves it to the last stage and records the move', async () => {
@@ -55,9 +57,10 @@ describe('closeHireRecords', () => {
     expect(t.pipelineStage.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { vacancyId: VAC, organizationId: ORG }, orderBy: { order: 'desc' } }),
     );
-    expect(t.application.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: APP_ID }, data: { status: 'hired', currentStageId: 'stage-contratado' } }),
-    );
+    expect(t.application.updateMany).toHaveBeenCalledWith({
+      where: { id: APP_ID, organizationId: ORG, status: 'active' },
+      data: { status: 'hired', currentStageId: 'stage-contratado' },
+    });
     expect(t.stageMovement.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
@@ -76,21 +79,32 @@ describe('closeHireRecords', () => {
   it('does not record a move when the application is already in the last stage', async () => {
     const t = tx({ application: { id: APP_ID, status: 'active', currentStageId: 'stage-contratado' } });
     await closeHireRecords(t as never, input);
-    expect(t.application.update).toHaveBeenCalled();
+    expect(t.application.updateMany).toHaveBeenCalled();
     expect(t.stageMovement.create).not.toHaveBeenCalled();
   });
 
   it('leaves a non-active application untouched', async () => {
     const t = tx({ application: { id: APP_ID, status: 'rejected', currentStageId: 's' } });
     const result = await closeHireRecords(t as never, input);
-    expect(t.application.update).not.toHaveBeenCalled();
+    expect(t.application.updateMany).not.toHaveBeenCalled();
     expect(result.applicationClosed).toBe(false);
   });
 
-  it('skips the application step when the offer has no application', async () => {
+  it("closes the candidate's active application for the vacancy when the offer has no application link", async () => {
     const t = tx();
-    await closeHireRecords(t as never, { ...input, applicationId: null });
-    expect(t.application.findFirst).not.toHaveBeenCalled();
+    const result = await closeHireRecords(t as never, { ...input, applicationId: null });
+    expect(t.application.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: ORG, vacancyId: VAC, candidateId: CAND, status: 'active' } }),
+    );
+    expect(t.application.updateMany).toHaveBeenCalled();
+    expect(result.applicationClosed).toBe(true);
+  });
+
+  it('does not mark hired (or record a move) when a rejection committed after the read', async () => {
+    const t = tx({ transitioned: 0 });
+    const result = await closeHireRecords(t as never, input);
+    expect(t.stageMovement.create).not.toHaveBeenCalled();
+    expect(result.applicationClosed).toBe(false);
   });
 
   it('closes a published vacancy once converted offers cover every position', async () => {
