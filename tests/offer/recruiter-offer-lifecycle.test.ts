@@ -39,12 +39,15 @@ const mockDb = vi.hoisted(() => ({
   user: { findMany: vi.fn() },
   offerApproval: { createMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
 }));
-const runTenantTransactionMock = vi.hoisted(() => vi.fn());
+const runTenantTransactionMock = vi.hoisted(() =>
+  vi.fn(async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(mockDb)),
+);
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
 vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
   assertApplicationNotRejected: vi.fn(async () => undefined),
+  lockAndAssertApplicationNotRejected: vi.fn(async () => undefined),
 }));
 
 vi.mock('@tims/db', () => ({

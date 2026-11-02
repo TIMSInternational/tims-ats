@@ -60,3 +60,32 @@ export async function assertApplicationNotRejected(
     throw new TRPCError({ code: 'BAD_REQUEST', message });
   }
 }
+
+/**
+ * Serializes an offer write with a concurrent rejection: locks the candidate's application row(s) for this
+ * offer FOR SHARE inside the caller's transaction, then applies the same rule as
+ * `assertApplicationNotRejected`. A rejection's UPDATE conflicts with the share lock, so either it committed
+ * first (this read then sees `rejected` and throws) or it waits until the offer write has committed — after
+ * which acceptance is final and conversion re-checks inside its own transaction.
+ */
+export async function lockAndAssertApplicationNotRejected(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  offer: { applicationId: string | null; candidateId: string; vacancyId: string },
+  message: string,
+) {
+  const rows = offer.applicationId
+    ? await tx.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM applications
+        WHERE id = ${offer.applicationId}::uuid AND organization_id = ${organizationId}::uuid
+        FOR SHARE`
+    : await tx.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM applications
+        WHERE organization_id = ${organizationId}::uuid
+          AND candidate_id = ${offer.candidateId}::uuid
+          AND vacancy_id = ${offer.vacancyId}::uuid
+        FOR SHARE`;
+  if (rows.length > 0 && rows.every((row) => row.status === 'rejected')) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message });
+  }
+}

@@ -23,16 +23,21 @@ const sendOffer = vi.fn();
 vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
   assertApplicationNotRejected: vi.fn(async () => undefined),
+  lockAndAssertApplicationNotRejected: vi.fn(async () => undefined),
 }));
 
-vi.mock('@tims/db', () => ({
-  tenantDb: {
+vi.mock('@tims/db', () => {
+  const tenantDb = {
     offer: { findFirst: findOffer, updateMany: updateOffer, count: vi.fn(async () => 1) },
     offerApproval: { count: countRejected },
     organization: { findFirst: findOrg },
-  },
-  runWithTenant: (_org: string, fn: () => unknown) => fn(),
-}));
+  };
+  return {
+    tenantDb,
+    runTenantTransaction: async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(tenantDb),
+    runWithTenant: (_org: string, fn: () => unknown) => fn(),
+  };
+});
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
   createAnchorLoader: vi.fn().mockReturnValue(null),

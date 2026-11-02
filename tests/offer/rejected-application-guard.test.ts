@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   assertApplicationNotRejected,
+  lockAndAssertApplicationNotRejected,
   notRejectedApplication,
 } from '../../packages/api/src/routers/offer/rejected-application-guard';
 
@@ -75,5 +76,53 @@ describe('assertApplicationNotRejected', () => {
         { applicationId: null, candidate: { applications: { some: { vacancyId: VAC, status: { not: 'rejected' } } } } },
       ],
     });
+  });
+});
+
+describe('lockAndAssertApplicationNotRejected', () => {
+  const sqlOf = (call: unknown[]) => (call[0] as TemplateStringsArray).join('?');
+
+  it('locks the linked application FOR SHARE (tenant-scoped) and refuses when it is rejected', async () => {
+    const tx = { $queryRaw: vi.fn().mockResolvedValue([{ status: 'rejected' }]) };
+    await expect(
+      lockAndAssertApplicationNotRejected(
+        tx as never,
+        ORG,
+        { applicationId: APP, candidateId: CAND, vacancyId: VAC },
+        'no',
+      ),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'no' });
+    const call = tx.$queryRaw.mock.calls[0]!;
+    expect(sqlOf(call)).toMatch(/FROM applications[\s\S]*organization_id[\s\S]*FOR SHARE/);
+    expect(call.slice(1)).toEqual([APP, ORG]);
+  });
+
+  it('locks the candidate+vacancy applications FOR SHARE for an unlinked offer', async () => {
+    const tx = { $queryRaw: vi.fn().mockResolvedValue([{ status: 'rejected' }, { status: 'active' }]) };
+    await expect(
+      lockAndAssertApplicationNotRejected(
+        tx as never,
+        ORG,
+        { applicationId: null, candidateId: CAND, vacancyId: VAC },
+        'no',
+      ),
+    ).resolves.toBeUndefined();
+    const call = tx.$queryRaw.mock.calls[0]!;
+    expect(sqlOf(call)).toMatch(/candidate_id[\s\S]*vacancy_id[\s\S]*FOR SHARE/);
+    expect(call.slice(1)).toEqual([ORG, CAND, VAC]);
+  });
+
+  it('allows when no application exists or one is still open', async () => {
+    for (const rows of [[], [{ status: 'active' }], [{ status: 'hired' }]]) {
+      const tx = { $queryRaw: vi.fn().mockResolvedValue(rows) };
+      await expect(
+        lockAndAssertApplicationNotRejected(
+          tx as never,
+          ORG,
+          { applicationId: APP, candidateId: CAND, vacancyId: VAC },
+          'no',
+        ),
+      ).resolves.toBeUndefined();
+    }
   });
 });

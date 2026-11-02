@@ -20,6 +20,9 @@ describe('rejected-application guard wiring', () => {
     expect(procedureBody(signing, 'generateSigningLink')).toContain('await assertApplicationNotRejected(');
     expect(procedureBody(signing, 'acceptByToken')).toContain('await assertApplicationNotRejected(');
     expect(procedureBody(lifecycle, 'convertToEmployee')).toContain('await assertApplicationNotRejected(');
+    // Send and accept lock the application(s) FOR SHARE in the same transaction as the offer write.
+    expect(procedureBody(signing, 'acceptByToken')).toContain('await lockAndAssertApplicationNotRejected(');
+    expect(procedureBody(signing, 'generateSigningLink')).toContain('await lockAndAssertApplicationNotRejected(');
     // The write itself re-checks the application in the same statement (send and accept).
     expect(procedureBody(signing, 'acceptByToken')).toContain('...notRejectedApplication(offer.vacancyId)');
     expect(procedureBody(signing, 'generateSigningLink')).toContain('...notRejectedApplication(offer.vacancyId)');
