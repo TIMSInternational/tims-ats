@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, publicProcedure, anyPermissionProcedure } from '../../trpc';
-import { tenantDb as db, runTenantTransaction } from '@tims/db';
+import { tenantDb as db } from '@tims/db';
+import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { getAppUrl } from '@tims/shared';
@@ -166,7 +167,7 @@ export const offerSigningRouter = router({
 
       if (!reusableToken) {
         // In one transaction: lock the candidate's application(s) FOR SHARE and re-check, then write.
-        const transition = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
+        const transition = await offerApplicationLockRepository.inTransaction(ctx.user.organizationId, async (tx) => {
           await lockAndAssertApplicationNotRejected(
             tx,
             ctx.user.organizationId,
@@ -360,7 +361,7 @@ export const offerSigningRouter = router({
       // (status already flipped), so two clicks can't both be accepted (TOCTOU).
       // In one transaction: lock the candidate's application(s) FOR SHARE and re-check (serializes with a
       // concurrent rejection), then the conditional write.
-      const transition = await runTenantTransaction(offer.organizationId, async (tx) => {
+      const transition = await offerApplicationLockRepository.inTransaction(offer.organizationId, async (tx) => {
         await lockAndAssertApplicationNotRejected(
           tx,
           offer.organizationId,

@@ -1,5 +1,9 @@
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
+import {
+  offerApplicationLockRepository,
+  type OfferApplicationRef,
+} from '../../repositories/offer-application-lock.repository';
 
 // A candidate rejected in the pipeline must not be able to accept an outstanding offer for that vacancy, and
 // such an offer must not be sent or converted to a hire. Rejecting the application does not touch the offer
@@ -71,21 +75,11 @@ export async function assertApplicationNotRejected(
 export async function lockAndAssertApplicationNotRejected(
   tx: Prisma.TransactionClient,
   organizationId: string,
-  offer: { applicationId: string | null; candidateId: string; vacancyId: string },
+  offer: OfferApplicationRef,
   message: string,
 ) {
-  const rows = offer.applicationId
-    ? await tx.$queryRaw<Array<{ status: string }>>`
-        SELECT status FROM applications
-        WHERE id = ${offer.applicationId}::uuid AND organization_id = ${organizationId}::uuid
-        FOR SHARE`
-    : await tx.$queryRaw<Array<{ status: string }>>`
-        SELECT status FROM applications
-        WHERE organization_id = ${organizationId}::uuid
-          AND candidate_id = ${offer.candidateId}::uuid
-          AND vacancy_id = ${offer.vacancyId}::uuid
-        FOR SHARE`;
-  if (rows.length > 0 && rows.every((row) => row.status === 'rejected')) {
+  const statuses = await offerApplicationLockRepository.lockStatuses(tx, organizationId, offer);
+  if (statuses.length > 0 && statuses.every((status) => status === 'rejected')) {
     throw new TRPCError({ code: 'BAD_REQUEST', message });
   }
 }
