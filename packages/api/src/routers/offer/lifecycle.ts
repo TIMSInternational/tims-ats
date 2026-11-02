@@ -9,7 +9,7 @@ import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.se
 import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
-import { closeHireRecords } from '../../services/hire-closure.service';
+import { closeHireRecords, HireRejectedApplicationError } from '../../services/hire-closure.service';
 
 export const offerLifecycleRouter = router({
   // NOTE: offer send + e-signature live in offer/signing.ts — the REAL flow
@@ -235,13 +235,24 @@ export const offerLifecycleRouter = router({
 
         // Pilot: a confirmed hire closes its application and, once every position is covered, the vacancy —
         // in this same transaction, so recruiters are not left with a "hired" candidate still active.
-        await closeHireRecords(tx, {
-          organizationId: ctx.user.organizationId,
-          vacancyId: offer.vacancyId,
-          applicationId: offer.applicationId,
-          candidateId: offer.candidateId,
-          hiredById: ctx.user.id,
-        });
+        try {
+          await closeHireRecords(tx, {
+            organizationId: ctx.user.organizationId,
+            vacancyId: offer.vacancyId,
+            applicationId: offer.applicationId,
+            candidateId: offer.candidateId,
+            hiredById: ctx.user.id,
+          });
+        } catch (error) {
+          // Thrown inside the transaction, so the whole hire (user, plan, offer claim) rolls back.
+          if (error instanceof HireRejectedApplicationError) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: 'El candidato fue descartado en el proceso; esta oferta no se puede convertir',
+            });
+          }
+          throw error;
+        }
 
         return newUser;
       });

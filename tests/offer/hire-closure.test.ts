@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   closeHireRecords,
+  HireRejectedApplicationError,
   HIRE_STAGE_MOVE_REASON,
   VACANCY_FILLED_REASON,
 } from '../../packages/api/src/services/hire-closure.service';
@@ -16,18 +17,24 @@ type Opts = {
   vacancy?: { positions: number; status: string } | null;
   converted?: number;
   transitioned?: number;
+  applications?: Array<{ id: string; status: string; currentStageId: string }>;
+  statusAfterRace?: string;
 };
 
 function tx(o: Opts = {}) {
   return {
     application: {
-      findFirst: vi
+      findMany: vi
         .fn()
         .mockResolvedValue(
-          o.application === undefined
-            ? { id: APP_ID, status: 'active', currentStageId: 'stage-oferta' }
-            : o.application,
+          o.applications ??
+            (o.application === undefined
+              ? [{ id: APP_ID, status: 'active', currentStageId: 'stage-oferta' }]
+              : o.application
+                ? [o.application]
+                : []),
         ),
+      findFirst: vi.fn().mockResolvedValue({ status: o.statusAfterRace ?? 'active' }),
       updateMany: vi.fn().mockResolvedValue({ count: o.transitioned ?? 1 }),
     },
     pipelineStage: {
@@ -51,7 +58,7 @@ describe('closeHireRecords', () => {
   it('marks the application hired, moves it to the last stage and records the move', async () => {
     const t = tx();
     const result = await closeHireRecords(t as never, input);
-    expect(t.application.findFirst).toHaveBeenCalledWith(
+    expect(t.application.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: APP_ID, organizationId: ORG, vacancyId: VAC } }),
     );
     expect(t.pipelineStage.findFirst).toHaveBeenCalledWith(
@@ -83,28 +90,40 @@ describe('closeHireRecords', () => {
     expect(t.stageMovement.create).not.toHaveBeenCalled();
   });
 
-  it('leaves a non-active application untouched', async () => {
+  it('refuses the hire when the application was already rejected', async () => {
     const t = tx({ application: { id: APP_ID, status: 'rejected', currentStageId: 's' } });
-    const result = await closeHireRecords(t as never, input);
+    await expect(closeHireRecords(t as never, input)).rejects.toBeInstanceOf(HireRejectedApplicationError);
     expect(t.application.updateMany).not.toHaveBeenCalled();
-    expect(result.applicationClosed).toBe(false);
+    expect(t.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unlinked hire when every application for the vacancy is rejected', async () => {
+    const t = tx({
+      applications: [
+        { id: 'a1', status: 'rejected', currentStageId: 's' },
+        { id: 'a2', status: 'rejected', currentStageId: 's' },
+      ],
+    });
+    await expect(closeHireRecords(t as never, { ...input, applicationId: null })).rejects.toBeInstanceOf(
+      HireRejectedApplicationError,
+    );
   });
 
   it("closes the candidate's active application for the vacancy when the offer has no application link", async () => {
     const t = tx();
     const result = await closeHireRecords(t as never, { ...input, applicationId: null });
-    expect(t.application.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { organizationId: ORG, vacancyId: VAC, candidateId: CAND, status: 'active' } }),
+    expect(t.application.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: ORG, vacancyId: VAC, candidateId: CAND } }),
     );
     expect(t.application.updateMany).toHaveBeenCalled();
     expect(result.applicationClosed).toBe(true);
   });
 
-  it('does not mark hired (or record a move) when a rejection committed after the read', async () => {
-    const t = tx({ transitioned: 0 });
-    const result = await closeHireRecords(t as never, input);
+  it('refuses the hire (rolling back the transaction) when a rejection committed after the read', async () => {
+    const t = tx({ transitioned: 0, statusAfterRace: 'rejected' });
+    await expect(closeHireRecords(t as never, input)).rejects.toBeInstanceOf(HireRejectedApplicationError);
     expect(t.stageMovement.create).not.toHaveBeenCalled();
-    expect(result.applicationClosed).toBe(false);
+    expect(t.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('closes a published vacancy once converted offers cover every position', async () => {

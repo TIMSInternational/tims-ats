@@ -20,6 +20,14 @@ export type HireClosureInput = {
   hiredById: string;
 };
 
+/** The candidate's application for this vacancy was rejected; the hire must not complete. */
+export class HireRejectedApplicationError extends Error {
+  constructor() {
+    super('hire refused: the application was rejected');
+    this.name = 'HireRejectedApplicationError';
+  }
+}
+
 export type HireClosureResult = { applicationClosed: boolean; vacancyClosed: boolean };
 
 export async function closeHireRecords(
@@ -30,26 +38,42 @@ export async function closeHireRecords(
   let applicationClosed = false;
 
   // The offer's linked application, or — when the offer was created without the link — the candidate's
-  // active application for this vacancy.
-  const application = await tx.application.findFirst({
+  // applications for this vacancy. A hire for a candidate whose application(s) were rejected is refused, and
+  // because this runs inside the hire transaction the refusal rolls back the whole conversion.
+  const applications = await tx.application.findMany({
     where: applicationId
       ? { id: applicationId, organizationId, vacancyId }
-      : { organizationId, vacancyId, candidateId, status: 'active' },
+      : { organizationId, vacancyId, candidateId },
     select: { id: true, status: true, currentStageId: true },
   });
-  if (application && application.status === 'active') {
+  if (
+    applications.length > 0 &&
+    applications.every((candidateApplication) => candidateApplication.status === 'rejected')
+  ) {
+    throw new HireRejectedApplicationError();
+  }
+  const application = applications.find((candidateApplication) => candidateApplication.status === 'active');
+  if (application) {
     const finalStage = await tx.pipelineStage.findFirst({
       where: { vacancyId, organizationId },
       orderBy: { order: 'desc' },
       select: { id: true },
     });
-    // Conditional transition: only an application that is STILL active becomes hired. A rejection that
-    // committed after the read above is left untouched (and the reject writer is conditional the same way).
+    // Conditional transition: only an application that is STILL active becomes hired. Postgres re-checks
+    // the WHERE after waiting on a concurrent writer's row lock, so a rejection that commits first makes
+    // this match 0 rows — then the hire is refused (rolled back). The reject writer is conditional the
+    // same way, so a hire that commits first makes the rejection fail instead.
     const transitioned = await tx.application.updateMany({
       where: { id: application.id, organizationId, status: 'active' },
       data: { status: 'hired', ...(finalStage ? { currentStageId: finalStage.id } : {}) },
     });
-    if (transitioned.count === 1) {
+    if (transitioned.count !== 1) {
+      const current = await tx.application.findFirst({
+        where: { id: application.id, organizationId },
+        select: { status: true },
+      });
+      if (current?.status === 'rejected') throw new HireRejectedApplicationError();
+    } else {
       if (finalStage && finalStage.id !== application.currentStageId) {
         await tx.stageMovement.create({
           data: {
