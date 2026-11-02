@@ -433,7 +433,9 @@ export const pipelineRepository = {
       stages.map(async (stage) => {
         const [currentCount, everReachedRows] = await Promise.all([
           db.application.count({
-            where: { vacancyId, currentStageId: stage.id, status: 'active' },
+            // 'hired' too: a confirmed hire leaves the active pipeline but still sits in the last stage, and
+            // the funnel's terminal "Contratado" bar must count it.
+            where: { vacancyId, currentStageId: stage.id, status: { in: ['active', 'hired'] } },
           }),
           // Distinct applicationId — an application bounced out and later
           // reconsidered into the same stage produces multiple StageMovement
