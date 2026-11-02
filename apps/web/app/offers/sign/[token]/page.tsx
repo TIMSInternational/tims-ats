@@ -82,12 +82,12 @@ export default function OfferSignPage() {
             {/* Greeting */}
             <div>
               <p className="text-[#333] text-[15px] leading-relaxed">
-                Estimado/a <strong>{o.candidate.firstName} {o.candidate.lastName}</strong>,
+                {t.offers.signGreeting} <strong>{o.candidate.firstName} {o.candidate.lastName}</strong>,
               </p>
               <p className="text-[#585858] text-[14px] leading-relaxed mt-3">
-                Nos complace extenderle una oferta formal para el puesto de{' '}
-                <strong className="text-[#1F114C]">{o.vacancy.title}</strong> en{' '}
-                {o.organization.name}. A continuacion encontrara los detalles de su oferta.
+                {t.offers.signIntroPrefix}{' '}
+                <strong className="text-[#1F114C]">{o.vacancy.title}</strong> {t.offers.signIntroAt}{' '}
+                {o.organization.name}. {t.offers.signIntroSuffix}
               </p>
             </div>
 
@@ -96,7 +96,7 @@ export default function OfferSignPage() {
               <h3 className="text-sm font-semibold text-[#1F114C] mb-3">{t.offers.signOfferDetails}</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">Cargo</span>
+                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signPosition}</span>
                   <span className="font-medium text-[#333]">{o.vacancy.title}</span>
                 </div>
                 <div className="text-sm">
@@ -117,7 +117,7 @@ export default function OfferSignPage() {
             {/* Benefits */}
             {benefitList.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-[#1F114C] mb-2">Beneficios</h3>
+                <h3 className="text-sm font-semibold text-[#1F114C] mb-2">{t.offers.signBenefits}</h3>
                 <ul className="space-y-1.5">
                   {benefitList.map((b, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-[#585858]">
@@ -167,7 +167,7 @@ export default function OfferSignPage() {
 
               {/* Date (readonly) */}
               <div>
-                <label className="block text-xs text-[#8B8B8B] mb-1.5">Fecha</label>
+                <label className="block text-xs text-[#8B8B8B] mb-1.5">{t.offers.signDate}</label>
                 <input
                   type="text"
                   value={today}
