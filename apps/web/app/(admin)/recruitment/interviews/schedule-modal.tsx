@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
-import { type Step, stepLabels } from './schedule-modal.helpers';
+import { type Step, stepLabels, defaultInterviewType, locationPayload } from './schedule-modal.helpers';
 import { Step1Fields, Step2Fields, Step3Fields } from './schedule-modal.fields';
 import { useI18n } from '../../../../lib/i18n';
 import { useAssignablePeople } from '../../../../lib/platform-api/assignable-people';
@@ -26,7 +26,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
   const [selectedVacancyTitle, setSelectedVacancyTitle] = useState('');
 
   // Step 2: What & When
-  const [interviewType, setInterviewType] = useState('video');
+  const [interviewType, setInterviewType] = useState(() => defaultInterviewType());
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('10:00');
   const [duration, setDuration] = useState(60);
@@ -68,7 +68,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
         type: interviewType,
         scheduledAt,
         duration,
-        location: location.trim() || undefined,
+        ...locationPayload(location),
         notes: notes.trim() || undefined,
         evaluatorIds: selectedEvaluatorIds,
       });

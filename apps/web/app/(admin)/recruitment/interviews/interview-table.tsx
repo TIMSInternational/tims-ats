@@ -12,7 +12,8 @@ interface InterviewTableProps {
   isLoading: boolean;
   isError?: boolean;
   onRetry?: () => void;
-  onCancel: (id: string) => void;
+  /** Omitted when the viewer may not cancel (e.g. committee-only) — the button is then hidden. */
+  onCancel?: (id: string) => void;
   isCancelling: boolean;
   onManageEvaluators: (id: string) => void;
   onStartAiScreen: (id: string) => void;
@@ -173,7 +174,7 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
               ) : (
                 <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />
               )}
-              {iv.status === 'scheduled' && (
+              {iv.status === 'scheduled' && onCancel && (
                 <button
                   onClick={() => onCancel(iv.id)}
                   disabled={isCancelling}
