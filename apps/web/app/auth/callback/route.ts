@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
 import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '@tims/api';
+import { logger } from '@tims/shared';
 import { isSafePortalNext } from '../../../lib/portal-auth';
 import { slugify } from '../../../lib/slugify';
 import { PASSWORD_SETUP_PROOF_COOKIE, PASSWORD_SETUP_PROOF_PATH } from '../../../lib/password-setup-proof';
+import { checkSignupEmail, SIGNUP_EMAIL_REJECTED_ERROR } from '../../../lib/signup-email';
 
 function recoveryRedirect(origin: string, invitationToken: string | null, userId: string) {
   const proof = randomUUID();
@@ -87,8 +89,37 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 
+  const isOwnerSignup = await isPlatformOwnerEmail(supabaseUser.email);
+  // The account type may arrive as a query param (OAuth redirect) OR only in user_metadata
+  // (email/password signUp), so check both — otherwise a password company signup falls through.
+  const isCompanySignup = accountType === 'company' || supabaseUser.user_metadata?.account_type === 'company';
+
+  // #213: both provisioning branches below WRITE the identity-provider email (users.email; for a company
+  // signup also organizations.billing_email plus a name derived from its domain). Reject an
+  // out-of-bounds address BEFORE any write — never truncate. Existing users (above) are never locked out
+  // by this, and the non-provisioning fall-through at the bottom is unchanged.
+  const emailCheck = checkSignupEmail(supabaseUser.email);
+  if ((isOwnerSignup || isCompanySignup) && !emailCheck.ok) {
+    // Structured, PII-free: the reason and lengths only — never the address or its domain.
+    logger.warn(
+      {
+        event: 'auth.signup.email_rejected',
+        reason: emailCheck.reason,
+        emailLength: supabaseUser.email.length,
+      },
+      'auth callback: identity-provider email rejected before provisioning',
+    );
+    // Best-effort: drop the half-established session so the user is not left signed in without a row.
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // The redirect below still happens; nothing was written.
+    }
+    return NextResponse.redirect(`${origin}/login?error=${SIGNUP_EMAIL_REJECTED_ERROR}`);
+  }
+
   // New user — check if platform owner
-  if (await isPlatformOwnerEmail(supabaseUser.email)) {
+  if (isOwnerSignup) {
     await db.user.create({
       data: {
         supabaseUserId: supabaseUser.id,
@@ -109,12 +140,9 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 
-  // New user — company sign-up (create org + admin). The account type may arrive as
-  // a query param (OAuth redirect) OR only in user_metadata (email/password signUp),
-  // so check both — otherwise a password company signup falls through.
-  if (accountType === 'company' || supabaseUser.user_metadata?.account_type === 'company') {
-    const companyName =
-      supabaseUser.user_metadata?.company_name || `${supabaseUser.email.split('@')[1].split('.')[0]} Org`;
+  // New user — company sign-up (create org + admin).
+  if (isCompanySignup && emailCheck.ok) {
+    const companyName = supabaseUser.user_metadata?.company_name || `${emailCheck.domain.split('.')[0]} Org`;
     const slug = slugify(companyName);
 
     // Create org + user + role in transaction

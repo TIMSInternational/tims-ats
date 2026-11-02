@@ -399,7 +399,11 @@ describe-service`; only the frontend Vercel flag was missing.)
     `domain` are unbounded, `domain` on a `@unique` column, behind `permissionProcedure('organization',
 'update')`, a **lower** privilege bar than the platform-owner path) and the self-serve signup in
     `apps/web/app/auth/callback/route.ts` (no Zod schema in the request path at all) are still unbounded.
-    Filed as **#213**; #207 did **not** close the column. Two further follow-ups from the same review:
+    Filed as **#213**; #207 did **not** close the column. **#213 (2026-10-12)** bounded
+    `updateOrganizationSchema` (`billingEmail` trim + 254, `domain` trim + 253 + hostname pattern) — three
+    of four writers are now at 254. The fourth, the self-serve signup writer, now **rejects** (owner decision:
+    never truncate) an identity-provider email over 254 or whose domain is over 253 / not a bare hostname,
+    before any write (`apps/web/lib/signup-email.ts`), so all four writers are bounded. Two further follow-ups from the same review:
     **#214** (`sortBy: 'name'` compares under the process culture in C# and the DB collation in Postgres,
     unfixable until the prod collation is recorded in the baseline) and **#215** (the `detail` surface's
     `sortArraysBy: 'id'` masks `getOrganization`'s createdAt-desc users ordering).

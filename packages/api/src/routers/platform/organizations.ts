@@ -165,17 +165,19 @@ export const organizationsRouter = router({
         //
         // WHAT THIS DOES *NOT* CLOSE — corrected 2026-08-11, an earlier version of this comment called
         // `createOrgInvitation` "the OTHER writer" (singular). `organizations.billing_email` has FOUR
-        // writers, and after #207 they carry bounds 254 / 254 / UNBOUNDED / UNBOUNDED:
+        // writers, and after #207 + #213 all four carry the same 254 bound:
         //   1. this procedure                                            — 254
         //   2. `platform/invitations.ts` createOrgInvitation             — 254 (lowered from 255 here)
         //   3. `routers/organization.ts` update, via `updateOrganizationSchema`
-        //      (`packages/shared/src/validators/organization.ts`)         — UNBOUNDED, and behind
-        //      `permissionProcedure('organization','update')`, a LOWER privilege bar than this one.
-        //      Its `domain` is unbounded too, on a @unique column. Filed as #213.
+        //      (`packages/shared/src/validators/organization.ts`)         — 254 since #213 (was
+        //      unbounded, behind `permissionProcedure('organization','update')`, a LOWER privilege bar
+        //      than this one). #213 also bounded its `domain` (@unique) at 253 + a hostname pattern.
         //   4. `apps/web/app/auth/callback/route.ts` self-serve company signup, which writes
-        //      `supabaseUser.email` with no Zod schema anywhere in the request path — UNBOUNDED.
-        // So this change narrows the platform-owner paths only. Do not restate it as "one column, one
-        // bound".
+        //      `supabaseUser.email` — 254 since #213, via `apps/web/lib/signup-email.ts`: an
+        //      over-long address or a non-hostname domain is REJECTED before any write (owner decision:
+        //      reject, never truncate an identity-provider email).
+        // These are four separate checks of one constant, not one shared schema — a fifth writer must
+        // add its own.
         adminEmail: z.string().email().max(254),
         billingEmail: z.string().email().max(254).optional(),
       }),

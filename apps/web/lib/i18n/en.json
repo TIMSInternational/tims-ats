@@ -255,6 +255,8 @@
     "sendLink": "Send link",
     "sendingLink": "Sending...",
     "invalidCredentials": "Invalid email or password",
+    "signupEmailInvalid": "We couldn't create your account with that email address. Sign up again with a different email, or contact your administrator.",
+    "authCallbackFailed": "That sign-in link is invalid or has expired. Please sign in again.",
     "login": "Sign In",
     "loginSubtitle": "Sign in to your account to continue",
     "register": "Create Account",
