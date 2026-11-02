@@ -29,6 +29,8 @@ const h = vi.hoisted(() => {
 
   const base: Record<string, unknown> = {
     $executeRaw: () => Promise.resolve(1),
+    // The offer send/accept application lock (SELECT … FOR SHARE): no rows → nothing rejected.
+    $queryRaw: () => Promise.resolve([]),
     $transaction: async (x: unknown) => {
       if (!Array.isArray(x)) return (x as (tx: unknown) => unknown)(baseProxy);
       inTx = true;
@@ -270,7 +272,12 @@ describe('tRPC + tenantDb — fail closed unless scoped or explicitly opted in',
     const { candidateAssessmentService } = await import('../../packages/api/src/services/candidate-assessment.service');
 
     await expect(
-      candidateAssessmentService.submitAssessment('ana@example.test', 'org', '44444444-4444-4444-4444-444444444444', []),
+      candidateAssessmentService.submitAssessment(
+        'ana@example.test',
+        'org',
+        '44444444-4444-4444-4444-444444444444',
+        [],
+      ),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     const tenantReads = h.calls.filter((c) => c.model !== 'Organization');
     expect(tenantReads.map((c) => `${c.model}.${c.operation}`)).toEqual([

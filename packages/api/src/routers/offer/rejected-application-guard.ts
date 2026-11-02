@@ -1,5 +1,9 @@
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
+import {
+  offerApplicationLockRepository,
+  type OfferApplicationRef,
+} from '../../repositories/offer-application-lock.repository';
 
 // A candidate rejected in the pipeline must not be able to accept an outstanding offer for that vacancy, and
 // such an offer must not be sent or converted to a hire. Rejecting the application does not touch the offer
@@ -57,6 +61,25 @@ export async function assertApplicationNotRejected(
     select: { status: true },
   });
   if (applications.length > 0 && applications.every((application) => application.status === 'rejected')) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message });
+  }
+}
+
+/**
+ * Serializes an offer write with a concurrent rejection: locks the candidate's application row(s) for this
+ * offer FOR SHARE inside the caller's transaction, then applies the same rule as
+ * `assertApplicationNotRejected`. A rejection's UPDATE conflicts with the share lock, so either it committed
+ * first (this read then sees `rejected` and throws) or it waits until the offer write has committed — after
+ * which acceptance is final and conversion re-checks inside its own transaction.
+ */
+export async function lockAndAssertApplicationNotRejected(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  offer: OfferApplicationRef,
+  message: string,
+) {
+  const statuses = await offerApplicationLockRepository.lockStatuses(tx, organizationId, offer);
+  if (statuses.length > 0 && statuses.every((status) => status === 'rejected')) {
     throw new TRPCError({ code: 'BAD_REQUEST', message });
   }
 }
