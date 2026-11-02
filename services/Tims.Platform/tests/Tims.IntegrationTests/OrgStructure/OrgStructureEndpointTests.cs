@@ -147,6 +147,86 @@ public sealed class OrgStructureEndpointTests(F fixture)
     }
 
     [Fact]
+    public async Task CrossTenantDeletes_Are404_AndTheForeignRowsSurvive()
+    {
+        // PR #341 review MED-1. CrossTenantIds_Are404_AndWriteNothing never sent a DELETE, and a DELETE against an
+        // id whose row does not exist 404s for the wrong reason. So: REAL rows under org B's team and unit, for two
+        // users — org B's own (the parity harness's IDOR shape) and an org-A user (the shape a guard on the USER's
+        // org instead of the CONTAINER's would wrongly delete). Every DELETE from org A must 404, leave the row in
+        // place and write no audit row. Inserted over the superuser connection (no RLS), removed in finally so the
+        // collection's other tests still see an empty foreign team.
+        var memberB = Guid.NewGuid();
+        var memberA = Guid.NewGuid();
+        var assigneeB = Guid.NewGuid();
+        var assigneeA = Guid.NewGuid();
+        await fixture.ScalarAsync($"""
+            INSERT INTO user_teams (id, user_id, team_id, role) VALUES
+              ('{memberB}', '{F.ForeignHr}', '{F.ForeignTeam}', 'member'),
+              ('{memberA}', '{F.Employee}', '{F.ForeignTeam}', 'member');
+            INSERT INTO user_business_units (id, organization_id, user_id, business_unit_id, updated_at) VALUES
+              ('{assigneeB}', '{F.OrgB}', '{F.ForeignHr}', '{F.ForeignUnit}', now()),
+              ('{assigneeA}', '{F.OrgB}', '{F.Employee}', '{F.ForeignUnit}', now());
+            """);
+        try
+        {
+            Assert.Equal(4, await fixture.CountAsync(
+                $"SELECT (SELECT count(*) FROM user_teams WHERE team_id = '{F.ForeignTeam}') + (SELECT count(*) FROM user_business_units WHERE business_unit_id = '{F.ForeignUnit}')"));
+
+            // Twice: once with the production RLS shape live, and once with RLS switched OFF on both join tables AND
+            // on `teams`, so the repository's own org predicate is proven ALONE. The team DELETE's org predicate sits
+            // inside an EXISTS over `teams`; with `teams` RLS left on, its tenant policy hid the foreign team and the
+            // test passed with that predicate removed (tier-1 review). Mutation-checked: removing
+            // `t.organization_id = {org}` from DeleteTeamMemberAsync now turns this test red. hr_admin is the granted
+            // user:delete holder; super_admin is privileged and skips role_permissions entirely.
+            foreach (var rlsOn in new[] { true, false })
+            {
+                if (!rlsOn)
+                {
+                    await fixture.ScalarAsync("""
+                        ALTER TABLE user_teams NO FORCE ROW LEVEL SECURITY; ALTER TABLE user_teams DISABLE ROW LEVEL SECURITY;
+                        ALTER TABLE user_business_units NO FORCE ROW LEVEL SECURITY; ALTER TABLE user_business_units DISABLE ROW LEVEL SECURITY;
+                        ALTER TABLE teams NO FORCE ROW LEVEL SECURITY; ALTER TABLE teams DISABLE ROW LEVEL SECURITY;
+                        """);
+                }
+
+                foreach (var caller in new[] { F.Hr, F.Admin })
+                {
+                    foreach (var user in new[] { F.ForeignHr, F.Employee })
+                    {
+                        Assert.Equal(HttpStatusCode.NotFound,
+                            (await Send(HttpMethod.Delete, $"{Base}/teams/{F.ForeignTeam}/members/{user}", caller)).StatusCode);
+                        Assert.Equal(HttpStatusCode.NotFound,
+                            (await Send(HttpMethod.Delete, $"{Base}/business-units/{F.ForeignUnit}/assignees/{user}", caller)).StatusCode);
+                    }
+                }
+            }
+
+            foreach (var id in new[] { memberB, memberA })
+            {
+                Assert.Equal(1, await fixture.CountAsync($"SELECT count(*) FROM user_teams WHERE id = '{id}'"));
+            }
+
+            foreach (var id in new[] { assigneeB, assigneeA })
+            {
+                Assert.Equal(1, await fixture.CountAsync($"SELECT count(*) FROM user_business_units WHERE id = '{id}'"));
+            }
+
+            Assert.Equal(0, await fixture.CountAsync(
+                $"SELECT count(*) FROM audit_logs WHERE action IN ('team_member_removed','business_unit_assignee_removed') AND entity_id IN ('{F.ForeignTeam}','{F.ForeignUnit}')"));
+        }
+        finally
+        {
+            await fixture.ScalarAsync($"""
+                ALTER TABLE user_teams ENABLE ROW LEVEL SECURITY; ALTER TABLE user_teams FORCE ROW LEVEL SECURITY;
+                ALTER TABLE user_business_units ENABLE ROW LEVEL SECURITY; ALTER TABLE user_business_units FORCE ROW LEVEL SECURITY;
+                ALTER TABLE teams ENABLE ROW LEVEL SECURITY; ALTER TABLE teams FORCE ROW LEVEL SECURITY;
+                DELETE FROM user_teams WHERE id IN ('{memberB}', '{memberA}');
+                DELETE FROM user_business_units WHERE id IN ('{assigneeB}', '{assigneeA}');
+                """);
+        }
+    }
+
+    [Fact]
     public async Task TeamLeader_MustBeAnActiveUserOfTheSameOrganization()
     {
         var foreign = await Send(HttpMethod.Post, Base + "/teams", F.Admin,

@@ -8,8 +8,12 @@ import type { WriteEndpointDef, WriteExtraProbe, WriteResolvedBase, Row } from '
  * The runners are generic; the per-endpoint goldens live in the WriteEndpointDef.
  *
  * Denial semantics are per-endpoint (multi-surface generalization):
- *   - IDOR denied statuses: `ep.idorDeniedStatuses` (default [403, 404]); a 200 is always
- *     a write leak, an out-of-set status fails closed. Guarded transitions add 409.
+ *   - IDOR denied statuses: `ep.idorDeniedStatuses` (default [403, 404]); ANY 2xx is always
+ *     a write leak (not only 200 — a 201 create or a 204 delete is a mutation too), an
+ *     out-of-set status fails closed. Guarded transitions add 409.
+ *   - Success status: `ep.successStatus` (default 200). A create that answers 201 Created or a
+ *     delete that answers 204 No Content declares it; the parity and allow-role legs then require
+ *     EXACTLY that status, so a 200 where 201 is the contract still fails.
  *   - RBAC deny status: `ep.rbacDenyStatus` (default 403 — no grant); identity-anchored 404.
  *   - `ep.buildIdor` OMITTED ⇒ the endpoint has no cross-org target (org fixed by caller
  *     context, e.g. createCycle) ⇒ IDOR reports N/A rather than running.
@@ -29,7 +33,7 @@ export type Readback = (sql: string, params: unknown[]) => Promise<Row[]>;
 /** C# write caller shape, matching `callCsharpWrite` in scripts/parity/callers.ts. */
 export type CallWrite = (
   base: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   token: string,
   body: unknown,
@@ -37,6 +41,12 @@ export type CallWrite = (
 
 const DEFAULT_IDOR_DENIED = [403, 404];
 const DEFAULT_RBAC_DENY = 403;
+const DEFAULT_SUCCESS = 200;
+
+/** Any 2xx from a write that must be DENIED is a mutation that got through. Checking only `=== 200`
+ *  would let a 201 Created or 204 No Content leak fall into the "unexpected status" branch — still red,
+ *  but labelled as an isolation-unknown rather than the write leak it is. */
+const isWriteSuccess = (status: number): boolean => status >= 200 && status < 300;
 
 /**
  * Light parity — the probe (allow) role runs the write ONCE and we assert 200 + the
@@ -51,9 +61,10 @@ export async function runWriteParity<R extends WriteResolvedBase>(
   readback: Readback,
 ): Promise<WriteCheckResult> {
   const { path, body } = ep.buildParity(res);
+  const success = ep.successStatus ?? DEFAULT_SUCCESS;
   const resp = await callWrite(res.base, ep.method, path, probeToken, body);
-  if (resp.status !== 200) {
-    return { check: 'write-parity', endpoint: ep.name, ok: false, detail: `expected 200, got ${resp.status}: ${JSON.stringify(resp.body).slice(0, 160)}` };
+  if (resp.status !== success) {
+    return { check: 'write-parity', endpoint: ep.name, ok: false, detail: `expected ${success}, got ${resp.status}: ${JSON.stringify(resp.body).slice(0, 160)}` };
   }
   const rd = ep.expectResponse(resp.body);
   if (rd) return { check: 'write-parity', endpoint: ep.name, ok: false, detail: `response mismatch: ${rd}` };
@@ -84,8 +95,8 @@ export async function runWriteIdor<R extends WriteResolvedBase>(
   const denied = ep.idorDeniedStatuses ?? DEFAULT_IDOR_DENIED;
   const { path, body } = ep.buildIdor(res);
   const resp = await callWrite(res.base, ep.method, path, orgAProbeToken, body);
-  if (resp.status === 200) {
-    return { check: 'write-idor', endpoint: ep.name, ok: false, detail: `WRITE LEAK: org-A token reached an org-B write (status 200) — cross-tenant mutation` };
+  if (isWriteSuccess(resp.status)) {
+    return { check: 'write-idor', endpoint: ep.name, ok: false, detail: `WRITE LEAK: org-A token reached an org-B write (status ${resp.status}) — cross-tenant mutation` };
   }
   if (!denied.includes(resp.status)) {
     return { check: 'write-idor', endpoint: ep.name, ok: false, detail: `cannot confirm isolation: unexpected status ${resp.status} (expected ${denied.join('/')})` };
@@ -146,7 +157,8 @@ export async function runWriteRbac<R extends WriteResolvedBase>(
     if (!token) { results.push(fail(role, `no token for role '${role}'`)); continue; }
     const { path, body } = ep.buildParity(res);
     const resp = await callWrite(res.base, ep.method, path, token, body);
-    if (resp.status !== 200) { results.push(fail(role, `allow role expected 200, got ${resp.status}`)); continue; }
+    const success = ep.successStatus ?? DEFAULT_SUCCESS;
+    if (resp.status !== success) { results.push(fail(role, `allow role expected ${success}, got ${resp.status}`)); continue; }
     const rd = ep.expectResponse(resp.body);
     if (rd) { results.push(fail(role, `allow role response mismatch: ${rd}`)); continue; }
     const arb = ep.readbackAllow(res, role, resp.body);
@@ -175,8 +187,8 @@ export async function runWriteExtraProbe<R extends WriteResolvedBase>(
   const endpoint = `${ep.name}:${probe.label}`;
   const { path, body } = probe.build(res);
   const resp = await callWrite(res.base, ep.method, path, orgAProbeToken, body);
-  if (resp.status === 200) {
-    return { check: 'write-idor', endpoint, ok: false, detail: `WRITE LEAK: a cross-org probe reached a 200 write` };
+  if (isWriteSuccess(resp.status)) {
+    return { check: 'write-idor', endpoint, ok: false, detail: `WRITE LEAK: a cross-org probe reached a ${resp.status} write` };
   }
   if (!probe.deniedStatuses.includes(resp.status)) {
     return { check: 'write-idor', endpoint, ok: false, detail: `cannot confirm isolation: unexpected status ${resp.status} (expected ${probe.deniedStatuses.join('/')})` };

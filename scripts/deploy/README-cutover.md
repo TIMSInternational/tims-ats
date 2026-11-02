@@ -157,6 +157,10 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `notification`        | read  | `NotificationReadEnabled`      | NONE — surface unregistered (#98)                 | NONE — no FE wrapper shipped (#98)           | BLOCKED (step-5 unrunnable; identity-authorized, needs per-role rows)      |
 | `notification-write`  | write | `NotificationWriteEnabled`     | NONE — surface unregistered (#98)                 | NONE — no FE wrapper shipped (#98)           | BLOCKED (router-path writer control only; notify() is outside — cutover.sh)|
 | `assessment-types-write` | write | `AssessmentTypeWriteEnabled` | `verify-write assessment-types`                 | `NEXT_PUBLIC_ASSESSMENT_TYPES_VIA_CSHARP`    | BLOCKED (greenfield C#; step-5 verify-write never run — API flag first)     |
+| `tenant-people`          | read  | `TenantPeopleDirectoryEnabled` | `verify tenant-people`                 | `NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP` | BLOCKED (greenfield C#; registered 2026-10-01, never run — API flag first) |
+| `tenant-org-structure`   | read  | `TenantOrgStructureEnabled`    | `verify tenant-org-structure`          | `NEXT_PUBLIC_TENANT_ORG_STRUCTURE_VIA_CSHARP`    | BLOCKED (registered 2026-10-01, never run; same flag gates the 2 write rows) |
+| `tenant-org-structure-write` | write | `TenantOrgStructureEnabled` | `verify-write tenant-org-structure` | `NEXT_PUBLIC_TENANT_ORG_STRUCTURE_VIA_CSHARP`    | BLOCKED (structure writes; probe super_admin, hr_admin denied)            |
+| `tenant-org-people-write` | write | `TenantOrgStructureEnabled`   | `verify-write tenant-org-people`       | `NEXT_PUBLIC_TENANT_ORG_STRUCTURE_VIA_CSHARP`    | BLOCKED (people-assignment writes; probe hr_admin, hrbp denied)           |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).

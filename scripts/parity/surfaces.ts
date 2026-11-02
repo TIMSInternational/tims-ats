@@ -1730,6 +1730,86 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
+  // ── tenant org structure (READ) — PR #310, Platform__TenantOrgStructureEnabled ───────────────────────────────
+  // Both deployed reads, C#-only (`tsProcedure` omitted): the tRPC organization router has only PARTIAL twins
+  // (listBusinessUnits/listTeams return a different shape, and /options has no twin at all), so a by-role diff
+  // would compare different contracts. Parity reports [WEAK] by design; RBAC and RLS Mode B run for real. The
+  // nine write routes are registered in write-surfaces.ts ('tenant-org-structure' + 'tenant-org-people').
+  //
+  // RBAC — grants seeded by seed.ts's seedOrgStructureGrants, copied from seed-access-matrix.ts:
+  //   GET /tenant/org-structure          organization:read, org/company scope required
+  //     super_admin 200 (privileged) · hr_admin 200 (organization:read@organization — the PROBE, a real grant)
+  //     hrbp 403 (no `organization` grant: a GRANT-level denial — and hrbp DOES hold vacancy create/update, which
+  //     proves the /options OR-gate does not leak into the management read) · org_admin 403 (holds nothing).
+  //   GET /tenant/org-structure/options  organization:read OR vacancy:create OR vacancy:update, ANY scope
+  //     super_admin/hr_admin 200 · hrbp 200 via vacancy:create/update@UNIT (the any-scope path; the endpoint
+  //     exposes no people data) · org_admin 403 (the grant-level deny that keeps this endpoint's RBAC check real).
+  //   Not exercised here, stated so a green run is not over-read: a NARROW-scope organization:read grant (403 on
+  //   the management read). No MATRIX role holds one; OrgStructureEndpointTests' 403 table covers it.
+  //
+  // RLS — Mode B on both (org-scoped, no by-id read exists). Payloads differ by construction: org A holds
+  // 'Parity BU (a)' with teams A1 (led by a:super_admin, member a:hr_admin) + A2, org B holds 'Parity BU (b)' with
+  // B1 (member b:hr_admin) — seedTeamIntelData + seedOrgBTier2Mirrors. The org-B probe (b:hr_admin) holds the same
+  // grant, so both calls are 200. verify-write runs ADD rows to both orgs (fixed e0000367… units/teams); they keep
+  // the two payloads different, never equal.
+  //
+  // The route must be MAPPED: the flag is dark by default (404 → the probe preflight stops the run).
+  'tenant-org-structure': {
+    key: 'tenant-org-structure',
+    flag: 'Platform__TenantOrgStructureEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp', 'org_admin'],
+    probeRole: 'hr_admin', // a real org-wide organization:read grant, not super_admin's kernel bypass
+    endpoints: [
+      {
+        name: 'structure',
+        csharpPath: '/tenant/org-structure',
+        // tsProcedure omitted: organization.listBusinessUnits/listTeams are a different contract (see above).
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 },
+      },
+      {
+        name: 'options',
+        csharpPath: '/tenant/org-structure/options',
+        // tsProcedure omitted: greenfield C# read, no TS twin has ever existed.
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+      },
+    ],
+  },
+  // ── tenant people directory (READ) — PR #304, Platform__TenantPeopleDirectoryEnabled ─────────────────────────
+  // ONE deployed route, GET /tenant/people/assignable, registered ONCE — with `purpose=interview_evaluator`. A route
+  // can be registered only once (the coverage guard pins registry.size === endpoint count, and the query string is
+  // stripped before comparison), so the purpose is a choice, made for these reasons:
+  //   - interview_evaluator is the UNFILTERED directory (every active member of the org): the widest payload this
+  //     route can return, so it is the one whose tenant isolation matters most;
+  //   - it is the purpose with the WHOLE-DIRECTORY SCOPE RULE (AssignablePurposes.CallerScopeAllows): a team/unit-
+  //     scoped interview:create holder is refused. hrbp holds interview:create@UNIT (seeded on purpose by
+  //     seedTenantPeopleGrants), so its 403 is that rule firing on a PASSED grant check — not a missing grant.
+  //   The approver purposes (vacancy_approver / offer_approver, any caller scope, eligibility-filtered) and
+  //   `?vacancyId=` are NOT exercised here; TenantPeopleEndpointTests covers them.
+  // limit=50 (the route's max) so the RLS payload is as wide as the route allows; `input` mirrors the query string
+  // (surfaces.test.ts cross-checks the two).
+  //
+  // RBAC: super_admin 200 · hr_admin 200 (interview:create@organization — the PROBE) · hrbp 403 (scope rule) ·
+  // org_admin 403 (holds nothing — grant-level). RLS Mode B: org A and org B list DIFFERENT people (each org's own
+  // parity users), both 200 via each org's hr_admin.
+  //
+  // C#-only: the route replaces tRPC user.list for pickers and has no TS twin to diff.
+  'tenant-people': {
+    key: 'tenant-people',
+    flag: 'Platform__TenantPeopleDirectoryEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp', 'org_admin'],
+    probeRole: 'hr_admin',
+    endpoints: [
+      {
+        name: 'assignable-interview-evaluators',
+        csharpPath: '/tenant/people/assignable?purpose=interview_evaluator&limit=50',
+        // tsProcedure omitted: no TS twin (it replaces user.list, a different contract and gate).
+        input: { purpose: 'interview_evaluator', limit: 50 },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 },
+      },
+    ],
+  },
   dei: {
     key: 'dei',
     flag: 'Platform__DeiReadEnabled',
