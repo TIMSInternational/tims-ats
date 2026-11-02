@@ -18,13 +18,8 @@ import { CvParseCard } from './cv-parse-card';
 import { ScreenCandidateCard } from './screen-candidate-card';
 import { AssignAssessmentModal } from './assign-assessment-modal';
 import { CandidateConsentCard } from './consent-card';
-
-const TABS = [
-  'tabProfile', 'tabApplications', 'tabAssessments', 'tabInterviews',
-  'tabFitGaps', 'tabDocuments', 'tabValidations', 'tabTimeline', 'tabNotes',
-] as const;
-
-type TabKey = (typeof TABS)[number];
+import { isPilotScope } from '../../../../../lib/launch-scope';
+import { visibleCandidateTabs, type TabKey } from './candidate-tabs';
 
 function EmptyTabPanel({ title, message }: { title: string; message: string }) {
   return (
@@ -99,6 +94,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   }
 
   const c = candidate.data;
+  const showAssessments = !isPilotScope();
   const appCount = c.applications?.length ?? 0;
   const tabLabels: Record<string, string> = {
     tabProfile: t.candidates.tabProfile,
@@ -123,7 +119,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               <ProfileTab candidate={c} />
             </div>
             <div className="w-full md:flex-[40] space-y-4">
-              {c.assessmentAssignments.length > 0 && (
+              {showAssessments && c.assessmentAssignments.length > 0 && (
                 <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
               )}
               {c.fitScores.length > 0 && <FitBreakdown fitScores={c.fitScores} />}
@@ -133,26 +129,36 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               <TagsCard tags={c.tags} candidateId={id} />
               <CandidateConsentCard candidateId={id} />
               <RiskFlags />
-              <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />
+              <CandidateTimeline
+                events={timeline.data ?? []}
+                isLoading={timeline.isLoading}
+                isError={timeline.isError}
+              />
             </div>
           </div>
         );
       case 'tabApplications':
-        return c.applications.length > 0
-          ? <ApplicationsCard applications={c.applications} />
-          : <EmptyTabPanel title={tabLabels.tabApplications} message={empty} />;
+        return c.applications.length > 0 ? (
+          <ApplicationsCard applications={c.applications} />
+        ) : (
+          <EmptyTabPanel title={tabLabels.tabApplications} message={empty} />
+        );
       case 'tabAssessments':
-        return c.assessmentAssignments.length > 0
-          ? <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
-          : <EmptyTabPanel title={tabLabels.tabAssessments} message={empty} />;
+        return c.assessmentAssignments.length > 0 ? (
+          <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
+        ) : (
+          <EmptyTabPanel title={tabLabels.tabAssessments} message={empty} />
+        );
       case 'tabInterviews':
         return <EmptyTabPanel title={tabLabels.tabInterviews} message={empty} />;
       case 'tabFitGaps':
         return (
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4">
-            {c.fitScores.length > 0
-              ? <FitBreakdown fitScores={c.fitScores} />
-              : <EmptyTabPanel title={tabLabels.tabFitGaps} message={empty} />}
+            {c.fitScores.length > 0 ? (
+              <FitBreakdown fitScores={c.fitScores} />
+            ) : (
+              <EmptyTabPanel title={tabLabels.tabFitGaps} message={empty} />
+            )}
             <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
           </div>
         );
@@ -166,7 +172,9 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           </div>
         );
       case 'tabTimeline':
-        return <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />;
+        return (
+          <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />
+        );
       case 'tabNotes':
         return <NotesPanel title={tabLabels.tabNotes} notes={c.notes} empty={empty} />;
       default:
@@ -188,11 +196,19 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           <Link href="/recruitment/candidates" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
             {t.candidates.title}
           </Link>
-          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-          <span className="text-sm font-medium text-[#1F114C]">{c.firstName} {c.lastName}</span>
+          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+          <span className="text-sm font-medium text-[#1F114C]">
+            {c.firstName} {c.lastName}
+          </span>
         </div>
-        {c.applications.some((application) => application.status === 'active') && (
-          <button type="button" onClick={() => setShowAssignAssessment(true)} className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white">
+        {showAssessments && c.applications.some((application) => application.status === 'active') && (
+          <button
+            type="button"
+            onClick={() => setShowAssignAssessment(true)}
+            className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white"
+          >
             {t.assessments.assignAssessment}
           </button>
         )}
@@ -205,15 +221,13 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-[#EDEDED] overflow-x-auto">
-          {TABS.map((tab) => (
+          {visibleCandidateTabs(!showAssessments).map((tab) => (
             <button
               type="button"
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2.5 text-[13px] font-medium transition shrink-0 whitespace-nowrap ${
-                activeTab === tab
-                  ? 'text-[#1F114C] border-b-2 border-[#DD0C15]'
-                  : 'text-[#8B8B8B] hover:text-[#585858]'
+                activeTab === tab ? 'text-[#1F114C] border-b-2 border-[#DD0C15]' : 'text-[#8B8B8B] hover:text-[#585858]'
               }`}
             >
               {tabLabels[tab]}
@@ -223,7 +237,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
         {renderActiveTab()}
       </div>
-      {showAssignAssessment && (
+      {showAssessments && showAssignAssessment && (
         <AssignAssessmentModal
           candidateId={id}
           applications={c.applications.filter((application) => application.status === 'active')}

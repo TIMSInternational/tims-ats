@@ -75,6 +75,22 @@ export const vacancyChannelsRouter = router({
       // NOTE (#45): that wrapping was `db.$transaction` where `db` is `tenantDb`,
       // which does not compose (prisma/prisma#17948) — finding #4 was still open.
       return runTenantTransaction(ctx.user.organizationId, async (tx) => {
+        // Re-check and write the vacancy status FIRST, conditionally, inside this transaction: a hire that
+        // closed the vacancy after the read above (its closure holds the row lock until commit) makes this
+        // match 0 rows, so a fully staffed vacancy is never reopened. Throwing rolls back the channel too.
+        const publishable = await tx.vacancy.updateMany({
+          where: {
+            id: input.vacancyId,
+            organizationId: ctx.user.organizationId,
+            status: { in: ['approved', 'published'] },
+            deletedAt: null,
+          },
+          data: { status: 'published' },
+        });
+        if (publishable.count !== 1) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La vacante debe estar aprobada para publicar' });
+        }
+
         const channel = await tx.publicationChannel.create({
           data: {
             organizationId: ctx.user.organizationId,
@@ -86,13 +102,6 @@ export const vacancyChannelsRouter = router({
           },
           select: channelSelect,
         });
-
-        if (vacancy.status !== 'published') {
-          await tx.vacancy.update({
-            where: { id: input.vacancyId },
-            data: { status: 'published' },
-          });
-        }
 
         return channel;
       });
