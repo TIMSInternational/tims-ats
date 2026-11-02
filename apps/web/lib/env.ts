@@ -112,6 +112,15 @@ const baseEnvSchema = z.object({
   CV_UPLOADS_BUCKET: optionalSecret(),
   CV_UPLOADS_REGION: optionalSecret(),
 
+  // Pilot launch scope (lib/launch-scope.ts). Only 'pilot' narrows the product; anything else = full.
+  // Deliberately not a strict enum: a typo must not fail production env validation.
+  NEXT_PUBLIC_LAUNCH_SCOPE: z.string().max(32).optional(),
+  // Company self-registration (lib/self-serve-signup.ts). 'true'/'false' force it; unset = off in
+  // Vercel production, on elsewhere.
+  SELF_SERVE_SIGNUP_ENABLED: z.string().max(16).optional(),
+  // Video interviews (Daily.co). Only the exact string 'true' shows the 'video' type in scheduling.
+  NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED: z.string().max(16).optional(),
+
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });

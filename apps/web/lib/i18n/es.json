@@ -246,6 +246,11 @@
     }
   },
   "auth": {
+    "callbackError": "No pudimos completar el inicio de sesión. El enlace pudo haber expirado o haberse abierto en otro navegador. Inténtalo de nuevo.",
+    "registrationClosed": "El registro es solo por invitación. Pide a un administrador de tu empresa que te invite.",
+    "invitationOnlyHint": "¿No tienes cuenta? El acceso es solo por invitación de tu empresa.",
+    "registrationClosedTitle": "Registro por invitación",
+    "registrationClosedDesc": "Las cuentas se crean únicamente por invitación. Pide a un administrador de tu empresa que te envíe una invitación. Si buscas empleo, postúlate desde el portal de empleo de la empresa.",
     "heroTagline": "Reclutamiento inteligente, evaluaciones predictivas y desarrollo de talento en una sola plataforma.",
     "checkInboxAt": "Revisa tu bandeja de entrada en",
     "followInstructions": "y sigue las instrucciones.",
@@ -487,6 +492,8 @@
     "billingProfileUpdated": "Perfil de facturación actualizado"
   },
   "invitations": {
+    "roleRequired": "Selecciona un rol para la invitación.",
+    "bulkRowsMissingRole": "Cada fila necesita un rol. Filas sin rol:",
     "title": "Invitaciones",
     "kpiTotal": "Total Enviadas",
     "kpiPending": "Pendientes",
@@ -2414,6 +2421,12 @@
     }
   },
   "interviews": {
+    "cancelDialogTitle": "¿Cancelar la entrevista?",
+    "cancelDialogBody": "Se notificará la cancelación y la entrevista dejará de estar agendada. Esta acción no se puede deshacer.",
+    "cancelReasonLabel": "Motivo (opcional)",
+    "cancelReasonDefault": "Cancelada por el equipo de reclutamiento",
+    "cancelDialogKeep": "Mantener entrevista",
+    "cancelDialogConfirm": "Cancelar entrevista",
     "title": "Entrevistas",
     "competencyEvaluation": "Evaluación por Competencia",
     "evaluatorComparison": "Comparación entre Evaluadores",
@@ -2562,6 +2575,13 @@
     "modalTitle": "Agendar Entrevista"
   },
   "offers": {
+    "signGreeting": "Estimado/a",
+    "signIntroPrefix": "Nos complace extenderle una oferta formal para el puesto de",
+    "signIntroAt": "en",
+    "signIntroSuffix": "A continuación encontrará los detalles de su oferta.",
+    "signPosition": "Cargo",
+    "signBenefits": "Beneficios",
+    "signDate": "Fecha",
     "createOffer": "Crear borrador de oferta",
     "currency": "Moneda",
     "approver": "Aprobador",
@@ -2682,12 +2702,12 @@
     "signStartDate": "Fecha de Inicio",
     "signAcceptanceTitle": "Aceptación de la Oferta",
     "signFullNamePlaceholder": "Ingresa tu nombre completo",
-    "signTermsAgreement": "He leído y acepto los términos de esta oferta laboral. Entiendo que esta aceptación constituye mi firma digital y compromiso.",
-    "signFullNameLabel": "Nombre completo (firma digital)",
+    "signTermsAgreement": "Al escribir mi nombre confirmo que acepto esta oferta. Esta aceptación no sustituye el contrato laboral.",
+    "signFullNameLabel": "Nombre completo",
     "signAccepting": "Procesando...",
     "signAcceptButton": "Aceptar Oferta",
     "signDeclineButton": "Declinar Oferta",
-    "signConfidentialFooter": "Este documento es confidencial. Al firmar digitalmente, aceptas los términos de la oferta laboral.",
+    "signConfidentialFooter": "Este documento es confidencial. Aceptar esta oferta no sustituye el contrato laboral.",
     "signOneMoment": "Un momento por favor.",
     "signInvalidLinkDesc": "Este enlace de firma no es válido o ha expirado. Contacta a recursos humanos.",
     "signAlreadyAnsweredPrefix": "Esta oferta ya ha sido",
@@ -3093,6 +3113,7 @@
     "sev_critical": "Crítica"
   },
   "portalAuth": {
+    "linkExpired": "El enlace expiró o se abrió en otro navegador. Solicita uno nuevo.",
     "loginTitle": "Portal de candidatos",
     "loginSubtitle": "Ingresa tu correo y te enviaremos un enlace de acceso.",
     "emailLabel": "Correo electrónico",

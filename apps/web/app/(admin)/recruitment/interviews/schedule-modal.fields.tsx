@@ -6,7 +6,7 @@ import type { UseTRPCQueryResult } from '@trpc/react-query/shared';
 import type { TRPCClientErrorLike } from '@trpc/client';
 import { AssignablePeopleError, CandidateAvatar, ErrorState } from '../../../../components';
 import type { AssignablePeopleState } from '../../../../lib/platform-api/assignable-people';
-import { INTERVIEW_TYPES, DURATIONS, inputCls, labelCls, textareaCls } from './schedule-modal.helpers';
+import { INTERVIEW_TYPES, availableInterviewTypes, DURATIONS, inputCls, labelCls, textareaCls } from './schedule-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -138,7 +138,7 @@ export function Step2Fields({
       <div>
         <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.interviews.scheduleFieldInterviewType}</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {INTERVIEW_TYPES.map((it) => (
+          {availableInterviewTypes().map((it) => (
             <button key={it.value} type="button" onClick={() => setInterviewType(it.value)}
               className={`text-left px-3 py-3 rounded-lg border transition ${
                 interviewType === it.value ? 'border-[#1F114C] bg-[#F0EEF5]' : 'border-[#EDEDED] hover:bg-[#F6F6F6]'

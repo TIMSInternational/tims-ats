@@ -12,6 +12,9 @@ import { MiniCalendar } from './mini-calendar';
 import { ScheduleModal } from './schedule-modal';
 import { EvaluatorsModal } from './evaluators-modal';
 import { AiScreenModal } from './ai-screen-modal';
+import { CancelInterviewDialog } from './cancel-interview-dialog';
+import { canOfferInterviewCancel } from './interview-cancel';
+import { usePermissions } from '../../../../lib/permissions';
 
 export default function InterviewsPage() {
   const { t } = useI18n();
@@ -30,8 +33,12 @@ export default function InterviewsPage() {
   const aiScreenEnabled = aiScreenEnabledQuery.data ?? false;
 
   const utils = trpc.useUtils();
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const { roles, can } = usePermissions();
+  const showCancel = canOfferInterviewCancel(roles, can('interview', 'update'));
   const cancelInterview = trpc.interview.cancel.useMutation({
     onSuccess: () => {
+      setCancelTargetId(null);
       utils.interview.list.invalidate();
       toast(t.interviews.cancelled, { type: 'success' });
     },
@@ -130,7 +137,7 @@ export default function InterviewsPage() {
           isLoading={interviews.isLoading}
           isError={interviews.isError}
           onRetry={() => interviews.refetch()}
-          onCancel={(id) => cancelInterview.mutate({ id, cancelReason: 'Cancelled by recruiter' })}
+          onCancel={showCancel ? (id) => setCancelTargetId(id) : undefined}
           isCancelling={cancelInterview.isPending}
           onManageEvaluators={(id) => setEvaluatorsInterviewId(id)}
           onStartAiScreen={(id) => setAiScreenInterviewId(id)}
@@ -163,6 +170,15 @@ export default function InterviewsPage() {
             setShowSchedule(false);
             utils.interview.list.invalidate();
           }}
+        />
+      )}
+
+      {/* Cancel confirmation */}
+      {cancelTargetId && (
+        <CancelInterviewDialog
+          isPending={cancelInterview.isPending}
+          onClose={() => setCancelTargetId(null)}
+          onConfirm={(cancelReason) => cancelInterview.mutate({ id: cancelTargetId, cancelReason })}
         />
       )}
 

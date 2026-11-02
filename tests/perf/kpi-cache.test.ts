@@ -352,7 +352,8 @@ describe('vacancy.getDashboardKpis — sub-org scope key includes userId', () =>
     expect(keys).toHaveLength(2);
     // Both must be the same org-level key (no userId suffix)
     expect(keys[0]).toBe(keys[1]);
-    expect(keys[0]).toBe(`tims:kpis:vacancy:${TEST_ORG_ID}:organization`);
+    // <org>:<generation>:<scope>; generation '0' until a hire bumps it (lib/vacancy-kpi-cache.ts)
+    expect(keys[0]).toBe(`tims:kpis:vacancy:${TEST_ORG_ID}:0:organization`);
   });
 });
 
@@ -472,7 +473,8 @@ describe('vacancy.getDashboardKpis — Date revival on cache hit (Finding 3)', (
         },
       ],
     };
-    vi.mocked(cacheGet).mockResolvedValueOnce(cachedValue);
+    // First cacheGet is the vacancy KPI generation read (none yet), the second is the KPI entry.
+    vi.mocked(cacheGet).mockResolvedValueOnce(null).mockResolvedValueOnce(cachedValue);
 
     const callerOrg = await makeVacancyCaller(TEST_USER_ID, 'organization');
     const result = await callerOrg.vacancy.getDashboardKpis();

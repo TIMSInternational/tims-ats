@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { getAuthRedirectUrl } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
+import { hasAuthErrorFragment } from '../../../../../lib/portal-auth';
 import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../../../lib/auth/canonical-auth-origin';
 
 // Candidate portal login — passwordless magic link. We always show the same
@@ -18,6 +19,18 @@ export default function PortalLoginPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  // /auth/callback sends a failed magic-link exchange back here with ?error=link (expired, or opened
+  // in another browser). Shown until the candidate submits again.
+  const linkFailedQuery = useSearchParams().get('error') === 'link';
+  // Supabase can also land here with the failure only in the fragment (#error=...&error_code=otp_expired),
+  // which the server never sees. Read it on mount, then drop it from the address bar.
+  const [linkFailedHash, setLinkFailedHash] = useState(false);
+  useEffect(() => {
+    if (!hasAuthErrorFragment(window.location.hash)) return;
+    setLinkFailedHash(true);
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  }, []);
+  const linkFailed = linkFailedQuery || linkFailedHash;
   const [error, setError] = useState('');
   useCanonicalAuthOrigin();
 
@@ -80,6 +93,11 @@ export default function PortalLoginPage() {
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">
+              {!error && linkFailed && (
+                <div role="alert" className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-800">
+                  {t.portalAuth.linkExpired}
+                </div>
+              )}
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
                   {error}

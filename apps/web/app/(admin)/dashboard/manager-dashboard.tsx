@@ -2,27 +2,18 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { useEngagementListActionPlans, useEngagementListLeaderCommitments } from '../../../lib/platform-api/engagement';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { OffersToApprovePanel, ScorecardsToSubmitPanel } from './manager-todos';
+import { ManagerTeamSection } from './manager-team-section';
+import { CARD_BG_COLORS, Dot } from './dashboard-dot';
 
-// Team lists are small; the list endpoints that take a limit (listOkrs) are
-// capped here. listActionPlans / listLeaderCommitments take no limit and return
-// the full (scope-narrowed) set, so we count the returned items directly.
-const LIST_LIMIT = 100;
-
-const CARD_DOT_COLORS = ['bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-teal-400', 'bg-indigo-400'];
-
-const CARD_BG_COLORS = ['bg-blue-50', 'bg-green-50', 'bg-purple-50', 'bg-teal-50', 'bg-indigo-50'];
-
-function Dot({ index }: { index: number }) {
-  return (
-    <span className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`} />
-  );
+interface ManagerDashboardProps {
+  /** Pilot launch scope: hiring only (requisitions, offer approvals, interview scorecards). */
+  isPilot?: boolean;
 }
 
-export function ManagerDashboard() {
+export function ManagerDashboard({ isPilot = false }: ManagerDashboardProps) {
   const { t } = useI18n();
   const md = t.managerDashboard;
 
@@ -31,24 +22,13 @@ export function ManagerDashboard() {
   const cand = trpc.candidate.getDashboardKpis.useQuery();
   const offers = trpc.offer.getPending.useQuery();
   const scorecards = trpc.interview.getPendingScorecards.useQuery();
-  const okrs = trpc.performance.listOkrs.useQuery({ limit: LIST_LIMIT, status: 'active' });
-  const actionPlans = useEngagementListActionPlans();
-  const commitments = useEngagementListLeaderCommitments();
 
   // Hiring KPI strip depends on these four queries.
   const hiringLoading = vac.isLoading || cand.isLoading || offers.isLoading || scorecards.isLoading;
   const hiringError = vac.isError || cand.isError || offers.isError || scorecards.isError;
 
-  // Team KPI strip depends on these three queries.
-  const teamLoading = okrs.isLoading || actionPlans.isLoading || commitments.isLoading;
-  const teamError = okrs.isError || actionPlans.isError || commitments.isError;
-
   const offersCount = offers.data?.length ?? 0;
   const scorecardsCount = scorecards.data?.length ?? 0;
-  // listOkrs already filters status: 'active' server-side.
-  const activeOkrsCount = okrs.data?.okrs.length ?? 0;
-  const openActionPlansCount = actionPlans.data?.filter((p) => p.status !== 'completed').length ?? 0;
-  const openCommitmentsCount = commitments.data?.filter((c) => c.status !== 'fulfilled').length ?? 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -110,38 +90,8 @@ export function ManagerDashboard() {
           />
         </div>
 
-        {/* ── SECTION 2 — My Team ── */}
-        <h2 className="text-sm font-semibold text-[#1F114C] mb-3">{md.myTeam}</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {teamError ? (
-            <div className="col-span-full">
-              <LoadError message={md.loadError} />
-            </div>
-          ) : teamLoading ? (
-            Array.from({ length: 3 }).map((_, i) => <KpiCardSkeleton key={i} />)
-          ) : (
-            <>
-              <KpiCard
-                label={md.activeOkrs}
-                value={activeOkrsCount}
-                icon={<Dot index={0} />}
-                iconBg={CARD_BG_COLORS[0]}
-              />
-              <KpiCard
-                label={md.openActionPlans}
-                value={openActionPlansCount}
-                icon={<Dot index={1} />}
-                iconBg={CARD_BG_COLORS[1]}
-              />
-              <KpiCard
-                label={md.myCommitments}
-                value={openCommitmentsCount}
-                icon={<Dot index={2} />}
-                iconBg={CARD_BG_COLORS[2]}
-              />
-            </>
-          )}
-        </div>
+        {/* ── SECTION 2 — My Team (performance + engagement): not mounted under the pilot launch scope ── */}
+        {!isPilot && <ManagerTeamSection />}
       </div>
     </div>
   );

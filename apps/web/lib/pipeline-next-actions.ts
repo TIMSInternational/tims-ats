@@ -1,3 +1,4 @@
+import { isHrefHiddenInScope, readLaunchScope, type LaunchScope } from './launch-scope';
 // Pure mapping: pipeline stage -> suggested next action (Sprint 1.3 Task 2).
 //
 // Powers the proactive "what should I do now" toast shown after a successful
@@ -55,4 +56,15 @@ export function getNextActionForStage(stageName: string, _stageType?: string | n
   if (!stageName) return null;
   const normalized = normalizeStageName(stageName);
   return CANONICAL_STAGE_ACTIONS[normalized] ?? null;
+}
+
+/**
+ * Drops a suggested next action whose destination is hidden in the current launch scope (e.g. assessments
+ * under the pilot): the route guard would answer it with AccessDenied.
+ */
+export function visibleNextAction(
+  action: NextAction | null,
+  scope: LaunchScope = readLaunchScope(),
+): NextAction | null {
+  return action && !isHrefHiddenInScope(action.href, scope) ? action : null;
 }

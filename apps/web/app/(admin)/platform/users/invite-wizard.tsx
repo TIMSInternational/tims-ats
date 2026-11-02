@@ -7,6 +7,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { Modal, ErrorState } from '../../../../components';
+import { isInviteRoleValid, rowsMissingRole } from '../../../../lib/invitations/invite-role';
 import { ROLES, parseCSV, autoMap, type Mode, type BulkStep, type ParsedRow } from './invite-wizard.helpers';
 import { useBulkInvitationCreate, type BulkInvitationResponse } from '../../../../lib/platform-api/bulk-invitation-create';
 import { BulkResultStep } from './bulk-result-step';
@@ -26,6 +27,8 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
   const [orgId, setOrgId] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
   const [roleSlug, setRoleSlug] = useState('');
+  const [roleTouched, setRoleTouched] = useState(false);
+  const roleError = roleTouched && !isInviteRoleValid(roleSlug);
 
   // Bulk state
   const [bulkStep, setBulkStep] = useState<BulkStep>('upload');
@@ -102,13 +105,19 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
 
   const handleBulkSubmit = () => {
     if (!bulkOrgId || parsedUsers.length === 0) return;
+    // A row without a role would silently become `employee` server-side — refuse the batch instead.
+    const missing = rowsMissingRole(parsedUsers);
+    if (missing.length > 0) {
+      toast(`${t.invitations.bulkRowsMissingRole} ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? '…' : ''}`, { type: 'error', duration: 8000 });
+      return;
+    }
     bulkInvite.mutate({
       organizationId: bulkOrgId,
       users: parsedUsers.map(u => ({
         email: u.email,
         firstName: u.firstName,
         lastName: u.lastName,
-        roleSlug: u.role || undefined,
+        roleSlug: u.role?.trim(),
       })),
     });
   };
@@ -153,18 +162,19 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
 
       {/* === SINGLE MODE === */}
       {mode === 'single' && (
-        <form onSubmit={(e) => { e.preventDefault(); if (email && orgId) createSingle.mutate({ email, organizationId: orgId, roleSlug: roleSlug || undefined }); }} className="space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); setRoleTouched(true); if (email && orgId && isInviteRoleValid(roleSlug)) createSingle.mutate({ email, organizationId: orgId, roleSlug: roleSlug.trim() }); }} className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.emailRequired}</label>
             <input type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Rol</label>
+            <label htmlFor="invite-wizard-role" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.role} *</label>
             {invitationRoles.isError && <ErrorState onRetry={() => invitationRoles.refetch()} />}
-            <select value={roleSlug} onChange={(e) => setRoleSlug(e.target.value)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
+            <select id="invite-wizard-role" aria-invalid={roleError || undefined} value={roleSlug} onChange={(e) => { setRoleSlug(e.target.value); setRoleTouched(true); }} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
               <option value="">{t.invitations.selectRole}</option>
               {invitationRoles.roles.map(r => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
+            {roleError && <p role="alert" className="mt-1 text-xs text-[#DD0C15]">{t.invitations.roleRequired}</p>}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>

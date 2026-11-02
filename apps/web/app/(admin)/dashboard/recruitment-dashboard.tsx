@@ -9,7 +9,7 @@ import { OpenVacanciesCard, OpenVacanciesCardSkeleton } from './open-vacancies-c
 import { AlertsSlaPanel } from './alerts-sla-panel';
 import { AlertsPendingPanel } from './alerts-pending-panel';
 import { AlertsRiskPanel } from './alerts-risk-panel';
-import { pickPrimaryDashboard } from './pick-dashboard';
+import { pickPrimaryDashboard, showsSetupChecklistFor } from './pick-dashboard';
 import { SetupChecklist } from './setup-checklist';
 import { OrgCommandCenter } from './org-command-center';
 import { HrExecDashboard } from './hr-exec-dashboard';
@@ -18,6 +18,7 @@ import { ManagerDashboard } from './manager-dashboard';
 import { CommitteeTasksDashboard } from './committee-tasks-dashboard';
 import { EmployeeHomeDashboard } from './employee-home-dashboard';
 import { UnassignedDashboard } from './unassigned-dashboard';
+import { readLaunchScope } from '../../../lib/launch-scope';
 import { buildFunnelVacancies } from './funnel-vacancies';
 
 interface RecruitmentDashboardProps {
@@ -25,13 +26,14 @@ interface RecruitmentDashboardProps {
 }
 
 export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
-  const key = pickPrimaryDashboard(roleSlugs);
-  // Setup Checklist widget: 'org' and 'hrExec' are exclusively the
-  // super_admin and hr_admin landings respectively (see pick-dashboard.ts's
-  // precedence order — super_admin always wins the 'org' key over hr_admin,
-  // and no other role maps to either key), so this correctly gates the
-  // widget to super_admin/hr_admin only per the Task 4 brief.
-  const showsSetupChecklist = key === 'org' || key === 'hrExec';
+  const scope = readLaunchScope();
+  const key = pickPrimaryDashboard(roleSlugs, scope);
+  // Pilot launch scope: the role dashboards that survive (leader, committee, employee) render only their
+  // recruitment / onboarding sections; the out-of-scope sections are not mounted, so their queries never run.
+  const isPilot = scope === 'pilot';
+  // Setup Checklist widget: super_admin/hr_admin only per the Task 4 brief. Keyed to the ROLE, not the
+  // dashboard key, because the pilot launch scope lands both roles on the Recruiter dashboard.
+  const showsSetupChecklist = showsSetupChecklistFor(roleSlugs);
 
   const dashboard = (() => {
     switch (key) {
@@ -44,18 +46,18 @@ export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
       case 'recruiter':
         return <RecruiterDashboard />;
       case 'manager':
-        return <ManagerDashboard />;
+        return <ManagerDashboard isPilot={isPilot} />;
       case 'committee':
-        return <CommitteeTasksDashboard />;
+        return <CommitteeTasksDashboard isPilot={isPilot} />;
       case 'employee':
-        return <EmployeeHomeDashboard />;
+        return <EmployeeHomeDashboard isPilot={isPilot} />;
       case 'unassigned':
         return <UnassignedDashboard />;
       default: {
         // Exhaustiveness guard: if DashboardKey grows without a case here, this
         // line becomes a compile error instead of a silent fallthrough.
         const _exhaustive: never = key;
-        return <EmployeeHomeDashboard />;
+        return <EmployeeHomeDashboard isPilot={isPilot} />;
       }
     }
   })();

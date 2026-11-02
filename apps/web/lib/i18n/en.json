@@ -246,6 +246,11 @@
     }
   },
   "auth": {
+    "callbackError": "We could not complete sign-in. The link may have expired or been opened in a different browser. Please try again.",
+    "registrationClosed": "Registration is by invitation only. Ask an administrator at your company to invite you.",
+    "invitationOnlyHint": "No account? Access is by invitation from your company.",
+    "registrationClosedTitle": "Registration by invitation",
+    "registrationClosedDesc": "Accounts are created by invitation only. Ask an administrator at your company to send you an invitation. If you are looking for a job, apply from the company careers portal.",
     "heroTagline": "Smart recruiting, predictive assessments, and talent development in one platform.",
     "checkInboxAt": "Check your inbox at",
     "followInstructions": "and follow the instructions.",
@@ -487,6 +492,8 @@
     "billingProfileUpdated": "Billing profile updated"
   },
   "invitations": {
+    "roleRequired": "Select a role for the invitation.",
+    "bulkRowsMissingRole": "Every row needs a role. Rows without a role:",
     "title": "Invitations",
     "kpiTotal": "Total Sent",
     "kpiPending": "Pending",
@@ -2414,6 +2421,12 @@
     }
   },
   "interviews": {
+    "cancelDialogTitle": "Cancel the interview?",
+    "cancelDialogBody": "The cancellation will be notified and the interview will no longer be scheduled. This cannot be undone.",
+    "cancelReasonLabel": "Reason (optional)",
+    "cancelReasonDefault": "Cancelled by the recruitment team",
+    "cancelDialogKeep": "Keep interview",
+    "cancelDialogConfirm": "Cancel interview",
     "title": "Interviews",
     "competencyEvaluation": "Competency Evaluation",
     "evaluatorComparison": "Evaluator Comparison",
@@ -2562,6 +2575,13 @@
     "modalTitle": "Schedule Interview"
   },
   "offers": {
+    "signGreeting": "Dear",
+    "signIntroPrefix": "We are pleased to extend you a formal offer for the position of",
+    "signIntroAt": "at",
+    "signIntroSuffix": "You will find the details of your offer below.",
+    "signPosition": "Position",
+    "signBenefits": "Benefits",
+    "signDate": "Date",
     "createOffer": "Create offer draft",
     "currency": "Currency",
     "approver": "Approver",
@@ -2682,12 +2702,12 @@
     "signStartDate": "Start Date",
     "signAcceptanceTitle": "Offer Acceptance",
     "signFullNamePlaceholder": "Enter your full name",
-    "signTermsAgreement": "I have read and accept the terms of this job offer. I understand that this acceptance constitutes my digital signature and commitment.",
-    "signFullNameLabel": "Full name (digital signature)",
+    "signTermsAgreement": "By typing my name I confirm that I accept this offer. This acceptance does not replace the employment contract.",
+    "signFullNameLabel": "Full name",
     "signAccepting": "Processing...",
     "signAcceptButton": "Accept Offer",
     "signDeclineButton": "Decline Offer",
-    "signConfidentialFooter": "This document is confidential. By signing digitally, you accept the terms of the job offer.",
+    "signConfidentialFooter": "This document is confidential. Accepting this offer does not replace the employment contract.",
     "signOneMoment": "One moment please.",
     "signInvalidLinkDesc": "This signing link is invalid or has expired. Contact human resources.",
     "signAlreadyAnsweredPrefix": "This offer has already been",
@@ -3093,6 +3113,7 @@
     "sev_critical": "Critical"
   },
   "portalAuth": {
+    "linkExpired": "The link expired or was opened in a different browser. Request a new one.",
     "loginTitle": "Candidate portal",
     "loginSubtitle": "Enter your email and we'll send you a sign-in link.",
     "emailLabel": "Email",

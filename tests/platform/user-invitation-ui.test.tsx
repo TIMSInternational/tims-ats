@@ -43,15 +43,20 @@ it.each(['accepted', 'unconfirmed', 'changed', 'state_unconfirmed'])('modal send
   expect(mocks.legacy).not.toHaveBeenCalled(); view.unmount();
 });
 
-it('labels the omitted role as employee and lets .NET apply that default', async () => {
+it('requires a role: a blank role shows a validation error and sends nothing', async () => {
   mocks.post.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', organizationId: org, delivery: 'accepted' });
   const { InviteUserModal } = await import('../../apps/web/app/(admin)/platform/invitations/invite-user-modal');
   const view = render(<InviteUserModal onClose={vi.fn()} onSuccess={vi.fn()} preselectedOrgId={org} preselectedOrgName="Target" />, { wrapper });
   expect(view.getByRole('option', { name: en.invitations.selectRole })).toHaveProperty('value', '');
   fireEvent.change(view.getByPlaceholderText('usuario@empresa.com'), { target: { value: 'invitee@example.test' } });
   fireEvent.click(view.getByRole('button', { name: en.invitations.sendInvitation }));
+  expect(await view.findByText(en.invitations.roleRequired)).toBeTruthy();
+  expect(mocks.post).not.toHaveBeenCalled();
+  await view.findByRole('option', { name: 'Recruiter' });
+  fireEvent.change(view.getByRole('combobox'), { target: { value: 'recruiter' } });
+  fireEvent.click(view.getByRole('button', { name: en.invitations.sendInvitation }));
   await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/platform/invitations/users',
-    { email: 'invitee@example.test', organizationId: org, roleSlug: undefined }));
+    { email: 'invitee@example.test', organizationId: org, roleSlug: 'recruiter' }));
   view.unmount();
 });
 

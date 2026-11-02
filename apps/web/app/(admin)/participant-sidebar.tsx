@@ -6,6 +6,7 @@ import { useI18n } from '../../lib/i18n';
 import { usePermissions } from '../../lib/permissions';
 import { manifestFor, computeVisibleSections, resolveLabel, isNavItemActive } from '../../lib/nav/manifest';
 import { isNavFeatureOn } from '../../lib/nav/feature-flags';
+import { filterSectionsForScope } from '../../lib/launch-scope';
 import { Icon } from './sidebar';
 import { SidebarCollapseToggle } from './sidebar-collapse-toggle';
 import { SidebarProfileMenu } from './sidebar-profile-menu';
@@ -25,7 +26,7 @@ export function ParticipantSidebar({ userInitials, displayName, expanded, onTogg
   const pathname = usePathname();
   const { t } = useI18n();
   const { can, roles, roleLabel, isLoading } = usePermissions();
-  const VISIBLE_SECTIONS = computeVisibleSections(manifestFor(roles).sections, can, isLoading, isNavFeatureOn);
+  const VISIBLE_SECTIONS = computeVisibleSections(filterSectionsForScope(manifestFor(roles).sections), can, isLoading, isNavFeatureOn);
 
   return (
     <aside

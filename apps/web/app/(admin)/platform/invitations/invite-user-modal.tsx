@@ -8,6 +8,7 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { ErrorState } from '../../../../components';
 import { ROLES } from '../users/invite-wizard.helpers';
+import { isInviteRoleValid } from '../../../../lib/invitations/invite-role';
 
 export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselectedOrgName }: { onClose: () => void; onSuccess: () => void; preselectedOrgId?: string; preselectedOrgName?: string }) {
   const { t } = useI18n();
@@ -28,10 +29,14 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
 
   const invitationRoles = useUserInvitationRoles(orgId, ROLES);
 
+  const [roleTouched, setRoleTouched] = useState(false);
+  const roleError = roleTouched && !isInviteRoleValid(roleSlug);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !orgId) return;
-    create.mutate({ email, organizationId: orgId, roleSlug: roleSlug || undefined });
+    setRoleTouched(true);
+    if (!email || !orgId || !isInviteRoleValid(roleSlug)) return;
+    create.mutate({ email, organizationId: orgId, roleSlug: roleSlug.trim() });
   };
 
   return (
@@ -66,14 +71,15 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
             )}
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.role}</label>
+            <label htmlFor="invite-user-role" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.role} *</label>
             {invitationRoles.isError && <ErrorState onRetry={() => invitationRoles.refetch()} />}
-            <select value={roleSlug} onChange={(e) => setRoleSlug(e.target.value)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
+            <select id="invite-user-role" aria-invalid={roleError || undefined} value={roleSlug} onChange={(e) => { setRoleSlug(e.target.value); setRoleTouched(true); }} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
               <option value="">{t.invitations.selectRole}</option>
               {invitationRoles.roles.map((r) => (
                 <option key={r.slug} value={r.slug}>{r.label}</option>
               ))}
             </select>
+            {roleError && <p role="alert" className="mt-1 text-xs text-[#DD0C15]">{t.invitations.roleRequired}</p>}
           </div>
           {create.error && (
             <div className="text-xs text-[#DD0C15] bg-red-50 px-3 py-2 rounded-lg">{create.error.message}</div>

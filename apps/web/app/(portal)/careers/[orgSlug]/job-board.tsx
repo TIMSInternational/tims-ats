@@ -8,6 +8,7 @@ import { PortalNav } from './_components/portal-nav';
 import { PortalHero } from './_components/portal-hero';
 import { VacancyCard } from './_components/vacancy-card';
 import { WhyWorkSection } from './_components/why-work-section';
+import { isPilotScope } from '../../../../lib/launch-scope';
 import { PortalFooter } from './_components/portal-footer';
 
 interface JobBoardProps {
@@ -102,10 +103,12 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
         )}
       </section>
 
-      {/* Why Work With Us */}
-      <div id="beneficios">
-        <WhyWorkSection />
-      </div>
+      {/* Why Work With Us — advertises assessments / integrated video the pilot does not offer. */}
+      {!isPilotScope() && (
+        <div id="beneficios">
+          <WhyWorkSection />
+        </div>
+      )}
 
       <PortalFooter orgName={orgName} />
     </div>
