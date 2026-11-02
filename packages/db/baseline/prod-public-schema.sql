@@ -1922,7 +1922,10 @@ CREATE TABLE public.onboarding_plans (
     completed_at timestamp(3) without time zone,
     created_by_id uuid NOT NULL,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp(3) without time zone NOT NULL
+    updated_at timestamp(3) without time zone NOT NULL,
+    manager_id uuid,
+    first_day_info jsonb,
+    welcome_sent_at timestamp(3) without time zone
 );
 
 ALTER TABLE ONLY public.onboarding_plans FORCE ROW LEVEL SECURITY;
@@ -1947,7 +1950,8 @@ CREATE TABLE public.onboarding_tasks (
     completed_by_id uuid,
     "order" integer DEFAULT 0 NOT NULL,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp(3) without time zone NOT NULL
+    updated_at timestamp(3) without time zone NOT NULL,
+    resource_url character varying(2048)
 );
 
 ALTER TABLE ONLY public.onboarding_tasks FORCE ROW LEVEL SECURITY;
@@ -4964,6 +4968,12 @@ CREATE INDEX onboarding_plans_buddy_id_idx ON public.onboarding_plans USING btre
 CREATE INDEX onboarding_plans_created_by_id_idx ON public.onboarding_plans USING btree (created_by_id);
 
 --
+-- Name: onboarding_plans_manager_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX onboarding_plans_manager_id_idx ON public.onboarding_plans USING btree (manager_id);
+
+--
 -- Name: onboarding_plans_organization_id_idx; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -6408,6 +6418,13 @@ ALTER TABLE ONLY public.onboarding_plans
 
 ALTER TABLE ONLY public.onboarding_plans
     ADD CONSTRAINT onboarding_plans_created_by_id_fkey FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
+-- Name: onboarding_plans onboarding_plans_manager_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.onboarding_plans
+    ADD CONSTRAINT onboarding_plans_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE SET NULL;
 
 --
 -- Name: onboarding_plans onboarding_plans_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
