@@ -8,6 +8,7 @@ import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.se
 import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
+import { closeHireRecords } from '../../services/hire-closure.service';
 
 export const offerLifecycleRouter = router({
   // NOTE: offer send + e-signature live in offer/signing.ts — the REAL flow
@@ -213,6 +214,15 @@ export const offerLifecycleRouter = router({
           applicationId: offer.applicationId,
           hiredById: ctx.user.id,
           fitScore,
+        });
+
+        // Pilot: a confirmed hire closes its application and, once every position is covered, the vacancy —
+        // in this same transaction, so recruiters are not left with a "hired" candidate still active.
+        await closeHireRecords(tx, {
+          organizationId: ctx.user.organizationId,
+          vacancyId: offer.vacancyId,
+          applicationId: offer.applicationId,
+          hiredById: ctx.user.id,
         });
 
         return newUser;
