@@ -267,7 +267,8 @@ breaching", an API that stops answering entirely (no requests reach it, so no 5x
 datapoints are emitted) raises **no alarm at all**. These alarms only catch a service that is up and
 misbehaving. Follow-up (owner): add an external probe of `/ready` — a Route 53 health check with a
 CloudWatch alarm on `HealthCheckStatus`, or a CloudWatch Synthetics canary — publishing to the same
-SNS topic.
+SNS topic. The canaries now exist as Terraform (§4.3); **the gap stays open until they are applied**
+and an uptime alarm email has been received.
 
 ### 4.1 Create the alarms (live account)
 
@@ -326,6 +327,24 @@ and `terraform apply`. If the script already created the resources, `terraform i
 does not fail. It silently takes the resources over, and nothing records that. The email must be
 confirmed exactly as in step 4.
 `tests/governance/ops-alarms.test.ts` fails if the script and `alarms.tf` stop matching.
+
+### 4.3 Uptime canaries (`synthetics.tf`, opt-in)
+
+Three CloudWatch Synthetics canaries, every 5 minutes, from outside the service: a public careers
+page, `/health` and `/ready`. Each fires its alarm after two failed runs in a row **or when the canary
+stops reporting** (missing data is breaching), so a hard outage is no longer silent once they run.
+
+| Alarm                             | Canary target       | Fires when                           |
+| --------------------------------- | ------------------- | ------------------------------------ |
+| `tims-platform-api-uptime-web`    | careers page (2xx)  | 2 consecutive failed or missing runs |
+| `tims-platform-api-uptime-health` | API `/health` (2xx) | 2 consecutive failed or missing runs |
+| `tims-platform-api-uptime-ready`  | API `/ready` (2xx)  | 2 consecutive failed or missing runs |
+
+They publish to the same SNS topic as §4.1 (set `synthetics_alarm_topic_arn` to it while that topic is
+script-managed). The URLs are Terraform variables with no committed value. These alarms are **not**
+mirrored in `scripts/ops/create-alarms.sh`: a canary needs a bucket, a role and a code bundle, which is
+Terraform's job. Apply them with `-target` on their own, because the rest of the module has never been
+applied. See the `synthetics.tf` section of the module README.
 
 ---
 

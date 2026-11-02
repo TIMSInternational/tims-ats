@@ -9,6 +9,11 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.60"
     }
+    # synthetics.tf zips the canary script. HashiCorp-owned provider, pinned exactly (new dependency).
+    archive = {
+      source  = "hashicorp/archive"
+      version = "2.7.1"
+    }
   }
 
   # STATE BACKEND — TODO (Federico): point at your org's remote state (S3 + DynamoDB lock, or
