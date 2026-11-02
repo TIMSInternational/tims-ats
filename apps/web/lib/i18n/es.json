@@ -2266,7 +2266,8 @@
     "resendComingSoon": "Reenviar: próximamente",
     "noPendingTests": "Sin pruebas pendientes",
     "remindComingSoon": "Recordar: próximamente",
-    "noPendingScorecards": "Sin scorecards pendientes"
+    "noPendingScorecards": "Sin scorecards pendientes",
+    "closedVacancyTag": "cerrada"
   },
   "setupChecklist": {
     "title": "Lista de configuración inicial",

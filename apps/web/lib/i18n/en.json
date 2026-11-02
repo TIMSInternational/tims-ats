@@ -2266,7 +2266,8 @@
     "resendComingSoon": "Resend: coming soon",
     "noPendingTests": "No pending tests",
     "remindComingSoon": "Remind: coming soon",
-    "noPendingScorecards": "No pending scorecards"
+    "noPendingScorecards": "No pending scorecards",
+    "closedVacancyTag": "closed"
   },
   "setupChecklist": {
     "title": "Setup Checklist",
