@@ -24,16 +24,6 @@ type Opts = {
 function tx(o: Opts = {}) {
   return {
     application: {
-      findMany: vi
-        .fn()
-        .mockResolvedValue(
-          o.applications ??
-            (o.application === undefined
-              ? [{ id: APP_ID, status: 'active', currentStageId: 'stage-oferta' }]
-              : o.application
-                ? [o.application]
-                : []),
-        ),
       findFirst: vi.fn().mockResolvedValue({ status: o.statusAfterRace ?? 'active' }),
       updateMany: vi.fn().mockResolvedValue({ count: o.transitioned ?? 1 }),
     },
@@ -41,15 +31,28 @@ function tx(o: Opts = {}) {
       findFirst: vi.fn().mockResolvedValue(o.finalStage === undefined ? { id: 'stage-contratado' } : o.finalStage),
     },
     stageMovement: { create: vi.fn().mockResolvedValue({ id: 'mv-1' }) },
-    $queryRaw: vi
-      .fn()
-      .mockResolvedValue(
-        o.vacancy === undefined ? [{ positions: 1, status: 'published' }] : o.vacancy ? [o.vacancy] : [],
-      ),
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
+      const sql = strings.join('?');
+      if (sql.includes('FROM applications')) {
+        return (
+          o.applications ??
+          (o.application === undefined
+            ? [{ id: APP_ID, status: 'active', currentStageId: 'stage-oferta' }]
+            : o.application
+              ? [o.application]
+              : [])
+        );
+      }
+      return o.vacancy === undefined ? [{ positions: 1, status: 'published' }] : o.vacancy ? [o.vacancy] : [];
+    }),
     vacancy: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     offer: { count: vi.fn().mockResolvedValue(o.converted ?? 1) },
   };
 }
+
+type RawCall = [TemplateStringsArray, ...unknown[]];
+const rawCalls = (t: ReturnType<typeof tx>, table: string) =>
+  (t.$queryRaw.mock.calls as unknown as RawCall[]).filter(([strings]) => strings.join('?').includes(`FROM ${table}`));
 
 const CAND = '55555555-5555-4555-8555-555555555555';
 const input = { organizationId: ORG, vacancyId: VAC, applicationId: APP_ID, candidateId: CAND, hiredById: HR };
@@ -58,9 +61,9 @@ describe('closeHireRecords', () => {
   it('marks the application hired, moves it to the last stage and records the move', async () => {
     const t = tx();
     const result = await closeHireRecords(t as never, input);
-    expect(t.application.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: APP_ID, organizationId: ORG, vacancyId: VAC } }),
-    );
+    const [appStrings, ...appValues] = rawCalls(t, 'applications')[0]!;
+    expect(appStrings.join('?')).toMatch(/FOR NO KEY UPDATE/);
+    expect(appValues).toEqual([APP_ID, ORG, VAC]);
     expect(t.pipelineStage.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { vacancyId: VAC, organizationId: ORG }, orderBy: { order: 'desc' } }),
     );
@@ -94,7 +97,7 @@ describe('closeHireRecords', () => {
     const t = tx({ application: { id: APP_ID, status: 'rejected', currentStageId: 's' } });
     await expect(closeHireRecords(t as never, input)).rejects.toBeInstanceOf(HireRejectedApplicationError);
     expect(t.application.updateMany).not.toHaveBeenCalled();
-    expect(t.$queryRaw).not.toHaveBeenCalled();
+    expect(rawCalls(t, 'vacancies')).toHaveLength(0);
   });
 
   it('refuses an unlinked hire when every application for the vacancy is rejected', async () => {
@@ -112,9 +115,9 @@ describe('closeHireRecords', () => {
   it("closes the candidate's active application for the vacancy when the offer has no application link", async () => {
     const t = tx();
     const result = await closeHireRecords(t as never, { ...input, applicationId: null });
-    expect(t.application.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { organizationId: ORG, vacancyId: VAC, candidateId: CAND } }),
-    );
+    const [appStrings, ...appValues] = rawCalls(t, 'applications')[0]!;
+    expect(appStrings.join('?')).toMatch(/candidate_id[\s\S]*FOR NO KEY UPDATE/);
+    expect(appValues).toEqual([ORG, VAC, CAND]);
     expect(t.application.updateMany).toHaveBeenCalled();
     expect(result.applicationClosed).toBe(true);
   });
@@ -123,7 +126,7 @@ describe('closeHireRecords', () => {
     const t = tx({ transitioned: 0, statusAfterRace: 'rejected' });
     await expect(closeHireRecords(t as never, input)).rejects.toBeInstanceOf(HireRejectedApplicationError);
     expect(t.stageMovement.create).not.toHaveBeenCalled();
-    expect(t.$queryRaw).not.toHaveBeenCalled();
+    expect(rawCalls(t, 'vacancies')).toHaveLength(0);
   });
 
   it('closes a published vacancy once converted offers cover every position', async () => {
@@ -140,11 +143,11 @@ describe('closeHireRecords', () => {
   it('locks the vacancy row (FOR NO KEY UPDATE, tenant-scoped) before counting conversions', async () => {
     const t = tx({ vacancy: { positions: 2, status: 'published' }, converted: 2 });
     await closeHireRecords(t as never, input);
-    expect(t.$queryRaw).toHaveBeenCalledTimes(1);
-    const [strings, ...values] = t.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    expect(rawCalls(t, 'vacancies')).toHaveLength(1);
+    const [strings, ...values] = rawCalls(t, 'vacancies')[0]!;
     expect(strings.join('?')).toMatch(/FROM vacancies[\s\S]*organization_id[\s\S]*FOR NO KEY UPDATE/);
     expect(values).toEqual([VAC, ORG]);
-    expect(t.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(t.offer.count.mock.invocationCallOrder[0]);
+    expect(t.$queryRaw.mock.invocationCallOrder.at(-1)!).toBeLessThan(t.offer.count.mock.invocationCallOrder[0]!);
   });
 
   it('does nothing to the vacancy when it is not found in the tenant', async () => {
