@@ -3,7 +3,8 @@
 # (so the project graph + lockfiles are present).
 #   docker build -f src/Tims.Workers/Dockerfile -t tims-platform-workers .
 #
-# Deploy topology: replica = 1 (a recurring job must fire exactly once, not once per replica).
+# Deploy topology: replica = 1 (a recurring job must fire exactly once, not once per replica) — ECS Fargate,
+# see docs/runbooks/workers-deploy.md and scripts/deploy/create-workers-service.sh.
 # The worker emits no OpenAPI, so there are no OpenAPI build flags.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
@@ -26,4 +27,9 @@ COPY --from=build /app/publish ./
 USER app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
+# Liveness for `docker run` / local compose. The ECS task definition declares the SAME command itself
+# (ECS ignores an image HEALTHCHECK): the aspnet image has no curl/wget, so the binary probes its own
+# loopback /health and exits 0/1 (ContainerHealthProbe). /health runs no DB check by design.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD ["dotnet", "Tims.Workers.dll", "--healthcheck"]
 ENTRYPOINT ["dotnet", "Tims.Workers.dll"]

@@ -63,6 +63,7 @@ function triggerBlock(
 const NO_PUSH_BY_DESIGN = new Set([
   'nightly-db-controls.yml',
   'deploy-platform-api.yml',
+  'deploy-platform-workers.yml',
   'rollback-platform-api.yml',
   'backup-restore-drill.yml',
 ]);
@@ -129,6 +130,26 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     expect(triggerBlock(deploy!.src, 'workflow_dispatch'), 'the manual escape hatch must remain').not.toBeNull();
     // A push trigger would reintroduce the race this fixes: deploying while the tests still run.
     expect(deploy!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
+  });
+
+  it('the workers deploy runs only after .NET Platform CI completes on main — never on push', () => {
+    const deploy = workflows.find((w) => w.name === 'deploy-platform-workers.yml');
+    const dotnet = workflows.find((w) => w.name === 'dotnet-platform.yml')!;
+    expect(deploy).toBeDefined();
+    const run = triggerBlock(deploy!.src, 'workflow_run');
+    expect(run, 'deploy-platform-workers.yml must trigger on workflow_run').not.toBeNull();
+    const dotnetName = dotnet.src.match(/^name:\s*(.+?)\s*$/m)![1];
+    expect(run!.some((l) => l.includes(`workflows: ["${dotnetName}"]`))).toBe(true);
+    expect(run!.some((l) => /^\s*types:\s*\[completed\]\s*$/.test(l))).toBe(true);
+    expect(run!.some((l) => /^\s*branches:\s*\[main\]\s*$/.test(l))).toBe(true);
+    expect(triggerBlock(deploy!.src, 'workflow_dispatch')).not.toBeNull();
+    expect(deploy!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
+    expect(deploy!.src).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(deploy!.src).toContain("github.event.workflow_run.event == 'push'");
+    expect(deploy!.src).toContain('github.event.workflow_run.head_repository.full_name == github.repository');
+    expect(triggerBlock(dotnet.src, 'push')!.some((l) => l.includes('.github/workflows/deploy-platform-workers.yml'))).toBe(
+      true,
+    );
   });
 
   it('the API rollback is manual only (workflow_dispatch) and never fires on an event', () => {

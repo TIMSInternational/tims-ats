@@ -66,6 +66,66 @@ describe('TIMS GitHub deploy trust', () => {
     for (const action of needed) expect(granted, `deploy role lacks ${action}`).toContain(action);
   });
 
+  it('grants every AWS API the workers deploy workflow calls, scoped to the workers resources', () => {
+    // Same derivation as above for deploy-platform-workers.yml (`aws ecr|ecs <verb>`): a verb the role
+    // cannot call would fail only in production, mid-rollout.
+    const bootstrap = readFileSync(resolve(__dirname, '../../scripts/deploy/bootstrap-github-oidc-role.sh'), 'utf8');
+    const policy = JSON.parse(bootstrap.match(/PERMS="\$\(cat <<JSON\n([\s\S]*?)\nJSON/)![1]) as {
+      Statement: { Sid: string; Action: string | string[]; Resource: string | string[]; Condition?: unknown }[];
+    };
+    const granted = new Set(policy.Statement.flatMap((s) => (Array.isArray(s.Action) ? s.Action : [s.Action])));
+    const workflow = readFileSync(resolve(__dirname, '../../.github/workflows/deploy-platform-workers.yml'), 'utf8');
+    const pascal = (verb: string) => verb.replace(/(^|-)([a-z])/g, (_m, _d, c: string) => c.toUpperCase());
+    const needed = new Set<string>();
+    // The workflow's own `aws` calls AND those of every deploy script it runs (the lock lives in one).
+    const invoked = [...workflow.matchAll(/\bbash (scripts\/deploy\/[a-z-]+\.sh)/g)].map((m) =>
+      readFileSync(resolve(__dirname, '../..', m[1]!), 'utf8'),
+    );
+    expect(invoked.length, 'the workflow runs the deploy scripts').toBeGreaterThan(3);
+    for (const source of [workflow, ...invoked])
+      for (const m of source.matchAll(/\baws (ecr|ecs|dynamodb) ([a-z-]+)/g)) {
+        // `aws ecs wait services-stable` is a client-side poll over DescribeServices.
+        needed.add(m[2] === 'wait' ? 'ecs:DescribeServices' : `${m[1]}:${pascal(m[2]!)}`);
+      }
+    expect([...needed].sort()).toEqual(
+      expect.arrayContaining([
+        'ecr:DescribeImages',
+        'ecs:RegisterTaskDefinition',
+        'ecs:UpdateService',
+        'dynamodb:PutItem',
+        'dynamodb:DeleteItem',
+      ]),
+    );
+    for (const action of needed) expect(granted, `deploy role lacks ${action}`).toContain(action);
+
+    // The lock grant reaches only the lock item, never the rate-limit counters in the same table.
+    expect(policy.Statement.find((s) => s.Sid === 'WorkersDeployLock')).toMatchObject({
+      Resource: 'arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${WORKERS_LOCK_TABLE}',
+      Condition: { 'ForAllValues:StringEquals': { 'dynamodb:LeadingKeys': ['lock#workers-deploy'] } },
+    });
+    // Registration is scoped to the workers family; only Describe needs '*' (it supports no resource type).
+    expect(policy.Statement.find((s) => s.Sid === 'RegisterOnlyWorkersTaskDefinitions')?.Resource).toBe(
+      'arn:aws:ecs:${REGION}:${ACCOUNT}:task-definition/${WORKERS_TASK_FAMILY}:*',
+    );
+    const wildcard = policy.Statement.filter((s) => s.Resource === '*').flatMap((s) => [s.Action].flat());
+    expect(wildcard).not.toContain('ecs:RegisterTaskDefinition');
+    const update = policy.Statement.find((s) => s.Sid === 'UpdateOnlyTheWorkersService');
+    expect(update?.Resource).toBe('arn:aws:ecs:${REGION}:${ACCOUNT}:service/${WORKERS_CLUSTER}/${WORKERS_SERVICE}');
+    expect(policy.Statement.find((s) => s.Sid === 'EcsRunsTheWorkersTaskAsTheseRoles')).toEqual({
+      Sid: 'EcsRunsTheWorkersTaskAsTheseRoles',
+      Effect: 'Allow',
+      Action: 'iam:PassRole',
+      Resource: ['${WORKERS_EXECUTION_ROLE}', '${WORKERS_TASK_ROLE}'],
+      Condition: { StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' } },
+    });
+    expect(workflow, 'the workers workflow must assume the same OIDC deploy role').toContain(
+      'role-to-assume: arn:aws:iam::747814092517:role/tims-ats-github-deploy-prod',
+    );
+    expect(workflow, 'the workers workflow must stay inert until the owner enables it').toContain(
+      "vars.PLATFORM_WORKERS_DEPLOY_ENABLED == 'true'",
+    );
+  });
+
   it.each([
     JSON.stringify({ ...valid, use_immutable_subject: false }),
     JSON.stringify({ ...valid, use_default: false }),
