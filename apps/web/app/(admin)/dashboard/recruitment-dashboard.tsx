@@ -86,7 +86,10 @@ function RecruiterDashboard() {
   const candidateKpis = trpc.candidate.getDashboardKpis.useQuery();
   const publishedVacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' }, { staleTime: 60_000 });
   // Recently filled vacancies stay in the funnel selector (see funnel-vacancies.ts).
-  const closedVacancies = trpc.vacancy.list.useQuery({ limit: 10, status: 'closed' }, { staleTime: 60_000 });
+  const closedVacancies = trpc.vacancy.list.useQuery(
+    { limit: 10, status: 'closed', orderBy: 'closed' },
+    { staleTime: 60_000 },
+  );
   const funnelVacancies = buildFunnelVacancies(
     publishedVacancies.data?.items ?? [],
     closedVacancies.data?.items ?? [],
@@ -121,13 +124,18 @@ function RecruiterDashboard() {
         {/* Pipeline + open vacancies */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           {/* The funnel's vacancy list must have loaded too, or an empty list would read as "none published". */}
-          {isLoading || publishedVacancies.isLoading ? (
+          {isLoading || publishedVacancies.isLoading || closedVacancies.isLoading ? (
             <>
               <PipelineFunnelSkeleton />
               <OpenVacanciesCardSkeleton />
             </>
-          ) : publishedVacancies.isError ? (
-            <ErrorState onRetry={() => publishedVacancies.refetch()} />
+          ) : publishedVacancies.isError || closedVacancies.isError ? (
+            <ErrorState
+              onRetry={() => {
+                if (publishedVacancies.isError) publishedVacancies.refetch();
+                if (closedVacancies.isError) closedVacancies.refetch();
+              }}
+            />
           ) : (
             <>
               <PipelineFunnel vacancies={funnelVacancies} />
