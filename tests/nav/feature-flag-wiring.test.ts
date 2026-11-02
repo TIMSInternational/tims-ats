@@ -10,9 +10,11 @@ const read = (p: string) => readFileSync(fileURLToPath(new URL(`../../${p}`, imp
 
 describe('feature-flag wiring at the call sites', () => {
   it.each(['apps/web/app/(admin)/sidebar.tsx', 'apps/web/app/(admin)/participant-sidebar.tsx'])(
-    '%s passes isNavFeatureOn to computeVisibleSections',
+    '%s passes isNavFeatureOn (and the launch-scope filter) to computeVisibleSections',
     (file) => {
-      expect(read(file)).toMatch(/computeVisibleSections\(manifestFor\(roles\)\.sections, can, isLoading, isNavFeatureOn\)/);
+      expect(read(file)).toMatch(
+        /computeVisibleSections\(filterSectionsForScope\(manifestFor\(roles\)\.sections\), can, isLoading, isNavFeatureOn\)/,
+      );
     },
   );
 

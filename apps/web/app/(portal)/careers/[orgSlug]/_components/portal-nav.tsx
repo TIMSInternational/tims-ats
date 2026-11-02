@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
+import { isPilotScope } from '../../../../../lib/launch-scope';
 
 interface PortalNavProps {
   orgName: string;
@@ -15,6 +16,8 @@ const navLinks = [
   { label: 'Vacantes', href: '#vacantes', active: false },
   { label: 'Beneficios', href: '#beneficios', active: false },
 ];
+// The '#beneficios' section is not rendered under the pilot launch scope, so neither is its anchor.
+const visibleNavLinks = isPilotScope() ? navLinks.filter((l) => l.href !== '#beneficios') : navLinks;
 
 export function PortalNav({ orgName, orgSlug }: PortalNavProps) {
   const { t } = useI18n();
@@ -36,7 +39,7 @@ export function PortalNav({ orgName, orgSlug }: PortalNavProps) {
           </Link>
 
           <div className="hidden items-center gap-6 md:flex">
-            {navLinks.map((link) => (
+            {visibleNavLinks.map((link) => (
               <a
                 key={link.label}
                 href={link.href}

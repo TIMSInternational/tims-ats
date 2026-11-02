@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { trpc } from './trpc';
 import { useI18n } from './i18n';
 import { moduleForPath } from './nav/routes';
+import { isHrefHiddenInScope } from './launch-scope';
 
 // PATH_MODULE (route → module map) and moduleForPath (longest-prefix matcher)
 // now live in the pure, React-free `./nav/routes` module so node tests and the
@@ -171,6 +172,11 @@ export function AccessDenied() {
 export function RouteAccessGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { can, isLoading, isPrivileged } = usePermissions();
+
+  // Launch scope first: a route hidden by the pilot scope (lib/launch-scope.ts) is denied for EVERY
+  // role, privileged included — the privileged bypass below must not reopen it. No-op when the
+  // NEXT_PUBLIC_LAUNCH_SCOPE flag is unset.
+  if (isHrefHiddenInScope(pathname)) return <AccessDenied />;
 
   // Resolve the path FIRST (codex: ungated routes — /dashboard, /settings,
   // /mfa… — must render immediately, never wait on a slow/hung sessionInfo).

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../../../../lib/i18n';
+import { isPilotScope } from '../../../../../lib/launch-scope';
 import { DashboardApplications } from './dashboard-applications';
 import { DashboardInterviews } from './dashboard-interviews';
 import { DashboardAssessments } from './dashboard-assessments';
@@ -30,6 +31,7 @@ export function PortalDashboardShell({
 }) {
   const router = useRouter();
   const { t } = useI18n();
+  const pilot = isPilotScope();
 
   const signOut = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -63,9 +65,10 @@ export function PortalDashboardShell({
           <div className="mt-6 space-y-4">
             <DashboardApplications orgSlug={orgSlug} />
             <DashboardInterviews orgSlug={orgSlug} />
-            <DashboardAssessments orgSlug={orgSlug} />
+            {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
+            {!pilot && <DashboardAssessments orgSlug={orgSlug} />}
             <DashboardOffer orgSlug={orgSlug} />
-            <DashboardFaqChat orgSlug={orgSlug} />
+            {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
             <DashboardPrivacy orgSlug={orgSlug} orgName={orgName} withdrawnAt={consentWithdrawnAt} />
           </div>
         ) : (

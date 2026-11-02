@@ -9,7 +9,7 @@ import { OpenVacanciesCard, OpenVacanciesCardSkeleton } from './open-vacancies-c
 import { AlertsSlaPanel } from './alerts-sla-panel';
 import { AlertsPendingPanel } from './alerts-pending-panel';
 import { AlertsRiskPanel } from './alerts-risk-panel';
-import { pickPrimaryDashboard } from './pick-dashboard';
+import { pickPrimaryDashboard, showsSetupChecklistFor } from './pick-dashboard';
 import { SetupChecklist } from './setup-checklist';
 import { OrgCommandCenter } from './org-command-center';
 import { HrExecDashboard } from './hr-exec-dashboard';
@@ -25,12 +25,9 @@ interface RecruitmentDashboardProps {
 
 export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
   const key = pickPrimaryDashboard(roleSlugs);
-  // Setup Checklist widget: 'org' and 'hrExec' are exclusively the
-  // super_admin and hr_admin landings respectively (see pick-dashboard.ts's
-  // precedence order — super_admin always wins the 'org' key over hr_admin,
-  // and no other role maps to either key), so this correctly gates the
-  // widget to super_admin/hr_admin only per the Task 4 brief.
-  const showsSetupChecklist = key === 'org' || key === 'hrExec';
+  // Setup Checklist widget: super_admin/hr_admin only per the Task 4 brief. Keyed to the ROLE, not the
+  // dashboard key, because the pilot launch scope lands both roles on the Recruiter dashboard.
+  const showsSetupChecklist = showsSetupChecklistFor(roleSlugs);
 
   const dashboard = (() => {
     switch (key) {

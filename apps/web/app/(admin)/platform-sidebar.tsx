@@ -3,13 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useI18n } from '../../lib/i18n';
+import { filterSectionsForScope } from '../../lib/launch-scope';
 import { SidebarCollapseToggle } from './sidebar-collapse-toggle';
 import { SidebarProfileMenu } from './sidebar-profile-menu';
 
 function useNavSections() {
   const { t } = useI18n();
   const ps = t.platformSidebar;
-  return [
+  // Pilot launch scope hides out-of-scope platform items (lib/launch-scope.ts); no-op otherwise.
+  return filterSectionsForScope([
     { label: null, items: [{ href: '/dashboard', label: t.nav.dashboard, icon: 'grid' }] },
     {
       label: ps.platform,
@@ -39,7 +41,7 @@ function useNavSections() {
         { href: '/platform/support', label: ps.supportPage, icon: 'headset' },
       ],
     },
-  ];
+  ]);
 }
 
 function Icon({ name, className }: { name: string; className: string }) {
