@@ -39,7 +39,7 @@ it('submits CSV and displays partial outcomes with recovery guidance',async()=>{
   fireEvent.click(view.getByRole('button',{name:en.invitations.bulkMode}));
   fireEvent.change(view.getByPlaceholderText(en.invitations.searchOrganization),{target:{value:'Target'}});
   fireEvent.click(view.getByRole('button',{name:/Target/}));
-  const file=new File(['email\na@example.test\nb@example.test\nA@example.test'],'invite.csv',{type:'text/csv'});
+  const file=new File(['email,role\na@example.test,recruiter\nb@example.test,recruiter\nA@example.test,recruiter'],'invite.csv',{type:'text/csv'});
   fireEvent.change(view.getByLabelText(en.invitations.selectFile),{target:{files:[file]}});
   fireEvent.click(await view.findByRole('button',{name:'Continuar'}));
   fireEvent.click(view.getByRole('button',{name:'Invitar 3 Usuarios'}));
@@ -51,4 +51,18 @@ it('submits CSV and displays partial outcomes with recovery guidance',async()=>{
   expect(mocks.post).toHaveBeenCalledOnce();expect(mocks.legacy).not.toHaveBeenCalled();
   expect(mocks.post.mock.calls[0][0]).toBe('/platform/invitations/bulk');
   fireEvent.click(view.getByRole('button',{name:en.common.close}));expect(close).toHaveBeenCalledOnce();view.unmount();
+});
+
+it('refuses a CSV batch whose rows have no role instead of letting them default to employee',async()=>{
+  const {InviteWizard}=await import('../../apps/web/app/(admin)/platform/users/invite-wizard');
+  const view=render(<InviteWizard onClose={vi.fn()} onSuccess={vi.fn()}/>,{wrapper});
+  fireEvent.click(view.getByRole('button',{name:en.invitations.bulkMode}));
+  fireEvent.change(view.getByPlaceholderText(en.invitations.searchOrganization),{target:{value:'Target'}});
+  fireEvent.click(view.getByRole('button',{name:/Target/}));
+  const file=new File(['email,role\na@example.test,recruiter\nb@example.test,'],'invite.csv',{type:'text/csv'});
+  fireEvent.change(view.getByLabelText(en.invitations.selectFile),{target:{files:[file]}});
+  fireEvent.click(await view.findByRole('button',{name:'Continuar'}));
+  fireEvent.click(view.getByRole('button',{name:'Invitar 2 Usuarios'}));
+  await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(`${en.invitations.bulkRowsMissingRole} 2`,{type:'error',duration:8000}));
+  expect(mocks.post).not.toHaveBeenCalled();expect(mocks.legacy).not.toHaveBeenCalled();view.unmount();
 });
