@@ -71,20 +71,33 @@ export function enumLabel(value: string | null | undefined, labels: Record<strin
   return Object.prototype.hasOwnProperty.call(labels, value) ? labels[value] : value;
 }
 
-export interface TimeAgoLabels {
-  timeToday: string;
-  timeYesterday: string;
-  timeDaysAgo: string;
-  timeWeeksAgo: string;
-  timeMonthsAgo: string;
+const RELATIVE_LOCALE: Record<PortalLocale, string> = { ES: 'es', EN: 'en' };
+
+export interface TimeAgoOptions {
+  /** Capitalise the first letter when the phrase stands alone ("Hace 3 días"); leave it lower-case mid-sentence. */
+  standalone?: boolean;
+  now?: number;
 }
 
-/** Relative posting date, e.g. "Hace 3 días". `{n}` in the label is replaced with the count. */
-export function formatTimeAgo(date: Date | string, labels: TimeAgoLabels, now: number = Date.now()): string {
+/**
+ * Relative posting date via Intl.RelativeTimeFormat, so plurals and casing are the locale's own:
+ * "hace 1 semana" / "hace 3 semanas", "hoy", "ayer" (es); "1 week ago", "today", "yesterday" (en).
+ * Mid-sentence by default ("Publicada hace 3 días"); pass `standalone` for a phrase on its own.
+ */
+export function formatTimeAgo(date: Date | string, locale: PortalLocale, options: TimeAgoOptions = {}): string {
+  const now = options.now ?? Date.now();
   const days = Math.max(0, Math.floor((now - new Date(date).getTime()) / 86_400_000));
-  if (days === 0) return labels.timeToday;
-  if (days === 1) return labels.timeYesterday;
-  if (days < 7) return labels.timeDaysAgo.replace('{n}', String(days));
-  if (days < 30) return labels.timeWeeksAgo.replace('{n}', String(Math.floor(days / 7)));
-  return labels.timeMonthsAgo.replace('{n}', String(Math.floor(days / 30)));
+  const lang = RELATIVE_LOCALE[locale];
+  let text: string;
+  if (days <= 1) {
+    // numeric:'auto' gives the idiomatic "hoy"/"ayer" (today/yesterday) instead of "hace 0 días".
+    text = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(-days, 'day');
+  } else {
+    // numeric:'always' keeps a count ("hace 1 semana") rather than the calendar-relative "la semana pasada".
+    const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'always' });
+    if (days < 7) text = rtf.format(-days, 'day');
+    else if (days < 30) text = rtf.format(-Math.floor(days / 7), 'week');
+    else text = rtf.format(-Math.floor(days / 30), 'month');
+  }
+  return options.standalone ? text.charAt(0).toLocaleUpperCase(lang) + text.slice(1) : text;
 }
