@@ -10,7 +10,7 @@ import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../servi
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
 import { closeHireRecords, HireRejectedApplicationError } from '../../services/hire-closure.service';
-import { cacheInvalidatePrefix } from '../../lib/cache';
+import { bumpVacancyKpiGeneration } from '../../lib/vacancy-kpi-cache';
 
 export const offerLifecycleRouter = router({
   // NOTE: offer send + e-signature live in offer/signing.ts — the REAL flow
@@ -258,8 +258,8 @@ export const offerLifecycleRouter = router({
         return newUser;
       });
       // After commit: the hire may have closed the vacancy and moved the application out of the active
-      // pipeline, so drop the tenant's cached vacancy KPIs (45 s server cache) before the client refetches.
-      await cacheInvalidatePrefix(`tims:kpis:vacancy:${ctx.user.organizationId}:`);
+      // pipeline, so move the tenant's vacancy KPIs to a new cache generation before the client refetches.
+      await bumpVacancyKpiGeneration(ctx.user.organizationId);
       return hired;
     }),
 });

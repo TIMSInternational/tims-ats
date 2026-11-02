@@ -34,6 +34,7 @@ const SHARED_ONLY_PREFIXES = [
   // Vacancy KPIs: a hire closes vacancies and invalidates these after commit; a per-instance memory copy
   // could not be invalidated on the other instances, so they are shared-only (memory backend = DB read).
   'tims:kpis:vacancy:',
+  'tims:kpis:vacancy-gen:', // the vacancy KPI generation (lib/vacancy-kpi-cache.ts)
 ] as const;
 
 function isSharedOnly(key: string): boolean {

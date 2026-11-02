@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor } from '../../access';
 import { cacheGet, cacheSet } from '../../lib/cache';
+import { vacancyKpiCacheKey } from '../../lib/vacancy-kpi-cache';
 import { pipelineAnalyticsService } from '../../services/pipeline-analytics.service';
 
 export const vacancyStatsRouter = router({
@@ -76,7 +77,8 @@ export const vacancyStatsRouter = router({
       const scopeDiscriminator = isSubOrgScope
         ? `${ctx.access.scope}:${ctx.user.id}`   // sub-org scopes are user-anchored → key per user
         : ctx.access.scope;                        // org/company callers share the identical org rollup
-      const cacheKey = `tims:kpis:vacancy:${orgId}:${scopeDiscriminator}`;
+      // tims:kpis:vacancy:<org>:<generation>:<scope> (see lib/vacancy-kpi-cache.ts)
+      const cacheKey = await vacancyKpiCacheKey(orgId, scopeDiscriminator);
 
       type RecentVacancy = {
         id: string;
