@@ -18,6 +18,7 @@ import { ManagerDashboard } from './manager-dashboard';
 import { CommitteeTasksDashboard } from './committee-tasks-dashboard';
 import { EmployeeHomeDashboard } from './employee-home-dashboard';
 import { UnassignedDashboard } from './unassigned-dashboard';
+import { buildFunnelVacancies } from './funnel-vacancies';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
@@ -34,14 +35,22 @@ export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
 
   const dashboard = (() => {
     switch (key) {
-      case 'org': return <OrgCommandCenter />;
-      case 'hrExec': return <HrExecDashboard />;
-      case 'unit': return <UnitHealthDashboard />;
-      case 'recruiter': return <RecruiterDashboard />;
-      case 'manager': return <ManagerDashboard />;
-      case 'committee': return <CommitteeTasksDashboard />;
-      case 'employee': return <EmployeeHomeDashboard />;
-      case 'unassigned': return <UnassignedDashboard />;
+      case 'org':
+        return <OrgCommandCenter />;
+      case 'hrExec':
+        return <HrExecDashboard />;
+      case 'unit':
+        return <UnitHealthDashboard />;
+      case 'recruiter':
+        return <RecruiterDashboard />;
+      case 'manager':
+        return <ManagerDashboard />;
+      case 'committee':
+        return <CommitteeTasksDashboard />;
+      case 'employee':
+        return <EmployeeHomeDashboard />;
+      case 'unassigned':
+        return <UnassignedDashboard />;
       default: {
         // Exhaustiveness guard: if DashboardKey grows without a case here, this
         // line becomes a compile error instead of a silent fallthrough.
@@ -75,9 +84,16 @@ function RecruiterDashboard() {
   const rd = t.recruitingDashboard;
   const vacancyKpis = trpc.vacancy.getDashboardKpis.useQuery();
   const candidateKpis = trpc.candidate.getDashboardKpis.useQuery();
-  const publishedVacancies = trpc.vacancy.list.useQuery(
-    { limit: 50, status: 'published' },
+  const publishedVacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' }, { staleTime: 60_000 });
+  // Recently filled vacancies stay in the funnel selector (see funnel-vacancies.ts).
+  const closedVacancies = trpc.vacancy.list.useQuery(
+    { limit: 10, status: 'closed', orderBy: 'closed' },
     { staleTime: 60_000 },
+  );
+  const funnelVacancies = buildFunnelVacancies(
+    publishedVacancies.data?.items ?? [],
+    closedVacancies.data?.items ?? [],
+    rd.closedVacancyTag,
   );
 
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
@@ -99,22 +115,30 @@ function RecruiterDashboard() {
           candidateKpis={candidateKpis.data}
           isLoading={isLoading}
           isError={kpiIsError}
-          onRetry={() => { vacancyKpis.refetch(); candidateKpis.refetch(); }}
+          onRetry={() => {
+            vacancyKpis.refetch();
+            candidateKpis.refetch();
+          }}
         />
 
         {/* Pipeline + open vacancies */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           {/* The funnel's vacancy list must have loaded too, or an empty list would read as "none published". */}
-          {isLoading || publishedVacancies.isLoading ? (
+          {isLoading || publishedVacancies.isLoading || closedVacancies.isLoading ? (
             <>
               <PipelineFunnelSkeleton />
               <OpenVacanciesCardSkeleton />
             </>
-          ) : publishedVacancies.isError ? (
-            <ErrorState onRetry={() => publishedVacancies.refetch()} />
+          ) : publishedVacancies.isError || closedVacancies.isError ? (
+            <ErrorState
+              onRetry={() => {
+                if (publishedVacancies.isError) publishedVacancies.refetch();
+                if (closedVacancies.isError) closedVacancies.refetch();
+              }}
+            />
           ) : (
             <>
-              <PipelineFunnel vacancies={publishedVacancies.data?.items ?? []} />
+              <PipelineFunnel vacancies={funnelVacancies} />
               {/* Only the real count: a failed KPI query shows an error, never a default 0. */}
               {vacancyKpis.data && !vacancyKpis.isError ? (
                 <OpenVacanciesCard totalOpen={vacancyKpis.data.totalOpen} />

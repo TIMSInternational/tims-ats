@@ -8,7 +8,8 @@ import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
 interface KanbanBoardProps {
   stages: PipelineStageWithApps[];
   onMove: (applicationId: string, toStageId: string) => void;
-  onReject: (applicationId: string, reason: string) => void;
+  /** Opens the reject modal for one application. Omitted when the user lacks pipeline:update. */
+  onReject?: (applicationId: string, candidateName: string) => void;
   onToggleChecklistItem?: (applicationId: string, stageId: string, itemKey: string, completed: boolean) => void;
 }
 
@@ -26,7 +27,7 @@ function getHeaderStyle(idx: number) {
   return HEADER_COLORS[Math.min(idx, HEADER_COLORS.length - 1)];
 }
 
-export function KanbanBoard({ stages, onMove, onToggleChecklistItem }: KanbanBoardProps) {
+export function KanbanBoard({ stages, onMove, onReject, onToggleChecklistItem }: KanbanBoardProps) {
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     if (result.source.droppableId === result.destination.droppableId) return;
@@ -144,6 +145,7 @@ export function KanbanBoard({ stages, onMove, onToggleChecklistItem }: KanbanBoa
                                 stageId={stage.id}
                                 checklist={stage.checklist}
                                 onToggleChecklistItem={onToggleChecklistItem}
+                                onReject={onReject ? () => onReject(app.id, `${app.candidate.firstName} ${app.candidate.lastName}`) : undefined}
                               />
                             </div>
                           )}

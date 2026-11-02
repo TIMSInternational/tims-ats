@@ -391,7 +391,7 @@ describe('create offer form — vacancy switching and bounds', () => {
     { id: 'app-bare', vacancy: { id: 'vac-bare', title: 'Sin salario', status: 'published', salary: null } },
   ] as unknown as Parameters<typeof CreateOfferModal>[0]['applications'];
 
-  it('resets period and currency to monthly/COP when the new vacancy has no salary data', () => {
+  it('resets period and currency to monthly/tenant default (CRC) when the new vacancy has no salary data', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications: withBareVacancy, onClose: vi.fn() }),
     );
@@ -400,7 +400,7 @@ describe('create offer form — vacancy switching and bounds', () => {
     expect((selects[2] as HTMLSelectElement).value).toBe('USD');
     fireEvent.change(selects[0] as HTMLSelectElement, { target: { value: 'app-bare' } });
     expect((selects[1] as HTMLSelectElement).value).toBe('monthly');
-    expect((selects[2] as HTMLSelectElement).value).toBe('COP');
+    expect((selects[2] as HTMLSelectElement).value).toBe('CRC');
   });
 
   it('does not accept an amount above the API cap', () => {

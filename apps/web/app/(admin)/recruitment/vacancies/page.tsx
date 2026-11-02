@@ -10,6 +10,7 @@ import { VacancyTable } from './vacancy-table';
 import { CreateModal } from './create-modal';
 import { CloseModal } from './close-modal';
 import type { VacancyListItem } from '../../../../lib/trpc-types';
+import { summarizeVacancyKpis } from './vacancy-kpis';
 
 export default function VacanciesPage() {
   const { t } = useI18n();
@@ -70,19 +71,16 @@ export default function VacanciesPage() {
 
   const items = vacancies.data?.items ?? [];
   const k = kpis.data;
-  const totalAll = k
-    ? k.totalOpen + k.totalDraft + k.totalPendingApproval + k.totalPublished + k.totalClosed
-    : 0;
-  const fillRate = totalAll > 0 && k ? Math.round((k.totalClosed / totalAll) * 100) : 0;
+  const { total: totalAll, fillRatePct: fillRate } = k ? summarizeVacancyKpis(k) : { total: 0, fillRatePct: 0 };
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
       {/* KPI Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          Array.from({ length: 3 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.isError ? (
-          <div className="col-span-2 md:col-span-4">
+          <div className="col-span-2 md:col-span-3">
             <ErrorState onRetry={() => kpis.refetch()} />
           </div>
         ) : k ? (
@@ -100,13 +98,6 @@ export default function VacanciesPage() {
               subtitle={`${k.totalPublished} ${t.vacancies.visibleCandidates}`}
               icon={<OpenIcon />}
               iconBg="bg-green-50"
-            />
-            <KpiCard
-              label={t.vacancies.kpiTimeToFill}
-              value={`${k.totalClosed > 0 ? '28' : '--'}`}
-              subtitle={t.vacancies.daysAvg}
-              icon={<ClockIcon />}
-              iconBg="bg-blue-50"
             />
             <KpiCard
               label={t.vacancies.kpiFillRate}
@@ -191,13 +182,6 @@ function OpenIcon() {
   return (
     <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" />
-    </svg>
-  );
-}
-function ClockIcon() {
-  return (
-    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
     </svg>
   );
 }
