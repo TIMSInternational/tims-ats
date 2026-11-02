@@ -104,12 +104,12 @@ describe('closeHireRecords', () => {
     expect(result.vacancyClosed).toBe(true);
   });
 
-  it('locks the vacancy row (FOR UPDATE, tenant-scoped) before counting conversions', async () => {
+  it('locks the vacancy row (FOR NO KEY UPDATE, tenant-scoped) before counting conversions', async () => {
     const t = tx({ vacancy: { positions: 2, status: 'published' }, converted: 2 });
     await closeHireRecords(t as never, input);
     expect(t.$queryRaw).toHaveBeenCalledTimes(1);
     const [strings, ...values] = t.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
-    expect(strings.join('?')).toMatch(/FROM vacancies[\s\S]*organization_id[\s\S]*FOR UPDATE/);
+    expect(strings.join('?')).toMatch(/FROM vacancies[\s\S]*organization_id[\s\S]*FOR NO KEY UPDATE/);
     expect(values).toEqual([VAC, ORG]);
     expect(t.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(t.offer.count.mock.invocationCallOrder[0]);
   });

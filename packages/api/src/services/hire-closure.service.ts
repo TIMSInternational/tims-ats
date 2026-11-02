@@ -66,10 +66,14 @@ export async function closeHireRecords(
   // otherwise each count only their own (uncommitted) conversion under READ COMMITTED, both skip the
   // closure, and a fully staffed vacancy stays published. With the lock, the second transaction waits for
   // the first to commit, and its count (a new statement) then sees the first hire.
+  // FOR NO KEY UPDATE, not FOR UPDATE: the hire snapshot inserted earlier in this transaction holds a
+  // FOR KEY SHARE lock on the vacancy through its foreign key. FOR UPDATE conflicts with KEY SHARE, so two
+  // concurrent hires would deadlock; NO KEY UPDATE is compatible with KEY SHARE but still serializes with
+  // itself (and with the status update below, which takes the same lock mode).
   const locked = await tx.$queryRaw<Array<{ positions: number; status: string }>>`
     SELECT positions, status FROM vacancies
     WHERE id = ${vacancyId}::uuid AND organization_id = ${organizationId}::uuid
-    FOR UPDATE`;
+    FOR NO KEY UPDATE`;
   const vacancy = locked[0];
   if (vacancy && CLOSABLE_VACANCY_STATUSES.includes(vacancy.status)) {
     const hires = await tx.offer.count({ where: { vacancyId, organizationId, status: 'converted' } });
