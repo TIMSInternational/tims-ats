@@ -36,6 +36,18 @@ export async function GET(request: Request) {
   const code = searchParams.get('code');
   const accountType = searchParams.get('type') || null; // 'candidate' | 'company' | null
 
+  // A candidate's portal magic link that fails (expired, already used, or opened in a different browser
+  // than the one that requested it) goes back to THAT portal's login with a retry message, never to the
+  // staff /login. Resolved up front because Supabase can report the failure WITHOUT a `code`: as
+  // `error` / `error_code` / `error_description` query params (handled here), or in a URL fragment the
+  // server never sees (the portal login page reads that one client-side).
+  const portalLogin = portalLoginPathFor(searchParams.get('next'));
+  const supabaseError = searchParams.get('error') || searchParams.get('error_code');
+
+  if (portalLogin && (!code || supabaseError)) {
+    return NextResponse.redirect(`${origin}${portalLogin}?error=link`);
+  }
+  // Staff flow unchanged: no code → /login?error=no_code.
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=no_code`);
   }
@@ -44,10 +56,6 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    // A candidate's portal magic link that fails the PKCE exchange (expired, or opened in a different
-    // browser than the one that requested it) goes back to THAT portal's login with a retry message,
-    // never to the staff /login.
-    const portalLogin = portalLoginPathFor(searchParams.get('next'));
     if (portalLogin) return NextResponse.redirect(`${origin}${portalLogin}?error=link`);
     return NextResponse.redirect(`${origin}/login?error=auth_callback_error`);
   }

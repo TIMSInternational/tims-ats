@@ -119,12 +119,16 @@ describe('route guard decision (isHrefHiddenInScope)', () => {
 });
 
 describe('pilot landing', () => {
-  it('super_admin and hr_admin land on the recruiter dashboard and keep the setup checklist', () => {
+  it('super_admin, hr_admin and hrbp land on the recruiter dashboard; super_admin/hr_admin keep the setup checklist', () => {
     expect(pickPrimaryDashboard(['super_admin'], 'pilot')).toBe('recruiter');
     expect(pickPrimaryDashboard(['hr_admin'], 'pilot')).toBe('recruiter');
     expect(pickPrimaryDashboard(['super_admin'], 'full')).toBe('org');
     expect(pickPrimaryDashboard(['hr_admin'], 'full')).toBe('hrExec');
     expect(pickPrimaryDashboard(['committee'], 'pilot')).toBe('committee');
+    expect(pickPrimaryDashboard(['hrbp'], 'pilot')).toBe('recruiter');
+    expect(pickPrimaryDashboard(['hrbp'], 'full')).toBe('unit');
+    expect(pickPrimaryDashboard(['leader'], 'pilot')).toBe('manager');
+    expect(pickPrimaryDashboard(['employee'], 'pilot')).toBe('employee');
     expect(showsSetupChecklistFor(['super_admin'])).toBe(true);
     expect(showsSetupChecklistFor(['hr_admin', 'recruiter'])).toBe(true);
     expect(showsSetupChecklistFor(['recruiter'])).toBe(false);

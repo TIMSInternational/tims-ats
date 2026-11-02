@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { getAuthRedirectUrl } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
+import { hasAuthErrorFragment } from '../../../../../lib/portal-auth';
 import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../../../lib/auth/canonical-auth-origin';
 
 // Candidate portal login — passwordless magic link. We always show the same
@@ -20,7 +21,16 @@ export default function PortalLoginPage() {
   const [busy, setBusy] = useState(false);
   // /auth/callback sends a failed magic-link exchange back here with ?error=link (expired, or opened
   // in another browser). Shown until the candidate submits again.
-  const linkFailed = useSearchParams().get('error') === 'link';
+  const linkFailedQuery = useSearchParams().get('error') === 'link';
+  // Supabase can also land here with the failure only in the fragment (#error=...&error_code=otp_expired),
+  // which the server never sees. Read it on mount, then drop it from the address bar.
+  const [linkFailedHash, setLinkFailedHash] = useState(false);
+  useEffect(() => {
+    if (!hasAuthErrorFragment(window.location.hash)) return;
+    setLinkFailedHash(true);
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  }, []);
+  const linkFailed = linkFailedQuery || linkFailedHash;
   const [error, setError] = useState('');
   useCanonicalAuthOrigin();
 

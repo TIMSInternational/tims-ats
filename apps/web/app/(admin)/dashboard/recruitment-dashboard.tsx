@@ -18,32 +18,45 @@ import { ManagerDashboard } from './manager-dashboard';
 import { CommitteeTasksDashboard } from './committee-tasks-dashboard';
 import { EmployeeHomeDashboard } from './employee-home-dashboard';
 import { UnassignedDashboard } from './unassigned-dashboard';
+import { readLaunchScope } from '../../../lib/launch-scope';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
 }
 
 export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
-  const key = pickPrimaryDashboard(roleSlugs);
+  const scope = readLaunchScope();
+  const key = pickPrimaryDashboard(roleSlugs, scope);
+  // Pilot launch scope: the role dashboards that survive (leader, committee, employee) render only their
+  // recruitment / onboarding sections; the out-of-scope sections are not mounted, so their queries never run.
+  const isPilot = scope === 'pilot';
   // Setup Checklist widget: super_admin/hr_admin only per the Task 4 brief. Keyed to the ROLE, not the
   // dashboard key, because the pilot launch scope lands both roles on the Recruiter dashboard.
   const showsSetupChecklist = showsSetupChecklistFor(roleSlugs);
 
   const dashboard = (() => {
     switch (key) {
-      case 'org': return <OrgCommandCenter />;
-      case 'hrExec': return <HrExecDashboard />;
-      case 'unit': return <UnitHealthDashboard />;
-      case 'recruiter': return <RecruiterDashboard />;
-      case 'manager': return <ManagerDashboard />;
-      case 'committee': return <CommitteeTasksDashboard />;
-      case 'employee': return <EmployeeHomeDashboard />;
-      case 'unassigned': return <UnassignedDashboard />;
+      case 'org':
+        return <OrgCommandCenter />;
+      case 'hrExec':
+        return <HrExecDashboard />;
+      case 'unit':
+        return <UnitHealthDashboard />;
+      case 'recruiter':
+        return <RecruiterDashboard />;
+      case 'manager':
+        return <ManagerDashboard isPilot={isPilot} />;
+      case 'committee':
+        return <CommitteeTasksDashboard isPilot={isPilot} />;
+      case 'employee':
+        return <EmployeeHomeDashboard isPilot={isPilot} />;
+      case 'unassigned':
+        return <UnassignedDashboard />;
       default: {
         // Exhaustiveness guard: if DashboardKey grows without a case here, this
         // line becomes a compile error instead of a silent fallthrough.
         const _exhaustive: never = key;
-        return <EmployeeHomeDashboard />;
+        return <EmployeeHomeDashboard isPilot={isPilot} />;
       }
     }
   })();
@@ -72,10 +85,7 @@ function RecruiterDashboard() {
   const rd = t.recruitingDashboard;
   const vacancyKpis = trpc.vacancy.getDashboardKpis.useQuery();
   const candidateKpis = trpc.candidate.getDashboardKpis.useQuery();
-  const publishedVacancies = trpc.vacancy.list.useQuery(
-    { limit: 50, status: 'published' },
-    { staleTime: 60_000 },
-  );
+  const publishedVacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' }, { staleTime: 60_000 });
 
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
   const kpiIsError = vacancyKpis.isError || candidateKpis.isError;
@@ -96,7 +106,10 @@ function RecruiterDashboard() {
           candidateKpis={candidateKpis.data}
           isLoading={isLoading}
           isError={kpiIsError}
-          onRetry={() => { vacancyKpis.refetch(); candidateKpis.refetch(); }}
+          onRetry={() => {
+            vacancyKpis.refetch();
+            candidateKpis.refetch();
+          }}
         />
 
         {/* Pipeline + open vacancies */}

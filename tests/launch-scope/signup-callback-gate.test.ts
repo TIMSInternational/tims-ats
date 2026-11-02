@@ -140,3 +140,29 @@ describe('failed code exchange', () => {
     );
   });
 });
+
+describe('portal-aware failure without a code (Codex P2)', () => {
+  const portalNext = `next=${encodeURIComponent('/careers/invu/dashboard')}`;
+
+  it('no code + portal next → that portal login with error=link', async () => {
+    expect(await call(portalNext)).toBe(`${BASE}/careers/invu/login?error=link`);
+  });
+
+  it('no code + no next keeps the staff /login?error=no_code', async () => {
+    expect(await call('')).toBe(`${BASE}/login?error=no_code`);
+    expect(await call(`next=${encodeURIComponent('/dashboard')}`)).toBe(`${BASE}/login?error=no_code`);
+    expect(await call(`next=${encodeURIComponent('//evil.example/careers/x')}`)).toBe(`${BASE}/login?error=no_code`);
+  });
+
+  it('Supabase error query params + portal next → error=link, without attempting an exchange', async () => {
+    const qs = `error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired&${portalNext}`;
+    expect(await call(qs)).toBe(`${BASE}/careers/invu/login?error=link`);
+    expect(await call(`error_code=otp_expired&${portalNext}`)).toBe(`${BASE}/careers/invu/login?error=link`);
+    // Even if a code rides along, the reported error wins for the portal.
+    expect(await call(`code=abc&error=access_denied&${portalNext}`)).toBe(`${BASE}/careers/invu/login?error=link`);
+  });
+
+  it('Supabase error query params without a portal next keep the staff /login?error=no_code', async () => {
+    expect(await call('error=access_denied&error_code=otp_expired')).toBe(`${BASE}/login?error=no_code`);
+  });
+});

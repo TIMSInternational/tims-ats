@@ -23,8 +23,10 @@ export type DashboardKey =
 // Precedence on multi-role collisions:
 //   super_admin > hr_admin > hrbp > recruiter > leader > committee > employee.
 //
-// Pilot launch scope (NEXT_PUBLIC_LAUNCH_SCOPE=pilot): the Org Command Center and HR-Exec dashboard are
-// HR-suite surfaces, so super_admin and hr_admin land on the Recruiter dashboard instead.
+// Pilot launch scope (NEXT_PUBLIC_LAUNCH_SCOPE=pilot): the Org Command Center, HR-Exec and Unit Health
+// dashboards are HR-suite surfaces (performance / engagement / learning / compensation), so super_admin,
+// hr_admin and hrbp land on the Recruiter dashboard instead. leader, committee and employee keep their own
+// landings, which render a recruitment/onboarding-only variant under the pilot (see recruitment-dashboard).
 export function pickPrimaryDashboard(
   roleSlugs: readonly string[],
   scope: LaunchScope = readLaunchScope(),
@@ -32,7 +34,7 @@ export function pickPrimaryDashboard(
   const pilot = scope === 'pilot';
   if (roleSlugs.includes('super_admin')) return pilot ? 'recruiter' : 'org';
   if (roleSlugs.includes('hr_admin')) return pilot ? 'recruiter' : 'hrExec';
-  if (roleSlugs.includes('hrbp')) return 'unit';
+  if (roleSlugs.includes('hrbp')) return pilot ? 'recruiter' : 'unit';
   if (roleSlugs.includes('recruiter')) return 'recruiter';
   if (roleSlugs.includes('leader')) return 'manager';
   if (roleSlugs.includes('committee')) return 'committee';

@@ -34,3 +34,12 @@ export function portalLoginPathFor(next: string | null | undefined): string | nu
   if (!slug || !/^[A-Za-z0-9_-]{1,100}$/.test(slug)) return null;
   return `/careers/${slug}/login`;
 }
+
+// Supabase reports some auth failures (e.g. an expired or already-used magic link: `otp_expired`) only in
+// the URL FRAGMENT — `#error=access_denied&error_code=otp_expired&error_description=...` — which never
+// reaches the server. True when `hash` (window.location.hash, with or without the leading '#') carries one.
+export function hasAuthErrorFragment(hash: string | null | undefined): boolean {
+  if (!hash) return false;
+  const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  return Boolean(params.get('error') || params.get('error_code'));
+}
