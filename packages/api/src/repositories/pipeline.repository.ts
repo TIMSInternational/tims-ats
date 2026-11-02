@@ -77,6 +77,14 @@ const movementSelect = {
 // Repository
 // ---------------------------------------------------------------------------
 
+/** A stage move targeted an application that is no longer active (hired or rejected since it was read). */
+export class ApplicationNotActiveError extends Error {
+  constructor() {
+    super('application is no longer active');
+    this.name = 'ApplicationNotActiveError';
+  }
+}
+
 export const pipelineRepository = {
   // Board
   async getBoard(orgId: string, vacancyId: string, statusFilter: string) {
@@ -164,6 +172,14 @@ export const pipelineRepository = {
     // `tenantDb`, whose extension re-wraps each op in its own mini-transaction, so
     // the movement audit row and the stage flip were committing independently.
     return runTenantTransaction(orgId, async (tx) => {
+      // Conditional on 'active' and written FIRST: a hired or rejected application (e.g. a stale board drag
+      // after conversion) is not moved, and throwing here rolls back the movement row too.
+      const moved = await tx.application.updateMany({
+        where: { id: applicationId, organizationId: orgId, status: 'active' },
+        data: { currentStageId: toStageId },
+      });
+      if (moved.count !== 1) throw new ApplicationNotActiveError();
+
       await tx.stageMovement.create({
         data: {
           organizationId: orgId,
@@ -175,9 +191,8 @@ export const pipelineRepository = {
         },
       });
 
-      return tx.application.update({
-        where: { id: applicationId },
-        data: { currentStageId: toStageId },
+      return tx.application.findFirst({
+        where: { id: applicationId, organizationId: orgId },
         select: applicationMutationSelect,
       });
     });
@@ -194,6 +209,14 @@ export const pipelineRepository = {
     // runTenantTransaction per #45 (prisma#17948) — a bulk move must not leave
     // movement rows written with the applications un-moved (or vice versa).
     return runTenantTransaction(orgId, async (tx) => {
+      // Conditional on 'active' and written FIRST: if any application stopped being active (hired, rejected)
+      // since the caller read it, the whole bulk move rolls back, movement rows included.
+      const moved = await tx.application.updateMany({
+        where: { id: { in: applications.map((a) => a.id) }, organizationId: orgId, status: 'active' },
+        data: { currentStageId: toStageId },
+      });
+      if (moved.count !== applications.length) throw new ApplicationNotActiveError();
+
       await tx.stageMovement.createMany({
         data: applications.map((app) => ({
           organizationId: orgId,
@@ -203,11 +226,6 @@ export const pipelineRepository = {
           movedBy: userId,
           reason,
         })),
-      });
-
-      await tx.application.updateMany({
-        where: { id: { in: applications.map((a) => a.id) } },
-        data: { currentStageId: toStageId },
       });
 
       return { moved: applications.length };

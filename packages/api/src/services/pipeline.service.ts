@@ -1,6 +1,20 @@
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
-import { pipelineRepository } from '../repositories/pipeline.repository';
+import { ApplicationNotActiveError, pipelineRepository } from '../repositories/pipeline.repository';
+
+const NOT_ACTIVE_MESSAGE = 'La aplicación ya no está activa (fue contratada o descartada); recarga el tablero';
+
+/** Maps a move that lost to a hire/rejection to CONFLICT; anything else propagates unchanged. */
+async function conflictIfNotActive<T>(op: Promise<T>): Promise<T> {
+  try {
+    return await op;
+  } catch (error) {
+    if (error instanceof ApplicationNotActiveError) {
+      throw new TRPCError({ code: 'CONFLICT', message: NOT_ACTIVE_MESSAGE });
+    }
+    throw error;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Pipeline Service — board/movement business logic, no db imports.
@@ -92,13 +106,8 @@ export const pipelineService = {
       application.checklistProgress as ChecklistProgress | null,
     );
 
-    const moved = await pipelineRepository.moveCandidate(
-      orgId,
-      userId,
-      applicationId,
-      application.currentStageId,
-      toStageId,
-      reason,
+    const moved = await conflictIfNotActive(
+      pipelineRepository.moveCandidate(orgId, userId, applicationId, application.currentStageId, toStageId, reason),
     );
     // Always the same static shape (never a union across branches) so tRPC's
     // inferred router output type carries `warnings` as one stable optional
@@ -136,7 +145,7 @@ export const pipelineService = {
     if (!targetStage)
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'La etapa destino no pertenece a esta vacante' });
 
-    return pipelineRepository.bulkMove(orgId, userId, applications, toStageId, reason);
+    return conflictIfNotActive(pipelineRepository.bulkMove(orgId, userId, applications, toStageId, reason));
   },
 
   // Reject
