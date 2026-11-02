@@ -28,7 +28,13 @@ const buildAccessForUserMock = vi.hoisted(() =>
 );
 
 const mockDb = vi.hoisted(() => ({
-  offer: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  offer: {
+    findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    count: vi.fn(async () => 1),
+  },
   organization: { findFirst: vi.fn() },
   user: { findMany: vi.fn() },
   offerApproval: { createMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },

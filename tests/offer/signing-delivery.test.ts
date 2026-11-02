@@ -27,7 +27,7 @@ vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
-    offer: { findFirst: findOffer, updateMany: updateOffer },
+    offer: { findFirst: findOffer, updateMany: updateOffer, count: vi.fn(async () => 1) },
     offerApproval: { count: countRejected },
     organization: { findFirst: findOrg },
   },
@@ -101,7 +101,7 @@ describe('offer signing-link delivery', () => {
           organizationId: ORG_ID,
           status: 'approved',
           updatedAt,
-          OR: [{ applicationId: null }, { application: { status: { not: 'rejected' } } }],
+          OR: expect.any(Array),
         }),
       }),
     );

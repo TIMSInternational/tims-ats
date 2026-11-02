@@ -24,13 +24,20 @@ export interface RejectedApplicationClient {
 }
 
 /**
- * Offer-write predicate: the offer's linked application is not rejected (offers without a link pass; the
- * guard above handles those). Spread into an `offer.updateMany` where so the check runs in the same SQL
- * statement as the write.
+ * Offer-write predicate, evaluated in the same SQL statement as the write it guards:
+ * - a linked offer passes only while its application is not rejected;
+ * - an unlinked offer passes while the candidate has no application for the vacancy, or at least one that
+ *   is not rejected (the same rule as `assertApplicationNotRejected`).
  */
-export const NOT_REJECTED_APPLICATION = {
-  OR: [{ applicationId: null }, { application: { status: { not: 'rejected' } } }],
-} satisfies Prisma.OfferWhereInput;
+export function notRejectedApplication(vacancyId: string) {
+  return {
+    OR: [
+      { applicationId: { not: null }, application: { status: { not: 'rejected' } } },
+      { applicationId: null, candidate: { applications: { none: { vacancyId } } } },
+      { applicationId: null, candidate: { applications: { some: { vacancyId, status: { not: 'rejected' } } } } },
+    ],
+  } satisfies Prisma.OfferWhereInput;
+}
 
 export async function assertApplicationNotRejected(
   client: RejectedApplicationClient,

@@ -21,8 +21,8 @@ describe('rejected-application guard wiring', () => {
     expect(procedureBody(signing, 'acceptByToken')).toContain('await assertApplicationNotRejected(');
     expect(procedureBody(lifecycle, 'convertToEmployee')).toContain('await assertApplicationNotRejected(');
     // The write itself re-checks the application in the same statement (send and accept).
-    expect(procedureBody(signing, 'acceptByToken')).toContain('...NOT_REJECTED_APPLICATION');
-    expect(procedureBody(signing, 'generateSigningLink')).toContain('...NOT_REJECTED_APPLICATION');
+    expect(procedureBody(signing, 'acceptByToken')).toContain('...notRejectedApplication(offer.vacancyId)');
+    expect(procedureBody(signing, 'generateSigningLink')).toContain('...notRejectedApplication(offer.vacancyId)');
     expect(signing).toContain("'El candidato fue descartado en el proceso; esta oferta no se puede enviar'");
   });
 });

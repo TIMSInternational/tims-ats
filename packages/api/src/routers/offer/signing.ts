@@ -10,7 +10,7 @@ import { candidateConsentRepository } from '../../repositories/candidate-consent
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
-import { assertApplicationNotRejected, NOT_REJECTED_APPLICATION } from './rejected-application-guard';
+import { assertApplicationNotRejected, notRejectedApplication } from './rejected-application-guard';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
@@ -47,6 +47,7 @@ export const offerSigningRouter = router({
           expiresAt: true,
           sentAt: true,
           candidate: { select: { id: true, firstName: true, lastName: true, email: true, updatedAt: true } },
+          vacancyId: true,
           vacancy: { select: { title: true } },
         },
       });
@@ -166,7 +167,7 @@ export const offerSigningRouter = router({
             updatedAt: offer.updatedAt,
             // Re-checked in the same statement as the write: a rejection committed after the guard above
             // makes this match 0 rows.
-            ...NOT_REJECTED_APPLICATION,
+            ...notRejectedApplication(offer.vacancyId),
           },
           data: {
             status: 'sent',
@@ -178,6 +179,26 @@ export const offerSigningRouter = router({
           throw new TRPCError({
             code: 'CONFLICT',
             message: 'La oferta cambió mientras se preparaba el enlace. Vuelve a intentarlo.',
+          });
+        }
+      }
+
+      if (reusableToken) {
+        // Re-send of an existing link performs no offer write, so re-check eligibility right before the
+        // email (a rejection may have committed after the guard). Even if one lands after this check, the
+        // link cannot be accepted: acceptance re-checks the application in its own write.
+        const stillEligible = await db.offer.count({
+          where: {
+            id: offer.id,
+            organizationId: ctx.user.organizationId,
+            status: 'sent',
+            ...notRejectedApplication(offer.vacancyId),
+          },
+        });
+        if (stillEligible !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'El candidato fue descartado en el proceso; esta oferta no se puede enviar',
           });
         }
       }
@@ -268,7 +289,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, vacancyId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -322,7 +343,7 @@ export const offerSigningRouter = router({
           id: offer.id,
           status: 'sent',
           settings: { path: ['signingToken'], equals: input.token },
-          ...NOT_REJECTED_APPLICATION,
+          ...notRejectedApplication(offer.vacancyId),
         },
         data: {
           status: 'accepted',
@@ -381,7 +402,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
+        select: { id: true, organizationId: true, vacancyId: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
