@@ -77,4 +77,65 @@ describe('offer KPIs', () => {
       complete: false,
     });
   });
+  // recruiter-data-78: convertToEmployee moves an accepted offer to 'converted'. A converted offer is a hire,
+  // so it must keep counting as accepted for every KPI, and completing the hire must not lower the metrics.
+  describe('converted offers count as accepted (recruiter-data-78)', () => {
+    it('counts a converted offer as accepted in the acceptance rate', () => {
+      const kpis = computeOfferKpis(
+        [
+          { status: 'accepted', salary: 100, currency: 'COP' },
+          { status: 'converted', salary: 100, currency: 'COP' },
+          { status: 'declined', salary: 100, currency: 'COP' },
+        ],
+        3,
+      );
+
+      expect(kpis.acceptanceRate).toBe(67);
+    });
+
+    it('does not lower the acceptance rate when an accepted offer is converted', () => {
+      const before = computeOfferKpis(
+        [
+          { status: 'accepted', salary: 100, currency: 'COP' },
+          { status: 'declined', salary: 100, currency: 'COP' },
+        ],
+        2,
+      );
+      const after = computeOfferKpis(
+        [
+          { status: 'converted', salary: 100, currency: 'COP' },
+          { status: 'declined', salary: 100, currency: 'COP' },
+        ],
+        2,
+      );
+
+      expect(before.acceptanceRate).toBe(50);
+      expect(after.acceptanceRate).toBe(before.acceptanceRate);
+    });
+
+    it('averages accepted and converted salaries together', () => {
+      const kpis = computeOfferKpis(
+        [
+          { status: 'accepted', salary: 100, currency: 'COP' },
+          { status: 'converted', salary: 300, currency: 'COP' },
+          { status: 'declined', salary: 10_000, currency: 'COP' },
+        ],
+        3,
+      );
+
+      expect(kpis).toMatchObject({ avgSalary: 200, avgSalaryCurrency: 'COP' });
+    });
+
+    it('does not count a converted offer as active', () => {
+      const kpis = computeOfferKpis(
+        [
+          { status: 'converted', salary: 100, currency: 'COP' },
+          { status: 'sent', salary: 100, currency: 'COP' },
+        ],
+        2,
+      );
+
+      expect(kpis.activeCount).toBe(1);
+    });
+  });
 });

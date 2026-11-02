@@ -17,7 +17,6 @@ namespace Tims.Infrastructure.Reporting;
 /// </summary>
 public sealed class ReportingReadRepository(ReportingReadDbContext db) : IReportingReadRepository
 {
-    private const string AcceptedStatus = "accepted";
     private const string ActiveStatus = "active";
     private const string RejectedStatus = "rejected";
 
@@ -29,14 +28,14 @@ public sealed class ReportingReadRepository(ReportingReadDbContext db) : IReport
         await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
 
         var accepted = await _db.Offers.AsNoTracking()
-            .Where(o => o.OrganizationId == orgId && o.Status == AcceptedStatus && o.RespondedAt >= from)
+            .Where(o => o.OrganizationId == orgId && OfferStatuses.AcceptedLike.Contains(o.Status) && o.RespondedAt >= from)
             .Select(o => new { o.RespondedAt, VacancyCreatedAt = o.Vacancy.CreatedAt, AppliedAt = (DateTime?)o.Application!.AppliedAt })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var offersSent = await _db.Offers.AsNoTracking()
             .CountAsync(o => o.OrganizationId == orgId && o.SentAt >= from, cancellationToken).ConfigureAwait(false);
         var offersAccepted = await _db.Offers.AsNoTracking()
-            .CountAsync(o => o.OrganizationId == orgId && o.Status == AcceptedStatus && o.RespondedAt >= from, cancellationToken).ConfigureAwait(false);
+            .CountAsync(o => o.OrganizationId == orgId && OfferStatuses.AcceptedLike.Contains(o.Status) && o.RespondedAt >= from, cancellationToken).ConfigureAwait(false);
         var totalApplications = await _db.Applications.AsNoTracking()
             .CountAsync(a => a.OrganizationId == orgId && a.AppliedAt >= from, cancellationToken).ConfigureAwait(false);
 
@@ -72,7 +71,7 @@ public sealed class ReportingReadRepository(ReportingReadDbContext db) : IReport
         var totalApplications = await _db.Applications.AsNoTracking()
             .CountAsync(a => a.OrganizationId == orgId, cancellationToken).ConfigureAwait(false);
         var totalHired = await _db.Offers.AsNoTracking()
-            .CountAsync(o => o.OrganizationId == orgId && o.Status == AcceptedStatus, cancellationToken).ConfigureAwait(false);
+            .CountAsync(o => o.OrganizationId == orgId && OfferStatuses.AcceptedLike.Contains(o.Status), cancellationToken).ConfigureAwait(false);
 
         return new ReportingFunnelData(
             stages.Select(s => new FunnelStageInput(s.Id.ToString(), s.Name, s.Order)).ToList(),
@@ -95,9 +94,9 @@ public sealed class ReportingReadRepository(ReportingReadDbContext db) : IReport
             .OrderBy(x => x.Source)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-        // One entry per application that converted to an accepted offer in period (counted by source in the kernel).
+        // One entry per application that reached an accepted-like (accepted or converted) offer in period (counted by source in the kernel).
         var hireSources = await _db.Applications.AsNoTracking()
-            .Where(a => a.OrganizationId == orgId && a.Offers.Any(o => o.Status == AcceptedStatus && o.RespondedAt >= from))
+            .Where(a => a.OrganizationId == orgId && a.Offers.Any(o => OfferStatuses.AcceptedLike.Contains(o.Status) && o.RespondedAt >= from))
             .Select(a => a.Source)
             .Take(10_000)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -152,7 +151,7 @@ public sealed class ReportingReadRepository(ReportingReadDbContext db) : IReport
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var accepted = await _db.Offers.AsNoTracking()
-            .Where(o => o.OrganizationId == orgId && o.Status == AcceptedStatus && o.RespondedAt >= ttfLookback)
+            .Where(o => o.OrganizationId == orgId && OfferStatuses.AcceptedLike.Contains(o.Status) && o.RespondedAt >= ttfLookback)
             .Select(o => new { o.VacancyId, o.RespondedAt, VacancyCreatedAt = o.Vacancy.CreatedAt })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 

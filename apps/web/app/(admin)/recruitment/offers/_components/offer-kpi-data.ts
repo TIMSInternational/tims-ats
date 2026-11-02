@@ -1,3 +1,6 @@
+// convertToEmployee moves an accepted offer to 'converted'; a converted offer is still an accepted offer (a hire).
+const ACCEPTED_LIKE: readonly string[] = ['accepted', 'converted'];
+
 type OfferForKpi = {
   status: string;
   salary: number;
@@ -30,8 +33,10 @@ export function computeOfferKpis(items: readonly OfferForKpi[], total: number): 
     };
   }
 
-  const accepted = items.filter((offer) => offer.status === 'accepted');
-  const sentOrResolved = items.filter((offer) => ['sent', 'accepted', 'declined', 'expired'].includes(offer.status));
+  const accepted = items.filter((offer) => ACCEPTED_LIKE.includes(offer.status));
+  const sentOrResolved = items.filter((offer) =>
+    ['sent', 'accepted', 'converted', 'declined', 'expired'].includes(offer.status),
+  );
   // Group on the normalized code so legacy 'cop' / ' COP' rows are not treated as a different currency.
   const acceptedCurrencies = new Set(accepted.map((offer) => (offer.currency ?? 'USD').trim().toUpperCase()));
   const avgSalaryCurrency = acceptedCurrencies.size === 1 ? [...acceptedCurrencies][0] : null;
