@@ -1,23 +1,19 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { loginErrorMessage } from './login-error-message';
 
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginForm />
-    </Suspense>
-  );
-}
-
-function LoginForm() {
+// Staff login form. `showSignup` comes from the server page (SELF_SERVE_SIGNUP_ENABLED is server-only):
+// invitation-only deployments do not advertise /register.
+export function LoginForm({ showSignup }: { showSignup: boolean }) {
   const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const callbackError = loginErrorMessage(searchParams.get('error'), t.auth);
   // Only accept same-origin relative paths (must start with a single '/', not
   // '//' or a scheme) to prevent open-redirect / OAuth redirectTo manipulation.
   const rawRedirect = searchParams.get('redirect') || '/';
@@ -124,9 +120,9 @@ function LoginForm() {
 
           {/* Form */}
           <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
-                {error}
+            {(error || callbackError) && (
+              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+                {error || callbackError}
               </div>
             )}
 
@@ -194,12 +190,16 @@ function LoginForm() {
               {loading ? t.auth.loggingIn : t.auth.loginButton}
             </button>
 
-            <p className="text-center text-[12px] text-[#8B8B8B]">
-              {t.auth.noAccount}{' '}
-              <Link href="/register" className="text-[#DD0C15] font-medium hover:underline">
-                {t.auth.createAccount}
-              </Link>
-            </p>
+            {showSignup ? (
+              <p className="text-center text-[12px] text-[#8B8B8B]">
+                {t.auth.noAccount}{' '}
+                <Link href="/register" className="text-[#DD0C15] font-medium hover:underline">
+                  {t.auth.createAccount}
+                </Link>
+              </p>
+            ) : (
+              <p className="text-center text-[12px] text-[#8B8B8B]">{t.auth.invitationOnlyHint}</p>
+            )}
           </form>
         </div>
 

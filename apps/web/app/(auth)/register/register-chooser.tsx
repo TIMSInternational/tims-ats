@@ -11,7 +11,7 @@ import { useI18n } from '../../../lib/i18n';
 // portal). /register is for COMPANIES (org admins) only.
 type AccountType = null | 'company';
 
-export default function RegisterPage() {
+export function RegisterChooser() {
   const { t } = useI18n();
   const [accountType, setAccountType] = useState<AccountType>(null);
 

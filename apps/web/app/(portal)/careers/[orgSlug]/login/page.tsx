@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { getAuthRedirectUrl } from '@tims/shared';
@@ -18,6 +18,9 @@ export default function PortalLoginPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  // /auth/callback sends a failed magic-link exchange back here with ?error=link (expired, or opened
+  // in another browser). Shown until the candidate submits again.
+  const linkFailed = useSearchParams().get('error') === 'link';
   const [error, setError] = useState('');
   useCanonicalAuthOrigin();
 
@@ -80,6 +83,11 @@ export default function PortalLoginPage() {
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">
+              {!error && linkFailed && (
+                <div role="alert" className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-800">
+                  {t.portalAuth.linkExpired}
+                </div>
+              )}
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
                   {error}

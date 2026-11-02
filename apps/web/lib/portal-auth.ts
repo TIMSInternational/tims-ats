@@ -23,3 +23,14 @@ export function isSafePortalNext(next: string | null | undefined): string | null
   if (!url.pathname.startsWith('/careers/')) return null;
   return url.pathname + url.search;
 }
+
+// For a failed portal sign-in: the login page of the portal that `next` points into
+// (`/careers/<slug>/login`), or null when `next` is not a safe portal target. The slug is re-validated
+// as a single URL-safe segment so nothing else from `next` is carried over.
+export function portalLoginPathFor(next: string | null | undefined): string | null {
+  const safe = isSafePortalNext(next);
+  if (!safe) return null;
+  const slug = safe.split('?')[0]!.split('/')[2];
+  if (!slug || !/^[A-Za-z0-9_-]{1,100}$/.test(slug)) return null;
+  return `/careers/${slug}/login`;
+}
