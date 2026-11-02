@@ -62,10 +62,15 @@ export async function closeHireRecords(
   }
 
   let vacancyClosed = false;
-  const vacancy = await tx.vacancy.findFirst({
-    where: { id: vacancyId, organizationId },
-    select: { positions: true, status: true },
-  });
+  // Lock the vacancy row BEFORE counting conversions. Two hires on different offers of the same vacancy
+  // otherwise each count only their own (uncommitted) conversion under READ COMMITTED, both skip the
+  // closure, and a fully staffed vacancy stays published. With the lock, the second transaction waits for
+  // the first to commit, and its count (a new statement) then sees the first hire.
+  const locked = await tx.$queryRaw<Array<{ positions: number; status: string }>>`
+    SELECT positions, status FROM vacancies
+    WHERE id = ${vacancyId}::uuid AND organization_id = ${organizationId}::uuid
+    FOR UPDATE`;
+  const vacancy = locked[0];
   if (vacancy && CLOSABLE_VACANCY_STATUSES.includes(vacancy.status)) {
     const hires = await tx.offer.count({ where: { vacancyId, organizationId, status: 'converted' } });
     if (hires >= Math.max(1, vacancy.positions)) {

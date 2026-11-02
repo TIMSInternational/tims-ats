@@ -20,19 +20,25 @@ type Opts = {
 function tx(o: Opts = {}) {
   return {
     application: {
-      findFirst: vi.fn().mockResolvedValue(
-        o.application === undefined ? { id: APP_ID, status: 'active', currentStageId: 'stage-oferta' } : o.application,
-      ),
+      findFirst: vi
+        .fn()
+        .mockResolvedValue(
+          o.application === undefined
+            ? { id: APP_ID, status: 'active', currentStageId: 'stage-oferta' }
+            : o.application,
+        ),
       update: vi.fn().mockResolvedValue({ id: APP_ID }),
     },
     pipelineStage: {
       findFirst: vi.fn().mockResolvedValue(o.finalStage === undefined ? { id: 'stage-contratado' } : o.finalStage),
     },
     stageMovement: { create: vi.fn().mockResolvedValue({ id: 'mv-1' }) },
-    vacancy: {
-      findFirst: vi.fn().mockResolvedValue(o.vacancy === undefined ? { positions: 1, status: 'published' } : o.vacancy),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-    },
+    $queryRaw: vi
+      .fn()
+      .mockResolvedValue(
+        o.vacancy === undefined ? [{ positions: 1, status: 'published' }] : o.vacancy ? [o.vacancy] : [],
+      ),
+    vacancy: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     offer: { count: vi.fn().mockResolvedValue(o.converted ?? 1) },
   };
 }
@@ -96,6 +102,23 @@ describe('closeHireRecords', () => {
       data: expect.objectContaining({ status: 'closed', closedReason: VACANCY_FILLED_REASON }),
     });
     expect(result.vacancyClosed).toBe(true);
+  });
+
+  it('locks the vacancy row (FOR UPDATE, tenant-scoped) before counting conversions', async () => {
+    const t = tx({ vacancy: { positions: 2, status: 'published' }, converted: 2 });
+    await closeHireRecords(t as never, input);
+    expect(t.$queryRaw).toHaveBeenCalledTimes(1);
+    const [strings, ...values] = t.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    expect(strings.join('?')).toMatch(/FROM vacancies[\s\S]*organization_id[\s\S]*FOR UPDATE/);
+    expect(values).toEqual([VAC, ORG]);
+    expect(t.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(t.offer.count.mock.invocationCallOrder[0]);
+  });
+
+  it('does nothing to the vacancy when it is not found in the tenant', async () => {
+    const t = tx({ vacancy: null });
+    const result = await closeHireRecords(t as never, input);
+    expect(t.offer.count).not.toHaveBeenCalled();
+    expect(result.vacancyClosed).toBe(false);
   });
 
   it('keeps the vacancy open while positions remain', async () => {
