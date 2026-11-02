@@ -6,7 +6,7 @@ import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
 import { Step1Fields, Step2Fields, Step3Fields } from './add-candidate-modal.fields';
 import type { Step, ProcessStep } from './add-candidate-modal.helpers';
-import { STEP_LABELS } from './add-candidate-modal.helpers';
+import { STEP_LABELS, isDuplicateCandidateError, pickExistingCandidateId } from './add-candidate-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 
 interface AddCandidateModalProps {
@@ -73,11 +73,11 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
         candidateId = candidate.id;
       } catch (createErr) {
         // Candidate with this email already exists — find them and use their ID
-        const msg = createErr instanceof Error ? createErr.message : '';
-        if (msg.includes('Unique constraint') || msg.includes('unique') || msg.includes('already exists')) {
-          const results = await utils.candidate.search.fetch({ query: email.trim(), limit: 1 });
-          if (results.length > 0) {
-            candidateId = results[0].id;
+        if (isDuplicateCandidateError(createErr)) {
+          const results = await utils.candidate.search.fetch({ query: email.trim(), limit: 50 });
+          const existingId = pickExistingCandidateId(results, email);
+          if (existingId) {
+            candidateId = existingId;
             toast(`${firstName} ${lastName} ya existe — agregando a la vacante`, { type: 'info' });
           } else {
             throw new Error('Candidato con este email ya existe pero no se pudo encontrar');

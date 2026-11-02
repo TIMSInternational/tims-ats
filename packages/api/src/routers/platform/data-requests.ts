@@ -6,6 +6,7 @@ import { clientIpFrom } from '../../lib/client-ip';
 import { db } from '@tims/db';
 import { dataClassOf } from '../../access';
 import { platformProcedure } from './_common';
+import { canonicalizeEmail, escapeLikePattern } from '../../lib/candidate-email';
 
 // ---------------------------------------------------------------------------
 // GDPR / Habeas Data (Ley 1581/2012) data-subject requests.
@@ -80,11 +81,16 @@ export const dataRequestsRouter = router({
     .query(async ({ ctx, input }) => {
       // Don't pre-lowercase: stored emails aren't guaranteed normalized, so we
       // rely on Prisma `mode: 'insensitive'` to match regardless of casing.
+      // #315: that compiles to an UNESCAPED ILIKE, so `_`/`%` in the address were
+      // wildcards — `a_b@x.com` also bundled `axb@x.com`'s data (another person's).
+      // Escape the pattern and post-filter on exact canonical equality.
       const email = input.email.trim();
+      const pattern = escapeLikePattern(email);
+      const isSubject = (row: { email: string }) => canonicalizeEmail(row.email) === canonicalizeEmail(email);
 
-      const [users, candidates] = await Promise.all([
+      const [matchedUsers, matchedCandidates] = await Promise.all([
         db.user.findMany({
-          where: { email: { equals: email, mode: 'insensitive' } },
+          where: { email: { equals: pattern, mode: 'insensitive' } },
           select: {
             id: true,
             email: true,
@@ -97,7 +103,7 @@ export const dataRequestsRouter = router({
           },
         }),
         db.candidate.findMany({
-          where: { email: { equals: email, mode: 'insensitive' } },
+          where: { email: { equals: pattern, mode: 'insensitive' } },
           select: {
             id: true,
             email: true,
@@ -111,6 +117,8 @@ export const dataRequestsRouter = router({
           },
         }),
       ]);
+      const users = matchedUsers.filter(isSubject);
+      const candidates = matchedCandidates.filter(isSubject);
 
       if (users.length === 0 && candidates.length === 0) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No se encontraron datos para ese correo' });

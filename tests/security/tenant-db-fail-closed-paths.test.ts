@@ -254,18 +254,23 @@ describe('tRPC + tenantDb — fail closed unless scoped or explicitly opted in',
   });
 
   it('candidate dashboard: getDisplayCandidate (sync runWithTenant callback) runs scoped, not after the scope', async () => {
+    // #315: the candidate is resolved by canonical email (findMany) and then read by id (findFirst).
+    h.results.set('Candidate.findMany', [{ id: 'cand-1', email: 'ana@example.test' }]);
     h.results.set('Candidate.findFirst', { firstName: 'Ana' });
     const { candidatePortalService } = await import('../../packages/api/src/services/candidate-portal.service');
 
     await expect(candidatePortalService.getDisplayCandidate(ORG_ID, 'ana@example.test')).resolves.toEqual({
       firstName: 'Ana',
     });
-    expect(h.calls).toEqual([expect.objectContaining({ model: 'Candidate', operation: 'findFirst', scoped: true })]);
+    expect(h.calls).toEqual([
+      expect.objectContaining({ model: 'Candidate', operation: 'findMany', scoped: true }),
+      expect.objectContaining({ model: 'Candidate', operation: 'findFirst', scoped: true }),
+    ]);
   });
 
   it('assessment submission: candidate + pre-check reads run scoped (reach NOT_FOUND, not a tenant error)', async () => {
     h.results.set('Organization.findUnique', { id: ORG_ID, name: 'Org', isActive: true });
-    h.results.set('Candidate.findFirst', { id: 'cand-1' });
+    h.results.set('Candidate.findMany', [{ id: 'cand-1', email: 'ana@example.test' }]);
     h.results.set('AssessmentAssignment.findFirst', null);
     const { candidateAssessmentService } = await import('../../packages/api/src/services/candidate-assessment.service');
 
@@ -274,7 +279,7 @@ describe('tRPC + tenantDb — fail closed unless scoped or explicitly opted in',
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     const tenantReads = h.calls.filter((c) => c.model !== 'Organization');
     expect(tenantReads.map((c) => `${c.model}.${c.operation}`)).toEqual([
-      'Candidate.findFirst',
+      'Candidate.findMany',
       'AssessmentAssignment.findFirst',
     ]);
     expect(tenantReads.every((c) => c.scoped)).toBe(true);

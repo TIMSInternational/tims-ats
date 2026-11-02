@@ -1,4 +1,5 @@
 import { db, tenantDb } from '@tims/db';
+import { canonicalizeEmail, escapeLikePattern, pickCanonicalEmailMatch } from '../lib/candidate-email';
 
 // How long after its scheduled start an interview stays in the candidate's upcoming
 // list (so an in-progress meeting remains joinable). Past this, it drops off and the
@@ -10,6 +11,44 @@ const INTERVIEW_JOIN_GRACE_MS = 2 * 60 * 60 * 1000; // 2 hours
 // the careers site already exposes orgs by slug). Everything candidate-scoped goes
 // through `tenantDb` (RLS) AND carries explicit `organizationId` + `candidateId`
 // filters — defense in depth. The caller (service) wraps these in runWithTenant.
+
+// Case-variant / superstring rows fetched by the fallback lookup before the exact
+// post-filter. A miss beyond this bound fails CLOSED (no candidate), never to a
+// different candidate.
+const EMAIL_FALLBACK_TAKE = 50;
+
+// #315: resolve the ACTIVE candidate of `organizationId` whose email canonically
+// (trim + lowercase) equals the session email. Legacy rows written before email
+// canonicalization may be mixed-case or whitespace-padded; an exact-equality lookup
+// missed them, so those candidates saw an empty careers dashboard.
+//   1. Fast path: exact match on the session email or its canonical form — served by
+//      the (organization_id, email) unique index; covers every canonical row.
+//   2. Fallback: escaped case-insensitive `contains` (catches mixed case AND stored
+//      padding), then an exact canonical post-filter so `_`/`%` or a longer address
+//      can never match.
+// Must run inside runWithTenant (tenantDb RLS) like every other read here.
+async function resolveActiveCandidateId(organizationId: string, email: string): Promise<string | null> {
+  const canonical = canonicalizeEmail(email);
+  if (canonical.length === 0) return null;
+  const base = { organizationId, isActive: true, deletedAt: null };
+
+  const exact = await tenantDb.candidate.findMany({
+    where: { ...base, email: { in: [...new Set([email, canonical])] } },
+    select: { id: true, email: true },
+    orderBy: { createdAt: 'asc' },
+    take: 2,
+  });
+  const exactHit = pickCanonicalEmailMatch(exact, email);
+  if (exactHit) return exactHit.id;
+
+  const variants = await tenantDb.candidate.findMany({
+    where: { ...base, email: { contains: escapeLikePattern(canonical), mode: 'insensitive' } },
+    select: { id: true, email: true },
+    orderBy: { createdAt: 'asc' },
+    take: EMAIL_FALLBACK_TAKE,
+  });
+  return pickCanonicalEmailMatch(variants, email)?.id ?? null;
+}
 
 export const candidatePortalRepo = {
   // Resolve an organization by its public careers slug. Returns minimal fields.
@@ -23,19 +62,19 @@ export const candidatePortalRepo = {
   // Resolve the candidate for this session: org + email, active and not deleted.
   // Returns just the id — the session email is the trust anchor, not anything the
   // client sent.
-  findActiveCandidate(organizationId: string, email: string) {
-    return tenantDb.candidate.findFirst({
-      where: { organizationId, email, isActive: true, deletedAt: null },
-      select: { id: true },
-    });
+  async findActiveCandidate(organizationId: string, email: string): Promise<{ id: string } | null> {
+    const id = await resolveActiveCandidateId(organizationId, email);
+    return id ? { id } : null;
   },
 
   // Candidate FAQ context anchor. Returns only the candidate's own display fields
   // plus id; never returns recruiter notes, tags, fit scores, assessments, or CV
   // content to the model.
-  findActiveCandidateProfile(organizationId: string, email: string) {
+  async findActiveCandidateProfile(organizationId: string, email: string) {
+    const id = await resolveActiveCandidateId(organizationId, email);
+    if (!id) return null;
     return tenantDb.candidate.findFirst({
-      where: { organizationId, email, isActive: true, deletedAt: null },
+      where: { id, organizationId, isActive: true, deletedAt: null },
       select: { id: true, firstName: true, lastName: true },
     });
   },
@@ -43,9 +82,11 @@ export const candidatePortalRepo = {
   // The candidate's display name for the portal /dashboard header. Same tenant-scoped path
   // as everything else here — the SSR gate must NOT read candidate data on the
   // privileged db (that would bypass RLS).
-  findCandidateName(organizationId: string, email: string) {
+  async findCandidateName(organizationId: string, email: string) {
+    const id = await resolveActiveCandidateId(organizationId, email);
+    if (!id) return null;
     return tenantDb.candidate.findFirst({
-      where: { organizationId, email, isActive: true, deletedAt: null },
+      where: { id, organizationId, isActive: true, deletedAt: null },
       select: { firstName: true, lastName: true },
     });
   },

@@ -11,7 +11,8 @@ const cursorPaginationInput = z.object({
 const candidateCreateInput = z.object({
   firstName: z.string().min(1).max(120),
   lastName: z.string().min(1).max(120),
-  email: z.string().email().max(254),
+  // #315: canonical identity — trimmed + lowercased before validation and storage.
+  email: z.string().trim().toLowerCase().email().max(254),
   phone: z.string().max(30).optional(),
   source: z.string().min(1).max(100),
   poolType: z.string().min(1).max(100),

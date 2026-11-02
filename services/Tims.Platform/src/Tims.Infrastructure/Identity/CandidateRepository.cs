@@ -7,10 +7,16 @@ namespace Tims.Infrastructure.Identity;
 /// <summary>
 /// EF Core implementation of <see cref="ICandidateRepository"/> over <see cref="IdentityDbContext"/>.
 /// Strictly read-only: the query is <c>AsNoTracking</c> and never writes. Faithful to the TS
-/// candidate-portal resolution — <c>candidate.findFirst({ where: { organizationId, email,
-/// isActive: true, deletedAt: null } })</c> — including the case-sensitive email equality (Postgres
-/// text `=`, Prisma's default) and the active/not-deleted filters pushed into SQL. Keyed on BOTH
-/// email AND org: the same email may be a candidate in multiple orgs.
+/// candidate-portal resolution (candidate-portal.repository.ts <c>resolveActiveCandidateId</c>) with
+/// the active/not-deleted filters pushed into SQL. Keyed on BOTH email AND org: the same email may be
+/// a candidate in multiple orgs.
+///
+/// #315 canonical email identity: the match is EXACT on the canonical form (trim + lowercase) — never
+/// a LIKE, so `_`/`%` in an address are literal — so legacy mixed-case / whitespace-padded rows still
+/// resolve. When several rows of one org canonically match (legacy case-variant duplicates, reported
+/// by scripts/ops/candidate-email-collision-report.sql), the pick is deterministic and mirrors the TS
+/// order: the row stored byte-identical to the session email, then the row stored canonically, then
+/// the lowest id (this read-only mapping has no created_at; TS uses oldest-first).
 ///
 /// Suspended/soft-deleted-org lockout: additionally gates on the OWNING organization being active
 /// AND not soft-deleted (a JOIN to <c>organizations</c>) — the same fail-closed lockout the API-key
@@ -24,6 +30,12 @@ public sealed class CandidateRepository(IdentityDbContext db) : ICandidateReposi
 {
     private readonly IdentityDbContext _db = db;
 
+    // Upper bound on case-variant rows of ONE email in one org that are loaded for the pick.
+    private const int MaxVariants = 20;
+
+    /// <summary>The canonical candidate email: trimmed and lowercased (invariant culture).</summary>
+    public static string CanonicalEmail(string email) => email.Trim().ToLowerInvariant();
+
     public async Task<CandidateRow?> FindByEmailAsync(string email, string organizationId, CancellationToken ct)
     {
         if (!Guid.TryParse(organizationId, out var orgId))
@@ -31,18 +43,31 @@ public sealed class CandidateRepository(IdentityDbContext db) : ICandidateReposi
             return null;
         }
 
-        var candidate = await _db.Candidates
+        var canonical = CanonicalEmail(email);
+        if (canonical.Length == 0)
+        {
+            return null;
+        }
+
+        var matches = await _db.Candidates
             .AsNoTracking()
             .Where(c => c.OrganizationId == orgId
-                && c.Email == email
+                // Translates to lower(btrim(email)) = @canonical — exact equality, never LIKE.
+                && c.Email.Trim().ToLower() == canonical
                 && c.IsActive
                 && c.DeletedAt == null)
             // Owning-org lockout (defense in depth): resolve ONLY when the org is active and
             // not soft-deleted — one query, mirroring the API-key suspended-org lockout.
             .Where(c => _db.Organizations.Any(o =>
                 o.Id == c.OrganizationId && o.IsActive && o.DeletedAt == null))
+            .OrderBy(c => c.Id)
             .Select(c => new { c.Id, c.OrganizationId, c.Email })
-            .FirstOrDefaultAsync(ct);
+            .Take(MaxVariants)
+            .ToListAsync(ct);
+
+        var candidate = matches.FirstOrDefault(c => string.Equals(c.Email, email, StringComparison.Ordinal))
+            ?? matches.FirstOrDefault(c => string.Equals(c.Email, canonical, StringComparison.Ordinal))
+            ?? matches.FirstOrDefault();
 
         return candidate is null
             ? null

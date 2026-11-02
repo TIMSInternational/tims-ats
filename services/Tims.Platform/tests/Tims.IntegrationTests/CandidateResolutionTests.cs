@@ -244,4 +244,64 @@ public sealed class CandidateResolutionTests(IdentitySchemaFixture fixture)
         Assert.Equal(IdentityFixture.OrgA.ToString(), row.OrganizationId);
         Assert.Equal(IdentityFixture.CandidateEmail, row.Email);
     }
+
+    // ---- #315 canonical email identity -----------------------------------------------
+    // A session email that differs from the stored row only by case / padding resolves to it.
+    [Theory]
+    [InlineData("CANDIDATE@TIMS.TEST")]
+    [InlineData("  Candidate@Tims.Test  ")]
+    public async Task CaseOrPaddingVariantOfSessionEmail_ResolvesSameCandidate(string sessionEmail)
+    {
+        await using var db = NewDb(fixture);
+        var ctx = await NewCandidateResolver(db).ResolveAsync(
+            sessionEmail, IdentityFixture.OrgA.ToString(), CancellationToken.None);
+
+        Assert.NotNull(ctx);
+        Assert.Equal(IdentityFixture.CandidateOrgAId.ToString(), ctx.UserId);
+    }
+
+    // A LEGACY row stored mixed-case and padded resolves from the canonical session email.
+    [Fact]
+    public async Task LegacyMixedCaseStoredRow_ResolvesFromCanonicalSessionEmail()
+    {
+        await using var db = NewDb(fixture);
+        var row = await new CandidateRepository(db).FindByEmailAsync(
+            "legacy.mixed_case@tims.test", IdentityFixture.OrgA.ToString(), CancellationToken.None);
+
+        Assert.NotNull(row);
+        Assert.Equal(IdentityFixture.CandidateLegacyMixedCaseId.ToString(), row.Id);
+    }
+
+    // Exact equality, never LIKE: `_` in the stored address is not a wildcard.
+    [Fact]
+    public async Task UnderscoreIsLiteral_NeverAWildcardMatch()
+    {
+        await using var db = NewDb(fixture);
+        var row = await new CandidateRepository(db).FindByEmailAsync(
+            "legacy.mixedXcase@tims.test", IdentityFixture.OrgA.ToString(), CancellationToken.None);
+
+        Assert.Null(row);
+    }
+
+    // Canonical matching stays org-scoped: the legacy OrgA row never resolves in OrgB.
+    [Fact]
+    public async Task CanonicalMatch_StaysOrgScoped()
+    {
+        await using var db = NewDb(fixture);
+        var row = await new CandidateRepository(db).FindByEmailAsync(
+            "LEGACY.MIXED_CASE@TIMS.TEST", IdentityFixture.OrgB.ToString(), CancellationToken.None);
+
+        Assert.Null(row);
+    }
+
+    // A blank / whitespace-only session email never resolves.
+    [Fact]
+    public async Task WhitespaceOnlyEmail_ResolvesToNull()
+    {
+        await using var db = NewDb(fixture);
+        var row = await new CandidateRepository(db).FindByEmailAsync(
+            "   ", IdentityFixture.OrgA.ToString(), CancellationToken.None);
+
+        Assert.Null(row);
+    }
 }
