@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 
 const { listQuery, getByIdQuery } = vi.hoisted(() => ({ listQuery: vi.fn(), getByIdQuery: vi.fn() }));
 
@@ -16,7 +16,11 @@ import { usePipelineVacancySelection } from '../../apps/web/app/(admin)/recruitm
 
 const FIRST = { id: '11111111-1111-4111-8111-111111111111', title: 'Analista', company: null };
 const SECOND = { id: '22222222-2222-4222-8222-222222222222', title: 'Contador', company: null };
-const OLD = { id: '99999999-9999-4999-8999-999999999999', title: 'Vacante antigua', company: { id: 'c1', name: 'INVU' } };
+const OLD = {
+  id: '99999999-9999-4999-8999-999999999999',
+  title: 'Vacante antigua',
+  company: { id: 'c1', name: 'INVU' },
+};
 
 function listLoaded(items: unknown[]) {
   listQuery.mockReturnValue({ data: { items, nextCursor: null }, isSuccess: true, isLoading: false, isError: false });
@@ -76,5 +80,18 @@ describe('pipeline ?vacancy= deep link (Codex P2)', () => {
     const { result } = renderHook(() => usePipelineVacancySelection(SECOND.id));
     expect(result.current.selectedVacancyId).toBe(SECOND.id);
     expect(getByIdQuery).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ enabled: false }));
+  });
+
+  it('re-resolves when ?vacancy= changes (client navigation / history), dropping the earlier pick', () => {
+    listLoaded([FIRST, SECOND]);
+    const { result, rerender } = renderHook(({ id }: { id: string | null }) => usePipelineVacancySelection(id), {
+      initialProps: { id: FIRST.id as string | null },
+    });
+    expect(result.current.selectedVacancyId).toBe(FIRST.id);
+    act(() => result.current.setSelectedVacancyId(FIRST.id)); // a manual pick on the first link
+    rerender({ id: SECOND.id });
+    expect(result.current.selectedVacancyId).toBe(SECOND.id);
+    rerender({ id: FIRST.id });
+    expect(result.current.selectedVacancyId).toBe(FIRST.id);
   });
 });

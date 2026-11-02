@@ -23,15 +23,25 @@ export function usePipelineVacancySelection(requestedId: string | null) {
   // vacancy.getById is org- and scope-filtered server-side: a hit means the user may open it.
   const requested = trpc.vacancy.getById.useQuery({ id: requestedId ?? '' }, { enabled: canLookup, retry: false });
 
-  const lookup: RequestedVacancyLookup = !canLookup || requested.isError
-    ? { status: 'unavailable' }
-    : requested.data
-      ? { status: 'found', vacancy: requested.data }
-      : { status: 'loading' };
+  const lookup: RequestedVacancyLookup =
+    !canLookup || requested.isError
+      ? { status: 'unavailable' }
+      : requested.data
+        ? { status: 'found', vacancy: requested.data }
+        : { status: 'loading' };
 
   const [picked, setPicked] = useState<string | null>(null);
   const [initial, setInitial] = useState<InitialVacancyDecision | null>(null);
-  if (!initial && vacancies.isSuccess) {
+  // A new `?vacancy=` (client navigation, back/forward) re-resolves the selection from scratch; otherwise
+  // the previous vacancy's board and mutation targets would stay on screen.
+  const [resolvedFor, setResolvedFor] = useState<string | null>(requestedId);
+  const requestChanged = resolvedFor !== requestedId;
+  if (requestChanged) {
+    setResolvedFor(requestedId);
+    setPicked(null);
+    setInitial(null);
+  }
+  if (!requestChanged && !initial && vacancies.isSuccess) {
     const decision = resolveInitialVacancy(list, requestedId, lookup);
     if (decision) setInitial(decision);
   }
