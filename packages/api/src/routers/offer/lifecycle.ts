@@ -10,6 +10,7 @@ import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../servi
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
 import { closeHireRecords, HireRejectedApplicationError } from '../../services/hire-closure.service';
+import { cacheInvalidatePrefix } from '../../lib/cache';
 
 export const offerLifecycleRouter = router({
   // NOTE: offer send + e-signature live in offer/signing.ts — the REAL flow
@@ -151,7 +152,7 @@ export const offerLifecycleRouter = router({
       // runTenantTransaction, not db.$transaction (#45 / prisma#17948): `db` is
       // `tenantDb`, so the outer wrapper never composed and this multi-write hire
       // flow (user + onboarding plan + tasks + offer status) was not atomic.
-      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
+      const hired = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
         // Claim the accepted offer before creating the employee. A concurrent
         // retry cannot create a second hire, and a later failure rolls this back.
         const claimed = await tx.offer.updateMany({
@@ -256,5 +257,9 @@ export const offerLifecycleRouter = router({
 
         return newUser;
       });
+      // After commit: the hire may have closed the vacancy and moved the application out of the active
+      // pipeline, so drop the tenant's cached vacancy KPIs (45 s server cache) before the client refetches.
+      await cacheInvalidatePrefix(`tims:kpis:vacancy:${ctx.user.organizationId}:`);
+      return hired;
     }),
 });
