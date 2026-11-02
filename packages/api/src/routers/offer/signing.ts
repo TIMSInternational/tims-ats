@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, publicProcedure, anyPermissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { getAppUrl } from '@tims/shared';
@@ -10,6 +11,11 @@ import { candidateConsentRepository } from '../../repositories/candidate-consent
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
+import {
+  assertApplicationNotRejected,
+  lockAndAssertApplicationNotRejected,
+  notRejectedApplication,
+} from './rejected-application-guard';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
@@ -20,9 +26,7 @@ function normaliseRecipient(email: string): string {
 // session and the org is unknown until the token resolves an offer), and `db` here is
 // tenantDb, which fails closed without one. The token lookup is cross-tenant by nature,
 // so these procedures opt in explicitly — same unscoped behavior as before the guard.
-const signingTokenProcedure = publicProcedure.use(({ next }) =>
-  runUnscopedLogged('offer-signing-token', () => next()),
-);
+const signingTokenProcedure = publicProcedure.use(({ next }) => runUnscopedLogged('offer-signing-token', () => next()));
 
 export const offerSigningRouter = router({
   // Generate a unique signing link for an offer. offer:create (recruiters) suffices to send an APPROVED
@@ -38,14 +42,19 @@ export const offerSigningRouter = router({
       // it with a bare assertScoped (would lose those fields).
       const offer = await db.offer.findFirst({
         where: {
-          AND: [
-            { id: input.offerId, organizationId: ctx.user.organizationId },
-            scopeWhere as Prisma.OfferWhereInput,
-          ],
+          AND: [{ id: input.offerId, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.OfferWhereInput],
         },
         select: {
-          id: true, status: true, settings: true, updatedAt: true, expiresAt: true, sentAt: true,
+          id: true,
+          status: true,
+          settings: true,
+          updatedAt: true,
+          expiresAt: true,
+          sentAt: true,
           candidate: { select: { id: true, firstName: true, lastName: true, email: true, updatedAt: true } },
+          vacancyId: true,
+          applicationId: true,
+          candidateId: true,
           vacancy: { select: { title: true } },
         },
       });
@@ -70,6 +79,12 @@ export const offerSigningRouter = router({
         ctx.user.organizationId,
         offer.id,
         'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
+      );
+      await assertApplicationNotRejected(
+        db,
+        ctx.user.organizationId,
+        offer.id,
+        'El candidato fue descartado en el proceso; esta oferta no se puede enviar',
       );
 
       if (!offer.candidate.email) {
@@ -111,7 +126,10 @@ export const offerSigningRouter = router({
       }
 
       if (!process.env.NEXT_PUBLIC_APP_URL?.trim()) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no está configurada' });
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'La URL pública de la aplicación no está configurada',
+        });
       }
       let appUrl: URL;
       try {
@@ -138,30 +156,66 @@ export const offerSigningRouter = router({
       // link. Rotation goes through the same compare-and-set as the first send.
       const recipient = normaliseRecipient(offer.candidate.email);
       const existingToken = existingSettings.signingToken;
-      const reusableToken = offer.status === 'sent'
-        && typeof existingToken === 'string' && existingToken.length > 0
-        && existingSettings.signingTokenRecipient === recipient
-        ? existingToken : null;
-      const signingToken = reusableToken
-        ? reusableToken
-        : crypto.randomUUID();
+      const reusableToken =
+        offer.status === 'sent' &&
+        typeof existingToken === 'string' &&
+        existingToken.length > 0 &&
+        existingSettings.signingTokenRecipient === recipient
+          ? existingToken
+          : null;
+      const signingToken = reusableToken ? reusableToken : crypto.randomUUID();
 
       if (!reusableToken) {
-        const transition = await db.offer.updateMany({
+        // In one transaction: lock the candidate's application(s) FOR SHARE and re-check, then write.
+        const transition = await offerApplicationLockRepository.inTransaction(ctx.user.organizationId, async (tx) => {
+          await lockAndAssertApplicationNotRejected(
+            tx,
+            ctx.user.organizationId,
+            offer,
+            'El candidato fue descartado en el proceso; esta oferta no se puede enviar',
+          );
+          return tx.offer.updateMany({
+            where: {
+              id: offer.id,
+              organizationId: ctx.user.organizationId,
+              status: offer.status,
+              updatedAt: offer.updatedAt,
+              // Re-checked in the same statement as the write: a rejection committed after the guard above
+              // makes this match 0 rows.
+              ...notRejectedApplication(offer.vacancyId),
+            },
+            data: {
+              status: 'sent',
+              sentAt: offer.sentAt ?? new Date(),
+              settings: { ...existingSettings, signingToken, signingTokenRecipient: recipient },
+            },
+          });
+        });
+        if (transition.count !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'La oferta cambió mientras se preparaba el enlace. Vuelve a intentarlo.',
+          });
+        }
+      }
+
+      if (reusableToken) {
+        // Re-send of an existing link performs no offer write, so re-check eligibility right before the
+        // email (a rejection may have committed after the guard). Even if one lands after this check, the
+        // link cannot be accepted: acceptance re-checks the application in its own write.
+        const stillEligible = await db.offer.count({
           where: {
             id: offer.id,
             organizationId: ctx.user.organizationId,
-            status: offer.status,
-            updatedAt: offer.updatedAt,
-          },
-          data: {
             status: 'sent',
-            sentAt: offer.sentAt ?? new Date(),
-            settings: { ...existingSettings, signingToken, signingTokenRecipient: recipient },
+            ...notRejectedApplication(offer.vacancyId),
           },
         });
-        if (transition.count !== 1) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta cambió mientras se preparaba el enlace. Vuelve a intentarlo.' });
+        if (stillEligible !== 1) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'El candidato fue descartado en el proceso; esta oferta no se puede enviar',
+          });
         }
       }
 
@@ -241,7 +295,7 @@ export const offerSigningRouter = router({
       z.object({
         token: z.string().min(1).max(100),
         signatureName: z.string().min(2).max(200),
-      })
+      }),
     )
     .mutation(async ({ input }) => {
       const offers = await db.offer.findMany({
@@ -251,7 +305,16 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
+        select: {
+          id: true,
+          organizationId: true,
+          vacancyId: true,
+          applicationId: true,
+          candidateId: true,
+          status: true,
+          settings: true,
+          expiresAt: true,
+        },
         take: 1,
       });
 
@@ -273,6 +336,12 @@ export const offerSigningRouter = router({
       }
 
       await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible para firma');
+      await assertApplicationNotRejected(
+        db,
+        offer.organizationId,
+        offer.id,
+        'Esta oferta no esta disponible para firma',
+      );
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();
@@ -290,19 +359,36 @@ export const offerSigningRouter = router({
       // Atomic conditional transition: only the request that still sees status
       // 'sent' wins. `updateMany` matches 0 rows for a concurrent second accept
       // (status already flipped), so two clicks can't both be accepted (TOCTOU).
-      const transition = await db.offer.updateMany({
-        // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
-        // between (recipient changed) must leave the superseded link unable to accept/decline.
-        where: { id: offer.id, status: 'sent', settings: { path: ['signingToken'], equals: input.token } },
-        data: {
-          status: 'accepted',
-          respondedAt: now,
-          settings: {
-            ...existingSettings,
-            signatureName: input.signatureName,
-            acceptedAt: now.toISOString(),
+      // In one transaction: lock the candidate's application(s) FOR SHARE and re-check (serializes with a
+      // concurrent rejection), then the conditional write.
+      const transition = await offerApplicationLockRepository.inTransaction(offer.organizationId, async (tx) => {
+        await lockAndAssertApplicationNotRejected(
+          tx,
+          offer.organizationId,
+          offer,
+          'Esta oferta no esta disponible para firma',
+        );
+        return tx.offer.updateMany({
+          // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
+          // between (recipient changed) must leave the superseded link unable to accept/decline.
+          // The application is re-checked in the same statement too: a rejection committed after the guard
+          // makes this match 0 rows (and conversion re-checks inside its own transaction regardless).
+          where: {
+            id: offer.id,
+            status: 'sent',
+            settings: { path: ['signingToken'], equals: input.token },
+            ...notRejectedApplication(offer.vacancyId),
           },
-        },
+          data: {
+            status: 'accepted',
+            respondedAt: now,
+            settings: {
+              ...existingSettings,
+              signatureName: input.signatureName,
+              acceptedAt: now.toISOString(),
+            },
+          },
+        });
       });
       if (transition.count !== 1) {
         throw new TRPCError({
@@ -351,7 +437,16 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, organizationId: true, status: true, settings: true, expiresAt: true },
+        select: {
+          id: true,
+          organizationId: true,
+          vacancyId: true,
+          applicationId: true,
+          candidateId: true,
+          status: true,
+          settings: true,
+          expiresAt: true,
+        },
         take: 1,
       });
 

@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { Skeleton } from '../../../../components';
-import type { VacancyListItem } from '../../../../lib/trpc-types';
+import type { PipelineVacancyOption } from './pipeline-vacancy-select';
 
 interface VacancySelectorProps {
-  vacancies: VacancyListItem[];
+  vacancies: PipelineVacancyOption[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   isLoading: boolean;

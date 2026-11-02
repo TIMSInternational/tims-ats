@@ -17,6 +17,8 @@ import {
 } from '../../../../../lib/offer-salary';
 import { describeOfferActionError } from '../../../../../lib/offer-action-error';
 import { toast } from '../../../../../lib/toast';
+import { currencyOptions } from '../../../../../lib/currency-options';
+import { defaultOfferCurrency } from '../../../../../lib/tenant-locale';
 
 type Application = CandidateDetail['applications'][number];
 
@@ -35,7 +37,8 @@ export function CreateOfferModal({
   const initialRange = parseVacancySalary(applications[0]?.vacancy.salary);
   const [salary, setSalary] = useState('');
   const [period, setPeriod] = useState<SalaryPeriod>(initialRange?.period ?? 'monthly');
-  const [currency, setCurrency] = useState(initialRange?.currency ?? 'COP');
+  const [currency, setCurrency] = useState(defaultOfferCurrency(initialRange?.currency));
+  const currencies = currencyOptions();
   const [startDate, setStartDate] = useState('');
   const [contractType, setContractType] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -61,9 +64,9 @@ export function CreateOfferModal({
     setApplicationId(id);
     const range = parseVacancySalary(applications.find((item) => item.id === id)?.vacancy.salary);
     // A vacancy without salary data must not inherit the previous vacancy's period/currency —
-    // fall back to the form defaults (monthly / COP).
+    // fall back to the form defaults (monthly / tenant currency).
     setPeriod(range?.period ?? 'monthly');
-    setCurrency(range?.currency ?? 'COP');
+    setCurrency(defaultOfferCurrency(range?.currency));
   };
 
   const handleCreate = async () => {
@@ -141,9 +144,10 @@ export function CreateOfferModal({
               onChange={(event) => setCurrency(event.target.value)}
               className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]"
             >
-              {Array.from(new Set(['COP', 'USD', 'MXN', currency])).map((code) => (
-                <option key={code} value={code}>
-                  {code}
+              {/* Full ISO list (popular first); a legacy non-ISO vacancy currency stays selectable. */}
+              {(currencies.some((c) => c.code === currency) ? currencies : [{ code: currency, label: currency }, ...currencies]).map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label}
                 </option>
               ))}
             </select>

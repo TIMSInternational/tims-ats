@@ -28,12 +28,27 @@ const buildAccessForUserMock = vi.hoisted(() =>
 );
 
 const mockDb = vi.hoisted(() => ({
-  offer: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  offer: {
+    findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    count: vi.fn(async () => 1),
+  },
   organization: { findFirst: vi.fn() },
   user: { findMany: vi.fn() },
   offerApproval: { createMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
 }));
-const runTenantTransactionMock = vi.hoisted(() => vi.fn());
+const runTenantTransactionMock = vi.hoisted(() =>
+  vi.fn(async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(mockDb)),
+);
+
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+  lockAndAssertApplicationNotRejected: vi.fn(async () => undefined),
+}));
 
 vi.mock('@tims/db', () => ({
   tenantDb: mockDb,
@@ -163,7 +178,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = 'https://app.tims.test';
   mockDb.offer.update.mockResolvedValue({ id: OFFER_ID, status: 'pending_approval', approvals: [], settings: {} });
-  mockDb.offer.findFirstOrThrow.mockResolvedValue({ id: OFFER_ID, status: 'pending_approval', approvals: [], settings: {} });
+  mockDb.offer.findFirstOrThrow.mockResolvedValue({
+    id: OFFER_ID,
+    status: 'pending_approval',
+    approvals: [],
+    settings: {},
+  });
   mockDb.offerApproval.count.mockResolvedValue(0);
   mockDb.offer.updateMany.mockResolvedValue({ count: 1 });
   sendOfferToCandidateMock.mockResolvedValue(true);

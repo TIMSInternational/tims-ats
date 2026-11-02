@@ -17,6 +17,7 @@ import { CandidateHeader, OfferCard } from './offer-detail-view.parts';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCan } from '../../../../../lib/permissions';
+import { invalidateAfterHire } from './invalidate-after-hire';
 
 interface OfferDetailViewProps {
   offerId: string;
@@ -49,12 +50,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
     onSuccess: async () => {
       setShowHireConfirmation(false);
       toast(t.offers.hiringAuthorized, { type: 'success' });
-      await Promise.all([
-        utils.offer.getById.invalidate({ id: offerId }),
-        utils.offer.list.invalidate(),
-        utils.onboarding.list.invalidate(),
-        utils.onboarding.getDashboardKpis.invalidate(),
-      ]);
+      await invalidateAfterHire(utils, offerId);
     },
     onError: (error) => toast(error.message, { type: 'error' }),
   });
@@ -70,7 +66,10 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       offer.refetch();
     },
     onError: (err) => {
-      const message = describeOfferActionError(err, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction });
+      const message = describeOfferActionError(err, {
+        forbidden: t.offers.errorForbiddenAction,
+        generic: t.offers.errorOfferAction,
+      });
       setSigningError(message);
       toast(message, { type: 'error' });
     },
@@ -93,7 +92,9 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
     return (
       <div className="text-center py-16">
         <p className="text-[#8B8B8B] text-sm">{t.offers.notFound}</p>
-        <button onClick={onBack} className="mt-3 text-[13px] text-[#1F114C] hover:underline">{t.offers.backToList}</button>
+        <button onClick={onBack} className="mt-3 text-[13px] text-[#1F114C] hover:underline">
+          {t.offers.backToList}
+        </button>
       </div>
     );
   }
@@ -101,24 +102,39 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const o = offer.data;
   const statusInfo = OFFER_STATUS_LABEL[o.status] ?? OFFER_STATUS_LABEL.draft;
   const validations = o.validations ?? [];
-  const legalChecks = (o.legalChecks ?? []) as Array<{ id: string; checkName: string; completed: boolean; completedAt: Date | string | null; completedByUser: { id: string; firstName: string; lastName: string } | null }>;
+  const legalChecks = (o.legalChecks ?? []) as Array<{
+    id: string;
+    checkName: string;
+    completed: boolean;
+    completedAt: Date | string | null;
+    completedByUser: { id: string; firstName: string; lastName: string } | null;
+  }>;
   const completedValidations = validations.filter((v) => v.status === 'passed' || v.status === 'waived').length;
   const totalValidations = validations.length;
   const progressPct = totalValidations > 0 ? (completedValidations / totalValidations) * 100 : 0;
-  const blockingValidationOpen = validations.some((v) => v.isBlocking && v.status !== 'passed' && v.status !== 'waived');
+  const blockingValidationOpen = validations.some(
+    (v) => v.isBlocking && v.status !== 'passed' && v.status !== 'waived',
+  );
   const legalCheckOpen = legalChecks.some((check) => !check.completed);
   const canAuthorize = o.status === 'accepted' && !blockingValidationOpen && !legalCheckOpen && can('offer', 'approve');
   const authorizationReason = blockingValidationOpen
     ? t.offers.hireBlockedValidations
-    : legalCheckOpen ? t.offers.hireBlockedLegal : undefined;
+    : legalCheckOpen
+      ? t.offers.hireBlockedLegal
+      : undefined;
   const benefits = o.benefits as Record<string, string> | null;
   const benefitList = benefits ? Object.values(benefits) : [];
   const terms = o.terms as Record<string, string> | null;
 
   return (
     <div className="space-y-6">
-      <button onClick={onBack} className="flex items-center gap-1.5 text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1.5 text-[13px] text-[#8B8B8B] hover:text-[#585858] transition"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <path d="M15.75 19.5L8.25 12l7.5-7.5" />
+        </svg>
         {t.offers.backToList}
       </button>
 
@@ -142,21 +158,25 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         canSendForSigning={o.status === 'approved' || (o.status === 'sent' && can('offer', 'update'))}
       />
       {signingError && (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">{signingError}</p>
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
+          {signingError}
+        </p>
       )}
 
       {/* Two columns */}
       <div className="flex flex-col md:flex-row gap-6">
         {/* LEFT: Offer details 55% */}
         <div className="w-full md:flex-[55] space-y-4">
-          <OfferCard
-            offer={o}
-            statusInfo={statusInfo}
-            benefitList={benefitList}
-            terms={terms}
-          />
+          <OfferCard offer={o} statusInfo={statusInfo} benefitList={benefitList} terms={terms} />
           <ApprovalChain approvals={o.approvals ?? []} />
-          <OfferApprovalActions offerId={offerId} status={o.status} approvals={o.approvals ?? []} onUpdated={() => { void offer.refetch(); }} />
+          <OfferApprovalActions
+            offerId={offerId}
+            status={o.status}
+            approvals={o.approvals ?? []}
+            onUpdated={() => {
+              void offer.refetch();
+            }}
+          />
           <OfferTimeline offer={o} />
         </div>
 

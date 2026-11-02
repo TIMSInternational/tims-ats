@@ -19,6 +19,7 @@ import { CommitteeTasksDashboard } from './committee-tasks-dashboard';
 import { EmployeeHomeDashboard } from './employee-home-dashboard';
 import { UnassignedDashboard } from './unassigned-dashboard';
 import { readLaunchScope } from '../../../lib/launch-scope';
+import { buildFunnelVacancies } from './funnel-vacancies';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
@@ -86,6 +87,16 @@ function RecruiterDashboard() {
   const vacancyKpis = trpc.vacancy.getDashboardKpis.useQuery();
   const candidateKpis = trpc.candidate.getDashboardKpis.useQuery();
   const publishedVacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' }, { staleTime: 60_000 });
+  // Recently filled vacancies stay in the funnel selector (see funnel-vacancies.ts).
+  const closedVacancies = trpc.vacancy.list.useQuery(
+    { limit: 10, status: 'closed', orderBy: 'closed' },
+    { staleTime: 60_000 },
+  );
+  const funnelVacancies = buildFunnelVacancies(
+    publishedVacancies.data?.items ?? [],
+    closedVacancies.data?.items ?? [],
+    rd.closedVacancyTag,
+  );
 
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
   const kpiIsError = vacancyKpis.isError || candidateKpis.isError;
@@ -115,16 +126,21 @@ function RecruiterDashboard() {
         {/* Pipeline + open vacancies */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           {/* The funnel's vacancy list must have loaded too, or an empty list would read as "none published". */}
-          {isLoading || publishedVacancies.isLoading ? (
+          {isLoading || publishedVacancies.isLoading || closedVacancies.isLoading ? (
             <>
               <PipelineFunnelSkeleton />
               <OpenVacanciesCardSkeleton />
             </>
-          ) : publishedVacancies.isError ? (
-            <ErrorState onRetry={() => publishedVacancies.refetch()} />
+          ) : publishedVacancies.isError || closedVacancies.isError ? (
+            <ErrorState
+              onRetry={() => {
+                if (publishedVacancies.isError) publishedVacancies.refetch();
+                if (closedVacancies.isError) closedVacancies.refetch();
+              }}
+            />
           ) : (
             <>
-              <PipelineFunnel vacancies={publishedVacancies.data?.items ?? []} />
+              <PipelineFunnel vacancies={funnelVacancies} />
               {/* Only the real count: a failed KPI query shows an error, never a default 0. */}
               {vacancyKpis.data && !vacancyKpis.isError ? (
                 <OpenVacanciesCard totalOpen={vacancyKpis.data.totalOpen} />

@@ -7,6 +7,8 @@ import { CandidateAvatar } from '../../../../../components';
 import type { CandidateDetail } from '../../../../../lib/trpc-types';
 import { CandidateStageModal } from './candidate-stage-modal';
 import { CreateOfferModal } from './create-offer-modal';
+import { RejectCandidateModal } from '../../pipeline/reject-candidate-modal';
+import { useCan } from '../../../../../lib/permissions';
 
 function FitScoreCircle({ score }: { score: number }) {
   const { t } = useI18n();
@@ -31,6 +33,8 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
   const { t } = useI18n();
   const [showStageModal, setShowStageModal] = useState(false);
   const [showOfferModal, setShowOfferModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const canReject = useCan()('pipeline', 'update');
   const fitScore = c.fitScores?.[0]?.overallScore;
   const activeApplications = c.applications.filter((application) => application.status === 'active');
   const activeApp = activeApplications[0];
@@ -119,11 +123,21 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
           {activeApplications.length > 0 && <button type="button" onClick={() => setShowOfferModal(true)} className="flex items-center gap-2 border border-[#1F114C] text-[#1F114C] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#1F114C]/5 transition">
             {t.offers.createOffer}
           </button>}
+          {activeApplications.length > 0 && canReject && <button type="button" onClick={() => setShowRejectModal(true)} className="flex items-center gap-2 border border-[#DD0C15] text-[#DD0C15] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-red-50 transition">
+            {t.pipeline.reject}
+          </button>}
         </div>
       </div>
 
       {showStageModal && <CandidateStageModal candidateId={c.id} applications={activeApplications} onClose={() => setShowStageModal(false)} />}
       {showOfferModal && <CreateOfferModal candidateId={c.id} applications={activeApplications} onClose={() => setShowOfferModal(false)} />}
+      {showRejectModal && (
+        <RejectCandidateModal
+          candidateName={`${c.firstName} ${c.lastName}`}
+          applications={activeApplications.map((a) => ({ id: a.id, vacancyTitle: a.vacancy.title }))}
+          onClose={() => setShowRejectModal(false)}
+        />
+      )}
 
       {/* AI Recommendation Banner */}
       {fitScore != null && fitScore >= 70 && (

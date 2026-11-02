@@ -2,6 +2,7 @@ export const DEFAULT_CURRENCY = 'USD';
 export const PLATFORM_BILLING_CURRENCY = 'USD';
 
 export const POPULAR_CURRENCY_CODES = [
+  'CRC',
   'COP',
   'USD',
   'EUR',

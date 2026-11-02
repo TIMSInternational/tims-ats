@@ -10,7 +10,8 @@ import { getPipelineFit } from '../../../../lib/pipeline-fit';
 interface PipelineTableViewProps {
   stages: PipelineStageWithApps[];
   onMove: (applicationId: string, toStageId: string) => void;
-  onReject: (applicationId: string, reason: string) => void;
+  /** Opens the reject modal for one application. Omitted when the user lacks pipeline:update. */
+  onReject?: (applicationId: string, candidateName: string) => void;
 }
 
 type SortKey = 'name' | 'stage' | 'fit' | 'days' | 'source';
@@ -81,7 +82,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   );
 }
 
-export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
+export function PipelineTableView({ stages, onMove, onReject }: PipelineTableViewProps) {
   const { t } = useI18n();
   const [sortKey, setSortKey] = useState<SortKey>('stage');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -234,6 +235,16 @@ export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
                       <Link href={`/recruitment/candidates/${app.candidateId}`} className="text-[10px] text-[#585858] hover:text-[#1F114C]">
                         Ver
                       </Link>
+                      {onReject && (
+                        <button
+                          type="button"
+                          onClick={() => onReject(app.id, `${app.firstName} ${app.lastName}`)}
+                          aria-label={t.rejectCandidateModal.actionLabel.replace('{name}', `${app.firstName} ${app.lastName}`)}
+                          className="text-[10px] text-[#DD0C15] hover:bg-red-50 px-2 py-1 rounded font-medium transition"
+                        >
+                          {t.pipeline.reject}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

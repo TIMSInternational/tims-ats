@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -13,17 +14,23 @@ import { PipelineFilters, applyFilters, EMPTY_FILTERS, type PipelineFilterState 
 import { AddCandidateModal } from './add-candidate-modal';
 import { moveApplicationOptimistic } from './pipeline-optimistic';
 import { getNextActionForStage } from '../../../../lib/pipeline-next-actions';
+import { useCan } from '../../../../lib/permissions';
+import { RejectCandidateModal } from './reject-candidate-modal';
+import { usePipelineVacancySelection } from './use-pipeline-vacancy-selection';
 
 type ViewMode = 'kanban' | 'list' | 'table';
 
 export default function PipelinePage() {
   const { t } = useI18n();
-  const [selectedVacancyId, setSelectedVacancyId] = useState<string | null>(null);
+  const can = useCan();
+  const requestedVacancyId = useSearchParams().get('vacancy');
+  const [rejectTarget, setRejectTarget] = useState<{ applicationId: string; candidateName: string } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [filters, setFilters] = useState<PipelineFilterState>(EMPTY_FILTERS);
   const [showAddCandidate, setShowAddCandidate] = useState(false);
 
-  const vacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' });
+  const { vacancies, options: vacancyList, selectedVacancyId, setSelectedVacancyId, isLoading: vacanciesLoading, showUnavailableNotice } =
+    usePipelineVacancySelection(requestedVacancyId);
   const board = trpc.pipeline.getBoard.useQuery(
     { vacancyId: selectedVacancyId!, status: 'active' },
     {
@@ -131,34 +138,23 @@ export default function PipelinePage() {
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
 
-  const handleToggleChecklistItem = (applicationId: string, stageId: string, itemKey: string, completed: boolean) => {
+  const handleToggleChecklistItem = (applicationId: string, stageId: string, itemKey: string, completed: boolean) =>
     updateApplicationChecklist.mutate({ applicationId, stageId, itemKey, completed });
-  };
 
-  const rejectCandidate = trpc.pipeline.rejectCandidate.useMutation({
-    onSuccess: () => {
-      if (selectedVacancyId) utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
-      toast(t.pipeline.rejected, { type: 'success' });
-    },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
-  });
+  // Gated on the permission the server enforces (pipeline:update); UX only, the API is the boundary.
+  const openReject = can('pipeline', 'update')
+    ? (applicationId: string, candidateName: string) => setRejectTarget({ applicationId, candidateName })
+    : undefined;
 
-  // Auto-select first vacancy
-  const vacancyList = vacancies.data?.items ?? [];
-  if (vacancyList.length > 0 && !selectedVacancyId) {
-    setSelectedVacancyId(vacancyList[0].id);
-  }
+  const selectedVacancyTitle = vacancyList.find((v) => v.id === selectedVacancyId)?.title ?? '';
 
-  // Apply client-side filters to board data
   const filteredStages = useMemo(() => {
     if (!board.data?.stages) return [];
     return applyFilters(board.data.stages as Parameters<typeof applyFilters>[0], filters);
   }, [board.data?.stages, filters]);
 
   const VIEW_OPTIONS: { key: ViewMode; label: string }[] = [
-    { key: 'kanban', label: 'Kanban' },
-    { key: 'list', label: 'List' },
-    { key: 'table', label: 'Table' },
+    { key: 'kanban', label: 'Kanban' }, { key: 'list', label: 'List' }, { key: 'table', label: 'Table' },
   ];
 
   return (
@@ -170,7 +166,7 @@ export default function PipelinePage() {
             vacancies={vacancyList}
             selectedId={selectedVacancyId}
             onSelect={setSelectedVacancyId}
-            isLoading={vacancies.isLoading}
+            isLoading={vacanciesLoading}
           />
           <PipelineFilters filters={filters} onChange={setFilters} />
         </div>
@@ -207,6 +203,11 @@ export default function PipelinePage() {
         </div>
       </div>
 
+      {showUnavailableNotice && (
+        <div role="status" className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-[12px] text-amber-800 shrink-0">
+          {t.pipeline.requestedVacancyUnavailable}
+        </div>
+      )}
       {/* Content area */}
       <div className={`flex-1 ${viewMode === 'kanban' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-y-auto'} p-4`}>
         {vacancies.isError ? (
@@ -254,30 +255,38 @@ export default function PipelinePage() {
             <KanbanBoard
               stages={filteredStages as typeof board.data.stages}
               onMove={handleMove}
-              onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
+              onReject={openReject}
               onToggleChecklistItem={handleToggleChecklistItem}
             />
           ) : viewMode === 'list' ? (
             <PipelineListView
               stages={filteredStages as typeof board.data.stages}
               onMove={handleMove}
-              onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
+              onReject={openReject}
             />
           ) : (
             <PipelineTableView
               stages={filteredStages as typeof board.data.stages}
               onMove={handleMove}
-              onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
+              onReject={openReject}
             />
           )
         ) : null}
       </div>
 
+      {rejectTarget && (
+        <RejectCandidateModal
+          candidateName={rejectTarget.candidateName}
+          applications={[{ id: rejectTarget.applicationId, vacancyTitle: selectedVacancyTitle }]}
+          onClose={() => setRejectTarget(null)}
+        />
+      )}
+
       {/* Add Candidate Modal */}
       {showAddCandidate && selectedVacancyId && (
         <AddCandidateModal
           vacancyId={selectedVacancyId}
-          vacancyTitle={vacancyList.find((v) => v.id === selectedVacancyId)?.title ?? ''}
+          vacancyTitle={selectedVacancyTitle}
           onClose={() => setShowAddCandidate(false)}
           onSuccess={() => {
             setShowAddCandidate(false);

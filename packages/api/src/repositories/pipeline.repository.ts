@@ -7,34 +7,35 @@ import { candidateConsentRepository } from './candidate-consent.repository';
 // ---------------------------------------------------------------------------
 
 // #312: `visibleFit` hides withdrawn candidates' existing fit scores on the board.
-const boardApplicationSelect = (organizationId: string, vacancyId: string, visibleFit: Prisma.FitScoreWhereInput) => ({
-  id: true,
-  status: true,
-  source: true,
-  appliedAt: true,
-  checklistProgress: true,
-  movements: {
-    orderBy: { movedAt: 'desc' as const },
-    take: 1,
-    select: { movedAt: true },
-  },
-  candidate: {
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      avatar: true,
-      currentTitle: true,
-      currentCompany: true,
-      fitScores: {
-        where: { organizationId, vacancyId, AND: [visibleFit] },
-        take: 1,
-        select: { overallScore: true, isPartial: true },
+const boardApplicationSelect = (organizationId: string, vacancyId: string, visibleFit: Prisma.FitScoreWhereInput) =>
+  ({
+    id: true,
+    status: true,
+    source: true,
+    appliedAt: true,
+    checklistProgress: true,
+    movements: {
+      orderBy: { movedAt: 'desc' as const },
+      take: 1,
+      select: { movedAt: true },
+    },
+    candidate: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatar: true,
+        currentTitle: true,
+        currentCompany: true,
+        fitScores: {
+          where: { organizationId, vacancyId, AND: [visibleFit] },
+          take: 1,
+          select: { overallScore: true, isPartial: true },
+        },
       },
     },
-  },
-}) satisfies Prisma.ApplicationSelect;
+  }) satisfies Prisma.ApplicationSelect;
 
 const stageSelect = {
   id: true,
@@ -75,6 +76,14 @@ const movementSelect = {
 // ---------------------------------------------------------------------------
 // Repository
 // ---------------------------------------------------------------------------
+
+/** A stage move targeted an application that is no longer active (hired or rejected since it was read). */
+export class ApplicationNotActiveError extends Error {
+  constructor() {
+    super('application is no longer active');
+    this.name = 'ApplicationNotActiveError';
+  }
+}
 
 export const pipelineRepository = {
   // Board
@@ -163,6 +172,14 @@ export const pipelineRepository = {
     // `tenantDb`, whose extension re-wraps each op in its own mini-transaction, so
     // the movement audit row and the stage flip were committing independently.
     return runTenantTransaction(orgId, async (tx) => {
+      // Conditional on 'active' and written FIRST: a hired or rejected application (e.g. a stale board drag
+      // after conversion) is not moved, and throwing here rolls back the movement row too.
+      const moved = await tx.application.updateMany({
+        where: { id: applicationId, organizationId: orgId, status: 'active' },
+        data: { currentStageId: toStageId },
+      });
+      if (moved.count !== 1) throw new ApplicationNotActiveError();
+
       await tx.stageMovement.create({
         data: {
           organizationId: orgId,
@@ -174,9 +191,8 @@ export const pipelineRepository = {
         },
       });
 
-      return tx.application.update({
-        where: { id: applicationId },
-        data: { currentStageId: toStageId },
+      return tx.application.findFirst({
+        where: { id: applicationId, organizationId: orgId },
         select: applicationMutationSelect,
       });
     });
@@ -193,6 +209,14 @@ export const pipelineRepository = {
     // runTenantTransaction per #45 (prisma#17948) — a bulk move must not leave
     // movement rows written with the applications un-moved (or vice versa).
     return runTenantTransaction(orgId, async (tx) => {
+      // Conditional on 'active' and written FIRST: if any application stopped being active (hired, rejected)
+      // since the caller read it, the whole bulk move rolls back, movement rows included.
+      const moved = await tx.application.updateMany({
+        where: { id: { in: applications.map((a) => a.id) }, organizationId: orgId, status: 'active' },
+        data: { currentStageId: toStageId },
+      });
+      if (moved.count !== applications.length) throw new ApplicationNotActiveError();
+
       await tx.stageMovement.createMany({
         data: applications.map((app) => ({
           organizationId: orgId,
@@ -204,27 +228,26 @@ export const pipelineRepository = {
         })),
       });
 
-      await tx.application.updateMany({
-        where: { id: { in: applications.map((a) => a.id) } },
-        data: { currentStageId: toStageId },
-      });
-
       return { moved: applications.length };
     });
   },
 
   // Reject
+  // Conditional transition: only a STILL-active application is rejected, so a rejection can never
+  // overwrite a hire (or a second rejection) that committed after the caller's read. Returns null when the
+  // application was no longer active.
   async rejectApplication(applicationId: string, reason: string, feedback?: string) {
-    return db.application.update({
-      where: { id: applicationId },
+    const result = await db.application.updateMany({
+      where: { id: applicationId, status: 'active' },
       data: {
         status: 'rejected',
         rejectedAt: new Date(),
         rejectedReason: reason,
         feedback,
       },
-      select: applicationMutationSelect,
     });
+    if (result.count !== 1) return null;
+    return db.application.findFirst({ where: { id: applicationId }, select: applicationMutationSelect });
   },
 
   // Movement history
@@ -428,7 +451,9 @@ export const pipelineRepository = {
       stages.map(async (stage) => {
         const [currentCount, everReachedRows] = await Promise.all([
           db.application.count({
-            where: { vacancyId, currentStageId: stage.id, status: 'active' },
+            // 'hired' too: a confirmed hire leaves the active pipeline but still sits in the last stage, and
+            // the funnel's terminal "Contratado" bar must count it.
+            where: { vacancyId, currentStageId: stage.id, status: { in: ['active', 'hired'] } },
           }),
           // Distinct applicationId — an application bounced out and later
           // reconsidered into the same stage produces multiple StageMovement

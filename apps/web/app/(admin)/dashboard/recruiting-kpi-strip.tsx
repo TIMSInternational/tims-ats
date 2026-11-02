@@ -5,17 +5,18 @@ import type { VacancyDashboardKpis, CandidateKpis } from '../../../lib/trpc-type
 import { ErrorState } from '../../../components';
 
 interface KpiItem {
+  testId: string;
   dotColor: string;
   label: string;
   value: number;
   valueColor?: string;
-  subtitle: string;
+  subtitle?: string;
   subtitleColor?: string;
 }
 
-function KpiCardMini({ dotColor, label, value, valueColor, subtitle, subtitleColor }: KpiItem) {
+function KpiCardMini({ testId, dotColor, label, value, valueColor, subtitle, subtitleColor }: KpiItem) {
   return (
-    <div className="md:min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+    <div data-testid={testId} className="md:min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
         <span className="text-[11px] text-[#585858]">{label}</span>
@@ -23,9 +24,11 @@ function KpiCardMini({ dotColor, label, value, valueColor, subtitle, subtitleCol
       <span className={`text-[22px] md:text-[28px] font-bold leading-tight ${valueColor ?? 'text-[#1F114C]'}`}>
         {value}
       </span>
-      <span className={`text-[11px] font-medium ${subtitleColor ?? 'text-[#585858]'}`}>
-        {subtitle}
-      </span>
+      {subtitle && (
+        <span className={`text-[11px] font-medium ${subtitleColor ?? 'text-[#585858]'}`}>
+          {subtitle}
+        </span>
+      )}
     </div>
   );
 }
@@ -33,7 +36,7 @@ function KpiCardMini({ dotColor, label, value, valueColor, subtitle, subtitleCol
 function KpiStripSkeleton() {
   return (
     <div className="grid grid-cols-2 gap-3 mb-6 md:flex md:overflow-x-auto scrollbar-hide">
-      {Array.from({ length: 8 }).map((_, i) => (
+      {Array.from({ length: 5 }).map((_, i) => (
         <div
           key={i}
           className="md:min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] animate-pulse"
@@ -72,15 +75,20 @@ export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading, isEr
   const vk = vacancyKpis;
   const ck = candidateKpis;
 
+  // RH-02: every card is a real count from the two KPI queries, labelled for what it actually
+  // counts. Cards with no backing metric (interviews today, pending offers, abandonment risk) were
+  // removed rather than filled with proxies; captions are either a real count or a plain description.
   const cards: KpiItem[] = [
     {
+      testId: 'kpi-open-vacancies',
       dotColor: 'bg-[#DD0C15]',
       label: rd.openVacancies,
       value: vk?.totalOpen ?? 0,
-      subtitle: `${vk?.totalPendingApproval ?? 0} ${rd.critical}`,
-      subtitleColor: 'text-[#DD0C15]',
+      subtitle: `${vk?.totalPendingApproval ?? 0} ${rd.pendingApproval}`,
+      subtitleColor: 'text-amber-500',
     },
     {
+      testId: 'kpi-sla-overdue',
       dotColor: 'bg-amber-500',
       label: rd.slaOverdue,
       value: vk?.totalSlaOverdue ?? 0,
@@ -89,47 +97,26 @@ export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading, isEr
       subtitleColor: 'text-amber-500',
     },
     {
+      testId: 'kpi-drafts',
       dotColor: 'bg-blue-500',
-      label: rd.frozen,
+      label: rd.drafts,
       value: vk?.totalDraft ?? 0,
       valueColor: 'text-[#8B8B8B]',
-      subtitle: rd.noActivity,
-      subtitleColor: 'text-[#8B8B8B]',
     },
     {
+      testId: 'kpi-active-candidates',
       dotColor: 'bg-green-500',
       label: rd.activeCandidates,
       value: ck?.total ?? 0,
-      subtitle: `+${ck?.newThisMonth ?? 0} ${rd.thisWeek}`,
+      subtitle: `+${ck?.newThisMonth ?? 0} ${rd.thisMonth}`,
       subtitleColor: 'text-green-500',
     },
     {
+      testId: 'kpi-active-applications',
       dotColor: 'bg-violet-500',
-      label: rd.inEvaluation,
+      label: rd.activeApplications,
       value: ck?.activeApplications ?? 0,
-      subtitle: rd.activeTests,
-    },
-    {
-      dotColor: 'bg-teal-500',
-      label: rd.interviewsToday,
-      value: vk?.totalPublished ?? 0,
-      subtitle: `${Math.min(2, vk?.totalPublished ?? 0)} ${rd.toConfirm}`,
-      subtitleColor: 'text-amber-500',
-    },
-    {
-      dotColor: 'bg-orange-500',
-      label: rd.pendingOffers,
-      value: vk?.totalClosed ?? 0,
-      subtitle: `1 ${rd.expiresTomorrow}`,
-      subtitleColor: 'text-[#DD0C15]',
-    },
-    {
-      dotColor: 'bg-[#DD0C15]',
-      label: rd.abandonmentRisk,
-      value: Math.max(0, (ck?.total ?? 0) - (ck?.activeApplications ?? 0)),
-      valueColor: 'text-[#DD0C15]',
-      subtitle: rd.highFitStalled,
-      subtitleColor: 'text-[#DD0C15]',
+      subtitle: rd.inPipeline,
     },
   ];
 
