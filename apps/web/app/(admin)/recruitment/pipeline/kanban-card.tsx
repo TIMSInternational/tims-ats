@@ -154,9 +154,9 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
             {Math.round(fitScore)}{fit?.isPartial ? '*' : ''}
           </div>
         )}
+        {/* Reject button inside the drag handle: the dnd lib ignores drags from buttons, and
+            stopPropagation keeps a mouse press from arming one. */}
         {onReject && (
-          // A plain <button> inside the drag handle: @hello-pangea/dnd does not start a drag from
-          // interactive elements, and stopPropagation keeps a mouse press from arming one.
           <button
             type="button"
             onMouseDown={(e) => e.stopPropagation()}

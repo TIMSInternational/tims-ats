@@ -4289,7 +4289,7 @@
       "INSUFFICIENT_EXPERIENCE": "Experiencia insuficiente",
       "SALARY_MISMATCH": "Expectativa salarial fuera de rango",
       "CANDIDATE_WITHDREW": "El candidato desistió",
-      "OTHER_CANDIDATE_SELECTED": "Se seleccionó a otro candidato",
+      "OTHER_CANDIDATE_SELECTED": "Se eligió a otro candidato",
       "NO_SHOW": "No se presentó",
       "OTHER": "Otro motivo"
     }
