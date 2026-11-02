@@ -7,34 +7,35 @@ import { candidateConsentRepository } from './candidate-consent.repository';
 // ---------------------------------------------------------------------------
 
 // #312: `visibleFit` hides withdrawn candidates' existing fit scores on the board.
-const boardApplicationSelect = (organizationId: string, vacancyId: string, visibleFit: Prisma.FitScoreWhereInput) => ({
-  id: true,
-  status: true,
-  source: true,
-  appliedAt: true,
-  checklistProgress: true,
-  movements: {
-    orderBy: { movedAt: 'desc' as const },
-    take: 1,
-    select: { movedAt: true },
-  },
-  candidate: {
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      avatar: true,
-      currentTitle: true,
-      currentCompany: true,
-      fitScores: {
-        where: { organizationId, vacancyId, AND: [visibleFit] },
-        take: 1,
-        select: { overallScore: true, isPartial: true },
+const boardApplicationSelect = (organizationId: string, vacancyId: string, visibleFit: Prisma.FitScoreWhereInput) =>
+  ({
+    id: true,
+    status: true,
+    source: true,
+    appliedAt: true,
+    checklistProgress: true,
+    movements: {
+      orderBy: { movedAt: 'desc' as const },
+      take: 1,
+      select: { movedAt: true },
+    },
+    candidate: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatar: true,
+        currentTitle: true,
+        currentCompany: true,
+        fitScores: {
+          where: { organizationId, vacancyId, AND: [visibleFit] },
+          take: 1,
+          select: { overallScore: true, isPartial: true },
+        },
       },
     },
-  },
-}) satisfies Prisma.ApplicationSelect;
+  }) satisfies Prisma.ApplicationSelect;
 
 const stageSelect = {
   id: true,
@@ -214,17 +215,21 @@ export const pipelineRepository = {
   },
 
   // Reject
+  // Conditional transition: only a STILL-active application is rejected, so a rejection can never
+  // overwrite a hire (or a second rejection) that committed after the caller's read. Returns null when the
+  // application was no longer active.
   async rejectApplication(applicationId: string, reason: string, feedback?: string) {
-    return db.application.update({
-      where: { id: applicationId },
+    const result = await db.application.updateMany({
+      where: { id: applicationId, status: 'active' },
       data: {
         status: 'rejected',
         rejectedAt: new Date(),
         rejectedReason: reason,
         feedback,
       },
-      select: applicationMutationSelect,
     });
+    if (result.count !== 1) return null;
+    return db.application.findFirst({ where: { id: applicationId }, select: applicationMutationSelect });
   },
 
   // Movement history

@@ -145,7 +145,11 @@ export const pipelineService = {
     if (!application || application.status !== 'active') {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada o ya fue rechazada' });
     }
-    return pipelineRepository.rejectApplication(applicationId, reason, feedback);
+    const rejected = await pipelineRepository.rejectApplication(applicationId, reason, feedback);
+    if (!rejected) {
+      throw new TRPCError({ code: 'CONFLICT', message: 'La aplicación cambió de estado; recarga e intenta de nuevo' });
+    }
+    return rejected;
   },
 
   // Movement history

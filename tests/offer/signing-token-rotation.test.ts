@@ -61,6 +61,11 @@ const updateMany = vi.fn(async ({ where, data }: { where: Where; data: Partial<R
 });
 const sendOffer = vi.fn();
 
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', () => ({
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+}));
+
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst, findMany, updateMany },

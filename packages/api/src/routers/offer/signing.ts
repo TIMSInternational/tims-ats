@@ -10,6 +10,7 @@ import { candidateConsentRepository } from '../../repositories/candidate-consent
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
+import { assertApplicationNotRejected } from './rejected-application-guard';
 
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
@@ -20,9 +21,7 @@ function normaliseRecipient(email: string): string {
 // session and the org is unknown until the token resolves an offer), and `db` here is
 // tenantDb, which fails closed without one. The token lookup is cross-tenant by nature,
 // so these procedures opt in explicitly — same unscoped behavior as before the guard.
-const signingTokenProcedure = publicProcedure.use(({ next }) =>
-  runUnscopedLogged('offer-signing-token', () => next()),
-);
+const signingTokenProcedure = publicProcedure.use(({ next }) => runUnscopedLogged('offer-signing-token', () => next()));
 
 export const offerSigningRouter = router({
   // Generate a unique signing link for an offer. offer:create (recruiters) suffices to send an APPROVED
@@ -38,13 +37,15 @@ export const offerSigningRouter = router({
       // it with a bare assertScoped (would lose those fields).
       const offer = await db.offer.findFirst({
         where: {
-          AND: [
-            { id: input.offerId, organizationId: ctx.user.organizationId },
-            scopeWhere as Prisma.OfferWhereInput,
-          ],
+          AND: [{ id: input.offerId, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.OfferWhereInput],
         },
         select: {
-          id: true, status: true, settings: true, updatedAt: true, expiresAt: true, sentAt: true,
+          id: true,
+          status: true,
+          settings: true,
+          updatedAt: true,
+          expiresAt: true,
+          sentAt: true,
           candidate: { select: { id: true, firstName: true, lastName: true, email: true, updatedAt: true } },
           vacancy: { select: { title: true } },
         },
@@ -70,6 +71,12 @@ export const offerSigningRouter = router({
         ctx.user.organizationId,
         offer.id,
         'Esta oferta fue rechazada en su cadena de aprobación y no se puede enviar',
+      );
+      await assertApplicationNotRejected(
+        db,
+        ctx.user.organizationId,
+        offer.id,
+        'El candidato fue descartado en el proceso; esta oferta no se puede enviar',
       );
 
       if (!offer.candidate.email) {
@@ -111,7 +118,10 @@ export const offerSigningRouter = router({
       }
 
       if (!process.env.NEXT_PUBLIC_APP_URL?.trim()) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'La URL pública de la aplicación no está configurada' });
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'La URL pública de la aplicación no está configurada',
+        });
       }
       let appUrl: URL;
       try {
@@ -138,13 +148,14 @@ export const offerSigningRouter = router({
       // link. Rotation goes through the same compare-and-set as the first send.
       const recipient = normaliseRecipient(offer.candidate.email);
       const existingToken = existingSettings.signingToken;
-      const reusableToken = offer.status === 'sent'
-        && typeof existingToken === 'string' && existingToken.length > 0
-        && existingSettings.signingTokenRecipient === recipient
-        ? existingToken : null;
-      const signingToken = reusableToken
-        ? reusableToken
-        : crypto.randomUUID();
+      const reusableToken =
+        offer.status === 'sent' &&
+        typeof existingToken === 'string' &&
+        existingToken.length > 0 &&
+        existingSettings.signingTokenRecipient === recipient
+          ? existingToken
+          : null;
+      const signingToken = reusableToken ? reusableToken : crypto.randomUUID();
 
       if (!reusableToken) {
         const transition = await db.offer.updateMany({
@@ -161,7 +172,10 @@ export const offerSigningRouter = router({
           },
         });
         if (transition.count !== 1) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta cambió mientras se preparaba el enlace. Vuelve a intentarlo.' });
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'La oferta cambió mientras se preparaba el enlace. Vuelve a intentarlo.',
+          });
         }
       }
 
@@ -241,7 +255,7 @@ export const offerSigningRouter = router({
       z.object({
         token: z.string().min(1).max(100),
         signatureName: z.string().min(2).max(200),
-      })
+      }),
     )
     .mutation(async ({ input }) => {
       const offers = await db.offer.findMany({
@@ -273,6 +287,12 @@ export const offerSigningRouter = router({
       }
 
       await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible para firma');
+      await assertApplicationNotRejected(
+        db,
+        offer.organizationId,
+        offer.id,
+        'Esta oferta no esta disponible para firma',
+      );
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();

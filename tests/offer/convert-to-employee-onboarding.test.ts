@@ -18,6 +18,16 @@ const mockOffer = {
   vacancy: { companyId: 'co-1', businessUnitId: 'bu-1', teamId: 'team-1' },
 };
 
+// The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
+vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
+  closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
+}));
+
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', () => ({
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+}));
+
 vi.mock('@tims/db', () => ({
   tenantDb: {
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },
@@ -123,6 +133,8 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
       where: { id: OFFER_ID, organizationId: ORG_ID, status: 'accepted' },
       data: { status: 'converted' },
     });
+    const { closeHireRecords } = await import('../../packages/api/src/services/hire-closure.service');
+    expect(closeHireRecords).toHaveBeenCalledWith(mockTx, expect.objectContaining({ organizationId: ORG_ID }));
   });
 
   it('refuses to convert an accepted offer whose approval chain holds a rejection', async () => {
