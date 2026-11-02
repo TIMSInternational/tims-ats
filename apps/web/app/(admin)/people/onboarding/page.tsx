@@ -128,7 +128,7 @@ export default function OnboardingPage() {
                 valueColor="text-[#1F114C]"
               />
               <KpiCard
-                label="Tasa Finalizacion"
+                label="Tasa Finalización"
                 value={`${k?.taskCompletionRate ?? 0}%`}
                 subtitle="tareas completadas"
                 icon={<IconCheck />}
@@ -138,7 +138,7 @@ export default function OnboardingPage() {
               <KpiCard
                 label="Tareas Pendientes"
                 value={pendingTasks}
-                subtitle="requieren accion"
+                subtitle="requieren acción"
                 icon={<IconDoc />}
                 iconBg="bg-amber-500"
                 valueColor="text-amber-500"

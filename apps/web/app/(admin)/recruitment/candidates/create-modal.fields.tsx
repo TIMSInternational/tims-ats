@@ -41,7 +41,7 @@ export function Step1Fields({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>{t.candidates.firstName} *</label>
-          <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="Maria" autoFocus />
+          <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="María" autoFocus />
         </div>
         <div>
           <label className={labelCls}>{t.candidates.lastName} *</label>
@@ -224,7 +224,7 @@ export function Step3Fields({
           )}
           {location && (
             <div className="flex justify-between">
-              <span className="text-[12px] text-[#585858]">Ubicacion:</span>
+              <span className="text-[12px] text-[#585858]">Ubicación:</span>
               <span className="text-[12px] text-[#333]">{location}</span>
             </div>
           )}

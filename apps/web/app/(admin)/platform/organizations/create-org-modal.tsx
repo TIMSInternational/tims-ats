@@ -19,7 +19,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
       onSuccess();
     },
     onError: (err) => {
-      toast(err.message || 'Error al crear organizacion', { type: 'error' });
+      toast(err.message || 'Error al crear organización', { type: 'error' });
     },
   });
 

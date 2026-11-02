@@ -71,7 +71,7 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
     });
   };
 
-  const stepLabels = ['Datos personales', 'Perfil profesional', 'Fuente y clasificacion'];
+  const stepLabels = ['Datos personales', 'Perfil profesional', 'Fuente y clasificación'];
 
   return (
     <Modal title={t.candidates.createTitle} onClose={onClose} maxWidth="max-w-2xl">

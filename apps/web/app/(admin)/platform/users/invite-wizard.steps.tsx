@@ -51,7 +51,7 @@ export function BulkMapStep({ rawHeaders, rawRows, colMap, setColMap, setBulkSte
         </div>
       )}
       <div className="flex justify-end gap-2 pt-2">
-        <button onClick={() => setBulkStep('upload')} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">Atras</button>
+        <button onClick={() => setBulkStep('upload')} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">Atrás</button>
         <button onClick={onConfirm} disabled={!colMap.email} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">Continuar</button>
       </div>
     </div>
@@ -96,7 +96,7 @@ export function BulkPreviewStep({ parsedUsers, bulkOrgId, isPending, setBulkStep
         </table>
       </div>
       <div className="flex justify-end gap-2 pt-2">
-        <button onClick={() => setBulkStep('map')} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">Atras</button>
+        <button onClick={() => setBulkStep('map')} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">Atrás</button>
         <button onClick={onSubmit} disabled={!bulkOrgId || isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">
           {isPending ? 'Importando...' : `Invitar ${parsedUsers.length} Usuarios`}
         </button>

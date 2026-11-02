@@ -159,7 +159,7 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
           {formatSource(app.source)}
         </span>
         <span className={`text-[10px] ${isOverdue ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>
-          {days === 0 ? 'Hoy' : days === 1 ? '1 dia' : `${days} dias`}
+          {days === 0 ? 'Hoy' : days === 1 ? '1 día' : `${days} días`}
         </span>
         {isOverdue && (
           <span className="text-[9px] bg-red-50 text-[#DD0C15] px-1.5 py-0.5 rounded font-medium">

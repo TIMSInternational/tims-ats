@@ -25,8 +25,8 @@ const QUADRANT_LABELS: Record<string, string> = {
   star: 'Estrella',
   high_potential: 'Alto Potencial',
   enigma: 'Enigma',
-  solid_performer: 'Prof. Solido',
-  consistent_performer: 'Prof. Solido',
+  solid_performer: 'Prof. Sólido',
+  consistent_performer: 'Prof. Sólido',
   core_player: 'Jugador Clave',
   inconsistent: 'Inconsistente',
   workhouse: 'Caballo de Trabajo',
@@ -50,16 +50,16 @@ const QUADRANT_COLOR: Record<string, string> = {
 const BENCH_STATUS: Record<string, { label: string; cls: string }> = {
   covered: { label: 'Cubierto', cls: 'text-emerald-600 font-semibold' },
   risk: { label: 'Riesgo', cls: 'text-amber-600 font-semibold' },
-  critical: { label: 'Critico', cls: 'text-red-600 font-semibold' },
+  critical: { label: 'Crítico', cls: 'text-red-600 font-semibold' },
 };
 
 const AUTO_PLANS = [
-  { color: '#A7F3D0', name: 'Estrella', desc: 'Plan sucesion + Mentorias ejecutivas + Proyectos estrategicos' },
-  { color: '#D1FAE5', name: 'Alto Potencial', desc: 'Asignacion proyectos retadores + Coach externo' },
-  { color: '#DBEAFE', name: 'Alto Desempeno', desc: 'Desarrollo liderazgo + Rotacion interfuncional' },
-  { color: '#F3F4F6', name: 'Prof. Solido', desc: 'Capacitacion tecnica + Reconocimiento' },
-  { color: '#FFF3CD', name: 'Enigma', desc: 'Coaching intensivo + Reubicacion evaluada' },
-  { color: '#FEE2E2', name: 'Riesgo', desc: 'PIP 90 dias + Seguimiento semanal + Decision Go/No-Go' },
+  { color: '#A7F3D0', name: 'Estrella', desc: 'Plan sucesión + Mentorías ejecutivas + Proyectos estratégicos' },
+  { color: '#D1FAE5', name: 'Alto Potencial', desc: 'Asignación proyectos retadores + Coach externo' },
+  { color: '#DBEAFE', name: 'Alto Desempeño', desc: 'Desarrollo liderazgo + Rotación interfuncional' },
+  { color: '#F3F4F6', name: 'Prof. Sólido', desc: 'Capacitación técnica + Reconocimiento' },
+  { color: '#FFF3CD', name: 'Enigma', desc: 'Coaching intensivo + Reubicación evaluada' },
+  { color: '#FEE2E2', name: 'Riesgo', desc: 'PIP 90 días + Seguimiento semanal + Decisión Go/No-Go' },
 ];
 
 // ── Types inferred from tRPC ─────────────────────────────────────────────────

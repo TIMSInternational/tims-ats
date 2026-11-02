@@ -25,7 +25,7 @@ export function OrgActionsDropdown({ org, onEdit }: OrgActionsDropdownProps) {
     onSuccess: () => {
       utils.platform.listOrganizations.invalidate();
       utils.platform.getOrganizationKpis.invalidate();
-      toast(org.isActive ? 'Organizacion suspendida' : 'Organizacion activada', { type: 'success' });
+      toast(org.isActive ? 'Organización suspendida' : 'Organización activada', { type: 'success' });
     },
     onError: (err) => {
       toast(err.message || 'Error al cambiar estado', { type: 'error' });

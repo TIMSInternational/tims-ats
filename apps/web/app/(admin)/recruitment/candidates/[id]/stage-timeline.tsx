@@ -19,32 +19,51 @@ interface StageStep {
   isCompleted: boolean;
 }
 
-function buildStageSteps(app: Application): StageStep[] {
+// Stage names come from the DB and may predate the accent fix ("Preseleccion" vs "Preselección"),
+// so compare them accent- and case-insensitively.
+function stageKey(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+export function buildStageSteps(app: Application): StageStep[] {
   const currentOrder = app.currentStage.order;
   // Build typical pipeline stages in order
   const stages = [
     { name: 'Postulada', order: 0 },
-    { name: 'Preseleccion', order: 1 },
+    { name: 'Preselección', order: 1 },
     { name: 'Evaluaciones', order: 2 },
-    { name: app.currentStage.name, order: currentOrder },
+    { name: app.currentStage.name, order: currentOrder, isActual: true },
     { name: 'Oferta', order: currentOrder + 1 },
-    { name: 'Contratacion', order: currentOrder + 2 },
+    { name: 'Contratación', order: currentOrder + 2 },
   ];
 
-  // Deduplicate by name
-  const seen = new Set<string>();
-  const unique: typeof stages = [];
+  // Deduplicate by name, ignoring accents and case. The candidate's actual stage always wins over a
+  // built-in placeholder of the same name, so its real order (and "current" marker) is kept.
+  const indexByKey = new Map<string, number>();
+  const unique: Array<{ name: string; order: number; isActual: boolean }> = [];
   for (const s of stages) {
-    if (!seen.has(s.name)) {
-      seen.add(s.name);
-      unique.push(s);
+    const key = stageKey(s.name);
+    const existing = indexByKey.get(key);
+    if (existing === undefined) {
+      indexByKey.set(key, unique.length);
+      unique.push({ name: s.name, order: s.order, isActual: 'isActual' in s });
+    } else if ('isActual' in s) {
+      unique[existing] = { name: s.name, order: s.order, isActual: true };
     }
   }
+
+  // A replaced placeholder keeps its slot but takes the actual stage's order; re-sort (stable).
+  unique.sort((a, b) => a.order - b.order);
 
   return unique.map((s) => ({
     name: s.name,
     date: s.order === 0 ? formatDate(app.appliedAt) : null,
-    isCurrent: s.order === currentOrder,
+    // Identity, not order: a built-in placeholder can share the actual stage's order number.
+    isCurrent: s.isActual,
     isCompleted: s.order < currentOrder,
   }));
 }

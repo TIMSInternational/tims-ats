@@ -136,9 +136,9 @@ export function OverviewSection({ org }: OverviewProps) {
           icon={<svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><path d="M22 6l-10 7L2 6" /></svg>}
         />
         <StatCard
-          label="Suscripcion"
+          label="Suscripción"
           value={plan.charAt(0).toUpperCase() + plan.slice(1)}
-          sub={sub ? sub.status : 'Sin suscripcion'}
+          sub={sub ? sub.status : 'Sin suscripción'}
           color="bg-emerald-50"
           icon={<svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>}
         />
@@ -147,7 +147,7 @@ export function OverviewSection({ org }: OverviewProps) {
       {/* Subscription card */}
       {sub && (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-          <h3 className="text-sm font-semibold text-[#333] mb-4">Suscripcion</h3>
+          <h3 className="text-sm font-semibold text-[#333] mb-4">Suscripción</h3>
           <div className="grid grid-cols-2 gap-x-8 gap-y-3">
             <div>
               <span className="text-xs text-[#8B8B8B]">Plan</span>

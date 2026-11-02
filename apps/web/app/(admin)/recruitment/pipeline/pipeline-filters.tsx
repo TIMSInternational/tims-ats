@@ -28,10 +28,10 @@ const FIT_OPTIONS = [
 ];
 
 const DATE_OPTIONS = [
-  { value: 3, label: '< 3 dias' },
-  { value: 7, label: '< 7 dias' },
-  { value: 14, label: '< 14 dias' },
-  { value: 30, label: '< 30 dias' },
+  { value: 3, label: '< 3 días' },
+  { value: 7, label: '< 7 días' },
+  { value: 14, label: '< 14 días' },
+  { value: 30, label: '< 30 días' },
 ];
 
 interface Props {

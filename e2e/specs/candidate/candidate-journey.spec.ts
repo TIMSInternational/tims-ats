@@ -80,8 +80,8 @@ async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
   await page.getByRole('button', { name: 'Aplicar ahora' }).first().click();
   const form = page.getByRole('dialog', { name: `Aplicar a ${j.vacancy!.title}` });
 
-  await form.getByPlaceholder('Maria', { exact: true }).fill(cand().firstName);
-  await form.getByPlaceholder('Lopez Rodriguez').fill(cand().lastName);
+  await form.getByPlaceholder('María', { exact: true }).fill(cand().firstName);
+  await form.getByPlaceholder('López Rodríguez').fill(cand().lastName);
   await form.getByPlaceholder('maria.lopez@gmail.com').fill(cand().email);
   await form.getByPlaceholder('+57 310 123 4567').fill('+57 300 555 0101');
   await form.getByPlaceholder('Bogotá, Colombia').fill('Envigado, Colombia');
@@ -172,7 +172,7 @@ async function scheduleInterview(page: Page): Promise<void> {
   const when = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   await wizard.locator('input[type=date]').fill(when);
   await wizard.locator('input[type=time]').fill('10:00');
-  await wizard.getByPlaceholder('Oficina Bogota, Sala 3A').fill('Oficina Medellín, Sala 2');
+  await wizard.getByPlaceholder('Oficina Bogotá, Sala 3A').fill('Oficina Medellín, Sala 2');
   await wizard.getByRole('button', { name: 'Siguiente' }).click();
 
   await wizard.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first().click();

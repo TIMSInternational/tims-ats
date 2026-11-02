@@ -9,7 +9,7 @@ import type { AiAgentItem } from '../../../../lib/trpc-types';
 import { AgentDetailDrawer } from './agent-detail-drawer';
 
 const CATEGORY_LABELS: Record<string, string> = {
-  recruitment: 'Reclutamiento', interview: 'Entrevistas', assessment: 'Evaluacion',
+  recruitment: 'Reclutamiento', interview: 'Entrevistas', assessment: 'Evaluación',
   pipeline: 'Pipeline', talent: 'Talento', general: 'General',
 };
 

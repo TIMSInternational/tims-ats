@@ -33,10 +33,10 @@ interface OfferValidationsProps {
 
 const TYPE_LABELS: Record<string, string> = {
   offer_accepted: 'Oferta Aceptada',
-  background_check: 'Verificacion de Antecedentes',
-  reference_check: 'Verificacion de Referencias',
-  medical_exam: 'Examen Medico',
-  education_verification: 'Verificacion de Educacion',
+  background_check: 'Verificación de Antecedentes',
+  reference_check: 'Verificación de Referencias',
+  medical_exam: 'Examen Médico',
+  education_verification: 'Verificación de Educación',
   contract_signing: 'Firma de Contrato',
 };
 

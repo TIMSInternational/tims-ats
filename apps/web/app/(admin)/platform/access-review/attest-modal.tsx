@@ -13,7 +13,7 @@ interface AttestModalProps {
 }
 
 const MAX_NOTES = 2000;
-const TRUNCATED_MESSAGE = 'La organizacion excede 10000 usuarios; no se puede certificar automaticamente sin subcontar';
+const TRUNCATED_MESSAGE = 'La organización excede 10000 usuarios; no se puede certificar automáticamente sin subcontar';
 
 export function AttestModal({ organizationId, onClose }: AttestModalProps) {
   const { t } = useI18n();

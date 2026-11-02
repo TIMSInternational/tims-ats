@@ -64,7 +64,7 @@ export function formatRelativeTime(date: string | Date | null | undefined, never
   if (hours < 24) return `Hace ${hours} hora${hours > 1 ? 's' : ''}`;
   const days = Math.floor(hours / 24);
   if (days === 1) return 'Ayer';
-  if (days < 30) return `Hace ${days} dias`;
+  if (days < 30) return `Hace ${days} días`;
   return formatDate(date);
 }
 

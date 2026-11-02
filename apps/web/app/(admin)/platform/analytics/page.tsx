@@ -13,7 +13,7 @@ const MODULE_COLORS = ['#1F114C', '#2D1B69', '#3D2980', '#5B42A5', '#7B6BBF', '#
 
 const FLAG_LABELS: Record<string, string> = {
   ai_enabled: 'AI', nine_box_enabled: 'Nine Box', dei_enabled: 'DEI',
-  compensation_enabled: 'Compensacion', succession_enabled: 'Sucesion',
+  compensation_enabled: 'Compensación', succession_enabled: 'Sucesión',
   video_interviews: 'Video Interviews', whatsapp_enabled: 'WhatsApp',
   advanced_analytics: 'Analytics', api_access: 'API Access', sso_saml: 'SSO/SAML',
 };

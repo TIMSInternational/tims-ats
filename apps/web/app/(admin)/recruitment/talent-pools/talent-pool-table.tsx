@@ -150,7 +150,7 @@ export function TalentPoolTable({
             const poolStyle = POOL_BADGE_STYLES[c.poolType] ?? 'bg-gray-50 text-gray-600';
             const lastDate = c.updatedAt || c.createdAt;
             const subtitle = [c.currentTitle, c.currentCompany].filter(Boolean).join(' — ');
-            const locationExp = [c.location, c.yearsExperience != null ? `${c.yearsExperience} anos exp` : null]
+            const locationExp = [c.location, c.yearsExperience != null ? `${c.yearsExperience} años exp` : null]
               .filter(Boolean)
               .join(' · ');
 

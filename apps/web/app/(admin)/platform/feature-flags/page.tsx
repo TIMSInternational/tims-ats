@@ -9,15 +9,15 @@ import { Modal, ErrorState } from '../../../../components';
 
 const FLAG_DESCRIPTIONS: Record<string, string> = {
   ai_enabled: 'Habilita funcionalidades de IA (screening, matching, sugerencias)',
-  nine_box_enabled: 'Modulo de Nine-Box / Talent Review para evaluacion de talento',
-  dei_enabled: 'Modulo de Diversidad, Equidad e Inclusion con analytics',
-  compensation_enabled: 'Modulo de Compensacion y Beneficios con benchmarking',
-  succession_enabled: 'Planificacion de sucesion y mapa de talento',
-  video_interviews: 'Entrevistas en video con grabacion y transcripcion AI',
-  whatsapp_enabled: 'Integracion con WhatsApp Business para comunicacion candidatos',
-  advanced_analytics: 'Analytics avanzados con dashboards personalizables y exportacion',
+  nine_box_enabled: 'Módulo de Nine-Box / Talent Review para evaluación de talento',
+  dei_enabled: 'Módulo de Diversidad, Equidad e Inclusión con analytics',
+  compensation_enabled: 'Módulo de Compensación y Beneficios con benchmarking',
+  succession_enabled: 'Planificación de sucesión y mapa de talento',
+  video_interviews: 'Entrevistas en video con grabación y transcripción AI',
+  whatsapp_enabled: 'Integración con WhatsApp Business para comunicación candidatos',
+  advanced_analytics: 'Analytics avanzados con dashboards personalizables y exportación',
   api_access: 'Acceso a API REST publica con API keys y rate limiting',
-  sso_saml: 'Single Sign-On via SAML 2.0 para integracion empresarial',
+  sso_saml: 'Single Sign-On via SAML 2.0 para integración empresarial',
 };
 
 export default function PlatformFeatureFlagsPage() {
@@ -193,7 +193,7 @@ export default function PlatformFeatureFlagsPage() {
           <div className="divide-y divide-[#F3F3F3]">
             {selectedFlagEntries.map(entry => {
               const effectiveEnabled = getEffectiveEnabled(entry.organizationId, entry.key, entry.enabled);
-              const orgName = entry.organization?.name || 'Organizacion';
+              const orgName = entry.organization?.name || 'Organización';
               const orgInitials = orgName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
               const orgPlan = entry.organization?.plan || 'trial';
               const userCount = entry.organization?._count?.users ?? 0;

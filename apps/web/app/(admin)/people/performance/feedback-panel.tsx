@@ -80,7 +80,7 @@ function timeAgo(d: string | Date): string {
   const diffHr = Math.floor(diffMin / 60);
   if (diffHr < 24) return `Hace ${diffHr} hora${diffHr > 1 ? 's' : ''}`;
   const diffDay = Math.floor(diffHr / 24);
-  return `Hace ${diffDay} dia${diffDay > 1 ? 's' : ''}`;
+  return `Hace ${diffDay} día${diffDay > 1 ? 's' : ''}`;
 }
 
 function SkeletonList({ count }: { count: number }) {

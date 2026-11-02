@@ -133,7 +133,7 @@ describe('create-vacancy summary (#311)', () => {
       expect(text).toContain(expected);
     }
     expect(text).toContain('COP 8,000,000 – 14,000,000 / year');
-    expect(text).not.toMatch(/Resumen|Cargo:|Contrato:|posición|Presencial|Mensual|Anual|Minimo|Maximo|Moneda|Periodo/);
+    expect(text).not.toMatch(/Resumen|Cargo:|Contrato:|posición|Presencial|Mensual|Anual|M[ií]nimo|M[aá]ximo|Moneda|Periodo/);
   });
 
   it('renders the same summary in Spanish', async () => {

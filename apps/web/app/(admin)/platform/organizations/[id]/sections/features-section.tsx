@@ -6,11 +6,11 @@ import { useI18n } from '../../../../../../lib/i18n';
 import { Skeleton, ErrorState } from '../../../../../../components';
 
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
-  ai_cv_parser: 'Parsing automatico de hojas de vida con IA',
-  ai_vacancy_writer: 'Generacion de descripciones de vacantes con IA',
-  ai_candidate_screener: 'Evaluacion automatica de candidatos',
-  ai_interview_questions: 'Generacion de preguntas de entrevista',
-  ai_email_composer: 'Composicion automatica de emails',
+  ai_cv_parser: 'Parsing automático de hojas de vida con IA',
+  ai_vacancy_writer: 'Generación de descripciones de vacantes con IA',
+  ai_candidate_screener: 'Evaluación automática de candidatos',
+  ai_interview_questions: 'Generación de preguntas de entrevista',
+  ai_email_composer: 'Composición automática de emails',
   advanced_reports: 'Reportes avanzados de reclutamiento',
   multi_language: 'Soporte multi-idioma para vacantes',
   custom_pipelines: 'Pipelines de reclutamiento personalizados',
