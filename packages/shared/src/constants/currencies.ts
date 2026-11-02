@@ -2,8 +2,9 @@ export const DEFAULT_CURRENCY = 'USD';
 export const PLATFORM_BILLING_CURRENCY = 'USD';
 
 export const POPULAR_CURRENCY_CODES = [
-  'COP',
+  'CRC',
   'USD',
+  'COP',
   'EUR',
   'MXN',
   'BRL',
@@ -35,20 +36,59 @@ const FALLBACK_CURRENCY_CODES = [
   'ZAR', 'ZMW', 'ZWG',
 ] as const;
 
+/**
+ * ISO-4217 List One codes that Intl.supportedValuesOf('currency') omits: the fund and
+ * index units (CLF, UYW, ...) and VED. Intl still formats them with their ISO minor units.
+ * Non-currency codes (XXX, XTS) and precious metals are deliberately not listed.
+ */
+const ISO_CODES_MISSING_FROM_INTL = ['BOV', 'CHE', 'CHW', 'CLF', 'COU', 'MXV', 'USN', 'UYI', 'UYW', 'VED'] as const;
+
+function runtimeCurrencyCodes(): string[] {
+  const intl = Intl as typeof Intl & { supportedValuesOf?: (key: 'currency') => string[] };
+  const codes = typeof intl.supportedValuesOf === 'function'
+    ? intl.supportedValuesOf('currency')
+    : [...FALLBACK_CURRENCY_CODES];
+  return [...codes, ...ISO_CODES_MISSING_FROM_INTL];
+}
+
 export type CurrencyCode = string;
 
+/**
+ * Normalises a code and falls back to `fallback` (USD) when it is not ISO-4217.
+ * @deprecated for display; use parseCurrencyCode + formatMoney. Kept unchanged
+ * because the FX code and its parity twins depend on the fallback.
+ */
 export function normalizeCurrencyCode(code: string | null | undefined, fallback = DEFAULT_CURRENCY): CurrencyCode {
   const normalized = (code ?? '').trim().toUpperCase();
   return isCurrencyCode(normalized) ? normalized : fallback;
 }
 
-export function supportedCurrencyCodes(): CurrencyCode[] {
-  const intl = Intl as typeof Intl & { supportedValuesOf?: (key: 'currency') => string[] };
-  const codes = typeof intl.supportedValuesOf === 'function'
-    ? intl.supportedValuesOf('currency')
-    : [...FALLBACK_CURRENCY_CODES];
+/**
+ * Strict parse: trims and upper-cases, then returns the ISO-4217 code or null.
+ * Never falls back to USD, so an unknown value stays visibly unknown.
+ */
+export function parseCurrencyCode(code: string | null | undefined): CurrencyCode | null {
+  const normalized = (code ?? '').trim().toUpperCase();
+  return isKnownCurrencyCode(normalized) ? normalized : null;
+}
 
-  return Array.from(new Set([...POPULAR_CURRENCY_CODES, ...codes]))
+let knownCurrencyCodes: ReadonlySet<string> | null = null;
+
+/**
+ * Stricter than isCurrencyCode: Intl formats ANY well-formed 3-letter code (e.g. "ZZZ"),
+ * so this also requires the code to be in the runtime's ISO-4217 list (or the bundled
+ * fallback list when Intl.supportedValuesOf is unavailable) plus the ISO codes Intl omits.
+ */
+export function isKnownCurrencyCode(code: string | null | undefined): code is CurrencyCode {
+  if (!isCurrencyCode(code)) return false;
+  if (!knownCurrencyCodes) {
+    knownCurrencyCodes = new Set(runtimeCurrencyCodes().map((c) => c.toUpperCase()));
+  }
+  return knownCurrencyCodes.has(code);
+}
+
+export function supportedCurrencyCodes(): CurrencyCode[] {
+  return Array.from(new Set([...POPULAR_CURRENCY_CODES, ...runtimeCurrencyCodes()]))
     .map((code) => code.toUpperCase())
     .filter(isCurrencyCode)
     .sort((a, b) => {
