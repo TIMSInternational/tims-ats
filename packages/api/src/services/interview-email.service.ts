@@ -43,6 +43,29 @@ const DEFAULT_CONTACT = 'rrhh@timsinternational.com';
 const DEFAULT_TZ = 'America/Bogota';
 const SEND_TIMEOUT_MS = 8_000;
 
+/** True when `tz` is an IANA zone this runtime can format with. */
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The tenant's configured timezone (`organizations.settings.timezone`), or null when unset or invalid.
+ * Interviews are local events: when the organization has a timezone, every recipient's email shows the
+ * time in it. Vacancies are not linked to a company in practice and `users.timezone` defaults to the
+ * column default for everyone, so neither can be trusted to carry the tenant's real zone.
+ */
+export function orgTimeZone(settings: unknown): string | null {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+  const tz = (settings as Record<string, unknown>).timezone;
+  if (typeof tz !== 'string' || tz.length === 0 || tz.length > 64) return null;
+  return isValidTimeZone(tz) ? tz : null;
+}
+
 function toLocale(value: string | null | undefined): EmailLocale {
   return value?.toLowerCase().startsWith('en') ? 'en' : 'es';
 }
@@ -84,6 +107,7 @@ export function buildInterviewEmails(
   const candidateName = `${interview.candidate.firstName} ${interview.candidate.lastName}`.trim();
   const vacancyTitle = interview.vacancy.title;
   const contactEmail = org.billingEmail ?? DEFAULT_CONTACT;
+  const tenantTz = orgTimeZone(org.settings);
   const organizer = { name: org.name, email: senderMailbox(getEmailFromAddress()) };
   const end = new Date(interview.scheduledAt.getTime() + interview.duration * 60_000);
   const uid = `interview-${interview.id}@${appHost(appUrl)}`;
@@ -151,7 +175,7 @@ export function buildInterviewEmails(
       'candidate',
       { name: candidateName, email: interview.candidate.email },
       toLocale(interview.vacancy.company?.language),
-      interview.vacancy.company?.timezone ?? DEFAULT_TZ,
+      tenantTz ?? interview.vacancy.company?.timezone ?? DEFAULT_TZ,
       joinUrl,
     );
   }
@@ -162,7 +186,7 @@ export function buildInterviewEmails(
       'evaluator',
       { name: `${user.firstName} ${user.lastName}`.trim(), email: user.email },
       toLocale(user.locale),
-      user.timezone || DEFAULT_TZ,
+      tenantTz ?? (user.timezone || DEFAULT_TZ),
       roomUrl,
     );
   }

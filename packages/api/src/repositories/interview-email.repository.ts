@@ -39,7 +39,7 @@ export const interviewEmailRepository = {
       }),
       db.organization.findFirst({
         where: { id: orgId },
-        select: { name: true, billingEmail: true },
+        select: { name: true, billingEmail: true, settings: true },
       }),
     ]);
     if (!interview || !org) return null;
