@@ -21,6 +21,7 @@ const mockOffer = {
 // The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
 vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
   closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
+  HireRejectedApplicationError: class HireRejectedApplicationError extends Error {},
 }));
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
