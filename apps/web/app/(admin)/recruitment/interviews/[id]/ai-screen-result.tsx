@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import type { AiInterviewResult } from '../../../../../lib/trpc-types';
+import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
 
 // ---------------------------------------------------------------------------
 // AI Voice Interview — recruiter result panel (Task 8).
@@ -116,6 +117,7 @@ export function AiScreenResult({ sessionId }: AiScreenResultProps) {
   return (
     <div className="space-y-4">
       <ResultHeader status={result.status} fitScore={result.fitScore} />
+      <AiSuggestionNotice />
       <AnalysisBody result={result} />
     </div>
   );

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { toast } from '../../../../lib/toast';
 import { ErrorState } from '../../../../components';
 import { LogCoachingModal } from './log-coaching-modal';
 import { CreateCommitmentModal } from './create-commitment-modal';
@@ -164,9 +163,6 @@ export function CoachingPanel({ sessions, commitments, isLoading, isError, onRet
               className="text-[10px] bg-[#DD0C15] text-white rounded-md px-2.5 py-1 font-medium hover:bg-red-700 transition"
             >
               {t.performance.newCommitment}
-            </button>
-            <button onClick={() => toast(t.performance.viewAllComingSoon, { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
-              {t.performance.viewAll}
             </button>
           </div>
         </div>

@@ -40,6 +40,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-semibold text-[#333]">{t.organizations.newOrg}</h2>
           <button
+            aria-label={t.common.close}
             onClick={onClose}
             className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition"
           >

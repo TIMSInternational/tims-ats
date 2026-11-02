@@ -87,7 +87,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
         ) : allItems.length === 0 ? (
           <div className="py-16 text-center">
             <svg className="mx-auto mb-3 h-12 w-12 text-[#EDEDED]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" /></svg>
-            <p className="text-sm text-[#8B8B8B]">{isSearching ? t.portal.noSearchResults : t.portal.noVacanciesAvailable}</p>
+            <p className="text-sm text-muted">{isSearching ? t.portal.noSearchResults : t.portal.noVacanciesAvailable}</p>
           </div>
         ) : (
           <>

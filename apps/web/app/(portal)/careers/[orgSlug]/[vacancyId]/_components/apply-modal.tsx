@@ -133,7 +133,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
             {p.applicationReceivedPrefix} <span className="font-medium text-[#333]">{vacancyTitle}</span>{' '}
             {p.applicationReceivedSuffix}
           </p>
-          <p className="mb-6 text-[13px] text-[#8B8B8B]">
+          <p className="mb-6 text-[13px] text-muted">
             {p.teamWillReviewPrefix} {companyName} {p.teamWillReviewSuffix}
           </p>
           <button
@@ -161,12 +161,12 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
                   ? 'bg-green-500 text-white'
                   : step === i + 1
                     ? 'bg-[#DD0C15] text-white'
-                    : 'bg-[#EDEDED] text-[#8B8B8B]'
+                    : 'bg-[#EDEDED] text-muted'
               }`}
             >
               {step > i + 1 ? '✓' : i + 1}
             </div>
-            <span className={`text-[11px] ${step === i + 1 ? 'font-medium text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
+            <span className={`text-[11px] ${step === i + 1 ? 'font-medium text-[#1F114C]' : 'text-muted'}`}>
               {label}
             </span>
             {i < 2 && <div className={`h-[1px] flex-1 ${step > i + 1 ? 'bg-green-500' : 'bg-[#EDEDED]'}`} />}
@@ -253,7 +253,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
             </button>
           )}
           {submitting && (
-            <span className="flex items-center gap-1.5 text-[11px] text-[#8B8B8B]">
+            <span className="flex items-center gap-1.5 text-[11px] text-muted">
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#DD0C15]/30 border-t-[#DD0C15]" />
               {p.submittingApplication}
             </span>

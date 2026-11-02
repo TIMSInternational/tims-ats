@@ -24,7 +24,7 @@ export function BillingProfileDrawer({ organizationId, onClose }: { organization
   ];
   return (
     <div className="fixed inset-0 z-50 flex justify-end"><div className="absolute inset-0 bg-black/40" onClick={onClose} /><div className="relative bg-white w-full max-w-md h-full overflow-y-auto shadow-xl">
-      <div className="flex items-center justify-between p-5 border-b border-[#EDEDED] sticky top-0 bg-white z-10"><h2 className="text-base font-semibold text-[#333]">{t.invoices.billingProfile}</h2><button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition"><svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg></button></div>
+      <div className="flex items-center justify-between p-5 border-b border-[#EDEDED] sticky top-0 bg-white z-10"><h2 className="text-base font-semibold text-[#333]">{t.invoices.billingProfile}</h2><button aria-label={t.common.close} onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition"><svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg></button></div>
       {profile.isLoading ? <div className="p-5 space-y-4">{Array.from({ length: 6 }).map((_, i) => <div key={i}><Skeleton className="h-3 w-20 mb-1" /><Skeleton className="h-9 w-full" /></div>)}</div> : profile.isError ? (
         <ErrorState onRetry={() => profile.refetch()} />
       ) : (

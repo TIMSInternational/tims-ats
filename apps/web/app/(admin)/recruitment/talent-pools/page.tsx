@@ -5,7 +5,6 @@ import { useI18n } from '../../../../lib/i18n';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { TalentPoolFilters } from './talent-pool-filters';
-import { TalentPoolAiBar } from './talent-pool-ai-bar';
 import { TalentPoolResultsHeader } from './talent-pool-results-header';
 import { TalentPoolTable } from './talent-pool-table';
 import { CreateModal } from '../candidates/create-modal';
@@ -135,7 +134,6 @@ export default function TalentPoolsPage() {
         <TalentPoolFilters filters={filters} onFilterChange={updateFilter} onClear={clearFilters} />
         <div className="flex-1 overflow-y-auto p-6">
           <TalentPoolResultsHeader totalCount={candidates.length} filters={filters} onFilterChange={updateFilter} />
-          <TalentPoolAiBar />
           <TalentPoolTable
             candidates={candidates}
             isLoading={query.isLoading}

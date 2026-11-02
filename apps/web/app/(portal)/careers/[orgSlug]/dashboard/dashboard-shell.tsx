@@ -47,7 +47,7 @@ export function PortalDashboardShell({
           </Link>
           <button
             onClick={signOut}
-            className="text-[12px] text-[#8B8B8B] hover:text-[#585858] hover:underline shrink-0"
+            className="text-[12px] text-muted hover:text-[#585858] hover:underline shrink-0"
           >
             {t.portalDashboard.signOut}
           </button>

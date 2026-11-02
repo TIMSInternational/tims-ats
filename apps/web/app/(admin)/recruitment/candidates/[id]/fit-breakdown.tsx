@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n';
+import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
 
 interface FitScore {
   id: string;
@@ -44,7 +45,8 @@ export function FitBreakdown({ fitScores }: { fitScores: FitScore[] }) {
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.candidates.fitBreakdown}</h3>
+      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-1">{t.candidates.fitBreakdown}</h3>
+      <AiSuggestionNotice className="mb-3" />
       <div className="space-y-2">
         {dimensions.map((dim) => {
           const score = raw[dim.key];

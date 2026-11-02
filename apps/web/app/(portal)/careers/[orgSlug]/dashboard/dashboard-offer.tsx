@@ -37,7 +37,7 @@ export function DashboardOffer({ orgSlug }: { orgSlug: string }) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.offerLoading}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.offerLoading}</p>
       </section>
     );
   }
@@ -57,7 +57,7 @@ export function DashboardOffer({ orgSlug }: { orgSlug: string }) {
       {header}
 
       {offers.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.offerEmpty}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.offerEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {offers.map((offer) => (
@@ -66,7 +66,7 @@ export function DashboardOffer({ orgSlug }: { orgSlug: string }) {
                 <div className="min-w-0">
                   <p className="text-[14px] font-semibold text-[#1F114C] truncate">{offer.vacancy.title}</p>
                   {offer.vacancy.company?.name && (
-                    <p className="text-[12px] text-[#8B8B8B] truncate">{offer.vacancy.company.name}</p>
+                    <p className="text-[12px] text-muted truncate">{offer.vacancy.company.name}</p>
                   )}
                 </div>
                 <span
@@ -78,21 +78,21 @@ export function DashboardOffer({ orgSlug }: { orgSlug: string }) {
 
               <dl className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[12px]">
                 <div>
-                  <dt className="text-[#8B8B8B]">{t.portalDashboard.offerSalary}</dt>
+                  <dt className="text-muted">{t.portalDashboard.offerSalary}</dt>
                   <dd className="text-[#1F114C]">{formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}</dd>
                 </div>
                 <div>
-                  <dt className="text-[#8B8B8B]">{t.portalDashboard.offerStartDate}</dt>
+                  <dt className="text-muted">{t.portalDashboard.offerStartDate}</dt>
                   <dd className="text-[#1F114C]">{new Date(offer.startDate).toLocaleDateString()}</dd>
                 </div>
                 <div>
-                  <dt className="text-[#8B8B8B]">{t.portalDashboard.offerContract}</dt>
+                  <dt className="text-muted">{t.portalDashboard.offerContract}</dt>
                   <dd className="text-[#1F114C] capitalize">{offer.contractType}</dd>
                 </div>
               </dl>
 
               {offer.expiresAt && (
-                <p className="text-[11px] text-[#8B8B8B] mt-2">
+                <p className="text-[11px] text-muted mt-2">
                   {t.portalDashboard.offerExpiresOn} {new Date(offer.expiresAt).toLocaleDateString()}
                 </p>
               )}

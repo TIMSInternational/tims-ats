@@ -40,7 +40,7 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         <h2 className="text-[14px] font-semibold text-[#1F114C] mb-2">{t.portalDashboard.applications}</h2>
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.listLoading}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.listLoading}</p>
       </section>
     );
   }
@@ -60,7 +60,7 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
       <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.applications}</h2>
 
       {applications.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.listEmpty}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.listEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {applications.map((app) => {
@@ -71,9 +71,9 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
                   <div className="min-w-0">
                     <p className="text-[14px] font-semibold text-[#1F114C] truncate">{app.vacancy.title}</p>
                     {app.vacancy.company?.name && (
-                      <p className="text-[12px] text-[#8B8B8B] truncate">{app.vacancy.company.name}</p>
+                      <p className="text-[12px] text-muted truncate">{app.vacancy.company.name}</p>
                     )}
-                    <p className="text-[11px] text-[#8B8B8B] mt-1">
+                    <p className="text-[11px] text-muted mt-1">
                       {t.portalDashboard.appliedOn} {new Date(app.appliedAt).toLocaleDateString()}
                     </p>
                   </div>
@@ -86,7 +86,7 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
 
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="text-[12px] text-[#585858]">
-                    <span className="text-[#8B8B8B]">{t.portalDashboard.currentStage}: </span>
+                    <span className="text-muted">{t.portalDashboard.currentStage}: </span>
                     {app.currentStage.name}
                   </p>
                   <button

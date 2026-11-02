@@ -54,7 +54,7 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
               <h3 className="text-[16px] font-semibold text-[#1F114C]">{agent.name}</h3>
               <p className="text-[11px] text-[#8B8B8B] font-mono">{agent.slug}</p>
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-[#8B8B8B] hover:bg-[#F5F5F5]">
+            <button aria-label={t.common.close} onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-[#8B8B8B] hover:bg-[#F5F5F5]">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>

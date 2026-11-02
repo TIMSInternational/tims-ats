@@ -52,7 +52,7 @@ export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
             </div>
             <div>
               <p className="text-[12px] font-medium text-[#333]">{vacancy.company?.name ?? p.companyFallback}</p>
-              {vacancy.location && <p className="text-[11px] text-[#8B8B8B]">{vacancy.location}</p>}
+              {vacancy.location && <p className="text-[11px] text-muted">{vacancy.location}</p>}
             </div>
           </div>
           {vacancy.priority === 'urgent' ? (
@@ -89,10 +89,10 @@ export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
             {salary ? (
               <>
                 <p className="text-[13px] font-semibold text-[#1F114C]">{formatSalaryAmount(salary, locale, p)}</p>
-                {period && <p className="text-[10px] text-[#8B8B8B]">{period}</p>}
+                {period && <p className="text-[10px] text-muted">{period}</p>}
               </>
             ) : (
-              <p className="text-[12px] text-[#8B8B8B]">{p.salaryNegotiable}</p>
+              <p className="text-[12px] text-muted">{p.salaryNegotiable}</p>
             )}
           </div>
           <span className="rounded-lg bg-[#1F114C] px-4 py-1.5 text-[12px] font-medium text-white transition-colors group-hover:bg-[#DD0C15]">

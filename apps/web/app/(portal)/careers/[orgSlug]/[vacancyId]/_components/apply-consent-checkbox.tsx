@@ -51,7 +51,7 @@ export function ApplyConsentCheckbox({
         </span>
       </label>
       {!checked && (
-        <p id="apply-consent-hint" className="mt-1.5 pl-6 text-[11px] text-[#8B8B8B]">
+        <p id="apply-consent-hint" className="mt-1.5 pl-6 text-[11px] text-muted">
           {p.consentRequiredHint}
         </p>
       )}

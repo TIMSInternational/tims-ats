@@ -137,7 +137,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 md:px-6 py-4 bg-white border-b border-[#EDEDED] flex-shrink-0">
         <div className="flex items-center gap-2 md:gap-4">
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
+          <button aria-label={t.common.close} onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
           <h1 className="text-base md:text-lg font-semibold text-[#333] whitespace-nowrap">{t.invoices.wizardTitle}</h1>
@@ -203,7 +203,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#8B8B8B] text-[10px] font-semibold">{currency}</span>
                       <input type="number" step="0.01" min="0" value={li.unitPrice || ''} onChange={(e) => updateLine(i, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0.00" className="h-10 pl-10 pr-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] w-full focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
                     </div>
-                    <button onClick={() => removeLine(i)} className="h-10 w-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-[#8B8B8B] hover:text-[#DD0C15] transition" disabled={lineItems.length <= 1}>
+                    <button aria-label={t.common.removeLine} onClick={() => removeLine(i)} className="h-10 w-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-[#8B8B8B] hover:text-[#DD0C15] transition" disabled={lineItems.length <= 1}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   </div>

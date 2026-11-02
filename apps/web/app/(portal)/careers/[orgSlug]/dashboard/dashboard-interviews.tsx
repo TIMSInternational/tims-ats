@@ -54,7 +54,7 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.intLoading}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.intLoading}</p>
       </section>
     );
   }
@@ -74,7 +74,7 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
       {header}
 
       {interviews.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.intEmpty}</p>
+        <p className="text-[12px] text-muted">{t.portalDashboard.intEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {interviews.map((iv) => {
@@ -86,12 +86,12 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
                   <div className="min-w-0">
                     <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
                     <p className="text-[12px] text-[#585858] mt-0.5 capitalize">{iv.type}</p>
-                    <p className="text-[11px] text-[#8B8B8B] mt-1">
+                    <p className="text-[11px] text-muted mt-1">
                       {new Date(iv.scheduledAt).toLocaleString()}
                       {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
                     </p>
                     {iv.location && (
-                      <p className="text-[11px] text-[#8B8B8B] mt-0.5">
+                      <p className="text-[11px] text-muted mt-0.5">
                         {t.portalDashboard.intLocation}: {iv.location}
                       </p>
                     )}

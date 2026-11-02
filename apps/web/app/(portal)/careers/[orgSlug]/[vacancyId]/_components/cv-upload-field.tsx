@@ -1,5 +1,7 @@
 'use client';
 
+import { useId } from 'react';
+
 import { useI18n } from '../../../../../../lib/i18n';
 import type { CvValidationError } from '../_lib/cv-validation';
 
@@ -20,12 +22,26 @@ const ERROR_KEYS = {
 export function CvUploadField({ file, error, uploading, onFileChange, onRemove }: CvUploadFieldProps) {
   const { t } = useI18n();
   const p = t.portal;
+  const inputId = useId();
+  const labelId = `${inputId}-label`;
+  const labelClass = 'block text-xs font-medium text-[#585858] mb-1';
 
   return (
     <div>
-      <label className="block text-xs font-medium text-[#585858] mb-1">{p.cvLabel}</label>
       {file ? (
-        <div className="flex items-center justify-between rounded-lg border border-[#EDEDED] px-3 py-2 text-sm text-[#333]">
+        <span id={labelId} className={labelClass}>
+          {p.cvLabel}
+        </span>
+      ) : (
+        <label id={labelId} htmlFor={inputId} className={labelClass}>
+          {p.cvLabel}
+        </label>
+      )}
+      {file ? (
+        <div
+          role="group"
+          aria-labelledby={labelId}
+          className="flex items-center justify-between rounded-lg border border-[#EDEDED] px-3 py-2 text-sm text-[#333]">
           <span className="truncate">{file.name}</span>
           <button
             type="button"
@@ -38,6 +54,7 @@ export function CvUploadField({ file, error, uploading, onFileChange, onRemove }
         </div>
       ) : (
         <input
+          id={inputId}
           type="file"
           accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
           onChange={onFileChange}
@@ -45,7 +62,7 @@ export function CvUploadField({ file, error, uploading, onFileChange, onRemove }
           className="block w-full text-sm text-[#585858] file:mr-3 file:rounded-lg file:border-0 file:bg-[#F6F6F6] file:px-3 file:py-2 file:text-[12px] file:font-medium file:text-[#1F114C] disabled:opacity-50"
         />
       )}
-      <p className="mt-1 text-[10px] text-[#8B8B8B]">{p.cvHelperText}</p>
+      <p className="mt-1 text-[10px] text-muted">{p.cvHelperText}</p>
       {error && <p className="mt-1 text-[11px] text-[#DD0C15]">{p[ERROR_KEYS[error]]}</p>}
     </div>
   );

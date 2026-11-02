@@ -9,7 +9,8 @@
   /* Text */
   --color-primary: #333333;
   --color-secondary: #585858;
-  --color-muted: #8B8B8B;
+  /* #6B6B6B: >= 4.5:1 on white and on the #F6F6F6 surface (WCAG AA body text) */
+  --color-muted: #6B6B6B;
 
   /* Surface & Border */
   --color-surface: #F6F6F6;
@@ -25,7 +26,7 @@
   --color-border: #EDEDED;
   --color-text: #333333;
   --color-text-secondary: #585858;
-  --color-text-muted: #8B8B8B;
+  --color-text-muted: #6B6B6B;
 }
 
 /* ── Shell chrome tokens (sidebar + top bar) — FormMaps shell replication, dark-blue variant ── */

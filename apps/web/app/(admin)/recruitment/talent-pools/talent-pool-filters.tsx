@@ -154,20 +154,6 @@ export function TalentPoolFilters({ filters, onFilterChange, onClear }: PoolFilt
           ))}
         </div>
       </div>
-
-      {/* Saved Searches */}
-      <div className="border-t border-[#EDEDED] pt-3">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{tp.savedSearches}</p>
-        <div className="space-y-1.5">
-          <button className="w-full text-left bg-[#F6F6F6] rounded-lg px-3 py-2 text-[11px] text-[#333] hover:bg-[#EDEDED]">
-            Sr. Engineers LATAM
-          </button>
-          <button className="w-full text-left bg-[#F6F6F6] rounded-lg px-3 py-2 text-[11px] text-[#333] hover:bg-[#EDEDED]">
-            Product roles Bogota
-          </button>
-          <button className="text-[11px] text-[#DD0C15] mt-1">{tp.saveCurrentSearch}</button>
-        </div>
-      </div>
     </div>
   );
 }

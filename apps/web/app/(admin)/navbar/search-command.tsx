@@ -98,6 +98,7 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
       )}
       {searchFocused && searchQuery && (
         <button
+          aria-label={t.common.clearSearch}
           onMouseDown={(e) => {
             e.preventDefault();
             setSearchQuery('');

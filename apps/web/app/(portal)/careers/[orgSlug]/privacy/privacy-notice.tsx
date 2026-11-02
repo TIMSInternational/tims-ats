@@ -27,7 +27,7 @@ export function PrivacyNotice({ orgName, orgSlug }: PrivacyNoticeProps) {
         ← {pp.back}
       </Link>
       <h1 className="mt-4 text-[24px] font-bold text-[#1F114C]">{pp.title}</h1>
-      <p className="mt-1 text-[13px] text-[#8B8B8B]">
+      <p className="mt-1 text-[13px] text-muted">
         {pp.subtitle} · {orgName}
       </p>
 
@@ -45,7 +45,7 @@ export function PrivacyNotice({ orgName, orgSlug }: PrivacyNoticeProps) {
         </section>
       ))}
 
-      <p className="mt-10 border-t border-[#EDEDED] pt-4 text-[11px] text-[#8B8B8B]">{pp.baseNotice}</p>
+      <p className="mt-10 border-t border-[#EDEDED] pt-4 text-[11px] text-muted">{pp.baseNotice}</p>
     </main>
   );
 }

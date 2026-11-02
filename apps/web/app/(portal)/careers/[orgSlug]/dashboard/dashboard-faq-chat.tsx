@@ -69,7 +69,7 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <h2 className="text-[14px] font-semibold text-[#1F114C]">{t.portalDashboard.faqTitle}</h2>
-          <p className="text-[12px] text-[#8B8B8B] mt-1">{t.portalDashboard.faqSubtitle}</p>
+          <p className="text-[12px] text-muted mt-1">{t.portalDashboard.faqSubtitle}</p>
         </div>
       </div>
 
@@ -93,7 +93,7 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
             const mine = message.role === 'user';
             return (
               <div key={`${message.role}-${index}`} className={mine ? 'text-right' : 'text-left'}>
-                <p className="text-[11px] font-medium text-[#8B8B8B] mb-1">
+                <p className="text-[11px] font-medium text-muted mb-1">
                   {mine ? t.portalDashboard.faqYouLabel : t.portalDashboard.faqAssistantLabel}
                 </p>
                 <div
@@ -105,7 +105,7 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
                 >
                   <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
                   {message.sources && message.sources.length > 0 && (
-                    <p className="mt-2 text-[11px] text-[#8B8B8B]">
+                    <p className="mt-2 text-[11px] text-muted">
                       {t.portalDashboard.faqSources}: {message.sources.map((s) => sourceLabel(s, t)).join(', ')}
                     </p>
                   )}
@@ -124,10 +124,10 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
           maxLength={800}
           placeholder={t.portalDashboard.faqPlaceholder}
           aria-label={t.portalDashboard.faqInputLabel}
-          className="w-full resize-none rounded-xl border border-[#EDEDED] px-3 py-2 text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
+          className="w-full resize-none rounded-xl border border-[#EDEDED] px-3 py-2 text-[13px] text-[#333] placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
         />
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] text-[#8B8B8B]">{t.portalDashboard.faqPrivacy}</p>
+          <p className="text-[11px] text-muted">{t.portalDashboard.faqPrivacy}</p>
           <button
             type="submit"
             disabled={question.trim().length < 3 || ask.isPending}

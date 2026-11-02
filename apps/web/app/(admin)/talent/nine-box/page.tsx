@@ -268,15 +268,6 @@ export default function NineBoxPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => toast(t.nineBox.exportComingSoon, { type: 'info' })}
-            className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            {t.common.export}
-          </button>
-          <button
             onClick={() => startCalibration.mutate({ period: PERIOD })}
             disabled={startCalibration.isPending}
             className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition disabled:opacity-50"

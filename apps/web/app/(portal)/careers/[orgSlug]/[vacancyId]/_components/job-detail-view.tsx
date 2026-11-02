@@ -59,7 +59,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
 
   if (!vacancy.data) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-2 text-[#8B8B8B]">
+      <div className="flex h-screen flex-col items-center justify-center gap-2 text-muted">
         <p className="text-sm">{p.vacancyNotFound}</p>
         <Link href={`/careers/${orgSlug}`} className="text-sm text-[#1F114C] hover:underline">{p.backToVacancies}</Link>
       </div>
@@ -96,7 +96,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={p.searchVacanciesPlaceholder}
-              className="w-full rounded-lg border border-[#EDEDED] bg-white px-3 py-2 text-[13px] text-[#333] outline-none placeholder:text-[#8B8B8B] focus:border-[#1F114C]"
+              className="w-full rounded-lg border border-[#EDEDED] bg-white px-3 py-2 text-[13px] text-[#333] outline-none placeholder:text-muted focus:border-[#1F114C]"
             />
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -121,7 +121,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
             <div className="mb-3 flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#1F114C] text-lg font-bold text-white">{companyInitial}</div>
               <div className="min-w-0">
-                <p className="text-[13px] text-[#8B8B8B]">{companyName}</p>
+                <p className="text-[13px] text-muted">{companyName}</p>
                 <h1 className="text-[22px] font-bold leading-tight text-[#1F114C]">{v.title}</h1>
               </div>
             </div>
@@ -207,7 +207,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
                 <div>
                   <p className="text-[14px] font-semibold text-[#1F114C]">{companyName}</p>
                   {v.organization?.name && v.organization.name !== companyName && (
-                    <p className="text-[12px] text-[#8B8B8B]">{v.organization.name}</p>
+                    <p className="text-[12px] text-muted">{v.organization.name}</p>
                   )}
                 </div>
               </div>
