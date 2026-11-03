@@ -110,13 +110,17 @@ load_schema() {
   #   - pg_dump 17's \restrict / \unrestrict meta-commands (nonce-normalised in the file) are
   #     psql-version specific → dropped;
   #   - `public` and `supabase_migrations` may already exist → CREATE SCHEMA IF NOT EXISTS;
-  #   - prod roles the dump GRANTs to (app_tenant, ci_readonly) do not exist locally → pre-created.
+  #   - prod roles the dump GRANTs to (app_tenant, ci_readonly, ci_rls_probe, backup_drill_reader) do not
+  #     exist locally → pre-created as NOLOGIN stand-ins. A new grantee in the baseline must be added here,
+  #     or the load aborts on ON_ERROR_STOP (`role "…" does not exist`).
   sed -E '/^\\(un)?restrict /d; s/^CREATE SCHEMA (public|supabase_migrations);/CREATE SCHEMA IF NOT EXISTS \1;/' \
     "$E2E_REPO_ROOT/packages/db/baseline/prod-public-schema.sql" >"$E2E_STATE/baseline-local.sql"
   psql "$E2E_DB_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN CREATE ROLE app_tenant NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_readonly') THEN CREATE ROLE ci_readonly NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN CREATE ROLE ci_rls_probe NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'backup_drill_reader') THEN CREATE ROLE backup_drill_reader NOLOGIN; END IF;
 END $$;
 GRANT app_tenant TO postgres;
 SQL

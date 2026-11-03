@@ -139,6 +139,18 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
+    GRANT SELECT ON TABLE public.employee_compensations TO ci_rls_probe;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'backup_drill_reader') THEN
+    GRANT SELECT ON TABLE public.employee_compensations TO backup_drill_reader;
+  END IF;
+END $$;
+
+DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
     GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.salary_adjustments TO app_tenant;
   END IF;
@@ -147,6 +159,18 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_readonly') THEN
     GRANT SELECT ON TABLE public.salary_adjustments TO ci_readonly;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
+    GRANT SELECT ON TABLE public.salary_adjustments TO ci_rls_probe;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'backup_drill_reader') THEN
+    GRANT SELECT ON TABLE public.salary_adjustments TO backup_drill_reader;
   END IF;
 END $$;
 
