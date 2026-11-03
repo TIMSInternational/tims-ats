@@ -15,6 +15,7 @@ import {
 } from '@tims/shared';
 import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/application-consent-evidence';
 import { emailService } from '../services/email.service';
+import { runAfterResponse } from '../lib/after-response';
 import { checkRateLimit, consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
 // The ONE public response of portal.applyToVacancy, whatever happened server-side.
@@ -495,7 +496,9 @@ export const portalRouter = router({
           companyName: vacancy.organization?.name ?? '',
           locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
         };
-        void Promise.resolve()
+        // After the response (see lib/after-response.ts): a bare `void` promise is frozen by the
+        // serverless runtime once the response is sent, so the email was never delivered.
+        runAfterResponse(ctx, () => Promise.resolve()
           .then(async () => {
             let allowed = false;
             try {
@@ -517,7 +520,7 @@ export const portalRouter = router({
               { component: 'portal', vacancyId: vacancy.id, errName: error instanceof Error ? error.name : 'UnknownError' },
               'Application confirmation email failed — application unaffected',
             );
-          });
+          }));
       }
 
       // Only NEW applications get CV processing — duplicates, the P2002 race-catch and
@@ -541,12 +544,7 @@ export const portalRouter = router({
             logger.warn({ component: 'portal', vacancyId: vacancy.id }, 'Post-response CV processing failed');
           }
         };
-        try {
-          if (ctx.runAfterResponse) ctx.runAfterResponse(task);
-          else void Promise.resolve().then(task);
-        } catch {
-          void Promise.resolve().then(task);
-        }
+        runAfterResponse(ctx, task);
       }
 
       // New, duplicate, withdrawn- and deleted-refused submissions all get the SAME public

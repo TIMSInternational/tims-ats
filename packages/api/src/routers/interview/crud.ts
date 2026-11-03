@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { getAppUrl } from '@tims/shared';
 import { interviewEmailService } from '../../services/interview-email.service';
+import { runAfterResponse } from '../../lib/after-response';
 import { clearedJoinTokenColumns, issueJoinToken } from '../../services/interview-join-token';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
@@ -237,13 +238,10 @@ export const interviewCrudRouter = router({
         },
       });
 
-      // Fire-and-forget: candidate (join link) + each evaluator (staff room link), with .ics.
-      void interviewEmailService.notify({
-        orgId,
-        interviewId: interview.id,
-        kind: 'invite',
-        candidateJoinToken: joinToken.token,
-      });
+      // After the response (never awaited, never frozen: see lib/after-response.ts): candidate (join
+      // link) + each evaluator (staff room link), with .ics.
+      const inviteParams = { orgId, interviewId: interview.id, kind: 'invite' as const, candidateJoinToken: joinToken.token };
+      runAfterResponse(ctx, () => interviewEmailService.notify(inviteParams));
 
       // #312: the mailer skips a candidate who revoked the authorization; tell staff so they know the
       // candidate was NOT notified (evaluators still are).
@@ -318,14 +316,16 @@ export const interviewCrudRouter = router({
         },
       });
 
-      // Fire-and-forget: updated invitation (.ics REQUEST, higher SEQUENCE, same UID).
-      void interviewEmailService.notify({
+      // After the response (see lib/after-response.ts): updated invitation (.ics REQUEST, higher
+      // SEQUENCE, same UID).
+      const updateParams = {
         orgId: ctx.user.organizationId,
         interviewId: id,
-        kind: 'update',
+        kind: 'update' as const,
         candidateJoinToken: joinToken.token,
         oldScheduledAt: existing.scheduledAt,
-      });
+      };
+      runAfterResponse(ctx, () => interviewEmailService.notify(updateParams));
 
       return updated;
     }),
@@ -418,8 +418,10 @@ export const interviewCrudRouter = router({
         },
       });
 
-      // Fire-and-forget: cancellation (.ics METHOD:CANCEL) to candidate + evaluators.
-      void interviewEmailService.notify({ orgId: ctx.user.organizationId, interviewId: input.id, kind: 'cancel' });
+      // After the response (see lib/after-response.ts): cancellation (.ics METHOD:CANCEL) to candidate
+      // + evaluators.
+      const cancelParams = { orgId: ctx.user.organizationId, interviewId: input.id, kind: 'cancel' as const };
+      runAfterResponse(ctx, () => interviewEmailService.notify(cancelParams));
 
       return cancelled;
     }),
