@@ -55,3 +55,32 @@ describe('emailService.sendOfferToCandidate', () => {
     await expect(emailService.sendOfferToCandidate(params)).resolves.toBe(false);
   });
 });
+
+describe('emailService.notifyOfferAccepted / notifyOfferDeclined (HR notices, run inside after())', () => {
+  const notice = {
+    hrEmails: ['hr@example.test'],
+    recipientName: 'Equipo de RRHH',
+    candidateName: 'QA Candidate',
+    vacancyTitle: 'QA role',
+    companyName: 'Example Company',
+  };
+
+  it.each([
+    ['notifyOfferAccepted', { ...notice, acceptedAt: new Date('2026-11-03T22:00:00Z') }],
+    ['notifyOfferDeclined', { ...notice, declinedAt: new Date('2026-11-03T22:00:00Z') }],
+  ] as const)('%s is bounded and isolated on the offer breaker, never the shared sesCircuit', async (name, input) => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    sendEmail.mockResolvedValue(true);
+    const { emailService, OFFER_EMAIL_SEND_TIMEOUT_MS } = await import('../../packages/api/src/services/email.service');
+    const { sesOfferCircuit, sesCircuit } = await import('../../packages/api/src/lib/circuit-breaker');
+
+    await expect((emailService[name] as (p: typeof input) => Promise<boolean>)(input)).resolves.toBe(true);
+
+    expect(timeout).toHaveBeenCalledWith(OFFER_EMAIL_SEND_TIMEOUT_MS);
+    const call = sendEmail.mock.calls[0]?.[0] as { to: string[]; abortSignal?: unknown; breaker?: unknown };
+    expect(call.to).toEqual(['hr@example.test']);
+    expect(call.abortSignal).toBe(timeout.mock.results[0]?.value);
+    expect(call.breaker).toBe(sesOfferCircuit);
+    expect(call.breaker).not.toBe(sesCircuit);
+  });
+});
