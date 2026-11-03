@@ -7,6 +7,7 @@ import { TRPCError } from '@trpc/server';
 import { getAppUrl } from '@tims/shared';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
+import { runAfterResponse } from '../../lib/after-response';
 import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
@@ -297,7 +298,7 @@ export const offerSigningRouter = router({
         signatureName: z.string().min(2).max(200),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const offers = await db.offer.findMany({
         where: {
           settings: {
@@ -397,7 +398,7 @@ export const offerSigningRouter = router({
         });
       }
 
-      // Fire-and-forget: notify HR team
+      // Notify the HR team after the response (never delays or fails the candidate's answer).
       if (fullOffer) {
         const org = await db.organization.findFirst({
           where: { id: fullOffer.organizationId },
@@ -412,13 +413,18 @@ export const offerSigningRouter = router({
           select: { email: true },
         });
         if (org && hrUsers.length > 0) {
-          emailService.notifyOfferAccepted({
+          const notice = {
             hrEmails: hrUsers.map((u) => u.email),
             recipientName: 'Equipo de RRHH',
             candidateName: `${fullOffer.candidate.firstName} ${fullOffer.candidate.lastName}`,
             vacancyTitle: fullOffer.vacancy?.title ?? '',
             companyName: org.name,
             acceptedAt: now,
+          };
+          // After the response (see lib/after-response.ts): a bare call was frozen by the serverless
+          // runtime once the response was sent, so HR never got the email.
+          runAfterResponse(ctx, async () => {
+            await emailService.notifyOfferAccepted(notice);
           });
         }
       }
@@ -429,7 +435,7 @@ export const offerSigningRouter = router({
   // PUBLIC: Decline offer by signing token (no auth required)
   declineByToken: signingTokenProcedure
     .input(z.object({ token: z.string().min(1).max(100) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const offers = await db.offer.findMany({
         where: {
           settings: {
@@ -504,7 +510,7 @@ export const offerSigningRouter = router({
         });
       }
 
-      // Fire-and-forget: notify HR team
+      // Notify the HR team after the response (never delays or fails the candidate's answer).
       if (fullOffer) {
         const org = await db.organization.findFirst({
           where: { id: fullOffer.organizationId },
@@ -519,13 +525,18 @@ export const offerSigningRouter = router({
           select: { email: true },
         });
         if (org && hrUsers.length > 0) {
-          emailService.notifyOfferDeclined({
+          const notice = {
             hrEmails: hrUsers.map((u) => u.email),
             recipientName: 'Equipo de RRHH',
             candidateName: `${fullOffer.candidate.firstName} ${fullOffer.candidate.lastName}`,
             vacancyTitle: fullOffer.vacancy?.title ?? '',
             companyName: org.name,
             declinedAt: now,
+          };
+          // After the response (see lib/after-response.ts): a bare call was frozen by the serverless
+          // runtime once the response was sent, so HR never got the email.
+          runAfterResponse(ctx, async () => {
+            await emailService.notifyOfferDeclined(notice);
           });
         }
       }

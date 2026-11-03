@@ -68,7 +68,8 @@ export const emailService = {
   }): Promise<boolean> {
     const { hrEmails, ...rest } = params;
     const { subject, html } = emailTemplates.offerAcceptedNotification(rest);
-    return sendEmail({ to: hrEmails, subject, html });
+    // Bounded: it runs inside after(), which keeps the function alive until the send settles.
+    return sendEmail({ to: hrEmails, subject, html, abortSignal: AbortSignal.timeout(OFFER_EMAIL_SEND_TIMEOUT_MS) });
   },
 
   async notifyOfferDeclined(params: {
@@ -81,6 +82,7 @@ export const emailService = {
   }): Promise<boolean> {
     const { hrEmails, ...rest } = params;
     const { subject, html } = emailTemplates.offerDeclinedNotification(rest);
-    return sendEmail({ to: hrEmails, subject, html });
+    // Bounded: it runs inside after(), which keeps the function alive until the send settles.
+    return sendEmail({ to: hrEmails, subject, html, abortSignal: AbortSignal.timeout(OFFER_EMAIL_SEND_TIMEOUT_MS) });
   },
 };

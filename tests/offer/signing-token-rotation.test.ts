@@ -97,7 +97,7 @@ vi.mock('../../packages/api/src/services/email.service', () => ({
   },
 }));
 
-async function caller() {
+async function caller(runAfterResponse?: (task: () => Promise<void>) => void) {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { offerSigningRouter } = await import('../../packages/api/src/routers/offer/signing');
   return createCallerFactory(router({ offer: offerSigningRouter }))({
@@ -113,6 +113,7 @@ async function caller() {
     headers: new Headers(),
     supabaseAuth: null,
     externalAuth: null,
+    ...(runAfterResponse ? { runAfterResponse } : {}),
   } as never);
 }
 
@@ -300,6 +301,51 @@ describe('rejected approval chain — the candidate link is dead', () => {
     });
     expect(row.status).toBe('sent');
     expect(sendOffer).not.toHaveBeenCalled();
+  });
+});
+
+describe('HR notifications run under the post-response scheduler (Vercel freeze, proof run 2026-11-03)', () => {
+  // A bare emailService.notifyOffer*() call was frozen by the serverless runtime once the response was sent,
+  // so HR never got "Oferta aceptada"/"Oferta rechazada". Both must go through ctx.runAfterResponse.
+  async function mocks() {
+    const { tenantDb } = await import('@tims/db');
+    const { emailService } = await import('../../packages/api/src/services/email.service');
+    vi.mocked(tenantDb.user.findMany).mockResolvedValueOnce([{ email: 'hr@example.test' }] as never);
+    return emailService;
+  }
+
+  it('accept: hands the HR email to the scheduler and sends only when it runs', async () => {
+    row.status = 'sent';
+    row.settings = { signingToken: 'live-token', signingTokenRecipient: 'typo@example.test' };
+    const emailService = await mocks();
+    const tasks: Array<() => Promise<void>> = [];
+    const api = await caller((t) => tasks.push(t));
+
+    await expect(api.offer.acceptByToken({ token: 'live-token', signatureName: 'Ana Ruiz' })).resolves.toEqual({
+      success: true,
+    });
+    expect(tasks).toHaveLength(1);
+    expect(emailService.notifyOfferAccepted).not.toHaveBeenCalled();
+    await tasks[0]!();
+    expect(emailService.notifyOfferAccepted).toHaveBeenCalledWith(
+      expect.objectContaining({ hrEmails: ['hr@example.test'], candidateName: 'QA Candidate', vacancyTitle: 'QA role' }),
+    );
+  });
+
+  it('decline: hands the HR email to the scheduler and sends only when it runs', async () => {
+    row.status = 'sent';
+    row.settings = { signingToken: 'live-token', signingTokenRecipient: 'typo@example.test' };
+    const emailService = await mocks();
+    const tasks: Array<() => Promise<void>> = [];
+    const api = await caller((t) => tasks.push(t));
+
+    await expect(api.offer.declineByToken({ token: 'live-token' })).resolves.toEqual({ success: true });
+    expect(tasks).toHaveLength(1);
+    expect(emailService.notifyOfferDeclined).not.toHaveBeenCalled();
+    await tasks[0]!();
+    expect(emailService.notifyOfferDeclined).toHaveBeenCalledWith(
+      expect.objectContaining({ hrEmails: ['hr@example.test'], candidateName: 'QA Candidate' }),
+    );
   });
 });
 
