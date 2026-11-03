@@ -203,6 +203,18 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
+    GRANT SELECT ON TABLE public.rater_assignments TO ci_rls_probe;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'backup_drill_reader') THEN
+    GRANT SELECT ON TABLE public.rater_assignments TO backup_drill_reader;
+  END IF;
+END $$;
+
+DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
     GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.rater_responses TO app_tenant;
   END IF;
@@ -215,6 +227,18 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
+    GRANT SELECT ON TABLE public.rater_responses TO ci_rls_probe;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'backup_drill_reader') THEN
+    GRANT SELECT ON TABLE public.rater_responses TO backup_drill_reader;
+  END IF;
+END $$;
+
+DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
     GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.review_cycles TO app_tenant;
   END IF;
@@ -223,6 +247,18 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_readonly') THEN
     GRANT SELECT ON TABLE public.review_cycles TO ci_readonly;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN
+    GRANT SELECT ON TABLE public.review_cycles TO ci_rls_probe;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'backup_drill_reader') THEN
+    GRANT SELECT ON TABLE public.review_cycles TO backup_drill_reader;
   END IF;
 END $$;
 
