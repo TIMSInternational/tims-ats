@@ -708,11 +708,14 @@ describe('portal.applyToVacancy — CV processing never delays the response (#31
 
     await expect(caller.portal.applyToVacancy(cvInput)).resolves.toEqual({ received: true });
 
-    // Resolved with nothing started: processing happens only when the scheduler runs it.
+    // Resolved with nothing started: processing happens only when the scheduler runs it. Two tasks: the
+    // confirmation email (scheduled first) and the CV processing.
     expect(processCvUploadMock).not.toHaveBeenCalled();
-    expect(tasks).toHaveLength(1);
-    await tasks[0]!();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+    expect(tasks).toHaveLength(2);
+    for (const task of tasks) await task();
     expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, `cv-uploads/${ORG_ID}/x.pdf`, 'resume.pdf');
+    expect(sendApplicationReceivedMock).toHaveBeenCalledTimes(1);
   });
 
   it('records the submitted CV (unparsed, org-scoped) inside the application transaction, before responding', async () => {
@@ -798,13 +801,27 @@ describe('portal.applyToVacancy — CV processing never delays the response (#31
     const caller = await makeCaller(new Headers(), { runAfterResponse: (t) => tasks.push(t) });
 
     await expect(caller.portal.applyToVacancy(cvInput)).resolves.toEqual({ received: true });
-    await expect(tasks[0]!()).resolves.toBeUndefined();
+    await expect(Promise.all(tasks.map((t) => t()))).resolves.toBeDefined();
 
     const cvWarn = warn.mock.calls.find((c) => String(c[1]).includes('CV processing'));
     expect(cvWarn).toBeDefined();
     const serialized = JSON.stringify(cvWarn);
     expect(serialized).not.toContain('ana@example.com');
     expect(serialized).not.toContain(CANDIDATE_ID);
+  });
+
+  it('the confirmation email is handed to the scheduler, never sent before it runs (Vercel freeze, 2026-11-03)', async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    const caller = await makeCaller(new Headers(), { runAfterResponse: (t) => tasks.push(t) });
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+    await flushDetached();
+    // Without a CV only the email is scheduled, and nothing ran detached.
+    expect(tasks).toHaveLength(1);
+    expect(consumeApplicationEmailQuotaMock).not.toHaveBeenCalled();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+    await tasks[0]!();
+    expect(sendApplicationReceivedMock).toHaveBeenCalledTimes(1);
   });
 
   it('a scheduler that throws falls back to detached execution; the application still succeeds', async () => {

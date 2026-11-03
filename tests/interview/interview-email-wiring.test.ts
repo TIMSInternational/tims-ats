@@ -87,7 +87,7 @@ function notificationData(row: Row) {
   };
 }
 
-async function caller() {
+async function caller(runAfterResponse?: (task: () => Promise<void>) => void) {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { interviewCrudRouter } = await import('../../packages/api/src/routers/interview/crud');
   return createCallerFactory(router({ interview: interviewCrudRouter }))({
@@ -103,6 +103,7 @@ async function caller() {
     headers: new Headers(),
     supabaseAuth: null,
     externalAuth: null,
+    ...(runAfterResponse ? { runAfterResponse } : {}),
   } as never);
 }
 
@@ -328,6 +329,73 @@ describe('interview.reschedule / cancel', () => {
     await vi.waitFor(() => expect(m.sendPlain).toHaveBeenCalledTimes(2));
     const candidate = m.sendPlain.mock.calls.find((c) => c[0].to === 'ana@example.com')?.[0];
     expect(candidate.html).toContain('/interview/join/');
+  });
+});
+
+describe('interview emails run under the post-response scheduler (Vercel freeze, proof run 2026-11-03)', () => {
+  // A bare `void notify()` was frozen by the serverless runtime once the response was sent: the SES call
+  // resumed 51 s later and its 8 s AbortSignal fired, so nothing was delivered. Each mutation must hand the
+  // send to ctx.runAfterResponse (Next after()) and send nothing before the scheduler runs it.
+  const existing = {
+    id: INTERVIEW_ID,
+    type: 'video',
+    status: 'scheduled',
+    scheduledAt: new Date('2026-10-01T15:00:00Z'),
+    duration: 60,
+    location: null,
+    meetingUrl: null,
+  };
+
+  it('schedule: hands the invitation to the scheduler and sends only when it runs', async () => {
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'video' }));
+    const tasks: Array<() => Promise<void>> = [];
+    await (await caller((t) => tasks.push(t))).interview.schedule(scheduleInput);
+
+    expect(tasks).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(m.findForNotification).not.toHaveBeenCalled();
+    expect(m.sendRaw).not.toHaveBeenCalled();
+    await tasks[0]!();
+    expect(m.sendRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('reschedule: hands the updated invitation to the scheduler', async () => {
+    m.findInterview.mockResolvedValue(existing);
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'video' }));
+    const tasks: Array<() => Promise<void>> = [];
+    await (await caller((t) => tasks.push(t))).interview.reschedule({
+      id: INTERVIEW_ID,
+      scheduledAt: new Date('2026-10-02T15:00:00Z'),
+      duration: 30,
+    });
+
+    expect(tasks).toHaveLength(1);
+    expect(m.sendRaw).not.toHaveBeenCalled();
+    await tasks[0]!();
+    expect(m.sendRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancel: hands the cancellation to the scheduler', async () => {
+    m.findInterview.mockResolvedValue(existing);
+    m.findForNotification.mockResolvedValue(
+      notificationData({ type: 'video', status: 'cancelled', cancelReason: 'Vacante cerrada' }),
+    );
+    const tasks: Array<() => Promise<void>> = [];
+    await (await caller((t) => tasks.push(t))).interview.cancel({ id: INTERVIEW_ID, cancelReason: 'Vacante cerrada' });
+
+    expect(tasks).toHaveLength(1);
+    expect(m.sendRaw).not.toHaveBeenCalled();
+    await tasks[0]!();
+    expect(m.sendRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('a scheduler that throws (after() outside a request) falls back to a detached send', async () => {
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'video' }));
+    await (await caller(() => {
+      throw new Error('after() called outside a request scope');
+    })).interview.schedule(scheduleInput);
+
+    await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
   });
 });
 
