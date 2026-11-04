@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useI18n } from '../../../lib/i18n';
+import { resolveBreadcrumb, type Crumb } from '../../../lib/nav/breadcrumbs';
 import { SearchCommand } from './search-command';
 import { NotificationDropdown } from './notification-dropdown';
 import { SupportEmailLink } from './support-email-link';
@@ -18,12 +19,18 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
   }, [ref, handler]);
 }
 
+// Language names are shown in their own language (endonyms), whatever the UI locale.
+const LANGUAGES = [
+  { code: 'ES' as const, label: 'Español', flag: '🇪🇸' },
+  { code: 'EN' as const, label: 'English', flag: '🇺🇸' },
+];
+
 export function Navbar({ isPlatformOwner = false, onMenuClick }: { isPlatformOwner?: boolean; onMenuClick?: () => void }) {
   const pathname = usePathname();
   const { locale, setLocale, t } = useI18n();
 
-  const breadcrumbs = t.breadcrumbs as Record<string, { parent?: string; label: string }>;
-  const crumb = breadcrumbs[pathname] || { label: 'TIMS Platform' };
+  const crumb = resolveBreadcrumb(pathname, t.breadcrumbs as Record<string, Crumb>);
+  const currentLanguage = LANGUAGES.find((l) => l.code === locale)?.label ?? locale;
 
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
@@ -37,11 +44,11 @@ export function Navbar({ isPlatformOwner = false, onMenuClick }: { isPlatformOwn
         <button
           onClick={onMenuClick}
           className="md:hidden -ml-1 mr-1 w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center hover:bg-[var(--chrome-hover)] transition-colors shrink-0"
-          aria-label="Menu"
+          aria-label={t.nav.menu}
         >
           <svg className="w-4.5 h-4.5 text-[var(--chrome-text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" /></svg>
         </button>
-        {crumb.parent && (
+        {crumb?.parent && (
           <>
             <span className="hidden md:inline text-[12px] text-[var(--chrome-text-tertiary)]">{crumb.parent}</span>
             <svg className="hidden md:block w-3 h-3 text-[var(--chrome-text-light)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -49,16 +56,23 @@ export function Navbar({ isPlatformOwner = false, onMenuClick }: { isPlatformOwn
             </svg>
           </>
         )}
-        <span className="text-[12px] font-semibold text-[var(--chrome-text-primary)] truncate">{crumb.label}</span>
+        {crumb && (
+          <span className="text-[12px] font-semibold text-[var(--chrome-text-primary)] truncate">{crumb.label}</span>
+        )}
       </div>
 
       {/* Right actions — search + help collapse on mobile so the cluster fits */}
       <div className="flex items-center gap-1.5 shrink-0">
-        <div className="hidden md:block">
-          <SearchCommand onFocus={() => setLangOpen(false)} />
-        </div>
+        {/* The global search is the platform-owner cross-tenant search (platformProcedure / PlatformOwnerGate):
+            a tenant user can only ever get a FORBIDDEN from it, so it is not rendered for them at all — no
+            broken box, and no denied request (and authz_denied audit event) per keystroke. */}
+        {isPlatformOwner && (
+          <div className="hidden md:block">
+            <SearchCommand onFocus={() => setLangOpen(false)} />
+          </div>
+        )}
 
-        <NotificationDropdown onOpen={() => setLangOpen(false)} />
+        <NotificationDropdown isPlatformOwner={isPlatformOwner} onOpen={() => setLangOpen(false)} />
 
         {/* Support: mailto link, hidden when no support address is configured */}
         <SupportEmailLink />
@@ -67,6 +81,8 @@ export function Navbar({ isPlatformOwner = false, onMenuClick }: { isPlatformOwn
         <div ref={langRef} className="relative">
           <button
             onClick={() => setLangOpen(!langOpen)}
+            aria-label={`${t.nav.language}: ${currentLanguage}`}
+            aria-expanded={langOpen}
             className={`h-7 px-2 rounded-[var(--r-md)] flex items-center gap-1.5 transition-colors ${
               langOpen ? 'bg-[var(--chrome-hover)]' : 'hover:bg-[var(--chrome-hover)]'
             }`}
@@ -79,10 +95,7 @@ export function Navbar({ isPlatformOwner = false, onMenuClick }: { isPlatformOwn
 
           {langOpen && (
             <div className="absolute right-0 top-full mt-2 w-[140px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden py-1">
-              {[
-                { code: 'ES' as const, label: 'Español', flag: '🇪🇸' },
-                { code: 'EN' as const, label: 'English', flag: '🇺🇸' },
-              ].map((l) => (
+              {LANGUAGES.map((l) => (
                 <button
                   key={l.code}
                   onClick={() => { setLocale(l.code); setLangOpen(false); }}

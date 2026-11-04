@@ -2,7 +2,9 @@
   "accessDenied": {
     "title": "Access denied",
     "message": "You do not have permission to view this section. If you think this is a mistake, contact your administrator.",
-    "back": "Back to dashboard"
+    "back": "Back to dashboard",
+    "pilotTitle": "Not available in the pilot",
+    "pilotMessage": "This module is not included in your organization's pilot."
   },
   "unassignedDashboard": {
     "title": "Your access is pending",
@@ -27,18 +29,38 @@
     "employee": "Employee"
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "dashboard": "Home",
     "search": "Search...",
     "notifications": "Notifications",
     "unread": "unread",
     "markAllRead": "Mark all as read",
     "viewAll": "View all notifications",
     "noNotifications": "No notifications",
-    "noNotificationsDesc": "When something important happens, it will appear here",
+    "noNotificationsDesc": "General notices arrive here. Your pending tasks appear on Home.",
+    "notificationModules": {
+      "platform": "Platform",
+      "candidate": "Candidates",
+      "vacancy": "Vacancies",
+      "pipeline": "Pipeline",
+      "interview": "Interviews",
+      "offer": "Offers",
+      "onboarding": "Onboarding",
+      "organization": "Organization",
+      "user": "Users"
+    },
+    "notificationTypes": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "success": "Success",
+      "info": "Information"
+    },
     "helpCenter": "Help center",
     "contactSupport": "Email support",
     "collapse": "Collapse",
     "expand": "Expand",
+    "menu": "Menu",
+    "closeMenu": "Close menu",
+    "language": "Language",
     "admin": "Administrator",
     "logout": "Sign out",
     "now": "Now",
@@ -78,11 +100,12 @@
     "monitoring": "Monitoring",
     "integrations": "Integrations",
     "billing": "Billing",
+    "settings": "Settings",
     "businessUnits": "Business Units",
     "team": "Team",
     "branding": "Branding",
     "fitWeights": "FIT Weights",
-    "commandCenter": "Command Center",
+    "commandCenter": "Home",
     "assessments": "Assessments",
     "myHiring": "My Hiring",
     "myTeam": "My Team",
@@ -118,7 +141,10 @@
   },
   "breadcrumbs": {
     "/dashboard": {
-      "label": "Dashboard"
+      "label": "Home"
+    },
+    "/platform": {
+      "label": "Platform"
     },
     "/platform/organizations": {
       "parent": "Platform",
@@ -172,6 +198,9 @@
       "parent": "Support",
       "label": "Support"
     },
+    "/recruitment": {
+      "label": "Recruitment"
+    },
     "/recruitment/pipeline": {
       "parent": "Recruitment",
       "label": "Pipeline"
@@ -200,9 +229,16 @@
       "parent": "Recruitment",
       "label": "Analytics"
     },
+    "/people": {
+      "label": "People"
+    },
     "/people/onboarding": {
       "parent": "People",
       "label": "Onboarding"
+    },
+    "/my-onboarding": {
+      "parent": "My Home",
+      "label": "My Onboarding"
     },
     "/people/performance": {
       "parent": "People",
@@ -239,6 +275,37 @@
     "/monitoring": {
       "parent": "Strategy",
       "label": "Strategic Monitoring"
+    },
+    "/settings": {
+      "label": "Settings"
+    },
+    "/settings/users": {
+      "parent": "Settings",
+      "label": "Team"
+    },
+    "/settings/business-units": {
+      "parent": "Settings",
+      "label": "Business Units"
+    },
+    "/settings/branding": {
+      "parent": "Settings",
+      "label": "Branding"
+    },
+    "/settings/fit-weights": {
+      "parent": "Settings",
+      "label": "FIT Weights"
+    },
+    "/settings/audit-log": {
+      "parent": "Settings",
+      "label": "Audit Log"
+    },
+    "/settings/data-requests": {
+      "parent": "Settings",
+      "label": "Data subject requests"
+    },
+    "/settings/billing": {
+      "parent": "Settings",
+      "label": "Billing"
     },
     "/settings/integrations": {
       "parent": "Settings",
@@ -326,6 +393,7 @@
     "comingSoon": "coming soon",
     "loading": "Loading...",
     "error": "Unexpected error",
+    "errorForbidden": "You don't have access to this information.",
     "retry": "Retry",
     "confirm": "Confirm",
     "cancel": "Cancel",
@@ -661,6 +729,12 @@
     "viewInvoices": "View Invoices",
     "viewUsers": "View Users",
     "features": "Features",
+    "tabOverview": "Overview",
+    "tabUsers": "Users",
+    "tabBilling": "Billing",
+    "tabFeatures": "Features",
+    "tabAi": "AI",
+    "tabActivity": "Activity",
     "selected": "selected",
     "suspendSelected": "Suspend Selected",
     "activateSelected": "Activate Selected",
@@ -2197,7 +2271,7 @@
     "customerHealthSubtitle": "Health signals by organization"
   },
   "recruitingDashboard": {
-    "overviewMetrics": "Overview Metrics",
+    "overviewMetrics": "Recruiting overview",
     "todaysStatus": "Today's Status",
     "openVacancies": "Open Vacancies",
     "critical": "critical",
