@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
@@ -89,7 +90,7 @@ export function AlertsPendingPanel() {
             </p>
             <div className="space-y-2">
               {scorecards.slice(0, 2).map((sc) => (
-                <div key={sc.interview.id} className="flex justify-between items-center h-10">
+                <Link key={sc.interview.id} href={`/recruitment/interviews/${sc.interview.id}/room`} aria-label={rd.openInterviewRoom.replace('{name}', () => `${sc.interview.candidate.firstName} ${sc.interview.candidate.lastName}`)} className="flex justify-between items-center h-10 rounded-lg -mx-1 px-1 hover:bg-[#F6F6F6] transition">
                   <div>
                     <p className="text-[13px] text-[#333]">
                       {sc.interview.candidate.firstName} {sc.interview.candidate.lastName} —{' '}
@@ -99,7 +100,7 @@ export function AlertsPendingPanel() {
                       {rd.evaluator}: {sc.role}
                     </p>
                   </div>
-                </div>
+                </Link>
               ))}
               {scorecards.length > 2 && (
                 <span className="text-xs text-[#DD0C15]">

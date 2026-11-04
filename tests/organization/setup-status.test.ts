@@ -25,6 +25,7 @@ const organizationFindUnique = vi.fn();
 const companyCount = vi.fn();
 const vacancyCount = vi.fn();
 const userCount = vi.fn();
+const invitationCount = vi.fn();
 const userFindUnique = vi.fn();
 const userUpdate = vi.fn();
 
@@ -33,6 +34,7 @@ vi.mock('@tims/db', () => ({
     organization: { findUnique: (...args: unknown[]) => organizationFindUnique(...args) },
     company: { count: (...args: unknown[]) => companyCount(...args) },
     vacancy: { count: (...args: unknown[]) => vacancyCount(...args) },
+    platformInvitation: { count: (...args: unknown[]) => invitationCount(...args) },
     user: {
       count: (...args: unknown[]) => userCount(...args),
       findUnique: (...args: unknown[]) => userFindUnique(...args),
@@ -107,6 +109,7 @@ function setDefaults(overrides: {
   logo?: string | null;
   companyCount?: number;
   userCount?: number;
+  invitationCount?: number;
   vacancyCount?: number;
   publishedVacancyCount?: number;
   dismissedAt?: Date | null;
@@ -116,6 +119,7 @@ function setDefaults(overrides: {
   // tests that need to model a pre-Task-1 legacy org override this to 0.
   companyCount.mockResolvedValue(overrides.companyCount ?? 1);
   userCount.mockResolvedValue(overrides.userCount ?? 1);
+  invitationCount.mockResolvedValue(overrides.invitationCount ?? 0);
   // vacancy.count is called twice: once for "any vacancy" and once for
   // "published vacancy" — resolve by call order.
   vacancyCount.mockReset();
@@ -162,13 +166,31 @@ describe('organization.getSetupStatus', () => {
     expect(result.items.companyStructureReady).toBe(false);
   });
 
-  it('flips teamInvited true once the org has more than one user', async () => {
-    setDefaults({ userCount: 2 });
+  it('flips teamInvited true once an admin of the org has sent a user invitation', async () => {
+    setDefaults({ invitationCount: 1 });
     const caller = await makeCaller();
 
     const result = await caller.organization.getSetupStatus();
 
     expect(result.items.teamInvited).toBe(true);
+    // Only user invitations sent by a member of THIS org (not the platform owner), revoked ones excluded.
+    expect(invitationCount).toHaveBeenCalledWith({
+      where: {
+        organizationId: TEST_ORG_ID,
+        type: 'user',
+        status: { not: 'revoked' },
+        invitedBy: { organizationId: TEST_ORG_ID, isPlatformOwner: false },
+      },
+    });
+  });
+
+  it('keeps teamInvited false when a second admin joined but nobody in the org invited anyone (D-18)', async () => {
+    setDefaults({ userCount: 2, invitationCount: 0 });
+    const caller = await makeCaller();
+
+    const result = await caller.organization.getSetupStatus();
+
+    expect(result.items.teamInvited).toBe(false);
   });
 
   it('flips brandingSet true once the organization has a non-null logo', async () => {
@@ -201,7 +223,7 @@ describe('organization.getSetupStatus', () => {
 
   it('reports allComplete true only when all 5 items are true', async () => {
     setDefaults({
-      userCount: 2,
+      invitationCount: 1,
       logo: 'https://cdn.example.com/logo.png',
       vacancyCount: 1,
       publishedVacancyCount: 1,
@@ -237,7 +259,7 @@ describe('organization.getSetupStatus', () => {
     const staleDismiss = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000); // 8 days ago
     setDefaults({
       dismissedAt: staleDismiss,
-      userCount: 2,
+      invitationCount: 1,
       logo: 'https://cdn.example.com/logo.png',
       vacancyCount: 1,
       publishedVacancyCount: 1,
@@ -259,7 +281,7 @@ describe('organization.getSetupStatus', () => {
 
     // Two calls -> the live queries run twice, not once-then-cached.
     expect(companyCount).toHaveBeenCalledTimes(2);
-    expect(userCount).toHaveBeenCalledTimes(2);
+    expect(invitationCount).toHaveBeenCalledTimes(2);
     expect(vacancyCount).toHaveBeenCalledTimes(4); // 2 counts per call (any + published)
     expect(organizationFindUnique).toHaveBeenCalledTimes(2);
   });
