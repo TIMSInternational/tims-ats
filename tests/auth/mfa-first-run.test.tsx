@@ -85,6 +85,15 @@ describe('enforced first run', () => {
     expect(window.sessionStorage.getItem('tims-post-login-destination')).toBeNull();
   });
 
+  it('goes to the dashboard, not back to /mfa, when the session had expired on /mfa itself', async () => {
+    rememberPostLoginDestination('/mfa');
+    render(<MfaSetup required />);
+    await screen.findByText(es.mfa.enrollTitle);
+    enterCode();
+    await waitFor(() => expect(state.push).toHaveBeenCalledWith('/dashboard'));
+    expect(state.push).not.toHaveBeenCalledWith('/mfa');
+  });
+
   it('never offers "Desactivar" when the role requires MFA', async () => {
     state.verified = true;
     state.aal = 'aal2';

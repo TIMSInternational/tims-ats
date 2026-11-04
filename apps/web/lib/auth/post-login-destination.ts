@@ -14,6 +14,15 @@ const storedSchema = z.object({ path: z.string().max(2048), at: z.number() });
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
+/** A safe staff page worth continuing to after MFA: never the root (the default anyway) and never
+ *  /mfa itself, which /mfa would push back to and leave the user on "Redirigiendo…". */
+function carryable(path: string): string | null {
+  const safe = safeStaffRedirectPath(path);
+  if (!safe || safe === '/') return null;
+  const pathname = safe.split('?')[0]!;
+  return pathname === '/mfa' || pathname.startsWith('/mfa/') ? null : safe;
+}
+
 function browserStore(): Store | null {
   try {
     return typeof window === 'undefined' ? null : window.sessionStorage;
@@ -22,12 +31,12 @@ function browserStore(): Store | null {
   }
 }
 
-/** Remember `path` (if it is a safe, non-root staff page); otherwise forget any earlier value. */
+/** Remember `path` (if it is a carryable staff page); otherwise forget any earlier value. */
 export function rememberPostLoginDestination(path: string, store: Store | null = browserStore(), now = Date.now()) {
   if (!store) return;
   try {
-    const safe = safeStaffRedirectPath(path);
-    if (!safe || safe === '/') store.removeItem(KEY);
+    const safe = carryable(path);
+    if (!safe) store.removeItem(KEY);
     else store.setItem(KEY, JSON.stringify({ path: safe, at: now }));
   } catch {
     // quota / disabled storage: nothing to carry
@@ -43,7 +52,7 @@ export function takePostLoginDestination(store: Store | null = browserStore(), n
     if (!raw) return null;
     const parsed = storedSchema.safeParse(JSON.parse(raw));
     if (!parsed.success || parsed.data.at > now || now - parsed.data.at > TTL_MS) return null;
-    return safeStaffRedirectPath(parsed.data.path);
+    return carryable(parsed.data.path);
   } catch {
     return null;
   }

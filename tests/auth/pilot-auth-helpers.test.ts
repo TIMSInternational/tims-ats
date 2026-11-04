@@ -131,6 +131,19 @@ describe('post-login destination across the mandatory MFA step (E-25)', () => {
     expect(store.data.size).toBe(0);
   });
 
+  it('never carries /mfa itself (a session that expired on /mfa must not loop back to it)', () => {
+    const store = memoryStore();
+    for (const p of ['/mfa', '/mfa?returnTo=x', '/mfa/']) {
+      rememberPostLoginDestination(p, store, 1_000);
+      expect(takePostLoginDestination(store, 1_000)).toBeNull();
+    }
+    store.setItem('tims-post-login-destination', JSON.stringify({ path: '/mfa', at: 1_000 }));
+    expect(takePostLoginDestination(store, 1_000)).toBeNull();
+    // Segment-aware: a page that merely starts with the same letters still carries.
+    rememberPostLoginDestination('/mfaq', store, 1_000);
+    expect(takePostLoginDestination(store, 1_000)).toBe('/mfaq');
+  });
+
   it('expires after ten minutes and rejects tampered or malformed values', () => {
     const store = memoryStore();
     rememberPostLoginDestination('/recruitment/offers', store, 0);
