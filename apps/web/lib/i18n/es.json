@@ -3953,6 +3953,7 @@
     "breadcrumb": "Configuración",
     "createButton": "Nuevo Perfil",
     "explainer": "La puntuación FIT de un candidato combina varias dimensiones. Un perfil de pesos define cuánto cuenta cada una; una vacante usa el perfil de su familia de rol y, si no tiene, el perfil «Default» (pesos iguales). Las dimensiones sin datos para un candidato no cuentan y su peso se reparte entre las demás.",
+    "pilotStoredAssessmentNote": "Algunos perfiles todavía dan peso a la evaluación. El piloto no incluye evaluaciones, así que ese peso solo cuenta para candidatos que ya tengan resultados; para dejarlo en 0 %, guarda de nuevo el perfil con el mismo nombre.",
     "empty": "Aún no hay perfiles de pesos. Mientras tanto, la puntuación FIT usa pesos iguales para todas las dimensiones.",
     "profileName": "Nombre del perfil",
     "profileNamePlaceholder": "ej. ventas, ingeniería",

@@ -9,7 +9,9 @@ import { isPilotScope } from '../../../../lib/launch-scope';
 
 const ALL_DIMENSIONS = ['assessment', 'interview', 'experience', 'education', 'languages'] as const;
 type Dimension = (typeof ALL_DIMENSIONS)[number];
-// Assessments are not part of the pilot: its weight is not asked for (saved as 0) and not shown.
+// Assessments are not part of the pilot: the form does not ask for their weight (it saves 0). The table
+// still shows it whenever a listed profile gives it weight (scoring bootstraps "Default" at 20 % each), so
+// the columns on screen always add up to what scoring uses.
 const PILOT = isPilotScope();
 const DIMENSIONS: readonly Dimension[] = PILOT ? ALL_DIMENSIONS.filter((d) => d !== 'assessment') : ALL_DIMENSIONS;
 const EVEN_WEIGHT = 1 / DIMENSIONS.length;
@@ -54,6 +56,8 @@ export default function FitWeightsPage() {
   };
 
   const sum = DIMENSIONS.reduce((s, d) => s + weights[d], 0);
+  const hasStoredAssessmentWeight = (profiles.data ?? []).some((p) => (p.weights.assessment ?? 0) > 0);
+  const tableDimensions: readonly Dimension[] = PILOT && hasStoredAssessmentWeight ? ALL_DIMENSIONS : DIMENSIONS;
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -73,6 +77,9 @@ export default function FitWeightsPage() {
 
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         <p className="text-[12px] text-[#585858] max-w-3xl">{t.fitWeights.explainer}</p>
+        {PILOT && hasStoredAssessmentWeight && (
+          <p className="text-[12px] text-[#585858] max-w-3xl">{t.fitWeights.pilotStoredAssessmentNote}</p>
+        )}
         {showForm && (
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
             <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.fitWeights.profileName}</label>
@@ -121,7 +128,7 @@ export default function FitWeightsPage() {
               <thead>
                 <tr className="text-[#8B8B8B] border-b border-[#EDEDED]">
                   <th className="text-left pb-2 font-medium">{t.fitWeights.profileName}</th>
-                  {DIMENSIONS.map((dim) => (
+                  {tableDimensions.map((dim) => (
                     <th key={dim} className="text-right pb-2 font-medium">{weightLabels[dim]}</th>
                   ))}
                 </tr>
@@ -129,7 +136,7 @@ export default function FitWeightsPage() {
               <tbody className="text-[#333]">
                 {(profiles.data ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={DIMENSIONS.length + 1} className="py-6 text-center text-[#8B8B8B]">
+                    <td colSpan={tableDimensions.length + 1} className="py-6 text-center text-[#8B8B8B]">
                       {t.fitWeights.empty}
                     </td>
                   </tr>
@@ -137,7 +144,7 @@ export default function FitWeightsPage() {
                 {(profiles.data ?? []).map((p) => (
                   <tr key={p.id} className="border-b border-[#F6F6F6]">
                     <td className="py-2.5 font-medium">{p.name}</td>
-                    {DIMENSIONS.map((dim) => (
+                    {tableDimensions.map((dim) => (
                       <td key={dim} className="py-2.5 text-right">{formatWeight(p.weights[dim])}</td>
                     ))}
                   </tr>

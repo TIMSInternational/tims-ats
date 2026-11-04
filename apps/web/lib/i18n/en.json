@@ -3953,6 +3953,7 @@
     "breadcrumb": "Settings",
     "createButton": "New Profile",
     "explainer": "A candidate's FIT score combines several dimensions. A weight profile sets how much each one counts; a vacancy uses the profile of its role family and, without one, the \"Default\" profile (equal weights). Dimensions with no data for a candidate are left out and their weight is shared among the others.",
+    "pilotStoredAssessmentNote": "Some profiles still give the assessment a weight. The pilot has no assessments, so that weight only counts for candidates who already have results; to set it to 0 %, save the profile again under the same name.",
     "empty": "No weight profiles yet. Until there are, the FIT score weighs every dimension equally.",
     "profileName": "Profile name",
     "profileNamePlaceholder": "e.g. sales, engineering",

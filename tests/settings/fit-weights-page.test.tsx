@@ -55,6 +55,30 @@ describe('FIT weights settings', () => {
     });
   });
 
+  // Codex round 3: scoring bootstraps "Default" at 20 % for all five dimensions. Hiding the assessment
+  // column in the pilot showed four 20 % columns and concealed the fifth.
+  it('under the pilot, still shows a stored assessment weight so the columns add up, with a note', async () => {
+    profiles.data = [
+      { id: 'p1', name: 'Default', weights: { assessment: 0.2, interview: 0.2, experience: 0.2, education: 0.2, languages: 0.2 } },
+    ];
+    const Page = await loadPage('pilot');
+    render(<Page />);
+    expect(screen.getAllByText('20 %')).toHaveLength(5);
+    expect(screen.getByText(es.fitWeights.weightAssessment)).toBeTruthy();
+    expect(screen.getByText(es.fitWeights.pilotStoredAssessmentNote)).toBeTruthy();
+  });
+
+  it('under the pilot, hides the assessment column when no profile gives it weight', async () => {
+    profiles.data = [
+      { id: 'p2', name: 'ventas', weights: { assessment: 0, interview: 0.25, experience: 0.25, education: 0.25, languages: 0.25 } },
+    ];
+    const Page = await loadPage('pilot');
+    render(<Page />);
+    expect(screen.getAllByText('25 %')).toHaveLength(4);
+    expect(screen.queryAllByText(es.fitWeights.weightAssessment)).toHaveLength(0);
+    expect(screen.queryAllByText(es.fitWeights.pilotStoredAssessmentNote)).toHaveLength(0);
+  });
+
   it('shows weights as percentages, and keeps the assessment column in the full product', async () => {
     profiles.data = [
       { id: 'p1', name: 'Default', weights: { assessment: 0.2, interview: 0.2, experience: 0.2, education: 0.2, languages: 0.2 } },
