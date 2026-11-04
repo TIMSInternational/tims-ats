@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { CandidateAvatar, ErrorState, Skeleton } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
+import { interviewTypeLabel } from './[id]/room/interview-type-label';
 
 interface UpcomingPanelProps {
   interviews: InterviewListItem[];
@@ -40,6 +41,7 @@ const TYPE_COLORS: Record<string, string> = {
   onsite: 'bg-teal-500',
   technical: 'bg-rose-500',
   cultural: 'bg-emerald-500',
+  online: 'bg-indigo-500',
 };
 
 export function UpcomingPanel({ interviews, isLoading, isError, onRetry }: UpcomingPanelProps) {
@@ -139,7 +141,7 @@ export function UpcomingPanel({ interviews, isLoading, isError, onRetry }: Upcom
                           <p className="text-[10px] text-[#8B8B8B] truncate">{iv.vacancy.title}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[9px] bg-[#F6F6F6] text-[#585858] px-1.5 py-0.5 rounded">
-                              {iv.type}
+                              {interviewTypeLabel(t, iv.type)}
                             </span>
                             <span className="text-[9px] text-[#CDCDCD]">{iv.duration} {t.interviews.minutes}</span>
                             <div className="flex -space-x-1.5 ml-auto">

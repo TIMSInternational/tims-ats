@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 //  - F-10: interview.getById carries the scorecard competencies (committee has no vacancy:read).
 // No procedure is added: the tRPC surface is ratcheted (tests/governance/trpc-procedure-ratchet.test.ts).
 //  - B-29: getPendingScorecards lists only interviews that have started.
+//  - A-02: "No se presentó" (interview.cancel with outcome 'no_show') — one conditional write, no email.
+//  - A-02 / B-30: the status filter and the KPI counts use the badge rule (repositories/interview-status-filter.ts).
 
 const ORG_ID = '11111111-1111-4111-8111-111111111111';
 const INTERVIEW_ID = '22222222-2222-4222-8222-222222222222';
@@ -21,6 +23,7 @@ const m = vi.hoisted(() => ({
   interviewFindMany: vi.fn(),
   interviewCount: vi.fn(),
   interviewUpdate: vi.fn(),
+  interviewUpdateMany: vi.fn(),
   evaluatorDeleteMany: vi.fn(),
   evaluatorFindMany: vi.fn(),
   orgFindFirst: vi.fn(),
@@ -40,6 +43,7 @@ vi.mock('@tims/db', () => ({
       findMany: m.interviewFindMany,
       count: m.interviewCount,
       update: m.interviewUpdate,
+      updateMany: m.interviewUpdateMany,
     },
     interviewEvaluator: { deleteMany: m.evaluatorDeleteMany, findMany: m.evaluatorFindMany },
     organization: { findFirst: m.orgFindFirst },
@@ -92,6 +96,7 @@ beforeEach(() => {
   m.scopeWhereFor.mockImplementation(async (entity: string) => (entity === 'vacancy' ? TEAM_VACANCY_WHERE : {}));
   m.interviewFindFirst.mockResolvedValue(null);
   m.interviewUpdate.mockResolvedValue({ id: INTERVIEW_ID });
+  m.interviewUpdateMany.mockResolvedValue({ count: 1 });
   m.evaluatorDeleteMany.mockResolvedValue({ count: 1 });
   m.txUserFind.mockResolvedValue({ id: OTHER_ID });
   m.txEvaluatorCreate.mockResolvedValue({ id: 'ie-1' });
@@ -101,6 +106,7 @@ beforeEach(() => {
 describe('B-05 — a panelist cannot manage the interview they sit on', () => {
   const attempts = {
     cancel: (c: Awaited<ReturnType<typeof caller>>) => c.interview.cancel({ id: INTERVIEW_ID, cancelReason: 'x' }),
+    noShow: (c: Awaited<ReturnType<typeof caller>>) => c.interview.cancel({ id: INTERVIEW_ID, outcome: 'no_show' }),
     reschedule: (c: Awaited<ReturnType<typeof caller>>) =>
       c.interview.reschedule({ id: INTERVIEW_ID, scheduledAt: new Date('2026-11-12T16:00:00Z') }),
     addEvaluator: (c: Awaited<ReturnType<typeof caller>>) =>
@@ -121,6 +127,7 @@ describe('B-05 — a panelist cannot manage the interview they sit on', () => {
         { vacancy: { AND: [TEAM_VACANCY_WHERE, { deletedAt: null }] } },
       ]);
       expect(m.interviewUpdate).not.toHaveBeenCalled();
+      expect(m.interviewUpdateMany).not.toHaveBeenCalled();
       expect(m.evaluatorDeleteMany).not.toHaveBeenCalled();
       expect(m.txEvaluatorCreate).not.toHaveBeenCalled();
       expect(m.notify).not.toHaveBeenCalled();
@@ -284,23 +291,53 @@ describe('A-16 / B-30 — list filters before paging and counts submitted cards'
     expect(m.interviewCount.mock.calls[0]![0].where).toEqual(where);
   });
 
-  it('"Completada" includes a started, scored interview still stored open; "Programada" excludes it', async () => {
+  it('the status filter is the badge rule: "Programada" excludes started rows (tests/interview/interview-status-filter.test.ts pins the rule)', async () => {
+    const { interviewStatusFilterWhere } = await import('../../packages/api/src/repositories/interview-status-filter');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T16:00:00Z'));
+    try {
+      const now = new Date();
+      const c = await caller();
+      for (const status of ['scheduled', 'awaiting_scorecard', 'completed', 'cancelled', 'no_show']) {
+        m.interviewFindMany.mockClear();
+        await c.interview.list({ status, pageSize: 20 });
+        expect(m.interviewFindMany.mock.calls[0]![0].where.AND).toContainEqual(interviewStatusFilterWhere(status, now));
+      }
+      expect(interviewStatusFilterWhere('scheduled', now)).toEqual({
+        AND: [{ status: 'scheduled' }, { scheduledAt: { gt: now } }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('KPI counts: only with statusCounts, across all dates and statuses, following the type filter', async () => {
+    m.interviewCount.mockResolvedValueOnce(9).mockResolvedValueOnce(4).mockResolvedValueOnce(3).mockResolvedValueOnce(2);
     const c = await caller();
-    await c.interview.list({ status: 'completed', pageSize: 20 });
-    const completed = m.interviewFindMany.mock.calls[0]![0].where.AND as unknown[];
-    const completedFilter = completed.find((w) => JSON.stringify(w).includes('"OR"')) as {
-      OR: [unknown, { AND: unknown[] }];
-    };
-    expect(completedFilter.OR[0]).toEqual({ status: 'completed' });
-    expect(JSON.stringify(completedFilter.OR[1])).toContain('"submittedAt":{"not":null}');
+    const res = await c.interview.list({
+      statusCounts: true,
+      type: 'onsite',
+      status: 'cancelled',
+      from: new Date('2026-11-10T00:00:00Z'),
+      openOnly: true,
+      pageSize: 1,
+    });
+    expect(res.statusCounts).toEqual({ scheduled: 4, completed: 3, cancelled: 2 });
+    expect(res.total).toBe(9);
+    expect(m.interviewCount).toHaveBeenCalledTimes(4);
+    for (const call of m.interviewCount.mock.calls.slice(1)) {
+      const kpiWhere = JSON.stringify(call[0].where);
+      expect(kpiWhere).toContain(`"organizationId":"${ORG_ID}"`);
+      expect(kpiWhere).toContain('"type":"onsite"');
+      expect(kpiWhere).not.toContain('"gte"'); // no date window
+      expect(kpiWhere).not.toContain('"status":"cancelled"},{"status"'); // not the list's status filter
+    }
+    expect(JSON.stringify(m.interviewCount.mock.calls[3]![0].where)).toContain('"status":"cancelled"');
 
-    await c.interview.list({ status: 'scheduled', pageSize: 20 });
-    const scheduled = JSON.stringify(m.interviewFindMany.mock.calls[1]![0].where.AND);
-    expect(scheduled).toContain('"NOT"');
-    expect(scheduled).toContain('"status":"scheduled"');
-
-    await c.interview.list({ status: 'cancelled', pageSize: 20 });
-    expect(m.interviewFindMany.mock.calls[2]![0].where.AND).toContainEqual({ status: 'cancelled' });
+    m.interviewCount.mockClear();
+    const plain = await c.interview.list({ pageSize: 20 });
+    expect(plain.statusCounts).toBeNull();
+    expect(m.interviewCount).toHaveBeenCalledTimes(1);
   });
 
   it('rows carry only a COUNT of submitted scorecards, never their content', async () => {
@@ -308,5 +345,46 @@ describe('A-16 / B-30 — list filters before paging and counts submitted cards'
     const include = m.interviewFindMany.mock.calls[0]![0].include;
     expect(include._count).toEqual({ select: { scorecards: { where: { submittedAt: { not: null } } } } });
     expect(include).not.toHaveProperty('scorecards');
+  });
+});
+
+describe('A-02 — "No se presentó" (interview.cancel, outcome no_show)', () => {
+  beforeEach(() => {
+    m.scope = 'organization';
+  });
+
+  it('one conditional write: open, started, no submitted scorecard; join link revoked; no email', async () => {
+    const before = Date.now();
+    const res = await (await caller()).interview.cancel({ id: INTERVIEW_ID, outcome: 'no_show' });
+    expect(res).toEqual({ id: INTERVIEW_ID, status: 'no_show' });
+    const args = m.interviewUpdateMany.mock.calls[0]![0];
+    expect(args.where).toMatchObject({
+      id: INTERVIEW_ID,
+      organizationId: ORG_ID,
+      status: { in: ['scheduled', 'rescheduled', 'confirmed', 'in_progress'] },
+      scorecards: { none: { submittedAt: { not: null } } },
+    });
+    expect(args.where.scheduledAt.lte.getTime()).toBeGreaterThanOrEqual(before);
+    expect(args.data).toEqual({ status: 'no_show', candidateJoinTokenHash: null, candidateJoinTokenExpiresAt: null });
+    expect(m.interviewUpdate).not.toHaveBeenCalled();
+    expect(m.notify).not.toHaveBeenCalled();
+  });
+
+  it('CONFLICT when nothing matched (not started, already closed, or a card was submitted)', async () => {
+    m.interviewUpdateMany.mockResolvedValueOnce({ count: 0 });
+    await expect((await caller()).interview.cancel({ id: INTERVIEW_ID, outcome: 'no_show' })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+    expect(m.notify).not.toHaveBeenCalled();
+  });
+
+  it('a plain cancel still needs its reason, and still notifies', async () => {
+    const c = await caller();
+    await expect(c.interview.cancel({ id: INTERVIEW_ID } as never)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await c.interview.cancel({ id: INTERVIEW_ID, cancelReason: 'x' });
+    expect(m.interviewUpdate.mock.calls[0]![0].data).toMatchObject({ status: 'cancelled', cancelReason: 'x' });
+    expect(m.interviewUpdateMany).not.toHaveBeenCalled();
+    // The email path runs in this harness, so "no email" on a no-show above is not vacuous.
+    expect(m.notify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'cancel', interviewId: INTERVIEW_ID }));
   });
 });

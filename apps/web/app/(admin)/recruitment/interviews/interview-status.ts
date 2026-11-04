@@ -29,13 +29,23 @@ export function hasInterviewStarted(iv: InterviewTiming, now: Date = new Date())
 /**
  * The status key the list shows: `completed` once started with a submitted scorecard, else
  * `in_progress` while it runs and `awaiting_scorecard` once it is over. The server's status filter
- * uses the same rule for "completed" (interview.list → statusFilterWhere).
+ * badges by the same rule (packages/api …/repositories/interview-status-filter.ts): "Programada" means
+ * not started yet, and STARTED_UNSCORED_FILTER returns the `in_progress` + `awaiting_scorecard` rows.
  */
 export function displayInterviewStatus(iv: InterviewTiming, now: Date = new Date()): string {
   if (!OPEN_STATUSES.has(iv.status) || !hasInterviewStarted(iv, now)) return iv.status;
   if ((iv._count?.scorecards ?? 0) > 0) return 'completed';
   const endMs = startMs(iv) + Math.max(0, iv.duration ?? 0) * 60_000;
   return now.getTime() < endMs ? 'in_progress' : 'awaiting_scorecard';
+}
+
+/** interview.list status filter for the started, unscored rows ("En curso o pendiente de evaluación"). */
+export const STARTED_UNSCORED_FILTER = 'awaiting_scorecard';
+
+/** "No se presentó" is offered for an open interview that started and has no submitted scorecard — the
+ *  rows shown "En curso" or "Realizada · pendiente de evaluación" (the server re-checks it in one write). */
+export function canMarkNoShow(iv: InterviewTiming, now: Date = new Date()): boolean {
+  return OPEN_STATUSES.has(iv.status) && hasInterviewStarted(iv, now) && (iv._count?.scorecards ?? 0) === 0;
 }
 
 /** Cancel is offered only for a scheduled interview that has not started: one that already took place

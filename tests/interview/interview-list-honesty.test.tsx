@@ -8,7 +8,9 @@ import type { InterviewListItem } from '../../apps/web/lib/trpc-types';
 
 // Pilot fixes on the interviews list (A-02, B-30, F-9, B-05, E-08, B-28, C-02 recruiter side):
 // a past interview has no "Cancelar" and says it waits for its scorecard; no sales upsell in the pilot;
-// panelists see no panel-management or scheduling controls; the "En línea" type exists.
+// panelists see no panel-management or scheduling controls; the "En línea" type exists — and is labelled
+// in the "Próximas" side panel too; the status filter offers what the rows show; "No se presentó" closes a
+// started, unscored interview; the KPI cards are counts across all dates, not "on this page".
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
@@ -29,13 +31,21 @@ vi.mock('../../apps/web/components', () => ({
     <span data-testid="status">{map[status]?.label ?? status}</span>
   ),
   CandidateAvatar: () => null,
+  Skeleton: () => null,
+  KpiCard: ({ label, value, subtitle }: { label: string; value: number; subtitle?: string }) => (
+    <div data-testid="kpi">{`${label}|${value}|${subtitle ?? ''}`}</div>
+  ),
+  KpiCardSkeleton: () => null,
   UpsellNotice: () => <span data-testid="upsell">upsell</span>,
 }));
 
 import { InterviewTable } from '../../apps/web/app/(admin)/recruitment/interviews/interview-table';
 import { InterviewFilterBar } from '../../apps/web/app/(admin)/recruitment/interviews/interview-filter-bar';
+import { UpcomingPanel } from '../../apps/web/app/(admin)/recruitment/interviews/upcoming-panel';
+import { InterviewKpis } from '../../apps/web/app/(admin)/recruitment/interviews/interview-kpis';
 import {
   canCancelInterview,
+  canMarkNoShow,
   displayInterviewStatus,
   formatInterviewWhen,
 } from '../../apps/web/app/(admin)/recruitment/interviews/interview-status';
@@ -80,6 +90,18 @@ describe('derived interview status (A-02 / B-30)', () => {
     const scoredDuringTheCall = { ...scored, scheduledAt: at(-HOUR / 2) };
     expect(displayInterviewStatus(scoredDuringTheCall, now)).toBe('completed');
     expect(displayInterviewStatus({ ...scored, scheduledAt: at(HOUR) }, now)).toBe('scheduled');
+  });
+
+  it('"No se presentó" only for an open, started interview nobody scored', () => {
+    expect(canMarkNoShow({ status: 'scheduled', scheduledAt: at(-HOUR / 2), duration: 60 }, now)).toBe(true);
+    expect(canMarkNoShow({ status: 'rescheduled', scheduledAt: at(-3 * HOUR), duration: 60 }, now)).toBe(true);
+    expect(canMarkNoShow({ status: 'scheduled', scheduledAt: at(HOUR), duration: 60 }, now)).toBe(false);
+    expect(
+      canMarkNoShow({ status: 'scheduled', scheduledAt: at(-3 * HOUR), duration: 60, _count: { scorecards: 1 } }, now),
+    ).toBe(false);
+    for (const status of ['completed', 'cancelled', 'no_show']) {
+      expect(canMarkNoShow({ status, scheduledAt: at(-3 * HOUR), duration: 60 }, now)).toBe(false);
+    }
   });
 
   it('closed statuses are shown as stored', () => {
@@ -192,6 +214,65 @@ describe('interview table', () => {
     expect(screen.getByText(en.interviews.typeOnline)).toBeInTheDocument();
     expect(screen.queryByText('online')).toBeNull();
   });
+
+  it('A-02: "No-show" is offered on a past, unscored row — not on an upcoming or scored one, nor to panelists', () => {
+    const marked: string[] = [];
+    const past = row({ id: 'past', scheduledAt: new Date(Date.now() - 3 * HOUR) });
+    const scored = row({ id: 'scored', scheduledAt: new Date(Date.now() - 3 * HOUR), _count: { scorecards: 1 } });
+    renderTable({ interviews: [past, row({ id: 'next' }), scored], onMarkNoShow: (id) => marked.push(id) });
+    const buttons = screen.getAllByRole('button', { name: en.interviews.markNoShow });
+    expect(buttons).toHaveLength(1);
+    buttons[0]!.click();
+    expect(marked).toEqual(['past']);
+    cleanup();
+    renderTable({ interviews: [past], onMarkNoShow: undefined });
+    expect(screen.queryByRole('button', { name: en.interviews.markNoShow })).toBeNull();
+  });
+});
+
+describe('"Próximas" side panel (C-03 on the staff side)', () => {
+  it('labels every type from i18n — "online" included — never as a raw slug', () => {
+    localStorage.setItem('tims-locale', 'EN');
+    render(
+      <I18nProvider>
+        <UpcomingPanel
+          interviews={[
+            row({ id: 'a', type: 'online', scheduledAt: new Date(Date.now() + 2 * HOUR) }),
+            row({ id: 'b', type: 'onsite', scheduledAt: new Date(Date.now() + 3 * HOUR) }),
+          ]}
+          isLoading={false}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByText(en.interviews.typeOnline)).toBeInTheDocument();
+    expect(screen.getByText(en.interviews.typeOnsite)).toBeInTheDocument();
+    expect(screen.queryByText('online')).toBeNull();
+    expect(screen.queryByText('onsite')).toBeNull();
+  });
+});
+
+describe('KPI cards (A-02 / B-30)', () => {
+  it('show the server counts across all dates, and the list total "matching the filters"', () => {
+    localStorage.setItem('tims-locale', 'EN');
+    render(
+      <I18nProvider>
+        <InterviewKpis
+          counts={{ scheduled: 4, completed: 7, cancelled: 1 }}
+          listTotal={12}
+          isLoading={false}
+          isError={false}
+          onRetry={() => undefined}
+        />
+      </I18nProvider>,
+    );
+    const cards = screen.getAllByTestId('kpi').map((el) => el.textContent);
+    expect(cards).toEqual([
+      `${en.interviews.kpiScheduled}|4|${en.interviews.allDates}`,
+      `${en.interviews.kpiCompleted}|7|${en.interviews.allDates}`,
+      `${en.interviews.kpiCancelled}|1|${en.interviews.allDates}`,
+      `${en.interviews.kpiTotal}|12|${en.interviews.filteredTotal}`,
+    ]);
+  });
 });
 
 describe('interview filter bar', () => {
@@ -216,6 +297,26 @@ describe('interview filter bar', () => {
     expect(screen.queryByRole('button', { name: en.interviews.scheduleNew })).toBeNull();
     expect(screen.getByRole('button', { name: en.interviews.viewUpcoming })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: en.interviews.viewPast })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('status options are what the rows show: no stored-only "In progress", one option for started + unscored', () => {
+    localStorage.setItem('tims-locale', 'EN');
+    render(
+      <I18nProvider>
+        <InterviewFilterBar {...base} />
+      </I18nProvider>,
+    );
+    const statusSelect = screen.getAllByRole('combobox')[0]!;
+    const options = within(statusSelect).getAllByRole('option').map((o) => [(o as HTMLOptionElement).value, o.textContent]);
+    expect(options).toEqual([
+      ['', en.interviews.allStatuses],
+      ['scheduled', en.interviews.statusScheduled],
+      ['awaiting_scorecard', en.interviews.filterStartedUnscored],
+      ['completed', en.interviews.statusCompleted],
+      ['cancelled', en.interviews.statusCancelled],
+      ['no_show', en.interviews.statusNoShow],
+    ]);
+    expect(es.interviews.statusNoShow).toBe('No se presentó');
   });
 
   it('shows it when the viewer may schedule', () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { STARTED_UNSCORED_FILTER } from './interview-status';
 
 export type InterviewListView = 'upcoming' | 'past';
 
@@ -46,8 +47,9 @@ export function InterviewFilterBar({
         className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
       >
         <option value="">{t.interviews.allStatuses}</option>
+        {/* Values filter by what the rows SHOW (interview-status.ts), not by the stored status. */}
         <option value="scheduled">{t.interviews.statusScheduled}</option>
-        <option value="in_progress">{t.interviews.statusInProgress}</option>
+        <option value={STARTED_UNSCORED_FILTER}>{t.interviews.filterStartedUnscored}</option>
         <option value="completed">{t.interviews.statusCompleted}</option>
         <option value="cancelled">{t.interviews.statusCancelled}</option>
         <option value="no_show">{t.interviews.statusNoShow}</option>

@@ -13,30 +13,8 @@ import { isBlindedViewer, visibleScorecard } from '../../services/scorecard-visi
 import { assertInterviewManageable } from '../../services/interview-management.service';
 import { interviewScorecardRepository } from '../../repositories/interview-scorecard.repository';
 import { interviewSchedulingRepository } from '../../repositories/interview-scheduling.repository';
-import { orgSettingsTimeZone, resolveInterviewTimeZone, UTC_TIME_ZONE } from '@tims/shared';
-
-/** Not closed and not completed: the interview is still to happen, or is being held, or awaits its card. */
-const OPEN_INTERVIEW_STATUSES = ['scheduled', 'rescheduled', 'confirmed', 'in_progress'];
-
-/**
- * The status filter in the terms the list SHOWS (apps/web …/interviews/interview-status.ts): an open
- * interview that has started and has a submitted scorecard is shown as completed — a video one stays
- * stored open while the candidate's join link is valid — so "Completada" includes it and the open
- * statuses exclude it. Other statuses filter as stored.
- */
-function statusFilterWhere(status: string | undefined, now: Date): Prisma.InterviewWhereInput {
-  if (!status) return {};
-  const scoredOpen: Prisma.InterviewWhereInput = {
-    AND: [
-      { status: { in: OPEN_INTERVIEW_STATUSES } },
-      { scheduledAt: { lte: now } },
-      { scorecards: { some: { submittedAt: { not: null } } } },
-    ],
-  };
-  if (status === 'completed') return { OR: [{ status: 'completed' }, scoredOpen] };
-  if (OPEN_INTERVIEW_STATUSES.includes(status)) return { AND: [{ status }, { NOT: scoredOpen }] };
-  return { status };
-}
+import { interviewStatusFilterWhere, OPEN_INTERVIEW_STATUSES } from '../../repositories/interview-status-filter';
+import { interviewManageRepository } from '../../repositories/interview-manage.repository';
 
 export const interviewCrudRouter = router({
   // 8.1 — List interviews with filters
@@ -53,37 +31,41 @@ export const interviewCrudRouter = router({
         sort: z.enum(['asc', 'desc']).default('asc'),
         // Only interviews still to happen (not cancelled / no_show / completed) — filtered BEFORE paging.
         openOnly: z.boolean().optional(),
+        // Also return the KPI counts (scheduled / completed / cancelled) across ALL dates, ignoring
+        // from / to / status / openOnly: the page's cards are not "on this page" numbers (A-02 / B-30).
+        statusCounts: z.boolean().optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(20),
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, sort, openOnly, ...filters } = input;
+      const { page, pageSize, sort, openOnly, statusCounts, ...filters } = input;
       const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
+      const now = new Date();
 
+      // Tenant, scope and the vacancy / candidate / type filters — shared by the rows and the KPI counts.
+      const base: Prisma.InterviewWhereInput[] = [
+        { organizationId: ctx.user.organizationId },
+        scopeWhere as Prisma.InterviewWhereInput,
+        {
+          ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
+          ...(filters.candidateId && { candidateId: filters.candidateId }),
+          ...(filters.type && { type: filters.type }),
+        },
+      ];
       const where: Prisma.InterviewWhereInput = {
         AND: [
-          { organizationId: ctx.user.organizationId },
-          scopeWhere as Prisma.InterviewWhereInput,
-          {
-            ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
-            ...(filters.candidateId && { candidateId: filters.candidateId }),
-            ...(filters.type && { type: filters.type }),
-            ...(filters.from || filters.to
-              ? {
-                  scheduledAt: {
-                    ...(filters.from && { gte: filters.from }),
-                    ...(filters.to && { lte: filters.to }),
-                  },
-                }
-              : {}),
-          },
-          statusFilterWhere(filters.status, new Date()),
-          openOnly ? { status: { in: OPEN_INTERVIEW_STATUSES } } : {},
+          ...base,
+          filters.from || filters.to
+            ? { scheduledAt: { ...(filters.from && { gte: filters.from }), ...(filters.to && { lte: filters.to }) } }
+            : {},
+          // The status filter in the terms the rows are badged (repositories/interview-status-filter.ts).
+          interviewStatusFilterWhere(filters.status, now),
+          openOnly ? { status: { in: [...OPEN_INTERVIEW_STATUSES] } } : {},
         ],
       };
 
-      const [items, total, zoneSources] = await Promise.all([
+      const [items, total, schedulingTimeZone, kpis] = await Promise.all([
         db.interview.findMany({
           where,
           omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
@@ -106,20 +88,13 @@ export const interviewCrudRouter = router({
           take: pageSize,
         }),
         db.interview.count({ where }),
-        interviewSchedulingRepository.findTimeZoneSources(ctx.user.organizationId, filters.vacancyId),
+        // The zone the schedule modal books in and labels: org, then (filtered to one vacancy) its company,
+        // then UTC said explicitly — the chain the invitation emails print (A-17).
+        interviewSchedulingRepository.findSchedulingTimeZone(ctx.user.organizationId, filters.vacancyId),
+        statusCounts ? interviewManageRepository.countKpis(base, now) : null,
       ]);
 
-      // The zone the schedule modal books in and labels ("hora de Costa Rica (GMT-6)"): the
-      // organization's, then (when filtered to one vacancy) that vacancy's company, then UTC said
-      // explicitly — the same chain the invitation emails print (A-17).
-      const orgZone = orgSettingsTimeZone(zoneSources.orgSettings);
-      const zone = resolveInterviewTimeZone(orgZone, zoneSources.companyTimeZone);
-      const schedulingTimeZone = {
-        timeZone: zone,
-        source: orgZone ? ('organization' as const) : zone === UTC_TIME_ZONE ? ('utc' as const) : ('company' as const),
-      };
-
-      return { items, total, page, pageSize, schedulingTimeZone };
+      return { items, total, page, pageSize, schedulingTimeZone, statusCounts: kpis };
     }),
 
   // 8.2 — Get interview by ID
@@ -461,16 +436,39 @@ export const interviewCrudRouter = router({
 
   cancel: permissionProcedure('interview', 'update')
     .input(
-      z.object({
-        id: z.string().uuid(),
-        cancelReason: z.string().min(1).max(1000),
-      }),
+      z.union([
+        z.object({
+          id: z.string().uuid(),
+          cancelReason: z.string().min(1).max(1000),
+          outcome: z.literal('cancelled').optional(),
+        }),
+        // A-02 "No se presentó": closes an interview that started and nobody scored. It rides on cancel
+        // because the tRPC surface is ratcheted (tests/governance/trpc-procedure-ratchet.test.ts).
+        z.object({ id: z.string().uuid(), outcome: z.literal('no_show') }),
+      ]),
     )
     .mutation(async ({ ctx, input }) => {
       // The scoped probe replaces the bare org-check findFirst — cancel only uses
       // it as an existence check. Managing needs the vacancy scope too, so a
       // panelist cannot cancel the interview they sit on.
       await assertInterviewManageable(ctx.access, ctx.user.id, ctx.user.organizationId, input.id);
+
+      if (input.outcome === 'no_show') {
+        // No email: nothing changes for the candidate or the panel beyond the interview closing.
+        const marked = await interviewManageRepository.markNoShow(
+          ctx.user.organizationId,
+          input.id,
+          new Date(),
+          clearedJoinTokenColumns(),
+        );
+        if (!marked) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Only an open interview that has started and has no submitted scorecard can be a no-show',
+          });
+        }
+        return { id: input.id, status: 'no_show' as const };
+      }
 
       const cancelled = await db.interview.update({
         where: { id: input.id },
