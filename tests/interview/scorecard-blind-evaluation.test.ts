@@ -297,6 +297,7 @@ interface SubmitInput {
   ratings: Record<string, number>;
   recommendation: 'strong_yes' | 'yes' | 'neutral' | 'no' | 'strong_no';
   overallNotes?: string;
+  expectedScheduledAt?: Date;
 }
 interface Caller {
   interview: {
@@ -742,6 +743,33 @@ describe('submitScorecard — a scored interview is marked completed (B-30 / A-0
     expect(store.cards.some((c) => c.evaluatorId === ME)).toBe(false);
     expect(store.ops).not.toContain('card.upsert');
     expect(store.interviewStatus).toBe('scheduled');
+  });
+
+  it('a form filled in for an appointment that was rescheduled BEFORE the request is refused (#405 review)', async () => {
+    const shown = store.interviewScheduledAt; // what the room displayed when the form was opened
+    store.interviewScheduledAt = new Date(Date.now() + 24 * 3600_000); // reschedule committed meanwhile
+    const caller = await callerAs(ME);
+    await expect(
+      caller.interview.submitScorecard({
+        interviewId: INTERVIEW,
+        ratings: full,
+        recommendation: 'yes',
+        expectedScheduledAt: shown,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(store.ops).toEqual([]); // refused before any write
+    expect(store.cards.some((c) => c.evaluatorId === ME)).toBe(false);
+  });
+
+  it('a form for the current appointment is accepted, and the lock is keyed on that start', async () => {
+    const caller = await callerAs(ME);
+    await caller.interview.submitScorecard({
+      interviewId: INTERVIEW,
+      ratings: full,
+      recommendation: 'yes',
+      expectedScheduledAt: new Date(store.interviewScheduledAt.getTime()),
+    });
+    expect(store.cards.find((c) => c.evaluatorId === ME)?.submittedAt).not.toBeNull();
   });
 
   it('the interview row lock is the FIRST write, before the card (no-show / reschedule serialize on it)', async () => {

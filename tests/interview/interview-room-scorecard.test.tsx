@@ -190,6 +190,8 @@ describe('interview room scorecard', () => {
       ratings: { SQL: 4, Storytelling: 2 },
       recommendation: 'yes',
       overallNotes: 'Solid SQL',
+      // the appointment the room showed (#405 review): refused server-side once it has moved
+      expectedScheduledAt: new Date('2026-09-30T15:00:00Z'),
     });
   });
 
@@ -524,6 +526,7 @@ describe('interview room scorecard', () => {
       ratings: { SQL: 3, Storytelling: 3 },
       recommendation: 'neutral',
       overallNotes: '',
+      expectedScheduledAt: new Date('2026-09-30T15:00:00Z'),
     });
     expect(screen.queryByRole('tab', { name: /notas|notes/i })).toBeNull();
   });

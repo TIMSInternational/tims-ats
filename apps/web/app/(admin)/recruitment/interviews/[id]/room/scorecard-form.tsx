@@ -135,7 +135,8 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
 
   const handleSubmit = () => {
     if (!canSubmit || !submission) return;
-    submit.mutate({ interviewId: interview.id, ...submission });
+    // The appointment this form was filled in for: the server refuses the card if it has since moved.
+    submit.mutate({ interviewId: interview.id, ...submission, expectedScheduledAt: new Date(interview.scheduledAt) });
   };
 
   return (

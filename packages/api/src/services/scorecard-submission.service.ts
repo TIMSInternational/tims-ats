@@ -30,9 +30,12 @@ import {
 //     must keep working once the interview is marked completed. Checked here
 //     (fast refusal) and again inside the write transaction, under the interview
 //     row lock (the repository refuses if a cancel or no-show landed in between).
-//   - A CARD BELONGS TO THE SCHEDULE IT WAS FILED ON: the write is bound to the
-//     schedule read here, so a reschedule that lands first refuses the card
-//     (`rescheduled`) instead of leaving it to "complete" the new appointment.
+//   - A CARD BELONGS TO THE APPOINTMENT IT WAS FILLED IN FOR: the room sends the
+//     start it showed (`expectedScheduledAt`); a card for an appointment that has
+//     since moved is refused (`rescheduled`) instead of "completing" the new one.
+//     The write is then bound, under the interview row lock, to that same start
+//     and to the duration / link read here, so a reschedule landing between this
+//     read and the write is refused too.
 //   - A SUBMITTED CARD COMPLETES A STARTED INTERVIEW (B-30): a past interview no
 //     longer stays "Programada" forever. Exception: while the candidate's own
 //     video join link is still valid (scheduled end + JOIN_TOKEN_GRACE_MINUTES —
@@ -66,10 +69,14 @@ export const scorecardSubmissionService = {
     evaluatorId: string,
     actorId: string,
     data: ScorecardSubmissionData,
+    expectedScheduledAt?: Date,
   ): Promise<SubmitScorecardResult> {
     const context = await interviewScorecardRepository.getSubmissionContext(orgId, interviewId);
     if (context === undefined) return { ok: false, reason: 'not_found' };
     if (SCORECARD_CLOSED_STATUSES.includes(context.status)) return { ok: false, reason: 'closed' };
+    if (expectedScheduledAt && expectedScheduledAt.getTime() !== context.scheduledAt.getTime()) {
+      return { ok: false, reason: 'rescheduled' };
+    }
     if (!ratingsCoverCompetencySet(data.ratings, context.competencies)) return { ok: false, reason: 'incomplete' };
     // The write is bound to the schedule this decision was made on (a concurrent reschedule wins).
     const schedule = { scheduledAt: context.scheduledAt, duration: context.duration, meetingUrl: context.meetingUrl ?? null };

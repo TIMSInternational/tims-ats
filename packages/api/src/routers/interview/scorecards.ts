@@ -78,6 +78,9 @@ export const interviewScorecardsRouter = router({
           }),
         recommendation: z.enum(['strong_yes', 'yes', 'neutral', 'no', 'strong_no']),
         overallNotes: z.string().max(2000).optional(),
+        // The start of the appointment the room SHOWED: a card is refused (CONFLICT) once the interview
+        // was rescheduled away from it, even before this request (#405 review).
+        expectedScheduledAt: z.date().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -104,6 +107,7 @@ export const interviewScorecardsRouter = router({
         ctx.user.id,
         ctx.user.impersonatorId ?? ctx.user.id,
         { ratings: input.ratings, recommendation: input.recommendation, overallNotes: input.overallNotes },
+        input.expectedScheduledAt,
       );
       if (!result.ok) {
         if (result.reason === 'not_found') {
