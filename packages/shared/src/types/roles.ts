@@ -41,6 +41,11 @@ export function filterStaffRoleSlugs(slugs: string[]): string[] {
   return slugs.filter((s) => ASSIGNABLE_STAFF_ROLE_SET.has(s));
 }
 
+/**
+ * `name` / `nameEs` are the people-facing role labels for server-rendered text (emails). They must match
+ * `roles.*` in apps/web/lib/i18n/{es,en}.json and the C# `RoleLabels`; tests/i18n/role-labels-parity.test.ts
+ * pins all three. The DB `roles.name` column is seeded separately and is never shown.
+ */
 export interface RoleDefinition {
   slug: SystemRole;
   name: string;
@@ -53,7 +58,7 @@ export interface RoleDefinition {
 export const ROLE_DEFINITIONS: Record<SystemRole, RoleDefinition> = {
   super_admin: {
     slug: 'super_admin',
-    name: 'Super Admin',
+    name: 'Super Administrator',
     nameEs: 'Super Administrador',
     description: 'Full access to all modules and settings',
     defaultScope: 'organization',
@@ -61,16 +66,16 @@ export const ROLE_DEFINITIONS: Record<SystemRole, RoleDefinition> = {
   },
   hr_admin: {
     slug: 'hr_admin',
-    name: 'HR Admin',
-    nameEs: 'Administrador RRHH',
+    name: 'HR Administrator',
+    nameEs: 'Administrador de RR. HH.',
     description: 'Full access to all HR modules',
     defaultScope: 'organization',
     mfaRequired: true,
   },
   hrbp: {
     slug: 'hrbp',
-    name: 'HR Business Partner',
-    nameEs: 'HRBP',
+    name: 'HR Business Partner (HRBP)',
+    nameEs: 'HR Business Partner (HRBP)',
     description: 'Access to assigned business units',
     defaultScope: 'unit',
     mfaRequired: true,
@@ -86,15 +91,15 @@ export const ROLE_DEFINITIONS: Record<SystemRole, RoleDefinition> = {
   leader: {
     slug: 'leader',
     name: 'Leader',
-    nameEs: 'Lider',
+    nameEs: 'Líder',
     description: 'Own team and assigned vacancies',
     defaultScope: 'team',
     mfaRequired: false,
   },
   committee: {
     slug: 'committee',
-    name: 'Committee Member',
-    nameEs: 'Miembro de Comite',
+    name: 'Interview committee',
+    nameEs: 'Comité de entrevista',
     description: 'Review panels only',
     defaultScope: 'own',
     mfaRequired: false,

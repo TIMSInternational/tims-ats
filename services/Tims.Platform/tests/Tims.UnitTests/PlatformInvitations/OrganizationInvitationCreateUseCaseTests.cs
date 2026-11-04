@@ -40,6 +40,8 @@ public sealed class OrganizationInvitationCreateUseCaseTests
         Assert.Equal(Instant.UtcDateTime, repo.SentAt); Assert.Equal(Instant.UtcDateTime.AddDays(7), repo.ExpiresAt);
         Assert.Contains("&lt;script&gt;Org&lt;/script&gt;", sender.Html);
         Assert.DoesNotContain("<script>", sender.Html); Assert.Contains("token=private%26token", sender.Html);
+        // The org admin is accepted as super_admin, and the email names that role by its label (F-1).
+        Assert.Contains("Super Administrador", sender.Html);
     }
 
     [Theory]
