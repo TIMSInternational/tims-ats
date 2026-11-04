@@ -66,9 +66,12 @@ export const scorecardSubmissionService = {
     if (context === undefined) return { ok: false, reason: 'not_found' };
     if (SCORECARD_CLOSED_STATUSES.includes(context.status)) return { ok: false, reason: 'closed' };
     if (!ratingsCoverCompetencySet(data.ratings, context.competencies)) return { ok: false, reason: 'incomplete' };
-    const completeInterview = shouldCompleteOnScorecard({ id: interviewId, ...context });
+    // The write re-checks the schedule this decision was made on (a concurrent reschedule wins).
+    const completeIfUnchanged = shouldCompleteOnScorecard({ id: interviewId, ...context })
+      ? { scheduledAt: context.scheduledAt, duration: context.duration, meetingUrl: context.meetingUrl ?? null }
+      : undefined;
     const scorecard = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data, {
-      completeInterview,
+      completeIfUnchanged,
     });
     if (!scorecard) return { ok: false, reason: 'closed' };
     return { ok: true, scorecard };

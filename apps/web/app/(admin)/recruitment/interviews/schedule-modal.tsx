@@ -10,14 +10,9 @@ import { Step1Fields, Step2Fields, Step3Fields } from './schedule-modal.fields';
 import { useI18n } from '../../../../lib/i18n';
 import { useAssignablePeople } from '../../../../lib/platform-api/assignable-people';
 
-export type SchedulingTimeZone = { timeZone: string; source: 'organization' | 'utc' };
-
 interface ScheduleModalProps {
   onClose: () => void;
   onSuccess: () => void;
-  /** From interview.list: the organization's zone, else UTC. Null while loading (submit stays disabled). */
-  schedulingTimeZone: SchedulingTimeZone | null;
-  isTimeZoneError?: boolean;
 }
 
 /** "YYYY-MM-DD" of tomorrow on the user's own calendar (not UTC: after 18:00 in Costa Rica UTC is
@@ -28,7 +23,7 @@ function localTomorrow(now: Date = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function ScheduleModal({ onClose, onSuccess, schedulingTimeZone, isTimeZoneError = false }: ScheduleModalProps) {
+export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
   const { t, locale } = useI18n();
   const [step, setStep] = useState<Step>(1);
 
@@ -61,8 +56,15 @@ export function ScheduleModal({ onClose, onSuccess, schedulingTimeZone, isTimeZo
     { staleTime: 60_000 },
   );
 
-  // The zone the typed time means — the organization's, as the invitation emails print it (UTC, said
-  // explicitly, when the organization has none). The browser's own zone plays no part (A-17).
+  // The zone the typed time means — the chain the invitation emails print: the organization's, then the
+  // selected vacancy's company, then UTC said explicitly. Read from interview.list (filtered to the
+  // vacancy, one row) rather than a procedure of its own. The browser's zone plays no part (A-17).
+  const zoneQuery = trpc.interview.list.useQuery(
+    { vacancyId: selectedVacancyId, pageSize: 1 },
+    { enabled: selectedVacancyId !== '', staleTime: 5 * 60_000 },
+  );
+  const schedulingTimeZone = zoneQuery.data?.schedulingTimeZone ?? null;
+  const isTimeZoneError = zoneQuery.isError;
   const timeZone = schedulingTimeZone?.timeZone ?? null;
   const labelLocale = locale === 'EN' ? 'en' : 'es';
   const scheduledAt = timeZone ? zonedWallTimeToDate(scheduledDate, scheduledTime, timeZone) : null;

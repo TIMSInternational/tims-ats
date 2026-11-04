@@ -13,7 +13,30 @@ import { isBlindedViewer, visibleScorecard } from '../../services/scorecard-visi
 import { assertInterviewManageable } from '../../services/interview-management.service';
 import { interviewScorecardRepository } from '../../repositories/interview-scorecard.repository';
 import { interviewSchedulingRepository } from '../../repositories/interview-scheduling.repository';
-import { orgSettingsTimeZone, UTC_TIME_ZONE } from '@tims/shared';
+import { orgSettingsTimeZone, resolveInterviewTimeZone, UTC_TIME_ZONE } from '@tims/shared';
+
+/** Not closed and not completed: the interview is still to happen, or is being held, or awaits its card. */
+const OPEN_INTERVIEW_STATUSES = ['scheduled', 'rescheduled', 'confirmed', 'in_progress'];
+
+/**
+ * The status filter in the terms the list SHOWS (apps/web …/interviews/interview-status.ts): an open
+ * interview that has started and has a submitted scorecard is shown as completed — a video one stays
+ * stored open while the candidate's join link is valid — so "Completada" includes it and the open
+ * statuses exclude it. Other statuses filter as stored.
+ */
+function statusFilterWhere(status: string | undefined, now: Date): Prisma.InterviewWhereInput {
+  if (!status) return {};
+  const scoredOpen: Prisma.InterviewWhereInput = {
+    AND: [
+      { status: { in: OPEN_INTERVIEW_STATUSES } },
+      { scheduledAt: { lte: now } },
+      { scorecards: { some: { submittedAt: { not: null } } } },
+    ],
+  };
+  if (status === 'completed') return { OR: [{ status: 'completed' }, scoredOpen] };
+  if (OPEN_INTERVIEW_STATUSES.includes(status)) return { AND: [{ status }, { NOT: scoredOpen }] };
+  return { status };
+}
 
 export const interviewCrudRouter = router({
   // 8.1 — List interviews with filters
@@ -45,7 +68,6 @@ export const interviewCrudRouter = router({
           {
             ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
             ...(filters.candidateId && { candidateId: filters.candidateId }),
-            ...(filters.status && { status: filters.status }),
             ...(filters.type && { type: filters.type }),
             ...(filters.from || filters.to
               ? {
@@ -56,11 +78,12 @@ export const interviewCrudRouter = router({
                 }
               : {}),
           },
-          openOnly ? { status: { in: ['scheduled', 'rescheduled', 'confirmed', 'in_progress'] } } : {},
+          statusFilterWhere(filters.status, new Date()),
+          openOnly ? { status: { in: OPEN_INTERVIEW_STATUSES } } : {},
         ],
       };
 
-      const [items, total, orgSettings] = await Promise.all([
+      const [items, total, zoneSources] = await Promise.all([
         db.interview.findMany({
           where,
           omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
@@ -83,15 +106,18 @@ export const interviewCrudRouter = router({
           take: pageSize,
         }),
         db.interview.count({ where }),
-        interviewSchedulingRepository.findOrgSettings(ctx.user.organizationId),
+        interviewSchedulingRepository.findTimeZoneSources(ctx.user.organizationId, filters.vacancyId),
       ]);
 
       // The zone the schedule modal books in and labels ("hora de Costa Rica (GMT-6)"): the
-      // organization's, else UTC said explicitly — the zone the invitation emails print (A-17).
-      const orgZone = orgSettingsTimeZone(orgSettings);
-      const schedulingTimeZone = orgZone
-        ? { timeZone: orgZone, source: 'organization' as const }
-        : { timeZone: UTC_TIME_ZONE, source: 'utc' as const };
+      // organization's, then (when filtered to one vacancy) that vacancy's company, then UTC said
+      // explicitly — the same chain the invitation emails print (A-17).
+      const orgZone = orgSettingsTimeZone(zoneSources.orgSettings);
+      const zone = resolveInterviewTimeZone(orgZone, zoneSources.companyTimeZone);
+      const schedulingTimeZone = {
+        timeZone: zone,
+        source: orgZone ? ('organization' as const) : zone === UTC_TIME_ZONE ? ('utc' as const) : ('company' as const),
+      };
 
       return { items, total, page, pageSize, schedulingTimeZone };
     }),

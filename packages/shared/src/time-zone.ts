@@ -98,7 +98,8 @@ function offsetMinutes(tz: string, at: Date): number {
 /**
  * The instant at which the wall clock in `tz` reads `date` ("YYYY-MM-DD") `time` ("HH:mm"). The
  * browser's own zone plays no part, so a recruiter on a laptop set to another zone still books the
- * hour the candidate's email will show. Null for malformed input.
+ * hour the candidate's email will show. Null for malformed input and for a wall time that does not
+ * exist in the zone (the hour skipped by a DST change): it is never silently moved.
  */
 export function zonedWallTimeToDate(date: string, time: string, tz: string): Date | null {
   const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
@@ -111,6 +112,8 @@ export function zonedWallTimeToDate(date: string, time: string, tz: string): Dat
   // Two passes settle the offset across a DST change.
   let guess = wall - offsetMinutes(zone, new Date(wall)) * 60_000;
   guess = wall - offsetMinutes(zone, new Date(guess)) * 60_000;
+  // Round trip: the result must read back as the same wall clock in the zone.
+  if (guess + offsetMinutes(zone, new Date(guess)) * 60_000 !== wall) return null;
   return new Date(guess);
 }
 

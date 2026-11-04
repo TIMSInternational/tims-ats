@@ -24,6 +24,7 @@ const m = vi.hoisted(() => ({
   evaluatorDeleteMany: vi.fn(),
   evaluatorFindMany: vi.fn(),
   orgFindFirst: vi.fn(),
+  vacancyFindFirst: vi.fn(),
   jobProfileFindFirst: vi.fn(),
   txUserFind: vi.fn(),
   txEvaluatorCreate: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock('@tims/db', () => ({
     },
     interviewEvaluator: { deleteMany: m.evaluatorDeleteMany, findMany: m.evaluatorFindMany },
     organization: { findFirst: m.orgFindFirst },
+    vacancy: { findFirst: m.vacancyFindFirst },
     jobProfile: { findFirst: m.jobProfileFindFirst },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
@@ -183,6 +185,22 @@ describe('A-16 / A-17 — interview.list sort order and scheduling zone', () => 
       const res = await (await caller()).interview.list({ pageSize: 5 });
       expect(res.schedulingTimeZone).toEqual({ timeZone: 'UTC', source: 'utc' });
     }
+    expect(m.vacancyFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("filtered to one vacancy, falls back to that vacancy's company zone — the chain the emails use", async () => {
+    m.orgFindFirst.mockResolvedValue({ settings: {} });
+    m.vacancyFindFirst.mockResolvedValue({ company: { timezone: 'America/Costa_Rica' } });
+    const res = await (await caller()).interview.list({ vacancyId: VACANCY_ID, pageSize: 1 });
+    expect(res.schedulingTimeZone).toEqual({ timeZone: 'America/Costa_Rica', source: 'company' });
+    expect(m.vacancyFindFirst.mock.calls[0]![0]).toEqual({
+      where: { id: VACANCY_ID, organizationId: ORG_ID, deletedAt: null },
+      select: { company: { select: { timezone: true } } },
+    });
+    // The organization zone still wins.
+    m.orgFindFirst.mockResolvedValue({ settings: { timezone: 'America/Panama' } });
+    const again = await (await caller()).interview.list({ vacancyId: VACANCY_ID, pageSize: 1 });
+    expect(again.schedulingTimeZone).toEqual({ timeZone: 'America/Panama', source: 'organization' });
   });
 });
 
@@ -262,8 +280,27 @@ describe('A-16 / B-30 — list filters before paging and counts submitted cards'
     await (await caller()).interview.list({ openOnly: true, status: 'scheduled', pageSize: 20 });
     const where = m.interviewFindMany.mock.calls[0]![0].where;
     expect(where.AND).toContainEqual({ status: { in: ['scheduled', 'rescheduled', 'confirmed', 'in_progress'] } });
-    expect(where.AND[2]).toMatchObject({ status: 'scheduled' });
+    expect(JSON.stringify(where.AND)).toContain('"status":"scheduled"');
     expect(m.interviewCount.mock.calls[0]![0].where).toEqual(where);
+  });
+
+  it('"Completada" includes a started, scored interview still stored open; "Programada" excludes it', async () => {
+    const c = await caller();
+    await c.interview.list({ status: 'completed', pageSize: 20 });
+    const completed = m.interviewFindMany.mock.calls[0]![0].where.AND as unknown[];
+    const completedFilter = completed.find((w) => JSON.stringify(w).includes('"OR"')) as {
+      OR: [unknown, { AND: unknown[] }];
+    };
+    expect(completedFilter.OR[0]).toEqual({ status: 'completed' });
+    expect(JSON.stringify(completedFilter.OR[1])).toContain('"submittedAt":{"not":null}');
+
+    await c.interview.list({ status: 'scheduled', pageSize: 20 });
+    const scheduled = JSON.stringify(m.interviewFindMany.mock.calls[1]![0].where.AND);
+    expect(scheduled).toContain('"NOT"');
+    expect(scheduled).toContain('"status":"scheduled"');
+
+    await c.interview.list({ status: 'cancelled', pageSize: 20 });
+    expect(m.interviewFindMany.mock.calls[2]![0].where.AND).toContainEqual({ status: 'cancelled' });
   });
 
   it('rows carry only a COUNT of submitted scorecards, never their content', async () => {

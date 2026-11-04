@@ -62,6 +62,13 @@ describe('zonedWallTimeToDate', () => {
     );
   });
 
+  it('rejects a wall time that does not exist (the hour skipped by DST) instead of moving it', () => {
+    expect(zonedWallTimeToDate('2027-03-14', '02:30', 'America/New_York')).toBeNull();
+    expect(zonedWallTimeToDate('2027-03-14', '03:30', 'America/New_York')?.toISOString()).toBe(
+      '2027-03-14T07:30:00.000Z',
+    );
+  });
+
   it('rejects malformed input and treats an unusable zone as UTC', () => {
     expect(zonedWallTimeToDate('2026-13-01', '10:00', 'UTC')).toBeNull();
     expect(zonedWallTimeToDate('10/11/2026', '10:00', 'UTC')).toBeNull();

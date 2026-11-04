@@ -211,8 +211,6 @@ export default function InterviewsPage() {
       {/* Schedule Modal */}
       {showSchedule && canSchedule && (
         <ScheduleModal
-          schedulingTimeZone={upcoming.data?.schedulingTimeZone ?? null}
-          isTimeZoneError={upcoming.isError}
           onClose={() => setShowSchedule(false)}
           onSuccess={() => {
             setShowSchedule(false);

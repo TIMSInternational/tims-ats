@@ -26,12 +26,16 @@ export function hasInterviewStarted(iv: InterviewTiming, now: Date = new Date())
   return startMs(iv) <= now.getTime();
 }
 
-/** The status key the list shows: `in_progress` while it runs, `awaiting_scorecard` once it is over. */
+/**
+ * The status key the list shows: `completed` once started with a submitted scorecard, else
+ * `in_progress` while it runs and `awaiting_scorecard` once it is over. The server's status filter
+ * uses the same rule for "completed" (interview.list → statusFilterWhere).
+ */
 export function displayInterviewStatus(iv: InterviewTiming, now: Date = new Date()): string {
   if (!OPEN_STATUSES.has(iv.status) || !hasInterviewStarted(iv, now)) return iv.status;
+  if ((iv._count?.scorecards ?? 0) > 0) return 'completed';
   const endMs = startMs(iv) + Math.max(0, iv.duration ?? 0) * 60_000;
-  if (now.getTime() < endMs) return 'in_progress';
-  return (iv._count?.scorecards ?? 0) > 0 ? 'completed' : 'awaiting_scorecard';
+  return now.getTime() < endMs ? 'in_progress' : 'awaiting_scorecard';
 }
 
 /** Cancel is offered only for a scheduled interview that has not started: one that already took place

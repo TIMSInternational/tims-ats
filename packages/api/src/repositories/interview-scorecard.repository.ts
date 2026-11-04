@@ -92,10 +92,11 @@ export const interviewScorecardRepository = {
    * can land between that read and this transaction; re-checking here narrows that
    * window to the transaction itself (#332 panel, L1).
    *
-   * With `completeInterview` (decided by scorecard-submission.service.ts) a still
-   * scheduled/rescheduled interview that has started becomes `completed` in the
-   * same transaction, status-guarded so a cancel that landed meanwhile is never
-   * overwritten (B-30).
+   * With `completeIfUnchanged` (decided by scorecard-submission.service.ts from
+   * the schedule it read) a still scheduled/rescheduled interview becomes
+   * `completed` in the same transaction — only if its status, start, duration and
+   * meeting link are still the ones the decision was made on, so neither a cancel
+   * nor a reschedule that landed meanwhile is overwritten (B-30).
    */
   async submit(
     orgId: string,
@@ -103,7 +104,7 @@ export const interviewScorecardRepository = {
     evaluatorId: string,
     actorId: string,
     data: ScorecardSubmissionData,
-    options: { completeInterview?: boolean } = {},
+    options: { completeIfUnchanged?: { scheduledAt: Date; duration: number; meetingUrl: string | null } } = {},
   ) {
     return runTenantTransaction(orgId, async (tx) => {
       const open = await tx.interview.findFirst({
@@ -121,14 +122,16 @@ export const interviewScorecardRepository = {
         create: { organizationId: orgId, interviewId, evaluatorId, ...data, submittedAt },
         update: { ...data, submittedAt },
       });
-      if (options.completeInterview) {
-        // Status-guarded: a cancel that landed meanwhile is never overwritten.
+      const read = options.completeIfUnchanged;
+      if (read) {
         await tx.interview.updateMany({
           where: {
             id: interviewId,
             organizationId: orgId,
             status: { in: [...SCORECARD_COMPLETES_STATUSES] },
-            scheduledAt: { lte: submittedAt },
+            scheduledAt: read.scheduledAt,
+            duration: read.duration,
+            meetingUrl: read.meetingUrl,
           },
           data: { status: 'completed' },
         });

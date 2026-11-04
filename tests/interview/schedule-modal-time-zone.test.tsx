@@ -10,6 +10,7 @@ import { I18nProvider } from '../../apps/web/lib/i18n';
 
 const h = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
+  zoneInputs: [] as Array<{ vacancyId: string; enabled: boolean }>,
   zone: { data: { timeZone: 'America/Costa_Rica', source: 'organization' }, isError: false } as {
     data: { timeZone: string; source: string } | undefined;
     isError: boolean;
@@ -44,6 +45,13 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       },
     },
     interview: {
+      // The zone comes from interview.list filtered to the selected vacancy (no procedure of its own).
+      list: {
+        useQuery: (input: { vacancyId: string }, opts: { enabled: boolean }) => {
+          h.zoneInputs.push({ ...input, enabled: opts.enabled });
+          return { data: h.zone.data ? { schedulingTimeZone: h.zone.data } : undefined, isError: h.zone.isError };
+        },
+      },
       schedule: { useMutation: () => ({ mutateAsync: h.mutateAsync, isPending: false }) },
     },
   },
@@ -77,12 +85,7 @@ function openOnStep2() {
   localStorage.setItem('tims-locale', 'EN');
   render(
     <I18nProvider>
-      <ScheduleModal
-        onClose={() => undefined}
-        onSuccess={() => undefined}
-        schedulingTimeZone={(h.zone.data as { timeZone: string; source: 'organization' | 'utc' } | undefined) ?? null}
-        isTimeZoneError={h.zone.isError}
-      />
+      <ScheduleModal onClose={() => undefined} onSuccess={() => undefined} />
     </I18nProvider>,
   );
   fireEvent.change(screen.getByPlaceholderText(en.interviews.scheduleFieldCandidatePlaceholder), {
@@ -98,6 +101,8 @@ describe('schedule modal — time zone', () => {
     h.mutateAsync.mockResolvedValue({ candidateNotNotifiedReason: null });
     openOnStep2();
     expect(screen.getByText('Time zone: Costa Rica time (GMT-6)')).toBeInTheDocument();
+    // Asked for the SELECTED vacancy, so its company zone is the fallback, as in the emails.
+    expect(h.zoneInputs.at(-1)).toEqual({ vacancyId: '44444444-4444-4444-8444-444444444444', pageSize: 1, enabled: true });
     const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
     expect(dateInput.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     fireEvent.change(dateInput, { target: { value: '2026-11-10' } });
