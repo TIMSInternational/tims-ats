@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import type { Session } from '@supabase/supabase-js';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
@@ -35,8 +35,9 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
   const [secret, setSecret] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [sessionToken, setSessionToken] = useState<string>();
-  // An access token the API refused (sign_in_required): never offered again, even if signing it out failed.
-  const [rejectedToken, setRejectedToken] = useState<string>();
+  // Every access token the API refused (sign_in_required) on this page: none is ever offered again, however many
+  // refusals follow (the browser can still hold an older refused one while a newer isolated sign-in is refused).
+  const rejectedTokens = useRef(new Set<string>());
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -171,9 +172,10 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
         setOtherSession(current.user.email ?? '');
         return;
       }
-      let accessToken = current && current.access_token !== rejectedToken ? current.access_token : undefined;
+      let accessToken = current && !rejectedTokens.current.has(current.access_token) ? current.access_token : undefined;
       // A password sign-in is held outside the browser's session (invitationPasswordSignIn) until the API accepts
-      // it, so nothing that signs in from another tab meanwhile is overwritten, and a refused one is never stored.
+      // it: an account that signs in from another tab while these requests are in flight is not overwritten by
+      // them, and a refused sign-in is never stored. Only adopt() writes it, with the residual window noted there.
       let pending: Session | undefined;
       if (!accessToken) {
         // Session expiry or logout in another tab must reveal a recoverable sign-in state.
@@ -193,7 +195,7 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
         completion = await setupRequest('complete', { token, firstName, lastName }, accessToken);
       } catch (failure) {
         if (pending && failure instanceof SetupRequestError && failure.code === 'mfa_required') {
-          // Two-step setup (/mfa) runs on the browser's session, so adopt it first, but never over another account.
+          // Two-step setup (/mfa) runs on the browser's session, so adopt it first (not over another account).
           const adoption = await adopt(pending);
           if (adoption.status === 'other') {
             setOtherSession(adoption.email);
@@ -216,8 +218,9 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
         // The session was not accepted (e.g. an SSO email that is not verified): never use it again, so the next
         // submit authenticates with the password, and offer password and recovery. Nothing is signed out: a refused
         // password sign-in never reached the browser's session, and a refused browser session belongs to the
-        // invitee and is replaced when a later sign-in is adopted. So an account that signed in meanwhile is safe.
-        setRejectedToken(accessToken);
+        // invitee and is replaced when a later sign-in is adopted. So an account that signed in meanwhile is not
+        // signed out by this page.
+        rejectedTokens.current.add(accessToken);
         setSessionToken(undefined);
         setExisting(true);
         setError(t.signinRequired);

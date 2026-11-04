@@ -221,7 +221,9 @@ describe('invitation account setup', () => {
 
   it('names the role by its label, never the raw slug (D-06)', async () => {
     state.request.mockImplementation((action: string) =>
-      action === 'preview' ? Promise.resolve({ ...invitation, roleSlug: 'super_admin' }) : Promise.resolve({ outcome: 'complete' }),
+      action === 'preview'
+        ? Promise.resolve({ ...invitation, roleSlug: 'super_admin' })
+        : Promise.resolve({ outcome: 'complete' }),
     );
     render(<InvitationSetup />);
     expect(await screen.findByText('Super Administrador')).toBeInTheDocument();
@@ -260,7 +262,9 @@ describe('invitation account setup', () => {
     state.request.mockImplementation((action: string) => {
       if (action !== 'preview') return Promise.resolve({ outcome: 'complete' });
       calls += 1;
-      return calls === 1 ? Promise.reject(new SetupRequestError('setup_unavailable', 503)) : Promise.resolve(invitation);
+      return calls === 1
+        ? Promise.reject(new SetupRequestError('setup_unavailable', 503))
+        : Promise.resolve(invitation);
     });
     render(<InvitationSetup />);
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos verificar tu invitación');
@@ -271,7 +275,9 @@ describe('invitation account setup', () => {
 
   it('a network failure is retryable too', async () => {
     state.request.mockImplementation((action: string) =>
-      action === 'preview' ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve({ outcome: 'complete' }),
+      action === 'preview'
+        ? Promise.reject(new TypeError('Failed to fetch'))
+        : Promise.resolve({ outcome: 'complete' }),
     );
     render(<InvitationSetup />);
     expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
@@ -318,7 +324,9 @@ describe('invitation account setup', () => {
   it('pilot: hides Google / Microsoft and explains how to get in without them (E-02)', async () => {
     process.env.NEXT_PUBLIC_LAUNCH_SCOPE = 'pilot';
     state.request.mockImplementation((action: string) =>
-      action === 'preview' ? Promise.resolve({ ...invitation, accountExists: true }) : Promise.resolve({ outcome: 'complete' }),
+      action === 'preview'
+        ? Promise.resolve({ ...invitation, accountExists: true })
+        : Promise.resolve({ outcome: 'complete' }),
     );
     render(<InvitationSetup />);
     await screen.findByText('TIMS Test');
@@ -395,7 +403,9 @@ describe('invitation account setup', () => {
       .mockResolvedValueOnce({ data: { session: null } })
       .mockResolvedValue({ data: { session: { access_token: 'other-token', user: { email: 'other@example.test' } } } });
     state.request.mockImplementation((action: string) =>
-      action === 'preview' ? Promise.resolve({ ...invitation, accountExists: true }) : Promise.resolve({ outcome: 'complete' }),
+      action === 'preview'
+        ? Promise.resolve({ ...invitation, accountExists: true })
+        : Promise.resolve({ outcome: 'complete' }),
     );
     render(<InvitationSetup />);
     await screen.findByText('TIMS Test');
@@ -532,6 +542,51 @@ describe('invitation account setup', () => {
     expect(state.setSession).not.toHaveBeenCalled();
     expect(assign).not.toHaveBeenCalled();
     assign.mockRestore();
+  });
+
+  it('checks for another account after the API accepted and immediately before adopting (review round 4)', async () => {
+    // What remains possible, and is documented in adopt(): a sign-in from another tab DURING setSession's own
+    // user lookup is still replaced (Supabase's cookie storage has no compare-and-set). This pins the check as
+    // late as the SDK allows: after the completion request, with nothing else awaited before setSession.
+    render(<InvitationSetup />);
+    await submitNewAccount();
+    await screen.findByText('Tu acceso está listo');
+    const completeOrder = state.request.mock.invocationCallOrder[state.request.mock.calls.length - 1];
+    const lastCheck = Math.max(...state.getSession.mock.invocationCallOrder);
+    const [adoptOrder] = state.setSession.mock.invocationCallOrder;
+    expect(state.request.mock.calls.at(-1)?.[0]).toBe('complete');
+    expect(lastCheck).toBeGreaterThan(completeOrder);
+    expect(adoptOrder).toBe(lastCheck + 1);
+  });
+
+  it('never reuses an earlier refused token after a second refusal (review round 4)', async () => {
+    // The browser keeps holding refused token A while an isolated sign-in (B) is refused too.
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'browser-token-a', user: { email: invitation.email } } },
+    });
+    let signIns = 0;
+    state.signIn.mockImplementation(async () => {
+      signIns += 1;
+      return { data: { session: { access_token: `isolated-token-${signIns}`, refresh_token: 'r' } }, error: null };
+    });
+    let completes = 0;
+    state.request.mockImplementation((action: string) => {
+      if (action === 'preview') return Promise.resolve({ ...invitation, accountExists: true });
+      completes += 1;
+      return Promise.resolve({ outcome: completes < 3 ? 'sign_in_required' : 'complete' });
+    });
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Completar acceso' }));
+    for (const attempt of [1, 2]) {
+      fireEvent.change(await screen.findByLabelText('Contraseña'), { target: { value: `password-${attempt}` } });
+      fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión y unirme' }));
+      await waitFor(() => expect(state.signIn).toHaveBeenCalledTimes(attempt));
+    }
+    await screen.findByText('Tu acceso está listo');
+    const tokens = state.request.mock.calls.filter(([action]) => action === 'complete').map((call) => call[2]);
+    expect(tokens).toEqual(['browser-token-a', 'isolated-token-1', 'isolated-token-2']);
+    expect(state.signIn).toHaveBeenLastCalledWith({ email: invitation.email, password: 'password-2' });
   });
 
   it('a failed adoption still shows access granted, since the API already accepted it', async () => {
