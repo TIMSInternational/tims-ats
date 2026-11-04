@@ -65,6 +65,7 @@ describe('assignable people — legacy tRPC fallback (flag off)', () => {
           submitForApproval: { useMutation: () => ({ isPending: false, mutateAsync: vi.fn() }) },
           approve: { useMutation: () => ({ isPending: false, mutateAsync: vi.fn() }) },
           reject: { useMutation: () => ({ isPending: false, mutateAsync: vi.fn() }) },
+          withdrawApproval: { useMutation: () => ({ isPending: false, mutateAsync: vi.fn() }) },
         },
       },
     }));

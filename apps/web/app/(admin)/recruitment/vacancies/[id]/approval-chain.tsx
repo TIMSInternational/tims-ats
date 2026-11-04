@@ -9,6 +9,7 @@ import { toast } from '../../../../../lib/toast';
 import { canSubmitForApproval, findPendingApprovalForUser } from '../../../../../lib/vacancy-approval-helpers';
 import { SubmitApprovalModal } from './submit-approval-modal';
 import { RejectModal } from './reject-modal';
+import { WithdrawApprovalModal } from './withdraw-approval-modal';
 
 interface Approval {
   id: string;
@@ -43,6 +44,7 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
   const utils = trpc.useUtils();
   const [showSubmit, setShowSubmit] = useState(false);
   const [showReject, setShowReject] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
 
   const invalidate = () => {
     utils.vacancy.getById.invalidate({ id: vacancyId });
@@ -76,8 +78,19 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
     },
   });
 
+  // Stuck-approval unblock: whoever may submit a vacancy may take a pending request back (same gate).
+  const withdrawApproval = trpc.vacancy.withdrawApproval.useMutation({
+    onSuccess: () => { invalidate(); setShowWithdraw(false); toast(t.vacancies.withdrawApprovalSuccess, { type: 'success' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+      // CONFLICT: an approver decided first - refetch so the stale button goes.
+      if (err.data?.code === 'CONFLICT') { invalidate(); setShowWithdraw(false); }
+    },
+  });
+
   const pendingStepForViewer = findPendingApprovalForUser(approvals, userId);
   const showSubmitButton = canSubmitForApproval(vacancyStatus) && can('vacancy', 'update');
+  const showWithdrawButton = vacancyStatus === 'pending_approval' && can('vacancy', 'update') && !pendingStepForViewer;
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
@@ -92,6 +105,15 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
             className="text-[12px] text-[#DD0C15] font-medium"
           >
             {t.vacancies.submitForApproval}
+          </button>
+        )}
+        {showWithdrawButton && (
+          <button
+            type="button"
+            onClick={() => setShowWithdraw(true)}
+            className="text-[12px] text-[#585858] font-medium hover:text-[#1F114C]"
+          >
+            {t.vacancies.withdrawApproval}
           </button>
         )}
       </div>
@@ -166,6 +188,13 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
           onConfirm={(approverIds) => submitForApproval.mutate({ id: vacancyId, approverIds })}
           onClose={() => setShowSubmit(false)}
           isPending={submitForApproval.isPending}
+        />
+      )}
+      {showWithdraw && (
+        <WithdrawApprovalModal
+          onConfirm={() => withdrawApproval.mutate({ id: vacancyId })}
+          onClose={() => setShowWithdraw(false)}
+          isPending={withdrawApproval.isPending}
         />
       )}
       {showReject && (

@@ -28,7 +28,8 @@ export function ApprovalChain({ approvals }: ApprovalChainProps) {
         {approvals.map((approval, i) => {
           const isApproved = approval.status === 'approved';
           const isRejected = approval.status === 'rejected';
-          const isPending = approval.status === 'pending';
+          // A withdrawn request cancels its pending steps (offer.withdrawApproval).
+          const isCancelled = approval.status === 'cancelled';
           const name = `${approval.approver.firstName} ${approval.approver.lastName}`;
           const role = approval.approver.jobTitle || `Step ${approval.step}`;
 
@@ -51,8 +52,14 @@ export function ApprovalChain({ approvals }: ApprovalChainProps) {
                     <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                       <path d="m4.5 12.75 6 6 9-13.5" />
                     </svg>
-                  ) : isRejected ? (
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  ) : isRejected || isCancelled ? (
+                    <svg
+                      className={`w-4 h-4 ${isCancelled ? 'text-[#8B8B8B]' : 'text-white'}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
                       <path d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   ) : (
@@ -68,6 +75,7 @@ export function ApprovalChain({ approvals }: ApprovalChainProps) {
                 {approval.decidedAt && (
                   <p className="text-[9px] text-[#8B8B8B]">{formatDate(approval.decidedAt)}</p>
                 )}
+                {isCancelled && <p className="text-[9px] text-[#8B8B8B]">{t.offers.approvalStepCancelled}</p>}
               </div>
             </div>
           );

@@ -30,6 +30,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       submitForApproval: { useMutation: () => ({ mutateAsync, isPending: false }) },
       approve: { useMutation: () => ({ mutateAsync, isPending: false }) },
       reject: { useMutation: () => ({ mutateAsync, isPending: false }) },
+      withdrawApproval: { useMutation: () => ({ mutateAsync, isPending: false }) },
       getBySigningToken: { useQuery: () => signingOffer() },
       acceptByToken: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
       declineByToken: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },

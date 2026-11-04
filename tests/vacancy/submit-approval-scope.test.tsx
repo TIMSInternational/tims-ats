@@ -25,6 +25,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       submitForApproval: { useMutation: () => submitMutation },
       approve: { useMutation: idleMutation },
       reject: { useMutation: idleMutation },
+      withdrawApproval: { useMutation: idleMutation },
     },
   },
 }));
