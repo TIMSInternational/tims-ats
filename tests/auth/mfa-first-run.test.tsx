@@ -38,8 +38,10 @@ vi.mock('@tims/auth/client', () => ({
 }));
 
 import { MfaSetup } from '../../apps/web/app/mfa/mfa-setup';
+import { rememberPostLoginDestination } from '../../apps/web/lib/auth/post-login-destination';
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   state.push.mockReset();
   state.refresh.mockReset();
   state.verified = false;
@@ -74,6 +76,15 @@ describe('enforced first run', () => {
     expect(screen.queryByRole('button', { name: es.mfa.disable })).toBeNull();
   });
 
+  it('continues to the page the user was signing in to (login → MFA → deep link)', async () => {
+    rememberPostLoginDestination('/recruitment/pipeline?vacancy=v1');
+    render(<MfaSetup required />);
+    await screen.findByText(es.mfa.enrollTitle);
+    enterCode();
+    await waitFor(() => expect(state.push).toHaveBeenCalledWith('/recruitment/pipeline?vacancy=v1'));
+    expect(window.sessionStorage.getItem('tims-post-login-destination')).toBeNull();
+  });
+
   it('never offers "Desactivar" when the role requires MFA', async () => {
     state.verified = true;
     state.aal = 'aal2';
@@ -95,6 +106,14 @@ describe('enforced first run', () => {
 });
 
 describe('voluntary MFA', () => {
+  it('does not reuse a remembered login destination for a voluntary visit', async () => {
+    rememberPostLoginDestination('/recruitment/offers');
+    render(<MfaSetup required={false} />);
+    await screen.findByText(es.mfa.enrollTitle);
+    enterCode();
+    await waitFor(() => expect(state.push).toHaveBeenCalledWith('/dashboard'));
+  });
+
   it('keeps "Volver al panel" and shows no enforcement notice', async () => {
     render(<MfaSetup required={false} />);
     await screen.findByText(es.mfa.enrollTitle);

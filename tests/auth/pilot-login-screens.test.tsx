@@ -102,6 +102,8 @@ describe('staff /login', () => {
     expect(screen.getByRole('status')).toHaveTextContent(es.auth.sessionExpired);
     fillAndSubmit();
     await waitFor(() => expect(state.push).toHaveBeenCalledWith('/recruitment/pipeline?vacancy=v1'));
+    // Remembered for the mandatory MFA step, which the gate reaches through a bare /mfa.
+    expect(window.sessionStorage.getItem('tims-post-login-destination')).toContain('/recruitment/pipeline?vacancy=v1');
   });
 
   it('never follows a backslash host escape after sign-in', async () => {

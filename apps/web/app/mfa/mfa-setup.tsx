@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../lib/i18n';
 import { mfaMode, type MfaMode, type Aal } from '../../lib/mfa';
+import { takePostLoginDestination } from '../../lib/auth/post-login-destination';
 
 // Two-factor (TOTP) setup + step-up, backed by Supabase Auth MFA. Three modes,
 // derived purely in lib/mfa.ts:
@@ -93,9 +94,10 @@ export function MfaSetup({ returnTo, required }: { returnTo?: string; required: 
     }
     setCode('');
     // Enrollment and step-up both continue to the app (or back to the invitation / password step that
-    // sent the user here), never onto the management screen and its "Desactivar" button.
+    // sent the user here), never onto the management screen and its "Desactivar" button. A user forced
+    // here by the gate right after signing in continues to the page they were signing in to.
     setRedirecting(true);
-    router.push(returnTo ?? '/dashboard');
+    router.push(returnTo ?? (required ? takePostLoginDestination() : null) ?? '/dashboard');
     router.refresh();
   };
 

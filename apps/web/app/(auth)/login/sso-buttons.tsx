@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../../lib/i18n';
+import { rememberPostLoginDestination } from '../../../lib/auth/post-login-destination';
 import { authErrorMessage } from '../auth-error-message';
 
 type Provider = 'google' | 'azure';
@@ -21,6 +22,7 @@ export function SsoButtons({ redirect, onError }: { redirect: string; onError: (
     if (busy) return;
     setBusy(provider);
     onError('');
+    rememberPostLoginDestination(redirect);
     try {
       const { error } = await createSupabaseBrowserClient().auth.signInWithOAuth({
         provider,

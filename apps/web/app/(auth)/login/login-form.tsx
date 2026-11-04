@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
 import { isSsoSignInOffered } from '../../../lib/auth/sso-sign-in';
 import { safeStaffRedirectPath } from '../../../lib/auth/staff-login-redirect';
+import { rememberPostLoginDestination } from '../../../lib/auth/post-login-destination';
 import { authErrorMessage } from '../auth-error-message';
 import { loginErrorMessage, loginNoticeMessage } from './login-error-message';
 import { SsoButtons } from './sso-buttons';
@@ -51,6 +52,8 @@ export function LoginForm({ showSignup }: { showSignup: boolean }) {
       return;
     }
 
+    // Survives a mandatory MFA step: the gate sends privileged users to a bare /mfa first.
+    rememberPostLoginDestination(redirect);
     router.push(redirect);
     router.refresh();
   };
