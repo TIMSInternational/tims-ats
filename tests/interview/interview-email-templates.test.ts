@@ -62,7 +62,11 @@ describe('interview email templates', () => {
     expect(es.html).toContain('Estimado/a candidato/a,');
     expect(es.html).not.toContain('Ana');
     expect(es.subject).not.toMatch(/[\r\n]/);
-    expect(es.subject.startsWith('Aplicación recibida')).toBe(true);
+    expect(es.subject.startsWith('Postulación recibida')).toBe(true);
+    // Candidate copy says "postulación" throughout (pilot decision), never "aplicación".
+    expect(es.html).not.toMatch(/aplicaci[oó]n/i);
+    // Without a portal URL there is no portal button.
+    expect(es.html).not.toContain('Ver mis postulaciones');
     const en = emailTemplates.applicationReceived({
       candidateName: 'Ana',
       vacancyTitle: 'Dev',
@@ -71,6 +75,29 @@ describe('interview email templates', () => {
     });
     expect(en.subject).toBe('Application received — Dev');
     expect(en.html).toContain('lang="en"');
+  });
+
+  it('application-received confirmation links the candidate portal when a portal URL is given (guarded)', () => {
+    const withPortal = emailTemplates.applicationReceived({
+      candidateName: 'Ana',
+      vacancyTitle: 'Dev',
+      companyName: 'Acme',
+      locale: 'es',
+      portalUrl: 'https://app.example.com/careers/acme/dashboard',
+    });
+    expect(withPortal.html).toContain('href="https://app.example.com/careers/acme/dashboard"');
+    expect(withPortal.html).toContain('Ver mis postulaciones');
+    expect(withPortal.html).toContain('ingresando con este mismo correo electrónico');
+    // A non-http(s) URL never reaches an href.
+    const hostile = emailTemplates.applicationReceived({
+      candidateName: 'Ana',
+      vacancyTitle: 'Dev',
+      companyName: 'Acme',
+      locale: 'en',
+      portalUrl: 'javascript:alert(1)',
+    });
+    expect(hostile.html).not.toContain('javascript:');
+    expect(hostile.html).toContain('View my applications');
   });
 
   // #308 security fix: the apply form is unauthenticated and chooses the recipient, so the

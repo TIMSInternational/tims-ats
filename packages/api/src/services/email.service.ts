@@ -33,6 +33,8 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     locale: 'es' | 'en';
+    /** Absolute link to the organization's candidate portal; the email omits the button without it. */
+    portalUrl?: string;
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.applicationReceived(rest);

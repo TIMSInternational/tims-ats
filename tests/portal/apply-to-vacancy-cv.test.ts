@@ -929,6 +929,22 @@ describe('portal.applyToVacancy — application received email', () => {
     );
   });
 
+  it('links the organization\'s candidate portal in the confirmation (built server-side from the slug)', async () => {
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Analista de Datos',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization: { name: 'Acme', slug: 'acme' },
+      company: null,
+    });
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy(baseApplyInput);
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    const sent = sendApplicationReceivedMock.mock.calls[0]![0] as { portalUrl?: string };
+    expect(sent.portalUrl).toMatch(/^https?:\/\/[^/]+\/careers\/acme\/dashboard$/);
+  });
+
   it('uses the English template for an English-language company', async () => {
     dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
       id: VACANCY_ID,
