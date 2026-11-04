@@ -118,9 +118,10 @@ export const getEffectiveIdentity = cache(async (): Promise<ResolvedIdentity> =>
     },
   });
 
-  // Must be a linked, active staff identity that is org-scoped or a platform owner.
+  // Must be a linked, active staff identity that is org-scoped or a platform owner. Otherwise clear the
+  // session; `reason=no_access` makes /login explain it instead of silently showing the form again.
   if (!appUser || !appUser.isActive || (!appUser.isPlatformOwner && !appUser.organizationId)) {
-    redirect('/logout');
+    redirect('/logout?reason=no_access');
   }
 
   const realShaped: IdentityInput = {

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
 import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '@tims/api';
 import { isSafePortalNext, portalLoginPathFor } from '../../../lib/portal-auth';
+import { safeStaffRedirectPath } from '../../../lib/auth/staff-login-redirect';
 import { isSelfServeSignupEnabled } from '../../../lib/self-serve-signup';
 import { slugify } from '../../../lib/slugify';
 import { PASSWORD_SETUP_PROOF_COOKIE, PASSWORD_SETUP_PROOF_PATH } from '../../../lib/password-setup-proof';
@@ -98,7 +99,9 @@ export async function GET(request: Request) {
   });
 
   if (existingUser) {
-    return NextResponse.redirect(`${origin}/dashboard`);
+    // Back to the page the user was on before signing in (validated same-origin path), else home.
+    const destination = safeStaffRedirectPath(searchParams.get('redirect')) ?? '/dashboard';
+    return NextResponse.redirect(`${origin}${destination}`);
   }
 
   // New user — check if platform owner
@@ -195,6 +198,8 @@ export async function GET(request: Request) {
   // `users` row — they use the careers portal magic-link, which resolves identity by
   // email against Candidate records (candidateProcedure). Creating a `users` row here
   // would, under id-only recognition, mint an org-less "staff" identity. Clear the
-  // dangling session instead. (Replaces the legacy candidate-account creation.)
-  return NextResponse.redirect(`${origin}/logout`);
+  // dangling session instead. (Replaces the legacy candidate-account creation.) `reason=no_access`
+  // makes /login say why (no TIMS access yet, open the invitation or the careers portal) instead of
+  // silently showing the sign-in form again.
+  return NextResponse.redirect(`${origin}/logout?reason=no_access`);
 }

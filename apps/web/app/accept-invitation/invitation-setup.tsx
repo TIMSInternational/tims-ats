@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { z } from 'zod';
 import type { Session } from '@supabase/supabase-js';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { isSsoSignInOffered } from '../../lib/auth/sso-sign-in';
 import { copy } from './invitation-copy';
 import { InvitationHeader } from './invitation-header';
 import { InvitationSummary } from './invitation-summary';
@@ -278,14 +279,16 @@ export function InvitationSetup() {
                     <button disabled={busy} type="button" className="w-full text-sm underline" onClick={recover}>
                       {t.forgot}
                     </button>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button type="button" disabled={busy} className={field} onClick={() => social('google')}>
-                        Google
-                      </button>
-                      <button type="button" disabled={busy} className={field} onClick={() => social('azure')}>
-                        Microsoft
-                      </button>
-                    </div>
+                    {isSsoSignInOffered() && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <button type="button" disabled={busy} className={field} onClick={() => social('google')}>
+                          {t.continueGoogle}
+                        </button>
+                        <button type="button" disabled={busy} className={field} onClick={() => social('azure')}>
+                          {t.continueMicrosoft}
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </form>

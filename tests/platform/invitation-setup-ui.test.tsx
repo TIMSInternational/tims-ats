@@ -147,7 +147,7 @@ describe('invitation account setup', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos completar');
     expect(screen.queryByText('recibirás un enlace')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Google' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar con Google' }));
     await waitFor(() => expect(state.oauth).toHaveBeenCalledWith('google', token));
   });
 
@@ -160,9 +160,9 @@ describe('invitation account setup', () => {
     state.oauth.mockRejectedValue(new Error('provider unavailable'));
     render(<InvitationSetup />);
     await screen.findByText('TIMS Test');
-    fireEvent.click(screen.getByRole('button', { name: 'Google' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar con Google' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos completar');
-    expect(screen.getByRole('button', { name: 'Google' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar con Google' })).not.toBeDisabled();
   });
 
   it('does not reopen a legacy accepted invitation without completion evidence', async () => {

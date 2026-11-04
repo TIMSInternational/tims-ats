@@ -6,6 +6,7 @@ import { getAuthRedirectUrl } from '@tims/shared';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
 import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../lib/auth/canonical-auth-origin';
+import { authErrorMessage } from '../auth-error-message';
 
 export default function ForgotPasswordPage() {
   const { t } = useI18n();
@@ -31,11 +32,16 @@ export default function ForgotPasswordPage() {
       setLoading(false);
       return;
     }
-    const supabase = createSupabaseBrowserClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-
-    if (resetError) {
-      setError(resetError.message);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (resetError) {
+        setError(authErrorMessage(resetError, t.auth, t.auth.resetLinkFailed));
+        setLoading(false);
+        return;
+      }
+    } catch (thrown) {
+      setError(authErrorMessage(thrown, t.auth, t.auth.resetLinkFailed));
       setLoading(false);
       return;
     }
@@ -46,12 +52,12 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="w-full max-w-[420px]">
+      {/* Brand — visible only on mobile where the left panel is hidden */}
       <div className="text-center mb-8 lg:hidden">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
           <span className="text-white text-xl font-bold">T</span>
         </div>
-        <h1 className="text-2xl font-bold text-[#1F114C]">{t.auth.recoverPassword}</h1>
-        <p className="text-sm text-[#8B8B8B] mt-1">{t.auth.recoverSubtitle}</p>
+        <p className="text-2xl font-bold text-[#1F114C]">{t.auth.platformName}</p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
@@ -78,8 +84,12 @@ export default function ForgotPasswordPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <h1 className="text-lg font-semibold text-[#1F114C] mb-1">{t.auth.recoverPassword}</h1>
+              <p className="text-[13px] text-[#8B8B8B]">{t.auth.recoverSubtitle}</p>
+            </div>
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
                 {error}
               </div>
             )}
