@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   signIn: vi.fn(),
   recover: vi.fn(),
   oauth: vi.fn(),
+  signOut: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams({ token }) }));
@@ -19,6 +20,7 @@ vi.mock('@tims/auth/client', () => ({
       signInWithPassword: state.signIn,
       resetPasswordForEmail: state.recover,
       signInWithOAuth: state.oauth,
+      signOut: state.signOut,
     },
   }),
 }));
@@ -48,6 +50,9 @@ beforeEach(() => {
   state.signIn.mockReset();
   state.recover.mockReset();
   state.oauth.mockReset();
+  state.signOut.mockReset();
+  state.signOut.mockResolvedValue({ error: null });
+  delete process.env.NEXT_PUBLIC_LAUNCH_SCOPE;
   state.request.mockImplementation((action: string) =>
     action === 'preview'
       ? Promise.resolve(invitation)
@@ -190,5 +195,114 @@ describe('invitation account setup', () => {
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith(`/mfa?returnTo=${encodeURIComponent(`/accept-invitation?token=${token}`)}`),
     );
+  });
+
+  it('names the role by its label, never the raw slug (D-06)', async () => {
+    state.request.mockImplementation((action: string) =>
+      action === 'preview' ? Promise.resolve({ ...invitation, roleSlug: 'super_admin' }) : Promise.resolve({ outcome: 'complete' }),
+    );
+    render(<InvitationSetup />);
+    expect(await screen.findByText('Super Administrador')).toBeInTheDocument();
+    expect(screen.queryByText('super admin')).not.toBeInTheDocument();
+  });
+
+  it('tells a super administrator that two-step verification comes next (D-06)', async () => {
+    state.request.mockImplementation((action: string) =>
+      action === 'preview'
+        ? Promise.resolve({ ...invitation, roleSlug: 'super_admin' })
+        : Promise.resolve({ outcome: action === 'register' ? 'account_created' : 'complete' }),
+    );
+    render(<InvitationSetup />);
+    await screen.findByText('TIMS Test');
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Apellido'), { target: { value: 'Admin' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.change(screen.getByLabelText('Confirmar contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta y unirme' }));
+    await screen.findByText('Tu acceso está listo');
+    expect(screen.getByText(/verificación en dos pasos/)).toBeInTheDocument();
+  });
+
+  it('does not mention two-step verification for a role that does not require it', async () => {
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.change(screen.getByLabelText('Confirmar contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta y unirme' }));
+    await screen.findByText('Tu acceso está listo');
+    expect(screen.queryByText(/verificación en dos pasos/)).not.toBeInTheDocument();
+  });
+
+  it('a failed load is retryable and is not reported as an unavailable invitation (D-06 / E-19)', async () => {
+    let calls = 0;
+    state.request.mockImplementation((action: string) => {
+      if (action !== 'preview') return Promise.resolve({ outcome: 'complete' });
+      calls += 1;
+      return calls === 1 ? Promise.reject(new SetupRequestError('setup_unavailable', 503)) : Promise.resolve(invitation);
+    });
+    render(<InvitationSetup />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos verificar tu invitación');
+    expect(screen.queryByText(/no está disponible/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByText('TIMS Test')).toBeInTheDocument();
+  });
+
+  it('a network failure is retryable too', async () => {
+    state.request.mockImplementation((action: string) =>
+      action === 'preview' ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve({ outcome: 'complete' }),
+    );
+    render(<InvitationSetup />);
+    expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+  });
+
+  it('an unknown token (404) is unavailable, with no retry', async () => {
+    state.request.mockImplementation(() => Promise.reject(new SetupRequestError('setup_unavailable', 404)));
+    render(<InvitationSetup />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('no está disponible');
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+  });
+
+  it('warns before replacing another signed-in account, and signs it out of this browser only (E-19)', async () => {
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'admin-token', user: { email: 'admin@example.test' } } },
+    });
+    render(<InvitationSetup />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('admin@example.test');
+    expect(screen.queryByLabelText('Contraseña')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear cuenta y unirme' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar esa sesión y continuar' }));
+    await waitFor(() => expect(state.signOut).toHaveBeenCalledWith({ scope: 'local' }));
+    expect(await screen.findByRole('button', { name: 'Crear cuenta y unirme' })).toBeInTheDocument();
+    expect(state.signIn).not.toHaveBeenCalled();
+  });
+
+  it('a session the API does not accept reveals password and recovery again (E-02)', async () => {
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'sso-token', user: { email: invitation.email } } },
+    });
+    state.request.mockImplementation((action: string) =>
+      action === 'preview'
+        ? Promise.resolve({ ...invitation, accountExists: true })
+        : Promise.resolve({ outcome: 'sign_in_required' }),
+    );
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Completar acceso' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ingresa o recupera tu acceso');
+    expect(screen.getByLabelText('Contraseña')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recuperar acceso' })).toBeInTheDocument();
+  });
+
+  it('pilot: hides Google / Microsoft and explains how to get in without them (E-02)', async () => {
+    process.env.NEXT_PUBLIC_LAUNCH_SCOPE = 'pilot';
+    state.request.mockImplementation((action: string) =>
+      action === 'preview' ? Promise.resolve({ ...invitation, accountExists: true }) : Promise.resolve({ outcome: 'complete' }),
+    );
+    render(<InvitationSetup />);
+    await screen.findByText('TIMS Test');
+    expect(screen.getByRole('button', { name: 'Recuperar acceso' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Google' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Microsoft' })).not.toBeInTheDocument();
+    expect(screen.getByText(/nunca creaste una/)).toBeInTheDocument();
   });
 });

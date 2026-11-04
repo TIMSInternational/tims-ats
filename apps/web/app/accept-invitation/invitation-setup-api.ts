@@ -27,9 +27,18 @@ export function invitationUnavailable(invitation: Invitation | undefined, now = 
 }
 
 export class SetupRequestError extends Error {
-  constructor(public readonly code: 'mfa_required' | 'setup_unavailable') {
+  constructor(
+    public readonly code: 'mfa_required' | 'setup_unavailable',
+    /** HTTP status of the relay response, when there was one (a network failure has none). */
+    public readonly status?: number,
+  ) {
     super(code);
   }
+}
+
+/** A preview the API positively refused (unknown or malformed token), as opposed to one that could not load. */
+export function isInvitationRefused(failure: unknown): boolean {
+  return failure instanceof SetupRequestError && (failure.status === 404 || failure.status === 400);
 }
 
 export async function setupRequest(action: string, input: Record<string, string>, accessToken?: string) {
@@ -43,6 +52,7 @@ export async function setupRequest(action: string, input: Record<string, string>
     const error = z.object({ error: z.string() }).safeParse(await response.json().catch(() => null));
     throw new SetupRequestError(
       error.success && error.data.error === 'mfa_required' ? 'mfa_required' : 'setup_unavailable',
+      response.status,
     );
   }
   return response.json() as Promise<unknown>;
