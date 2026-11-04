@@ -6,15 +6,17 @@
 // public join link (video); evaluators get the STAFF room link and never see the
 // candidate token. notify() NEVER throws — callers fire-and-forget it, and the
 // tRPC mutation must not fail because mail did. Logs carry no PII and no token.
+// Candidate copies reply to the organization's candidate contact (services/candidate-contact.ts).
 
-import { getAppUrl, logger } from '@tims/shared';
+import { getAppUrl, logger, orgSettingsTimeZone, resolveInterviewTimeZone } from '@tims/shared';
 import { buildIcs, sequenceFromUpdatedAt, type IcsMethod } from '../lib/ics';
 import { buildMimeMessage } from '../lib/mime';
 import { getEmailFromAddress, sendEmail, sendRawEmail } from '../lib/ses';
 import { interviewEmailRepository, type InterviewNotificationData } from '../repositories/interview-email.repository';
+import { candidateContactEmail } from './candidate-contact';
 import { candidateJoinApplies, candidateJoinUrl, staffRoomUrl } from './interview-join-token';
 import {
-  interviewTypeLabel,
+  interviewModeLabel,
   renderInterviewEmail,
   type EmailLocale,
   type InterviewEmailKind,
@@ -27,6 +29,8 @@ export type InterviewNotifyParams = {
   /** Plaintext join token minted by THIS write (video create/reschedule). Never logged. */
   candidateJoinToken?: string | null;
   oldScheduledAt?: Date | null;
+  /** Mail ONLY this panel member (an evaluator added to an existing interview); nobody else is notified. */
+  onlyEvaluatorId?: string;
 };
 
 export type InterviewEmailMessage = {
@@ -34,36 +38,27 @@ export type InterviewEmailMessage = {
   to: string;
   subject: string;
   html: string;
+  /** The same email without the "we attach a calendar invitation" line, for the plain (no .ics) fallback. */
+  fallbackHtml: string;
   text: string;
   ics: string;
   method: IcsMethod;
+  /** Candidate copies: the organization's candidate contact, when it has one. */
+  replyTo: string | null;
 };
 
-const DEFAULT_CONTACT = 'rrhh@timsinternational.com';
-const DEFAULT_TZ = 'America/Bogota';
 const SEND_TIMEOUT_MS = 8_000;
-
-/** True when `tz` is an IANA zone this runtime can format with. */
-function isValidTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
+/** Interviews that will not take place: only their cancellation is ever mailed. */
+const NOT_HAPPENING_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'no_show']);
 
 /**
  * The tenant's configured timezone (`organizations.settings.timezone`), or null when unset or invalid.
- * Interviews are local events: when the organization has a timezone, every recipient's email shows the
- * time in it. Vacancies are not linked to a company in practice and `users.timezone` defaults to the
- * column default for everyone, so neither can be trusted to carry the tenant's real zone.
+ * Interviews are local events: every recipient's email shows the time in the organization's zone, else
+ * the vacancy company's, else UTC (labelled as such). `users.timezone` is NOT used: it defaults to the
+ * column default for everyone, so it cannot be trusted to carry the tenant's real zone.
  */
 export function orgTimeZone(settings: unknown): string | null {
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
-  const tz = (settings as Record<string, unknown>).timezone;
-  if (typeof tz !== 'string' || tz.length === 0 || tz.length > 64) return null;
-  return isValidTimeZone(tz) ? tz : null;
+  return orgSettingsTimeZone(settings);
 }
 
 function toLocale(value: string | null | undefined): EmailLocale {
@@ -96,6 +91,8 @@ export function buildInterviewEmails(
 ): { messages: InterviewEmailMessage[]; skipped: number } {
   const { interview, org } = data;
   const cancel = params.kind === 'cancel';
+  // A late invite/update for an interview that was cancelled meanwhile must not go out.
+  if (!cancel && NOT_HAPPENING_STATUSES.has(interview.status)) return { messages: [], skipped: 0 };
   const method: IcsMethod = cancel ? 'CANCEL' : 'REQUEST';
   // Tokenized join only for our own Daily room (or none yet). An external meetingUrl (Zoom/Meet/…) is sent
   // as-is to everyone; our own private Daily room URL is never sent (it is dead without a meeting token).
@@ -106,8 +103,8 @@ export function buildInterviewEmails(
   const meetingUrl = joinApplies ? null : interview.meetingUrl;
   const candidateName = `${interview.candidate.firstName} ${interview.candidate.lastName}`.trim();
   const vacancyTitle = interview.vacancy.title;
-  const contactEmail = org.billingEmail ?? DEFAULT_CONTACT;
-  const tenantTz = orgTimeZone(org.settings);
+  const contactEmail = candidateContactEmail(org);
+  const timeZone = resolveInterviewTimeZone(orgTimeZone(org.settings), interview.vacancy.company?.timezone);
   const organizer = { name: org.name, email: senderMailbox(getEmailFromAddress()) };
   const end = new Date(interview.scheduledAt.getTime() + interview.duration * 60_000);
   const uid = `interview-${interview.id}@${appHost(appUrl)}`;
@@ -119,12 +116,12 @@ export function buildInterviewEmails(
     audience: 'candidate' | 'evaluator',
     to: { name: string; email: string },
     locale: EmailLocale,
-    timeZone: string,
     joinUrl: string | null,
+    scorecardUrl: string | null = null,
   ): void => {
     // One malformed address must not suppress everyone else's email.
     try {
-      const rendered = renderInterviewEmail({
+      const input = {
         kind: params.kind,
         audience,
         locale,
@@ -139,11 +136,14 @@ export function buildInterviewEmails(
         location: interview.location,
         meetingUrl,
         joinUrl,
+        scorecardUrl,
         oldScheduledAt: params.oldScheduledAt ?? null,
         cancelReason: interview.cancelReason,
         contactEmail,
-      });
-      const typeLabel = interviewTypeLabel(interview.type, locale);
+      };
+      const rendered = renderInterviewEmail(input);
+      const fallbackHtml = renderInterviewEmail({ ...input, hasCalendarAttachment: false }).html;
+      const typeLabel = interviewModeLabel(interview.type, joinUrl ? null : meetingUrl, locale);
       const summary =
         audience === 'candidate'
           ? `${typeLabel}: ${vacancyTitle} — ${org.name}`
@@ -157,37 +157,48 @@ export function buildInterviewEmails(
         stamp: now,
         summary,
         description: rendered.text,
-        location: cancel ? undefined : (joinUrl ?? interview.location ?? meetingUrl ?? undefined),
-        url: cancel ? undefined : (joinUrl ?? undefined),
+        location: cancel ? undefined : (joinUrl ?? meetingUrl ?? interview.location ?? undefined),
+        url: cancel ? undefined : (joinUrl ?? meetingUrl ?? undefined),
         organizer,
         attendees: [to],
       });
-      messages.push({ audience, to: to.email, ...rendered, ics, method });
+      messages.push({
+        audience,
+        to: to.email,
+        ...rendered,
+        fallbackHtml,
+        ics,
+        method,
+        replyTo: audience === 'candidate' ? contactEmail : null,
+      });
     } catch {
       skipped += 1; // invalid recipient data; counted and logged (no PII) by notify()
     }
   };
 
-  if (interview.candidate.email && !data.candidateConsentWithdrawn) {
+  const onlyEvaluator = params.onlyEvaluatorId ?? null;
+  if (!onlyEvaluator && interview.candidate.email && !data.candidateConsentWithdrawn) {
     const joinUrl =
       !cancel && joinApplies && params.candidateJoinToken ? candidateJoinUrl(appUrl, params.candidateJoinToken) : null;
     build(
       'candidate',
       { name: candidateName, email: interview.candidate.email },
       toLocale(interview.vacancy.company?.language),
-      tenantTz ?? interview.vacancy.company?.timezone ?? DEFAULT_TZ,
       joinUrl,
     );
   }
-  const roomUrl = !cancel && joinApplies ? staffRoomUrl(appUrl, interview.id) : null;
+  // Video: the room link IS the place to join and score. Every other type: the same room URL opens
+  // straight on the scorecard, so panelists always learn where to score.
+  const roomUrl = !cancel ? staffRoomUrl(appUrl, interview.id) : null;
   for (const { user } of interview.evaluators) {
     if (!user.isActive || !user.email) continue;
+    if (onlyEvaluator && user.id !== onlyEvaluator) continue;
     build(
       'evaluator',
       { name: `${user.firstName} ${user.lastName}`.trim(), email: user.email },
       toLocale(user.locale),
-      tenantTz ?? (user.timezone || DEFAULT_TZ),
-      roomUrl,
+      joinApplies ? roomUrl : null,
+      joinApplies ? null : roomUrl,
     );
   }
   return { messages, skipped };
@@ -210,6 +221,7 @@ async function deliver(message: InterviewEmailMessage, appUrl: string): Promise<
       filename: message.method === 'CANCEL' ? 'cancel.ics' : 'invite.ics',
       content: message.ics,
     },
+    replyTo: message.replyTo,
     messageIdDomain: appHost(appUrl),
   });
   const result = await sendRawEmail({ to: message.to, raw, abortSignal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
@@ -218,8 +230,9 @@ async function deliver(message: InterviewEmailMessage, appUrl: string): Promise<
     return sendEmail({
       to: message.to,
       subject: message.subject,
-      html: message.html,
+      html: message.fallbackHtml,
       abortSignal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+      replyTo: message.replyTo,
     });
   }
   return false;

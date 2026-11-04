@@ -33,10 +33,18 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     locale: 'es' | 'en';
+    /** The organization's candidate contact (services/candidate-contact.ts): contact line + Reply-To. */
+    contactEmail?: string | null;
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.applicationReceived(rest);
-    return sendEmail({ to: candidateEmail, subject, html, abortSignal: AbortSignal.timeout(4_000) });
+    return sendEmail({
+      to: candidateEmail,
+      subject,
+      html,
+      abortSignal: AbortSignal.timeout(4_000),
+      replyTo: rest.contactEmail ?? null,
+    });
   },
 
   async sendOfferToCandidate(params: {

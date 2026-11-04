@@ -2,16 +2,26 @@
 // Localized (es/en) interview invitation / update / cancellation emails
 // ---------------------------------------------------------------------------
 // One builder for both audiences:
-//  - candidate: public join link (video) OR location (onsite) OR phone note
-//  - evaluator: STAFF room link — never the candidate's join token
+//  - candidate: public join link (video) OR external meeting link (Teams/Meet/Zoom, labelled "En línea")
+//    OR location (onsite) OR phone note
+//  - evaluator: STAFF room link (video) or the scorecard link (every other type) — never the candidate's
+//    join token
 // SECURITY: every dynamic value goes through esc()/safeUrl() (HTML) — candidate
 // names originate from the PUBLIC apply form.
 
+import { timeZoneLabel, UTC_TIME_ZONE } from '@tims/shared';
 import { emailLayout } from './email-templates.service';
+import {
+  INTERVIEW_EMAIL_COPY as T,
+  INTERVIEW_TYPE_LABELS as TYPE_LABELS,
+  PLACE_TYPES,
+  type EmailLocale,
+} from './interview-email-copy';
+
+export type { EmailLocale } from './interview-email-copy';
 
 const { esc, safeUrl, baseLayout, heading, paragraph, detailRow, detailsTable, ctaButton } = emailLayout;
 
-export type EmailLocale = 'es' | 'en';
 export type InterviewEmailKind = 'invite' | 'update' | 'cancel';
 
 export type InterviewEmailInput = {
@@ -31,129 +41,47 @@ export type InterviewEmailInput = {
   meetingUrl?: string | null;
   /** Candidate: public join link. Evaluator: staff room link. Video only. */
   joinUrl?: string | null;
+  /** Evaluator only: where to fill in the scorecard when there is no video room link. */
+  scorecardUrl?: string | null;
   oldScheduledAt?: Date | null;
   cancelReason?: string | null;
-  contactEmail: string;
+  /** The organization's candidate contact (services/candidate-contact.ts); null omits the contact line. */
+  contactEmail: string | null;
+  /** False when this copy is sent without the .ics (plain fallback): no "we attach an invitation" line. */
+  hasCalendarAttachment?: boolean;
 };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
-
-const TYPE_LABELS: Record<EmailLocale, Record<string, string>> = {
-  es: {
-    phone: 'Telefónica',
-    video: 'Videoconferencia',
-    technical: 'Técnica',
-    cultural: 'Cultural',
-    panel: 'Panel',
-    onsite: 'Presencial',
-    in_person: 'Presencial',
-  },
-  en: {
-    phone: 'Phone',
-    video: 'Video call',
-    technical: 'Technical',
-    cultural: 'Cultural fit',
-    panel: 'Panel',
-    onsite: 'In person',
-    in_person: 'In person',
-  },
-};
-
-const T = {
-  es: {
-    subject: { invite: 'Invitación a entrevista', update: 'Entrevista reprogramada', cancel: 'Entrevista cancelada' },
-    evaluatorSubject: {
-      invite: 'Nueva entrevista asignada',
-      update: 'Entrevista reprogramada',
-      cancel: 'Entrevista cancelada',
-    },
-    greeting: (n: string) => `Estimado/a ${n},`,
-    candidateIntro: {
-      invite: (v: string, c: string) =>
-        `Nos complace invitarle a una entrevista para el cargo de <strong>${v}</strong> en ${c}.`,
-      update: (v: string) =>
-        `Su entrevista para el cargo de <strong>${v}</strong> ha sido reprogramada. Los nuevos detalles son:`,
-      cancel: (v: string) =>
-        `Lamentamos informarle que la entrevista para el cargo de <strong>${v}</strong> ha sido cancelada.`,
-    },
-    evaluatorIntro: {
-      invite: (cand: string, v: string) =>
-        `Ha sido asignado/a como evaluador/a de la entrevista de <strong>${cand}</strong> para el cargo de <strong>${v}</strong>.`,
-      update: (cand: string, v: string) =>
-        `La entrevista de <strong>${cand}</strong> para el cargo de <strong>${v}</strong> ha sido reprogramada.`,
-      cancel: (cand: string, v: string) =>
-        `La entrevista de <strong>${cand}</strong> para el cargo de <strong>${v}</strong> ha sido cancelada.`,
-    },
-    when: 'Fecha y hora',
-    previous: 'Fecha anterior',
-    type: 'Tipo',
-    duration: 'Duración',
-    minutes: 'minutos',
-    place: 'Lugar',
-    link: 'Enlace',
-    reason: 'Motivo',
-    candidate: 'Candidato/a',
-    join: 'Unirse a la entrevista',
-    room: 'Abrir sala de entrevista',
-    joinNote:
-      'El enlace es personal y se habilita 15 minutos antes de la hora programada. Si la entrevista se reprograma, recibirá un enlace nuevo y este dejará de funcionar.',
-    phoneNote: 'Le contactaremos por teléfono al número registrado en su aplicación a la hora indicada.',
-    calendarNote: 'Adjuntamos una invitación de calendario (.ics) para que la agregue a su agenda.',
-    cancelCalendarNote: 'Adjuntamos la cancelación para actualizar su calendario.',
-    questions: 'Si tiene preguntas, escríbanos a',
-    regards: 'Cordialmente,<br>Equipo de Talento Humano',
-    interview: 'Entrevista',
-  },
-  en: {
-    subject: { invite: 'Interview invitation', update: 'Interview rescheduled', cancel: 'Interview cancelled' },
-    evaluatorSubject: {
-      invite: 'New interview assigned',
-      update: 'Interview rescheduled',
-      cancel: 'Interview cancelled',
-    },
-    greeting: (n: string) => `Dear ${n},`,
-    candidateIntro: {
-      invite: (v: string, c: string) =>
-        `We are pleased to invite you to an interview for the <strong>${v}</strong> position at ${c}.`,
-      update: (v: string) =>
-        `Your interview for the <strong>${v}</strong> position has been rescheduled. The new details are:`,
-      cancel: (v: string) =>
-        `We regret to inform you that the interview for the <strong>${v}</strong> position has been cancelled.`,
-    },
-    evaluatorIntro: {
-      invite: (cand: string, v: string) =>
-        `You have been assigned as an evaluator for <strong>${cand}</strong>'s interview for the <strong>${v}</strong> position.`,
-      update: (cand: string, v: string) =>
-        `<strong>${cand}</strong>'s interview for the <strong>${v}</strong> position has been rescheduled.`,
-      cancel: (cand: string, v: string) =>
-        `<strong>${cand}</strong>'s interview for the <strong>${v}</strong> position has been cancelled.`,
-    },
-    when: 'Date and time',
-    previous: 'Previous date',
-    type: 'Type',
-    duration: 'Duration',
-    minutes: 'minutes',
-    place: 'Location',
-    link: 'Link',
-    reason: 'Reason',
-    candidate: 'Candidate',
-    join: 'Join the interview',
-    room: 'Open interview room',
-    joinNote:
-      'This link is personal and opens 15 minutes before the scheduled time. If the interview is rescheduled you will receive a new link and this one will stop working.',
-    phoneNote: 'We will call you at the phone number in your application at the scheduled time.',
-    calendarNote: 'A calendar invitation (.ics) is attached so you can add it to your calendar.',
-    cancelCalendarNote: 'The cancellation is attached so your calendar is updated.',
-    questions: 'If you have any questions, write to us at',
-    regards: 'Kind regards,<br>Talent Team',
-    interview: 'Interview',
-  },
-} as const;
 
 export function interviewTypeLabel(type: string, locale: EmailLocale): string {
   return TYPE_LABELS[locale][type] ?? T[locale].interview;
 }
 
+/**
+ * The type as the recipient should read it. A non-video interview with an external meeting link
+ * (a pasted Teams/Meet/Zoom URL) is held online: "Presencial" + a link reads "En línea", and a
+ * content type keeps its name with "(en línea)" — never "Presencial" for an online meeting.
+ */
+export function interviewModeLabel(type: string, meetingUrl: string | null | undefined, locale: EmailLocale): string {
+  const label = interviewTypeLabel(type, locale);
+  if (!meetingUrl || type === 'video') return label;
+  if (PLACE_TYPES.has(type)) return TYPE_LABELS[locale].online ?? label;
+  return `${label} (${T[locale].online})`;
+}
+
+/** Whether `location` is just the meeting link again (the schedule modal stores a pasted URL in both). */
+export function isSameLink(location: string | null | undefined, meetingUrl: string | null | undefined): boolean {
+  if (!location || !meetingUrl) return false;
+  const value = location.trim();
+  if (value === meetingUrl.trim()) return true;
+  try {
+    return new URL(value).toString() === new URL(meetingUrl).toString();
+  } catch {
+    return false;
+  }
+}
+
+/** "martes, 10 de noviembre de 2026, 10:00 a. m., hora de Costa Rica (GMT-6)"; an unusable zone → UTC. */
 export function formatInterviewDate(date: Date, locale: EmailLocale, timeZone: string): string {
   const opts: Intl.DateTimeFormatOptions = {
     weekday: 'long',
@@ -162,14 +90,18 @@ export function formatInterviewDate(date: Date, locale: EmailLocale, timeZone: s
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZoneName: 'short',
   };
-  const tag = locale === 'en' ? 'en-US' : 'es-CO';
+  const tag = locale === 'en' ? 'en-US' : 'es-CR';
+  let zone = timeZone;
+  let formatted: string;
   try {
-    return new Intl.DateTimeFormat(tag, { ...opts, timeZone }).format(date);
+    formatted = new Intl.DateTimeFormat(tag, { ...opts, timeZone: zone }).format(date);
   } catch {
-    return new Intl.DateTimeFormat(tag, { ...opts, timeZone: 'America/Bogota' }).format(date);
+    zone = UTC_TIME_ZONE;
+    formatted = new Intl.DateTimeFormat(tag, { ...opts, timeZone: zone }).format(date);
   }
+  const label = timeZoneLabel(zone, locale, date);
+  return label === 'UTC' ? `${formatted} (UTC)` : `${formatted}, ${label}`;
 }
 
 function stripTags(html: string): string {
@@ -180,7 +112,9 @@ export function renderInterviewEmail(p: InterviewEmailInput): RenderedEmail {
   const t = T[p.locale];
   const isCandidate = p.audience === 'candidate';
   const cancel = p.kind === 'cancel';
-  const typeLabel = interviewTypeLabel(p.interviewType, p.locale);
+  // The external link only counts when there is no tokenized join link (video).
+  const externalUrl = !p.joinUrl && p.meetingUrl ? p.meetingUrl : null;
+  const typeLabel = interviewModeLabel(p.interviewType, externalUrl, p.locale);
   const when = formatInterviewDate(p.scheduledAt, p.locale, p.timeZone);
   const isPhone = p.interviewType === 'phone';
 
@@ -202,9 +136,14 @@ export function renderInterviewEmail(p: InterviewEmailInput): RenderedEmail {
     [t.type, esc(typeLabel), typeLabel],
     [t.duration, `${p.duration} ${t.minutes}`, `${p.duration} ${t.minutes}`],
   );
-  if (!cancel && p.location) rows.push([t.place, esc(p.location), p.location]);
-  if (!cancel && !p.joinUrl && p.meetingUrl) {
-    rows.push([t.link, `<a href="${safeUrl(p.meetingUrl)}">${esc(p.meetingUrl)}</a>`, p.meetingUrl]);
+  // A pasted link is stored as both location and meetingUrl: show it once, as the link.
+  if (!cancel && p.location && !isSameLink(p.location, externalUrl)) rows.push([t.place, esc(p.location), p.location]);
+  if (!cancel && externalUrl) {
+    rows.push([
+      t.link,
+      `<a href="${safeUrl(externalUrl)}" style="word-break:break-all;">${esc(externalUrl)}</a>`,
+      externalUrl,
+    ]);
   }
   if (cancel && p.cancelReason && isCandidate) rows.push([t.reason, esc(p.cancelReason), p.cancelReason]);
 
@@ -232,22 +171,42 @@ export function renderInterviewEmail(p: InterviewEmailInput): RenderedEmail {
 
   if (!cancel && p.joinUrl) {
     blocks.push(ctaButton(p.joinUrl, esc(isCandidate ? t.join : t.room)));
-    blocks.push(paragraph(`<a href="${safeUrl(p.joinUrl)}">${esc(p.joinUrl)}</a>`));
+    blocks.push(paragraph(`<a href="${safeUrl(p.joinUrl)}" style="word-break:break-all;">${esc(p.joinUrl)}</a>`));
     text.push(`${isCandidate ? t.join : t.room}: ${p.joinUrl}`);
     if (isCandidate) {
       blocks.push(paragraph(esc(t.joinNote)));
       text.push(t.joinNote);
     }
+  } else if (!cancel && externalUrl) {
+    blocks.push(ctaButton(externalUrl, esc(t.joinMeeting)));
+    text.push(`${t.joinMeeting}: ${externalUrl}`);
   } else if (!cancel && isCandidate && isPhone) {
     blocks.push(paragraph(esc(t.phoneNote)));
     text.push(t.phoneNote);
   }
 
-  const calendarNote = cancel ? t.cancelCalendarNote : t.calendarNote;
-  blocks.push(paragraph(esc(calendarNote)));
-  text.push(calendarNote, '');
+  // Evaluators score in TIMS whatever the meeting tool: without a video room link, link the scorecard.
+  if (!cancel && !isCandidate && !p.joinUrl && p.scorecardUrl) {
+    blocks.push(ctaButton(p.scorecardUrl, esc(t.scorecard)));
+    blocks.push(paragraph(esc(t.scorecardNote)));
+    text.push(`${t.scorecard}: ${p.scorecardUrl}`, t.scorecardNote);
+  }
 
-  if (isCandidate) {
+  if (cancel && isCandidate) {
+    blocks.push(paragraph(esc(t.cancelNextStep)));
+    text.push(t.cancelNextStep);
+  }
+
+  // Only the raw (MIME) copy carries the .ics; the plain fallback must not claim an attachment.
+  if (p.hasCalendarAttachment !== false) {
+    const calendarNote = cancel ? t.cancelCalendarNote : t.calendarNote;
+    blocks.push(paragraph(esc(calendarNote)));
+    text.push(calendarNote, '');
+  } else {
+    text.push('');
+  }
+
+  if (isCandidate && p.contactEmail) {
     const email = esc(p.contactEmail);
     blocks.push(paragraph(`${esc(t.questions)} <a href="mailto:${email}">${email}</a>.`));
     text.push(`${t.questions} ${p.contactEmail}.`);

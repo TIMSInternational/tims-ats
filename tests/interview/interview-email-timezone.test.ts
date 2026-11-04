@@ -78,16 +78,37 @@ describe('interview email timezone', () => {
     expect(messages.every((message) => /10:00/.test(message.text))).toBe(true);
   });
 
-  it('keeps the previous fallbacks when the organization has no timezone', async () => {
+  // C-36: no America/Bogota fallback any more. Without an organization zone the vacancy company's zone
+  // is used, then UTC with an explicit "UTC" label — and never the evaluator's users.timezone, which is
+  // the Bogota column default for everyone.
+  it('without an organization timezone falls back to the company zone, for every recipient', async () => {
+    const { messages } = await build({}, 'America/Costa_Rica');
+    expect(messages).toHaveLength(2);
+    for (const message of messages) {
+      expect(message.text).toMatch(/10:00/);
+      expect(message.text).toContain('hora de Costa Rica (GMT-6)');
+    }
+  });
+
+  it('with neither an organization nor a company zone, says UTC explicitly', async () => {
     const { messages } = await build({});
-    expect(messages.every((message) => /11:00/.test(message.text))).toBe(true);
+    for (const message of messages) {
+      expect(message.text).toMatch(/4:00/);
+      expect(message.text).toContain('(UTC)');
+      expect(message.text).not.toMatch(/11:00|Colombia|Bogot/);
+    }
   });
 
   it('ignores an invalid or non-string timezone setting', async () => {
     for (const settings of [{ timezone: 'Mars/Olympus' }, { timezone: 42 }, null, [], 'x']) {
       const { messages } = await build(settings);
-      expect(messages.every((message) => /11:00/.test(message.text))).toBe(true);
+      expect(messages.every((message) => /\(UTC\)/.test(message.text))).toBe(true);
     }
+  });
+
+  it('labels the organization zone as "hora de Costa Rica (GMT-6)"', async () => {
+    const { messages } = await build({ timezone: 'America/Costa_Rica' });
+    expect(messages.every((message) => message.text.includes('hora de Costa Rica (GMT-6)'))).toBe(true);
   });
 
   it('orgTimeZone accepts only valid IANA zones', async () => {

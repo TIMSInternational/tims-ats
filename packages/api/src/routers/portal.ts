@@ -15,6 +15,7 @@ import {
 } from '@tims/shared';
 import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/application-consent-evidence';
 import { emailService } from '../services/email.service';
+import { candidateContactEmail } from '../services/candidate-contact';
 import { runAfterResponse } from '../lib/after-response';
 import { checkRateLimit, consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
@@ -262,7 +263,7 @@ export const portalRouter = router({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
         include: {
           stages: { where: { isDefault: true }, take: 1 },
-          organization: { select: { name: true } },
+          organization: { select: { name: true, settings: true, billingEmail: true } },
           company: { select: { language: true } },
         },
       });
@@ -495,6 +496,7 @@ export const portalRouter = router({
           vacancyTitle: vacancy.title,
           companyName: vacancy.organization?.name ?? '',
           locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
+          contactEmail: candidateContactEmail(vacancy.organization),
         };
         // After the response (see lib/after-response.ts): a bare `void` promise is frozen by the
         // serverless runtime once the response is sent, so the email was never delivered.

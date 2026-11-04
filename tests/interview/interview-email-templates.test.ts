@@ -62,7 +62,11 @@ describe('interview email templates', () => {
     expect(es.html).toContain('Estimado/a candidato/a,');
     expect(es.html).not.toContain('Ana');
     expect(es.subject).not.toMatch(/[\r\n]/);
-    expect(es.subject.startsWith('Aplicación recibida')).toBe(true);
+    // Candidate copy says "postulación" and "usted" (pilot product decision).
+    expect(es.subject.startsWith('Postulación recibida')).toBe(true);
+    expect(es.html).toContain('Hemos recibido su postulación');
+    expect(es.html).toContain('Gracias por postularse');
+    expect(es.html).not.toMatch(/aplicaci[oó]n|aplicar/i);
     const en = emailTemplates.applicationReceived({
       candidateName: 'Ana',
       vacancyTitle: 'Dev',
@@ -102,5 +106,107 @@ describe('interview email templates', () => {
       if (bad.trim()) expect(html).not.toContain(bad.trim().slice(0, 12));
     }
     expect(greet('evil.com', 'en')).toContain('Dear candidate,');
+  });
+
+  it('application-received names the organization contact only when it has one', () => {
+    const withContact = emailTemplates.applicationReceived({
+      candidateName: 'Ana',
+      vacancyTitle: 'Dev',
+      companyName: 'Acme',
+      locale: 'es',
+      contactEmail: 'reclutamiento@acme.test',
+    });
+    expect(withContact.html).toContain('Si tiene preguntas, escríbanos a');
+    expect(withContact.html).toContain('mailto:reclutamiento@acme.test');
+    const without = emailTemplates.applicationReceived({ candidateName: 'Ana', vacancyTitle: 'Dev', companyName: 'Acme', locale: 'es' });
+    expect(without.html).not.toContain('mailto:');
+    expect(without.html).not.toContain('timsinternational');
+  });
+});
+
+describe('interview email templates — pilot honesty (C-02, C-21, C-22, C-36, B-06)', () => {
+  const teams = 'https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc/0?context=x';
+  const pasted: InterviewEmailInput = {
+    ...base,
+    recipientName: 'Ana',
+    candidateName: 'Ana Mora',
+    vacancyTitle: 'Analista',
+    timeZone: 'America/Costa_Rica',
+    scheduledAt: new Date('2026-11-10T16:00:00Z'),
+    interviewType: 'onsite',
+    joinUrl: null,
+    location: teams,
+    meetingUrl: teams,
+  };
+
+  it('a pasted Teams link is an online interview: "En línea", the link once, and a join button', () => {
+    const { html, text } = renderInterviewEmail(pasted);
+    expect(html).toContain('En línea');
+    expect(html).not.toContain('Presencial');
+    expect(html).not.toContain('>Lugar<');
+    expect(html.split(teams.replace(/&/g, '&amp;')).length - 1).toBeGreaterThanOrEqual(1);
+    expect(html).toContain('Unirse a la reunión');
+    expect(text).toContain(`Unirse a la reunión: ${teams}`);
+    expect(text).not.toMatch(/^Lugar:/m);
+  });
+
+  it('a content type with a link keeps its name and says it is online', () => {
+    const { html } = renderInterviewEmail({ ...pasted, interviewType: 'technical' });
+    expect(html).toContain('Técnica (en línea)');
+  });
+
+  it('a real place is still shown as the place', () => {
+    const { html } = renderInterviewEmail({ ...pasted, location: 'Oficinas centrales, San José', meetingUrl: null });
+    expect(html).toContain('Presencial');
+    expect(html).toContain('Oficinas centrales, San José');
+    expect(html).not.toContain('Unirse a la reunión');
+  });
+
+  it('prints the time with the organization zone label, never GMT-only or Bogotá', () => {
+    const { html } = renderInterviewEmail(pasted);
+    expect(html).toContain('10:00');
+    expect(html).toContain('hora de Costa Rica (GMT-6)');
+    const en = renderInterviewEmail({ ...pasted, locale: 'en' });
+    expect(en.html).toContain('Costa Rica time (GMT-6)');
+    const broken = renderInterviewEmail({ ...pasted, timeZone: 'Mars/Olympus' });
+    expect(broken.html).toContain('4:00');
+    expect(broken.html).toContain('(UTC)');
+  });
+
+  it('omits the contact line when the organization has no candidate contact', () => {
+    const { html, text } = renderInterviewEmail({ ...pasted, contactEmail: null });
+    expect(html).not.toContain('mailto:');
+    expect(text).not.toContain('Si tiene preguntas');
+  });
+
+  it('the plain fallback copy does not claim a calendar attachment', () => {
+    expect(renderInterviewEmail(pasted).html).toContain('.ics');
+    const plain = renderInterviewEmail({ ...pasted, hasCalendarAttachment: false });
+    expect(plain.html).not.toContain('.ics');
+    expect(plain.text).not.toContain('.ics');
+  });
+
+  it('a cancellation tells the candidate what happens next', () => {
+    const { html } = renderInterviewEmail({ ...pasted, kind: 'cancel', cancelReason: 'Cambio de agenda' });
+    expect(html).toContain('Cambio de agenda');
+    expect(html).toContain('recibirá una nueva invitación');
+    expect(html).not.toContain('Unirse a la reunión');
+  });
+
+  it('evaluators of a non-video interview get the TIMS scorecard link', () => {
+    const scorecardUrl = 'https://ats.example.test/recruitment/interviews/iv1/room';
+    const { html, text } = renderInterviewEmail({
+      ...pasted,
+      audience: 'evaluator',
+      recipientName: 'Eva',
+      scorecardUrl,
+    });
+    expect(html).toContain('Abrir ficha de evaluación');
+    expect(html).toContain(scorecardUrl);
+    expect(text).toContain(`Abrir ficha de evaluación: ${scorecardUrl}`);
+    expect(html).toContain('Unirse a la reunión');
+    // Never on a cancellation.
+    const cancel = renderInterviewEmail({ ...pasted, audience: 'evaluator', kind: 'cancel', scorecardUrl });
+    expect(cancel.html).not.toContain('Abrir ficha de evaluación');
   });
 });
