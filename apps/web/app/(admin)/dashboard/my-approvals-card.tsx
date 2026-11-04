@@ -28,8 +28,10 @@ export function MyApprovalsCard({ className = '' }: MyApprovalsCardProps) {
   const canVacancies = !permissionsLoading && can('vacancy', 'approve');
   const canOffers = !permissionsLoading && can('offer', 'approve');
 
-  const vacancies = trpc.vacancy.getPending.useQuery(undefined, { enabled: canVacancies });
-  const offers = trpc.offer.getPending.useQuery(undefined, { enabled: canOffers });
+  // Decisions happen on the vacancy and offer pages: refetch whenever the dashboard mounts so an item
+  // decided a moment ago never lingers here for the default 5-minute staleTime.
+  const vacancies = trpc.vacancy.getPending.useQuery(undefined, { enabled: canVacancies, refetchOnMount: 'always' });
+  const offers = trpc.offer.getPending.useQuery(undefined, { enabled: canOffers, refetchOnMount: 'always' });
 
   if (!canVacancies && !canOffers) return null;
 

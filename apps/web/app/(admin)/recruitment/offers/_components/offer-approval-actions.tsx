@@ -21,7 +21,7 @@ export function OfferApprovalActions({
 }: {
   offerId: string;
   status: string;
-  approvals: Array<{ approver: { id: string }; status: string }>;
+  approvals: Array<{ id: string; approver: { id: string }; status: string }>;
   onUpdated: () => void;
 }) {
   const { t } = useI18n();
@@ -38,7 +38,11 @@ export function OfferApprovalActions({
   const reject = trpc.offer.reject.useMutation();
   const withdraw = trpc.offer.withdrawApproval.useMutation();
   const isPending = submit.isPending || approve.isPending || reject.isPending || withdraw.isPending;
-  const isMyTurn = approvals.some((item) => item.approver.id === me.data?.id && item.status === 'pending');
+  // Decisions and withdrawals name the step the viewer saw, so a stale tab can never act on a newer,
+  // resubmitted request (the server answers CONFLICT and the card refetches).
+  const myStep = approvals.find((item) => item.approver.id === me.data?.id && item.status === 'pending');
+  const isMyTurn = myStep !== undefined;
+  const livePendingStep = approvals.find((item) => item.status === 'pending');
   // Same gate as submitForApproval / withdrawApproval on the server.
   const canRequest = can('offer', 'create') || can('offer', 'update');
 
@@ -160,7 +164,11 @@ export function OfferApprovalActions({
                 onClick={() =>
                   run(async () => {
                     const trimmed = comment.trim();
-                    const result = await approve.mutateAsync({ id: offerId, ...(trimmed ? { comment: trimmed } : {}) });
+                    const result = await approve.mutateAsync({
+                      id: offerId,
+                      approvalId: myStep?.id,
+                      ...(trimmed ? { comment: trimmed } : {}),
+                    });
                     return result.status === 'approved'
                       ? t.offers.approvalRecordedFinal
                       : t.offers.approvalRecordedPartial;
@@ -176,7 +184,7 @@ export function OfferApprovalActions({
                 disabled={isPending || !comment.trim()}
                 onClick={() =>
                   run(async () => {
-                    await reject.mutateAsync({ id: offerId, comment: comment.trim() });
+                    await reject.mutateAsync({ id: offerId, approvalId: myStep?.id, comment: comment.trim() });
                     return t.offers.offerRejectedToast;
                   })
                 }
@@ -212,7 +220,7 @@ export function OfferApprovalActions({
                 disabled={isPending}
                 onClick={() =>
                   run(async () => {
-                    await withdraw.mutateAsync({ id: offerId });
+                    await withdraw.mutateAsync({ id: offerId, approvalId: livePendingStep?.id });
                     return t.offers.withdrawApprovalSuccess;
                   })
                 }

@@ -56,11 +56,14 @@ vi.mock('../../apps/web/components/user-picker', () => ({
 
 import { OfferApprovalActions } from '../../apps/web/app/(admin)/recruitment/offers/_components/offer-approval-actions';
 
-const MY_TURN = [{ approver: { id: ME }, status: 'pending' }];
-const SOMEONE_ELSES_TURN = [{ approver: { id: 'other' }, status: 'pending' }];
+const MY_TURN = [{ id: 'step-me', approver: { id: ME }, status: 'pending' }];
+const SOMEONE_ELSES_TURN = [
+  { id: 'step-old', approver: { id: 'other' }, status: 'cancelled' },
+  { id: 'step-live', approver: { id: 'other' }, status: 'pending' },
+];
 const button = (name: string) => screen.getByRole('button', { name });
 
-function renderActions(status: string, approvals: Array<{ approver: { id: string }; status: string }>) {
+function renderActions(status: string, approvals: Array<{ id: string; approver: { id: string }; status: string }>) {
   const onUpdated = vi.fn();
   render(<OfferApprovalActions offerId={OFFER_ID} status={status} approvals={approvals} onUpdated={onUpdated} />);
   return onUpdated;
@@ -90,7 +93,10 @@ describe('approver: "Your decision"', () => {
     });
     fireEvent.click(button(en.offers.approveConfirm));
 
-    await waitFor(() => expect(m.approve).toHaveBeenCalledWith({ id: OFFER_ID, comment: 'Within budget' }));
+    // The decision names the step the approver saw (stale-tab guard).
+    await waitFor(() =>
+      expect(m.approve).toHaveBeenCalledWith({ id: OFFER_ID, approvalId: 'step-me', comment: 'Within budget' }),
+    );
     await waitFor(() => expect(m.toast).toHaveBeenCalledWith(en.offers.approvalRecordedFinal, { type: 'success' }));
     expect(onUpdated).toHaveBeenCalledTimes(1);
   });
@@ -100,7 +106,7 @@ describe('approver: "Your decision"', () => {
     renderActions('pending_approval', MY_TURN);
     fireEvent.click(button(en.offers.approve));
     fireEvent.click(button(en.offers.approveConfirm));
-    await waitFor(() => expect(m.approve).toHaveBeenCalledWith({ id: OFFER_ID }));
+    await waitFor(() => expect(m.approve).toHaveBeenCalledWith({ id: OFFER_ID, approvalId: 'step-me' }));
     await waitFor(() => expect(m.toast).toHaveBeenCalledWith(en.offers.approvalRecordedPartial, { type: 'success' }));
   });
 
@@ -115,7 +121,9 @@ describe('approver: "Your decision"', () => {
     });
     fireEvent.click(button(en.offers.rejectConfirm));
 
-    await waitFor(() => expect(m.reject).toHaveBeenCalledWith({ id: OFFER_ID, comment: 'Over budget' }));
+    await waitFor(() =>
+      expect(m.reject).toHaveBeenCalledWith({ id: OFFER_ID, approvalId: 'step-me', comment: 'Over budget' }),
+    );
     await waitFor(() => expect(m.toast).toHaveBeenCalledWith(en.offers.offerRejectedToast, { type: 'success' }));
   });
 
@@ -158,7 +166,8 @@ describe('requester', () => {
     expect(screen.getByText(en.offers.withdrawApprovalPrompt)).toBeInTheDocument();
     fireEvent.click(button(en.offers.withdrawApprovalConfirm));
 
-    await waitFor(() => expect(m.withdraw).toHaveBeenCalledWith({ id: OFFER_ID }));
+    // Names the live request's pending step, not the cancelled one from an earlier round.
+    await waitFor(() => expect(m.withdraw).toHaveBeenCalledWith({ id: OFFER_ID, approvalId: 'step-live' }));
     await waitFor(() => expect(m.toast).toHaveBeenCalledWith(en.offers.withdrawApprovalSuccess, { type: 'success' }));
     expect(onUpdated).toHaveBeenCalledTimes(1);
   });

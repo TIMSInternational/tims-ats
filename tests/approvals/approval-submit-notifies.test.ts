@@ -122,7 +122,8 @@ describe('vacancy.getPending (approver inbox, vacancy half)', () => {
       ]),
     );
     expect(args.orderBy).toEqual({ createdAt: 'asc' });
-    expect(args.take).toBeLessThanOrEqual(50);
+    // No silent cap (Codex P2): every pending request is listed, like offer.getPending.
+    expect(args.take).toBeUndefined();
     // Explicit projection: no salary, description or other vacancy fields leave the server.
     expect(Object.keys(args.select.vacancy.select).sort()).toEqual(['creator', 'id', 'title']);
     expect(rows).toEqual([

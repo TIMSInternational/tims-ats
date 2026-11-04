@@ -57,7 +57,7 @@ describe('vacancy approval chain — withdraw a pending request', () => {
     expect(m.withdraw).not.toHaveBeenCalled();
     expect(screen.getByText(en.vacancies.withdrawApprovalDesc)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: en.vacancies.withdrawApprovalConfirm }));
-    expect(m.withdraw).toHaveBeenCalledWith({ id: VACANCY });
+    expect(m.withdraw).toHaveBeenCalledWith({ id: VACANCY, approvalId: 'a-other' });
   });
 
   it('is not offered without vacancy:update, on a non-pending vacancy, or to the pending approver', () => {

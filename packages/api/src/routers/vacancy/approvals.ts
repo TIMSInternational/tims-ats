@@ -28,6 +28,12 @@ const vacancyWithApprovalsSelect = {
   approvals: { orderBy: { step: 'asc' as const }, select: approvalSelect },
 } as const;
 
+// A decision names the step the approver saw (`approvalId`). Reject and withdraw return the vacancy to
+// draft and a resubmission creates new steps, so without this an approval left open in an old tab
+// would land on the NEW request. Optional only for older clients; the web sends it.
+const approvalStepInput = z.string().uuid().optional();
+const STALE_APPROVAL_MESSAGE = 'Esta solicitud de aprobación ya no está vigente; recarga la página';
+
 // ---------------------------------------------------------------------------
 // Approvals sub-router
 // ---------------------------------------------------------------------------
@@ -168,6 +174,7 @@ export const vacancyApprovalsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
+        approvalId: approvalStepInput,
         comment: z.string().max(1000).optional(),
       }),
     )
@@ -198,6 +205,7 @@ export const vacancyApprovalsRouter = router({
               organizationId,
               vacancyId: input.id,
               approverId: ctx.user.id,
+              ...(input.approvalId ? { id: input.approvalId } : {}),
               status: 'approved',
               vacancy: { status: 'approved', deletedAt: null },
             },
@@ -206,10 +214,19 @@ export const vacancyApprovalsRouter = router({
         }
 
         const decided = await tx.vacancyApproval.updateMany({
-          where: { organizationId, vacancyId: input.id, approverId: ctx.user.id, status: 'pending' },
+          where: {
+            organizationId,
+            vacancyId: input.id,
+            approverId: ctx.user.id,
+            status: 'pending',
+            ...(input.approvalId ? { id: input.approvalId } : {}),
+          },
           data: { status: 'approved', comment: input.comment, decidedAt: new Date() },
         });
         if (decided.count === 0) {
+          // The step the client decided on is no longer pending (withdrawn and resubmitted, or decided
+          // in another tab): never let that stale decision land on a newer request.
+          if (input.approvalId) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
         }
 
@@ -243,6 +260,7 @@ export const vacancyApprovalsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
+        approvalId: approvalStepInput,
         comment: z.string().min(1).max(1000),
       }),
     )
@@ -264,10 +282,19 @@ export const vacancyApprovalsRouter = router({
         }
 
         const decided = await tx.vacancyApproval.updateMany({
-          where: { organizationId, vacancyId: input.id, approverId: ctx.user.id, status: 'pending' },
+          where: {
+            organizationId,
+            vacancyId: input.id,
+            approverId: ctx.user.id,
+            status: 'pending',
+            ...(input.approvalId ? { id: input.approvalId } : {}),
+          },
           data: { status: 'rejected', comment: input.comment, decidedAt: new Date() },
         });
         if (decided.count === 0) {
+          // The step the client decided on is no longer pending (withdrawn and resubmitted, or decided
+          // in another tab): never let that stale decision land on a newer request.
+          if (input.approvalId) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
         }
 
@@ -288,7 +315,7 @@ export const vacancyApprovalsRouter = router({
   // vacancy returns to draft and every still-pending step is cancelled (decided steps keep their
   // history, exactly as reject does); it can then be resubmitted to someone else.
   withdrawApproval: permissionProcedure('vacancy', 'update')
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().uuid(), approvalId: approvalStepInput }))
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
@@ -302,6 +329,13 @@ export const vacancyApprovalsRouter = router({
         });
         if (moved.count !== 1) {
           throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no está pendiente de aprobación' });
+        }
+        // The request the client saw must still be the live one (not a newer resubmission).
+        if (input.approvalId) {
+          const live = await tx.vacancyApproval.count({
+            where: { organizationId, vacancyId: input.id, id: input.approvalId, status: 'pending' },
+          });
+          if (live !== 1) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
         }
 
         const cancelled = await tx.vacancyApproval.updateMany({
@@ -374,8 +408,9 @@ export const vacancyApprovalsRouter = router({
           select: { id: true, title: true, creator: { select: { id: true, firstName: true, lastName: true } } },
         },
       },
+      // No cap, like offer.getPending: a silent limit would drop requests and understate the count.
+      // The set is bounded by the caller's own pending steps on vacancies still awaiting approval.
       orderBy: { createdAt: 'asc' },
-      take: 50,
     });
     return rows.map((r) => ({ approvalId: r.id, step: r.step, requestedAt: r.createdAt, vacancy: r.vacancy }));
   }),

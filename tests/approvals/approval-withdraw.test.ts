@@ -33,6 +33,8 @@ vi.mock('../../packages/api/src/access', () => ({
 }));
 
 type Kind = 'offer' | 'vacancy';
+// Real UUIDs: decisions and withdrawals carry the step id (`approvalId`), which the input validates.
+const stepId = (i: number) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`;
 
 function seed(kind: Kind, status: string, approvals: Array<[string, string]>) {
   holder.store = createApprovalRaceStore({
@@ -41,7 +43,7 @@ function seed(kind: Kind, status: string, approvals: Array<[string, string]>) {
     parentKey: kind === 'offer' ? 'offerId' : 'vacancyId',
     parent: { id: ITEM_ID, organizationId: ORG_ID, status, deletedAt: null },
     approvals: approvals.map(([approverId, s], i) => ({
-      id: `appr-${i + 1}`,
+      id: stepId(i),
       organizationId: ORG_ID,
       parentId: ITEM_ID,
       approverId,
@@ -137,5 +139,46 @@ describe.each<Kind>(['offer', 'vacancy'])('%s.withdrawApproval', (kind) => {
       expect(store().committed.parent.status).toBe('approved');
       expect(statuses()).toEqual(['approved']);
     }
+  });
+
+  // Codex (tier 1) P1 on this PR: after withdraw -> edit -> resubmit to the same approver, a decision
+  // left open in an old tab must not land on the new request. The client names the step it saw.
+  describe('stale tab after withdraw and resubmit', () => {
+    beforeEach(() => {
+      // Round 1 (cancelled by the withdrawal) and round 2 (the live request), same approver.
+      seed(kind, 'pending_approval', [
+        [APPROVER_A, 'cancelled'],
+        [APPROVER_A, 'pending'],
+      ]);
+    });
+
+    it('a decision on the withdrawn step is refused and changes nothing', async () => {
+      const caller = (await callerFor(APPROVER_A))[kind];
+      await expect(caller.approve({ id: ITEM_ID, approvalId: stepId(0) })).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(caller.reject({ id: ITEM_ID, approvalId: stepId(0), comment: 'no' })).rejects.toMatchObject({
+        code: 'CONFLICT',
+      });
+      expect(store().committed.parent.status).toBe('pending_approval');
+      expect(statuses()).toEqual(['cancelled', 'pending']);
+    });
+
+    it('a decision on the live step goes through', async () => {
+      await (await callerFor(APPROVER_A))[kind].approve({ id: ITEM_ID, approvalId: stepId(1) });
+      expect(store().committed.parent.status).toBe('approved');
+      expect(statuses()).toEqual(['cancelled', 'approved']);
+    });
+
+    it('a withdrawal from the old request is refused; from the live one it works', async () => {
+      const caller = (await callerFor(REQUESTER))[kind];
+      await expect(caller.withdrawApproval({ id: ITEM_ID, approvalId: stepId(0) })).rejects.toMatchObject({
+        code: 'CONFLICT',
+      });
+      expect(store().committed.parent.status).toBe('pending_approval');
+      expect(store().committed.audit).toEqual([]);
+
+      await caller.withdrawApproval({ id: ITEM_ID, approvalId: stepId(1) });
+      expect(store().committed.parent.status).toBe('draft');
+      expect(statuses()).toEqual(['cancelled', 'cancelled']);
+    });
   });
 });

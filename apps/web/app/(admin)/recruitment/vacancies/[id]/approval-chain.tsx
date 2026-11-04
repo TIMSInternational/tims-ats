@@ -91,6 +91,9 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
   const pendingStepForViewer = findPendingApprovalForUser(approvals, userId);
   const showSubmitButton = canSubmitForApproval(vacancyStatus) && can('vacancy', 'update');
   const showWithdrawButton = vacancyStatus === 'pending_approval' && can('vacancy', 'update') && !pendingStepForViewer;
+  // Decisions and withdrawals name the step the viewer saw, so a stale tab can never act on a newer,
+  // resubmitted request (the server answers CONFLICT and the chain refetches).
+  const livePendingStepId = approvals.find((a) => a.status === 'pending')?.id;
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
@@ -161,7 +164,7 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
                 {isViewersPendingStep && (
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => approve.mutate({ id: vacancyId })}
+                      onClick={() => approve.mutate({ id: vacancyId, approvalId: a.id })}
                       disabled={approve.isPending}
                       className="text-[11px] font-medium text-green-600 hover:text-green-700 disabled:opacity-50"
                     >
@@ -192,14 +195,14 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
       )}
       {showWithdraw && (
         <WithdrawApprovalModal
-          onConfirm={() => withdrawApproval.mutate({ id: vacancyId })}
+          onConfirm={() => withdrawApproval.mutate({ id: vacancyId, approvalId: livePendingStepId })}
           onClose={() => setShowWithdraw(false)}
           isPending={withdrawApproval.isPending}
         />
       )}
       {showReject && (
         <RejectModal
-          onConfirm={(comment) => reject.mutate({ id: vacancyId, comment })}
+          onConfirm={(comment) => reject.mutate({ id: vacancyId, approvalId: pendingStepForViewer?.id, comment })}
           onClose={() => setShowReject(false)}
           isPending={reject.isPending}
         />
