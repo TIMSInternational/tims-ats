@@ -6,6 +6,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser } from '../../access';
 import { assertVacancyPlacement, assertVacancyUpdatePlacement } from './org-placement';
+import { DEFAULT_PIPELINE_STAGES } from './default-stages';
 
 // ---------------------------------------------------------------------------
 // Shared selects — explicit field selection (CLAUDE.md: never return full records)
@@ -102,19 +103,6 @@ const vacancyMutationSelect = {
   positions: true,
   createdAt: true,
 } satisfies Prisma.VacancySelect;
-
-// A vacancy must have a first stage before either a recruiter or a public
-// applicant can enter its pipeline. Keep this in the vacancy's nested create
-// so a failed stage insert rolls back the vacancy as well.
-const DEFAULT_PIPELINE_STAGES = [
-  { name: 'Aplicado', slaHours: 24 },
-  { name: 'Screening', slaHours: 48 },
-  { name: 'Entrevista RRHH', slaHours: 72 },
-  { name: 'Prueba Tecnica', slaHours: 96 },
-  { name: 'Entrevista Final', slaHours: 48 },
-  { name: 'Oferta', slaHours: 24 },
-  { name: 'Contratado', slaHours: 8 },
-] as const;
 
 // ---------------------------------------------------------------------------
 // Shared Zod schemas
