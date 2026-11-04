@@ -305,4 +305,81 @@ describe('invitation account setup', () => {
     expect(screen.queryByRole('button', { name: 'Microsoft' })).not.toBeInTheDocument();
     expect(screen.getByText(/nunca creaste una/)).toBeInTheDocument();
   });
+
+  it('after a rejected session, the next submit signs in with the entered password (E-02, review fix)', async () => {
+    let session: { access_token: string; user: { email: string } } | null = {
+      access_token: 'rejected-token',
+      user: { email: invitation.email },
+    };
+    state.getSession.mockImplementation(async () => ({ data: { session } }));
+    state.signOut.mockImplementation(async () => {
+      session = null;
+      return { error: null };
+    });
+    let completes = 0;
+    state.request.mockImplementation((action: string) => {
+      if (action === 'preview') return Promise.resolve({ ...invitation, accountExists: true });
+      completes += 1;
+      return Promise.resolve({ outcome: completes === 1 ? 'sign_in_required' : 'complete' });
+    });
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Completar acceso' }));
+    await screen.findByLabelText('Contraseña');
+    expect(state.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'the-real-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión y unirme' }));
+    await screen.findByText('Tu acceso está listo');
+    expect(state.signIn).toHaveBeenCalledWith({ email: invitation.email, password: 'the-real-password' });
+    expect(state.request).toHaveBeenLastCalledWith('complete', expect.any(Object), 'fresh-token');
+  });
+
+  it('never reuses a rejected token even when signing it out fails', async () => {
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'rejected-token', user: { email: invitation.email } } },
+    });
+    state.signOut.mockRejectedValue(new Error('storage unavailable'));
+    let completes = 0;
+    state.request.mockImplementation((action: string) => {
+      if (action === 'preview') return Promise.resolve({ ...invitation, accountExists: true });
+      completes += 1;
+      return Promise.resolve({ outcome: completes === 1 ? 'sign_in_required' : 'complete' });
+    });
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Completar acceso' }));
+    fireEvent.change(await screen.findByLabelText('Contraseña'), { target: { value: 'the-real-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión y unirme' }));
+    await screen.findByText('Tu acceso está listo');
+    expect(state.signIn).toHaveBeenCalledOnce();
+    expect(state.request).toHaveBeenLastCalledWith('complete', expect.any(Object), 'fresh-token');
+  });
+
+  it('warns again when another account signed in after the page loaded (E-19, review fix)', async () => {
+    state.getSession
+      .mockResolvedValueOnce({ data: { session: null } })
+      .mockResolvedValue({ data: { session: { access_token: 'other-token', user: { email: 'other@example.test' } } } });
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.change(screen.getByLabelText('Confirmar contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta y unirme' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('other@example.test');
+    expect(state.request).not.toHaveBeenCalledWith('register', expect.anything());
+    expect(state.signIn).not.toHaveBeenCalled();
+  });
+
+  it('does not start SSO over another account that signed in after the page loaded', async () => {
+    state.getSession
+      .mockResolvedValueOnce({ data: { session: null } })
+      .mockResolvedValue({ data: { session: { access_token: 'other-token', user: { email: 'other@example.test' } } } });
+    state.request.mockImplementation((action: string) =>
+      action === 'preview' ? Promise.resolve({ ...invitation, accountExists: true }) : Promise.resolve({ outcome: 'complete' }),
+    );
+    render(<InvitationSetup />);
+    await screen.findByText('TIMS Test');
+    fireEvent.click(screen.getByRole('button', { name: 'Google' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('other@example.test');
+    expect(state.oauth).not.toHaveBeenCalled();
+  });
 });

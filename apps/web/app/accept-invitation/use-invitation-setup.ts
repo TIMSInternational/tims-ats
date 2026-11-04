@@ -33,6 +33,8 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
   const [secret, setSecret] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [sessionToken, setSessionToken] = useState<string>();
+  // An access token the API refused (sign_in_required): never offered again, even if signing it out failed.
+  const [rejectedToken, setRejectedToken] = useState<string>();
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -91,6 +93,18 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
     setAttempt((value) => value + 1);
   }
 
+  /**
+   * The email of a session in this browser that belongs to someone OTHER than the invitee, if any. Checked
+   * again before every action that would replace it, since another tab can sign in after the preview.
+   */
+  async function otherAccount(): Promise<string | undefined> {
+    if (!invitation) return undefined;
+    const { data } = await createSupabaseBrowserClient().auth.getSession();
+    const session = data.session;
+    if (!session || session.user.email?.toLowerCase() === invitation.email.toLowerCase()) return undefined;
+    return session.user.email ?? '';
+  }
+
   /** Signs the OTHER account out of this browser only (never its sessions elsewhere), then continues. */
   function leaveOtherSession() {
     return run(async () => {
@@ -111,6 +125,12 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
     }
     setBusy(true);
     try {
+      const other = await otherAccount();
+      if (other !== undefined) {
+        // Ask first: continuing would sign the invitee in over that account.
+        setOtherSession(other);
+        return;
+      }
       if (!existing) {
         const registered = resultSchema.parse(await setupRequest('register', { token, password: secret }));
         if (registered.outcome !== 'account_created') {
@@ -123,7 +143,8 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
       const auth = createSupabaseBrowserClient();
       const latest = await auth.auth.getSession();
       let accessToken =
-        latest.data.session?.user.email?.toLowerCase() === invitation.email.toLowerCase()
+        latest.data.session?.user.email?.toLowerCase() === invitation.email.toLowerCase() &&
+        latest.data.session.access_token !== rejectedToken
           ? latest.data.session.access_token
           : undefined;
       if (!accessToken) {
@@ -142,10 +163,13 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
       const result = resultSchema.parse(await setupRequest('complete', { token, firstName, lastName }, accessToken));
       if (result.outcome === 'complete') setComplete(true);
       else if (result.outcome === 'sign_in_required') {
-        // The session was not accepted (e.g. an SSO email that is not verified): offer password and recovery.
+        // The session was not accepted (e.g. an SSO email that is not verified): drop it so the next submit
+        // authenticates with the password, and offer password and recovery.
+        setRejectedToken(accessToken);
         setSessionToken(undefined);
         setExisting(true);
         setError(t.signinRequired);
+        await auth.auth.signOut({ scope: 'local' }).catch(() => undefined);
       } else {
         const known: Record<string, string> = {
           wrong_account: t.wrong,
@@ -176,6 +200,11 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
 
   function social(provider: 'google' | 'azure') {
     return run(async () => {
+      const other = await otherAccount();
+      if (other !== undefined) {
+        setOtherSession(other);
+        return;
+      }
       const { error: failure } = await invitationSocialSignIn(provider, token);
       if (failure) setError(t.error);
     });
