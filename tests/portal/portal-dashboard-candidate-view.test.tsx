@@ -5,6 +5,7 @@ import es from '../../apps/web/lib/i18n/es.json';
 const mocks = vi.hoisted(() => ({
   applications: [] as unknown[],
   movements: [] as unknown[],
+  appStatus: 'active',
   interviews: [] as unknown[],
   offers: [] as unknown[],
 }));
@@ -15,7 +16,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
     candidatePortal: {
       myApplications: { useQuery: () => ({ data: mocks.applications, isLoading: false, isError: false }) },
       applicationStatus: {
-        useQuery: () => ({ data: { movements: mocks.movements }, isLoading: false, isError: false }),
+        useQuery: () => ({ data: { status: mocks.appStatus, movements: mocks.movements }, isLoading: false, isError: false }),
       },
       myInterviews: { useQuery: () => ({ data: mocks.interviews, isLoading: false, isError: false }) },
       myOffers: { useQuery: () => ({ data: mocks.offers, isLoading: false, isError: false }) },
@@ -31,6 +32,7 @@ const plain = (text: string | null) => (text ?? '').replace(/[  ]/g, ' ');
 const pd = es.portalDashboard;
 
 beforeEach(() => {
+  mocks.appStatus = 'active';
   mocks.applications = [
     {
       id: 'a1',
@@ -81,6 +83,35 @@ describe('candidate portal — applications', () => {
     expect(items[1]).toContain(pd.phaseReview);
     expect(items[1]).toContain('5 de noviembre de 2026');
     expect(container.textContent).not.toMatch(/Screening|Entrevista RRHH/);
+  });
+});
+
+describe('candidate portal — hiring is announced by status, never by a stage name', () => {
+  it('an active application in "Contratado" / "No contratado" is not shown as selected', () => {
+    mocks.applications = [
+      { id: 'a1', status: 'active', appliedAt: '2026-11-05T15:00:00.000Z', vacancy: { title: 'Analista', company: null }, currentStage: { name: 'No contratado' } },
+    ];
+    mocks.movements = [{ movedAt: '2026-11-07T15:00:00.000Z', toStage: { name: 'Contratado' } }];
+    const { container } = render(<DashboardApplications orgSlug="acme" timeZone="America/Costa_Rica" />);
+    fireEvent.click(screen.getByRole('button', { name: pd.viewTimeline }));
+    expect(container.textContent).not.toContain(pd.phaseHired);
+    expect(container.textContent).not.toContain(pd.phaseHiredDesc);
+  });
+
+  it('a hired application shows the hire on its latest move', () => {
+    mocks.appStatus = 'hired';
+    mocks.applications = [
+      { id: 'a1', status: 'hired', appliedAt: '2026-11-05T15:00:00.000Z', vacancy: { title: 'Analista', company: null }, currentStage: { name: 'Contratado' } },
+    ];
+    mocks.movements = [
+      { movedAt: '2026-11-07T15:00:00.000Z', toStage: { name: 'Contratado' } },
+      { movedAt: '2026-11-06T15:00:00.000Z', toStage: { name: 'Oferta' } },
+    ];
+    const { container } = render(<DashboardApplications orgSlug="acme" timeZone="America/Costa_Rica" />);
+    fireEvent.click(screen.getByRole('button', { name: pd.viewTimeline }));
+    const items = [...container.querySelectorAll('ol li')].map((li) => li.textContent ?? '');
+    expect(items[0]).toContain(pd.phaseHired);
+    expect(items[1]).toContain(pd.phaseOffer);
   });
 });
 

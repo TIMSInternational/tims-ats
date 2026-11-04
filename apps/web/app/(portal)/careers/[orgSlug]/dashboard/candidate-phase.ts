@@ -9,11 +9,15 @@ function normalize(value: string): string {
   return value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
 
+// Hired / closed come ONLY from the application status: a stage name never announces a selection
+// ("No contratado" and "Entrevista de contratación" are stage names too), so an active application in
+// a hiring-like stage stays in its neutral phase until the hire is actually recorded.
 export function candidatePhase(stageName: string | null | undefined, status: string): CandidatePhase {
   if (status === 'hired') return 'hired';
   if (status === 'rejected' || status === 'withdrawn') return 'closed';
   const name = normalize(stageName ?? '');
-  if (/\b(contratad|contratacion|hired|ingreso)/.test(name)) return 'hired';
+  // A negated outcome ("No contratado", "Oferta no aceptada") is never read as that outcome.
+  if (/\bno\s+(contratad|seleccionad|aceptad|apt[oa]|continua)/.test(name)) return 'review';
   if (/\b(oferta|offer)/.test(name)) return 'offer';
   if (/\b(entrevista|interview|panel|comite)/.test(name)) return 'interviews';
   return 'review';

@@ -109,8 +109,8 @@ export default function OfferSignPage() {
                 </div>
                 <div className="text-sm">
                   <span className="text-[#8B8B8B] block text-xs">{t.offers.signStartDate}</span>
-                  {/* Stored at local noon on the chosen day, so the UTC calendar date is that day. */}
-                  <span className="font-medium text-[#333]">{formatCandidateDate(o.startDate, locale, null)}</span>
+                  {/* The organization's zone, like the candidate portal (UTC when it has none). */}
+                  <span className="font-medium text-[#333]">{formatCandidateDate(o.startDate, locale, o.organization.timeZone)}</span>
                 </div>
               </div>
             </div>

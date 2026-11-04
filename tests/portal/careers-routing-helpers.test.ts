@@ -40,7 +40,8 @@ describe('candidate-facing pipeline phases', () => {
       'Oferta',
       'Contratado',
     ].map((name) => candidatePhase(name, 'active'));
-    expect(phases).toEqual(['review', 'review', 'interviews', 'review', 'interviews', 'offer', 'hired']);
+    // "Contratado" is only a stage name: the hire is announced by the application status, never by it.
+    expect(phases).toEqual(['review', 'review', 'interviews', 'review', 'interviews', 'offer', 'review']);
   });
 
   it('lets the application status win: rejected/withdrawn are closed, hired is hired', () => {
@@ -48,6 +49,15 @@ describe('candidate-facing pipeline phases', () => {
     expect(candidatePhase('Oferta', 'withdrawn')).toBe('closed');
     expect(candidatePhase('Screening', 'hired')).toBe('hired');
     expect(candidatePhase(null, 'active')).toBe('review');
+  });
+
+  it('never announces a selection from a stage name (Codex review)', () => {
+    expect(candidatePhase('No contratado', 'active')).toBe('review');
+    expect(candidatePhase('Entrevista de contratación', 'active')).toBe('interviews');
+    expect(candidatePhase('Oferta no aceptada', 'active')).toBe('review');
+    for (const name of ['Contratado', 'Contratación', 'Hired', 'Ingreso', 'No contratado']) {
+      expect(candidatePhase(name, 'active')).not.toBe('hired');
+    }
   });
 
   it('collapses consecutive moves within one phase', () => {

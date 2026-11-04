@@ -345,6 +345,27 @@ describe('candidate-facing salary rendering', () => {
     expect(container.textContent).not.toContain('CRC');
   });
 
+  it('public signing page shows the start date in the organization zone (Codex review)', () => {
+    // Chosen as 9 Nov by a recruiter in UTC+13 (stored at their local noon = 8 Nov 23:00 UTC).
+    signingOffer.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        status: 'sent',
+        salary: 10_200_000,
+        currency: 'CRC',
+        contractType: 'Plazo indefinido',
+        startDate: '2026-11-08T23:00:00Z',
+        benefits: null,
+        candidate: { firstName: 'Ana', lastName: 'Gomez' },
+        vacancy: { title: 'Analista' },
+        organization: { name: 'Example Co', logo: null, timeZone: 'Pacific/Auckland' },
+      },
+    });
+    const { container } = render(createElement(OfferSignPage));
+    expect(container.textContent).toContain('9 de noviembre de 2026');
+  });
+
   it('candidate portal offer card leads with the monthly amount, then the annual base', () => {
     portalOffers.mockReturnValue({
       isLoading: false,

@@ -39,7 +39,11 @@ export function DashboardApplicationTimeline({
   // The API returns moves newest-first. Collapse oldest-first (each phase is dated by when it began),
   // then show the phases newest-first again.
   const oldestFirst = [...data.movements].sort((a, b) => new Date(a.movedAt).getTime() - new Date(b.movedAt).getTime());
-  const phases = collapseToPhases(oldestFirst, (m) => candidatePhase(m.toStage.name, 'active')).reverse();
+  // Only the latest move reflects the application's status (hired / closed); earlier ones were steps.
+  const latest = oldestFirst[oldestFirst.length - 1];
+  const phases = collapseToPhases(oldestFirst, (m) =>
+    candidatePhase(m.toStage.name, m === latest ? data.status : 'active'),
+  ).reverse();
 
   return (
     <div className="mt-3 border-t border-[#EDEDED] pt-3">
