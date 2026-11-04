@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { APPLICATION_CONSENT_TEXT_VERSION } from '@tims/shared';
 import { trpc } from '../../../../../../lib/trpc';
@@ -80,11 +80,19 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   // asks first — and nothing closes it while the application is being sent.
   const hasInput = [firstName, lastName, email, phone, location, currentTitle, currentCompany, yearsExperience, linkedinUrl, coverLetter]
     .some((value) => value.trim().length > 0) || cv.file !== null || consentAccepted;
-  const requestClose = () => {
-    if (submitting) return;
-    if (!success && hasInput && !window.confirm(p.discardConfirm)) return;
-    onClose();
-  };
+  // A STABLE callback: Modal re-runs its focus effect whenever onClose changes identity, so a fresh
+  // function per keystroke would pull focus out of the field being typed in. The guard reads the
+  // latest state from a ref instead.
+  const closeState = useRef({ submitting, success, hasInput, onClose, message: p.discardConfirm });
+  useEffect(() => {
+    closeState.current = { submitting, success, hasInput, onClose, message: p.discardConfirm };
+  });
+  const requestClose = useCallback(() => {
+    const s = closeState.current;
+    if (s.submitting) return;
+    if (!s.success && s.hasInput && !window.confirm(s.message)) return;
+    s.onClose();
+  }, []);
 
   // The vacancy stopped taking applications while the form was open: say so, and refetch the page so
   // it shows the closed state.

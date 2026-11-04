@@ -40,10 +40,11 @@ beforeEach(() => {
       currentStage: { name: 'Prueba Tecnica' },
     },
   ];
+  // As the API returns them: newest first (candidate-portal.repository orders movedAt desc).
   mocks.movements = [
-    { movedAt: '2026-11-05T15:00:00.000Z', toStage: { name: 'Screening' } },
-    { movedAt: '2026-11-06T15:00:00.000Z', toStage: { name: 'Entrevista RRHH' } },
     { movedAt: '2026-11-07T15:00:00.000Z', toStage: { name: 'Entrevista Final' } },
+    { movedAt: '2026-11-06T15:00:00.000Z', toStage: { name: 'Entrevista RRHH' } },
+    { movedAt: '2026-11-05T15:00:00.000Z', toStage: { name: 'Screening' } },
   ];
   mocks.interviews = [
     {
@@ -69,13 +70,16 @@ describe('candidate portal — applications', () => {
     expect(container.textContent).toContain(`${pd.appliedOn} 4 de noviembre de 2026`);
   });
 
-  it('collapses the stage history into phases', () => {
+  it('collapses the stage history into phases, each dated by when it began, newest first', () => {
     const { container } = render(<DashboardApplications orgSlug="acme" timeZone="America/Costa_Rica" />);
     fireEvent.click(screen.getByRole('button', { name: pd.viewTimeline }));
-    const items = [...container.querySelectorAll('ol li')].map((li) => li.textContent);
+    const items = [...container.querySelectorAll('ol li')].map((li) => li.textContent ?? '');
     expect(items).toHaveLength(2);
-    expect(items[0]).toContain(pd.phaseReview);
-    expect(items[1]).toContain(pd.phaseInterviews);
+    // Interviews began with "Entrevista RRHH" on 6 Nov — not the later "Entrevista Final" on 7 Nov.
+    expect(items[0]).toContain(pd.phaseInterviews);
+    expect(items[0]).toContain('6 de noviembre de 2026');
+    expect(items[1]).toContain(pd.phaseReview);
+    expect(items[1]).toContain('5 de noviembre de 2026');
     expect(container.textContent).not.toMatch(/Screening|Entrevista RRHH/);
   });
 });

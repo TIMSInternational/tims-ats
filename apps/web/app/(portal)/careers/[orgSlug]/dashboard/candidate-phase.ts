@@ -19,7 +19,10 @@ export function candidatePhase(stageName: string | null | undefined, status: str
   return 'review';
 }
 
-/** One entry per run of consecutive moves that land in the same phase (the earliest move of the run). */
+/**
+ * One entry per run of consecutive moves that land in the same phase, keeping the FIRST item of each
+ * run — pass the moves oldest-first so that item is when the phase began.
+ */
 export function collapseToPhases<T>(
   items: readonly T[],
   phaseOf: (item: T) => CandidatePhase,

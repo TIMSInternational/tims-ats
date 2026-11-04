@@ -36,13 +36,18 @@ export function DashboardApplicationTimeline({
     return <p className="text-[12px] text-muted mt-3">{t.portalDashboard.timelineEmpty}</p>;
   }
 
+  // The API returns moves newest-first. Collapse oldest-first (each phase is dated by when it began),
+  // then show the phases newest-first again.
+  const oldestFirst = [...data.movements].sort((a, b) => new Date(a.movedAt).getTime() - new Date(b.movedAt).getTime());
+  const phases = collapseToPhases(oldestFirst, (m) => candidatePhase(m.toStage.name, 'active')).reverse();
+
   return (
     <div className="mt-3 border-t border-[#EDEDED] pt-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-2">
         {t.portalDashboard.timelineTitle}
       </p>
       <ol className="space-y-2">
-        {collapseToPhases(data.movements, (m) => candidatePhase(m.toStage.name, 'active')).map(({ phase, item: m }, i) => (
+        {phases.map(({ phase, item: m }, i) => (
           <li key={`${m.movedAt}-${i}`} className="flex items-start gap-2">
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1F114C]" aria-hidden />
             <div className="flex flex-wrap items-baseline gap-x-2">
