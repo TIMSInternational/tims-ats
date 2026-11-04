@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
@@ -31,7 +31,12 @@ export default function PortalLoginPage() {
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [sentTo, setSentTo] = useState('');
+  // False when the code step was opened with "I already have a code" (nothing sent from this page).
+  const [justSent, setJustSent] = useState(false);
   const [busy, setBusy] = useState<'send' | 'verify' | null>(null);
+  // One auth request at a time. A resend replaces the emailed code, so it must never race a verification; the
+  // ref closes the gap before the disabled buttons re-render.
+  const inFlight = useRef(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -76,13 +81,16 @@ export default function PortalLoginPage() {
 
   const showCodeStep = (address: string, cooldownSeconds: number, info: string) => {
     setSentTo(address);
+    setJustSent(true);
     setStep('code');
     setNotice(info);
     countdown.start(cooldownSeconds);
   };
 
   const requestEmail = async (address: string) => {
+    if (inFlight.current) return;
     if (!ensureCanonicalAuthOrigin()) return;
+    inFlight.current = true;
     const resending = step === 'code';
     setBusy('send');
     setError('');
@@ -93,6 +101,7 @@ export default function PortalLoginPage() {
     try {
       emailRedirectTo = getAuthRedirectUrl('/auth/callback', { next: `/careers/${orgSlug}/dashboard` });
     } catch {
+      inFlight.current = false;
       setBusy(null);
       setError(m.errorGeneric);
       return;
@@ -103,6 +112,7 @@ export default function PortalLoginPage() {
     });
     // A Turnstile token is single-use, so whatever happened the next request needs a fresh one.
     resetCaptcha();
+    inFlight.current = false;
     setBusy(null);
     if (otpError) {
       const failure = classifyOtpSendError(otpError);
@@ -124,7 +134,22 @@ export default function PortalLoginPage() {
     void requestEmail(value);
   };
 
+  // The code from an email already received — requested earlier, in another tab, or before a reload — works
+  // without sending a new one (which would also replace it).
+  const enterExistingCode = () => {
+    const value = email.trim();
+    if (inFlight.current || !value || !value.includes('@')) return;
+    setSentTo(value);
+    setJustSent(false);
+    setStep('code');
+    setError('');
+    setNotice('');
+    setSubmitted(true);
+  };
+
   const verifyCode = async (code: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy('verify');
     setError('');
     setNotice('');
@@ -134,6 +159,7 @@ export default function PortalLoginPage() {
       type: 'email',
     });
     if (verifyError) {
+      inFlight.current = false;
       setBusy(null);
       setError(verifyFailureMessage(classifyOtpVerifyError(verifyError)));
       return;
@@ -165,6 +191,7 @@ export default function PortalLoginPage() {
           {step === 'code' ? (
             <PortalCodeStep
               sentTo={sentTo}
+              justSent={justSent}
               notice={notice}
               error={error}
               verifying={busy === 'verify'}
@@ -183,6 +210,7 @@ export default function PortalLoginPage() {
               email={email}
               onEmailChange={setEmail}
               onSubmit={submitEmail}
+              onHaveCode={enterExistingCode}
               sending={busy === 'send'}
               error={error}
               showLinkFailed={linkFailed}

@@ -232,6 +232,48 @@ describe('portal login page: code sign-in', () => {
     expect(screen.queryByLabelText(m.codeLabel)).toBeNull();
   });
 
+  it('verifies a code already in the inbox without sending another email', async () => {
+    render(<PortalLoginPage />);
+    fireEvent.change(screen.getByLabelText(m.emailLabel), { target: { value: ADDRESS } });
+    fireEvent.click(screen.getByRole('button', { name: m.haveCode }));
+
+    expect(auth.signInWithOtp).not.toHaveBeenCalled();
+    expect(screen.getByText(m.enterCodeDesc.replace('{email}', ADDRESS))).toBeInTheDocument();
+    // Nothing was sent, so a new email may be requested right away.
+    expect(screen.getByRole('button', { name: m.resend })).toBeEnabled();
+
+    await typeCodeAndSubmit('654321');
+    expect(auth.verifyOtp).toHaveBeenCalledWith({ email: ADDRESS, token: '654321', type: 'email' });
+    expect(router.replace).toHaveBeenCalledWith('/careers/acme/dashboard');
+  });
+
+  it('never runs a verification while a resend is in flight', async () => {
+    render(<PortalLoginPage />);
+    fireEvent.change(screen.getByLabelText(m.emailLabel), { target: { value: ADDRESS } });
+    fireEvent.click(screen.getByRole('button', { name: m.haveCode }));
+    fireEvent.change(screen.getByLabelText(m.codeLabel), { target: { value: '123456' } });
+
+    let finishSend: (value: { data: object; error: null }) => void = () => undefined;
+    auth.signInWithOtp.mockReturnValue(
+      new Promise((resolve) => {
+        finishSend = resolve;
+      }),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: m.resend }));
+    });
+    expect(screen.getByRole('button', { name: m.verifyCode })).toBeDisabled();
+    await act(async () => {
+      fireEvent.submit(screen.getByLabelText(m.codeLabel).closest('form')!);
+    });
+    expect(auth.verifyOtp).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishSend({ data: {}, error: null });
+    });
+    expect(screen.getByRole('status').textContent).toBe(m.resent);
+  });
+
   it('requires and forwards the Turnstile token when a site key is configured', async () => {
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'site-key');
     render(<PortalLoginPage />);

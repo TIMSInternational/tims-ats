@@ -7,6 +7,8 @@ interface PortalEmailStepProps {
   email: string;
   onEmailChange: (value: string) => void;
   onSubmit: () => void;
+  // Go straight to the code step for a code that is already in the inbox (another tab, a reload, another device).
+  onHaveCode: () => void;
   sending: boolean;
   error: string;
   showLinkFailed: boolean;
@@ -22,6 +24,7 @@ export function PortalEmailStep({
   email,
   onEmailChange,
   onSubmit,
+  onHaveCode,
   sending,
   error,
   showLinkFailed,
@@ -77,6 +80,14 @@ export function PortalEmailStep({
         className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
       >
         {sending ? m.sending : m.sendLink}
+      </button>
+      <button
+        type="button"
+        onClick={onHaveCode}
+        disabled={sending || !email.includes('@')}
+        className="w-full text-[13px] font-semibold text-[#1F114C] hover:underline disabled:text-muted disabled:no-underline disabled:cursor-not-allowed"
+      >
+        {m.haveCode}
       </button>
     </form>
   );

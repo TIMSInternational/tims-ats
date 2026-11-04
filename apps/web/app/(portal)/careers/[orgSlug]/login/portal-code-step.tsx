@@ -7,6 +7,8 @@ import { isCompleteOtp, normalizeOtpInput } from '../../../../../lib/portal-auth
 
 interface PortalCodeStepProps {
   sentTo: string;
+  // False when the candidate chose "I already have a code": nothing was sent from this page.
+  justSent: boolean;
   notice: string;
   error: string;
   verifying: boolean;
@@ -21,10 +23,12 @@ interface PortalCodeStepProps {
   captchaSatisfied: boolean;
 }
 
-// Step 2 of the portal sign-in: the email went out. The candidate either taps the link (same browser only) or
-// types the 6-digit code from it here, and can ask for another email once the cooldown ends or fix the address.
+// Step 2 of the portal sign-in: the email went out (or the candidate already holds one). The candidate either taps
+// the link (same browser only) or types the 6-digit code from it here, and can ask for another email once the
+// cooldown ends or fix the address.
 export function PortalCodeStep({
   sentTo,
+  justSent,
   notice,
   error,
   verifying,
@@ -41,25 +45,33 @@ export function PortalCodeStep({
   const { t } = useI18n();
   const m = t.portalAuth;
   const [code, setCode] = useState('');
-  const canResend = secondsLeft === 0 && !sending && !verifying;
+  // One request at a time: a resend replaces the emailed code, so it must not race a verification.
+  const busy = sending || verifying;
+  const canResend = secondsLeft === 0 && !busy;
 
   return (
     <div className="space-y-4">
       <div className="text-center">
-        <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-          <svg
-            className="w-6 h-6 text-green-600"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-        <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{m.checkEmailTitle}</h3>
-        <p className="text-[13px] text-[#585858] break-words">{m.checkEmailDesc.replace('{email}', sentTo)}</p>
+        {justSent && (
+          <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-6 h-6 text-green-600"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        )}
+        <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">
+          {justSent ? m.checkEmailTitle : m.enterCodeTitle}
+        </h3>
+        <p className="text-[13px] text-[#585858] break-words">
+          {(justSent ? m.checkEmailDesc : m.enterCodeDesc).replace('{email}', sentTo)}
+        </p>
       </div>
 
       {notice && !error && (
@@ -76,7 +88,7 @@ export function PortalCodeStep({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (isCompleteOtp(code)) onVerify(code);
+          if (!busy && isCompleteOtp(code)) onVerify(code);
         }}
         className="space-y-3"
       >
@@ -103,7 +115,7 @@ export function PortalCodeStep({
         </div>
         <button
           type="submit"
-          disabled={verifying || !isCompleteOtp(code)}
+          disabled={busy || !isCompleteOtp(code)}
           className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
         >
           {verifying ? m.verifying : m.verifyCode}
@@ -128,7 +140,7 @@ export function PortalCodeStep({
           <button
             type="button"
             onClick={onChangeEmail}
-            disabled={sending || verifying}
+            disabled={busy}
             className="text-[13px] text-[#585858] hover:underline disabled:opacity-50"
           >
             {m.changeEmail}
