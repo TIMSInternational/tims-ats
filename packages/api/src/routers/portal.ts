@@ -177,13 +177,27 @@ export const portalRouter = router({
           createdAt: true,
           company: { select: { name: true } },
           unit: { select: { name: true } },
-          organization: { select: { name: true } },
+          organization: { select: { name: true, logo: true } },
           jobProfile: {
             select: { competencies: true, requirements: true },
           },
         },
       });
-      if (!vacancy) return null;
+      if (!vacancy) {
+        // A shared link to a vacancy of THIS organization that was closed (or frozen) says so instead
+        // of "not found" — the candidate learns it no longer takes applications. Nothing else about
+        // the vacancy is returned. Drafts and other organizations' ids stay indistinguishable (null).
+        const closed = await db.vacancy.findFirst({
+          where: {
+            id: input.id,
+            status: { in: ['closed', 'frozen'] },
+            deletedAt: null,
+            organization: { is: { slug: input.orgSlug } },
+          },
+          select: { id: true },
+        });
+        return closed ? ({ closed: true } as const) : null;
+      }
       const applicantCount = await db.application.count({ where: { vacancyId: vacancy.id } });
       // Anonymous endpoint: return ONLY the fields the public careers page renders, built
       // explicitly so internal columns (e.g. vacancy `settings`) can never ride along.
@@ -201,7 +215,7 @@ export const portalRouter = router({
         createdAt: vacancy.createdAt,
         company: vacancy.company ? { name: vacancy.company.name } : null,
         unit: vacancy.unit ? { name: vacancy.unit.name } : null,
-        organization: { name: vacancy.organization.name },
+        organization: { name: vacancy.organization.name, logo: vacancy.organization.logo },
         jobProfile: vacancy.jobProfile
           ? { competencies: vacancy.jobProfile.competencies, requirements: vacancy.jobProfile.requirements }
           : null,

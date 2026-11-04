@@ -17,11 +17,14 @@ interface JobSidebarItemProps {
     createdAt: Date | string;
     company: { name: string } | null;
   };
+  /** The organization that owns the board: shown when the vacancy has no client company. */
+  orgName: string;
 }
 
-export function JobSidebarItem({ orgSlug, isActive, item }: JobSidebarItemProps) {
+export function JobSidebarItem({ orgSlug, isActive, item, orgName }: JobSidebarItemProps) {
   const { t, locale } = useI18n();
   const p = t.portal;
+  const employerName = item.company?.name || orgName || p.companyFallback;
   const salary = parsePortalSalary(item.salary);
   const contract = enumLabel(item.contractType, p.contractTypes);
 
@@ -32,13 +35,13 @@ export function JobSidebarItem({ orgSlug, isActive, item }: JobSidebarItemProps)
     >
       <div className="flex gap-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1F114C] text-[10px] font-bold text-white">
-          {(item.company?.name ?? p.companyFallback).charAt(0).toUpperCase()}
+          {employerName.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <p className={`truncate text-[13px] font-semibold ${isActive ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>
             {item.title}
           </p>
-          <p className="truncate text-[11px] text-muted">{item.company?.name}</p>
+          <p className="truncate text-[11px] text-muted">{employerName}</p>
           {item.location && (
             <p className="text-[11px] text-muted">
               {item.location}

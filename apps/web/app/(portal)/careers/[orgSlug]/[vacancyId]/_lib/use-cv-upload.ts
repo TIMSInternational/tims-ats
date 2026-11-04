@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { trpc } from '../../../../../../lib/trpc';
 import { validateCvFile, type CvValidationError } from './cv-validation';
+import { isVacancyClosedError } from './apply-error-message';
 
 type CvUploadError = CvValidationError | 'upload_failed';
 
@@ -58,7 +59,10 @@ export function useCvUpload(vacancyId: string): UseCvUploadResult {
       const uploadRes = await fetch(url, { method: 'POST', body: formData });
       if (!uploadRes.ok) throw new Error('S3 upload failed');
       return { cvFileKey: key, cvFileName: file.name };
-    } catch {
+    } catch (err) {
+      // The vacancy is no longer published (the presign lookup found nothing): not an upload
+      // problem — the caller tells the candidate the vacancy closed.
+      if (isVacancyClosedError(err)) throw new Error('vacancy_closed');
       // Covers both a presign error and an S3 POST that fails or is blocked (network/CSP
       // errors reject the fetch). The file is KEPT so the review step can offer
       // "retry" or "remove CV and continue" instead of silently doing nothing.

@@ -1,79 +1,82 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { isPilotScope } from '../../../../../lib/launch-scope';
+import { OrgLogo } from '../../../../../components/org-logo';
 
 interface PortalNavProps {
   orgName: string;
   orgSlug: string;
+  /** `organizations.logo`; the org name is shown when it is missing or would not load. */
+  orgLogo?: string | null;
 }
 
-const navLinks = [
-  { label: 'Inicio', href: '#', active: true },
-  { label: 'Vacantes', href: '#vacantes', active: false },
-  { label: 'Beneficios', href: '#beneficios', active: false },
+type NavKey = 'navHome' | 'navVacancies' | 'navBenefits';
+
+const navLinks: ReadonlyArray<{ key: NavKey; href: string }> = [
+  { key: 'navHome', href: '#' },
+  { key: 'navVacancies', href: '#vacantes' },
+  { key: 'navBenefits', href: '#beneficios' },
 ];
 // The '#beneficios' section is not rendered under the pilot launch scope, so neither is its anchor.
 const visibleNavLinks = isPilotScope() ? navLinks.filter((l) => l.href !== '#beneficios') : navLinks;
 
-export function PortalNav({ orgName, orgSlug }: PortalNavProps) {
+export function PortalNav({ orgName, orgSlug, orgLogo = null }: PortalNavProps) {
   const { t } = useI18n();
-  const [activeLink, setActiveLink] = useState('Inicio');
+  const p = t.portal;
+  const [activeLink, setActiveLink] = useState<NavKey>('navHome');
 
   return (
     <nav className="sticky top-0 z-50 h-[72px] w-full border-b border-[#EDEDED] bg-white">
-      <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
-        {/* Left: Logo + Nav Links */}
-        <div className="flex items-center gap-8">
-          <Link href={`/careers/${orgSlug}`}>
-            <Image
-              src="/logo_tims.png"
-              alt={orgName}
-              width={120}
-              height={36}
-              className="h-9 w-auto"
+      <div className="mx-auto flex h-full max-w-7xl items-center justify-between gap-4 px-6">
+        {/* Left: organization brand + nav links */}
+        <div className="flex min-w-0 items-center gap-8">
+          <Link href={`/careers/${orgSlug}`} className="flex min-w-0 items-center gap-2.5">
+            <OrgLogo
+              logo={orgLogo}
+              name={orgName}
+              imgClassName="h-9 w-auto max-w-[140px] object-contain"
+              fallbackClassName="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1F114C] text-[14px] font-bold text-white"
+              decorative
             />
+            <span className="truncate text-[15px] font-semibold text-[#1F114C]">{orgName}</span>
           </Link>
 
           <div className="hidden items-center gap-6 md:flex">
             {visibleNavLinks.map((link) => (
               <a
-                key={link.label}
+                key={link.key}
                 href={link.href}
-                onClick={() => setActiveLink(link.label)}
+                onClick={() => setActiveLink(link.key)}
                 className={`flex h-[72px] items-center text-[13px] transition-colors ${
-                  activeLink === link.label
+                  activeLink === link.key
                     ? 'border-b-2 border-[#DD0C15] font-medium text-[#1F114C]'
                     : 'text-[#585858] hover:text-[#1F114C]'
                 }`}
               >
-                {link.label}
+                {p[link.key]}
               </a>
             ))}
           </div>
         </div>
 
-        {/* Right: Language Toggle + Buttons */}
-        <div className="flex items-center gap-4">
-          <span className="hidden text-[13px] text-[#585858] sm:block">
-            ES <span className="text-[#EDEDED]">|</span> EN
-          </span>
-
+        {/* Right: the candidate's own applications (the dashboard sends a signed-out visitor to the
+            portal login), then a jump to the vacancy list. */}
+        <div className="flex shrink-0 items-center gap-4">
           <Link
-            href={`/careers/${orgSlug}/login`}
+            href={`/careers/${orgSlug}/dashboard`}
             className="rounded-lg border border-[#1F114C] px-4 py-2 text-[13px] font-medium text-[#1F114C] transition-colors hover:bg-[#1F114C] hover:text-white"
           >
-            {t.portal.signInNav}
+            {p.signInNav}
           </Link>
 
           <Link
             href="#vacantes"
             className="hidden rounded-lg bg-[#DD0C15] px-4 py-2 text-[13px] font-medium text-white shadow-md transition-colors hover:bg-[#c40a12] sm:block"
           >
-            Vacantes
+            {p.navVacancies}
           </Link>
         </div>
       </div>

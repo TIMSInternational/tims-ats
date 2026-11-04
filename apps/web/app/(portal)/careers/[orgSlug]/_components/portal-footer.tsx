@@ -1,62 +1,63 @@
-import Image from 'next/image';
+import Link from 'next/link';
 import { useI18n } from '../../../../../lib/i18n';
+import { isPilotScope } from '../../../../../lib/launch-scope';
+import { OrgLogo } from '../../../../../components/org-logo';
 
 interface PortalFooterProps {
   orgName: string;
+  orgSlug: string;
+  /** `organizations.logo`; the org name is shown when it is missing or would not load. */
+  orgLogo?: string | null;
 }
 
-export function PortalFooter({ orgName }: PortalFooterProps) {
+export function PortalFooter({ orgName, orgSlug, orgLogo = null }: PortalFooterProps) {
   const { t } = useI18n();
   const p = t.portal;
-  const columns = [
-    { title: p.footerPlatform, links: [p.footerJobs, p.footerCompanies, p.footerAssessments, p.footerBlog] },
-    { title: p.footerCompany, links: [p.footerAbout, p.footerContact, p.footerCareers, p.footerPartners] },
-    { title: p.footerLegal, links: [p.footerPrivacy, p.footerTerms, p.footerCookies, p.footerLicenses] },
-  ];
+  // The vendor blurb promises "evaluaciones científicas", which the pilot launch scope does not offer.
+  const showVendorBlurb = !isPilotScope();
   return (
     <footer className="bg-[#1F114C] px-8 py-8">
       <div className="mx-auto max-w-5xl">
         {/* Top row */}
         <div className="flex flex-col justify-between gap-8 md:flex-row">
-          {/* Left: logo + description */}
+          {/* Left: organization brand (+ vendor blurb outside the pilot) */}
           <div className="max-w-xs">
-            <Image
-              src="/logo_tims.png"
-              alt="TIMS"
-              width={120}
-              height={32}
-              className="h-8 w-auto brightness-0 invert"
-            />
-            <p className="mt-3 text-[12px] leading-relaxed text-white/50">
-              {orgName} {t.portal.footerUsesTimsSuffix}
-            </p>
+            <div className="flex items-center gap-2.5">
+              <OrgLogo
+                logo={orgLogo}
+                name={orgName}
+                imgClassName="h-8 w-auto max-w-[140px] rounded bg-white object-contain p-1"
+                fallbackClassName="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-[13px] font-bold text-white"
+                decorative
+              />
+              <span className="text-[14px] font-semibold text-white">{orgName}</span>
+            </div>
+            {showVendorBlurb && (
+              <p className="mt-3 text-[12px] leading-relaxed text-white/50">
+                {orgName} {p.footerUsesTimsSuffix}
+              </p>
+            )}
           </div>
 
-          {/* Right: link columns */}
-          <div className="flex gap-12">
-            {columns.map((col) => (
-              <div key={col.title}>
-                <h4 className="text-[11px] font-bold uppercase tracking-[1px] text-white/40">
-                  {col.title}
-                </h4>
-                <ul className="mt-3 space-y-2">
-                  {col.links.map((link) => (
-                    <li key={link}>
-                      <span className="cursor-pointer text-[12px] text-white/60 transition-colors hover:text-white">
-                        {link}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
+          {/* Right: the one page that exists for candidates before they apply — the privacy notice. */}
+          <nav aria-label={p.footerLegal}>
+            <ul className="space-y-2">
+              <li>
+                <Link
+                  href={`/careers/${encodeURIComponent(orgSlug)}/privacy`}
+                  className="text-[12px] text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline"
+                >
+                  {p.footerPrivacy}
+                </Link>
+              </li>
+            </ul>
+          </nav>
         </div>
 
         {/* Bottom */}
         <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-6 sm:flex-row">
           <p className="text-[11px] text-white/40">
-            &copy; {new Date().getFullYear()} {orgName}. {t.portal.allRightsReserved}
+            &copy; {new Date().getFullYear()} {orgName}. {p.allRightsReserved}
           </p>
           <p className="text-[11px] text-white/40">
             {t.auth.poweredBy} <span className="font-semibold text-white/60">TIMS ATS</span>

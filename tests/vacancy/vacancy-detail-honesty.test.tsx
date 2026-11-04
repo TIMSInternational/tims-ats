@@ -34,6 +34,10 @@ function vacancy(overrides: Partial<Record<string, unknown>> = {}): VacancyDetai
   } as unknown as VacancyDetail;
 }
 
+// The shared salary formatter (careers _lib/vacancy-display) uses es-CR conventions: digit groups
+// separated by a (narrow) no-break space, the ISO code on each bound. Compare on plain spaces.
+const plain = (text: string | null) => (text ?? '').replace(/[\u00a0\u202f]/g, ' ');
+
 async function renderIn(locale: 'ES' | 'EN', ui: React.ReactElement) {
   localStorage.setItem('tims-locale', locale);
   const view = render(<I18nProvider>{ui}</I18nProvider>);
@@ -62,7 +66,7 @@ describe('staff vacancy detail (#311)', () => {
 
   it('shows currency + the stored period, and no period at all when none is stored', async () => {
     const { container, unmount } = await renderIn('ES', <GeneralInfo vacancy={vacancy()} />);
-    expect(container.textContent).toContain('COP 4.500.000 – 6.000.000 / mes');
+    expect(plain(container.textContent)).toContain('COP 4 500 000 – COP 6 000 000 / mes');
     unmount();
 
     const annual = await renderIn(
@@ -71,7 +75,7 @@ describe('staff vacancy detail (#311)', () => {
         vacancy={vacancy({ salary: { min: 60_000_000, max: 80_000_000, currency: 'COP', period: 'annual' } })}
       />,
     );
-    expect(annual.container.textContent).toContain('COP 60.000.000 – 80.000.000 / año');
+    expect(plain(annual.container.textContent)).toContain('COP 60 000 000 – COP 80 000 000 / año');
     annual.unmount();
 
     // Seed-demo vacancies store no period: previously shown as "/ Mensual".
@@ -79,7 +83,7 @@ describe('staff vacancy detail (#311)', () => {
       'ES',
       <GeneralInfo vacancy={vacancy({ salary: { min: 4_500_000, max: 6_000_000, currency: 'COP' } })} />,
     );
-    expect(none.container.textContent).toContain('COP 4.500.000 – 6.000.000');
+    expect(plain(none.container.textContent)).toContain('COP 4 500 000 – COP 6 000 000');
     expect(none.container.textContent).not.toMatch(/\/ (mes|año)|Mensual|Anual/);
   });
 
@@ -88,7 +92,7 @@ describe('staff vacancy detail (#311)', () => {
     expect(container.textContent).toContain('Bogotá (Hybrid)');
     expect(container.textContent).toContain('Fixed term');
     expect(container.textContent).toContain('3 positions');
-    expect(container.textContent).toContain('COP 4,500,000 – 6,000,000 / month');
+    expect(plain(container.textContent)).toContain('COP 4,500,000 – COP 6,000,000 / month');
     expect(container.textContent).not.toMatch(/Hibrido|vacantes/);
   });
 });
@@ -132,17 +136,18 @@ describe('create-vacancy summary (#311)', () => {
     ]) {
       expect(text).toContain(expected);
     }
-    expect(text).toContain('COP 8,000,000 – 14,000,000 / year');
+    expect(plain(text)).toContain('COP 8,000,000 – COP 14,000,000 / year');
     expect(text).not.toMatch(/Resumen|Cargo:|Contrato:|posición|Presencial|Mensual|Anual|M[ií]nimo|M[aá]ximo|Moneda|Periodo/);
   });
 
   it('renders the same summary in Spanish', async () => {
     const { container } = await renderIn('ES', step3);
     const text = container.textContent ?? '';
-    for (const expected of ['Resumen', 'Cargo:', 'Contrato:', 'Salario:', 'Término indefinido · 1 posición']) {
+    // Costa Rican contract-type label (portal.contractTypes is the shared source of truth).
+    for (const expected of ['Resumen', 'Cargo:', 'Contrato:', 'Salario:', 'Plazo indefinido · 1 posición']) {
       expect(text).toContain(expected);
     }
-    expect(text).toContain('COP 8.000.000 – 14.000.000 / año');
+    expect(plain(text)).toContain('COP 8 000 000 – COP 14 000 000 / año');
   });
 
   it('keeps one source of truth for contract-type labels (portal.contractTypes)', () => {

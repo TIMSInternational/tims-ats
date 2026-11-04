@@ -188,9 +188,15 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
       .applyToVacancy({ ...baseApplyInput, consentTextVersion: 'portal-apply-1999-01-01' })
       .catch((e: unknown) => e);
 
-    expect(applyErrorMessage(err, { applySubmitError: 'GENERIC', applyConsentVersionChanged: 'RELOAD' })).toBe(
-      'RELOAD',
-    );
+    expect(
+      applyErrorMessage(err, {
+        applySubmitError: 'GENERIC',
+        applyConsentVersionChanged: 'RELOAD',
+        applyVacancyClosed: 'CLOSED',
+        emailInvalid: 'EMAIL',
+        linkedinInvalid: 'LINKEDIN',
+      }),
+    ).toBe('RELOAD');
   });
 
   it('records the consent (org, candidate, purpose, text version, timestamp) inside the application transaction', async () => {
