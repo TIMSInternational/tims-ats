@@ -66,3 +66,22 @@ it('refuses a CSV batch whose rows have no role instead of letting them default 
   await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(`${en.invitations.bulkRowsMissingRole} 2`,{type:'error',duration:8000}));
   expect(mocks.post).not.toHaveBeenCalled();expect(mocks.legacy).not.toHaveBeenCalled();view.unmount();
 });
+
+it('previews each CSV row with its role label from the shared map, never a raw slug or an implied employee',async()=>{
+  const {InviteWizard}=await import('../../apps/web/app/(admin)/platform/users/invite-wizard');
+  const view=render(<InviteWizard onClose={vi.fn()} onSuccess={vi.fn()}/>,{wrapper});
+  fireEvent.click(view.getByRole('button',{name:en.invitations.bulkMode}));
+  fireEvent.change(view.getByPlaceholderText(en.invitations.searchOrganization),{target:{value:'Target'}});
+  fireEvent.click(view.getByRole('button',{name:/Target/}));
+  const file=new File(['email,role\na@example.test,hr_admin\nb@example.test,'],'invite.csv',{type:'text/csv'});
+  fireEvent.change(view.getByLabelText(en.invitations.selectFile),{target:{files:[file]}});
+  fireEvent.click(await view.findByRole('button',{name:'Continuar'}));
+  const rows=view.getAllByRole('row').slice(1);
+  expect(rows[0].textContent).toContain(en.roles.hr_admin);
+  expect(rows[0].textContent).not.toContain('hr_admin');
+  // A row with no role is refused on submit, so the preview must not claim it would become an employee.
+  expect(rows[1].textContent).toContain(en.teamSettings.noRole);
+  expect(rows[1].textContent).not.toContain(en.roles.employee);
+  expect(rows[1].textContent).not.toContain('employee');
+  view.unmount();
+});
