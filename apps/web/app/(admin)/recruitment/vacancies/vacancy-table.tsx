@@ -5,6 +5,8 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatDate, formatCurrency } from '../../../../lib/format-utils';
 import { DataTable, StatusBadge, EmptyState, ErrorState } from '../../../../components';
 import type { VacancyListItem } from '../../../../lib/trpc-types';
+import { isPilotScope } from '../../../../lib/launch-scope';
+import { vacancyStatusMap } from './vacancy-status';
 
 interface VacancyTableProps {
   vacancies: VacancyListItem[];
@@ -53,26 +55,7 @@ export function VacancyTable({
     );
   }
 
-  const statusMap: Record<string, { cls: string; label: string }> = {
-    draft: { cls: 'bg-gray-100 text-gray-600', label: t.vacancies.statusDraft },
-    pending_approval: {
-      cls: 'bg-amber-50 text-amber-600 border border-amber-200',
-      label: t.vacancies.statusPendingApproval,
-    },
-    approved: {
-      cls: 'bg-blue-50 text-blue-600 border border-blue-200',
-      label: t.vacancies.statusApproved,
-    },
-    published: {
-      cls: 'bg-green-50 text-green-600 border border-green-200',
-      label: t.vacancies.statusPublished,
-    },
-    closed: { cls: 'bg-red-50 text-red-600', label: t.vacancies.statusClosed },
-    frozen: {
-      cls: 'bg-purple-50 text-purple-600 border border-purple-200',
-      label: t.vacancies.statusFrozen,
-    },
-  };
+  const statusMap = vacancyStatusMap(t.vacancies);
 
   const priorityLabels: Record<string, string> = {
     low: t.vacancies.priorityLow,
@@ -261,7 +244,8 @@ function ActionButtons({
           </svg>
         </button>
       )}
-      {v.status === 'published' && (
+      {/* "Congelar" has no way back yet (no resume/reopen), so the pilot does not offer it at all. */}
+      {v.status === 'published' && !isPilotScope() && (
         <button
           onClick={() => onFreeze(v)}
           className="h-7 px-2.5 rounded-md text-[11px] text-purple-600 border border-purple-200 hover:bg-purple-50 transition"

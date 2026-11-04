@@ -9,8 +9,6 @@ interface FilterBarProps {
   onStatusChange: (v: string) => void;
   priorityFilter: string;
   onPriorityChange: (v: string) => void;
-  departmentFilter: string;
-  onDepartmentChange: (v: string) => void;
   onClearFilters: () => void;
   hasFilters: boolean;
   onCreateClick: () => void;
@@ -23,8 +21,6 @@ export function FilterBar({
   onStatusChange,
   priorityFilter,
   onPriorityChange,
-  departmentFilter,
-  onDepartmentChange,
   onClearFilters,
   hasFilters,
   onCreateClick,
@@ -80,15 +76,6 @@ export function FilterBar({
         <option value="medium">{t.vacancies.priorityMedium}</option>
         <option value="high">{t.vacancies.priorityHigh}</option>
         <option value="urgent">{t.vacancies.priorityUrgent}</option>
-      </select>
-
-      {/* Department Filter */}
-      <select
-        value={departmentFilter}
-        onChange={(e) => onDepartmentChange(e.target.value)}
-        className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-      >
-        <option value="">{t.vacancies.allDepartments}</option>
       </select>
 
       {/* Clear Filters */}
