@@ -4,7 +4,8 @@ import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { LoadError } from './load-error';
-import { OffersToApprovePanel, ScorecardsToSubmitPanel } from './manager-todos';
+import { ScorecardsToSubmitPanel } from './manager-todos';
+import { MyApprovalsCard } from './my-approvals-card';
 import { ManagerTeamSection } from './manager-team-section';
 import { CARD_BG_COLORS, Dot } from './dashboard-dot';
 
@@ -82,7 +83,7 @@ export function ManagerDashboard({ isPilot = false }: ManagerDashboardProps) {
 
         {/* My Hiring to-do panels */}
         <div className="flex flex-col md:flex-row gap-4 mb-8">
-          <OffersToApprovePanel data={offers.data} isLoading={offers.isLoading} isError={offers.isError} />
+          <MyApprovalsCard />
           <ScorecardsToSubmitPanel
             data={scorecards.data}
             isLoading={scorecards.isLoading}

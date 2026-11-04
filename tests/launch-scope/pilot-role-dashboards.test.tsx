@@ -101,6 +101,8 @@ describe('pilot scope: role dashboards run no out-of-scope query', () => {
       expect.arrayContaining([
         'trpc.vacancy.getDashboardKpis',
         'trpc.offer.getPending',
+        // B-01: the leader's approvals card also lists vacancies waiting for them.
+        'trpc.vacancy.getPending',
         'trpc.interview.getPendingScorecards',
       ]),
     );

@@ -1,11 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { CommitteeCalibrationsPanel } from './committee-calibrations-panel';
+import { interviewRoomHref } from './manager-todos';
 
 function fullName(p: { firstName: string; lastName: string }): string {
   return `${p.firstName} ${p.lastName}`.trim();
@@ -84,14 +84,14 @@ export function CommitteeTasksDashboard({ isPilot = false }: CommitteeTasksDashb
           ) : (
             <div className="space-y-1">
               {scorecards.data.map((row) => (
-                <Link
+                <a
                   key={row.id}
-                  href="/recruitment/interviews"
+                  href={interviewRoomHref(row.interviewId)}
                   className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
                 >
                   <span className="text-sm text-[#333] font-medium truncate">{fullName(row.interview.candidate)}</span>
                   <span className="text-[13px] text-[#8B8B8B] truncate ml-3">{row.interview.vacancy.title}</span>
-                </Link>
+                </a>
               ))}
             </div>
           )}
