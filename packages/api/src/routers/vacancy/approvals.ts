@@ -5,6 +5,8 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser, createAnchorLoader } from '../../access';
 import { filterStaffRoleSlugs } from '@tims/shared';
+import { runAfterResponse } from '../../lib/after-response';
+import { approvalNotificationService } from '../../services/approval-notification.service';
 
 // ---------------------------------------------------------------------------
 // Shared selects
@@ -120,7 +122,7 @@ export const vacancyApprovalsRouter = router({
       // Reproduced on a local PG17 cluster 2026-08-06 (#45): after a deliberate
       // failure the old code left status=pending_approval + 1 approval row COMMITTED;
       // runTenantTransaction left status=draft + 0 rows.
-      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
+      const submitted = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
         // Compare-and-set draft -> pending_approval: the draft check above ran outside this
         // transaction, so a concurrent submit (or close/freeze) must not be overwritten.
         const moved = await tx.vacancy.updateMany({
@@ -146,6 +148,20 @@ export const vacancyApprovalsRouter = router({
           select: vacancyWithApprovalsSelect,
         });
       });
+
+      // B-01: tell every approver, after the response and only once the chain has committed.
+      const organizationId = ctx.user.organizationId;
+      const requesterId = ctx.user.id;
+      runAfterResponse(ctx, () =>
+        approvalNotificationService.notifyApprovalRequested({
+          orgId: organizationId,
+          kind: 'vacancy',
+          entityId: input.id,
+          approverIds: input.approverIds,
+          requesterId,
+        }),
+      );
+      return submitted;
     }),
 
   approve: permissionProcedure('vacancy', 'approve')
@@ -267,6 +283,52 @@ export const vacancyApprovalsRouter = router({
       });
     }),
 
+  // Withdraw a pending approval request (stuck-approval unblock: an approver is away or has left).
+  // Same gate as submitForApproval, so whoever may send a vacancy for approval may take it back. The
+  // vacancy returns to draft and every still-pending step is cancelled (decided steps keep their
+  // history, exactly as reject does); it can then be resubmitted to someone else.
+  withdrawApproval: permissionProcedure('vacancy', 'update')
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
+      // One runTenantTransaction (#45). The CAS on status serializes against a concurrent approve or
+      // reject: whichever commits first wins and the other sees CONFLICT.
+      const organizationId = ctx.user.organizationId;
+      return runTenantTransaction(organizationId, async (tx) => {
+        const moved = await tx.vacancy.updateMany({
+          where: { id: input.id, organizationId, status: 'pending_approval', deletedAt: null },
+          data: { status: 'draft' },
+        });
+        if (moved.count !== 1) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no está pendiente de aprobación' });
+        }
+
+        const cancelled = await tx.vacancyApproval.updateMany({
+          where: { organizationId, vacancyId: input.id, status: 'pending' },
+          data: { status: 'cancelled' },
+        });
+
+        // Authorization trail: who took the request back, and how many pending steps it cancelled.
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: ctx.user.id,
+            actorId: ctx.user.impersonatorId ?? ctx.user.id,
+            action: 'vacancy_approval_withdrawn',
+            entity: 'vacancy',
+            entityId: input.id,
+            metadata: { cancelledSteps: cancelled.count },
+          },
+        });
+
+        return tx.vacancy.findFirstOrThrow({
+          where: { id: input.id, organizationId },
+          select: vacancyWithApprovalsSelect,
+        });
+      });
+    }),
+
   getApprovalChain: permissionProcedure('vacancy', 'read')
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -290,4 +352,31 @@ export const vacancyApprovalsRouter = router({
         select: approvalSelect,
       });
     }),
+
+  // Vacancies waiting for the CALLER's decision: the vacancy half of the "Pendientes de mi aprobación"
+  // dashboard card (offer.getPending is the offer half). Gated on vacancy:approve and AND-composed
+  // with that grant's scope, so it lists exactly what approve() would let the caller act on.
+  getPending: permissionProcedure('vacancy', 'approve').query(async ({ ctx }) => {
+    const scopeWhere = await scopeWhereFor('vacancy', ctx.access, ctx.user.id);
+    const rows = await db.vacancyApproval.findMany({
+      where: {
+        AND: [
+          { organizationId: ctx.user.organizationId, approverId: ctx.user.id, status: 'pending' },
+          { vacancy: scopeWhere as Prisma.VacancyWhereInput },
+          { vacancy: { status: 'pending_approval', deletedAt: null } },
+        ],
+      },
+      select: {
+        id: true,
+        step: true,
+        createdAt: true,
+        vacancy: {
+          select: { id: true, title: true, creator: { select: { id: true, firstName: true, lastName: true } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+    return rows.map((r) => ({ approvalId: r.id, step: r.step, requestedAt: r.createdAt, vacancy: r.vacancy }));
+  }),
 });
