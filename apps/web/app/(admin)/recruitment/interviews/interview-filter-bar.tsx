@@ -2,17 +2,26 @@
 
 import { useI18n } from '../../../../lib/i18n';
 
+export type InterviewListView = 'upcoming' | 'past';
+
 interface InterviewFilterBarProps {
+  view: InterviewListView;
+  onViewChange: (v: InterviewListView) => void;
   statusFilter: string;
   onStatusChange: (v: string) => void;
   typeFilter: string;
   onTypeChange: (v: string) => void;
   onClearFilters: () => void;
   hasFilters: boolean;
-  onSchedule: () => void;
+  /** Omitted when the viewer may not schedule (committee-only, or no candidate/vacancy read): no button. */
+  onSchedule?: () => void;
 }
 
+const viewButton = (active: boolean) =>
+  `h-9 px-3 text-sm transition ${active ? 'bg-[#1F114C] text-white' : 'bg-white text-[#585858] hover:bg-[#F6F6F6]'}`;
+
 export function InterviewFilterBar({
+  view, onViewChange,
   statusFilter, onStatusChange,
   typeFilter, onTypeChange,
   onClearFilters, hasFilters,
@@ -22,6 +31,15 @@ export function InterviewFilterBar({
 
   return (
     <div className="flex flex-wrap items-center gap-3 gap-y-2 mb-4 flex-shrink-0">
+      <div role="group" aria-label={t.interviews.viewToggleLabel} className="inline-flex rounded-lg border border-[#EDEDED] overflow-hidden">
+        <button type="button" aria-pressed={view === 'upcoming'} onClick={() => onViewChange('upcoming')} className={viewButton(view === 'upcoming')}>
+          {t.interviews.viewUpcoming}
+        </button>
+        <button type="button" aria-pressed={view === 'past'} onClick={() => onViewChange('past')} className={viewButton(view === 'past')}>
+          {t.interviews.viewPast}
+        </button>
+      </div>
+
       <select
         value={statusFilter}
         onChange={(e) => onStatusChange(e.target.value)}
@@ -47,6 +65,7 @@ export function InterviewFilterBar({
         <option value="onsite">{t.interviews.typeOnsite}</option>
         <option value="technical">{t.interviews.typeTechnical}</option>
         <option value="cultural">{t.interviews.typeCultural}</option>
+        <option value="online">{t.interviews.typeOnline}</option>
       </select>
 
       {hasFilters && (
@@ -58,14 +77,16 @@ export function InterviewFilterBar({
         </button>
       )}
 
-      <div className="ml-auto">
-        <button onClick={onSchedule} className="h-9 px-4 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition flex items-center gap-2">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          {t.interviews.scheduleNew}
-        </button>
-      </div>
+      {onSchedule && (
+        <div className="ml-auto">
+          <button onClick={onSchedule} className="h-9 px-4 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            {t.interviews.scheduleNew}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,7 +5,10 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
 import { DataTable, EmptyState, ErrorState, StatusBadge, CandidateAvatar, UpsellNotice } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
+import { isPilotScope } from '../../../../lib/launch-scope';
 import { isVideoInterview, ROOM_STATUSES } from './[id]/room/interview-mode';
+import { interviewTypeLabel } from './[id]/room/interview-type-label';
+import { canCancelInterview, displayInterviewStatus } from './interview-status';
 
 interface InterviewTableProps {
   interviews: InterviewListItem[];
@@ -15,29 +18,26 @@ interface InterviewTableProps {
   /** Omitted when the viewer may not cancel (e.g. committee-only) — the button is then hidden. */
   onCancel?: (id: string) => void;
   isCancelling: boolean;
-  onManageEvaluators: (id: string) => void;
+  /** Omitted when the viewer may not manage the panel (e.g. committee-only) — the button is then hidden. */
+  onManageEvaluators?: (id: string) => void;
   onStartAiScreen: (id: string) => void;
   aiScreenEnabled: boolean;
   aiScreenError?: boolean;
+  /** False when the viewer has no candidate:read: the name is plain text, not a link to "Acceso denegado". */
+  canViewCandidate?: boolean;
+  /** Server-side paging of the current list (upcoming or past). */
+  pagination?: { page: number; total: number; limit: number; onPageChange: (page: number) => void };
 }
 
-const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-  scheduled: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: 'Programada' },
-  in_progress: { cls: 'bg-amber-50 text-amber-600 border border-amber-200', label: 'En curso' },
-  completed: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Completada' },
-  cancelled: { cls: 'bg-gray-100 text-gray-600', label: 'Cancelada' },
-  no_show: { cls: 'bg-red-50 text-red-600 border border-red-200', label: 'No show' },
-  rescheduled: { cls: 'bg-violet-50 text-violet-600 border border-violet-200', label: 'Reprogramada' },
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  phone: 'Telefónica',
-  video: 'Video',
-  panel: 'Panel',
-  onsite: 'Presencial',
-  technical: 'Técnica',
-  cultural: 'Cultural',
-};
+const STATUS_CLASSES = {
+  scheduled: 'bg-blue-50 text-blue-600 border border-blue-200',
+  in_progress: 'bg-amber-50 text-amber-600 border border-amber-200',
+  awaiting_scorecard: 'bg-amber-50 text-amber-700 border border-amber-200',
+  completed: 'bg-green-50 text-green-600 border border-green-200',
+  cancelled: 'bg-gray-100 text-gray-600',
+  no_show: 'bg-red-50 text-red-600 border border-red-200',
+  rescheduled: 'bg-violet-50 text-violet-600 border border-violet-200',
+} as const;
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   phone: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>,
@@ -48,8 +48,20 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   cultural: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>,
 };
 
-export function InterviewTable({ interviews, isLoading, isError, onRetry, onCancel, isCancelling, onManageEvaluators, onStartAiScreen, aiScreenEnabled, aiScreenError }: InterviewTableProps) {
+export function InterviewTable({ interviews, isLoading, isError, onRetry, onCancel, isCancelling, onManageEvaluators, onStartAiScreen, aiScreenEnabled, aiScreenError, canViewCandidate = true, pagination }: InterviewTableProps) {
   const { t } = useI18n();
+  const now = new Date();
+  // The AI voice screen is not part of the pilot: no sales upsell on every row (F-9).
+  const showAiUpsell = !isPilotScope();
+  const statusMap: Record<string, { cls: string; label: string }> = {
+    scheduled: { cls: STATUS_CLASSES.scheduled, label: t.interviews.statusScheduled },
+    in_progress: { cls: STATUS_CLASSES.in_progress, label: t.interviews.statusInProgress },
+    awaiting_scorecard: { cls: STATUS_CLASSES.awaiting_scorecard, label: t.interviews.statusAwaitingScorecard },
+    completed: { cls: STATUS_CLASSES.completed, label: t.interviews.statusCompleted },
+    cancelled: { cls: STATUS_CLASSES.cancelled, label: t.interviews.statusCancelled },
+    no_show: { cls: STATUS_CLASSES.no_show, label: t.interviews.statusNoShow },
+    rescheduled: { cls: STATUS_CLASSES.rescheduled, label: t.interviews.statusRescheduled },
+  };
 
   if (isError) {
     return (
@@ -74,6 +86,7 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
       columns={columns}
       loading={isLoading}
       skeletonRows={8}
+      pagination={pagination}
       empty={
         <EmptyState
           icon={
@@ -97,12 +110,18 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
                 size="sm"
               />
               <div>
-                <Link
-                  href={`/recruitment/candidates/${iv.candidate.id}`}
-                  className="text-[13px] font-medium text-[#333] hover:underline"
-                >
-                  {iv.candidate.firstName} {iv.candidate.lastName}
-                </Link>
+                {canViewCandidate ? (
+                  <Link
+                    href={`/recruitment/candidates/${iv.candidate.id}`}
+                    className="text-[13px] font-medium text-[#333] hover:underline"
+                  >
+                    {iv.candidate.firstName} {iv.candidate.lastName}
+                  </Link>
+                ) : (
+                  <span className="text-[13px] font-medium text-[#333]">
+                    {iv.candidate.firstName} {iv.candidate.lastName}
+                  </span>
+                )}
                 <p className="text-[11px] text-[#8B8B8B]">{iv.candidate.email}</p>
               </div>
             </div>
@@ -113,7 +132,7 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
           <td className="px-4 py-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded font-medium">
               {TYPE_ICONS[iv.type] ?? null}
-              {TYPE_LABELS[iv.type] ?? iv.type}
+              {interviewTypeLabel(t, iv.type)}
             </span>
           </td>
           <td className="px-4 py-3">
@@ -144,16 +163,18 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
             </div>
           </td>
           <td className="px-4 py-3">
-            <StatusBadge status={iv.status} map={STATUS_MAP} />
+            <StatusBadge status={displayInterviewStatus(iv, now)} map={statusMap} />
           </td>
           <td className="px-4 py-3 text-right">
             <div className="flex items-center justify-end gap-1">
-              <button
-                onClick={() => onManageEvaluators(iv.id)}
-                className="h-7 px-2.5 rounded-md text-[11px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-              >
-                {t.interviews.manageEvaluators}
-              </button>
+              {onManageEvaluators && (
+                <button
+                  onClick={() => onManageEvaluators(iv.id)}
+                  className="h-7 px-2.5 rounded-md text-[11px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
+                >
+                  {t.interviews.manageEvaluators}
+                </button>
+              )}
               {aiScreenEnabled ? (
                 <button
                   type="button"
@@ -171,10 +192,10 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
                 >
                   {t.interviews.startAiScreen}
                 </button>
-              ) : (
+              ) : showAiUpsell ? (
                 <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />
-              )}
-              {iv.status === 'scheduled' && onCancel && (
+              ) : null}
+              {onCancel && canCancelInterview(iv, now) && (
                 <button
                   onClick={() => onCancel(iv.id)}
                   disabled={isCancelling}

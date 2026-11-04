@@ -6,8 +6,9 @@ import type { UseTRPCQueryResult } from '@trpc/react-query/shared';
 import type { TRPCClientErrorLike } from '@trpc/client';
 import { AssignablePeopleError, CandidateAvatar, ErrorState } from '../../../../components';
 import type { AssignablePeopleState } from '../../../../lib/platform-api/assignable-people';
-import { INTERVIEW_TYPES, availableInterviewTypes, DURATIONS, inputCls, labelCls, textareaCls } from './schedule-modal.helpers';
+import { availableInterviewTypes, DURATIONS, inputCls, labelCls, locationPlaceholderKey, textareaCls } from './schedule-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
+import { interviewTypeLabel } from './[id]/room/interview-type-label';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type ClientError = TRPCClientErrorLike<AppRouter>;
@@ -118,6 +119,10 @@ interface Step2FieldsProps {
   setDuration: (value: number) => void;
   location: string;
   setLocation: (value: string) => void;
+  /** "hora de Costa Rica (GMT-6)": the zone the typed time is booked and emailed in. */
+  timeZoneLabel: string;
+  /** True when the organization has no zone and the time falls back to UTC. */
+  isUtcFallback: boolean;
 }
 
 export function Step2Fields({
@@ -131,6 +136,8 @@ export function Step2Fields({
   setDuration,
   location,
   setLocation,
+  timeZoneLabel,
+  isUtcFallback,
 }: Step2FieldsProps) {
   const { t } = useI18n();
   return (
@@ -145,9 +152,9 @@ export function Step2Fields({
               }`}>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[16px]">{it.icon}</span>
-                <span className={`text-[12px] font-medium ${interviewType === it.value ? 'text-[#1F114C]' : 'text-[#333]'}`}>{it.label}</span>
+                <span className={`text-[12px] font-medium ${interviewType === it.value ? 'text-[#1F114C]' : 'text-[#333]'}`}>{t.interviews[it.labelKey]}</span>
               </div>
-              <p className="text-[10px] text-[#8B8B8B]">{it.desc}</p>
+              <p className="text-[10px] text-[#8B8B8B]">{t.interviews[it.descKey]}</p>
             </button>
           ))}
         </div>
@@ -160,7 +167,10 @@ export function Step2Fields({
         </div>
         <div>
           <label className={labelCls}>{t.interviews.scheduleFieldTime}</label>
-          <input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className={inputCls} />
+          <input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className={inputCls} aria-describedby="schedule-time-zone" />
+          <p id="schedule-time-zone" className="text-[10px] text-[#8B8B8B] mt-1">
+            {t.interviews.scheduleTimeZoneHint.replace('{zone}', () => timeZoneLabel)}
+          </p>
         </div>
         <div>
           <label className={labelCls}>{t.interviews.scheduleFieldDuration}</label>
@@ -169,11 +179,12 @@ export function Step2Fields({
           </select>
         </div>
       </div>
+      {isUtcFallback && <p role="note" className="text-[11px] text-amber-700 -mt-3">{t.interviews.scheduleTimeZoneUtcWarning}</p>}
 
       <div>
         <label className={labelCls}>{t.interviews.scheduleFieldLocationLink}</label>
         <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={500} className={inputCls}
-          placeholder={interviewType === 'video' ? 'Se generará automáticamente con Daily.co' : interviewType === 'onsite' ? 'Oficina Bogotá, Sala 3A' : 'Número o enlace de reunión'} />
+          placeholder={t.interviews[locationPlaceholderKey(interviewType)]} />
         {interviewType === 'video' && !location && (
           <p className="text-[10px] text-teal-600 mt-1">{t.interviews.scheduleFieldVideoAutoRoom}</p>
         )}
@@ -191,8 +202,8 @@ interface Step3FieldsProps {
   selectedCandidateName: string;
   selectedVacancyTitle: string;
   interviewType: string;
-  scheduledDate: string;
-  scheduledTime: string;
+  /** The booked date and time, formatted in the scheduling zone with its label. */
+  whenLabel: string;
   duration: number;
 }
 
@@ -205,8 +216,7 @@ export function Step3Fields({
   selectedCandidateName,
   selectedVacancyTitle,
   interviewType,
-  scheduledDate,
-  scheduledTime,
+  whenLabel,
   duration,
 }: Step3FieldsProps) {
   const { t } = useI18n();
@@ -268,11 +278,11 @@ export function Step3Fields({
           </div>
           <div className="flex justify-between">
             <span className="text-[12px] text-[#585858]">Tipo:</span>
-            <span className="text-[12px] text-[#333]">{INTERVIEW_TYPES.find((t) => t.value === interviewType)?.label}</span>
+            <span className="text-[12px] text-[#333]">{interviewTypeLabel(t, interviewType)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-[12px] text-[#585858]">Fecha:</span>
-            <span className="text-[12px] text-[#333]">{scheduledDate} a las {scheduledTime} ({DURATIONS.find((d) => d.value === duration)?.label})</span>
+            <span className="text-[12px] text-[#333] text-right">{whenLabel} ({DURATIONS.find((d) => d.value === duration)?.label})</span>
           </div>
           <div className="flex justify-between">
             <span className="text-[12px] text-[#585858]">Evaluadores:</span>

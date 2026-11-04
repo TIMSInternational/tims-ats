@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useI18n } from '../../../../../../lib/i18n';
+import { usePermissions } from '../../../../../../lib/permissions';
 import type { InterviewDetail } from '../../../../../../lib/trpc-types';
 import { interviewTypeLabel } from './interview-type-label';
 
@@ -16,6 +17,11 @@ const linkClass =
 /** Candidate facts that the interview query already returns — nothing invented. */
 export function CandidateTab({ interview, candidateInitials }: CandidateTabProps) {
   const { t, locale } = useI18n();
+  // A panelist (committee) holds neither candidate:read nor vacancy:read: those pages answer "Acceso
+  // denegado", so the links are only offered to who can open them (B-28).
+  const { can } = usePermissions();
+  const canViewCandidate = can('candidate', 'read');
+  const canViewVacancy = can('vacancy', 'read');
   const { candidate, vacancy } = interview;
   const scheduled = new Intl.DateTimeFormat(locale === 'EN' ? 'en' : 'es', {
     dateStyle: 'medium',
@@ -74,22 +80,26 @@ export function CandidateTab({ interview, candidateInitials }: CandidateTabProps
       </dl>
       <div className="flex flex-col gap-2">
         {/* New tab + full document load: keeps the call alive and never carries the room's relaxed CSP. */}
-        <a
-          className={linkClass}
-          href={`/recruitment/candidates/${candidate.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {t.interviewRoom.candidateViewProfile}
-        </a>
-        <a
-          className={linkClass}
-          href={`/recruitment/vacancies/${vacancy.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {t.interviewRoom.candidateViewVacancy}
-        </a>
+        {canViewCandidate && (
+          <a
+            className={linkClass}
+            href={`/recruitment/candidates/${candidate.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t.interviewRoom.candidateViewProfile}
+          </a>
+        )}
+        {canViewVacancy && (
+          <a
+            className={linkClass}
+            href={`/recruitment/vacancies/${vacancy.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t.interviewRoom.candidateViewVacancy}
+          </a>
+        )}
       </div>
     </div>
   );

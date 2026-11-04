@@ -60,7 +60,7 @@ vi.mock('@daily-co/daily-react', () => {
 });
 vi.mock('../../apps/web/components', () => ({ Skeleton: () => null }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: () => undefined }));
-vi.mock('../../apps/web/lib/permissions', () => ({ usePermissions: () => ({ userId: ME }) }));
+vi.mock('../../apps/web/lib/permissions', () => ({ usePermissions: () => ({ userId: ME, can: () => true }) }));
 vi.mock('../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-ai-panel', () => ({
   InterviewAiPanel: () => <div>ai-stub</div>,
 }));
@@ -75,7 +75,6 @@ vi.mock('../../apps/web/lib/trpc', async () => {
           getPendingScorecards: { invalidate: () => undefined },
         },
       }),
-      vacancy: { getJobProfile: { useQuery: () => ({ isLoading: false, isError: false, data: null }) } },
       interview: {
         getById: {
           useQuery: () => ({

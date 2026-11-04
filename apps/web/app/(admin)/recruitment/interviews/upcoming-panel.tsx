@@ -48,7 +48,7 @@ export function UpcomingPanel({ interviews, isLoading, isError, onRetry }: Upcom
   const upcoming = useMemo(() => {
     const now = new Date();
     return interviews
-      .filter((iv) => iv.status === 'scheduled' && new Date(iv.scheduledAt) >= now)
+      .filter((iv) => (iv.status === 'scheduled' || iv.status === 'rescheduled') && new Date(iv.scheduledAt) >= now)
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
       .slice(0, 8);
   }, [interviews]);
