@@ -14,6 +14,7 @@ import { EvaluatorsModal } from './evaluators-modal';
 import { AiScreenModal } from './ai-screen-modal';
 import { CancelInterviewDialog } from './cancel-interview-dialog';
 import { canOfferInterviewCancel, canOfferInterviewScheduling, canOfferPanelManagement } from './interview-cancel';
+import { displayInterviewStatus } from './interview-status';
 import { usePermissions } from '../../../../lib/permissions';
 
 const PAGE_SIZE = 25;
@@ -23,6 +24,7 @@ function listBoundaries() {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return {
+    mountedAt: now,
     startOfToday,
     endOfYesterday: new Date(startOfToday.getTime() - 1),
     startOfMonth: new Date(now.getFullYear(), now.getMonth(), 1),
@@ -52,8 +54,9 @@ export default function InterviewsPage() {
       ? { from: bounds.startOfToday, sort: 'asc' as const }
       : { to: bounds.endOfYesterday, sort: 'desc' as const }),
   });
-  // The side panels have their own windows, independent of the list's filters and page.
-  const upcoming = trpc.interview.list.useQuery({ from: bounds.startOfToday, sort: 'asc', pageSize: 20 });
+  // The side panels have their own windows, independent of the list's filters and page. "Próximas" asks
+  // the server for open interviews from now on, so cancelled or elapsed rows cannot fill its page.
+  const upcoming = trpc.interview.list.useQuery({ from: bounds.mountedAt, openOnly: true, sort: 'asc', pageSize: 20 });
   const month = trpc.interview.list.useQuery({
     from: bounds.startOfMonth,
     to: bounds.endOfMonth,
@@ -81,10 +84,14 @@ export default function InterviewsPage() {
 
   const items = interviews.data?.items ?? [];
 
+  // Counted on what the rows SHOW (interview-status.ts): a past, scored interview is completed, not
+  // "Programada", even before its stored status catches up.
   const kpis = useMemo(() => {
-    const scheduled = items.filter((iv) => iv.status === 'scheduled').length;
-    const completed = items.filter((iv) => iv.status === 'completed').length;
-    const cancelled = items.filter((iv) => iv.status === 'cancelled').length;
+    const now = new Date();
+    const shown = items.map((iv) => displayInterviewStatus(iv, now));
+    const scheduled = shown.filter((s) => s === 'scheduled').length;
+    const completed = shown.filter((s) => s === 'completed').length;
+    const cancelled = shown.filter((s) => s === 'cancelled').length;
     return { scheduled, completed, cancelled };
   }, [items]);
 

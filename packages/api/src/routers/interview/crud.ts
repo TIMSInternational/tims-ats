@@ -28,12 +28,14 @@ export const interviewCrudRouter = router({
         to: z.date().optional(),
         // 'desc' lists the most recent first (past interviews); 'asc' the soonest first (upcoming).
         sort: z.enum(['asc', 'desc']).default('asc'),
+        // Only interviews still to happen (not cancelled / no_show / completed) — filtered BEFORE paging.
+        openOnly: z.boolean().optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(20),
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, sort, ...filters } = input;
+      const { page, pageSize, sort, openOnly, ...filters } = input;
       const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
 
       const where: Prisma.InterviewWhereInput = {
@@ -54,6 +56,7 @@ export const interviewCrudRouter = router({
                 }
               : {}),
           },
+          openOnly ? { status: { in: ['scheduled', 'rescheduled', 'confirmed', 'in_progress'] } } : {},
         ],
       };
 
@@ -71,6 +74,9 @@ export const interviewCrudRouter = router({
                 user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
               },
             },
+            // How many evaluators submitted (a count only — no scorecard content): an interview scored
+            // while it could not be completed yet is shown as completed, not "pendiente" (B-30).
+            _count: { select: { scorecards: { where: { submittedAt: { not: null } } } } },
           },
           orderBy: [{ scheduledAt: sort }, { id: 'asc' }],
           skip: (page - 1) * pageSize,

@@ -1,4 +1,5 @@
 import { ratingsCoverCompetencySet } from '@tims/shared';
+import { candidateJoinApplies, joinTokenExpiry } from './interview-join-token';
 import {
   interviewScorecardRepository,
   SCORECARD_CLOSED_STATUSES,
@@ -29,7 +30,25 @@ import {
 //     must keep working once the interview is marked completed. Checked here
 //     (fast refusal) and again inside the write transaction (the repository
 //     returns null if a cancel landed in between).
+//   - A SUBMITTED CARD COMPLETES A STARTED INTERVIEW (B-30): a past interview no
+//     longer stays "Programada" forever. Exception: while the candidate's own
+//     video join link is still valid (scheduled end + JOIN_TOKEN_GRACE_MINUTES —
+//     the window the C# join honours for overruns) the interview stays open, since
+//     the join refuses a completed interview and would block a rejoin. The list
+//     shows such a scored-but-open interview as completed (submitted-card count).
 // ---------------------------------------------------------------------------
+
+/** Whether a card submitted at `now` should mark the interview completed. */
+export function shouldCompleteOnScorecard(
+  interview: { id: string; type: string; meetingUrl: string | null; scheduledAt: Date; duration: number },
+  now: Date = new Date(),
+): boolean {
+  if (interview.scheduledAt.getTime() > now.getTime()) return false;
+  const joinStillValid =
+    candidateJoinApplies(interview.type, { meetingUrl: interview.meetingUrl, interviewId: interview.id }) &&
+    now.getTime() < joinTokenExpiry(interview.scheduledAt, interview.duration).getTime();
+  return !joinStillValid;
+}
 
 export type SubmitScorecardResult =
   | { ok: true; scorecard: NonNullable<Awaited<ReturnType<typeof interviewScorecardRepository.submit>>> }
@@ -47,7 +66,10 @@ export const scorecardSubmissionService = {
     if (context === undefined) return { ok: false, reason: 'not_found' };
     if (SCORECARD_CLOSED_STATUSES.includes(context.status)) return { ok: false, reason: 'closed' };
     if (!ratingsCoverCompetencySet(data.ratings, context.competencies)) return { ok: false, reason: 'incomplete' };
-    const scorecard = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data);
+    const completeInterview = shouldCompleteOnScorecard({ id: interviewId, ...context });
+    const scorecard = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data, {
+      completeInterview,
+    });
     if (!scorecard) return { ok: false, reason: 'closed' };
     return { ok: true, scorecard };
   },

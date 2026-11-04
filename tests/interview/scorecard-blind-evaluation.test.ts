@@ -688,13 +688,19 @@ describe('submitScorecard — a scored interview is marked completed (B-30 / A-0
     expect(store.interviewStatus).toBe('scheduled');
   });
 
-  it('a video interview is not completed while its call is still scheduled to run (rejoin stays open)', async () => {
+  it('a video interview stays open while the candidate join link is valid (end + 30 min grace)', async () => {
     store.interviewType = 'video';
-    store.interviewScheduledAt = new Date(Date.now() - 10 * 60_000); // started 10 min ago, 60 min long
     const caller = await callerAs(ME);
+    // Started 10 min ago (60 min long): mid-call.
+    store.interviewScheduledAt = new Date(Date.now() - 10 * 60_000);
     await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
     expect(store.interviewStatus).toBe('scheduled');
-    store.interviewScheduledAt = new Date(Date.now() - 2 * 3600_000); // over
+    // Ended 10 min ago: an overrunning call can still be rejoined (C# join honours the grace).
+    store.interviewScheduledAt = new Date(Date.now() - 70 * 60_000);
+    await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+    expect(store.interviewStatus).toBe('scheduled');
+    // Past the grace: completed.
+    store.interviewScheduledAt = new Date(Date.now() - 2 * 3600_000);
     await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
     expect(store.interviewStatus).toBe('completed');
   });

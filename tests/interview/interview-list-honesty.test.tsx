@@ -74,6 +74,13 @@ describe('derived interview status (A-02 / B-30)', () => {
     expect(canCancelInterview(over, now)).toBe(false);
   });
 
+  it('a past interview that was already scored shows as completed, not "pending"', () => {
+    const scored = { status: 'scheduled', scheduledAt: at(-2 * HOUR), duration: 60, _count: { scorecards: 1 } };
+    expect(displayInterviewStatus(scored, now)).toBe('completed');
+    const running = { ...scored, scheduledAt: at(-HOUR / 2) };
+    expect(displayInterviewStatus(running, now)).toBe('in_progress');
+  });
+
   it('closed statuses are shown as stored', () => {
     for (const status of ['completed', 'cancelled', 'no_show']) {
       expect(displayInterviewStatus({ status, scheduledAt: at(-2 * HOUR), duration: 60 }, now)).toBe(status);

@@ -48,13 +48,24 @@ export const interviewScorecardRepository = {
   async getSubmissionContext(
     orgId: string,
     interviewId: string,
-  ): Promise<{ status: string; competencies: Prisma.JsonValue | null } | undefined> {
+  ): Promise<
+    | {
+        status: string;
+        type: string;
+        meetingUrl: string | null;
+        scheduledAt: Date;
+        duration: number;
+        competencies: Prisma.JsonValue | null;
+      }
+    | undefined
+  > {
     const interview = await db.interview.findFirst({
       where: { id: interviewId, organizationId: orgId },
-      select: { vacancyId: true, status: true },
+      select: { vacancyId: true, status: true, type: true, meetingUrl: true, scheduledAt: true, duration: true },
     });
     if (!interview) return undefined;
-    return { status: interview.status, competencies: await interviewScorecardRepository.getCompetencies(orgId, interview.vacancyId) };
+    const { vacancyId, ...facts } = interview;
+    return { ...facts, competencies: await interviewScorecardRepository.getCompetencies(orgId, vacancyId) };
   },
 
   /**
@@ -81,13 +92,10 @@ export const interviewScorecardRepository = {
    * can land between that read and this transaction; re-checking here narrows that
    * window to the transaction itself (#332 panel, L1).
    *
-   * A submitted scorecard is proof the interview took place: when it has started
-   * (scheduledAt <= now) and is still scheduled/rescheduled, it becomes
-   * `completed` in the same transaction, so lists and KPIs stop calling a past
-   * interview "Programada" (B-30). A card filed before the start changes nothing.
-   * A video interview completes only once its scheduled END has passed: the
-   * candidate's join link (C# CandidateInterviewJoin) refuses a completed
-   * interview, so completing it mid-call would block a rejoin.
+   * With `completeInterview` (decided by scorecard-submission.service.ts) a still
+   * scheduled/rescheduled interview that has started becomes `completed` in the
+   * same transaction, status-guarded so a cancel that landed meanwhile is never
+   * overwritten (B-30).
    */
   async submit(
     orgId: string,
@@ -95,11 +103,12 @@ export const interviewScorecardRepository = {
     evaluatorId: string,
     actorId: string,
     data: ScorecardSubmissionData,
+    options: { completeInterview?: boolean } = {},
   ) {
     return runTenantTransaction(orgId, async (tx) => {
       const open = await tx.interview.findFirst({
         where: { id: interviewId, organizationId: orgId, status: { notIn: [...SCORECARD_CLOSED_STATUSES] } },
-        select: { id: true, type: true, scheduledAt: true, duration: true },
+        select: { id: true },
       });
       if (!open) return null;
       const previous = await tx.interviewScorecard.findFirst({
@@ -112,11 +121,7 @@ export const interviewScorecardRepository = {
         create: { organizationId: orgId, interviewId, evaluatorId, ...data, submittedAt },
         update: { ...data, submittedAt },
       });
-      const callStillOpen =
-        open.type === 'video' &&
-        open.scheduledAt instanceof Date &&
-        open.scheduledAt.getTime() + (open.duration ?? 0) * 60_000 > submittedAt.getTime();
-      if (!callStillOpen) {
+      if (options.completeInterview) {
         // Status-guarded: a cancel that landed meanwhile is never overwritten.
         await tx.interview.updateMany({
           where: {

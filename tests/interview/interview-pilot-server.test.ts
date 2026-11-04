@@ -229,3 +229,47 @@ describe('B-29 — pending scorecards are interviews that have started', () => {
     expect(args.orderBy).toEqual({ interview: { scheduledAt: 'asc' } });
   });
 });
+
+describe('B-30 — when a submitted card completes the interview', () => {
+  const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000);
+  const base = { id: INTERVIEW_ID, meetingUrl: null as string | null, duration: 60 };
+
+  it('a started non-video interview completes; a future one does not', async () => {
+    const { shouldCompleteOnScorecard } = await import('../../packages/api/src/services/scorecard-submission.service');
+    expect(shouldCompleteOnScorecard({ ...base, type: 'onsite', scheduledAt: at(5) })).toBe(true);
+    expect(shouldCompleteOnScorecard({ ...base, type: 'online', scheduledAt: at(-60) })).toBe(false);
+  });
+
+  it('our own video join keeps the interview open until end + grace; an external video link does not', async () => {
+    const { shouldCompleteOnScorecard } = await import('../../packages/api/src/services/scorecard-submission.service');
+    expect(shouldCompleteOnScorecard({ ...base, type: 'video', scheduledAt: at(80) })).toBe(false); // 20 min into grace
+    expect(shouldCompleteOnScorecard({ ...base, type: 'video', scheduledAt: at(95) })).toBe(true);
+    expect(
+      shouldCompleteOnScorecard({ ...base, type: 'video', meetingUrl: 'https://zoom.us/j/1', scheduledAt: at(5) }),
+    ).toBe(true);
+  });
+});
+
+describe('A-16 / B-30 — list filters before paging and counts submitted cards', () => {
+  beforeEach(() => {
+    m.scope = 'organization';
+    m.interviewFindMany.mockResolvedValue([]);
+    m.interviewCount.mockResolvedValue(0);
+    m.orgFindFirst.mockResolvedValue({ settings: {} });
+  });
+
+  it('openOnly is its own AND element (it narrows a status filter, never replaces it)', async () => {
+    await (await caller()).interview.list({ openOnly: true, status: 'scheduled', pageSize: 20 });
+    const where = m.interviewFindMany.mock.calls[0]![0].where;
+    expect(where.AND).toContainEqual({ status: { in: ['scheduled', 'rescheduled', 'confirmed', 'in_progress'] } });
+    expect(where.AND[2]).toMatchObject({ status: 'scheduled' });
+    expect(m.interviewCount.mock.calls[0]![0].where).toEqual(where);
+  });
+
+  it('rows carry only a COUNT of submitted scorecards, never their content', async () => {
+    await (await caller()).interview.list({ pageSize: 20 });
+    const include = m.interviewFindMany.mock.calls[0]![0].include;
+    expect(include._count).toEqual({ select: { scorecards: { where: { submittedAt: { not: null } } } } });
+    expect(include).not.toHaveProperty('scorecards');
+  });
+});
