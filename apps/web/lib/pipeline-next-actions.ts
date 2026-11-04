@@ -86,8 +86,8 @@ export function visibleNextAction(
       : action;
   if (isHrefHiddenInScope(resolved.href, scope)) return null;
   if (can) {
-    const module = moduleForPath(resolved.href);
-    if (module && !can(module, 'read')) return null;
+    const routeModule = moduleForPath(resolved.href);
+    if (routeModule && !can(routeModule, 'read')) return null;
     if (resolved.labelKey === 'oferta' && !can('offer', 'create')) return null;
   }
   return resolved;
