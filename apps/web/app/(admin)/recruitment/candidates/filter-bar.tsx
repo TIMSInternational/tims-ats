@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { CANDIDATE_POOL_TYPES, CANDIDATE_SOURCES, candidatePoolLabel, candidateSourceLabel } from '../../../../lib/candidate-labels';
 
 interface FilterBarProps {
   search: string;
@@ -39,11 +40,9 @@ export function FilterBar({
         className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
       >
         <option value="">{t.candidates.allPools}</option>
-        <option value="applicant">{t.candidates.poolApplicant}</option>
-        <option value="referral">{t.candidates.poolReferral}</option>
-        <option value="sourced">{t.candidates.poolSourced}</option>
-        <option value="silver_medalist">{t.candidates.poolSilverMedalist}</option>
-        <option value="passive">{t.candidates.poolPassive}</option>
+        {CANDIDATE_POOL_TYPES.map((pool) => (
+          <option key={pool} value={pool}>{candidatePoolLabel(pool, t.candidates)}</option>
+        ))}
       </select>
 
       <select
@@ -52,10 +51,9 @@ export function FilterBar({
         className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
       >
         <option value="">{t.candidates.allSources}</option>
-        <option value="linkedin">{t.candidates.sourceLinkedin}</option>
-        <option value="portal">{t.candidates.sourcePortal}</option>
-        <option value="referral">{t.candidates.sourceReferral}</option>
-        <option value="manual">{t.candidates.sourceManual}</option>
+        {CANDIDATE_SOURCES.map((source) => (
+          <option key={source} value={source}>{candidateSourceLabel(source, t.candidates)}</option>
+        ))}
       </select>
 
       {hasFilters && (

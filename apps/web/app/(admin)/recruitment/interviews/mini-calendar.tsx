@@ -12,7 +12,15 @@ interface MiniCalendarProps {
   onRetry?: () => void;
 }
 
-const WEEKDAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+/** Monday-first short weekday names in the UI language ("Lun", "Mié", "Sáb" / "Mon", "Wed", "Sat"). */
+function weekdayLabels(locale: 'ES' | 'EN'): string[] {
+  const format = new Intl.DateTimeFormat(locale === 'EN' ? 'en-US' : 'es-CR', { weekday: 'short', timeZone: 'UTC' });
+  // 2024-01-01 was a Monday.
+  return Array.from({ length: 7 }, (_, i) => {
+    const name = format.format(new Date(Date.UTC(2024, 0, 1 + i))).replace('.', '');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  });
+}
 
 function getMonthDays(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1).getDay();
@@ -24,7 +32,7 @@ function getMonthDays(year: number, month: number): (number | null)[] {
 }
 
 export function MiniCalendar({ interviews, isLoading, isError, onRetry }: MiniCalendarProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -74,7 +82,7 @@ export function MiniCalendar({ interviews, isLoading, isError, onRetry }: MiniCa
       </div>
 
       <div className="grid grid-cols-7 gap-0.5 mb-1">
-        {WEEKDAYS.map((d) => (
+        {weekdayLabels(locale).map((d) => (
           <div key={d} className="text-center text-[9px] text-[#8B8B8B] font-medium py-1">
             {d}
           </div>

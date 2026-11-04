@@ -105,9 +105,10 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:150:jsx-text',
   'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:54:jsx-text',
   'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:99:jsx-text',
-  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:44:placeholder',
-  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:227:jsx-text',
-  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.fields.tsx:44:placeholder',
+  // Re-anchored (+1 line): the source labels now come from lib/candidate-labels.ts (one import added).
+  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:45:placeholder',
+  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:228:jsx-text',
+  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.fields.tsx:45:placeholder',
   'apps/web/app/(admin)/talent/team-intelligence/page.tsx:35:jsx-text',
 ]);
 

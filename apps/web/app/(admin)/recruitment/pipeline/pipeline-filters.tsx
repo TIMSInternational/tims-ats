@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { meetsPipelineFitThreshold, type PipelineFitCandidate } from '../../../../lib/pipeline-fit';
+import { useI18n } from '../../../../lib/i18n';
+import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 
 export interface PipelineFilterState {
   source: string | null;
@@ -12,27 +14,16 @@ export interface PipelineFilterState {
 
 const EMPTY_FILTERS: PipelineFilterState = { source: null, fitMin: null, maxDays: null, slaOnly: false };
 
-const SOURCES = [
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'referral', label: 'Referido' },
-  { value: 'portal', label: 'Portal' },
-  { value: 'job_board', label: 'Job Board' },
-  { value: 'university', label: 'Universidad' },
-  { value: 'internal', label: 'Interno' },
-];
+const SOURCES = ['portal', 'linkedin', 'referral', 'job_board', 'university', 'internal'] as const;
 
 const FIT_OPTIONS = [
-  { value: 75, label: '75+ (Alto)' },
-  { value: 50, label: '50+ (Medio)' },
-  { value: 0, label: 'Todos' },
-];
+  { value: 75, labelKey: 'filterFitHigh' },
+  { value: 50, labelKey: 'filterFitMedium' },
+  { value: 0, labelKey: 'filterAll' },
+] as const;
 
-const DATE_OPTIONS = [
-  { value: 3, label: '< 3 días' },
-  { value: 7, label: '< 7 días' },
-  { value: 14, label: '< 14 días' },
-  { value: 30, label: '< 30 días' },
-];
+// Days the application has been in its CURRENT stage (see applyFilters), not days since applying.
+const DATE_OPTIONS = [3, 7, 14, 30] as const;
 
 interface Props {
   filters: PipelineFilterState;
@@ -77,13 +68,15 @@ function FilterDropdown({ label, isActive, children, icon }: { label: string; is
 }
 
 export function PipelineFilters({ filters, onChange }: Props) {
+  const { t } = useI18n();
+  const p = t.pipeline;
   const activeCount = [filters.source, filters.fitMin, filters.maxDays, filters.slaOnly].filter(Boolean).length;
 
   return (
     <div className="flex items-center gap-2">
       {/* Source filter */}
       <FilterDropdown
-        label={filters.source ? SOURCES.find((s) => s.value === filters.source)?.label ?? 'Source' : 'Source'}
+        label={filters.source ? candidateSourceLabel(filters.source, t.candidates) : p.filterSource}
         isActive={!!filters.source}
         icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>}
       >
@@ -91,22 +84,22 @@ export function PipelineFilters({ filters, onChange }: Props) {
           onClick={() => onChange({ ...filters, source: null })}
           className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] ${!filters.source ? 'text-[#1F114C] font-medium' : 'text-[#585858]'}`}
         >
-          Todos
+          {p.filterAll}
         </button>
         {SOURCES.map((s) => (
           <button
-            key={s.value}
-            onClick={() => onChange({ ...filters, source: s.value })}
-            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] ${filters.source === s.value ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
+            key={s}
+            onClick={() => onChange({ ...filters, source: s })}
+            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] ${filters.source === s ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
           >
-            {s.label}
+            {candidateSourceLabel(s, t.candidates)}
           </button>
         ))}
       </FilterDropdown>
 
       {/* FIT Score filter */}
       <FilterDropdown
-        label={filters.fitMin != null && filters.fitMin > 0 ? `FIT ${filters.fitMin}+` : 'FIT Score'}
+        label={filters.fitMin != null && filters.fitMin > 0 ? p.filterFitActive.replace('{n}', String(filters.fitMin)) : p.filterFit}
         isActive={filters.fitMin != null && filters.fitMin > 0}
       >
         {FIT_OPTIONS.map((opt) => (
@@ -115,29 +108,29 @@ export function PipelineFilters({ filters, onChange }: Props) {
             onClick={() => onChange({ ...filters, fitMin: opt.value || null })}
             className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] ${(filters.fitMin ?? 0) === opt.value ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
           >
-            {opt.label}
+            {p[opt.labelKey]}
           </button>
         ))}
       </FilterDropdown>
 
       {/* Date filter */}
       <FilterDropdown
-        label={filters.maxDays ? `< ${filters.maxDays}d` : 'Date'}
+        label={filters.maxDays ? p.filterDaysActive.replace('{n}', String(filters.maxDays)) : p.filterDaysInStage}
         isActive={!!filters.maxDays}
       >
         <button
           onClick={() => onChange({ ...filters, maxDays: null })}
           className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] ${!filters.maxDays ? 'text-[#1F114C] font-medium' : 'text-[#585858]'}`}
         >
-          Todos
+          {p.filterAll}
         </button>
-        {DATE_OPTIONS.map((opt) => (
+        {DATE_OPTIONS.map((days) => (
           <button
-            key={opt.value}
-            onClick={() => onChange({ ...filters, maxDays: opt.value })}
-            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] ${filters.maxDays === opt.value ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
+            key={days}
+            onClick={() => onChange({ ...filters, maxDays: days })}
+            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] ${filters.maxDays === days ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
           >
-            {opt.label}
+            {p.filterDaysLessThan.replace('{n}', String(days))}
           </button>
         ))}
       </FilterDropdown>
@@ -151,7 +144,7 @@ export function PipelineFilters({ filters, onChange }: Props) {
             : 'border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
         }`}
       >
-        SLA
+        {p.filterSlaOverdue}
         {filters.slaOnly && (
           <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="m4.5 12.75 6 6 9-13.5" />
@@ -165,7 +158,7 @@ export function PipelineFilters({ filters, onChange }: Props) {
           onClick={() => onChange(EMPTY_FILTERS)}
           className="text-[11px] text-[#8B8B8B] hover:text-[#DD0C15] transition ml-1"
         >
-          Limpiar ({activeCount})
+          {p.filterClear.replace('{n}', String(activeCount))}
         </button>
       )}
     </div>

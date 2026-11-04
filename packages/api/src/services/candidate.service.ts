@@ -124,13 +124,27 @@ export const candidateService = {
       appScopeWhere,
     );
 
+    // `title`/`description` are a Spanish fallback; screens render the event from `type` + `params`
+    // through i18n (apps/web/lib/candidate-timeline-labels.ts), so slugs and English never show (A-04).
     type TimelineEvent = {
       id: string;
-      type: string;
+      type: 'application' | 'stage_movement' | 'assessment_assigned' | 'assessment_completed' | 'document_uploaded';
       title: string;
       description: string | null;
       date: Date;
       actor: string | null;
+      params: {
+        vacancyTitle?: string;
+        source?: string;
+        fromStage?: string | null;
+        toStage?: string;
+        reason?: string | null;
+        assessmentName?: string;
+        status?: string;
+        score?: number | null;
+        fileName?: string;
+        documentType?: string;
+      };
     };
 
     const events: TimelineEvent[] = [];
@@ -139,19 +153,21 @@ export const candidateService = {
       events.push({
         id: `app-${app.id}`,
         type: 'application',
-        title: `Applied to ${app.vacancy.title}`,
-        description: `Source: ${app.source}`,
+        title: `Se postuló a ${app.vacancy.title}`,
+        description: `Fuente: ${app.source}`,
         date: app.appliedAt,
         actor: null,
+        params: { vacancyTitle: app.vacancy.title, source: app.source },
       });
       for (const mov of app.movements) {
         events.push({
           id: `mov-${mov.id}`,
           type: 'stage_movement',
-          title: `${mov.fromStage?.name ?? 'Start'} → ${mov.toStage.name}`,
+          title: `${mov.fromStage?.name ?? 'Inicio'} → ${mov.toStage.name}`,
           description: mov.reason,
           date: mov.movedAt,
           actor: mov.actor ? `${mov.actor.firstName} ${mov.actor.lastName}` : null,
+          params: { fromStage: mov.fromStage?.name ?? null, toStage: mov.toStage.name, reason: mov.reason },
         });
       }
     }
@@ -160,19 +176,22 @@ export const candidateService = {
       events.push({
         id: `asn-${a.id}`,
         type: 'assessment_assigned',
-        title: `${a.assessmentType.name} assigned`,
-        description: `Status: ${a.status}`,
+        title: `Evaluación asignada: ${a.assessmentType.name}`,
+        description: `Estado: ${a.status}`,
         date: a.assignedAt,
         actor: null,
+        params: { assessmentName: a.assessmentType.name, status: a.status },
       });
       if (a.completedAt) {
+        const score = a.result?.normalizedScore ?? null;
         events.push({
           id: `asc-${a.id}`,
           type: 'assessment_completed',
-          title: `${a.assessmentType.name} completed`,
-          description: a.result?.normalizedScore != null ? `Score: ${a.result.normalizedScore}` : null,
+          title: `Evaluación completada: ${a.assessmentType.name}`,
+          description: score != null ? `Puntaje: ${score}` : null,
           date: a.completedAt,
           actor: null,
+          params: { assessmentName: a.assessmentType.name, score: score != null ? Number(score) : null },
         });
       }
     }
@@ -181,10 +200,11 @@ export const candidateService = {
       events.push({
         id: `doc-${doc.id}`,
         type: 'document_uploaded',
-        title: `Document uploaded: ${doc.fileName}`,
+        title: `Documento subido: ${doc.fileName}`,
         description: doc.type,
         date: doc.uploadedAt,
         actor: null,
+        params: { fileName: doc.fileName, documentType: doc.type },
       });
     }
 

@@ -9,6 +9,7 @@ import {
   textareaCls,
 } from './add-candidate-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
+import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 
 interface Step1FieldsProps {
   firstName: string;
@@ -55,7 +56,7 @@ export function Step1Fields({
         </div>
         <div>
           <label className={labelCls}>{t.candidates.phone}</label>
-          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30} className={inputCls} placeholder="+57 310 123 4567" />
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30} className={inputCls} placeholder={t.candidates.formPhonePlaceholder} />
         </div>
       </div>
       <div>
@@ -172,16 +173,16 @@ export function Step3Fields({
         <div className="grid grid-cols-2 gap-2">
           {SOURCES.map((s) => (
             <button
-              key={s.value}
+              key={s}
               type="button"
-              onClick={() => setSource(s.value)}
+              onClick={() => setSource(s)}
               className={`text-left px-3 py-2.5 rounded-lg border text-[12px] transition ${
-                source === s.value
+                source === s
                   ? 'border-[#1F114C] bg-[#F0EEF5] text-[#1F114C] font-medium'
                   : 'border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
               }`}
             >
-              {s.label}
+              {candidateSourceLabel(s, t.candidates)}
             </button>
           ))}
         </div>
@@ -240,7 +241,7 @@ export function Step3Fields({
           )}
           <div className="flex justify-between">
             <span className="text-[12px] text-[#585858]">Fuente:</span>
-            <span className="text-[12px] text-[#333]">{SOURCES.find((s) => s.value === source)?.label}</span>
+            <span className="text-[12px] text-[#333]">{candidateSourceLabel(source, t.candidates)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-[12px] text-[#585858]">Vacante:</span>

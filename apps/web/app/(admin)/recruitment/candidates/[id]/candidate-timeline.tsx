@@ -3,6 +3,7 @@
 import { useI18n } from '../../../../../lib/i18n';
 import { ActivityTimeline, ErrorState, Skeleton } from '../../../../../components';
 import type { CandidateTimelineEvent } from '../../../../../lib/trpc-types';
+import { localizeTimelineEvent } from '../../../../../lib/candidate-timeline-labels';
 
 export function CandidateTimeline({
   events,
@@ -41,7 +42,7 @@ export function CandidateTimeline({
       {events.length === 0 ? (
         <p className="text-xs text-[#8B8B8B] py-3 text-center">{t.candidates.noActivity}</p>
       ) : (
-        <ActivityTimeline events={events} maxItems={15} />
+        <ActivityTimeline events={events.map((e) => ({ ...e, ...localizeTimelineEvent(e, t.candidates) }))} maxItems={15} />
       )}
     </div>
   );

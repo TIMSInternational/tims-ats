@@ -1,15 +1,8 @@
 export type Step = 1 | 2 | 3;
 export type ProcessStep = 'idle' | 'creating' | 'applying';
 
-export const SOURCES = [
-  { value: 'manual', label: 'Ingreso manual' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'referral', label: 'Referido' },
-  { value: 'portal', label: 'Portal' },
-  { value: 'job_board', label: 'Job Board' },
-  { value: 'university', label: 'Universidad' },
-  { value: 'internal', label: 'Interno / Transferencia' },
-];
+// Stored source slugs, in picker order. Labels: lib/candidate-labels.ts (i18n candidates.source*).
+export const SOURCES = ['manual', 'linkedin', 'referral', 'portal', 'job_board', 'university', 'internal'] as const;
 
 export const POOL_TYPES = [
   { value: 'active', label: 'Activo — busca empleo' },
