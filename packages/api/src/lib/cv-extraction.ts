@@ -17,6 +17,12 @@ export type CvContentType = (typeof CV_ALLOWED_CONTENT_TYPES)[number];
  */
 export const PDFJS_BUILD_VERSION = 'v1.10.100' as const;
 
+// pdf-parse hands its input straight to pdf.js, which accepts any Uint8Array; its types say Buffer.
+const parsePdfBytes = pdfParse as (
+  data: Uint8Array,
+  options?: Parameters<typeof pdfParse>[1],
+) => ReturnType<typeof pdfParse>;
+
 // "TypeError: …" → "TypeError". Identifier only, bounded; anything else is ignored.
 const LEADING_ERROR_CLASS = /^([A-Za-z][A-Za-z0-9_]{0,63})(?::|$)/;
 
@@ -39,7 +45,12 @@ export function annotatePdfParseError(error: unknown): void {
 export async function extractCvText(buffer: Buffer, contentType: CvContentType): Promise<string> {
   if (contentType === 'application/pdf') {
     try {
-      const result = await pdfParse(buffer, { version: PDFJS_BUILD_VERSION });
+      // A plain Uint8Array copy, never the Buffer itself: pdf.js 1.10 copies its input with
+      // `new input.constructor(input)` and reads every PDF stream from `bytes.buffer`, ignoring
+      // `byteOffset`. A Buffer under 4 KB is a slice of Node's shared pool (nonzero byteOffset), and
+      // so is pdf.js's Buffer copy, so small PDFs parsed the wrong bytes ("bad XRef entry") about
+      // half the time. A Uint8Array copy owns its ArrayBuffer at offset 0, and so does pdf.js's copy.
+      const result = await parsePdfBytes(new Uint8Array(buffer), { version: PDFJS_BUILD_VERSION });
       return result.text;
     } catch (error) {
       annotatePdfParseError(error);

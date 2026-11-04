@@ -25,8 +25,23 @@ describe('extractCvText', () => {
     const text = await extractCvText(buffer, 'application/pdf');
 
     expect(PDFJS_BUILD_VERSION).toBe('v1.10.100');
-    expect(pdfParse).toHaveBeenCalledWith(buffer, { version: PDFJS_BUILD_VERSION });
+    expect(pdfParse).toHaveBeenCalledWith(expect.any(Uint8Array), { version: PDFJS_BUILD_VERSION });
     expect(text).toBe('PDF resume text');
+  });
+
+  it('hands pdf-parse a plain Uint8Array copy at offset 0, never a (possibly pooled) Buffer', async () => {
+    vi.mocked(pdfParse).mockResolvedValue({ text: '' } as never);
+    // A small Buffer is a slice of Node's shared pool: nonzero byteOffset into a larger ArrayBuffer.
+    const pooled = Buffer.from('%PDF-1.4 small file');
+
+    await extractCvText(pooled, 'application/pdf');
+
+    const [bytes] = vi.mocked(pdfParse).mock.calls[0];
+    expect(Buffer.isBuffer(bytes)).toBe(false);
+    expect(bytes.constructor).toBe(Uint8Array);
+    expect(bytes.byteOffset).toBe(0);
+    expect(bytes.buffer.byteLength).toBe(pooled.length);
+    expect(Array.from(bytes)).toEqual(Array.from(pooled));
   });
 
   it('extracts text from a DOCX via mammoth', async () => {

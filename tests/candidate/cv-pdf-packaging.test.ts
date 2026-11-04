@@ -15,14 +15,14 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
-import { PDFJS_BUILD_VERSION } from '../../packages/api/src/lib/cv-extraction';
+import { PDFJS_BUILD_VERSION, extractCvText } from '../../packages/api/src/lib/cv-extraction';
 
 const ROOT = resolve(__dirname, '../..');
 const WEB = join(ROOT, 'apps/web');
 const nextConfig = readFileSync(join(WEB, 'next.config.ts'), 'utf8');
 
 type PdfParse = (
-  data: Buffer,
+  data: Uint8Array,
   options?: { version?: string },
 ) => Promise<{ numpages: number; text: string; version: string }>;
 type PdfKitDoc = {
@@ -66,22 +66,40 @@ describe('pdf-parse packaging for the Next.js server (F-7)', () => {
   });
 
   it('parses a PDF through pdf-parse resolved from apps/web, as the server will', async () => {
-    const apiRequire = createRequire(join(ROOT, 'packages/api/package.json'));
-    const PDFDocument = apiRequire('pdfkit') as new () => PdfKitDoc;
-    const pdf = await new Promise<Buffer>((done) => {
-      const doc = new PDFDocument();
-      const chunks: Buffer[] = [];
-      doc.on('data', (c) => chunks.push(c));
-      doc.on('end', () => done(Buffer.concat(chunks)));
-      doc.text('Hoja de vida de prueba 2026');
-      doc.end();
-    });
+    const pdf = await smallPdf();
 
     const pdfParse = createRequire(join(WEB, 'package.json'))('pdf-parse') as PdfParse;
-    const result = await pdfParse(pdf, { version: PDFJS_BUILD_VERSION });
+    const result = await pdfParse(new Uint8Array(pdf), { version: PDFJS_BUILD_VERSION });
 
     expect(result.numpages).toBe(1);
     expect(result.version).toBe(PDFJS_BUILD_VERSION.slice(1));
-    expect(result.text).toContain('Hoja de vida de prueba 2026');
+    expect(result.text).toContain(PDF_TEXT);
+  });
+
+  // pdf.js 1.10 reads PDF streams from `bytes.buffer` ignoring byteOffset, and copies a Buffer input
+  // into another pooled Buffer: a small PDF passed as a Buffer failed about half the time. Each run
+  // first takes a byte from Node's shared pool so the next small Buffer lands at a nonzero offset.
+  it('extracts a small (pool-sized) PDF reliably through extractCvText', async () => {
+    const pdf = await smallPdf();
+    expect(pdf.length).toBeLessThan(Buffer.poolSize >>> 1);
+    for (let i = 0; i < 10; i++) {
+      Buffer.from([i]);
+      await expect(extractCvText(Buffer.from(pdf), 'application/pdf')).resolves.toContain(PDF_TEXT);
+    }
   });
 });
+
+const PDF_TEXT = 'Hoja de vida de prueba 2026';
+
+function smallPdf(): Promise<Buffer> {
+  const apiRequire = createRequire(join(ROOT, 'packages/api/package.json'));
+  const PDFDocument = apiRequire('pdfkit') as new () => PdfKitDoc;
+  return new Promise<Buffer>((done) => {
+    const doc = new PDFDocument();
+    const chunks: Buffer[] = [];
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => done(Buffer.concat(chunks)));
+    doc.text(PDF_TEXT);
+    doc.end();
+  });
+}
