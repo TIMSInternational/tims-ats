@@ -4,9 +4,7 @@ import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { Modal } from '../../../../../components';
 
-// Boards a Costa Rican employer actually posts to. "elempleo" (Colombia-only) is no longer offered for new
-// channels; existing elempleo channels still render through channels-card.
-const CHANNEL_TYPES = ['internal', 'linkedin', 'indeed', 'computrabajo', 'website', 'other'] as const;
+const CHANNEL_TYPES = ['internal', 'linkedin', 'indeed', 'computrabajo', 'elempleo', 'website', 'other'] as const;
 type ChannelType = (typeof CHANNEL_TYPES)[number];
 
 interface AddChannelModalProps {
@@ -25,6 +23,7 @@ export function AddChannelModal({ onConfirm, onClose, isPending }: AddChannelMod
     linkedin: t.vacancies.channelTypeLinkedin,
     indeed: t.vacancies.channelTypeIndeed,
     computrabajo: t.vacancies.channelTypeComputrabajo,
+    elempleo: t.vacancies.channelTypeElempleo,
     website: t.vacancies.channelTypeWebsite,
     other: t.vacancies.channelTypeOther,
   };
