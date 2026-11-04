@@ -20,6 +20,29 @@ const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'rev
 // returned every invitation across every tenant, and the whole set was materialised into a string.
 const EXPORT_LIMIT = 10_000;
 
+/**
+ * Delivery outcome of a just-created invitation, same vocabulary as the C# writers
+ * (InitialInvitationDelivery): `accepted` = SES took the email and the row is now `sent`; `unconfirmed` =
+ * the send failed or is unknown, so the row stays `pending` for a resend; `changed` = the row left `pending`
+ * meanwhile; `state_unconfirmed` = SES took it but the status write failed. Creation is committed in every
+ * case, so the caller must never retry by creating again.
+ */
+type InvitationDelivery = 'accepted' | 'unconfirmed' | 'changed' | 'state_unconfirmed';
+
+async function markInvitationSent(id: string, delivered: boolean): Promise<{ delivery: InvitationDelivery; sentAt: Date | null }> {
+  if (!delivered) return { delivery: 'unconfirmed', sentAt: null };
+  const sentAt = new Date();
+  try {
+    const updated = await db.platformInvitation.updateMany({
+      where: { id, status: InvitationStatus.pending },
+      data: { status: InvitationStatus.sent, sentAt },
+    });
+    return updated.count === 1 ? { delivery: 'accepted', sentAt } : { delivery: 'changed', sentAt: null };
+  } catch {
+    return { delivery: 'state_unconfirmed', sentAt: null };
+  }
+}
+
 const invitationListSelect = {
   id: true,
   email: true,
@@ -152,21 +175,23 @@ export const invitationsRouter = router({
           organizationSlug: input.organizationSlug,
           organizationPlan: input.organizationPlan,
           token,
-          status: InvitationStatus.sent,
+          // `sent` only once SES accepted the email (below); until then the owner sees it as pending (D-04).
+          status: InvitationStatus.pending,
           invitedById: ctx.user.id,
-          sentAt: new Date(),
           expiresAt,
         },
         select: invitationListSelect,
       });
 
-      await sendEmail({
+      const delivered = await sendEmail({
         to: input.email,
-        subject: `Invitacion para administrar ${input.organizationName} en TIMS ATS`,
-        html: renderInvitationEmail({ organization: input.organizationName, role: 'Administrador', url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
+        subject: `Invitación para administrar ${input.organizationName} en TIMS ATS`,
+        // An org_admin invitation is accepted as super_admin (InvitationOnboardingRepository).
+        html: renderInvitationEmail({ organization: input.organizationName, role: 'super_admin', url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
       });
+      const { delivery, sentAt } = await markInvitationSent(invitation.id, delivered);
 
-      return invitation;
+      return delivery === 'accepted' ? { ...invitation, status: InvitationStatus.sent, sentAt, delivery } : { ...invitation, delivery };
     }),
 
   createUserInvitation: platformProcedure
@@ -200,21 +225,22 @@ export const invitationsRouter = router({
           organizationName: org.name,
           roleSlug,
           token,
-          status: InvitationStatus.sent,
+          // `sent` only once SES accepted the email (below); until then the owner sees it as pending (D-04).
+          status: InvitationStatus.pending,
           invitedById: ctx.user.id,
-          sentAt: new Date(),
           expiresAt,
         },
         select: invitationListSelect,
       });
 
-      await sendEmail({
+      const delivered = await sendEmail({
         to: input.email,
-        subject: `Invitacion para unirte a ${org.name} en TIMS ATS`,
+        subject: `Invitación para unirte a ${org.name} en TIMS ATS`,
         html: renderInvitationEmail({ organization: org.name, role: roleSlug, url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
       });
+      const { delivery, sentAt } = await markInvitationSent(invitation.id, delivered);
 
-      return invitation;
+      return delivery === 'accepted' ? { ...invitation, status: InvitationStatus.sent, sentAt, delivery } : { ...invitation, delivery };
     }),
 
   resendInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
