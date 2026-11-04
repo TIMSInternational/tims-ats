@@ -149,7 +149,11 @@ export default function VacanciesPage() {
       {showCreate && (
         <CreateModal
           onConfirm={(data) => createVacancy.mutate(data)}
-          onClose={() => setShowCreate(false)}
+          onClose={() => {
+            setShowCreate(false);
+            // Drop `?create=1` so a reload does not reopen the wizard the user just closed.
+            if (openCreateOnLoad) router.replace('/recruitment/vacancies');
+          }}
           isPending={createVacancy.isPending}
           errorMessage={createVacancy.error?.message ?? null}
         />
