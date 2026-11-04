@@ -29,11 +29,15 @@ export type ApprovalEmailMessage = { to: string; subject: string; html: string }
 
 export const APPROVAL_EMAIL_SEND_TIMEOUT_MS = 4_000;
 
-/** Where an approver reviews the item: the vacancy page, or the offers page opened on that offer. */
+/**
+ * Where an approver reviews the item: the vacancy page, or the offer's own path, which opens the offers
+ * page on that offer (apps/web offerLinkPath). Both are PATH-shaped on purpose: a signed-out approver is
+ * sent to /login with the pathname kept, so the link still lands on the item after signing in.
+ */
 export function approvalReviewUrl(appUrl: string, kind: ApprovalKind, entityId: string): string {
   const base = appUrl.replace(/\/+$/, '');
   const id = encodeURIComponent(entityId);
-  return kind === 'vacancy' ? `${base}/recruitment/vacancies/${id}` : `${base}/recruitment/offers?offer=${id}`;
+  return kind === 'vacancy' ? `${base}/recruitment/vacancies/${id}` : `${base}/recruitment/offers/${id}`;
 }
 
 /** Pure: one message per approver with an address. */

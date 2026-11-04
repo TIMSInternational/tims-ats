@@ -41,6 +41,7 @@ import {
   approvalNotificationService,
   approvalReviewUrl,
 } from '../../packages/api/src/services/approval-notification.service';
+import { offerLinkPath } from '../../apps/web/lib/offer-deep-link';
 
 const CONTEXT = {
   companyName: 'Empresa Piloto',
@@ -86,7 +87,7 @@ describe('approvalNotificationService.notifyApprovalRequested', () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
-  it('links an offer approver to the offers page opened on that offer', async () => {
+  it('links an offer approver to that offer by its path (survives the sign-in redirect)', async () => {
     await approvalNotificationService.notifyApprovalRequested({
       orgId: ORG_ID,
       kind: 'offer',
@@ -97,7 +98,7 @@ describe('approvalNotificationService.notifyApprovalRequested', () => {
     expect(mocks.findOfferRequest).toHaveBeenCalledWith(ORG_ID, ITEM_ID, [ANA], REQUESTER);
     expect(mocks.findVacancyRequest).not.toHaveBeenCalled();
     const html = mocks.sendEmail.mock.calls[0]![0].html as string;
-    expect(html).toContain(`href="https://app.example.test/recruitment/offers?offer=${ITEM_ID}"`);
+    expect(html).toContain(`href="https://app.example.test/recruitment/offers/${ITEM_ID}"`);
     expect(html).toContain('María Pérez');
   });
 
@@ -164,7 +165,13 @@ describe('approvalReviewUrl', () => {
       'https://app.example.test/recruitment/vacancies/v1',
     );
     expect(approvalReviewUrl('https://app.example.test', 'offer', 'o 1')).toBe(
-      'https://app.example.test/recruitment/offers?offer=o%201',
+      'https://app.example.test/recruitment/offers/o%201',
     );
+  });
+
+  it('builds the same offer path as the web route that opens it (apps/web offerLinkPath)', () => {
+    const url = new URL(approvalReviewUrl('https://app.example.test', 'offer', ITEM_ID));
+    expect(url.pathname).toBe(offerLinkPath(ITEM_ID));
+    expect(url.search).toBe('');
   });
 });

@@ -34,11 +34,11 @@ describe('approval request email', () => {
       ...BASE,
       kind: 'offer',
       candidateName: 'María Pérez',
-      reviewUrl: 'https://app.example.test/recruitment/offers?offer=o1',
+      reviewUrl: 'https://app.example.test/recruitment/offers/o1',
     });
     expect(subject).toBe('Aprobación pendiente: oferta para María Pérez (Analista de Datos)');
     expect(html).toContain('la oferta para <strong>María Pérez</strong>');
-    expect(html).toContain('href="https://app.example.test/recruitment/offers?offer=o1"');
+    expect(html).toContain('href="https://app.example.test/recruitment/offers/o1"');
     expect(html).toContain('no se puede enviar al candidato hasta que la apruebes');
   });
 
