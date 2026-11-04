@@ -10,6 +10,10 @@ import { clearedJoinTokenColumns, issueJoinToken } from '../../services/intervie
 import { scopeWhereFor, assertScoped } from '../../access';
 import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { isBlindedViewer, visibleScorecard } from '../../services/scorecard-visibility.service';
+import { assertInterviewManageable } from '../../services/interview-management.service';
+import { interviewScorecardRepository } from '../../repositories/interview-scorecard.repository';
+import { interviewSchedulingRepository } from '../../repositories/interview-scheduling.repository';
+import { orgSettingsTimeZone, UTC_TIME_ZONE } from '@tims/shared';
 
 export const interviewCrudRouter = router({
   // 8.1 — List interviews with filters
@@ -22,12 +26,14 @@ export const interviewCrudRouter = router({
         type: z.string().max(50).optional(),
         from: z.date().optional(),
         to: z.date().optional(),
+        // 'desc' lists the most recent first (past interviews); 'asc' the soonest first (upcoming).
+        sort: z.enum(['asc', 'desc']).default('asc'),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(20),
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, ...filters } = input;
+      const { page, pageSize, sort, ...filters } = input;
       const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
 
       const where: Prisma.InterviewWhereInput = {
@@ -51,7 +57,7 @@ export const interviewCrudRouter = router({
         ],
       };
 
-      const [items, total] = await Promise.all([
+      const [items, total, orgSettings] = await Promise.all([
         db.interview.findMany({
           where,
           omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
@@ -66,14 +72,22 @@ export const interviewCrudRouter = router({
               },
             },
           },
-          orderBy: { scheduledAt: 'asc' },
+          orderBy: [{ scheduledAt: sort }, { id: 'asc' }],
           skip: (page - 1) * pageSize,
           take: pageSize,
         }),
         db.interview.count({ where }),
+        interviewSchedulingRepository.findOrgSettings(ctx.user.organizationId),
       ]);
 
-      return { items, total, page, pageSize };
+      // The zone the schedule modal books in and labels ("hora de Costa Rica (GMT-6)"): the
+      // organization's, else UTC said explicitly — the zone the invitation emails print (A-17).
+      const orgZone = orgSettingsTimeZone(orgSettings);
+      const schedulingTimeZone = orgZone
+        ? { timeZone: orgZone, source: 'organization' as const }
+        : { timeZone: UTC_TIME_ZONE, source: 'utc' as const };
+
+      return { items, total, page, pageSize, schedulingTimeZone };
     }),
 
   // 8.2 — Get interview by ID
@@ -123,10 +137,17 @@ export const interviewCrudRouter = router({
         interview.evaluators.map((e) => e.userId),
         interview.scorecards,
       );
+      // The competencies the room's scorecard rates — the same set submitScorecard requires — through
+      // this interview:read call, so a panelist without vacancy:read no longer gets an error (F-10).
+      const scorecardCompetencies = await interviewScorecardRepository.getCompetencies(
+        ctx.user.organizationId,
+        interview.vacancyId,
+      );
       return {
         ...interview,
         scorecards: interview.scorecards.map((sc) => visibleScorecard(sc, ctx.user.id, blinded)),
         summary: blinded ? null : interview.summary,
+        scorecardCompetencies,
       };
     }),
 
@@ -269,6 +290,8 @@ export const interviewCrudRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+      // Seeing the interview (panel arm) is not enough to run it: see interview-management.service.ts.
+      await assertInterviewManageable(ctx.access, ctx.user.id, ctx.user.organizationId, id);
       const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
 
       // Compose scope into the business findFirst — it also fetches status/type
@@ -345,14 +368,17 @@ export const interviewCrudRouter = router({
       // SCOPED probe — replaces the prior org-only parent existence check. The
       // InterviewEvaluator row is a committee-arm anchor (grants future read
       // access), so a narrow (team-scoped) caller must NOT be able to grab an
-      // out-of-scope interview by id and self-add as evaluator. assertScoped
-      // throws NOT_FOUND unless the interview is already in the caller's scope.
-      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // out-of-scope interview by id and self-add as evaluator. The interview
+      // scope alone is not enough either: a panelist sees the interview through
+      // the panel arm, but only whoever manages the VACANCY may change the panel
+      // (interview-management.service.ts).
+      await assertInterviewManageable(ctx.access, ctx.user.id, ctx.user.organizationId, input.interviewId);
+      let added: { id: string };
       try {
         // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — the
         // org-membership check and the evaluator insert must share one tx, or the
         // check is a TOCTOU read on a different connection.
-        return await runTenantTransaction(ctx.user.organizationId, async (tx) => {
+        added = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
           const user = await tx.user.findFirst({
             where: { id: input.userId, organizationId: ctx.user.organizationId },
             select: { id: true },
@@ -369,14 +395,25 @@ export const interviewCrudRouter = router({
         }
         throw err;
       }
+      // A panelist added later gets the same invitation (and scorecard link) as the original panel —
+      // and only they do: the candidate and the other evaluators are not mailed again.
+      const addedParams = {
+        orgId: ctx.user.organizationId,
+        interviewId: input.interviewId,
+        kind: 'invite' as const,
+        onlyEvaluatorId: input.userId,
+      };
+      runAfterResponse(ctx, () => interviewEmailService.notify(addedParams));
+      return added;
     }),
 
   removeEvaluator: permissionProcedure('interview', 'update')
     .input(z.object({ interviewId: z.string().uuid(), userId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // SCOPED probe — same escalation guard as addEvaluator: a narrow caller
-      // must not manage the panel of an out-of-scope interview by id.
-      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // must not manage the panel of an out-of-scope interview by id, and a
+      // panelist must not take other panelists off it.
+      await assertInterviewManageable(ctx.access, ctx.user.id, ctx.user.organizationId, input.interviewId);
       // Blind evaluation (PR #303): leaving the panel un-blinds a viewer, so a panel
       // member holding interview:update must not remove THEMSELVES to read the other
       // evaluators' cards before submitting. Someone else has to take them off.
@@ -398,9 +435,10 @@ export const interviewCrudRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // assertScoped replaces the bare org-check findFirst — cancel only uses
-      // the probe result as an existence check (no fields from it are consumed).
-      await assertScoped('interview', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // The scoped probe replaces the bare org-check findFirst — cancel only uses
+      // it as an existence check. Managing needs the vacancy scope too, so a
+      // panelist cannot cancel the interview they sit on.
+      await assertInterviewManageable(ctx.access, ctx.user.id, ctx.user.organizationId, input.id);
 
       const cancelled = await db.interview.update({
         where: { id: input.id },

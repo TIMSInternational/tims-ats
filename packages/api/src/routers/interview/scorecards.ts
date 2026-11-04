@@ -183,9 +183,11 @@ export const interviewScorecardsRouter = router({
       };
     }),
 
-  // 8.15 — Get pending scorecards for current user
+  // 8.15 — Get pending scorecards for current user. Only interviews that have STARTED: a future
+  // interview cannot be scored yet, so it is not a pending task (it shows under the interview list).
   getPendingScorecards: permissionProcedure('interview', 'read').query(async ({ ctx }) => {
     const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id) as Prisma.InterviewWhereInput;
+    const now = new Date();
 
     const evaluatorAssignments = await db.interviewEvaluator.findMany({
       where: {
@@ -193,11 +195,17 @@ export const interviewScorecardsRouter = router({
         status: 'pending',
         interview: {
           AND: [
-            { organizationId: ctx.user.organizationId, status: { in: ['scheduled', 'rescheduled', 'completed'] } },
+            {
+              organizationId: ctx.user.organizationId,
+              status: { in: ['scheduled', 'rescheduled', 'completed'] },
+              scheduledAt: { lte: now },
+            },
             scopeWhere,
           ],
         },
       },
+      // Oldest first: the longest-waiting scorecard is the most overdue one.
+      orderBy: { interview: { scheduledAt: 'asc' } },
       // Explicit allowlist (#308 follow-up): the interview row carries
       // candidateJoinTokenHash / candidateJoinTokenExpiresAt, which must never
       // reach staff clients. Never widen this back to `include`.

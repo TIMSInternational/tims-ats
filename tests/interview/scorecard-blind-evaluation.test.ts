@@ -50,6 +50,8 @@ const store = vi.hoisted(() => ({
   jobProfile: null as null | { organizationId: string; vacancyId: string; competencies: unknown },
   audit: [] as Array<Record<string, unknown>>,
   interviewStatus: 'scheduled',
+  interviewScheduledAt: new Date('2026-09-29T09:00:00Z'),
+  interviewType: 'onsite',
   afterInterviewRead: null as null | (() => void),
 }));
 
@@ -131,6 +133,9 @@ vi.mock('@tims/db', () => {
           organizationId: ORG_A,
           vacancyId: VACANCY,
           status,
+          type: store.interviewType,
+          duration: 60,
+          scheduledAt: store.interviewScheduledAt,
           evaluators: store.panel
             .filter((p) => p.orgId === ORG_A)
             .map((p) => ({ id: p.id, interviewId: p.interviewId, userId: p.userId, user: evaluatorUser(p.userId) })),
@@ -139,6 +144,25 @@ vi.mock('@tims/db', () => {
             .map((c) => ({ ...c, evaluator: evaluatorUser(c.evaluatorId) })),
           summary: store.summary,
         };
+      },
+      // STRICT, like the rest of this fake: only the predicates the completion write sends are understood.
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { id: string; organizationId: string; status: { in: string[] }; scheduledAt: { lte: Date } } & Where;
+        data: { status: string };
+      }) => {
+        for (const key of Object.keys(where)) {
+          if (!['id', 'organizationId', 'status', 'scheduledAt'].includes(key)) {
+            throw new Error(`fake db: unrecognised interview.updateMany where key "${key}"`);
+          }
+        }
+        if (where.id !== INTERVIEW || where.organizationId !== ORG_A) return { count: 0 };
+        if (!where.status.in.includes(store.interviewStatus)) return { count: 0 };
+        if (store.interviewScheduledAt.getTime() > where.scheduledAt.lte.getTime()) return { count: 0 };
+        store.interviewStatus = data.status;
+        return { count: 1 };
       },
     },
     jobProfile: {
@@ -321,6 +345,8 @@ beforeEach(() => {
   };
   store.audit = [];
   store.interviewStatus = 'scheduled';
+  store.interviewScheduledAt = new Date('2026-09-29T09:00:00Z');
+  store.interviewType = 'onsite';
   store.afterInterviewRead = null;
 });
 
@@ -642,4 +668,43 @@ describe('submitScorecard — a closed interview refuses scorecards (#327)', () 
       expect(store.cards.find((c) => c.evaluatorId === ME)?.submittedAt).not.toBeNull();
     },
   );
+});
+
+describe('submitScorecard — a scored interview is marked completed (B-30 / A-02)', () => {
+  const full = { SQL: 4, Storytelling: 5 };
+
+  it.each(['scheduled', 'rescheduled', 'in_progress'])('a %s interview that has started becomes completed', async (status) => {
+    store.interviewStatus = status;
+    const caller = await callerAs(ME);
+    await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+    expect(store.interviewStatus).toBe('completed');
+  });
+
+  it('a card filed before the interview starts does not complete it', async () => {
+    store.interviewScheduledAt = new Date(Date.now() + 24 * 3600_000);
+    const caller = await callerAs(ME);
+    await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+    expect(store.cards.find((c) => c.evaluatorId === ME)?.submittedAt).not.toBeNull();
+    expect(store.interviewStatus).toBe('scheduled');
+  });
+
+  it('a video interview is not completed while its call is still scheduled to run (rejoin stays open)', async () => {
+    store.interviewType = 'video';
+    store.interviewScheduledAt = new Date(Date.now() - 10 * 60_000); // started 10 min ago, 60 min long
+    const caller = await callerAs(ME);
+    await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+    expect(store.interviewStatus).toBe('scheduled');
+    store.interviewScheduledAt = new Date(Date.now() - 2 * 3600_000); // over
+    await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+    expect(store.interviewStatus).toBe('completed');
+  });
+
+  it('a refused card (closed interview) completes nothing', async () => {
+    store.interviewStatus = 'cancelled';
+    const caller = await callerAs(ME);
+    await expect(
+      caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(store.interviewStatus).toBe('cancelled');
+  });
 });

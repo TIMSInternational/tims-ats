@@ -4,6 +4,9 @@ import type { Prisma } from '@tims/db';
 /** Interview statuses that refuse scorecard submission (#327). */
 export const SCORECARD_CLOSED_STATUSES: readonly string[] = ['cancelled', 'no_show'];
 
+/** Statuses a submitted scorecard moves to `completed` (once the interview has started). */
+export const SCORECARD_COMPLETES_STATUSES: readonly string[] = ['scheduled', 'rescheduled', 'confirmed', 'in_progress'];
+
 export interface ScorecardSubmissionData {
   ratings: Record<string, number>;
   recommendation: string;
@@ -51,11 +54,20 @@ export const interviewScorecardRepository = {
       select: { vacancyId: true, status: true },
     });
     if (!interview) return undefined;
+    return { status: interview.status, competencies: await interviewScorecardRepository.getCompetencies(orgId, interview.vacancyId) };
+  },
+
+  /**
+   * The vacancy job profile's competencies (raw Json), or null without a profile — the set the room
+   * rates and submit() requires. Read through the INTERVIEW by its callers, so a panelist with no
+   * vacancy:read gets it too.
+   */
+  async getCompetencies(orgId: string, vacancyId: string): Promise<Prisma.JsonValue | null> {
     const profile = await db.jobProfile.findFirst({
-      where: { vacancyId: interview.vacancyId, organizationId: orgId },
+      where: { vacancyId, organizationId: orgId },
       select: { competencies: true },
     });
-    return { status: interview.status, competencies: profile?.competencies ?? null };
+    return profile?.competencies ?? null;
   },
 
   /**
@@ -68,6 +80,14 @@ export const interviewScorecardRepository = {
    * no_show) at write time. The service already checked the status, but a cancel
    * can land between that read and this transaction; re-checking here narrows that
    * window to the transaction itself (#332 panel, L1).
+   *
+   * A submitted scorecard is proof the interview took place: when it has started
+   * (scheduledAt <= now) and is still scheduled/rescheduled, it becomes
+   * `completed` in the same transaction, so lists and KPIs stop calling a past
+   * interview "Programada" (B-30). A card filed before the start changes nothing.
+   * A video interview completes only once its scheduled END has passed: the
+   * candidate's join link (C# CandidateInterviewJoin) refuses a completed
+   * interview, so completing it mid-call would block a rejoin.
    */
   async submit(
     orgId: string,
@@ -79,7 +99,7 @@ export const interviewScorecardRepository = {
     return runTenantTransaction(orgId, async (tx) => {
       const open = await tx.interview.findFirst({
         where: { id: interviewId, organizationId: orgId, status: { notIn: [...SCORECARD_CLOSED_STATUSES] } },
-        select: { id: true },
+        select: { id: true, type: true, scheduledAt: true, duration: true },
       });
       if (!open) return null;
       const previous = await tx.interviewScorecard.findFirst({
@@ -92,6 +112,22 @@ export const interviewScorecardRepository = {
         create: { organizationId: orgId, interviewId, evaluatorId, ...data, submittedAt },
         update: { ...data, submittedAt },
       });
+      const callStillOpen =
+        open.type === 'video' &&
+        open.scheduledAt instanceof Date &&
+        open.scheduledAt.getTime() + (open.duration ?? 0) * 60_000 > submittedAt.getTime();
+      if (!callStillOpen) {
+        // Status-guarded: a cancel that landed meanwhile is never overwritten.
+        await tx.interview.updateMany({
+          where: {
+            id: interviewId,
+            organizationId: orgId,
+            status: { in: [...SCORECARD_COMPLETES_STATUSES] },
+            scheduledAt: { lte: submittedAt },
+          },
+          data: { status: 'completed' },
+        });
+      }
       if (previous?.submittedAt) {
         const othersSubmitted = await tx.interviewScorecard.count({
           where: { organizationId: orgId, interviewId, evaluatorId: { not: evaluatorId }, submittedAt: { not: null } },
