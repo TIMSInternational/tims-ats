@@ -242,12 +242,17 @@ const FALLBACK_MANIFEST: RoleManifest = participantManifest([PARTICIPANT_HOME]);
 // A staff user who is ALSO a new hire (holds `employee` next to a higher role — e.g. a recruiter hired
 // into the org) keeps the primary role's nav but must still reach their own onboarding. Built once per
 // primary role so manifestFor stays referentially stable for a given role set.
+// The link only helps when the resolved onboarding:read scope still contains the caller's own plan
+// (access resolution takes the WIDEST granted scope): organization (super_admin, hr_admin), team (leader —
+// teamMemberIds always includes self) and no grant at all (recruiter, committee — the employee's own
+// scope applies). hrbp is left out: its `unit` scope resolves through unitMemberIds, which does NOT
+// include the caller, so an HRBP outside their own units would get "no plan" for a plan they have.
 const OWN_ONBOARDING_SECTION: NavSection = { labelKey: 'sidebar.myHome', items: [MY_ONBOARDING_ITEM] };
 const withOwnOnboarding = (m: RoleManifest): RoleManifest => ({ ...m, sections: [...m.sections, OWN_ONBOARDING_SECTION] });
 const WITH_OWN_ONBOARDING: Record<NavRole, RoleManifest> = {
   super_admin: withOwnOnboarding(MANIFESTS.super_admin),
   hr_admin: withOwnOnboarding(MANIFESTS.hr_admin),
-  hrbp: withOwnOnboarding(MANIFESTS.hrbp),
+  hrbp: MANIFESTS.hrbp, // unit scope may exclude the caller's own plan — see above
   recruiter: withOwnOnboarding(MANIFESTS.recruiter),
   leader: withOwnOnboarding(MANIFESTS.leader),
   committee: withOwnOnboarding(MANIFESTS.committee),

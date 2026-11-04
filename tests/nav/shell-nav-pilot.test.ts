@@ -8,6 +8,8 @@ import {
 } from '../../apps/web/lib/nav/manifest';
 import { filterSectionsForScope } from '../../apps/web/lib/launch-scope';
 import { notificationModuleLabel, notificationTypeLabel } from '../../apps/web/lib/notification-labels';
+import { grantsFor } from '../../packages/db/prisma/seed-access-matrix';
+import { resolveAccess } from '../../packages/api/src/access/resolve';
 import es from '../../apps/web/lib/i18n/es.json';
 import en from '../../apps/web/lib/i18n/en.json';
 
@@ -26,15 +28,32 @@ describe('home item ("Inicio") in every nav', () => {
 });
 
 describe('a staff user who is also a new hire keeps "Mi Onboarding"', () => {
-  it.each(['super_admin', 'recruiter', 'leader', 'committee'])('%s + employee', (role) => {
+  it.each(['super_admin', 'hr_admin', 'recruiter', 'leader', 'committee'])('%s + employee', (role) => {
     expect(hrefs([role, 'employee'])).toContain('/my-onboarding');
     // The primary role still drives the rest of the nav.
     expect(hrefs([role, 'employee'])).toEqual([...hrefs([role]), '/my-onboarding']);
   });
 
+  it('is not added for hrbp + employee: unit scope (unitMemberIds) can exclude the caller, so the page would say "no plan"', () => {
+    expect(hrefs(['hrbp', 'employee'])).toEqual(hrefs(['hrbp']));
+  });
+
   it('is not added for a role set without employee, nor duplicated for employee alone', () => {
     for (const role of NAV_ROLES.filter((r) => r !== 'employee')) expect(hrefs([role])).not.toContain('/my-onboarding');
     expect(hrefs(['employee']).filter((h) => h === '/my-onboarding')).toHaveLength(1);
+  });
+
+  it('is only offered where the resolved onboarding:read scope still contains the caller (seed matrix)', () => {
+    // Access resolution takes the WIDEST scope across the roles held. The own plan stays visible at
+    // organization, at team (teamMemberIds always includes self) and at own; unit (unitMemberIds) does not
+    // include the caller. If a grant change makes a merged role resolve to unit, this fails.
+    const grants = (roles: string[]) => roles.flatMap((role) => grantsFor(role).map((g) => ({ ...g, role })));
+    for (const role of NAV_ROLES.filter((r) => r !== 'employee')) {
+      const decision = resolveAccess(grants([role, 'employee']), 'onboarding', 'read');
+      const scope = decision.allowed ? decision.scope : 'none';
+      const offered = hrefs([role, 'employee']).includes('/my-onboarding');
+      expect(offered, `${role} + employee resolves onboarding:read @${scope}`).toBe(scope !== 'unit');
+    }
   });
 
   it('is stable per role set (same object on repeated calls)', () => {
