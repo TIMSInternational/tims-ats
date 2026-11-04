@@ -145,9 +145,9 @@ function ResetPasswordForm() {
             <p className="text-[13px] text-[#585858]">{t.auth.redirectingToDashboard}</p>
           </div>
         ) : invalidLink ? (
-          // An invalid, expired or already-used link: no form to fill in, only the ways out — a new link
-          // (or back to the invitation that sent it) and the sign-in page.
           <div className="space-y-4">
+            {/* Invalid, expired or spent link: no form, only the ways out (a new link, or back to the
+                invitation that sent it, and the sign-in page). */}
             <h1 className="text-lg font-semibold text-[#1F114C]">{t.auth.newPassword}</h1>
             <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
               {t.auth.invalidPasswordSetupLink}
