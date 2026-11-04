@@ -142,11 +142,13 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
       }
       const auth = createSupabaseBrowserClient();
       const latest = await auth.auth.getSession();
-      let accessToken =
-        latest.data.session?.user.email?.toLowerCase() === invitation.email.toLowerCase() &&
-        latest.data.session.access_token !== rejectedToken
-          ? latest.data.session.access_token
-          : undefined;
+      const current = latest.data.session;
+      if (current && current.user.email?.toLowerCase() !== invitation.email.toLowerCase()) {
+        // Someone signed in from another tab while a request was in flight: ask before replacing them.
+        setOtherSession(current.user.email ?? '');
+        return;
+      }
+      let accessToken = current && current.access_token !== rejectedToken ? current.access_token : undefined;
       if (!accessToken) {
         // Session expiry or logout in another tab must reveal a recoverable sign-in state.
         setSessionToken(undefined);
@@ -169,7 +171,10 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
         setSessionToken(undefined);
         setExisting(true);
         setError(t.signinRequired);
-        await auth.auth.signOut({ scope: 'local' }).catch(() => undefined);
+        // Clear only the session that was rejected; one that signed in meanwhile is not ours to end.
+        const now = await auth.auth.getSession().catch(() => undefined);
+        if (now?.data.session?.access_token === accessToken)
+          await auth.auth.signOut({ scope: 'local' }).catch(() => undefined);
       } else {
         const known: Record<string, string> = {
           wrong_account: t.wrong,

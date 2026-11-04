@@ -382,4 +382,42 @@ describe('invitation account setup', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('other@example.test');
     expect(state.oauth).not.toHaveBeenCalled();
   });
+
+  it('does not sign in over an account that signed in while registration was in flight (review round 2)', async () => {
+    type FakeSession = { access_token: string; user: { email: string } };
+    let session: FakeSession | null = null;
+    state.getSession.mockImplementation(async () => ({ data: { session } }));
+    state.request.mockImplementation(async (action: string) => {
+      if (action === 'preview') return invitation;
+      if (action === 'register') {
+        session = { access_token: 'other-token', user: { email: 'other@example.test' } }; // another tab
+        return { outcome: 'account_created' };
+      }
+      return { outcome: 'complete' };
+    });
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.change(screen.getByLabelText('Confirmar contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta y unirme' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('other@example.test');
+    expect(state.signIn).not.toHaveBeenCalled();
+    expect(state.request).not.toHaveBeenCalledWith('complete', expect.anything(), expect.anything());
+  });
+
+  it('after sign_in_required, does not sign out an account that signed in during that request (review round 2)', async () => {
+    type FakeSession = { access_token: string; user: { email: string } };
+    let session: FakeSession | null = { access_token: 'sso-token', user: { email: invitation.email } };
+    state.getSession.mockImplementation(async () => ({ data: { session } }));
+    state.request.mockImplementation(async (action: string) => {
+      if (action === 'preview') return { ...invitation, accountExists: true };
+      session = { access_token: 'other-token', user: { email: 'other@example.test' } }; // another tab
+      return { outcome: 'sign_in_required' };
+    });
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Completar acceso' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ingresa o recupera tu acceso');
+    expect(state.signOut).not.toHaveBeenCalled();
+  });
 });
