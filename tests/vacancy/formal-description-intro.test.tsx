@@ -46,7 +46,14 @@ describe('withoutCopiedSections', () => {
   });
 
   it('recognises plain "Requisitos:" label lines too (Codex P2)', () => {
-    expect(withoutCopiedSections('Buscamos analista.\n\nResponsabilidades:\n- Conciliar', sections)).toBe('Buscamos analista.');
+    expect(withoutCopiedSections('Buscamos analista.\n\nResponsabilidades:\n- Conciliar cuentas.', sections)).toBe(
+      'Buscamos analista.',
+    );
+  });
+
+  it('keeps the lines of a section that were NOT copied into its field, under their heading (Codex P2 round 2)', () => {
+    const description = 'Intro.\n\n## Requisitos\n- Contabilidad\n- Colegiatura obligatoria\n\n## Beneficios\n- Seguro';
+    expect(withoutCopiedSections(description, sections)).toBe('Intro.\n\n## Requisitos\n- Colegiatura obligatoria');
   });
 
   it('keeps a section whose structured field came back empty (nothing was copied for it)', () => {
@@ -79,5 +86,24 @@ describe('pipeline "SLA vencido" filter with the default stages', () => {
     expect(withApps).not.toContain('Oferta');
     expect(withApps).not.toContain('Contratado');
     expect(withApps).toContain('Preselección'); // 400 h > its 120 h SLA
+  });
+
+  it('still treats a 0-hour SLA as a real SLA (Codex P2 round 2)', () => {
+    const stage = {
+      id: 's0',
+      name: 'Llamada',
+      order: 0,
+      slaHours: 0,
+      applications: [
+        {
+          id: 'a0',
+          source: 'portal',
+          appliedAt: new Date(Date.now() - 3600000).toISOString(),
+          enteredStageAt: new Date(Date.now() - 3600000).toISOString(),
+          candidate: { fitScores: [] },
+        },
+      ],
+    };
+    expect(applyFilters([stage], { ...EMPTY_FILTERS, slaOnly: true })[0]!.applications).toHaveLength(1);
   });
 });

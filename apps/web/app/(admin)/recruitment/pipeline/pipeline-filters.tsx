@@ -194,7 +194,7 @@ export function applyFilters(
       // SLA filter — precise hours, not floored days*24, so sub-24h SLAs count. A stage without an SLA
       // (the default Oferta and Contratado) can never be overdue, so it shows nothing under this filter.
       if (filters.slaOnly) {
-        if (!stage.slaHours) return false;
+        if (stage.slaHours == null) return false;
         const hoursInStage = (Date.now() - new Date(app.enteredStageAt).getTime()) / 3600000;
         if (hoursInStage <= stage.slaHours) return false;
       }

@@ -45,23 +45,50 @@ function headingText(line: string): string | null {
   return label ? label[1]!.trim() : null;
 }
 
+/** Compare a description line with a copied item: no list marker, emphasis, case or end punctuation. */
+function normalizeItem(text: string): string {
+  return text
+    .replace(/^\s*([-*•]|\d+[.)])\s+/, '')
+    .replace(/[*_`]/g, '')
+    .replace(/[\s.;:,]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 /**
  * The AI's formal variant is a full job description: an opening, maybe other sections ("Sobre la empresa"),
  * and its responsibilities, requirements and benefits. "Usar" also copies those three into their own wizard
  * fields, and the saved description is built from all fields, so keeping the full text in "Sobre el cargo"
- * listed them twice (F-6). This drops ONLY the sections whose content was copied into a field (a heading
- * that names one of the three AND a non-empty array for it); every other heading and its text is kept.
+ * listed them twice (F-6). This removes only what was copied: inside a responsibilities/requirements/benefits
+ * section, a line is dropped when it matches an item copied into that field; any other line (and the section
+ * heading above it) is kept, and every other section is kept whole. Nothing that was not copied is lost.
  */
 export function withoutCopiedSections(description: string, sections: FormalSections): string {
   const kept: string[] = [];
-  let dropping = false;
+  // A kept heading after kept text gets a blank line, as markdown sections are written.
+  const pushHeading = (heading: string) => {
+    if (kept.length > 0 && kept[kept.length - 1]!.trim() !== '') kept.push('');
+    kept.push(heading);
+  };
+  let copied: Set<string> | null = null; // items of the structured section being read, if any
+  let pendingHeading: string | null = null; // its heading, emitted only if one of its lines is kept
   for (const line of description.split('\n')) {
     const heading = headingText(line);
     if (heading !== null) {
       const structured = STRUCTURED_HEADINGS.find((h) => h.re.test(heading));
-      dropping = !!structured && sections[structured.key].length > 0;
+      const items = structured ? sections[structured.key] : [];
+      copied = items.length > 0 ? new Set(items.map(normalizeItem)) : null;
+      pendingHeading = copied ? line : null;
+      if (!copied) pushHeading(line);
+      continue;
     }
-    if (!dropping) kept.push(line);
+    if (copied && line.trim() !== '' && copied.has(normalizeItem(line))) continue;
+    if (copied && line.trim() !== '' && pendingHeading !== null) {
+      pushHeading(pendingHeading);
+      pendingHeading = null;
+    }
+    if (!copied || line.trim() !== '') kept.push(line);
   }
   return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
