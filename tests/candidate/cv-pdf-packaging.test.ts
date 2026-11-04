@@ -77,21 +77,22 @@ describe('pdf-parse packaging for the Next.js server (F-7)', () => {
   });
 
   // pdf.js 1.10 reads PDF streams from `bytes.buffer` ignoring byteOffset, and copies a Buffer input
-  // into another pooled Buffer: a small PDF passed as a Buffer failed about half the time. Each run
-  // first takes a byte from Node's shared pool so the next small Buffer lands at a nonzero offset.
-  it('extracts a small (pool-sized) PDF reliably through extractCvText', async () => {
-    const pdf = await smallPdf();
-    expect(pdf.length).toBeLessThan(Buffer.poolSize >>> 1);
-    for (let i = 0; i < 10; i++) {
-      Buffer.from([i]);
-      await expect(extractCvText(Buffer.from(pdf), 'application/pdf')).resolves.toContain(PDF_TEXT);
+  // into another pooled Buffer, so a small PDF passed as a Buffer read whatever else sat in Node's
+  // shared pool (about half the runs failed). Every run uses a DIFFERENT pooled PDF: with identical
+  // bytes, a wrong-offset read can land on an earlier copy of the same file and pass by coincidence.
+  it('extracts small (pool-sized) PDFs reliably through extractCvText', async () => {
+    for (let i = 0; i < 12; i++) {
+      const text = `${PDF_TEXT} ${i}`;
+      const pdf = await smallPdf(text);
+      expect(pdf.length).toBeLessThan(Buffer.poolSize >>> 1);
+      await expect(extractCvText(pdf, 'application/pdf')).resolves.toContain(text);
     }
   });
 });
 
 const PDF_TEXT = 'Hoja de vida de prueba 2026';
 
-function smallPdf(): Promise<Buffer> {
+function smallPdf(text = PDF_TEXT): Promise<Buffer> {
   const apiRequire = createRequire(join(ROOT, 'packages/api/package.json'));
   const PDFDocument = apiRequire('pdfkit') as new () => PdfKitDoc;
   return new Promise<Buffer>((done) => {
@@ -99,7 +100,7 @@ function smallPdf(): Promise<Buffer> {
     const chunks: Buffer[] = [];
     doc.on('data', (c) => chunks.push(c));
     doc.on('end', () => done(Buffer.concat(chunks)));
-    doc.text(PDF_TEXT);
+    doc.text(text);
     doc.end();
   });
 }
