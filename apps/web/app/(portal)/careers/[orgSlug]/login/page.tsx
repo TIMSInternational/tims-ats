@@ -106,16 +106,23 @@ export default function PortalLoginPage() {
       setError(m.errorGeneric);
       return;
     }
-    const { error: otpError } = await createSupabaseBrowserClient().auth.signInWithOtp({
-      email: address,
-      options: captchaToken ? { emailRedirectTo, captchaToken } : { emailRedirectTo },
-    });
-    // A Turnstile token is single-use, so whatever happened the next request needs a fresh one.
-    resetCaptcha();
-    inFlight.current = false;
-    setBusy(null);
-    if (otpError) {
-      const failure = classifyOtpSendError(otpError);
+    let failure: OtpSendFailure | null = null;
+    try {
+      const { error: otpError } = await createSupabaseBrowserClient().auth.signInWithOtp({
+        email: address,
+        options: captchaToken ? { emailRedirectTo, captchaToken } : { emailRedirectTo },
+      });
+      if (otpError) failure = classifyOtpSendError(otpError);
+    } catch {
+      // The SDK rethrows non-auth exceptions (e.g. a network failure): same as any other failed send.
+      failure = { kind: 'generic' };
+    } finally {
+      // A Turnstile token is single-use, so whatever happened the next request needs a fresh one.
+      resetCaptcha();
+      inFlight.current = false;
+      setBusy(null);
+    }
+    if (failure) {
       // The per-address limit means this address got an email moments ago: its code still works, so go on to
       // the code step and count down to when another email may be requested.
       if (failure.kind === 'cooldown') {
@@ -153,15 +160,22 @@ export default function PortalLoginPage() {
     setBusy('verify');
     setError('');
     setNotice('');
-    const { error: verifyError } = await createSupabaseBrowserClient().auth.verifyOtp({
-      email: sentTo,
-      token: code,
-      type: 'email',
-    });
-    if (verifyError) {
+    let failure: OtpVerifyFailure | null = null;
+    try {
+      const { error: verifyError } = await createSupabaseBrowserClient().auth.verifyOtp({
+        email: sentTo,
+        token: code,
+        type: 'email',
+      });
+      if (verifyError) failure = classifyOtpVerifyError(verifyError);
+    } catch {
+      // A thrown (non-auth) exception must not leave the page locked with every control disabled.
+      failure = 'generic';
+    }
+    if (failure) {
       inFlight.current = false;
       setBusy(null);
-      setError(verifyFailureMessage(classifyOtpVerifyError(verifyError)));
+      setError(verifyFailureMessage(failure));
       return;
     }
     // Same landing as the magic link's /auth/callback → `next`. Busy stays set while the dashboard loads.

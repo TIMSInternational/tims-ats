@@ -274,6 +274,24 @@ describe('portal login page: code sign-in', () => {
     expect(screen.getByRole('status').textContent).toBe(m.resent);
   });
 
+  it('recovers from a thrown verifyOtp or signInWithOtp instead of locking the page', async () => {
+    auth.verifyOtp.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<PortalLoginPage />);
+    await requestEmail();
+    await typeCodeAndSubmit('123456');
+    expect(screen.getByRole('alert').textContent).toBe(m.codeErrorGeneric);
+    expect(screen.getByRole('button', { name: m.verifyCode })).toBeEnabled();
+    expect(screen.getByRole('button', { name: m.changeEmail })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: m.changeEmail }));
+    auth.signInWithOtp.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: m.sendLink }));
+    });
+    expect(screen.getByRole('alert').textContent).toBe(m.errorGeneric);
+    expect(screen.getByRole('button', { name: m.sendLink })).toBeEnabled();
+  });
+
   it('requires and forwards the Turnstile token when a site key is configured', async () => {
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'site-key');
     render(<PortalLoginPage />);
