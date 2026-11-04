@@ -45,6 +45,16 @@ export function AdminShell({
     setMobileOpen(false);
   }, [pathname]);
 
+  // …and on Escape, like any other dismissible overlay.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
+
   const handleToggle = () => {
     const next = !expanded;
     setExpanded(next);
@@ -74,11 +84,14 @@ export function AdminShell({
             mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           }`}
         >
+          {/* The drawer always shows the expanded sidebar: the collapsed rail (icons only, labels in hover
+              tooltips) is a desktop preference and is unusable on touch. */}
           <SidebarComponent
             userInitials={userInitials}
             displayName={displayName}
-            expanded={expanded}
+            expanded={expanded || mobileOpen}
             onToggle={handleToggle}
+            onClose={() => setMobileOpen(false)}
             ready={mounted}
             avatar={avatar}
           />
