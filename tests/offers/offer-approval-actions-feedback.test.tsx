@@ -63,11 +63,26 @@ const SOMEONE_ELSES_TURN = [
 ];
 const button = (name: string) => screen.getByRole('button', { name });
 
-function renderActions(status: string, approvals: Array<{ id: string; approver: { id: string }; status: string }>) {
+type Step = { id: string; approver: { id: string }; status: string };
+
+function renderActions(status: string, approvals: Step[]) {
   const onUpdated = vi.fn();
   render(<OfferApprovalActions offerId={OFFER_ID} status={status} approvals={approvals} onUpdated={onUpdated} />);
   return onUpdated;
 }
+
+/** Render, and return a function that re-renders with a refetched approval chain. */
+function renderRefetchable(status: string, approvals: Step[]) {
+  const onUpdated = vi.fn();
+  const view = render(
+    <OfferApprovalActions offerId={OFFER_ID} status={status} approvals={approvals} onUpdated={onUpdated} />,
+  );
+  const refetched = (next: Step[]) =>
+    view.rerender(<OfferApprovalActions offerId={OFFER_ID} status={status} approvals={next} onUpdated={onUpdated} />);
+  return { onUpdated, refetched };
+}
+
+const conflict = () => Object.assign(new Error('La oferta ya no está pendiente'), { data: { code: 'CONFLICT' } });
 
 beforeEach(() => {
   for (const fn of [m.submit, m.approve, m.reject, m.withdraw, m.toast]) fn.mockReset();
@@ -134,6 +149,61 @@ describe('approver: "Your decision"', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(m.reject).not.toHaveBeenCalled();
   });
+
+  // Codex P1: a confirmation left open after a conflict must never be re-sent against a resubmitted
+  // request (new step id) carrying the comment written for the old one.
+  it('a conflict closes the open confirmation; the resubmitted request needs a fresh decision', async () => {
+    m.approve.mockRejectedValueOnce(conflict()).mockResolvedValueOnce({ id: OFFER_ID, status: 'approved' });
+    const { onUpdated, refetched } = renderRefetchable('pending_approval', MY_TURN);
+
+    fireEvent.click(button(en.offers.approve));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'OK for the old terms' } });
+    fireEvent.click(button(en.offers.approveConfirm));
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('textbox')).toBeNull();
+
+    // The refetch shows the request withdrawn and resubmitted to the same approver.
+    refetched([
+      { id: 'step-me', approver: { id: ME }, status: 'cancelled' },
+      { id: 'step-me-2', approver: { id: ME }, status: 'pending' },
+    ]);
+    expect(screen.queryByRole('button', { name: en.offers.approveConfirm })).toBeNull();
+    fireEvent.click(button(en.offers.approve));
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    fireEvent.click(button(en.offers.approveConfirm));
+    await waitFor(() => expect(m.approve).toHaveBeenLastCalledWith({ id: OFFER_ID, approvalId: 'step-me-2' }));
+  });
+
+  it('an open confirmation closes by itself when a refetch shows a different step', () => {
+    const { refetched } = renderRefetchable('pending_approval', MY_TURN);
+    fireEvent.click(button(en.offers.reject));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Over budget' } });
+    refetched([{ id: 'step-me-2', approver: { id: ME }, status: 'pending' }]);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: en.offers.rejectConfirm })).toBeNull();
+    expect(m.reject).not.toHaveBeenCalled();
+  });
+
+  // Codex P2: a requester who is also an approver can take the request back without deciding it first
+  // (for an offer, rejecting would end it for good).
+  it('a requester who is also the approver can withdraw instead of deciding', async () => {
+    m.grants = new Set(['offer:read', 'offer:approve', 'offer:create']);
+    m.withdraw.mockResolvedValue({ id: OFFER_ID, status: 'draft' });
+    renderActions('pending_approval', MY_TURN);
+
+    expect(button(en.offers.approve)).toBeInTheDocument();
+    fireEvent.click(button(en.offers.withdrawApproval));
+    expect(screen.queryByRole('button', { name: en.offers.approve })).toBeNull();
+    fireEvent.click(button(en.offers.withdrawApprovalConfirm));
+    await waitFor(() => expect(m.withdraw).toHaveBeenCalledWith({ id: OFFER_ID, approvalId: 'step-me' }));
+    expect(m.approve).not.toHaveBeenCalled();
+    expect(m.reject).not.toHaveBeenCalled();
+  });
+
+  it('an approver without the request grant is not offered withdrawal', () => {
+    renderActions('pending_approval', MY_TURN);
+    expect(screen.queryByRole('button', { name: en.offers.withdrawApproval })).toBeNull();
+  });
 });
 
 describe('requester', () => {
@@ -170,6 +240,20 @@ describe('requester', () => {
     await waitFor(() => expect(m.withdraw).toHaveBeenCalledWith({ id: OFFER_ID, approvalId: 'step-live' }));
     await waitFor(() => expect(m.toast).toHaveBeenCalledWith(en.offers.withdrawApprovalSuccess, { type: 'success' }));
     expect(onUpdated).toHaveBeenCalledTimes(1);
+  });
+
+  it('pending: an open withdrawal confirmation closes when a refetch shows a different request', () => {
+    m.grants = new Set(['offer:read', 'offer:create']);
+    const { refetched } = renderRefetchable('pending_approval', SOMEONE_ELSES_TURN);
+    fireEvent.click(button(en.offers.withdrawApproval));
+    expect(screen.getByText(en.offers.withdrawApprovalPrompt)).toBeInTheDocument();
+    refetched([
+      { id: 'step-live', approver: { id: 'other' }, status: 'cancelled' },
+      { id: 'step-live-2', approver: { id: 'other' }, status: 'pending' },
+    ]);
+    expect(screen.queryByText(en.offers.withdrawApprovalPrompt)).toBeNull();
+    expect(screen.queryByRole('button', { name: en.offers.withdrawApprovalConfirm })).toBeNull();
+    expect(m.withdraw).not.toHaveBeenCalled();
   });
 });
 
