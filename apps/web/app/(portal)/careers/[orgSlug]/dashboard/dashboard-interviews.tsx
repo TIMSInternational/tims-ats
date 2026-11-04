@@ -31,6 +31,45 @@ function safeMeetingUrl(url: string | null): string | null {
   }
 }
 
+type PortalTranslations = ReturnType<typeof useI18n>['t'];
+
+const TYPE_KEYS = {
+  phone: 'intTypePhone',
+  video: 'intTypeVideo',
+  technical: 'intTypeTechnical',
+  cultural: 'intTypeCultural',
+  panel: 'intTypePanel',
+  onsite: 'intTypeOnsite',
+  in_person: 'intTypeOnsite',
+  online: 'intTypeOnline',
+} as const;
+
+/** Types that say WHERE the interview is: with a meeting link they read "En línea". */
+const PLACE_TYPES: ReadonlySet<string> = new Set(['onsite', 'in_person', 'online']);
+
+/**
+ * The interview type in the candidate's language — never the raw enum ("Onsite") — and honest about
+ * the modality: a pasted Teams/Meet/Zoom link is an ONLINE interview, not "Presencial" (C-02, C-03).
+ */
+export function candidateInterviewTypeLabel(t: PortalTranslations, type: string, joinUrl: string | null): string {
+  const p = t.portalDashboard;
+  const key = (TYPE_KEYS as Record<string, (typeof TYPE_KEYS)[keyof typeof TYPE_KEYS]>)[type];
+  const label = key ? p[key] : p.intTypeOther;
+  if (!joinUrl || type === 'video') return label;
+  return PLACE_TYPES.has(type) ? p.intTypeOnline : `${label} (${p.intTypeOnlineSuffix})`;
+}
+
+/** The schedule modal stores a pasted link as both location and meeting URL: show it once (as Join). */
+function isSameLink(location: string | null, url: string | null): boolean {
+  if (!location || !url) return false;
+  if (location.trim() === url) return true;
+  try {
+    return new URL(location.trim()).toString() === url;
+  } catch {
+    return false;
+  }
+}
+
 export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
   const { t } = useI18n();
   const { data, isLoading, isError } = trpc.candidatePortal.myInterviews.useQuery({ orgSlug });
@@ -85,13 +124,13 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
-                    <p className="text-[12px] text-[#585858] mt-0.5 capitalize">{iv.type}</p>
+                    <p className="text-[12px] text-[#585858] mt-0.5">{candidateInterviewTypeLabel(t, iv.type, joinUrl)}</p>
                     <p className="text-[11px] text-muted mt-1">
                       {new Date(iv.scheduledAt).toLocaleString()}
                       {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
                     </p>
-                    {iv.location && (
-                      <p className="text-[11px] text-muted mt-0.5">
+                    {iv.location && !isSameLink(iv.location, joinUrl) && (
+                      <p className="text-[11px] text-muted mt-0.5 break-all">
                         {t.portalDashboard.intLocation}: {iv.location}
                       </p>
                     )}
