@@ -34,6 +34,12 @@ it('flags reason=expired when a session cookie no longer resolves to a user', as
   expect(loc?.searchParams.get('reason')).toBe('expired');
 });
 
+it('bounces a signed-in user off /forgot-password but lets /logout through (the reset-password exits sign out first)', async () => {
+  state.user = { id: 'lingering-session' };
+  expect((await location('https://app.tims.com/forgot-password'))?.pathname).toBe('/');
+  expect(await location('https://app.tims.com/logout?next=/forgot-password')).toBeNull();
+});
+
 it('does not claim an expiry for a PKCE verifier cookie alone', async () => {
   const loc = await location('https://app.tims.com/dashboard', 'sb-abcd1234-auth-token-code-verifier=v');
   expect(loc?.searchParams.has('reason')).toBe(false);

@@ -97,8 +97,13 @@ describe('staff invitation password setup', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The password setup link is invalid or has expired');
     expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
     expect(screen.queryByLabelText('New password')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Request a new link' })).toHaveAttribute('href', '/forgot-password');
-    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login');
+    // Both exits sign out first: a session can outlive a spent link, and middleware bounces a signed-in
+    // user off /forgot-password and /login (tests/auth/login-redirect-middleware.test.ts).
+    expect(screen.getByRole('link', { name: 'Request a new link' })).toHaveAttribute(
+      'href',
+      '/logout?next=/forgot-password',
+    );
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/logout');
     expect(screen.queryByRole('status')).toBeNull();
     expect(state.updateUser).not.toHaveBeenCalled();
   });

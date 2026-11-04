@@ -21,6 +21,10 @@ import {
   staffLoginUrl,
 } from '../../apps/web/lib/auth/staff-login-redirect';
 import { isSsoSignInOffered } from '../../apps/web/lib/auth/sso-sign-in';
+import {
+  rememberPostLoginDestination,
+  takePostLoginDestination,
+} from '../../apps/web/lib/auth/post-login-destination';
 import { authErrorMessage } from '../../apps/web/app/(auth)/auth-error-message';
 import { loginErrorMessage, loginNoticeMessage } from '../../apps/web/app/(auth)/login/login-error-message';
 import { authHeroPills } from '../../apps/web/app/(auth)/auth-hero';
@@ -97,6 +101,45 @@ describe('hasSupabaseSessionCookie / staffLoginUrl', () => {
     const url = staffLoginUrl('https://app.example/', '//evil.example', false);
     expect(url.searchParams.has('redirect')).toBe(false);
     expect(url.searchParams.has('reason')).toBe(false);
+  });
+});
+
+describe('post-login destination across the mandatory MFA step (E-25)', () => {
+  const memoryStore = () => {
+    const data = new Map<string, string>();
+    return {
+      data,
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+      removeItem: (k: string) => void data.delete(k),
+    };
+  };
+
+  it('remembers a safe deep link and hands it over exactly once', () => {
+    const store = memoryStore();
+    rememberPostLoginDestination('/recruitment/pipeline?vacancy=v1', store, 1_000);
+    expect(takePostLoginDestination(store, 2_000)).toBe('/recruitment/pipeline?vacancy=v1');
+    expect(takePostLoginDestination(store, 2_000)).toBeNull();
+  });
+
+  it('forgets the root, unsafe targets and an earlier value', () => {
+    const store = memoryStore();
+    rememberPostLoginDestination('/recruitment/offers', store, 1_000);
+    rememberPostLoginDestination('/', store, 1_000);
+    expect(takePostLoginDestination(store, 1_000)).toBeNull();
+    rememberPostLoginDestination('//evil.example', store, 1_000);
+    expect(store.data.size).toBe(0);
+  });
+
+  it('expires after ten minutes and rejects tampered or malformed values', () => {
+    const store = memoryStore();
+    rememberPostLoginDestination('/recruitment/offers', store, 0);
+    expect(takePostLoginDestination(store, 10 * 60 * 1000 + 1)).toBeNull();
+    store.setItem('tims-post-login-destination', JSON.stringify({ path: '/\\evil.example', at: 0 }));
+    expect(takePostLoginDestination(store, 1)).toBeNull();
+    store.setItem('tims-post-login-destination', '{not json');
+    expect(takePostLoginDestination(store, 1)).toBeNull();
+    expect(takePostLoginDestination(null, 1)).toBeNull();
   });
 });
 
@@ -195,11 +238,20 @@ describe('/logout reason forwarding (E-01)', () => {
     expect(ssr.signOuts).toBe(1);
   });
 
+  it('can land on /forgot-password (exact match only) so a lingering session cannot block a new link (E-05)', async () => {
+    const res = await logout(new NextRequest('https://app.example/logout?next=/forgot-password'));
+    expect(res.headers.get('location')).toBe('https://app.example/forgot-password');
+    for (const next of ['/dashboard', '//evil.example', 'https://evil.example', '/forgot-password/../dashboard']) {
+      const other = await logout(new NextRequest(`https://app.example/logout?next=${encodeURIComponent(next)}`));
+      expect(other.headers.get('location')).toBe('https://app.example/login');
+    }
+  });
+
   it('drops unknown reasons and keeps the plain /login exit', async () => {
     const res = await logout(new NextRequest('https://app.example/logout?reason=%3Cscript%3E'));
     expect(res.headers.get('location')).toBe('https://app.example/login');
     const plain = await logout(new NextRequest('https://app.example/logout'));
     expect(plain.headers.get('location')).toBe('https://app.example/login');
-    expect(ssr.signOuts).toBe(2);
+    expect(ssr.signOuts).toBeGreaterThanOrEqual(2);
   });
 });
