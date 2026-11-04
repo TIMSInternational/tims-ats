@@ -106,11 +106,14 @@ test('company admin accepts the invitation, sets a password and can sign in with
 test('company admin invites the recruiter and the hiring leader from the team page', async () => {
   needs('tenantInvitations');
   // Written against #307's Equipo page (settings/users/invite-form.tsx on feat/tenant-team-invitations).
+  // Option labels come from the shared role map (`roles.*` in apps/web/lib/i18n/es.json), not the seeded,
+  // unaccented DB `roles.name`. The E2E stack runs the full launch scope, so `leader` is offered here; under
+  // NEXT_PUBLIC_LAUNCH_SCOPE=pilot it is not (PILOT_HIDDEN_ROLE_SLUGS in apps/web/lib/role-labels.ts).
   const { page } = admin;
   await page.goto('/settings/users');
   for (const [who, role] of [
     [j.recruiter, 'Reclutador'],
-    [j.leader, 'Lider'],
+    [j.leader, 'Líder'],
   ] as const) {
     await page.getByLabel('Email', { exact: true }).fill(who.email);
     await page.getByLabel('Rol', { exact: true }).selectOption({ label: role });

@@ -48,3 +48,19 @@ describe('role labels are one map per codebase, and the three agree', () => {
     expect(cs[slug]?.en).toBe(en.roles[slug]);
   });
 });
+
+// The E2E company journey picks the Equipo invite role by its visible option label. Those labels come from the
+// web map above, so a label change must move the journey with it (CI run 41928592372 failed on an old 'Lider').
+describe('the E2E company journey selects roles by the labels the app shows', () => {
+  const spec = readFileSync(join(ROOT, 'e2e/specs/company/company-journey.spec.ts'), 'utf8');
+  const loop = spec.match(/for \(const \[who, role\] of \[([\s\S]*?)\] as const\)/);
+  const picked = [...(loop?.[1] ?? '').matchAll(/\[j\.\w+, '([^']+)'\]/g)].map((match) => match[1]);
+
+  it('finds the team-invite role labels in the spec', () => {
+    expect(picked.length).toBeGreaterThan(0);
+  });
+
+  it.each(picked)('%s is a Spanish role label in the web map', (label) => {
+    expect(Object.values(es.roles)).toContain(label);
+  });
+});
