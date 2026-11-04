@@ -69,7 +69,12 @@ export function OfferApprovalActions({
   };
 
   if (status !== 'draft' && status !== 'pending_approval') return null;
-  if (status === 'pending_approval' && (me.isLoading || (!isMyTurn && !canRequest))) return null;
+  // Only what the viewer can actually do (Codex P2): no request form without offer:create/update, and
+  // no empty card for a viewer who can neither decide nor withdraw.
+  if (status === 'draft' && !canRequest) return null;
+  if (status === 'pending_approval' && (me.isLoading || (!isMyTurn && (!canRequest || !livePendingStep)))) {
+    return null;
+  }
 
   // B-32: the card is titled by what the viewer can do here, not "Cadena de Aprobación" a second time.
   const title =
@@ -162,11 +167,12 @@ export function OfferApprovalActions({
                 type="button"
                 disabled={isPending}
                 onClick={() =>
+                  myStep &&
                   run(async () => {
                     const trimmed = comment.trim();
                     const result = await approve.mutateAsync({
                       id: offerId,
-                      approvalId: myStep?.id,
+                      approvalId: myStep.id,
                       ...(trimmed ? { comment: trimmed } : {}),
                     });
                     return result.status === 'approved'
@@ -183,8 +189,9 @@ export function OfferApprovalActions({
                 type="button"
                 disabled={isPending || !comment.trim()}
                 onClick={() =>
+                  myStep &&
                   run(async () => {
-                    await reject.mutateAsync({ id: offerId, approvalId: myStep?.id, comment: comment.trim() });
+                    await reject.mutateAsync({ id: offerId, approvalId: myStep.id, comment: comment.trim() });
                     return t.offers.offerRejectedToast;
                   })
                 }
@@ -219,8 +226,9 @@ export function OfferApprovalActions({
                 type="button"
                 disabled={isPending}
                 onClick={() =>
+                  livePendingStep &&
                   run(async () => {
-                    await withdraw.mutateAsync({ id: offerId, approvalId: livePendingStep?.id });
+                    await withdraw.mutateAsync({ id: offerId, approvalId: livePendingStep.id });
                     return t.offers.withdrawApprovalSuccess;
                   })
                 }

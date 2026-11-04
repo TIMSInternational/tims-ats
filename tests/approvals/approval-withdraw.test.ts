@@ -73,9 +73,11 @@ async function callerFor(userId: string) {
 }
 
 const statuses = () => store().committed.approvals.map((a) => a.status);
-const withdrawAs = async (kind: Kind, userId: string) =>
-  (await callerFor(userId))[kind].withdrawApproval({ id: ITEM_ID });
-const approveAs = async (kind: Kind, userId: string) => (await callerFor(userId))[kind].approve({ id: ITEM_ID });
+// Both name the step the client saw (`approvalId`, required).
+const withdrawAs = async (kind: Kind, userId: string, approvalId: string) =>
+  (await callerFor(userId))[kind].withdrawApproval({ id: ITEM_ID, approvalId });
+const approveAs = async (kind: Kind, userId: string, approvalId: string) =>
+  (await callerFor(userId))[kind].approve({ id: ITEM_ID, approvalId });
 
 describe.each<Kind>(['offer', 'vacancy'])('%s.withdrawApproval', (kind) => {
   beforeEach(() => {
@@ -86,7 +88,7 @@ describe.each<Kind>(['offer', 'vacancy'])('%s.withdrawApproval', (kind) => {
   });
 
   it('returns the item to draft, cancels only the still-pending steps, and records who did it', async () => {
-    await withdrawAs(kind, REQUESTER);
+    await withdrawAs(kind, REQUESTER, stepId(1));
     expect(store().committed.parent.status).toBe('draft');
     // The decided step keeps its history; the pending one can never be acted on.
     expect(statuses()).toEqual(['approved', 'cancelled']);
@@ -103,8 +105,8 @@ describe.each<Kind>(['offer', 'vacancy'])('%s.withdrawApproval', (kind) => {
   });
 
   it('leaves nothing the old approver can act on', async () => {
-    await withdrawAs(kind, REQUESTER);
-    await expect(approveAs(kind, APPROVER_B)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await withdrawAs(kind, REQUESTER, stepId(1));
+    await expect(approveAs(kind, APPROVER_B, stepId(1))).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(store().committed.parent.status).toBe('draft');
     expect(statuses()).toEqual(['approved', 'cancelled']);
   });
@@ -113,7 +115,7 @@ describe.each<Kind>(['offer', 'vacancy'])('%s.withdrawApproval', (kind) => {
     'refuses an item in status %s and writes nothing',
     async (status) => {
       seed(kind, status, [[APPROVER_A, 'pending']]);
-      await expect(withdrawAs(kind, REQUESTER)).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(withdrawAs(kind, REQUESTER, stepId(0))).rejects.toMatchObject({ code: 'CONFLICT' });
       expect(store().committed.parent.status).toBe(status);
       expect(statuses()).toEqual(['pending']);
       expect(store().committed.audit).toEqual([]);
@@ -125,7 +127,10 @@ describe.each<Kind>(['offer', 'vacancy'])('%s.withdrawApproval', (kind) => {
   it.each([true, false])('races a final approval (start barrier: %s): exactly one wins', async (overlap) => {
     seed(kind, 'pending_approval', [[APPROVER_A, 'pending']]);
     if (overlap) store().overlapNextTransactions(2);
-    const [approved, withdrawn] = await Promise.allSettled([approveAs(kind, APPROVER_A), withdrawAs(kind, REQUESTER)]);
+    const [approved, withdrawn] = await Promise.allSettled([
+      approveAs(kind, APPROVER_A, stepId(0)),
+      withdrawAs(kind, REQUESTER, stepId(0)),
+    ]);
 
     const outcomes = [withdrawn.status, approved.status].sort();
     expect(outcomes).toEqual(['fulfilled', 'rejected']);
@@ -158,6 +163,15 @@ describe.each<Kind>(['offer', 'vacancy'])('%s.withdrawApproval', (kind) => {
       await expect(caller.reject({ id: ITEM_ID, approvalId: stepId(0), comment: 'no' })).rejects.toMatchObject({
         code: 'CONFLICT',
       });
+      expect(store().committed.parent.status).toBe('pending_approval');
+      expect(statuses()).toEqual(['cancelled', 'pending']);
+    });
+
+    it('an unversioned decision (no step id, e.g. a pre-deploy tab) is refused outright', async () => {
+      const caller = (await callerFor(APPROVER_A))[kind] as unknown as {
+        approve: (input: { id: string }) => Promise<unknown>;
+      };
+      await expect(caller.approve({ id: ITEM_ID })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
       expect(store().committed.parent.status).toBe('pending_approval');
       expect(statuses()).toEqual(['cancelled', 'pending']);
     });

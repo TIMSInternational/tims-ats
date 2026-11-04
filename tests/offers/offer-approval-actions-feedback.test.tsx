@@ -173,6 +173,14 @@ describe('requester', () => {
   });
 });
 
+it('shows no request form on a draft to a viewer who cannot request approval (Codex P2)', () => {
+  m.grants = new Set(['offer:read', 'offer:approve']);
+  const { container } = render(
+    <OfferApprovalActions offerId={OFFER_ID} status="draft" approvals={[]} onUpdated={vi.fn()} />,
+  );
+  expect(container).toBeEmptyDOMElement();
+});
+
 it('renders no empty card for a viewer who can neither decide nor withdraw', () => {
   m.grants = new Set(['offer:read']);
   const { container } = render(
