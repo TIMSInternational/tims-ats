@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from '@tims/auth/client';
 import type { copy } from './invitation-copy';
 import {
   invitationSchema,
+  invitationPasswordSignIn,
   invitationRecovery,
   invitationSocialSignIn,
   isInvitationRefused,
@@ -17,6 +18,7 @@ import {
 } from './invitation-setup-api';
 
 type InvitationCopy = (typeof copy)['es'];
+type Adoption = { status: 'adopted' } | { status: 'other'; email: string } | { status: 'failed' };
 
 /** State and actions of the invitation page; the component only renders them. */
 export function useInvitationSetup(token: string, t: InvitationCopy) {
@@ -105,6 +107,27 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
     return session.user.email ?? '';
   }
 
+  /**
+   * Makes a session the API accepted the browser's session, unless another account is signed in by now. Between
+   * that check and the write (setSession performs one Supabase user lookup) a sign-in from another tab can still
+   * be replaced: Supabase's shared cookie storage has no compare-and-set. This and the explicit "sign out that
+   * session" button are the only writes this page itself makes to the browser's session. (Google / Microsoft
+   * are checked before leaving for the provider; the auth callback then stores what the provider returns.)
+   */
+  async function adopt(session: Session): Promise<Adoption> {
+    try {
+      const other = await otherAccount();
+      if (other !== undefined) return { status: 'other', email: other };
+      const { error: adoptError } = await createSupabaseBrowserClient().auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+      return adoptError ? { status: 'failed' } : { status: 'adopted' };
+    } catch {
+      return { status: 'failed' };
+    }
+  }
+
   /** Signs the OTHER account out of this browser only (never its sessions elsewhere), then continues. */
   function leaveOtherSession() {
     return run(async () => {
@@ -149,32 +172,55 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
         return;
       }
       let accessToken = current && current.access_token !== rejectedToken ? current.access_token : undefined;
+      // A password sign-in is held outside the browser's session (invitationPasswordSignIn) until the API accepts
+      // it, so nothing that signs in from another tab meanwhile is overwritten, and a refused one is never stored.
+      let pending: Session | undefined;
       if (!accessToken) {
         // Session expiry or logout in another tab must reveal a recoverable sign-in state.
         setSessionToken(undefined);
-        const signedIn = await auth.auth.signInWithPassword({ email: invitation.email, password: secret });
+        const signedIn = await invitationPasswordSignIn({ email: invitation.email, password: secret });
         setSecret('');
         setConfirmation('');
         if (signedIn.error || !signedIn.data.session) {
           setError(t.signinRequired);
           return;
         }
-        accessToken = signedIn.data.session.access_token;
-        setSessionToken(accessToken);
+        pending = signedIn.data.session;
+        accessToken = pending.access_token;
       }
-      const result = resultSchema.parse(await setupRequest('complete', { token, firstName, lastName }, accessToken));
-      if (result.outcome === 'complete') setComplete(true);
-      else if (result.outcome === 'sign_in_required') {
-        // The session was not accepted (e.g. an SSO email that is not verified): drop it so the next submit
-        // authenticates with the password, and offer password and recovery.
+      let completion: unknown;
+      try {
+        completion = await setupRequest('complete', { token, firstName, lastName }, accessToken);
+      } catch (failure) {
+        if (pending && failure instanceof SetupRequestError && failure.code === 'mfa_required') {
+          // Two-step setup (/mfa) runs on the browser's session, so adopt it first, but never over another account.
+          const adoption = await adopt(pending);
+          if (adoption.status === 'other') {
+            setOtherSession(adoption.email);
+            return;
+          }
+          if (adoption.status === 'failed') {
+            setError(t.error);
+            return;
+          }
+        }
+        throw failure;
+      }
+      const result = resultSchema.parse(completion);
+      if (result.outcome === 'complete') {
+        // Access is granted either way. If another account signed in meanwhile it is kept, and the invitee signs in
+        // with these credentials later, as the ready screen says.
+        if (pending) await adopt(pending);
+        setComplete(true);
+      } else if (result.outcome === 'sign_in_required') {
+        // The session was not accepted (e.g. an SSO email that is not verified): never use it again, so the next
+        // submit authenticates with the password, and offer password and recovery. Nothing is signed out: a refused
+        // password sign-in never reached the browser's session, and a refused browser session belongs to the
+        // invitee and is replaced when a later sign-in is adopted. So an account that signed in meanwhile is safe.
         setRejectedToken(accessToken);
         setSessionToken(undefined);
         setExisting(true);
         setError(t.signinRequired);
-        // Clear only the session that was rejected; one that signed in meanwhile is not ours to end.
-        const now = await auth.auth.getSession().catch(() => undefined);
-        if (now?.data.session?.access_token === accessToken)
-          await auth.auth.signOut({ scope: 'local' }).catch(() => undefined);
       } else {
         const known: Record<string, string> = {
           wrong_account: t.wrong,

@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   recover: vi.fn(),
   oauth: vi.fn(),
   signOut: vi.fn(),
+  setSession: vi.fn(),
+  sharedSignIn: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams({ token }) }));
@@ -17,7 +19,9 @@ vi.mock('@tims/auth/client', () => ({
   createSupabaseBrowserClient: () => ({
     auth: {
       getSession: state.getSession,
-      signInWithPassword: state.signIn,
+      setSession: state.setSession,
+      // The page must never sign in on the browser's shared client (that would overwrite another tab's sign-in).
+      signInWithPassword: state.sharedSignIn,
       resetPasswordForEmail: state.recover,
       signInWithOAuth: state.oauth,
       signOut: state.signOut,
@@ -26,7 +30,12 @@ vi.mock('@tims/auth/client', () => ({
 }));
 vi.mock('../../apps/web/app/accept-invitation/invitation-setup-api', async (original) => {
   const actual = await original<typeof import('../../apps/web/app/accept-invitation/invitation-setup-api')>();
-  return { ...actual, setupRequest: state.request, invitationSocialSignIn: state.oauth };
+  return {
+    ...actual,
+    setupRequest: state.request,
+    invitationSocialSignIn: state.oauth,
+    invitationPasswordSignIn: state.signIn,
+  };
 });
 
 import { InvitationSetup } from '../../apps/web/app/accept-invitation/invitation-setup';
@@ -51,7 +60,10 @@ beforeEach(() => {
   state.recover.mockReset();
   state.oauth.mockReset();
   state.signOut.mockReset();
+  state.setSession.mockReset();
+  state.sharedSignIn.mockReset();
   state.signOut.mockResolvedValue({ error: null });
+  state.setSession.mockResolvedValue({ data: {}, error: null });
   delete process.env.NEXT_PUBLIC_LAUNCH_SCOPE;
   state.request.mockImplementation((action: string) =>
     action === 'preview'
@@ -59,7 +71,10 @@ beforeEach(() => {
       : Promise.resolve({ outcome: action === 'register' ? 'account_created' : 'complete' }),
   );
   state.getSession.mockResolvedValue({ data: { session: null } });
-  state.signIn.mockResolvedValue({ data: { session: { access_token: 'fresh-token' } }, error: null });
+  state.signIn.mockResolvedValue({
+    data: { session: { access_token: 'fresh-token', refresh_token: 'fresh-refresh' } },
+    error: null,
+  });
   state.recover.mockResolvedValue({ error: null });
   state.oauth.mockResolvedValue({ error: null });
 });
@@ -90,6 +105,9 @@ describe('invitation account setup', () => {
       },
       'fresh-token',
     );
+    // Adopted into the browser only after the API accepted it, never signed in on the shared client.
+    expect(state.setSession).toHaveBeenCalledWith({ access_token: 'fresh-token', refresh_token: 'fresh-refresh' });
+    expect(state.sharedSignIn).not.toHaveBeenCalled();
   });
 
   it('uses the latest matching session and never asks for its credential again', async () => {
@@ -108,6 +126,7 @@ describe('invitation account setup', () => {
     await screen.findByText('Tu acceso está listo');
     expect(state.signIn).not.toHaveBeenCalled();
     expect(state.request).toHaveBeenCalledWith('complete', expect.any(Object), 'resumed-token');
+    expect(state.setSession).not.toHaveBeenCalled();
   });
 
   it('requires the invited email when an existing-account sign-in fails', async () => {
@@ -195,6 +214,9 @@ describe('invitation account setup', () => {
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith(`/mfa?returnTo=${encodeURIComponent(`/accept-invitation?token=${token}`)}`),
     );
+    // /mfa runs on the browser's session, so the accepted sign-in is adopted before leaving.
+    expect(state.setSession).toHaveBeenCalledWith({ access_token: 'fresh-token', refresh_token: 'fresh-refresh' });
+    assign.mockRestore();
   });
 
   it('names the role by its label, never the raw slug (D-06)', async () => {
@@ -312,10 +334,6 @@ describe('invitation account setup', () => {
       user: { email: invitation.email },
     };
     state.getSession.mockImplementation(async () => ({ data: { session } }));
-    state.signOut.mockImplementation(async () => {
-      session = null;
-      return { error: null };
-    });
     let completes = 0;
     state.request.mockImplementation((action: string) => {
       if (action === 'preview') return Promise.resolve({ ...invitation, accountExists: true });
@@ -326,19 +344,21 @@ describe('invitation account setup', () => {
     await fillProfile();
     fireEvent.click(await screen.findByRole('button', { name: 'Completar acceso' }));
     await screen.findByLabelText('Contraseña');
-    expect(state.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    // Nothing is signed out (another tab may have signed in meanwhile); the refused token is just never reused.
+    expect(state.signOut).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'the-real-password' } });
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión y unirme' }));
     await screen.findByText('Tu acceso está listo');
     expect(state.signIn).toHaveBeenCalledWith({ email: invitation.email, password: 'the-real-password' });
     expect(state.request).toHaveBeenLastCalledWith('complete', expect.any(Object), 'fresh-token');
+    // The accepted sign-in replaces the invitee's own refused session in the browser.
+    expect(state.setSession).toHaveBeenCalledWith({ access_token: 'fresh-token', refresh_token: 'fresh-refresh' });
   });
 
-  it('never reuses a rejected token even when signing it out fails', async () => {
+  it('never reuses a rejected token, however many times the browser still offers it', async () => {
     state.getSession.mockResolvedValue({
       data: { session: { access_token: 'rejected-token', user: { email: invitation.email } } },
     });
-    state.signOut.mockRejectedValue(new Error('storage unavailable'));
     let completes = 0;
     state.request.mockImplementation((action: string) => {
       if (action === 'preview') return Promise.resolve({ ...invitation, accountExists: true });
@@ -353,6 +373,7 @@ describe('invitation account setup', () => {
     await screen.findByText('Tu acceso está listo');
     expect(state.signIn).toHaveBeenCalledOnce();
     expect(state.request).toHaveBeenLastCalledWith('complete', expect.any(Object), 'fresh-token');
+    expect(state.signOut).not.toHaveBeenCalled();
   });
 
   it('warns again when another account signed in after the page loaded (E-19, review fix)', async () => {
@@ -419,5 +440,104 @@ describe('invitation account setup', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Completar acceso' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Ingresa o recupera tu acceso');
     expect(state.signOut).not.toHaveBeenCalled();
+  });
+
+  // Review round 3: the authentication requests themselves are deferred here, and another tab signs in while
+  // they are in flight. The browser's session must end up as that other account in every case.
+  type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void };
+  function deferred<T>(): Deferred<T> {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => (resolve = done));
+    return { promise, resolve };
+  }
+  const other = { access_token: 'other-token', user: { email: 'other@example.test' } };
+  const fresh = { data: { session: { access_token: 'fresh-token', refresh_token: 'fresh-refresh' } }, error: null };
+
+  async function submitNewAccount() {
+    await fillProfile();
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.change(screen.getByLabelText('Confirmar contraseña'), { target: { value: 'a-long-private-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta y unirme' }));
+  }
+
+  it('a sign-in from another tab during the password sign-in is not overwritten (review round 3)', async () => {
+    let session: typeof other | null = null;
+    state.getSession.mockImplementation(async () => ({ data: { session } }));
+    const signIn = deferred<typeof fresh>();
+    state.signIn.mockReturnValue(signIn.promise);
+    render(<InvitationSetup />);
+    await submitNewAccount();
+    await waitFor(() => expect(state.signIn).toHaveBeenCalledOnce());
+    session = other; // another tab signs in while the invitee's sign-in is in flight
+    signIn.resolve(fresh);
+    await screen.findByText('Tu acceso está listo');
+    expect(state.request).toHaveBeenCalledWith('complete', expect.any(Object), 'fresh-token');
+    expect(state.setSession).not.toHaveBeenCalled();
+    expect(state.sharedSignIn).not.toHaveBeenCalled();
+    expect(state.signOut).not.toHaveBeenCalled();
+  });
+
+  it('a sign-in from another tab while the API is accepting is not overwritten (review round 3)', async () => {
+    let session: typeof other | null = null;
+    state.getSession.mockImplementation(async () => ({ data: { session } }));
+    const completion = deferred<{ outcome: string }>();
+    state.request.mockImplementation((action: string) => {
+      if (action === 'preview') return Promise.resolve(invitation);
+      if (action === 'register') return Promise.resolve({ outcome: 'account_created' });
+      return completion.promise;
+    });
+    render(<InvitationSetup />);
+    await submitNewAccount();
+    await waitFor(() => expect(state.request).toHaveBeenCalledWith('complete', expect.any(Object), 'fresh-token'));
+    session = other;
+    completion.resolve({ outcome: 'complete' });
+    await screen.findByText('Tu acceso está listo');
+    expect(state.setSession).not.toHaveBeenCalled();
+  });
+
+  it('a refused password sign-in is never stored and nothing is signed out (review round 3)', async () => {
+    let session: typeof other | null = null;
+    state.getSession.mockImplementation(async () => ({ data: { session } }));
+    const completion = deferred<{ outcome: string }>();
+    state.request.mockImplementation((action: string) => {
+      if (action === 'preview') return Promise.resolve({ ...invitation, accountExists: true });
+      return completion.promise;
+    });
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'current-credential' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión y unirme' }));
+    await waitFor(() => expect(state.request).toHaveBeenCalledWith('complete', expect.any(Object), 'fresh-token'));
+    session = other;
+    completion.resolve({ outcome: 'sign_in_required' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ingresa o recupera tu acceso');
+    expect(state.setSession).not.toHaveBeenCalled();
+    expect(state.signOut).not.toHaveBeenCalled();
+  });
+
+  it('MFA: does not adopt the session over an account that signed in meanwhile (review round 3)', async () => {
+    let session: typeof other | null = null;
+    state.getSession.mockImplementation(async () => ({ data: { session } }));
+    state.request.mockImplementation(async (action: string) => {
+      if (action === 'preview') return { ...invitation, accountExists: true };
+      session = other; // another tab, during the completion request
+      throw new SetupRequestError('mfa_required');
+    });
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'current-credential' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión y unirme' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('other@example.test');
+    expect(state.setSession).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+    assign.mockRestore();
+  });
+
+  it('a failed adoption still shows access granted, since the API already accepted it', async () => {
+    state.setSession.mockResolvedValue({ data: {}, error: new Error('network') });
+    render(<InvitationSetup />);
+    await submitNewAccount();
+    expect(await screen.findByText('Tu acceso está listo')).toBeInTheDocument();
   });
 });
