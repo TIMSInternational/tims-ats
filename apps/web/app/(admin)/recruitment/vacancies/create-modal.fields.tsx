@@ -1,6 +1,6 @@
 'use client';
 
-import { CONTRACT_TYPES, formalDescriptionIntro, inputCls, labelCls, positionCountLabel, textareaCls } from './create-modal.helpers';
+import { CONTRACT_TYPES, withoutCopiedSections, inputCls, labelCls, positionCountLabel, textareaCls } from './create-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 import { enumLabel, formatPortalSalary, parsePortalSalary } from '../../../(portal)/careers/[orgSlug]/_lib/vacancy-display';
 import { AiGeneratePanel, InclusiveCheckPanel } from './create-modal.ai-panel';
@@ -111,9 +111,9 @@ export function Step2Description({
         title={title}
         location={location}
         onUseFormal={(desc, sections) => {
-          // The sections get their own fields below; keep only the opening in "Sobre el cargo", or the
-          // saved description would list them twice (F-6).
-          setDescription(formalDescriptionIntro(desc, sections));
+          // The three sections get their own fields below; leave them out of "Sobre el cargo", or the
+          // saved description would list them twice (F-6). Any other section is kept.
+          setDescription(withoutCopiedSections(desc, sections));
           setResponsibilities(sections.responsibilities.map((r) => `- ${r}`).join('\n'));
           setRequirements(sections.requirements.map((r) => `- ${r}`).join('\n'));
           setBenefits(sections.benefits.map((r) => `- ${r}`).join('\n'));

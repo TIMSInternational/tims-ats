@@ -24,32 +24,46 @@ export type Step = 1 | 2 | 3;
 /** Stored contract-type values. Their labels live in i18n `portal.contractTypes` — one source for both surfaces. */
 export const CONTRACT_TYPES = ['indefinido', 'termino_fijo', 'obra_labor', 'prestacion', 'temporal', 'practicas'] as const;
 
-// A markdown heading ("## Responsabilidades", "**Requisitos:**") or a list item ("- …", "1. …").
-const SECTION_START = /^\s*(#{1,6}\s|\*\*[^*]+\*\*:?\s*$|[-*•]\s|\d+[.)]\s)/;
+type FormalSections = { responsibilities: readonly string[]; requirements: readonly string[]; benefits: readonly string[] };
+
+// Headings of the three sections "Usar" also copies into their own wizard fields (es + en).
+const STRUCTURED_HEADINGS: Array<{ key: keyof FormalSections; re: RegExp }> = [
+  { key: 'responsibilities', re: /^(responsabilidades|funciones|responsibilities)\b/i },
+  { key: 'requirements', re: /^(requisitos|requerimientos|requirements)\b/i },
+  { key: 'benefits', re: /^(beneficios|lo que ofrecemos|qu[eé] ofrecemos|ofrecemos|benefits)\b/i },
+];
+
+/** The heading text of a markdown heading ("## Requisitos"), a bold-only line ("**Requisitos:**") or a
+ *  short plain label line ("Requisitos:"); null for any other line. */
+function headingText(line: string): string | null {
+  const trimmed = line.trim();
+  const md = /^#{1,6}\s+(.+)$/.exec(trimmed);
+  if (md) return md[1]!.replace(/[*:]+/g, '').trim();
+  const bold = /^\*\*([^*]+)\*\*:?$/.exec(trimmed);
+  if (bold) return bold[1]!.replace(/:$/, '').trim();
+  const label = /^([^-*•\d][^:]{0,58}):$/.exec(trimmed);
+  return label ? label[1]!.trim() : null;
+}
 
 /**
- * The AI's formal variant is a full job description: an opening plus its responsibilities, requirements
- * and benefits. "Usar" also fills those sections into their own wizard fields, and the saved description
- * is built from all fields, so keeping the full text in "Sobre el cargo" listed every section twice.
- * Returns only the opening: the text after a leading title heading and before the first section heading
- * or list. When the variant came without sections, the description is kept whole.
+ * The AI's formal variant is a full job description: an opening, maybe other sections ("Sobre la empresa"),
+ * and its responsibilities, requirements and benefits. "Usar" also copies those three into their own wizard
+ * fields, and the saved description is built from all fields, so keeping the full text in "Sobre el cargo"
+ * listed them twice (F-6). This drops ONLY the sections whose content was copied into a field (a heading
+ * that names one of the three AND a non-empty array for it); every other heading and its text is kept.
  */
-export function formalDescriptionIntro(
-  description: string,
-  sections: { responsibilities: readonly string[]; requirements: readonly string[]; benefits: readonly string[] },
-): string {
-  const hasSections = sections.responsibilities.length + sections.requirements.length + sections.benefits.length > 0;
-  if (!hasSections) return description.trim();
-  const lines = description.split('\n');
-  let i = 0;
-  // Skip blank lines and a leading title ("# Analista financiero" or a bold-only "**Analista financiero**").
-  while (i < lines.length && (lines[i]!.trim() === '' || /^\s*(#{1,6}\s|\*\*[^*]+\*\*:?\s*$)/.test(lines[i]!))) i++;
-  const intro: string[] = [];
-  for (; i < lines.length; i++) {
-    if (SECTION_START.test(lines[i]!)) break;
-    intro.push(lines[i]!);
+export function withoutCopiedSections(description: string, sections: FormalSections): string {
+  const kept: string[] = [];
+  let dropping = false;
+  for (const line of description.split('\n')) {
+    const heading = headingText(line);
+    if (heading !== null) {
+      const structured = STRUCTURED_HEADINGS.find((h) => h.re.test(heading));
+      dropping = !!structured && sections[structured.key].length > 0;
+    }
+    if (!dropping) kept.push(line);
   }
-  return intro.join('\n').trim();
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** "1 posición" / "3 posiciones" (or the English forms) from the active locale's labels. */
