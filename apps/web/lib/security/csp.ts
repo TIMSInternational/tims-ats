@@ -1,6 +1,8 @@
 // Pure Content-Security-Policy builder used by `middleware.ts`. Kept free of
 // Next.js imports so every directive can be unit-tested per pathname.
 
+import { CSP_IMG_SRC_HOSTS } from './csp-img-src';
+
 export interface CspOrigins {
   /** C# Platform API origin, or '' when unset. */
   platformApi: string;
@@ -137,7 +139,7 @@ export function buildCsp(nonce: string, pathname: string, origins: CspOrigins, i
     scriptSrc,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.cloudfront.net",
+    `img-src 'self' data: blob: ${CSP_IMG_SRC_HOSTS.join(' ')}`,
     connectSrc,
     "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
     "media-src 'self' blob: https://*.daily.co https://*.elevenlabs.io",
