@@ -55,7 +55,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 const fillAndSubmit = () => {
-  fireEvent.change(screen.getByLabelText(es.auth.email), { target: { value: 'ana@invu.example' } });
+  fireEvent.change(screen.getByLabelText(es.auth.email), { target: { value: 'ana@example.test' } });
   fireEvent.change(screen.getByLabelText(es.auth.password), { target: { value: 'a-long-password' } });
   fireEvent.click(screen.getByRole('button', { name: es.auth.loginButton }));
 };
@@ -160,7 +160,7 @@ describe('/forgot-password', () => {
     });
     render(<ForgotPasswordPage />);
     expect(screen.getByRole('heading', { name: es.auth.recoverPassword })).toBeVisible();
-    fireEvent.change(screen.getByLabelText(es.auth.email), { target: { value: 'ana@invu.example' } });
+    fireEvent.change(screen.getByLabelText(es.auth.email), { target: { value: 'ana@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: es.auth.sendLink }));
     expect(await screen.findByRole('alert')).toHaveTextContent(es.auth.authRateLimited);
     expect(screen.queryByText(/For security purposes/)).toBeNull();
