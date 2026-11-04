@@ -37,9 +37,10 @@ const nextConfig: NextConfig = {
   // Force the Linux query-engine binary into every serverless function bundle.
   // pnpm nests it under the hashed .pnpm store, which Next's tracing misses by
   // default — without this, runtime queries throw "Query Engine not found".
-  // The pdf.js build pdf-parse runs (cv-extraction.ts PDFJS_BUILD_VERSION) is traced
-  // explicitly too: pdf-parse requires it through a template-literal path, and pdf.js
-  // requires its worker file only inside a require.ensure callback.
+  // The pdf.js build pdf-parse runs (cv-extraction.ts PDFJS_BUILD_VERSION) is listed
+  // explicitly too. Next's tracer currently expands pdf-parse's template-literal require
+  // to all four builds and follows pdf.js's require.ensure worker load, but the build
+  // that runs must not depend on that heuristic.
   outputFileTracingIncludes: {
     "**": [
       "../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/*.node",

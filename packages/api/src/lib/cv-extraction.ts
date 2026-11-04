@@ -9,11 +9,11 @@ export const CV_ALLOWED_CONTENT_TYPES = [
 export type CvContentType = (typeof CV_ALLOWED_CONTENT_TYPES)[number];
 
 /**
- * The pdf.js build pdf-parse runs (also its default). Pinned because the web app traces
- * exactly this build's pdf.js + pdf.worker.js into every server function
- * (apps/web/next.config.ts outputFileTracingIncludes): pdf-parse requires it through a
- * template-literal path. Change both together — tests/candidate/cv-pdf-packaging.test.ts
- * fails if they drift.
+ * The pdf.js build pdf-parse runs (also its default). Pinned because the web app lists
+ * exactly this build's pdf.js + pdf.worker.js in every server function's file trace
+ * (apps/web/next.config.ts outputFileTracingIncludes) rather than relying on the tracer to
+ * follow pdf-parse's template-literal require. Change both together —
+ * tests/candidate/cv-pdf-packaging.test.ts fails if they drift.
  */
 export const PDFJS_BUILD_VERSION = 'v1.10.100' as const;
 
