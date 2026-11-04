@@ -135,6 +135,10 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             return true;
         }
 
+        // F-2b: a new user takes the tenant's time zone (organizations.settings.timezone, then its first active
+        // company), never the users.timezone column default ('America/Bogota'). Read before the tenant role.
+        var timeZone = exists ? null : await TenantTimeZoneAsync(connection, transaction, invitation.OrganizationId, ct);
+
         await using (var scope = new NpgsqlCommand(
             "SET LOCAL ROLE app_tenant; SELECT set_config('app.current_org_id',@org,true)", connection, transaction))
         {
@@ -145,8 +149,8 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
         if (!exists)
         {
             await using var insert = new NpgsqlCommand("""
-                INSERT INTO users(id,organization_id,supabase_user_id,email,first_name,last_name,updated_at)
-                VALUES(@id,@org,@identity,@email,@first,@last,now())
+                INSERT INTO users(id,organization_id,supabase_user_id,email,first_name,last_name,timezone,updated_at)
+                VALUES(@id,@org,@identity,@email,@first,@last,@timezone,now())
                 """, connection, transaction);
             insert.Parameters.AddWithValue("id", userId);
             insert.Parameters.AddWithValue("org", invitation.OrganizationId);
@@ -154,6 +158,7 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
             insert.Parameters.AddWithValue("email", invitation.Email);
             insert.Parameters.AddWithValue("first", profile.FirstName.Trim());
             insert.Parameters.AddWithValue("last", profile.LastName.Trim());
+            insert.Parameters.AddWithValue("timezone", timeZone ?? FallbackTimeZone);
             await insert.ExecuteNonQueryAsync(ct);
         }
 
@@ -184,5 +189,28 @@ public sealed class InvitationOnboardingRepository(PlatformInvitationsDataSource
 
         await transaction.CommitAsync(ct);
         return true;
+    }
+
+    /// <summary>Used only when neither the organization nor any active company names a valid time zone.</summary>
+    public const string FallbackTimeZone = "UTC";
+
+    /// <summary>
+    /// The organization's configured IANA time zone (<c>settings.timezone</c>), else its oldest active company's,
+    /// or null. Only names PostgreSQL knows (<c>pg_timezone_names</c>) are accepted, so a typo is never copied.
+    /// </summary>
+    private static async Task<string?> TenantTimeZoneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
+        Guid organizationId, CancellationToken ct)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT candidate.zone FROM (VALUES
+              (1, (SELECT NULLIF(btrim(o.settings->>'timezone'),'') FROM organizations o WHERE o.id=@org)),
+              (2, (SELECT NULLIF(btrim(c.timezone),'') FROM companies c
+                   WHERE c.organization_id=@org AND c.is_active ORDER BY c.created_at, c.id LIMIT 1))
+            ) AS candidate(rank, zone)
+            WHERE candidate.zone IN (SELECT name FROM pg_timezone_names)
+            ORDER BY candidate.rank LIMIT 1
+            """, connection, transaction);
+        command.Parameters.AddWithValue("org", organizationId);
+        return await command.ExecuteScalarAsync(ct) as string;
     }
 }
