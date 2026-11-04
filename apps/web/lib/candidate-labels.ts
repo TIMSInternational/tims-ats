@@ -27,6 +27,15 @@ export const CANDIDATE_SOURCES = [
 export type CandidatePoolType = (typeof CANDIDATE_POOL_TYPES)[number];
 export type CandidateSource = (typeof CANDIDATE_SOURCES)[number];
 
+/** The pool types staff pick when they add a candidate by hand; the others are set by the system. */
+export const CANDIDATE_STAFF_POOL_TYPES = [
+  'active',
+  'passive',
+  'referral',
+  'sourced',
+] as const satisfies readonly CandidatePoolType[];
+export type CandidateStaffPoolType = (typeof CANDIDATE_STAFF_POOL_TYPES)[number];
+
 export interface CandidatePoolLabels {
   poolApplicant: string;
   poolActive: string;
@@ -34,6 +43,14 @@ export interface CandidatePoolLabels {
   poolReferral: string;
   poolSourced: string;
   poolSilverMedalist: string;
+}
+
+/** One-line explanations shown next to the pool label in the create forms' picker. */
+export interface CandidatePoolHints {
+  poolActiveHint: string;
+  poolPassiveHint: string;
+  poolReferralHint: string;
+  poolSourcedHint: string;
 }
 
 export interface CandidateSourceLabels {
@@ -55,6 +72,13 @@ const POOL_LABEL: Record<CandidatePoolType, (l: CandidatePoolLabels) => string> 
   referral: (l) => l.poolReferral,
   sourced: (l) => l.poolSourced,
   silver_medalist: (l) => l.poolSilverMedalist,
+};
+
+const POOL_HINT: Record<CandidateStaffPoolType, (l: CandidatePoolHints) => string> = {
+  active: (l) => l.poolActiveHint,
+  passive: (l) => l.poolPassiveHint,
+  referral: (l) => l.poolReferralHint,
+  sourced: (l) => l.poolSourcedHint,
 };
 
 const SOURCE_LABEL: Record<CandidateSource, (l: CandidateSourceLabels) => string> = {
@@ -82,6 +106,14 @@ export function candidatePoolLabel(poolType: string | null | undefined, labels: 
   if (!poolType) return '—';
   const slug = poolType.trim().toLowerCase();
   return isKey(POOL_LABEL, slug) ? POOL_LABEL[slug](labels) : humanize(poolType);
+}
+
+/** The create forms' pool option: the same label the tables show, plus its hint ("Activo — busca empleo activamente"). */
+export function candidatePoolOptionLabel(
+  poolType: CandidateStaffPoolType,
+  labels: CandidatePoolLabels & CandidatePoolHints,
+): string {
+  return `${candidatePoolLabel(poolType, labels)} — ${POOL_HINT[poolType](labels)}`;
 }
 
 export function candidateSourceLabel(source: string | null | undefined, labels: CandidateSourceLabels): string {
