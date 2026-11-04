@@ -4,14 +4,13 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { formatAnnualOfferSalary } from '../../../../lib/offer-salary';
-
-const fmtDate = (d: Date | string) => new Intl.DateTimeFormat('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(d));
+import { CANDIDATE_INTL_LOCALE, formatCandidateDate, formatCandidateOfferSalary } from '../../../../lib/candidate-format';
+import { OrgLogo } from '../../../../components/org-logo';
 
 export default function OfferSignPage() {
   const params = useParams();
   const token = params.token as string;
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const [accepted, setAccepted] = useState(false);
   const [declined, setDeclined] = useState(false);
@@ -55,7 +54,8 @@ export default function OfferSignPage() {
 
   const benefits = o.benefits as Record<string, string> | null;
   const benefitList = benefits ? Object.values(benefits) : [];
-  const today = fmtDate(new Date());
+  // The signer's own calendar date (what they would write by hand next to their name).
+  const today = new Intl.DateTimeFormat(CANDIDATE_INTL_LOCALE[locale], { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] py-8 px-4">
@@ -64,13 +64,13 @@ export default function OfferSignPage() {
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           {/* Top bar */}
           <div className="bg-[#1F114C] px-8 py-5 flex items-center gap-4">
-            {o.organization.logo ? (
-              <img src={o.organization.logo} alt="" className="h-10 w-10 rounded-lg object-cover" />
-            ) : (
-              <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center">
-                <span className="text-white font-bold text-lg">{o.organization.name.charAt(0)}</span>
-              </div>
-            )}
+            <OrgLogo
+              logo={o.organization.logo}
+              name={o.organization.name}
+              imgClassName="h-10 w-10 rounded-lg bg-white object-contain"
+              fallbackClassName="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center text-white font-bold text-lg"
+              decorative
+            />
             <div>
               <h2 className="text-white font-semibold text-lg">{o.organization.name}</h2>
               <p className="text-white/70 text-xs">{t.offers.signLetterTitle}</p>
@@ -94,14 +94,14 @@ export default function OfferSignPage() {
             {/* Offer details grid */}
             <div className="bg-[#F8F7FC] rounded-xl p-5 space-y-3">
               <h3 className="text-sm font-semibold text-[#1F114C] mb-3">{t.offers.signOfferDetails}</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="text-sm">
                   <span className="text-[#8B8B8B] block text-xs">{t.offers.signPosition}</span>
                   <span className="font-medium text-[#333]">{o.vacancy.title}</span>
                 </div>
                 <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">{t.offers.annualBaseSalary}</span>
-                  <span className="font-medium text-[#333]">{formatAnnualOfferSalary(o.salary, o.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}</span>
+                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signBaseSalary}</span>
+                  <span className="font-medium text-[#333]">{formatCandidateOfferSalary(o.salary, o.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth }, locale)}</span>
                 </div>
                 <div className="text-sm">
                   <span className="text-[#8B8B8B] block text-xs">{t.offers.signContractType}</span>
@@ -109,7 +109,8 @@ export default function OfferSignPage() {
                 </div>
                 <div className="text-sm">
                   <span className="text-[#8B8B8B] block text-xs">{t.offers.signStartDate}</span>
-                  <span className="font-medium text-[#333]">{fmtDate(o.startDate)}</span>
+                  {/* Stored at local noon on the chosen day, so the UTC calendar date is that day. */}
+                  <span className="font-medium text-[#333]">{formatCandidateDate(o.startDate, locale, null)}</span>
                 </div>
               </div>
             </div>
@@ -161,7 +162,7 @@ export default function OfferSignPage() {
                   value={signatureName}
                   onChange={(e) => setSignatureName(e.target.value)}
                   placeholder={t.offers.signFullNamePlaceholder}
-                  className="w-full h-10 px-3 rounded-lg border border-[#E5E5E5] text-sm text-[#333] placeholder:text-[#C4C4C4] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]"
+                  className="w-full h-10 px-3 rounded-lg border border-[#E5E5E5] text-base sm:text-sm text-[#333] placeholder:text-[#C4C4C4] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]"
                 />
               </div>
 

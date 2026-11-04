@@ -1,0 +1,142 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import es from '../../apps/web/lib/i18n/es.json';
+
+const mocks = vi.hoisted(() => ({
+  applications: [] as unknown[],
+  movements: [] as unknown[],
+  interviews: [] as unknown[],
+  offers: [] as unknown[],
+}));
+
+vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: es, locale: 'ES' }) }));
+vi.mock('../../apps/web/lib/trpc', () => ({
+  trpc: {
+    candidatePortal: {
+      myApplications: { useQuery: () => ({ data: mocks.applications, isLoading: false, isError: false }) },
+      applicationStatus: {
+        useQuery: () => ({ data: { movements: mocks.movements }, isLoading: false, isError: false }),
+      },
+      myInterviews: { useQuery: () => ({ data: mocks.interviews, isLoading: false, isError: false }) },
+      myOffers: { useQuery: () => ({ data: mocks.offers, isLoading: false, isError: false }) },
+    },
+  },
+}));
+
+import { DashboardApplications } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-applications';
+import { DashboardInterviews } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-interviews';
+import { DashboardOffer } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-offer';
+
+const plain = (text: string | null) => (text ?? '').replace(/[  ]/g, ' ');
+const pd = es.portalDashboard;
+
+beforeEach(() => {
+  mocks.applications = [
+    {
+      id: 'a1',
+      status: 'active',
+      appliedAt: '2026-11-05T03:00:00.000Z', // 4 Nov, 21:00 in Costa Rica
+      vacancy: { title: 'Analista', company: null },
+      currentStage: { name: 'Prueba Tecnica' },
+    },
+  ];
+  mocks.movements = [
+    { movedAt: '2026-11-05T15:00:00.000Z', toStage: { name: 'Screening' } },
+    { movedAt: '2026-11-06T15:00:00.000Z', toStage: { name: 'Entrevista RRHH' } },
+    { movedAt: '2026-11-07T15:00:00.000Z', toStage: { name: 'Entrevista Final' } },
+  ];
+  mocks.interviews = [
+    {
+      id: 'i1',
+      type: 'technical',
+      status: 'scheduled',
+      scheduledAt: '2026-11-04T16:00:00.000Z',
+      duration: 60,
+      location: null,
+      meetingUrl: null,
+      vacancy: { title: 'Analista' },
+    },
+  ];
+  mocks.offers = [];
+});
+
+describe('candidate portal — applications', () => {
+  it('shows a candidate phase (not the internal stage name) and the date in the organization zone', () => {
+    const { container } = render(<DashboardApplications orgSlug="acme" timeZone="America/Costa_Rica" />);
+    expect(container.textContent).not.toContain('Prueba Tecnica');
+    expect(container.textContent).toContain(pd.phaseReview);
+    expect(container.textContent).toContain(pd.phaseReviewDesc);
+    expect(container.textContent).toContain(`${pd.appliedOn} 4 de noviembre de 2026`);
+  });
+
+  it('collapses the stage history into phases', () => {
+    const { container } = render(<DashboardApplications orgSlug="acme" timeZone="America/Costa_Rica" />);
+    fireEvent.click(screen.getByRole('button', { name: pd.viewTimeline }));
+    const items = [...container.querySelectorAll('ol li')].map((li) => li.textContent);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toContain(pd.phaseReview);
+    expect(items[1]).toContain(pd.phaseInterviews);
+    expect(container.textContent).not.toMatch(/Screening|Entrevista RRHH/);
+  });
+});
+
+describe('candidate portal — interviews', () => {
+  it('shows the time in the organization zone with "hora de Costa Rica (GMT-6)" — never the device locale', () => {
+    const { container } = render(<DashboardInterviews orgSlug="acme" timeZone="America/Costa_Rica" />);
+    const text = plain(container.textContent);
+    expect(text).toContain('4 de noviembre de 2026');
+    expect(text).toContain('10:00');
+    expect(text).toContain('hora de Costa Rica (GMT-6)');
+    expect(text).not.toMatch(/10:00:00/);
+  });
+
+  it('says UTC explicitly when the organization has no time zone', () => {
+    const { container } = render(<DashboardInterviews orgSlug="acme" />);
+    expect(plain(container.textContent)).toMatch(/4:00 p\. m\., UTC/);
+  });
+});
+
+describe('candidate portal — offer', () => {
+  it('shows an expired offer as expired, with what to do, instead of "Pendiente de respuesta"', () => {
+    mocks.offers = [
+      {
+        id: 'o1',
+        status: 'sent',
+        salary: 10_200_000,
+        currency: 'CRC',
+        startDate: '2026-11-09T18:00:00.000Z',
+        contractType: 'Plazo indefinido',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+        signingToken: null,
+        vacancy: { title: 'Analista', company: null },
+      },
+    ];
+    const { container } = render(<DashboardOffer orgSlug="acme" timeZone="America/Costa_Rica" />);
+    expect(container.textContent).toContain(pd.offerStatusExpired);
+    expect(container.textContent).toContain(pd.offerExpiredNote);
+    expect(container.textContent).not.toContain(pd.offerStatusSent);
+    expect(container.textContent).not.toContain(pd.offerExpiresOn);
+    expect(plain(container.textContent)).toContain('₡850 000');
+    expect(container.textContent).toContain('9 de noviembre de 2026');
+  });
+
+  it('keeps a pending offer pending, with its expiry date', () => {
+    mocks.offers = [
+      {
+        id: 'o2',
+        status: 'sent',
+        salary: 10_200_000,
+        currency: 'CRC',
+        startDate: '2026-11-09T18:00:00.000Z',
+        contractType: 'Plazo fijo',
+        expiresAt: '2999-01-01T18:00:00.000Z',
+        signingToken: 'tok',
+        vacancy: { title: 'Analista', company: null },
+      },
+    ];
+    const { container } = render(<DashboardOffer orgSlug="acme" timeZone="America/Costa_Rica" />);
+    expect(container.textContent).toContain(pd.offerStatusSent);
+    expect(container.textContent).toContain(`${pd.offerExpiresOn} 1 de enero de 2999`);
+    expect(screen.getByRole('link', { name: pd.offerReviewSign })).toHaveAttribute('href', '/offers/sign/tok');
+  });
+});

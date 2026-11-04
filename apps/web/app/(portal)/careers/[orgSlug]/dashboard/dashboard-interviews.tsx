@@ -3,6 +3,7 @@
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { isSafeDailyJoinUrl } from '../../../../../lib/interview-join';
+import { formatCandidateDateTime } from '../../../../../lib/candidate-format';
 
 // "My Interviews" section of the candidate dashboard (Wave 1 Slice 3). Lists the
 // signed-in candidate's UPCOMING interviews (scheduled/confirmed) with a join link
@@ -31,8 +32,9 @@ function safeMeetingUrl(url: string | null): string | null {
   }
 }
 
-export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
-  const { t } = useI18n();
+// Times render in the organization's time zone with an explicit zone label (UTC when it has none).
+export function DashboardInterviews({ orgSlug, timeZone = null }: { orgSlug: string; timeZone?: string | null }) {
+  const { t, locale } = useI18n();
   const { data, isLoading, isError } = trpc.candidatePortal.myInterviews.useQuery({ orgSlug });
 
   const statusLabel = (s: string) => {
@@ -87,7 +89,7 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
                     <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
                     <p className="text-[12px] text-[#585858] mt-0.5 capitalize">{iv.type}</p>
                     <p className="text-[11px] text-muted mt-1">
-                      {new Date(iv.scheduledAt).toLocaleString()}
+                      {formatCandidateDateTime(iv.scheduledAt, locale, timeZone, t.portalDashboard)}
                       {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
                     </p>
                     {iv.location && (
