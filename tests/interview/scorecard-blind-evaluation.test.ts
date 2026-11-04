@@ -53,6 +53,8 @@ const store = vi.hoisted(() => ({
   interviewScheduledAt: new Date('2026-09-29T09:00:00Z'),
   interviewType: 'onsite',
   afterInterviewRead: null as null | (() => void),
+  // Write order inside submit's transaction: the interview row lock must come before the card (#405 review).
+  ops: [] as string[],
 }));
 
 type Where = Record<string, unknown>;
@@ -147,8 +149,8 @@ vi.mock('@tims/db', () => {
           summary: store.summary,
         };
       },
-      // STRICT, like the rest of this fake: only the predicates the completion write sends are understood,
-      // and every one of them must match (status, and the schedule the decision was made on).
+      // STRICT, like the rest of this fake: only the predicates the lock and completion writes send are
+      // understood, and every one of them must match (status, and the schedule the decision was made on).
       updateMany: async ({
         where,
         data,
@@ -156,27 +158,32 @@ vi.mock('@tims/db', () => {
         where: {
           id: string;
           organizationId: string;
-          status: { in: string[] };
-          scheduledAt: Date;
-          duration: number;
-          meetingUrl: string | null;
+          status: { in?: string[]; notIn?: string[] };
+          scheduledAt?: Date;
+          duration?: number;
+          meetingUrl?: string | null;
         } & Where;
-        data: { status: string };
+        data: { status?: string; updatedAt?: Date };
       }) => {
         for (const key of Object.keys(where)) {
           if (!['id', 'organizationId', 'status', 'scheduledAt', 'duration', 'meetingUrl'].includes(key)) {
             throw new Error(`fake db: unrecognised interview.updateMany where key "${key}"`);
           }
         }
+        for (const key of Object.keys(data)) {
+          if (!['status', 'updatedAt'].includes(key)) throw new Error(`fake db: unexpected interview write "${key}"`);
+        }
+        store.ops.push(data.status ? `interview.status=${data.status}` : 'interview.lock');
         if (where.id !== INTERVIEW || where.organizationId !== ORG_A) return { count: 0 };
-        if (!where.status.in.includes(store.interviewStatus)) return { count: 0 };
+        if (where.status.in && !where.status.in.includes(store.interviewStatus)) return { count: 0 };
+        if (where.status.notIn && where.status.notIn.includes(store.interviewStatus)) return { count: 0 };
         // An absent predicate constrains nothing (as in Prisma), so dropping a guard is observable.
         if (where.scheduledAt !== undefined && where.scheduledAt.getTime() !== store.interviewScheduledAt.getTime()) {
           return { count: 0 };
         }
         if (where.duration !== undefined && where.duration !== 60) return { count: 0 };
         if (where.meetingUrl !== undefined && where.meetingUrl !== null) return { count: 0 };
-        store.interviewStatus = data.status;
+        if (data.status !== undefined) store.interviewStatus = data.status;
         return { count: 1 };
       },
     },
@@ -207,6 +214,7 @@ vi.mock('@tims/db', () => {
         update: Partial<Card>;
       }) => {
         const { interviewId, evaluatorId } = where.interviewId_evaluatorId;
+        store.ops.push('card.upsert');
         const existing = store.cards.find((c) => c.interviewId === interviewId && c.evaluatorId === evaluatorId);
         if (existing) {
           Object.assign(existing, update);
@@ -363,6 +371,7 @@ beforeEach(() => {
   store.interviewScheduledAt = new Date('2026-09-29T09:00:00Z');
   store.interviewType = 'onsite';
   store.afterInterviewRead = null;
+  store.ops = [];
 });
 
 function expectWithheld(sc: ScorecardOut | undefined | null) {
@@ -720,14 +729,37 @@ describe('submitScorecard — a scored interview is marked completed (B-30 / A-0
     expect(store.interviewStatus).toBe('completed');
   });
 
-  it('a reschedule that lands between the decision and the write wins: no completion', async () => {
+  it('a reschedule that lands between the decision and the write wins: the card is refused, nothing written', async () => {
     const caller = await callerAs(ME);
-    // The service reads the started interview; then someone moves it to tomorrow.
+    // The service reads the started interview; then someone moves it to tomorrow. The old card must not be
+    // filed against the new appointment (it would show it completed the moment it starts — #405 review).
     store.afterInterviewRead = () => {
       store.interviewScheduledAt = new Date(Date.now() + 24 * 3600_000);
     };
-    await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+    await expect(
+      caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(store.cards.some((c) => c.evaluatorId === ME)).toBe(false);
+    expect(store.ops).not.toContain('card.upsert');
     expect(store.interviewStatus).toBe('scheduled');
+  });
+
+  it('the interview row lock is the FIRST write, before the card (no-show / reschedule serialize on it)', async () => {
+    const caller = await callerAs(ME);
+    await caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' });
+    expect(store.ops).toEqual(['interview.lock', 'card.upsert', 'interview.status=completed']);
+  });
+
+  it('a no-show that committed first refuses the card (the lock sees no_show)', async () => {
+    const caller = await callerAs(ME);
+    store.afterInterviewRead = () => {
+      store.interviewStatus = 'no_show';
+    };
+    await expect(
+      caller.interview.submitScorecard({ interviewId: INTERVIEW, ratings: full, recommendation: 'yes' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(store.ops).toEqual(['interview.lock']);
+    expect(store.cards.some((c) => c.evaluatorId === ME)).toBe(false);
   });
 
   it('a refused card (closed interview) completes nothing', async () => {

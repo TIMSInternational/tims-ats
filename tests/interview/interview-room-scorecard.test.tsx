@@ -500,6 +500,12 @@ describe('interview room scorecard', () => {
     expect(toastSpy).toHaveBeenCalledWith(en.interviewRoom.submitIncomplete, { type: 'error' });
   });
 
+  it('maps a CONFLICT (the interview was rescheduled while scoring) to its own message (#405 review)', () => {
+    renderForm();
+    h.mutationOpts?.onError({ data: { code: 'CONFLICT' } });
+    expect(toastSpy).toHaveBeenCalledWith(en.interviewRoom.submitRescheduled, { type: 'error' });
+  });
+
   it('the room panel submit button is wired end to end (it used to have no onClick)', () => {
     localStorage.setItem('tims-locale', 'EN');
     const props = { interview: interview(), candidateInitials: 'AR', candidateName: 'Ana Ruiz', interviewId: INTERVIEW_ID, vacancyTitle: 'Analista' };

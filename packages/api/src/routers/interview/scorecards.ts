@@ -115,6 +115,12 @@ export const interviewScorecardsRouter = router({
             message: 'No se puede evaluar una entrevista cancelada o en la que el candidato no se presento',
           });
         }
+        if (result.reason === 'rescheduled') {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'La entrevista se reprogramo mientras se evaluaba; recarga y vuelve a enviar el scorecard',
+          });
+        }
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'La evaluacion debe calificar todas las competencias de la entrevista',

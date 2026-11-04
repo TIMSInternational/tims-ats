@@ -7,6 +7,13 @@ export const SCORECARD_CLOSED_STATUSES: readonly string[] = ['cancelled', 'no_sh
 /** Statuses a submitted scorecard moves to `completed` (once the interview has started). */
 export const SCORECARD_COMPLETES_STATUSES: readonly string[] = ['scheduled', 'rescheduled', 'confirmed', 'in_progress'];
 
+/** The schedule a submission was decided on (scorecard-submission.service.ts read it before the write). */
+export interface ScorecardSchedule {
+  scheduledAt: Date;
+  duration: number;
+  meetingUrl: string | null;
+}
+
 export interface ScorecardSubmissionData {
   ratings: Record<string, number>;
   recommendation: string;
@@ -87,16 +94,18 @@ export const interviewScorecardRepository = {
    * them) also writes an audit_logs row carrying the previous values, in the same
    * transaction: an evaluator who revises after reading the panel is detectable.
    *
-   * Returns null, writing nothing, when the interview is closed (cancelled /
-   * no_show) at write time. The service already checked the status, but a cancel
-   * can land between that read and this transaction; re-checking here narrows that
-   * window to the transaction itself (#332 panel, L1).
+   * THE ROW LOCK COMES FIRST. The transaction opens with a write to the interview row, conditioned on the
+   * interview being open (not cancelled / no_show) AND still on `schedule`, the one the service decided on.
+   * Postgres holds that row lock until commit, so the other writers that take it first (no-show and
+   * reschedule, interview-manage.repository.ts) serialize with this one:
+   *   - one that committed first makes this match nothing: the card is refused, nothing is written
+   *     (`closed`, or `rescheduled` — a card is never filed against an appointment that moved, #405 review);
+   *   - one that comes later waits for this commit, then sees the submitted card and refuses itself.
+   * (A plain cancel still writes unconditionally; the service's pre-check plus this re-check keep that
+   * window to the transaction itself, #332 panel, L1.)
    *
-   * With `completeIfUnchanged` (decided by scorecard-submission.service.ts from
-   * the schedule it read) a still scheduled/rescheduled interview becomes
-   * `completed` in the same transaction — only if its status, start, duration and
-   * meeting link are still the ones the decision was made on, so neither a cancel
-   * nor a reschedule that landed meanwhile is overwritten (B-30).
+   * With `complete` (decided by scorecard-submission.service.ts from `schedule`) a still open interview
+   * becomes `completed` in the same transaction (B-30) — under the lock, so on the same schedule.
    */
   async submit(
     orgId: string,
@@ -104,14 +113,30 @@ export const interviewScorecardRepository = {
     evaluatorId: string,
     actorId: string,
     data: ScorecardSubmissionData,
-    options: { completeIfUnchanged?: { scheduledAt: Date; duration: number; meetingUrl: string | null } } = {},
+    options: { schedule: ScorecardSchedule; complete: boolean },
   ) {
     return runTenantTransaction(orgId, async (tx) => {
-      const open = await tx.interview.findFirst({
-        where: { id: interviewId, organizationId: orgId, status: { notIn: [...SCORECARD_CLOSED_STATUSES] } },
-        select: { id: true },
+      const { schedule } = options;
+      const locked = await tx.interview.updateMany({
+        where: {
+          id: interviewId,
+          organizationId: orgId,
+          status: { notIn: [...SCORECARD_CLOSED_STATUSES] },
+          scheduledAt: schedule.scheduledAt,
+          duration: schedule.duration,
+          meetingUrl: schedule.meetingUrl,
+        },
+        data: { updatedAt: new Date() },
       });
-      if (!open) return null;
+      if (locked.count === 0) {
+        const current = await tx.interview.findFirst({
+          where: { id: interviewId, organizationId: orgId },
+          select: { status: true },
+        });
+        const reason: 'closed' | 'rescheduled' =
+          current && !SCORECARD_CLOSED_STATUSES.includes(current.status) ? 'rescheduled' : 'closed';
+        return { ok: false as const, reason };
+      }
       const previous = await tx.interviewScorecard.findFirst({
         where: { organizationId: orgId, interviewId, evaluatorId },
         select: { id: true, ratings: true, recommendation: true, submittedAt: true },
@@ -122,17 +147,9 @@ export const interviewScorecardRepository = {
         create: { organizationId: orgId, interviewId, evaluatorId, ...data, submittedAt },
         update: { ...data, submittedAt },
       });
-      const read = options.completeIfUnchanged;
-      if (read) {
+      if (options.complete) {
         await tx.interview.updateMany({
-          where: {
-            id: interviewId,
-            organizationId: orgId,
-            status: { in: [...SCORECARD_COMPLETES_STATUSES] },
-            scheduledAt: read.scheduledAt,
-            duration: read.duration,
-            meetingUrl: read.meetingUrl,
-          },
+          where: { id: interviewId, organizationId: orgId, status: { in: [...SCORECARD_COMPLETES_STATUSES] } },
           data: { status: 'completed' },
         });
       }
@@ -160,7 +177,7 @@ export const interviewScorecardRepository = {
           },
         });
       }
-      return saved;
+      return { ok: true as const, scorecard: saved };
     });
   },
 };

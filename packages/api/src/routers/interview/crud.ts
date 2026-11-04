@@ -332,19 +332,21 @@ export const interviewCrudRouter = router({
         meetingUrl: data.meetingUrl ?? existing.meetingUrl,
         interviewId: existing.id,
       });
-      const updated = await db.interview.update({
-        where: { id },
-        data: {
-          ...data,
-          ...joinToken.columns,
-          status: 'rescheduled',
-        },
-        omit: { candidateJoinTokenHash: true, candidateJoinTokenExpiresAt: true },
-        include: {
-          candidate: { select: { firstName: true, lastName: true, email: true } },
-          vacancy: { select: { title: true } },
-        },
+      // Under the interview row lock, serialized with scorecard submission (interview-manage.repository.ts).
+      const result = await interviewManageRepository.rescheduleUnscored(ctx.user.organizationId, id, {
+        ...data,
+        ...joinToken.columns,
+        status: 'rescheduled',
       });
+      if (!result.ok) {
+        throw result.reason === 'scored'
+          ? new TRPCError({
+              code: 'CONFLICT',
+              message: 'No se puede reprogramar una entrevista con scorecards enviados; programa una nueva',
+            })
+          : new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede reprogramar una entrevista cancelada o completada' });
+      }
+      const updated = result.interview;
 
       // After the response (see lib/after-response.ts): updated invitation (.ics REQUEST, higher
       // SEQUENCE, same UID).

@@ -30,6 +30,14 @@ const m = vi.hoisted(() => ({
   sendPlain: vi.fn(),
   txUserFind: vi.fn(),
   txEvaluatorCreate: vi.fn(),
+  // reschedule writes inside a transaction, under the interview row lock (interview-manage.repository.ts)
+  txInterviewUpdateMany: vi.fn(
+    async (_args: { where: unknown; data: { candidateJoinTokenHash: string; candidateJoinTokenExpiresAt: Date } }) => ({
+      count: 1,
+    }),
+  ),
+  txCardCount: vi.fn(async () => 0),
+  txInterviewFind: vi.fn(async (_args: { omit?: unknown }) => ({ id: 'rescheduled-interview' })),
 }));
 
 vi.mock('@tims/db', () => ({
@@ -40,7 +48,12 @@ vi.mock('@tims/db', () => ({
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
   runTenantTransaction: (_org: string, fn: (tx: unknown) => unknown) =>
-    fn({ user: { findFirst: m.txUserFind }, interviewEvaluator: { create: m.txEvaluatorCreate } }),
+    fn({
+      user: { findFirst: m.txUserFind },
+      interviewEvaluator: { create: m.txEvaluatorCreate },
+      interview: { updateMany: m.txInterviewUpdateMany, findFirst: m.txInterviewFind },
+      interviewScorecard: { count: m.txCardCount },
+    }),
 }));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
@@ -223,7 +236,7 @@ describe('interview.schedule — join token + invitation emails', () => {
       meetingUrl: own,
     });
     await (await caller()).interview.reschedule({ id: INTERVIEW_ID, scheduledAt: new Date('2026-10-02T15:00:00Z') });
-    expect(m.update.mock.calls[0][0].data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(m.txInterviewUpdateMany.mock.calls[0]![0].data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
     await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
     expect(body('ana@example.com', 'text/html')).toContain('/interview/join/');
     expect(body('eva@acme.test', 'text/html')).toContain(`/recruitment/interviews/${INTERVIEW_ID}/room`);
@@ -292,7 +305,12 @@ describe('interview.reschedule / cancel', () => {
       meetingUrl: true,
       scheduledAt: true,
     });
-    const data = m.update.mock.calls[0][0].data;
+    const data = m.txInterviewUpdateMany.mock.calls[0]![0].data;
+    // The read after the locked write never returns the join-token columns either.
+    expect(m.txInterviewFind.mock.calls[0]![0].omit).toEqual({
+      candidateJoinTokenHash: true,
+      candidateJoinTokenExpiresAt: true,
+    });
     expect(data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(data.candidateJoinTokenHash).not.toBe(firstHash);
     expect(data.candidateJoinTokenExpiresAt.toISOString()).toBe('2026-10-02T16:00:00.000Z');

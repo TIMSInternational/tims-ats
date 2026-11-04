@@ -4197,6 +4197,7 @@
     "submitError": "The scorecard could not be submitted. Please try again.",
     "submitForbidden": "Only an assigned evaluator can submit this scorecard.",
     "submitIncomplete": "The scorecard is missing competencies (the job profile may have changed). Reload the page and rate every competency.",
+    "submitRescheduled": "The interview was rescheduled while you were scoring, so the scorecard was not saved. Check the new date and submit it again.",
     "submittedAt": "Submitted on {date}. You can update it.",
     "hintIncomplete": "Rate every competency and choose a recommendation to submit.",
     "notEvaluator": "You are not an assigned evaluator for this interview, so you cannot submit a scorecard.",

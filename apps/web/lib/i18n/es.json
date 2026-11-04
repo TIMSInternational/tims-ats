@@ -4197,6 +4197,7 @@
     "submitError": "No se pudo enviar el scorecard. Intenta de nuevo.",
     "submitForbidden": "Solo un evaluador asignado puede enviar este scorecard.",
     "submitIncomplete": "Al scorecard le faltan competencias (puede que el perfil del puesto haya cambiado). Recarga la página y califica todas las competencias.",
+    "submitRescheduled": "La entrevista se reprogramó mientras evaluabas, así que el scorecard no se guardó. Revisa la nueva fecha y vuelve a enviarlo.",
     "submittedAt": "Enviado el {date}. Puedes actualizarlo.",
     "hintIncomplete": "Califica todas las competencias y elige una recomendación para enviar.",
     "notEvaluator": "No eres evaluador asignado de esta entrevista, por lo que no puedes enviar un scorecard.",

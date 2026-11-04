@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 //  - F-10: interview.getById carries the scorecard competencies (committee has no vacancy:read).
 // No procedure is added: the tRPC surface is ratcheted (tests/governance/trpc-procedure-ratchet.test.ts).
 //  - B-29: getPendingScorecards lists only interviews that have started.
-//  - A-02: "No se presentó" (interview.cancel with outcome 'no_show') — one conditional write, no email.
+//  - A-02: "No se presentó" (interview.cancel with outcome 'no_show') — no email; like reschedule, it writes
+//    under the interview row lock and only then counts submitted cards, rolling back if there is one.
 //  - A-02 / B-30: the status filter and the KPI counts use the badge rule (repositories/interview-status-filter.ts).
 
 const ORG_ID = '11111111-1111-4111-8111-111111111111';
@@ -23,7 +24,12 @@ const m = vi.hoisted(() => ({
   interviewFindMany: vi.fn(),
   interviewCount: vi.fn(),
   interviewUpdate: vi.fn(),
-  interviewUpdateMany: vi.fn(),
+  // no-show / reschedule write inside a transaction, under the interview row lock
+  txInterviewUpdateMany: vi.fn(),
+  txInterviewFind: vi.fn(),
+  txCardCount: vi.fn(),
+  // How each transaction callback ended: Prisma commits a callback that returns and rolls back one that throws.
+  txOutcome: [] as string[],
   evaluatorDeleteMany: vi.fn(),
   evaluatorFindMany: vi.fn(),
   orgFindFirst: vi.fn(),
@@ -43,7 +49,6 @@ vi.mock('@tims/db', () => ({
       findMany: m.interviewFindMany,
       count: m.interviewCount,
       update: m.interviewUpdate,
-      updateMany: m.interviewUpdateMany,
     },
     interviewEvaluator: { deleteMany: m.evaluatorDeleteMany, findMany: m.evaluatorFindMany },
     organization: { findFirst: m.orgFindFirst },
@@ -51,8 +56,21 @@ vi.mock('@tims/db', () => ({
     jobProfile: { findFirst: m.jobProfileFindFirst },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
-  runTenantTransaction: (_org: string, fn: (tx: unknown) => unknown) =>
-    fn({ user: { findFirst: m.txUserFind }, interviewEvaluator: { create: m.txEvaluatorCreate } }),
+  runTenantTransaction: async (_org: string, fn: (tx: unknown) => unknown) => {
+    try {
+      const result = await fn({
+        user: { findFirst: m.txUserFind },
+        interviewEvaluator: { create: m.txEvaluatorCreate },
+        interview: { updateMany: m.txInterviewUpdateMany, findFirst: m.txInterviewFind },
+        interviewScorecard: { count: m.txCardCount },
+      });
+      m.txOutcome.push('committed');
+      return result;
+    } catch (err) {
+      m.txOutcome.push('rolled_back');
+      throw err;
+    }
+  },
 }));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn(async () => ({ allowed: true, scope: m.scope, roles: ['committee'] })),
@@ -96,7 +114,10 @@ beforeEach(() => {
   m.scopeWhereFor.mockImplementation(async (entity: string) => (entity === 'vacancy' ? TEAM_VACANCY_WHERE : {}));
   m.interviewFindFirst.mockResolvedValue(null);
   m.interviewUpdate.mockResolvedValue({ id: INTERVIEW_ID });
-  m.interviewUpdateMany.mockResolvedValue({ count: 1 });
+  m.txInterviewUpdateMany.mockResolvedValue({ count: 1 });
+  m.txInterviewFind.mockResolvedValue({ id: INTERVIEW_ID });
+  m.txCardCount.mockResolvedValue(0);
+  m.txOutcome.length = 0;
   m.evaluatorDeleteMany.mockResolvedValue({ count: 1 });
   m.txUserFind.mockResolvedValue({ id: OTHER_ID });
   m.txEvaluatorCreate.mockResolvedValue({ id: 'ie-1' });
@@ -127,7 +148,7 @@ describe('B-05 — a panelist cannot manage the interview they sit on', () => {
         { vacancy: { AND: [TEAM_VACANCY_WHERE, { deletedAt: null }] } },
       ]);
       expect(m.interviewUpdate).not.toHaveBeenCalled();
-      expect(m.interviewUpdateMany).not.toHaveBeenCalled();
+      expect(m.txInterviewUpdateMany).not.toHaveBeenCalled();
       expect(m.evaluatorDeleteMany).not.toHaveBeenCalled();
       expect(m.txEvaluatorCreate).not.toHaveBeenCalled();
       expect(m.notify).not.toHaveBeenCalled();
@@ -353,28 +374,49 @@ describe('A-02 — "No se presentó" (interview.cancel, outcome no_show)', () =>
     m.scope = 'organization';
   });
 
-  it('one conditional write: open, started, no submitted scorecard; join link revoked; no email', async () => {
+  it('the write takes the row lock, THEN submitted cards are counted; join link revoked; no email', async () => {
     const before = Date.now();
     const res = await (await caller()).interview.cancel({ id: INTERVIEW_ID, outcome: 'no_show' });
     expect(res).toEqual({ id: INTERVIEW_ID, status: 'no_show' });
-    const args = m.interviewUpdateMany.mock.calls[0]![0];
+    const args = m.txInterviewUpdateMany.mock.calls[0]![0];
     expect(args.where).toMatchObject({
       id: INTERVIEW_ID,
       organizationId: ORG_ID,
       status: { in: ['scheduled', 'rescheduled', 'confirmed', 'in_progress'] },
-      scorecards: { none: { submittedAt: { not: null } } },
     });
     expect(args.where.scheduledAt.lte.getTime()).toBeGreaterThanOrEqual(before);
     expect(args.data).toEqual({ status: 'no_show', candidateJoinTokenHash: null, candidateJoinTokenExpiresAt: null });
+    // The card count is a separate statement AFTER the locking write (it must see a card committed by a
+    // submission that held the lock first), org-filtered, submitted cards only.
+    expect(m.txCardCount.mock.calls[0]![0].where).toEqual({
+      organizationId: ORG_ID,
+      interviewId: INTERVIEW_ID,
+      submittedAt: { not: null },
+    });
+    expect(m.txInterviewUpdateMany.mock.invocationCallOrder[0]!).toBeLessThan(m.txCardCount.mock.invocationCallOrder[0]!);
+    expect(m.txOutcome).toEqual(['committed']);
     expect(m.interviewUpdate).not.toHaveBeenCalled();
     expect(m.notify).not.toHaveBeenCalled();
   });
 
-  it('CONFLICT when nothing matched (not started, already closed, or a card was submitted)', async () => {
-    m.interviewUpdateMany.mockResolvedValueOnce({ count: 0 });
+  it('CONFLICT when nothing matched (not started, or already closed / completed)', async () => {
+    m.txInterviewUpdateMany.mockResolvedValueOnce({ count: 0 });
     await expect((await caller()).interview.cancel({ id: INTERVIEW_ID, outcome: 'no_show' })).rejects.toMatchObject({
       code: 'CONFLICT',
     });
+    expect(m.txCardCount).not.toHaveBeenCalled();
+    expect(m.notify).not.toHaveBeenCalled();
+  });
+
+  it('CONFLICT when a submitted scorecard exists: the count refuses AFTER the write, so it must throw (roll back)', async () => {
+    m.txCardCount.mockResolvedValueOnce(1);
+    await expect((await caller()).interview.cancel({ id: INTERVIEW_ID, outcome: 'no_show' })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+    // The no_show write had run inside the transaction; only a throw out of the callback undoes it.
+    expect(m.txInterviewUpdateMany).toHaveBeenCalledTimes(1);
+    expect(m.txCardCount).toHaveBeenCalledTimes(1);
+    expect(m.txOutcome).toEqual(['rolled_back']);
     expect(m.notify).not.toHaveBeenCalled();
   });
 
@@ -383,8 +425,46 @@ describe('A-02 — "No se presentó" (interview.cancel, outcome no_show)', () =>
     await expect(c.interview.cancel({ id: INTERVIEW_ID } as never)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await c.interview.cancel({ id: INTERVIEW_ID, cancelReason: 'x' });
     expect(m.interviewUpdate.mock.calls[0]![0].data).toMatchObject({ status: 'cancelled', cancelReason: 'x' });
-    expect(m.interviewUpdateMany).not.toHaveBeenCalled();
+    expect(m.txInterviewUpdateMany).not.toHaveBeenCalled();
     // The email path runs in this harness, so "no email" on a no-show above is not vacuous.
     expect(m.notify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'cancel', interviewId: INTERVIEW_ID }));
+  });
+});
+
+describe('reschedule serializes with scorecard submission (#405 review)', () => {
+  beforeEach(() => {
+    m.scope = 'organization';
+    m.interviewFindFirst.mockResolvedValue({
+      id: INTERVIEW_ID,
+      status: 'scheduled',
+      type: 'onsite',
+      duration: 60,
+      meetingUrl: null,
+      scheduledAt: new Date('2026-11-10T16:00:00Z'),
+    });
+  });
+  const input = { id: INTERVIEW_ID, scheduledAt: new Date('2026-11-12T16:00:00Z') };
+
+  it('writes under the row lock, then counts submitted cards; notifies when it went through', async () => {
+    await (await caller()).interview.reschedule(input);
+    const args = m.txInterviewUpdateMany.mock.calls[0]![0];
+    expect(args.where).toEqual({ id: INTERVIEW_ID, organizationId: ORG_ID, status: { notIn: ['cancelled', 'completed'] } });
+    expect(args.data).toMatchObject({ scheduledAt: input.scheduledAt, status: 'rescheduled' });
+    expect(m.txInterviewUpdateMany.mock.invocationCallOrder[0]!).toBeLessThan(m.txCardCount.mock.invocationCallOrder[0]!);
+    expect(m.notify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'update' }));
+  });
+
+  it('CONFLICT, no email, when the interview already has a submitted scorecard', async () => {
+    m.txCardCount.mockResolvedValueOnce(2);
+    await expect((await caller()).interview.reschedule(input)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(m.txOutcome).toEqual(['rolled_back']); // the reschedule write is undone, not left behind
+    expect(m.notify).not.toHaveBeenCalled();
+  });
+
+  it('BAD_REQUEST, no email, when it was cancelled or completed after the guard read', async () => {
+    m.txInterviewUpdateMany.mockResolvedValueOnce({ count: 0 });
+    await expect((await caller()).interview.reschedule(input)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(m.txCardCount).not.toHaveBeenCalled();
+    expect(m.notify).not.toHaveBeenCalled();
   });
 });

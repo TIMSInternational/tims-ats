@@ -63,13 +63,16 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
   const competencies = useMemo(() => withStoredCompetencies(resolved.items, stored), [resolved.items, stored]);
 
   // BAD_REQUEST = the server's completeness check refused the card (e.g. the job profile
-  // changed while the room was open); FORBIDDEN = not an assigned evaluator.
+  // changed while the room was open); FORBIDDEN = not an assigned evaluator; CONFLICT = the interview
+  // was rescheduled while the card was being filled in (it is not filed against the new appointment).
   const submitErrorMessage = (code: string | undefined) =>
     code === 'FORBIDDEN'
       ? t.interviewRoom.submitForbidden
       : code === 'BAD_REQUEST'
         ? t.interviewRoom.submitIncomplete
-        : t.interviewRoom.submitError;
+        : code === 'CONFLICT'
+          ? t.interviewRoom.submitRescheduled
+          : t.interviewRoom.submitError;
 
   const submit = trpc.interview.submitScorecard.useMutation({
     onSuccess: (saved) => {
@@ -83,6 +86,8 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
     },
     onError: (err) => {
       toast(submitErrorMessage(err.data?.code), { type: 'error' });
+      // Show the new schedule after a reschedule refused the card.
+      if (err.data?.code === 'CONFLICT') void utils.interview.getById.invalidate({ id: interview.id });
     },
   });
 

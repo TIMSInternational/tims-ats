@@ -28,8 +28,11 @@ import {
 //     took place, so there is nothing to score. `completed` stays OPEN — scoring
 //     after the interview ends is the normal flow, and the room's "Update" edit
 //     must keep working once the interview is marked completed. Checked here
-//     (fast refusal) and again inside the write transaction (the repository
-//     returns null if a cancel landed in between).
+//     (fast refusal) and again inside the write transaction, under the interview
+//     row lock (the repository refuses if a cancel or no-show landed in between).
+//   - A CARD BELONGS TO THE SCHEDULE IT WAS FILED ON: the write is bound to the
+//     schedule read here, so a reschedule that lands first refuses the card
+//     (`rescheduled`) instead of leaving it to "complete" the new appointment.
 //   - A SUBMITTED CARD COMPLETES A STARTED INTERVIEW (B-30): a past interview no
 //     longer stays "Programada" forever. Exception: while the candidate's own
 //     video join link is still valid (scheduled end + JOIN_TOKEN_GRACE_MINUTES —
@@ -50,9 +53,11 @@ export function shouldCompleteOnScorecard(
   return !joinStillValid;
 }
 
+type SubmitWrite = Awaited<ReturnType<typeof interviewScorecardRepository.submit>>;
+
 export type SubmitScorecardResult =
-  | { ok: true; scorecard: NonNullable<Awaited<ReturnType<typeof interviewScorecardRepository.submit>>> }
-  | { ok: false; reason: 'not_found' | 'incomplete' | 'closed' };
+  | { ok: true; scorecard: Extract<SubmitWrite, { ok: true }>['scorecard'] }
+  | { ok: false; reason: 'not_found' | 'incomplete' | 'closed' | 'rescheduled' };
 
 export const scorecardSubmissionService = {
   async submit(
@@ -66,14 +71,14 @@ export const scorecardSubmissionService = {
     if (context === undefined) return { ok: false, reason: 'not_found' };
     if (SCORECARD_CLOSED_STATUSES.includes(context.status)) return { ok: false, reason: 'closed' };
     if (!ratingsCoverCompetencySet(data.ratings, context.competencies)) return { ok: false, reason: 'incomplete' };
-    // The write re-checks the schedule this decision was made on (a concurrent reschedule wins).
-    const completeIfUnchanged = shouldCompleteOnScorecard({ id: interviewId, ...context })
-      ? { scheduledAt: context.scheduledAt, duration: context.duration, meetingUrl: context.meetingUrl ?? null }
-      : undefined;
-    const scorecard = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data, {
-      completeIfUnchanged,
+    // The write is bound to the schedule this decision was made on (a concurrent reschedule wins).
+    const schedule = { scheduledAt: context.scheduledAt, duration: context.duration, meetingUrl: context.meetingUrl ?? null };
+    const complete = shouldCompleteOnScorecard({ id: interviewId, ...context });
+    const written = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data, {
+      schedule,
+      complete,
     });
-    if (!scorecard) return { ok: false, reason: 'closed' };
-    return { ok: true, scorecard };
+    if (!written.ok) return { ok: false, reason: written.reason };
+    return { ok: true, scorecard: written.scorecard };
   },
 };
