@@ -292,7 +292,10 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
   await openOffer(approverPage);
   const approved = approverPage.getByText('Aprobada', { exact: true });
   await expect(approved).toHaveCount(0);
+  // Approving an offer is a deliberate second step (B-13): 'Aprobar' opens the optional comment, and
+  // 'Confirmar aprobación' records the decision.
   await approverPage.getByRole('button', { name: 'Aprobar', exact: true }).click();
+  await approverPage.getByRole('button', { name: 'Confirmar aprobación', exact: true }).click();
   await expect(approved.first()).toBeVisible();
 }
 
