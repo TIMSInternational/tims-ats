@@ -56,6 +56,23 @@ describe('withoutCopiedSections', () => {
     expect(withoutCopiedSections(description, sections)).toBe('Intro.\n\n## Requisitos\n- Colegiatura obligatoria');
   });
 
+  // Codex round 4: a heading with text after its label was treated as a bare label and dropped with its
+  // copied lines, so "licencia profesional vigente" vanished although it was never copied anywhere.
+  it('keeps a heading that carries its own text, even when every line under it was copied', () => {
+    for (const heading of ['**Requisitos: licencia profesional vigente**', '## Requisitos: licencia profesional vigente']) {
+      const result = withoutCopiedSections(`Intro.\n\n${heading}\n- Contabilidad`, sections);
+      expect(result).toBe(`Intro.\n\n${heading}`);
+    }
+    // A plain "Requisitos: text" line is not a heading at all: it is ordinary text and is kept.
+    const plain = withoutCopiedSections('Intro.\n\nRequisitos: licencia profesional vigente\n- Contabilidad', sections);
+    expect(plain).toContain('Requisitos: licencia profesional vigente');
+  });
+
+  it('still drops a bare label heading with a trailing colon when all its lines were copied', () => {
+    expect(withoutCopiedSections('Intro.\n\n**Requisitos:**\n- Contabilidad', sections)).toBe('Intro.');
+    expect(withoutCopiedSections('Intro.\n\n## Requisitos del cargo:\n- Contabilidad', sections)).toBe('Intro.');
+  });
+
   it('keeps a section whose structured field came back empty (nothing was copied for it)', () => {
     const noBenefits = { ...sections, benefits: [] };
     const result = withoutCopiedSections('Intro.\n\n## Beneficios\n- Seguro médico', noBenefits);

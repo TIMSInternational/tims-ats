@@ -45,6 +45,11 @@ function headingText(line: string): string | null {
   return label ? label[1]!.trim() : null;
 }
 
+/** "**Requisitos: licencia profesional vigente**" carries text after its label; "**Requisitos:**" does not. */
+function headingCarriesText(line: string): boolean {
+  return /:\s*[^\s*:]/.test(line.trim().replace(/^#{1,6}\s+/, ''));
+}
+
 /** Compare a description line with a copied item: no list marker, emphasis, case or end punctuation. */
 function normalizeItem(text: string): string {
   return text
@@ -62,7 +67,9 @@ function normalizeItem(text: string): string {
  * fields, and the saved description is built from all fields, so keeping the full text in "Sobre el cargo"
  * listed them twice (F-6). This removes only what was copied: inside a responsibilities/requirements/benefits
  * section, a line is dropped when it matches an item copied into that field; any other line (and the section
- * heading above it) is kept, and every other section is kept whole. Nothing that was not copied is lost.
+ * heading above it) is kept, and every other section is kept whole. A heading is dropped only when it is a
+ * bare label ("## Requisitos", "**Beneficios:**") and every line under it was copied; a heading with text of
+ * its own ("**Requisitos: licencia profesional vigente**") is always kept. Nothing that was not copied is lost.
  */
 export function withoutCopiedSections(description: string, sections: FormalSections): string {
   const kept: string[] = [];
@@ -79,8 +86,10 @@ export function withoutCopiedSections(description: string, sections: FormalSecti
       const structured = STRUCTURED_HEADINGS.find((h) => h.re.test(heading));
       const items = structured ? sections[structured.key] : [];
       copied = items.length > 0 ? new Set(items.map(normalizeItem)) : null;
-      pendingHeading = copied ? line : null;
-      if (!copied) pushHeading(line);
+      // Only a bare label waits to see whether any of its lines survive; a heading with its own text
+      // after the label is content, so it is always kept (its copied lines are still dropped).
+      pendingHeading = copied && !headingCarriesText(line) ? line : null;
+      if (pendingHeading === null) pushHeading(line);
       continue;
     }
     if (copied && line.trim() !== '' && copied.has(normalizeItem(line))) continue;
