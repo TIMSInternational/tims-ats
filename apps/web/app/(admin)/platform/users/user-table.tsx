@@ -6,6 +6,7 @@ import { toast } from '../../../../lib/toast';
 import { DataTable, EmptyState } from '../../../../components';
 import { formatDate, formatRelativeTime, getInitials, getAvatarColor } from '../../../../lib/format-utils';
 import { MFA_REQUIRED } from '@tims/shared';
+import { roleLabel } from '../../../../lib/role-labels';
 import type { UserListItem } from '../../../../lib/trpc-types';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -87,7 +88,7 @@ export function UserTable({
               {user.isPlatformOwner ? t.users.platform : user.organization?.name || '-'}
             </td>
             <td className="px-4 py-2.5">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>{roleSlug}</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>{roleLabel(t.roles, roleSlug)}</span>
             </td>
             <td className="px-4 py-2.5">
               <span className={`flex items-center gap-1.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>

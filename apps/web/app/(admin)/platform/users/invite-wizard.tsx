@@ -8,7 +8,7 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { Modal, ErrorState } from '../../../../components';
 import { isInviteRoleValid, rowsMissingRole } from '../../../../lib/invitations/invite-role';
-import { ROLES, parseCSV, autoMap, type Mode, type BulkStep, type ParsedRow } from './invite-wizard.helpers';
+import { parseCSV, autoMap, type Mode, type BulkStep, type ParsedRow } from './invite-wizard.helpers';
 import { useBulkInvitationCreate, type BulkInvitationResponse } from '../../../../lib/platform-api/bulk-invitation-create';
 import { BulkResultStep } from './bulk-result-step';
 import { BulkMapStep, BulkPreviewStep } from './invite-wizard.steps';
@@ -41,12 +41,12 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
   const [bulkResult, setBulkResult] = useState<BulkInvitationResponse | null>(null);
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: (mode === 'single' ? orgSearch : bulkOrgSearch) || undefined, limit: 10, page: 0 });
-  const invitationRoles = useUserInvitationRoles(orgId, ROLES);
+  const invitationRoles = useUserInvitationRoles(orgId);
 
   const createSingle = useUserInvitationCreate({
     onSuccess: (delivery) => {
-      toast(delivery === 'accepted' || delivery === 'legacy' ? t.invitations.invitationSent : t.invitations.userInviteDeliveryUnconfirmed,
-        { type: delivery === 'accepted' || delivery === 'legacy' ? 'success' : 'warning' });
+      toast(delivery === 'accepted' ? t.invitations.invitationSent : t.invitations.userInviteDeliveryUnconfirmed,
+        { type: delivery === 'accepted' ? 'success' : 'warning' });
       onSuccess();
     },
     onError: (err) => { toast(err.message, { type: 'error' }); },

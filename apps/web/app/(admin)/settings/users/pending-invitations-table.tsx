@@ -14,6 +14,7 @@ import {
   type TenantInvitation,
   type TenantInvitationStatusFilter,
 } from '../../../../lib/platform-api/tenant-invitations';
+import { roleLabel } from '../../../../lib/role-labels';
 import { invitationErrorMessage } from './invitation-error-message';
 import { RevokeInvitationModal } from './revoke-invitation-modal';
 
@@ -54,7 +55,7 @@ export function PendingInvitationsTable() {
       />
     );
 
-  const roleNames = new Map((roles.data ?? []).map((role) => [role.slug, role.name]));
+  const grantableRoles = new Set((roles.data ?? []).map((role) => role.slug));
   const statusMap = {
     pending: { cls: 'bg-amber-50 text-amber-700', label: m.statusPending },
     sent: { cls: 'bg-blue-50 text-blue-700', label: m.statusSent },
@@ -70,7 +71,7 @@ export function PendingInvitationsTable() {
   // Resend revives a grant of the invitation's role, so the API refuses it (403) unless the caller could
   // grant that role. `roles.data` IS the caller's grantable list; mirror the rule so the button is not a trap.
   // A NULL role is accepted as `employee`. Until the list loads, defer to the server.
-  const canResend = (inv: TenantInvitation) => !roles.data || roleNames.has(inv.roleSlug ?? 'employee');
+  const canResend = (inv: TenantInvitation) => !roles.data || grantableRoles.has(inv.roleSlug ?? 'employee');
 
   return (
     <div className="flex flex-col gap-3">
@@ -103,7 +104,7 @@ export function PendingInvitationsTable() {
           <tr key={inv.id} className="border-b border-[#EDEDED] last:border-0">
             <td className="px-4 py-3 text-sm text-[#333]">{inv.email}</td>
             <td className="px-4 py-3 text-sm text-[#585858]">
-              {inv.roleSlug ? (roleNames.get(inv.roleSlug) ?? inv.roleSlug) : m.noRole}
+              {inv.roleSlug ? roleLabel(t.roles, inv.roleSlug) : m.noRole}
             </td>
             <td className="px-4 py-3">
               <StatusBadge status={inv.status} map={statusMap} />

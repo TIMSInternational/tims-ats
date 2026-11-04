@@ -3,14 +3,6 @@ export type BulkStep = 'upload' | 'map' | 'preview' | 'result';
 
 export interface ParsedRow { email: string; firstName?: string; lastName?: string; role?: string }
 
-export const ROLES = [
-  { slug: 'super_admin', label: 'Super Admin' },
-  { slug: 'hr_admin', label: 'HR Admin' },
-  { slug: 'recruiter', label: 'Recruiter' },
-  { slug: 'leader', label: 'Leader' },
-  { slug: 'employee', label: 'Employee' },
-];
-
 export function parseCSV(text: string): { headers: string[]; rows: string[][] } {
   const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length === 0) return { headers: [], rows: [] };

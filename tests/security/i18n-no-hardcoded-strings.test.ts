@@ -67,7 +67,7 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:102:jsx-text',
   'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:105:jsx-text',
   'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:183:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/users-section.tsx:123:jsx-text',
+  'apps/web/app/(admin)/platform/organizations/[id]/sections/users-section.tsx:114:jsx-text', // re-anchored: the local English role list moved to lib/role-labels.ts
   'apps/web/app/(admin)/platform/organizations/org-actions-dropdown.tsx:28:ternary',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/page.tsx:100:jsx-text',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-panel.tsx:108:jsx-text',
