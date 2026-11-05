@@ -11,6 +11,7 @@ const nav = vi.hoisted(() => ({ search: '' }));
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ orgSlug: 'invu' }),
+  useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(nav.search),
 }));
 vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: en, locale: 'EN' }) }));
