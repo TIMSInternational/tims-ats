@@ -5,6 +5,18 @@ import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { useTenantAuditExport } from '../../../../lib/platform-api/tenant-audit';
+import { timeZoneLabel } from '@tims/shared';
+import {
+  AUDIT_ACTION_CODES,
+  AUDIT_ENTITY_CODES,
+  auditExportRange,
+  auditFilterOptions,
+  isAuditRangeInverted,
+} from '../../../../lib/audit-export-filters';
+
+const FIELD_CLS =
+  'w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40';
+const LABEL_CLS = 'block text-[12px] font-medium text-[#585858] mb-1.5';
 
 function downloadBlob(data: string, format: 'csv' | 'json') {
   const mime = format === 'json' ? 'application/json' : 'text/csv;charset=utf-8;';
@@ -18,7 +30,7 @@ function downloadBlob(data: string, format: 'csv' | 'json') {
 }
 
 export default function AuditLogExportPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [action, setAction] = useState('');
@@ -26,7 +38,14 @@ export default function AuditLogExportPage() {
   const [actorId, setActorId] = useState('');
 
   const users = trpc.user.list.useQuery({ limit: 100 });
+  // The organization's zone decides where a chosen day starts and ends (D-13); null falls back to UTC.
+  const org = trpc.organization.getCurrent.useQuery(undefined, { retry: false });
+  const timeZone = org.data?.timeZone ?? null;
   const exportMutation = useTenantAuditExport();
+  const actionOptions = auditFilterOptions(AUDIT_ACTION_CODES, t.auditExport.actions);
+  const entityOptions = auditFilterOptions(AUDIT_ENTITY_CODES, t.auditExport.entities);
+  const rangeInverted = isAuditRangeInverted(dateFrom, dateTo);
+  const zoneText = timeZoneLabel(timeZone ?? 'UTC', locale === 'EN' ? 'en' : 'es');
 
   const clearFilters = () => {
     setDateFrom('');
@@ -37,11 +56,13 @@ export default function AuditLogExportPage() {
   };
 
   const handleExport = async (format: 'csv' | 'json') => {
+    if (rangeInverted) return;
+    const range = auditExportRange(dateFrom, dateTo, timeZone);
     try {
       const result = await exportMutation.mutateAsync({
         format,
-        dateFrom: dateFrom ? new Date(dateFrom) : undefined,
-        dateTo: dateTo ? new Date(dateTo) : undefined,
+        dateFrom: range.dateFrom,
+        dateTo: range.dateTo,
         action: action || undefined,
         entity: entity || undefined,
         actorId: actorId || undefined,
@@ -57,7 +78,7 @@ export default function AuditLogExportPage() {
     }
   };
 
-  const isExporting = exportMutation.isPending;
+  const isExporting = exportMutation.isPending || org.isLoading;
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -79,48 +100,63 @@ export default function AuditLogExportPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auditExport.dateFrom}</label>
+              <label htmlFor="audit-date-from" className={LABEL_CLS}>{t.auditExport.dateFrom}</label>
               <input
+                id="audit-date-from"
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
+                aria-invalid={rangeInverted || undefined}
+                aria-describedby="audit-date-note"
+                className={FIELD_CLS}
               />
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auditExport.dateTo}</label>
+              <label htmlFor="audit-date-to" className={LABEL_CLS}>{t.auditExport.dateTo}</label>
               <input
+                id="audit-date-to"
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
+                aria-invalid={rangeInverted || undefined}
+                aria-describedby="audit-date-note"
+                className={FIELD_CLS}
               />
             </div>
+            <p id="audit-date-note" className="md:col-span-2 -mt-2 text-[11px] text-[#8B8B8B]">
+              {t.auditExport.timeZoneNote.replace('{zone}', zoneText)}
+            </p>
+            {rangeInverted && (
+              <p role="alert" className="md:col-span-2 -mt-2 text-[12px] text-[#DD0C15]">
+                {t.auditExport.dateRangeInvalid}
+              </p>
+            )}
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auditExport.actionLabel}</label>
-              <input
-                type="text"
-                maxLength={200}
-                value={action}
-                onChange={(e) => setAction(e.target.value)}
-                placeholder={t.auditExport.actionPlaceholder}
-                className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
-              />
+              <label htmlFor="audit-action" className={LABEL_CLS}>{t.auditExport.actionLabel}</label>
+              <select id="audit-action" value={action} onChange={(e) => setAction(e.target.value)} className={FIELD_CLS}>
+                <option value="">{t.auditExport.actionPlaceholder}</option>
+                {actionOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auditExport.entityLabel}</label>
-              <input
-                type="text"
-                maxLength={200}
-                value={entity}
-                onChange={(e) => setEntity(e.target.value)}
-                placeholder={t.auditExport.entityPlaceholder}
-                className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
-              />
+              <label htmlFor="audit-entity" className={LABEL_CLS}>{t.auditExport.entityLabel}</label>
+              <select id="audit-entity" value={entity} onChange={(e) => setEntity(e.target.value)} className={FIELD_CLS}>
+                <option value="">{t.auditExport.entityPlaceholder}</option>
+                {entityOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auditExport.actorLabel}</label>
+              <label htmlFor="audit-actor" className={LABEL_CLS}>{t.auditExport.actorLabel}</label>
               <select
+                id="audit-actor"
                 value={actorId}
                 onChange={(e) => setActorId(e.target.value)}
                 disabled={users.isLoading}
@@ -139,7 +175,7 @@ export default function AuditLogExportPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleExport('csv')}
-              disabled={isExporting}
+              disabled={isExporting || rangeInverted}
               className="flex items-center gap-1.5 bg-[#1F114C] text-white px-4 h-9 rounded-lg text-[12px] font-medium disabled:opacity-50"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -149,7 +185,7 @@ export default function AuditLogExportPage() {
             </button>
             <button
               onClick={() => handleExport('json')}
-              disabled={isExporting}
+              disabled={isExporting || rangeInverted}
               className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-4 h-9 rounded-lg text-[12px] font-medium disabled:opacity-50"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { useI18n } from '../../lib/i18n';
 
 // Mirrors the useClickOutside hook already used in apps/web/app/(admin)/navbar/index.tsx —
 // a document-level mousedown listener, not onBlur (onBlur only fires when focus moves to
@@ -38,6 +39,7 @@ export function SidebarProfileMenu({
   logoutLabel: string;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   useClickOutside(wrapRef, () => setOpen(false));
@@ -84,6 +86,17 @@ export function SidebarProfileMenu({
             expanded ? 'absolute bottom-[calc(100%+4px)] left-2' : 'fixed bottom-2 left-[calc(var(--sidebar-w-collapsed)+8px)]'
           }`}
         >
+          {/* Own profile (D-16): name, phone, language and time zone. */}
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 h-[30px] px-2 rounded-[var(--r-sm)] text-[12px] text-[var(--content-font-secondary)] hover:bg-[var(--content-bg-hover)] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5 text-[var(--content-font-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24" aria-hidden>
+              <path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+            </svg>
+            {t.profile.menuLabel}
+          </Link>
           <Link
             href="/mfa"
             onClick={() => setOpen(false)}
