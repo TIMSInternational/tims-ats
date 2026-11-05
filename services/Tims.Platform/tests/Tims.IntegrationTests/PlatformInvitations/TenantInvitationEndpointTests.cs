@@ -186,6 +186,28 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
     }
 
     [Fact]
+    public async Task Invitation_email_states_the_expiry_in_the_organization_time_zone()
+    {
+        // Pilot UX audit E-23: the tenant-scoped delivery repository reads organizations.settings.timezone.
+        await SetOrganizationSettings("""{"timezone":"America/Costa_Rica"}""");
+        try
+        {
+            var sender = new FakeSender();
+            using var factory = Factory(sender);
+            var response = await Send(factory.CreateClient(), HttpMethod.Post, "/tenant-invitations",
+                TenantInvitationFixture.HrAdminSub, Body("zone.hire@beta.test", "recruiter"));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(1, sender.Calls);
+            Assert.Contains("hora de Costa Rica (GMT-6)", sender.Html);
+            Assert.DoesNotContain("(UTC)", sender.Html);
+        }
+        finally
+        {
+            await SetOrganizationSettings("{}");
+        }
+    }
+
+    [Fact]
     public async Task Organization_id_in_body_is_rejected_not_honoured()
     {
         using var factory = Factory(new FakeSender());
@@ -599,6 +621,16 @@ public sealed class TenantInvitationEndpointTests(TenantInvitationFixture fixtur
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("id", id);
+        Assert.Equal(1, await command.ExecuteNonQueryAsync());
+    }
+
+    private async Task SetOrganizationSettings(string settings)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("UPDATE organizations SET settings = @settings::jsonb WHERE id = @org", connection);
+        command.Parameters.AddWithValue("settings", settings);
+        command.Parameters.AddWithValue("org", PlatformOrganizationsCreateFixture.OtherOrg);
         Assert.Equal(1, await command.ExecuteNonQueryAsync());
     }
 

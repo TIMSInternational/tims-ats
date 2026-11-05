@@ -33,10 +33,12 @@ public sealed class OrganizationInvitationCreateUseCase(IOrganizationInvitationC
         var invitation = pending.Snapshot;
         var organizationId = invitation.OrganizationId!.Value;
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
+        var timeZone = await InvitationTimeZone.FindAsync(deliveryRepository, organizationId, ct);
         var outcome = await new InitialInvitationDelivery(deliveryRepository, sender, clock).SendAsync(invitation, pending.ExpiresAt,
             $"Invitación para administrar {input.OrganizationName} en TIMS ATS",
             // An org_admin invitation is accepted as super_admin (InvitationOnboardingRepository).
-            InvitationEmail.Render(input.OrganizationName, InvitationGrantPolicy.SuperAdmin, url, pending.ExpiresAt), ct);
+            InvitationEmail.Render(input.OrganizationName, InvitationGrantPolicy.SuperAdmin, url, pending.ExpiresAt,
+                timeZone: timeZone), ct);
         return new(invitation.Id, organizationId, outcome);
     }
 

@@ -27,6 +27,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     offer: {
       create: { useMutation: () => ({ mutateAsync, isPending: false }) },
+      update: { useMutation: () => ({ mutateAsync, isPending: false }) },
       submitForApproval: { useMutation: () => ({ mutateAsync, isPending: false }) },
       approve: { useMutation: () => ({ mutateAsync, isPending: false }) },
       reject: { useMutation: () => ({ mutateAsync, isPending: false }) },
@@ -182,17 +183,18 @@ describe('create offer form', () => {
 
     fireEvent.change(amount, { target: { value: '8000000' } });
     expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain('COP 96.000.000');
+    // The start date may not be in the past (B-33): use one a month ahead.
     fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
-      target: { value: '2026-10-01' },
+      target: { value: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) },
     });
-    fireEvent.change(container.querySelector('input[type="text"]') as HTMLInputElement, {
-      target: { value: 'Indefinido' },
-    });
+    // B-15: contract type is a select over the vacancy vocabulary; the offer stores the label.
+    fireEvent.change(screen.getByLabelText(/Tipo Contrato|Contract Type/), { target: { value: 'indefinido' } });
     const buttons = screen.getAllByRole('button');
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
     expect(mutateAsync.mock.calls[0]?.[0]).toMatchObject({ salary: 96_000_000, currency: 'COP' });
+    expect(mutateAsync.mock.calls[0]?.[0].contractType).toMatch(/^(Plazo indefinido|Permanent)$/);
   });
 
   const twoVacancies = [

@@ -1,7 +1,9 @@
 'use client';
 
+import { useId, useRef } from 'react';
 import { OfferLetter } from './offer-letter';
 import { useI18n } from '../../../../../lib/i18n';
+import { useDialogA11y } from '../../../../../lib/use-dialog-a11y';
 
 interface OfferLetterModalProps {
   offer: {
@@ -22,14 +24,28 @@ interface OfferLetterModalProps {
 export function OfferLetterModal({ offer, companyName, onClose }: OfferLetterModalProps) {
   const { t } = useI18n();
   const handlePrint = () => window.print();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  // E-30: dialog semantics, Escape and a focus trap, like the shared Modal (which cannot host a printable,
+  // full-screen A4 letter).
+  useDialogA11y(dialogRef, onClose);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#F6F6F6]">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="fixed inset-0 z-50 flex flex-col bg-[#F6F6F6]"
+    >
       {/* Toolbar - hidden when printing */}
       <div className="print:hidden flex items-center justify-between px-6 py-3 bg-white border-b border-[#EDEDED] shadow-sm">
-        <h2 className="text-[15px] font-semibold text-[#1F114C]">{t.offers.offerPreview}</h2>
+        <h2 id={titleId} className="text-[15px] font-semibold text-[#1F114C]">
+          {t.offers.offerPreview}
+        </h2>
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={handlePrint}
             className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium text-[#585858] bg-[#F6F6F6] rounded-lg hover:bg-[#EDEDED] transition"
           >
@@ -39,6 +55,7 @@ export function OfferLetterModal({ offer, companyName, onClose }: OfferLetterMod
             {t.offers.printOrSavePdf}
           </button>
           <button
+            type="button"
             aria-label={t.common.close}
             onClick={onClose}
             className="ml-2 p-2 text-[#8B8B8B] hover:text-[#585858] rounded-lg hover:bg-[#EDEDED] transition"

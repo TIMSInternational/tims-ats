@@ -10,6 +10,7 @@ const OFFER_ID = '22222222-2222-4222-8222-222222222222';
 
 const mockOffer = {
   id: OFFER_ID,
+  vacancyId: '33333333-3333-4333-8333-333333333333',
   status: 'accepted',
   startDate: new Date('2026-10-01T00:00:00.000Z'),
   validations: [],
@@ -19,9 +20,29 @@ const mockOffer = {
 };
 
 // The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
+// F-15 hire guards (filled vacancy): stubbed to pass here; their own tests live in hire-closure.test.ts.
+const hireGuards = vi.hoisted(() => {
+  class HireVacancyFilledError extends Error {
+    constructor(
+      readonly hires: number,
+      readonly positions: number,
+    ) {
+      super('filled');
+    }
+  }
+  return {
+    HireVacancyFilledError,
+    assertVacancyNotFilled: vi.fn(async (..._args: unknown[]) => undefined),
+    lockVacancyForHire: vi.fn(async (..._args: unknown[]) => undefined),
+  };
+});
 vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
   closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
   HireRejectedApplicationError: class HireRejectedApplicationError extends Error {},
+  HireVacancyFilledError: hireGuards.HireVacancyFilledError,
+  assertVacancyNotFilled: hireGuards.assertVacancyNotFilled,
+  lockVacancyForHire: hireGuards.lockVacancyForHire,
+  vacancyFilledMessage: (hires: number, positions: number) => `filled ${hires}/${positions}`,
 }));
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
@@ -215,6 +236,44 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     expect(mockTx.user.create).not.toHaveBeenCalled();
     expect(mockTx.onboardingPlan.create).not.toHaveBeenCalled();
     expect(cacheInvalidatePrefix).not.toHaveBeenCalled(); // nothing committed, nothing to drop
+  });
+
+  // F-15 (pilot proof run): a hire used to be accepted on a vacancy whose positions were already covered.
+  it('refuses a hire on a filled vacancy before creating the sign-in identity (F-15)', async () => {
+    const { runTenantTransaction } = await import('@tims/db');
+    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    hireGuards.assertVacancyNotFilled.mockRejectedValueOnce(new hireGuards.HireVacancyFilledError(1, 1));
+    const caller = await makeCaller();
+
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'filled 1/1' });
+    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(runTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it('re-checks under the vacancy lock inside the transaction, before claiming the offer (F-15)', async () => {
+    const caller = await makeCaller();
+    await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });
+
+    expect(hireGuards.lockVacancyForHire).toHaveBeenCalledWith(mockTx, {
+      organizationId: ORG_ID,
+      vacancyId: mockOffer.vacancyId,
+    });
+    expect(hireGuards.lockVacancyForHire.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockTx.offer.updateMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('rolls the hire back when a concurrent hire filled the last position first (F-15)', async () => {
+    hireGuards.lockVacancyForHire.mockRejectedValueOnce(new hireGuards.HireVacancyFilledError(1, 1));
+    const caller = await makeCaller();
+
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'filled 1/1' });
+    expect(mockTx.offer.updateMany).not.toHaveBeenCalled();
+    expect(mockTx.user.create).not.toHaveBeenCalled();
   });
 
   it('returns the existing hire on a safe retry without creating another employee', async () => {

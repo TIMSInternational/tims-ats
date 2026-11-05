@@ -56,6 +56,10 @@ export const emailService = {
     companyName: string;
     signingUrl: string;
     expiresAt: Date | null;
+    /** The organization's time zone, for the validity date (E-23). */
+    timeZone?: string | null;
+    /** The organization's candidate contact (services/candidate-contact.ts): contact line + Reply-To. */
+    contactEmail?: string | null;
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.offerSent(rest);
@@ -65,6 +69,7 @@ export const emailService = {
       html,
       abortSignal: AbortSignal.timeout(OFFER_EMAIL_SEND_TIMEOUT_MS),
       breaker: sesOfferCircuit,
+      replyTo: rest.contactEmail ?? null,
     });
   },
 
@@ -75,6 +80,8 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     acceptedAt: Date;
+    offerUrl?: string | null;
+    timeZone?: string | null;
   }): Promise<boolean> {
     const { hrEmails, ...rest } = params;
     const { subject, html } = emailTemplates.offerAcceptedNotification(rest);
@@ -96,6 +103,8 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     declinedAt: Date;
+    offerUrl?: string | null;
+    timeZone?: string | null;
   }): Promise<boolean> {
     const { hrEmails, ...rest } = params;
     const { subject, html } = emailTemplates.offerDeclinedNotification(rest);

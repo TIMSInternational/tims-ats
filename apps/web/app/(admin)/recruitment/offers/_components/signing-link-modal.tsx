@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Modal } from '../../../../../components';
 import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
 
@@ -12,7 +13,13 @@ interface SigningLinkModalProps {
   onClose: () => void;
 }
 
-export function SigningLinkModal({ signingUrl, emailDeliveryAccepted, recipientEmail, onClose }: SigningLinkModalProps) {
+// E-30: on the shared Modal (dialog semantics, focus trap, Escape) instead of a hand-rolled overlay.
+export function SigningLinkModal({
+  signingUrl,
+  emailDeliveryAccepted,
+  recipientEmail,
+  onClose,
+}: SigningLinkModalProps) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -28,79 +35,66 @@ export function SigningLinkModal({ signingUrl, emailDeliveryAccepted, recipientE
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
-        {/* Header */}
-        <div className="px-6 py-5 border-b border-[#F0F0F0]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-lg ${emailDeliveryAccepted ? 'bg-green-100' : 'bg-amber-100'} flex items-center justify-center`}>
-                <svg className={`w-5 h-5 ${emailDeliveryAccepted ? 'text-green-600' : 'text-amber-600'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.06a4.5 4.5 0 00-6.364-6.364L4.5 8.25a4.5 4.5 0 006.364 6.364l4.5-4.5z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-[16px] font-semibold text-[#1F114C]">{t.offers.signingLinkTitle}</h2>
-                <p className="text-[12px] text-[#8B8B8B]">{emailDeliveryAccepted ? t.offers.offerEmailProviderAccepted : t.offers.offerEmailUnconfirmed}</p>
-              </div>
-            </div>
-            <button aria-label={t.common.close} onClick={onClose} className="text-[#8B8B8B] hover:text-[#333] transition">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                <path d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+    <Modal title={t.offers.signingLinkTitle} onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-10 h-10 rounded-lg ${emailDeliveryAccepted ? 'bg-green-100' : 'bg-amber-100'} flex items-center justify-center`}
+            aria-hidden="true"
+          >
+            <svg
+              className={`w-5 h-5 ${emailDeliveryAccepted ? 'text-green-600' : 'text-amber-600'}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.06a4.5 4.5 0 00-6.364-6.364L4.5 8.25a4.5 4.5 0 006.364 6.364l4.5-4.5z" />
+            </svg>
           </div>
+          <p className="text-[13px] font-medium text-[#585858]">
+            {emailDeliveryAccepted ? t.offers.offerEmailProviderAccepted : t.offers.offerEmailUnconfirmed}
+          </p>
         </div>
 
-        {/* Content */}
-        <div className="px-6 py-5 space-y-4">
-          {signingUrl && (<div>
-            <label className="block text-xs text-[#8B8B8B] mb-1.5">{t.offers.signingLinkLabel}</label>
+        {signingUrl && (
+          <div>
+            <label htmlFor="offer-signing-link" className="block text-xs text-[#8B8B8B] mb-1.5">
+              {t.offers.signingLinkLabel}
+            </label>
             <div className="flex gap-2">
               <input
+                id="offer-signing-link"
                 type="text"
                 value={signingUrl}
                 readOnly
                 className="flex-1 h-10 px-3 rounded-lg border border-[#E5E5E5] text-sm text-[#333] bg-[#FAFAFA] truncate"
               />
               <button
+                type="button"
                 onClick={handleCopy}
-                className="shrink-0 h-10 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5"
+                className="shrink-0 h-10 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition"
               >
-                {copied ? (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
-                    {t.common.copied}
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                    </svg>
-                    {t.common.copy}
-                  </>
-                )}
+                {copied ? t.common.copied : t.common.copy}
               </button>
             </div>
-          </div>)}
-
-          <div className={`${emailDeliveryAccepted ? 'bg-green-50' : 'bg-amber-50'} rounded-xl p-4`}>
-            <p className="text-[12px] text-[#585858] leading-relaxed">
-              {emailDeliveryAccepted
-                ? t.offers.offerEmailAcceptedDetail
-                : signingUrl
-                  ? t.offers.offerEmailUnconfirmedDetail
-                  : t.offers.offerEmailUnconfirmedNoLinkDetail}
-            </p>
-            <p className="text-[11px] text-[#585858] mt-2">{recipientEmail}</p>
           </div>
+        )}
+
+        <div className={`${emailDeliveryAccepted ? 'bg-green-50' : 'bg-amber-50'} rounded-xl p-4`}>
+          <p className="text-[12px] text-[#585858] leading-relaxed">
+            {emailDeliveryAccepted
+              ? t.offers.offerEmailAcceptedDetail
+              : signingUrl
+                ? t.offers.offerEmailUnconfirmedDetail
+                : t.offers.offerEmailUnconfirmedNoLinkDetail}
+          </p>
+          <p className="text-[11px] text-[#585858] mt-2">{recipientEmail}</p>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#F0F0F0] flex justify-end">
+        <div className="flex justify-end">
           <button
+            type="button"
             onClick={onClose}
             className="h-9 px-5 rounded-lg text-[13px] font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
           >
@@ -108,6 +102,6 @@ export function SigningLinkModal({ signingUrl, emailDeliveryAccepted, recipientE
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

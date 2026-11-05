@@ -30,8 +30,10 @@ export function ApprovalChain({ approvals }: ApprovalChainProps) {
           const isRejected = approval.status === 'rejected';
           // A withdrawn request cancels its pending steps (offer.withdrawApproval).
           const isCancelled = approval.status === 'cancelled';
-          const name = `${approval.approver.firstName} ${approval.approver.lastName}`;
-          const role = approval.approver.jobTitle || `Step ${approval.step}`;
+          // B-12: the approver's job title, else "Paso n" (never the English "Step n").
+          const role = approval.approver.jobTitle || t.offers.approvalStepN.replace('{n}', String(approval.step));
+          // B-02: the approver's reason (required on reject) is shown, not only a red X.
+          const comment = approval.comment?.trim();
 
           return (
             <div key={approval.id} className="contents">
@@ -76,6 +78,16 @@ export function ApprovalChain({ approvals }: ApprovalChainProps) {
                   <p className="text-[9px] text-[#8B8B8B]">{formatDate(approval.decidedAt)}</p>
                 )}
                 {isCancelled && <p className="text-[9px] text-[#8B8B8B]">{t.offers.approvalStepCancelled}</p>}
+                {comment && (isApproved || isRejected) && (
+                  <p
+                    className={`mt-1 max-w-[220px] whitespace-pre-line break-words text-center text-[10px] ${isRejected ? 'text-red-700' : 'text-[#585858]'}`}
+                  >
+                    {(isRejected ? t.offers.approvalRejectionComment : t.offers.approvalDecisionComment).replace(
+                      '{comment}',
+                      comment,
+                    )}
+                  </p>
+                )}
               </div>
             </div>
           );

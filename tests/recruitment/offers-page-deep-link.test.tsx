@@ -22,6 +22,9 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       list: {
         useQuery: () => ({ data: { items: [], total: 0 }, isLoading: false, isError: false, refetch: vi.fn() }),
       },
+      getPending: {
+        useQuery: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
+      },
     },
   },
 }));

@@ -25,9 +25,29 @@ const mockTx = {
 };
 
 // The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
+// F-15 hire guards (filled vacancy): stubbed to pass here; their own tests live in hire-closure.test.ts.
+const hireGuards = vi.hoisted(() => {
+  class HireVacancyFilledError extends Error {
+    constructor(
+      readonly hires: number,
+      readonly positions: number,
+    ) {
+      super('filled');
+    }
+  }
+  return {
+    HireVacancyFilledError,
+    assertVacancyNotFilled: vi.fn(async (..._args: unknown[]) => undefined),
+    lockVacancyForHire: vi.fn(async (..._args: unknown[]) => undefined),
+  };
+});
 vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
   closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
   HireRejectedApplicationError: class HireRejectedApplicationError extends Error {},
+  HireVacancyFilledError: hireGuards.HireVacancyFilledError,
+  assertVacancyNotFilled: hireGuards.assertVacancyNotFilled,
+  lockVacancyForHire: hireGuards.lockVacancyForHire,
+  vacancyFilledMessage: (hires: number, positions: number) => `filled ${hires}/${positions}`,
 }));
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.

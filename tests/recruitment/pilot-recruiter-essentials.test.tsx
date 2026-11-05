@@ -15,7 +15,10 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     useUtils: () => ({ pipeline: { getBoard: { invalidate } }, candidate: { invalidate } }),
     pipeline: { rejectCandidate: { useMutation: () => ({ mutate, isPending: false }) } },
-    offer: { create: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) } },
+    offer: {
+      create: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
+      update: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
+    },
   },
 }));
 

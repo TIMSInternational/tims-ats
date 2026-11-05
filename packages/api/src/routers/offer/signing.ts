@@ -4,9 +4,11 @@ import { tenantDb as db } from '@tims/db';
 import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import { getAppUrl } from '@tims/shared';
+import { getAppUrl, OFFER_LINK_VALIDITY_DAYS, orgSettingsTimeZone, resolveInterviewTimeZone } from '@tims/shared';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
+import { candidateContactEmail } from '../../services/candidate-contact';
+import { sendOfferResponseNotice } from '../../services/offer-response-notice.service';
 import { runAfterResponse } from '../../lib/after-response';
 import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
@@ -22,6 +24,11 @@ import {
 // The address a signing token was issued to, compared on re-send (see generateSigningLink).
 function normaliseRecipient(email: string): string {
   return email.trim().toLowerCase();
+}
+
+/** The expiry a first send stamps on an offer that has none (B-04: an emailed link used to live forever). */
+export function defaultSigningExpiry(now: Date = new Date()): Date {
+  return new Date(now.getTime() + OFFER_LINK_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
 }
 
 // Public signing-token procedures run with NO tenant in scope (the candidate has no
@@ -57,7 +64,7 @@ export const offerSigningRouter = router({
           vacancyId: true,
           applicationId: true,
           candidateId: true,
-          vacancy: { select: { title: true } },
+          vacancy: { select: { title: true, company: { select: { timezone: true } } } },
         },
       });
 
@@ -142,7 +149,7 @@ export const offerSigningRouter = router({
 
       const org = await db.organization.findFirst({
         where: { id: ctx.user.organizationId },
-        select: { name: true },
+        select: { name: true, settings: true, billingEmail: true },
       });
       if (!org) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Organización no encontrada' });
@@ -166,6 +173,9 @@ export const offerSigningRouter = router({
           ? existingToken
           : null;
       const signingToken = reusableToken ? reusableToken : crypto.randomUUID();
+      // A first send (or a rotation) of an offer without an expiry gives the link OFFER_LINK_VALIDITY_DAYS;
+      // a re-send of the same live link keeps whatever it already has.
+      const expiresAt = reusableToken ? offer.expiresAt : (offer.expiresAt ?? defaultSigningExpiry());
 
       if (!reusableToken) {
         // In one transaction: lock the candidate's application(s) FOR SHARE and re-check, then write.
@@ -189,6 +199,7 @@ export const offerSigningRouter = router({
             data: {
               status: 'sent',
               sentAt: offer.sentAt ?? new Date(),
+              expiresAt,
               settings: { ...existingSettings, signingToken, signingTokenRecipient: recipient },
             },
           });
@@ -228,7 +239,11 @@ export const offerSigningRouter = router({
         vacancyTitle: offer.vacancy?.title ?? '',
         companyName: org.name,
         signingUrl: new URL(signingUrl, appUrl).toString(),
-        expiresAt: offer.expiresAt,
+        expiresAt,
+        // The validity date reads in the organization's time zone, labelled (E-23).
+        timeZone: resolveInterviewTimeZone(orgSettingsTimeZone(org.settings), offer.vacancy?.company?.timezone),
+        // The organization's own candidate contact: contact line + Reply-To; omitted when it has none.
+        contactEmail: candidateContactEmail(org),
       });
 
       // Only callers who could already generate links before the offer:create widening (offer:update)
@@ -279,7 +294,7 @@ export const offerSigningRouter = router({
       const found = offers[0];
 
       if (!found) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma invalido' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma inválido' });
       }
 
       // Bound disclosure to the offer's validity window — an expired link must not
@@ -329,13 +344,13 @@ export const offerSigningRouter = router({
       const offer = offers[0];
 
       if (!offer) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma invalido' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma inválido' });
       }
 
       if (offer.status !== 'sent') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Esta oferta ya fue respondida o no esta disponible para firma',
+          message: 'Esta oferta ya fue respondida o no está disponible para firma',
         });
       }
 
@@ -343,26 +358,16 @@ export const offerSigningRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado y no puede firmarse' });
       }
 
-      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible para firma');
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no está disponible para firma');
       await assertApplicationNotRejected(
         db,
         offer.organizationId,
         offer.id,
-        'Esta oferta no esta disponible para firma',
+        'Esta oferta no está disponible para firma',
       );
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();
-
-      // Fetch candidate + vacancy + org info for notification
-      const fullOffer = await db.offer.findFirst({
-        where: { id: offer.id },
-        select: {
-          organizationId: true,
-          candidate: { select: { firstName: true, lastName: true } },
-          vacancy: { select: { title: true } },
-        },
-      });
 
       // Atomic conditional transition: only the request that still sees status
       // 'sent' wins. `updateMany` matches 0 rows for a concurrent second accept
@@ -374,7 +379,7 @@ export const offerSigningRouter = router({
           tx,
           offer.organizationId,
           offer,
-          'Esta oferta no esta disponible para firma',
+          'Esta oferta no está disponible para firma',
         );
         return tx.offer.updateMany({
           // The token is re-checked at the transition, not only at lookup: a re-send that rotated it in
@@ -401,40 +406,16 @@ export const offerSigningRouter = router({
       if (transition.count !== 1) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Esta oferta ya fue respondida o no esta disponible para firma',
+          message: 'Esta oferta ya fue respondida o no está disponible para firma',
         });
       }
 
-      // Notify the HR team after the response (never delays or fails the candidate's answer).
-      if (fullOffer) {
-        const org = await db.organization.findFirst({
-          where: { id: fullOffer.organizationId },
-          select: { name: true },
-        });
-        const hrUsers = await db.user.findMany({
-          where: {
-            organizationId: fullOffer.organizationId,
-            isActive: true,
-            userRoles: { some: { role: { slug: { in: ['hr_admin', 'super_admin'] } } } },
-          },
-          select: { email: true },
-        });
-        if (org && hrUsers.length > 0) {
-          const notice = {
-            hrEmails: hrUsers.map((u) => u.email),
-            recipientName: 'Equipo de RRHH',
-            candidateName: `${fullOffer.candidate.firstName} ${fullOffer.candidate.lastName}`,
-            vacancyTitle: fullOffer.vacancy?.title ?? '',
-            companyName: org.name,
-            acceptedAt: now,
-          };
-          // After the response (see lib/after-response.ts): a bare call was frozen by the serverless
-          // runtime once the response was sent, so HR never got the email.
-          runAfterResponse(ctx, async () => {
-            await emailService.notifyOfferAccepted(notice);
-          });
-        }
-      }
+      // Notify the staff after the response (never delays or fails the candidate's answer). After the
+      // response (see lib/after-response.ts): a bare call was frozen by the serverless runtime once the
+      // response was sent, so HR never got the email. Recipients, link and time zone: services/offer-response-notice.service.ts.
+      runAfterResponse(ctx, () =>
+        sendOfferResponseNotice(offer.organizationId, offer.id, { kind: 'accepted', at: now }),
+      );
 
       return { success: true };
     }),
@@ -466,7 +447,7 @@ export const offerSigningRouter = router({
       const offer = offers[0];
 
       if (!offer) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma invalido' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma inválido' });
       }
 
       if (offer.status !== 'sent') {
@@ -480,20 +461,10 @@ export const offerSigningRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
       }
 
-      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no esta disponible');
+      await assertNoRejectedApproval(db, offer.organizationId, offer.id, 'Esta oferta no está disponible');
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
       const now = new Date();
-
-      // Fetch candidate + vacancy + org info for notification
-      const fullOffer = await db.offer.findFirst({
-        where: { id: offer.id },
-        select: {
-          organizationId: true,
-          candidate: { select: { firstName: true, lastName: true } },
-          vacancy: { select: { title: true } },
-        },
-      });
 
       // Atomic conditional transition (see acceptByToken): guards against a
       // concurrent accept/decline race — only the request still seeing 'sent' wins.
@@ -517,36 +488,10 @@ export const offerSigningRouter = router({
         });
       }
 
-      // Notify the HR team after the response (never delays or fails the candidate's answer).
-      if (fullOffer) {
-        const org = await db.organization.findFirst({
-          where: { id: fullOffer.organizationId },
-          select: { name: true },
-        });
-        const hrUsers = await db.user.findMany({
-          where: {
-            organizationId: fullOffer.organizationId,
-            isActive: true,
-            userRoles: { some: { role: { slug: { in: ['hr_admin', 'super_admin'] } } } },
-          },
-          select: { email: true },
-        });
-        if (org && hrUsers.length > 0) {
-          const notice = {
-            hrEmails: hrUsers.map((u) => u.email),
-            recipientName: 'Equipo de RRHH',
-            candidateName: `${fullOffer.candidate.firstName} ${fullOffer.candidate.lastName}`,
-            vacancyTitle: fullOffer.vacancy?.title ?? '',
-            companyName: org.name,
-            declinedAt: now,
-          };
-          // After the response (see lib/after-response.ts): a bare call was frozen by the serverless
-          // runtime once the response was sent, so HR never got the email.
-          runAfterResponse(ctx, async () => {
-            await emailService.notifyOfferDeclined(notice);
-          });
-        }
-      }
+      // Notify the staff after the response (never delays or fails the candidate's answer); see above.
+      runAfterResponse(ctx, () =>
+        sendOfferResponseNotice(offer.organizationId, offer.id, { kind: 'declined', at: now }),
+      );
 
       return { success: true };
     }),

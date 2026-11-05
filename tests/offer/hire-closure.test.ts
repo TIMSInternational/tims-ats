@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assertVacancyNotFilled,
   closeHireRecords,
   HireRejectedApplicationError,
+  HireVacancyFilledError,
+  isVacancyFilled,
+  lockVacancyForHire,
+  vacancyFilledMessage,
   HIRE_STAGE_MOVE_REASON,
   VACANCY_FILLED_REASON,
 } from '../../packages/api/src/services/hire-closure.service';
@@ -170,5 +175,50 @@ describe('closeHireRecords', () => {
       await closeHireRecords(t as never, input);
       expect(t.vacancy.updateMany).not.toHaveBeenCalled();
     }
+  });
+});
+
+// F-15 (pilot proof run): a hire used to be accepted on a vacancy whose positions were already covered.
+describe('filled-vacancy hire guards', () => {
+  it('a vacancy is filled when its hires cover every position (at least one)', () => {
+    expect(isVacancyFilled(0, 1)).toBe(false);
+    expect(isVacancyFilled(1, 1)).toBe(true);
+    expect(isVacancyFilled(1, 2)).toBe(false);
+    expect(isVacancyFilled(2, 2)).toBe(true);
+    expect(isVacancyFilled(1, 0)).toBe(true);
+  });
+
+  it('explains the refusal in Spanish with the counts', () => {
+    expect(vacancyFilledMessage(1, 1)).toBe(
+      'La vacante ya está cubierta: tiene 1 de 1 contratación registrada. No se puede registrar otra contratación para esta vacante.',
+    );
+    expect(vacancyFilledMessage(2, 2)).toContain('2 de 2 contrataciones registradas');
+  });
+
+  it('pre-check: refuses when converted offers cover the positions, passes otherwise', async () => {
+    const counts = (positions: number, hires: number) => vi.fn().mockResolvedValue({ positions, hires });
+    const ref = { organizationId: ORG, vacancyId: VAC };
+    await expect(assertVacancyNotFilled(ref, counts(1, 1))).rejects.toBeInstanceOf(HireVacancyFilledError);
+    await expect(assertVacancyNotFilled(ref, counts(2, 1))).resolves.toBeUndefined();
+    // A vacancy outside the organization (no counts) is left to the transaction's own lookups.
+    await expect(assertVacancyNotFilled(ref, vi.fn().mockResolvedValue(null))).resolves.toBeUndefined();
+    const read = counts(1, 0);
+    await assertVacancyNotFilled(ref, read);
+    expect(read).toHaveBeenCalledWith(ORG, VAC);
+  });
+
+  it('in the transaction: locks the vacancy row (tenant-scoped) before counting, and refuses when filled', async () => {
+    const t = tx({ vacancy: { positions: 1, status: 'closed' }, converted: 1 });
+    await expect(lockVacancyForHire(t as never, { organizationId: ORG, vacancyId: VAC })).rejects.toMatchObject({
+      hires: 1,
+      positions: 1,
+    });
+    const [strings, ...values] = rawCalls(t, 'vacancies')[0]!;
+    expect(strings.join('?')).toContain('FOR NO KEY UPDATE');
+    expect(values).toEqual([VAC, ORG]);
+    expect(t.$queryRaw.mock.invocationCallOrder[0]!).toBeLessThan(t.offer.count.mock.invocationCallOrder[0]!);
+
+    const open = tx({ vacancy: { positions: 2, status: 'published' }, converted: 1 });
+    await expect(lockVacancyForHire(open as never, { organizationId: ORG, vacancyId: VAC })).resolves.toBeUndefined();
   });
 });

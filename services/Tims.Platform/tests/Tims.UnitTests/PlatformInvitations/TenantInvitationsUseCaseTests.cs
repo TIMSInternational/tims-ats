@@ -271,6 +271,7 @@ public sealed class TenantInvitationsUseCaseTests
                     : new InvitationResendSnapshot(id, "invitee@example.test", "tok", "expired", organizationId, "Org", DateTime.UtcNow));
             public Task<bool> MarkSentAsync(InvitationResendSnapshot expected, DateTime sentAt, DateTime expiresAt, CancellationToken ct)
             { owner.MarkSentCalls++; return Task.FromResult(true); }
+            public Task<string?> FindTimeZoneAsync(Guid organizationId, CancellationToken ct) => Task.FromResult<string?>(null);
         }
     }
 

@@ -9,6 +9,8 @@ import { computeOfferKpis } from './_components/offer-kpi-data';
 import { OfferTable } from './_components/offer-table';
 import { OfferDetailView } from './_components/offer-detail-view';
 import { OFFERS_PATH, OFFER_QUERY_PARAM, offerDetailHref, readOfferIdParam } from '../../../../lib/offer-deep-link';
+import { MINE_PENDING_FILTER } from '../../../../lib/offer-status';
+import { useCan } from '../../../../lib/permissions';
 
 export default function OffersPage() {
   const { t } = useI18n();
@@ -20,13 +22,21 @@ export default function OffersPage() {
   const openOffer = (offerId: string) => router.push(offerDetailHref(offerId), { scroll: false });
   const closeOffer = () => router.push(OFFERS_PATH, { scroll: false });
 
-  const offers = trpc.offer.list.useQuery({
-    pageSize: 100,
-    status: statusFilter || undefined,
-  });
+  // "Pendientes de mi aprobación" (B-14): the rows offer.getPending returns (every offer waiting for THIS
+  // viewer's decision, unpaginated), not an intersection with the newest page of the list (Codex review).
+  // getPending carries no approval chain, so that column reads "—" for these rows.
+  const canApprove = useCan()('offer', 'approve');
+  const isMinePending = statusFilter === MINE_PENDING_FILTER;
+  const offers = trpc.offer.list.useQuery(
+    { pageSize: 100, status: statusFilter || undefined },
+    { enabled: !isMinePending },
+  );
   const allOffers = trpc.offer.list.useQuery({ pageSize: 100 });
+  const minePending = trpc.offer.getPending.useQuery(undefined, { enabled: isMinePending });
 
-  const items = offers.data?.items ?? [];
+  const items = isMinePending
+    ? (minePending.data ?? []).map((pending) => ({ ...pending.offer, approvals: [] }))
+    : (offers.data?.items ?? []);
 
   const kpis = useMemo(
     () => computeOfferKpis(allOffers.data?.items ?? [], allOffers.data?.total ?? 0),
@@ -59,12 +69,13 @@ export default function OffersPage() {
       />
       <OfferTable
         items={items}
-        loading={offers.isLoading}
-        isError={offers.isError}
-        onRetry={() => offers.refetch()}
+        loading={isMinePending ? minePending.isLoading : offers.isLoading}
+        isError={isMinePending ? minePending.isError : offers.isError}
+        onRetry={() => void (isMinePending ? minePending.refetch() : offers.refetch())}
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
         onSelectOffer={openOffer}
+        showMinePendingFilter={canApprove}
       />
     </div>
   );

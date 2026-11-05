@@ -67,6 +67,30 @@ public sealed class UserInvitationCreateUseCaseTests
         Assert.Contains(RoleLabels.For(RoleSlugs.DefaultStaffRole), sender.Html);
         Assert.DoesNotContain(RoleSlugs.DefaultStaffRole, sender.Html);
     }
+    [Fact]
+    public async Task Email_states_the_expiry_in_the_organization_time_zone()
+    {
+        var repo = new Repo { TimeZone = "America/Costa_Rica" }; var sender = new Sender();
+        var result = await Case(repo, sender).ExecuteUniqueAsync(Input, Guid.NewGuid(), new Uri("https://app.example.test"), default);
+        Assert.Equal(UserInvitationCreateOutcome.Created, result.Outcome);
+        // Expiry 2026-09-21 12:00 UTC is 6:00 a. m. that day in Costa Rica (Pilot UX audit E-23).
+        Assert.Equal(Org, repo.TimeZoneLookup);
+        Assert.Contains("Válida hasta: 21 de septiembre de 2026, 6:00", sender.Html);
+        Assert.Contains("hora de Costa Rica (GMT-6)", sender.Html);
+        Assert.DoesNotContain("(UTC)", sender.Html);
+    }
+
+    [Fact]
+    public async Task Unreadable_time_zone_still_sends_the_email_in_utc()
+    {
+        var repo = new Repo { TimeZoneFailure = new TimeoutException() }; var sender = new Sender();
+        var result = await Case(repo, sender).ExecuteAsync(Input, Guid.NewGuid(), new Uri("https://app.example.test"), default);
+        Assert.Equal("accepted", result.Response!.Delivery);
+        Assert.Equal(1, sender.Calls);
+        Assert.Contains("21 de septiembre de 2026, 12:00", sender.Html);
+        Assert.Contains("(UTC)", sender.Html);
+    }
+
     private static UserInvitationCreateUseCase Case(Repo repo, Sender sender) => new(repo, repo, sender, new Clock());
     private sealed class Clock : TimeProvider { public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class Repo : IUserInvitationCreateRepository, IInvitationResendRepository
@@ -77,6 +101,14 @@ public sealed class UserInvitationCreateUseCaseTests
         public int Creates { get; private set; }
         public UserInvitationInput? LastInput { get; private set; }
         public int Updates { get; private set; }
+        public string? TimeZone { get; init; }
+        public Exception? TimeZoneFailure { get; init; }
+        public Guid? TimeZoneLookup { get; private set; }
+        public Task<string?> FindTimeZoneAsync(Guid organizationId, CancellationToken ct)
+        {
+            TimeZoneLookup = organizationId;
+            return TimeZoneFailure is null ? Task.FromResult(TimeZone) : Task.FromException<string?>(TimeZoneFailure);
+        }
         public Task<IReadOnlyList<InvitationRole>?> ListRolesAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<UserInvitationPending> CreateUniqueAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct) => CreateAsync(input, actor, now, ct);
         public Task<UserInvitationPending> CreateAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct)

@@ -10,15 +10,32 @@ const applicationFindFirst = vi.fn();
 const offerCreate = vi.fn();
 const offerFindFirst = vi.fn();
 const offerUpdate = vi.fn();
+const offerUpdateMany = vi.fn();
+const offerFindFirstOrThrow = vi.fn();
+// offer.create locks the candidate row inside its transaction (one open offer per candidate + vacancy).
+const queryRaw = vi.fn();
 
-vi.mock('@tims/db', () => ({
-  tenantDb: {
+vi.mock('@tims/db', () => {
+  const tenantDb = {
     candidate: { findFirst: candidateFindFirst },
     application: { findFirst: applicationFindFirst },
-    offer: { create: offerCreate, findFirst: offerFindFirst, update: offerUpdate },
-  },
-  runWithTenant: (_org: string, fn: () => unknown) => fn(),
-}));
+    offer: {
+      create: offerCreate,
+      findFirst: offerFindFirst,
+      update: offerUpdate,
+      updateMany: offerUpdateMany,
+      findFirstOrThrow: offerFindFirstOrThrow,
+    },
+    organization: { findFirst: vi.fn(async () => ({ settings: {} })) },
+    vacancy: { findFirst: vi.fn(async () => ({ company: null })) },
+    $queryRaw: queryRaw,
+  };
+  return {
+    tenantDb,
+    runWithTenant: (_org: string, fn: () => unknown) => fn(),
+    runTenantTransaction: async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(tenantDb),
+  };
+});
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
   createAnchorLoader: vi.fn().mockReturnValue(null),
@@ -60,6 +77,10 @@ beforeEach(() => {
   candidateFindFirst.mockResolvedValue({ id: CANDIDATE_ID });
   applicationFindFirst.mockResolvedValue({ candidateId: CANDIDATE_ID, vacancyId: VACANCY_ID, status: 'active' });
   offerCreate.mockResolvedValue({ id: 'offer-1', ...input, status: 'draft', settings: {} });
+  offerFindFirst.mockResolvedValue(null);
+  queryRaw.mockResolvedValue([{ id: CANDIDATE_ID }]);
+  offerUpdateMany.mockResolvedValue({ count: 1 });
+  offerFindFirstOrThrow.mockResolvedValue({ id: 'offer-1', status: 'draft' });
 });
 
 describe('offer creation application integrity', () => {
@@ -126,15 +147,18 @@ describe('offer salary bounds', () => {
       });
       expect(offerFindFirst).not.toHaveBeenCalled();
       expect(offerUpdate).not.toHaveBeenCalled();
+      expect(offerUpdateMany).not.toHaveBeenCalled();
     },
   );
 
-  it('update accepts an in-range salary on a draft', async () => {
+  it('update accepts an in-range salary on a draft (compare-and-set on draft)', async () => {
     offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft' });
-    offerUpdate.mockResolvedValue({ id: OFFER_ID, status: 'draft', salary: 96_000_000, settings: {} });
     await (await caller()).offer.update({ id: OFFER_ID, salary: 96_000_000 });
-    expect(offerUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ salary: 96_000_000 }) }),
+    expect(offerUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: OFFER_ID, organizationId: ORG_ID, status: 'draft' }),
+        data: expect.objectContaining({ salary: 96_000_000 }),
+      }),
     );
   });
 });
