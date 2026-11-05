@@ -26,7 +26,12 @@ describe('outbound bearer-link origin', () => {
     ['packages/api/src/routers/platform/invitations.ts', 'createOrgInvitation:', 'db.$transaction('],
     ['packages/api/src/routers/platform/invitations.ts', 'createUserInvitation:', 'db.platformInvitation.create('],
     ['packages/api/src/routers/interview/crud.ts', 'const joinToken = issueJoinToken(data.type', 'db.interview.create('],
-    ['packages/api/src/routers/interview/crud.ts', 'const joinToken = issueJoinToken(existing.type', 'db.interview.update('],
+    // The reschedule write runs under the interview row lock, in the repository (#405 review).
+    [
+      'packages/api/src/routers/interview/crud.ts',
+      'const joinToken = issueJoinToken(existing.type',
+      'interviewManageRepository.rescheduleUnscored(',
+    ],
     ['packages/api/src/routers/assessment.ts', 'const cooldownCutoff', 'db.assessmentAssignment.updateMany('],
   ] as const)('%s validates the origin before the write following %s', (path, anchor, write) => {
     const source = readFileSync(join(ROOT, path), 'utf8');

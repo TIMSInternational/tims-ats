@@ -5,9 +5,10 @@ import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
 import { isPilotScope } from '../../../lib/launch-scope';
+import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
 
 export function AlertsPendingPanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const rd = t.recruitingDashboard;
 
   // Assessments are out of the pilot launch scope: the query is disabled (not just hidden), and a failure of
@@ -96,9 +97,8 @@ export function AlertsPendingPanel() {
                       {sc.interview.candidate.firstName} {sc.interview.candidate.lastName} —{' '}
                       {sc.interview.vacancy.title}
                     </p>
-                    <p className="text-[11px] text-[#8B8B8B]">
-                      {rd.evaluator}: {sc.role}
-                    </p>
+                    {/* When it took place — not the raw panel role slug (B-29). */}
+                    <p className="text-[11px] text-[#8B8B8B]">{formatInterviewWhen(sc.interview.scheduledAt, locale)}</p>
                   </div>
                 </Link>
               ))}

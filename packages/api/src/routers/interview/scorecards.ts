@@ -78,6 +78,9 @@ export const interviewScorecardsRouter = router({
           }),
         recommendation: z.enum(['strong_yes', 'yes', 'neutral', 'no', 'strong_no']),
         overallNotes: z.string().max(2000).optional(),
+        // The start of the appointment the room SHOWED: a card is refused (CONFLICT) once the interview
+        // was rescheduled away from it, even before this request (#405 review).
+        expectedScheduledAt: z.date().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -104,6 +107,7 @@ export const interviewScorecardsRouter = router({
         ctx.user.id,
         ctx.user.impersonatorId ?? ctx.user.id,
         { ratings: input.ratings, recommendation: input.recommendation, overallNotes: input.overallNotes },
+        input.expectedScheduledAt,
       );
       if (!result.ok) {
         if (result.reason === 'not_found') {
@@ -113,6 +117,12 @@ export const interviewScorecardsRouter = router({
           throw new TRPCError({
             code: 'PRECONDITION_FAILED',
             message: 'No se puede evaluar una entrevista cancelada o en la que el candidato no se presento',
+          });
+        }
+        if (result.reason === 'rescheduled') {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'La entrevista se reprogramo mientras se evaluaba; recarga y vuelve a enviar el scorecard',
           });
         }
         throw new TRPCError({
@@ -183,9 +193,11 @@ export const interviewScorecardsRouter = router({
       };
     }),
 
-  // 8.15 — Get pending scorecards for current user
+  // 8.15 — Get pending scorecards for current user. Only interviews that have STARTED: a future
+  // interview cannot be scored yet, so it is not a pending task (it shows under the interview list).
   getPendingScorecards: permissionProcedure('interview', 'read').query(async ({ ctx }) => {
     const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id) as Prisma.InterviewWhereInput;
+    const now = new Date();
 
     const evaluatorAssignments = await db.interviewEvaluator.findMany({
       where: {
@@ -193,11 +205,17 @@ export const interviewScorecardsRouter = router({
         status: 'pending',
         interview: {
           AND: [
-            { organizationId: ctx.user.organizationId, status: { in: ['scheduled', 'rescheduled', 'completed'] } },
+            {
+              organizationId: ctx.user.organizationId,
+              status: { in: ['scheduled', 'rescheduled', 'completed'] },
+              scheduledAt: { lte: now },
+            },
             scopeWhere,
           ],
         },
       },
+      // Oldest first: the longest-waiting scorecard is the most overdue one.
+      orderBy: { interview: { scheduledAt: 'asc' } },
       // Explicit allowlist (#308 follow-up): the interview row carries
       // candidateJoinTokenHash / candidateJoinTokenExpiresAt, which must never
       // reach staff clients. Never widen this back to `include`.

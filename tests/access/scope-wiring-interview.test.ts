@@ -11,7 +11,10 @@ describe('interview module scope wiring', () => {
     const src = read('crud.ts');
     expect(src).toMatch(/scopeWhereFor\('interview'/);
     expect(src).toMatch(/AND:\s*\[/);
-    expect((src.match(/assertScoped\('interview'/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // getById probes with assertScoped; the by-id management mutations (reschedule, cancel, add/remove
+    // evaluator) with assertInterviewManageable, which runs assertScoped('interview') and then, at a
+    // narrow scope, the vacancy scope (B-05, interview-management.service.ts).
+    expect((src.match(/assertScoped\('interview'|assertInterviewManageable\(/g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
 
   it('scorecards.ts: submitScorecard requires the submitter to be an ASSIGNED EVALUATOR', () => {

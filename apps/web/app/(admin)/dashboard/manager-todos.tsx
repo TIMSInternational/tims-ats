@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { useI18n } from '../../../lib/i18n';
+import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
 import { EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 
@@ -112,7 +113,7 @@ export function ScorecardsToSubmitPanel({
   isLoading: boolean;
   isError: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const md = t.managerDashboard;
 
   return (
@@ -130,7 +131,9 @@ export function ScorecardsToSubmitPanel({
               key={row.id}
               href="/recruitment/interviews"
               primary={fullName(row.interview.candidate)}
-              secondary={row.interview.vacancy.title}
+              secondary={[row.interview.vacancy.title, formatInterviewWhen(row.interview.scheduledAt, locale)]
+                .filter(Boolean)
+                .join(' · ')}
             />
           ))}
         </div>

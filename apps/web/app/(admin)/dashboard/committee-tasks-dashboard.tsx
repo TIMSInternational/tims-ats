@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { CommitteeCalibrationsPanel } from './committee-calibrations-panel';
+import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
 
 function fullName(p: { firstName: string; lastName: string }): string {
   return `${p.firstName} ${p.lastName}`.trim();
@@ -35,12 +37,17 @@ interface CommitteeTasksDashboardProps {
 }
 
 export function CommitteeTasksDashboard({ isPilot = false }: CommitteeTasksDashboardProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const ct = t.committeeTasks;
 
   // committee is evaluator-scoped: the one buildable task source is the
   // scope-aware pending-scorecards list (the member's own assignments).
   const scorecards = trpc.interview.getPendingScorecards.useQuery();
+  // Interviews still to come are listed apart from the scorecards owed (B-29). Evaluator scope: the
+  // member's own panels. `from` is fixed per visit so the query key stays stable.
+  const [mountedAt] = useState(() => new Date());
+  const upcoming = trpc.interview.list.useQuery({ from: mountedAt, openOnly: true, sort: 'asc', pageSize: 5 });
+  const upcomingItems = upcoming.data?.items ?? [];
 
   const scorecardsCount = scorecards.data?.length ?? 0;
 
@@ -90,7 +97,38 @@ export function CommitteeTasksDashboard({ isPilot = false }: CommitteeTasksDashb
                   className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
                 >
                   <span className="text-sm text-[#333] font-medium truncate">{fullName(row.interview.candidate)}</span>
-                  <span className="text-[13px] text-[#8B8B8B] truncate ml-3">{row.interview.vacancy.title}</span>
+                  <span className="text-[13px] text-[#8B8B8B] truncate ml-3">
+                    {[row.interview.vacancy.title, formatInterviewWhen(row.interview.scheduledAt, locale)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Upcoming panels — not scorecards yet */}
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mt-6">
+          <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{ct.upcomingTitle}</h2>
+          {upcoming.isError ? (
+            <LoadError message={ct.loadError} />
+          ) : upcoming.isLoading ? (
+            <SkeletonRows />
+          ) : upcomingItems.length === 0 ? (
+            <EmptyState icon={EMPTY_ICON} message={ct.noUpcoming} />
+          ) : (
+            <div className="space-y-1">
+              {upcomingItems.map((iv) => (
+                <Link
+                  key={iv.id}
+                  href="/recruitment/interviews"
+                  className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
+                >
+                  <span className="text-sm text-[#333] font-medium truncate">{fullName(iv.candidate)}</span>
+                  <span className="text-[13px] text-[#8B8B8B] truncate ml-3">
+                    {[iv.vacancy.title, formatInterviewWhen(iv.scheduledAt, locale)].filter(Boolean).join(' · ')}
+                  </span>
                 </Link>
               ))}
             </div>

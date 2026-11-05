@@ -28,6 +28,16 @@ const m = vi.hoisted(() => ({
   findForNotification: vi.fn(),
   sendRaw: vi.fn(),
   sendPlain: vi.fn(),
+  txUserFind: vi.fn(),
+  txEvaluatorCreate: vi.fn(),
+  // reschedule writes inside a transaction, under the interview row lock (interview-manage.repository.ts)
+  txInterviewUpdateMany: vi.fn(
+    async (_args: { where: unknown; data: { candidateJoinTokenHash: string; candidateJoinTokenExpiresAt: Date } }) => ({
+      count: 1,
+    }),
+  ),
+  txCardCount: vi.fn(async () => 0),
+  txInterviewFind: vi.fn(async (_args: { omit?: unknown }) => ({ id: 'rescheduled-interview' })),
 }));
 
 vi.mock('@tims/db', () => ({
@@ -37,7 +47,13 @@ vi.mock('@tims/db', () => ({
     application: { findFirst: m.findApp },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
-  runTenantTransaction: vi.fn(),
+  runTenantTransaction: (_org: string, fn: (tx: unknown) => unknown) =>
+    fn({
+      user: { findFirst: m.txUserFind },
+      interviewEvaluator: { create: m.txEvaluatorCreate },
+      interview: { updateMany: m.txInterviewUpdateMany, findFirst: m.txInterviewFind },
+      interviewScorecard: { count: m.txCardCount },
+    }),
 }));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
@@ -131,6 +147,8 @@ beforeEach(() => {
   m.update.mockResolvedValue({ id: INTERVIEW_ID });
   m.sendRaw.mockResolvedValue({ sent: true });
   m.sendPlain.mockResolvedValue(true);
+  m.txUserFind.mockResolvedValue({ id: EVAL_ID });
+  m.txEvaluatorCreate.mockResolvedValue({ id: 'ie-new' });
 });
 afterEach(() => {
   delete process.env.NEXT_PUBLIC_APP_URL;
@@ -198,9 +216,11 @@ describe('interview.schedule — join token + invitation emails', () => {
       const html = body(to, 'text/html');
       expect(html).toContain(zoom);
       expect(html).not.toContain('/interview/join/');
-      expect(html).not.toContain('/room');
       expect(body(to, 'text/calendar').replace(/\r\n /g, '')).toContain(`LOCATION:${zoom}`);
     }
+    // B-06: the candidate never sees the staff room; the evaluator always gets the TIMS scorecard link.
+    expect(body('ana@example.com', 'text/html')).not.toContain('/room');
+    expect(body('eva@acme.test', 'text/html')).toContain(`${APP}/recruitment/interviews/${INTERVIEW_ID}/room`);
   });
 
   it("never emails the interview's own private Daily room URL (dead without a meeting token)", async () => {
@@ -216,7 +236,7 @@ describe('interview.schedule — join token + invitation emails', () => {
       meetingUrl: own,
     });
     await (await caller()).interview.reschedule({ id: INTERVIEW_ID, scheduledAt: new Date('2026-10-02T15:00:00Z') });
-    expect(m.update.mock.calls[0][0].data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(m.txInterviewUpdateMany.mock.calls[0]![0].data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
     await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
     expect(body('ana@example.com', 'text/html')).toContain('/interview/join/');
     expect(body('eva@acme.test', 'text/html')).toContain(`/recruitment/interviews/${INTERVIEW_ID}/room`);
@@ -285,7 +305,12 @@ describe('interview.reschedule / cancel', () => {
       meetingUrl: true,
       scheduledAt: true,
     });
-    const data = m.update.mock.calls[0][0].data;
+    const data = m.txInterviewUpdateMany.mock.calls[0]![0].data;
+    // The read after the locked write never returns the join-token columns either.
+    expect(m.txInterviewFind.mock.calls[0]![0].omit).toEqual({
+      candidateJoinTokenHash: true,
+      candidateJoinTokenExpiresAt: true,
+    });
     expect(data.candidateJoinTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(data.candidateJoinTokenHash).not.toBe(firstHash);
     expect(data.candidateJoinTokenExpiresAt.toISOString()).toBe('2026-10-02T16:00:00.000Z');
@@ -411,5 +436,76 @@ describe('interview.schedule — candidate consent withdrawn (#312)', () => {
     m.findForNotification.mockResolvedValue(notificationData({ type: 'onsite' }));
     const created = await (await caller()).interview.schedule({ ...scheduleInput, type: 'onsite' });
     expect(created).toMatchObject({ candidateNotNotifiedReason: null });
+  });
+});
+
+describe('candidate contact + Reply-To (C-12)', () => {
+  const withContact = (org: Record<string, unknown>) => ({ ...notificationData({ type: 'onsite' }), org });
+
+  it("names the organization's configured candidate contact and replies to it", async () => {
+    m.findForNotification.mockResolvedValue(
+      withContact({ name: 'Acme', billingEmail: 'billing@acme.test', settings: { candidateContactEmail: 'talento@acme.test' } }),
+    );
+    await (await caller()).interview.schedule({ ...scheduleInput, type: 'onsite' });
+    await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
+    expect(body('ana@example.com', 'text/html')).toContain('mailto:talento@acme.test');
+    const candidateRaw = sent().find((s) => s.to === 'ana@example.com')?.raw ?? '';
+    expect(candidateRaw).toMatch(/^Reply-To: talento@acme\.test\r$/m);
+    // Evaluators are staff: no candidate-contact Reply-To on their copy.
+    expect(sent().find((s) => s.to === 'eva@acme.test')?.raw).not.toMatch(/^Reply-To:/m);
+  });
+
+  it('falls back to the billing email, and with neither omits the line — never a vendor mailbox', async () => {
+    m.findForNotification.mockResolvedValue(withContact({ name: 'Acme', billingEmail: 'billing@acme.test', settings: {} }));
+    await (await caller()).interview.schedule({ ...scheduleInput, type: 'onsite' });
+    await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
+    expect(body('ana@example.com', 'text/html')).toContain('mailto:billing@acme.test');
+    m.sendRaw.mockClear();
+
+    m.findForNotification.mockResolvedValue(withContact({ name: 'Acme', billingEmail: null, settings: null }));
+    await (await caller()).interview.schedule({ ...scheduleInput, type: 'onsite' });
+    await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(2));
+    const html = body('ana@example.com', 'text/html');
+    expect(html).not.toContain('mailto:');
+    expect(html).not.toContain('timsinternational');
+    expect(sent().find((s) => s.to === 'ana@example.com')?.raw).not.toMatch(/^Reply-To:/m);
+  });
+
+  it('the plain fallback keeps the Reply-To and drops the "calendar attached" sentence (C-21)', async () => {
+    m.sendRaw.mockResolvedValue({ sent: false, errorName: 'AccessDeniedException', reason: 'denied' });
+    m.findForNotification.mockResolvedValue(
+      withContact({ name: 'Acme', billingEmail: null, settings: { candidateContactEmail: 'talento@acme.test' } }),
+    );
+    await (await caller()).interview.schedule({ ...scheduleInput, type: 'onsite' });
+    await vi.waitFor(() => expect(m.sendPlain).toHaveBeenCalledTimes(2));
+    const candidate = m.sendPlain.mock.calls.find((c) => c[0].to === 'ana@example.com')?.[0];
+    expect(candidate.replyTo).toBe('talento@acme.test');
+    expect(candidate.html).not.toContain('.ics');
+    const evaluator = m.sendPlain.mock.calls.find((c) => c[0].to === 'eva@acme.test')?.[0];
+    expect(evaluator.replyTo).toBeNull();
+  });
+});
+
+describe('interview.addEvaluator — a late panelist is invited (B-06)', () => {
+  it('emails ONLY the added evaluator, with the scorecard link; not the candidate, not the others', async () => {
+    const data = notificationData({ type: 'onsite' });
+    data.interview.evaluators.push({
+      user: { id: 'other-eval', firstName: 'Otro', lastName: 'Panel', email: 'otro@acme.test', locale: 'es', timezone: 'UTC', isActive: true },
+    });
+    m.findForNotification.mockResolvedValue(data);
+    const result = await (await caller()).interview.addEvaluator({ interviewId: INTERVIEW_ID, userId: EVAL_ID });
+    expect(result).toEqual({ id: 'ie-new' });
+    await vi.waitFor(() => expect(m.sendRaw).toHaveBeenCalledTimes(1));
+    expect(sent().map((s) => s.to)).toEqual(['eva@acme.test']);
+    expect(body('eva@acme.test', 'text/html')).toContain(`${APP}/recruitment/interviews/${INTERVIEW_ID}/room`);
+  });
+
+  it('sends nothing for an interview that was cancelled', async () => {
+    m.findForNotification.mockResolvedValue(notificationData({ type: 'onsite', status: 'cancelled' }));
+    const tasks: Array<() => Promise<void>> = [];
+    await (await caller((t) => tasks.push(t))).interview.addEvaluator({ interviewId: INTERVIEW_ID, userId: EVAL_ID });
+    expect(tasks).toHaveLength(1);
+    await tasks[0]!();
+    expect(m.sendRaw).not.toHaveBeenCalled();
   });
 });

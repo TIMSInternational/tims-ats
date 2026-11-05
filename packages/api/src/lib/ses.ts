@@ -16,10 +16,24 @@ interface SendEmailParams {
   abortSignal?: AbortSignal;
   /** Failure budget to run under. Defaults to the shared sesCircuit; offer sends pass sesOfferCircuit. */
   breaker?: CircuitBreaker;
+  /**
+   * Where a reply goes (candidate mail: the organization's candidate contact, see
+   * services/candidate-contact.ts). Without it a reply goes to the no-reply sender. Dropped unless it
+   * is a single header-safe mailbox.
+   */
+  replyTo?: string | null;
 }
 
-export async function sendEmail({ to, subject, html, abortSignal, breaker }: SendEmailParams): Promise<boolean> {
+/** A Reply-To value SES may receive: one bare mailbox, no whitespace, CR/LF or display name. */
+export function safeReplyTo(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return /^[^\s<>"(),;:@]+@[^\s<>"(),;:@]+\.[^\s<>"(),;:@]+$/.test(trimmed) && trimmed.length <= 254 ? trimmed : null;
+}
+
+export async function sendEmail({ to, subject, html, abortSignal, breaker, replyTo }: SendEmailParams): Promise<boolean> {
   const destinations = Array.isArray(to) ? to : [to];
+  const replyToAddress = safeReplyTo(replyTo);
 
   try {
     return await (breaker ?? sesCircuit).execute(async () => {
@@ -27,6 +41,7 @@ export async function sendEmail({ to, subject, html, abortSignal, breaker }: Sen
         new SendEmailCommand({
           Source: FROM_ADDRESS,
           Destination: { ToAddresses: destinations },
+          ...(replyToAddress ? { ReplyToAddresses: [replyToAddress] } : {}),
           Message: {
             Subject: { Data: subject, Charset: 'UTF-8' },
             Body: { Html: { Data: html, Charset: 'UTF-8' } },

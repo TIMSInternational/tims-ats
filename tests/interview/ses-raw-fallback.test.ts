@@ -26,7 +26,9 @@ vi.mock('../../packages/api/node_modules/@aws-sdk/client-ses', () => ({
     constructor(readonly input: unknown) {}
   },
 }));
-vi.mock('@tims/shared', () => ({
+// Only the side effects are faked: the pure helpers (interview time zones) stay real.
+vi.mock('@tims/shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@tims/shared')>()),
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
   getAppUrl: () => 'https://ats.example.test',
 }));
