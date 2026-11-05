@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { OFFER_LINK_VALIDITY_DAYS } from '@tims/shared';
 
 // #312 consent-withdrawal guard: a candidate with ACTIVE consent unless a test says otherwise.
 const consentWithdrawn = vi.hoisted(() => vi.fn(async () => false));
@@ -10,6 +11,7 @@ vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () =
   },
 }));
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const ORG_ID = '11111111-1111-4111-8111-111111111111';
 const OFFER_ID = '22222222-2222-4222-8222-222222222222';
 const updatedAt = new Date('2026-09-28T10:00:00Z');
@@ -110,13 +112,53 @@ describe('offer signing-link delivery', () => {
         }),
       }),
     );
+    // B-04: a first send gives an offer without an expiry the default validity (it used to live forever),
+    // and the email states that same date.
+    const transition = updateOffer.mock.calls[0]![0] as { data: { expiresAt: Date } };
+    const validForMs = transition.data.expiresAt.getTime() - Date.now();
+    expect(validForMs).toBeGreaterThan(OFFER_LINK_VALIDITY_DAYS * DAY_MS - 60_000);
+    expect(validForMs).toBeLessThanOrEqual(OFFER_LINK_VALIDITY_DAYS * DAY_MS);
     expect(sendOffer).toHaveBeenCalledWith(
       expect.objectContaining({
         candidateEmail: 'qa@example.test',
         signingUrl: `https://example.test${result.signingUrl}`,
-        expiresAt: null,
+        expiresAt: transition.data.expiresAt,
       }),
     );
+  });
+
+  it('keeps an expiry the offer already has on its first send', async () => {
+    const expiresAt = new Date(Date.now() + 3 * DAY_MS);
+    findOffer.mockResolvedValueOnce({
+      id: OFFER_ID,
+      status: 'approved',
+      settings: {},
+      updatedAt,
+      sentAt: null,
+      expiresAt,
+      candidate: { firstName: 'QA', lastName: 'Candidate', email: 'qa@example.test' },
+      vacancy: { title: 'QA role' },
+    });
+    await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
+    expect(updateOffer).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ expiresAt }) }));
+    expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({ expiresAt }));
+  });
+
+  it("formats the email in the organization's time zone and replies to its candidate contact", async () => {
+    findOrg.mockResolvedValueOnce({
+      name: 'Example Company',
+      settings: { timezone: 'America/Costa_Rica', candidateContactEmail: 'Talento@Example.test' },
+      billingEmail: 'billing@example.test',
+    });
+    await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
+    expect(sendOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ timeZone: 'America/Costa_Rica', contactEmail: 'talento@example.test' }),
+    );
+  });
+
+  it('falls back to UTC and no contact when the organization has neither', async () => {
+    await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
+    expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({ timeZone: 'UTC', contactEmail: null }));
   });
 
   it('reuses an active token on retry and reports unconfirmed delivery', async () => {
