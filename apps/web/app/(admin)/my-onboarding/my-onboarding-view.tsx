@@ -59,6 +59,7 @@ export function MyOnboardingView() {
         tasks={plan.tasks.map((task) => ({
           id: task.id,
           title: task.title,
+          description: task.description,
           responsible: task.responsible,
           dueDate: task.dueDate,
           completed: task.completed,

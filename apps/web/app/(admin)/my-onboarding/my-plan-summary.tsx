@@ -2,6 +2,7 @@
 
 import { useI18n } from '../../../lib/i18n';
 import { onboardingPhaseLabel, onboardingStatusLabel } from '../../../lib/onboarding-labels';
+import { derivedOnboardingPhase } from '../../../lib/onboarding-schedule';
 
 interface BuddyInfo {
   firstName: string;
@@ -26,7 +27,8 @@ export function MyPlanSummary({ jobTitle, startDate, status, phase, progress, bu
     { label: m.jobTitle, value: jobTitle?.trim() || m.noJobTitle },
     { label: m.startDate, value: new Date(startDate).toLocaleDateString(dateLocale) },
     { label: m.status, value: onboardingStatusLabel(m.labels, status) },
-    { label: m.phase, value: onboardingPhaseLabel(m.labels, phase) },
+    // The stored phase is set once at creation; the start date says where the hire is today.
+    { label: m.phase, value: onboardingPhaseLabel(m.labels, status === 'active' ? derivedOnboardingPhase(startDate) : phase) },
   ];
 
   return (
