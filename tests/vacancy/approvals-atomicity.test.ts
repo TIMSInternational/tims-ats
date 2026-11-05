@@ -131,6 +131,8 @@ vi.mock('../../packages/api/src/access', () => ({
 
 const ORG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 const VACANCY_ID = '99999999-9999-4999-8999-999999999999';
+// Decisions name the step they act on (`approvalId`, required); the mocks do not key on it.
+const STEP_ID = '5afe0000-0000-4000-8000-000000000001';
 const APPROVER_ID = '11111111-1111-4111-8111-111111111111';
 
 beforeEach(() => {
@@ -222,7 +224,7 @@ describe('vacancy approvals — multi-step writes are genuinely atomic (#45, pri
     failMidTransactionOn('vacancy.statusFlip');
     const caller = await makeCaller();
 
-    await expect(caller.vacancy.approve({ id: VACANCY_ID })).rejects.toThrow();
+    await expect(caller.vacancy.approve({ id: VACANCY_ID, approvalId: STEP_ID })).rejects.toThrow();
 
     // The approval must NOT stay decided while the vacancy never became approved.
     expect(committed.value.pendingApprovals).toBe(1);
@@ -240,7 +242,7 @@ describe('vacancy approvals — multi-step writes are genuinely atomic (#45, pri
     failMidTransactionOn('vacancyApproval.cancelRest');
     const caller = await makeCaller();
 
-    await expect(caller.vacancy.reject({ id: VACANCY_ID, comment: 'no' })).rejects.toThrow();
+    await expect(caller.vacancy.reject({ id: VACANCY_ID, approvalId: STEP_ID, comment: 'no' })).rejects.toThrow();
 
     // The worst old outcome: a `draft` vacancy still carrying live pending approvals.
     expect(committed.value.vacancyStatus).toBe('pending_approval');
@@ -251,10 +253,10 @@ describe('vacancy approvals — multi-step writes are genuinely atomic (#45, pri
     const caller = await makeCaller();
 
     await caller.vacancy.submitForApproval({ id: VACANCY_ID, approverIds: [APPROVER_ID] });
-    await caller.vacancy.approve({ id: VACANCY_ID });
+    await caller.vacancy.approve({ id: VACANCY_ID, approvalId: STEP_ID });
     // The vacancy is approved now: reject still opens its transaction, and the in-transaction
     // compare-and-set refuses it (an approved vacancy can no longer be pushed back to draft).
-    await expect(caller.vacancy.reject({ id: VACANCY_ID, comment: 'no' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(caller.vacancy.reject({ id: VACANCY_ID, approvalId: STEP_ID, comment: 'no' })).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(committed.value.vacancyStatus).toBe('approved');
 
     expect(mockDb.$transaction).not.toHaveBeenCalled();

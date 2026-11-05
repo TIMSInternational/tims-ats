@@ -23,6 +23,7 @@ import { EmployeeHomeDashboard } from './employee-home-dashboard';
 import { UnassignedDashboard } from './unassigned-dashboard';
 import { readLaunchScope } from '../../../lib/launch-scope';
 import { buildFunnelVacancies } from './funnel-vacancies';
+import { MyApprovalsCard } from './my-approvals-card';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
@@ -120,6 +121,8 @@ function RecruiterDashboard() {
             <RecruiterQuickActions />
           </div>
         </div>
+
+        <MyApprovalsCard className="mb-6" />
 
         {/* KPI Cards Strip */}
         <RecruitingKpiStrip

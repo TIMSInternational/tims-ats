@@ -46,8 +46,13 @@ import { appRouter } from '@tims/api';
  * a launch-blocking recruitment-spine gap). Raised under owner decision D-1, which grants a narrow
  * survival-rule exception for launch-blocking recruitment-spine fixes only. It is not headroom: the
  * exact-equality test below still pins it, and the procedure is owed a C# port like every other.
+ *
+ * Second D-1 exception: 354 → 357 on 2026-11-04 for the pilot approval spine (audit B-01 and
+ * company-admin access-1): `vacancy.getPending` (the approver inbox's vacancy half; offers already had
+ * `offer.getPending`) and `vacancy.withdrawApproval` + `offer.withdrawApproval` (a request stuck with an
+ * absent approver otherwise stays in pending_approval for good). Same terms: not headroom, owed a C# port.
  */
-const PROCEDURE_CEILING = 354;
+const PROCEDURE_CEILING = 357;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.

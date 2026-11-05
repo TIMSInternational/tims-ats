@@ -8,6 +8,7 @@ import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton } from '../../../compone
 import { LoadError } from './load-error';
 import { CommitteeCalibrationsPanel } from './committee-calibrations-panel';
 import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
+import { interviewRoomHref } from './manager-todos';
 
 function fullName(p: { firstName: string; lastName: string }): string {
   return `${p.firstName} ${p.lastName}`.trim();
@@ -91,9 +92,9 @@ export function CommitteeTasksDashboard({ isPilot = false }: CommitteeTasksDashb
           ) : (
             <div className="space-y-1">
               {scorecards.data.map((row) => (
-                <Link
+                <a
                   key={row.id}
-                  href="/recruitment/interviews"
+                  href={interviewRoomHref(row.interviewId)}
                   className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
                 >
                   <span className="text-sm text-[#333] font-medium truncate">{fullName(row.interview.candidate)}</span>
@@ -102,7 +103,7 @@ export function CommitteeTasksDashboard({ isPilot = false }: CommitteeTasksDashb
                       .filter(Boolean)
                       .join(' · ')}
                   </span>
-                </Link>
+                </a>
               ))}
             </div>
           )}

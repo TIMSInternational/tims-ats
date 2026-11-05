@@ -34,6 +34,7 @@ vi.mock('../../apps/web/app/(admin)/dashboard/alerts-sla-panel', () => stub('Ale
 vi.mock('../../apps/web/app/(admin)/dashboard/alerts-pending-panel', () => stub('AlertsPendingPanel'));
 vi.mock('../../apps/web/app/(admin)/dashboard/alerts-risk-panel', () => stub('AlertsRiskPanel'));
 vi.mock('../../apps/web/app/(admin)/dashboard/setup-checklist', () => stub('SetupChecklist'));
+vi.mock('../../apps/web/app/(admin)/dashboard/my-approvals-card', () => stub('MyApprovalsCard'));
 vi.mock('../../apps/web/app/(admin)/dashboard/pick-dashboard', () => ({
   pickPrimaryDashboard: () => 'recruiter',
   showsSetupChecklistFor: () => false,

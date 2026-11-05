@@ -6,6 +6,8 @@ import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser, createAnchorLoader } from '../../access';
 import { filterStaffRoleSlugs } from '@tims/shared';
 import { redactOfferSettings } from './offer-dto';
+import { runAfterResponse } from '../../lib/after-response';
+import { approvalNotificationService } from '../../services/approval-notification.service';
 
 // Every approver must be an active member of this organization holding offer:approve; otherwise the offer
 // would sit in pending_approval forever (same failure vacancy.submitForApproval closed in #120). Reject
@@ -62,6 +64,13 @@ async function assertOfferApprovers(organizationId: string, offerId: string, app
   }
 }
 
+// A decision (and a withdrawal) names the step the client saw (`approvalId`), REQUIRED. A withdrawal
+// cancels pending steps and a resubmission creates new ones, so a decision matched by approver alone,
+// e.g. from a tab left open in the old request, would land on the NEW request with terms the approver
+// never saw. An unversioned call is refused by the input schema rather than trusted.
+const approvalStepInput = z.string().uuid();
+const STALE_APPROVAL_MESSAGE = 'Esta solicitud de aprobación ya no está vigente; recarga la página';
+
 // Explicit projection for approval-flow responses. Deliberately omits `settings` (which holds the
 // candidate's signing bearer token) and compensation terms; the approval UI refetches the offer.
 const OFFER_DECISION_SELECT = {
@@ -115,7 +124,7 @@ export const offerApprovalsRouter = router({
 
       // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — `db` is
       // `tenantDb`, so the outer wrapper never made these writes atomic.
-      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
+      const submitted = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
         // Compare-and-set draft -> pending_approval FIRST: the draft check above ran outside this
         // transaction, so two concurrent submissions would otherwise both create an approval chain.
         const moved = await tx.offer.updateMany({
@@ -159,6 +168,76 @@ export const offerApprovalsRouter = router({
           },
         });
       });
+
+      // B-01: tell every approver, after the response and only once the chain has committed.
+      const organizationId = ctx.user.organizationId;
+      const requesterId = ctx.user.id;
+      runAfterResponse(ctx, () =>
+        approvalNotificationService.notifyApprovalRequested({
+          orgId: organizationId,
+          kind: 'offer',
+          entityId: input.id,
+          approverIds: input.approverIds,
+          requesterId,
+        }),
+      );
+      return submitted;
+    }),
+
+  // Withdraw a pending approval request (stuck-approval unblock: the approver is away or has left).
+  // Same gate and scope as submitForApproval, so whoever may send an offer for approval may take it
+  // back. The offer returns to draft (where it can be edited and resubmitted to someone else) and
+  // every still-pending step is cancelled. A pending_approval offer never carries a rejected step
+  // (reject moves it to `rejected` in the same transaction), so assertNoRejectedApproval still holds.
+  withdrawApproval: anyPermissionProcedure('offer', ['update', 'create'])
+    .input(z.object({ id: z.string().uuid(), approvalId: approvalStepInput }))
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = ctx.user.organizationId;
+      const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
+      const offer = await db.offer.findFirst({
+        where: { AND: [{ id: input.id, organizationId }, scopeWhere as Prisma.OfferWhereInput] },
+        select: { id: true },
+      });
+      if (!offer) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Oferta no encontrada' });
+      }
+
+      // The CAS on status serializes against a concurrent approve or reject (both lock the row with
+      // their own CAS on pending_approval first): whichever commits first wins, the other conflicts.
+      return runTenantTransaction(organizationId, async (tx) => {
+        const moved = await tx.offer.updateMany({
+          where: { id: input.id, organizationId, status: 'pending_approval' },
+          data: { status: 'draft' },
+        });
+        if (moved.count !== 1) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya no está pendiente de aprobación' });
+        }
+        // The request the client saw must still be the live one (not a newer resubmission).
+        const live = await tx.offerApproval.count({
+          where: { organizationId, offerId: input.id, id: input.approvalId, status: 'pending' },
+        });
+        if (live !== 1) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
+
+        const cancelled = await tx.offerApproval.updateMany({
+          where: { organizationId, offerId: input.id, status: 'pending' },
+          data: { status: 'cancelled' },
+        });
+
+        // Authorization trail: who took the request back, and how many pending steps it cancelled.
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: ctx.user.id,
+            actorId: ctx.user.impersonatorId ?? ctx.user.id,
+            action: 'offer_approval_withdrawn',
+            entity: 'offer',
+            entityId: input.id,
+            metadata: { cancelledSteps: cancelled.count },
+          },
+        });
+
+        return tx.offer.findFirstOrThrow({ where: { id: input.id, organizationId }, select: OFFER_DECISION_SELECT });
+      });
     }),
 
   // 9.6 — Approve an offer
@@ -166,6 +245,7 @@ export const offerApprovalsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
+        approvalId: approvalStepInput,
         comment: z.string().max(20000).optional(),
       }),
     )
@@ -197,6 +277,7 @@ export const offerApprovalsRouter = router({
               organizationId,
               offerId,
               approverId: ctx.user.id,
+              id: input.approvalId,
               status: 'approved',
               offer: { status: 'approved' },
             },
@@ -211,7 +292,13 @@ export const offerApprovalsRouter = router({
         }
 
         const decided = await tx.offerApproval.updateMany({
-          where: { organizationId, offerId, approverId: ctx.user.id, status: 'pending' },
+          where: {
+            organizationId,
+            offerId,
+            approverId: ctx.user.id,
+            status: 'pending',
+            id: input.approvalId,
+          },
           data: {
             status: 'approved',
             comment: input.comment,
@@ -219,6 +306,12 @@ export const offerApprovalsRouter = router({
           },
         });
         if (decided.count === 0) {
+          // The caller still has a pending step here, just not the one they decided on (withdrawn and
+          // resubmitted, or decided in another tab): a stale decision, never applied to the new request.
+          const ownPending = await tx.offerApproval.count({
+            where: { organizationId, offerId, approverId: ctx.user.id, status: 'pending' },
+          });
+          if (ownPending > 0) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
           throw new TRPCError({
             code: 'NOT_FOUND',
             message: 'No se encontro aprobacion pendiente para este usuario',
@@ -251,6 +344,7 @@ export const offerApprovalsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
+        approvalId: approvalStepInput,
         comment: z.string().max(20000).min(1),
       }),
     )
@@ -276,7 +370,13 @@ export const offerApprovalsRouter = router({
         }
 
         const decided = await tx.offerApproval.updateMany({
-          where: { organizationId, offerId, approverId: ctx.user.id, status: 'pending' },
+          where: {
+            organizationId,
+            offerId,
+            approverId: ctx.user.id,
+            status: 'pending',
+            id: input.approvalId,
+          },
           data: {
             status: 'rejected',
             comment: input.comment,
@@ -284,6 +384,12 @@ export const offerApprovalsRouter = router({
           },
         });
         if (decided.count === 0) {
+          // The caller still has a pending step here, just not the one they decided on (withdrawn and
+          // resubmitted, or decided in another tab): a stale decision, never applied to the new request.
+          const ownPending = await tx.offerApproval.count({
+            where: { organizationId, offerId, approverId: ctx.user.id, status: 'pending' },
+          });
+          if (ownPending > 0) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
           throw new TRPCError({
             code: 'NOT_FOUND',
             message: 'No se encontro aprobacion pendiente para este usuario',
@@ -349,6 +455,7 @@ export const offerApprovalsRouter = router({
     return pendingApprovals.map((a) => ({
       approvalId: a.id,
       step: a.step,
+      requestedAt: a.createdAt,
       offer: redactOfferSettings(a.offer),
     }));
   }),
