@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { meetsPipelineFitThreshold, type PipelineFitCandidate } from '../../../../lib/pipeline-fit';
+import { FIT_BANDS, meetsPipelineFitThreshold, type PipelineFitCandidate } from '../../../../lib/pipeline-fit';
 import { useI18n } from '../../../../lib/i18n';
 import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 
@@ -16,9 +16,10 @@ const EMPTY_FILTERS: PipelineFilterState = { source: null, fitMin: null, maxDays
 
 const SOURCES = ['portal', 'linkedin', 'referral', 'job_board', 'university', 'internal'] as const;
 
+// The same bands as the card colours and the Candidate 360 (A-23).
 const FIT_OPTIONS = [
-  { value: 75, labelKey: 'filterFitHigh' },
-  { value: 50, labelKey: 'filterFitMedium' },
+  { value: FIT_BANDS.high, labelKey: 'filterFitHigh' },
+  { value: FIT_BANDS.medium, labelKey: 'filterFitMedium' },
   { value: 0, labelKey: 'filterAll' },
 ] as const;
 

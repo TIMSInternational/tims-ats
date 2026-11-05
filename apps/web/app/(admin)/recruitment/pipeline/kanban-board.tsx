@@ -4,12 +4,15 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { KanbanCard } from './kanban-card';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
+import { isActionableApplication, type ScheduleRequest } from './pipeline-actions';
 
 interface KanbanBoardProps {
   stages: PipelineStageWithApps[];
   onMove: (applicationId: string, toStageId: string) => void;
   /** Opens the reject modal for one application. Omitted when the user lacks pipeline:update. */
   onReject?: (applicationId: string, candidateName: string) => void;
+  /** Opens the prefilled schedule form (A-10). Omitted when the user lacks interview:create. */
+  onSchedule?: (request: ScheduleRequest) => void;
   onToggleChecklistItem?: (applicationId: string, stageId: string, itemKey: string, completed: boolean) => void;
 }
 
@@ -27,7 +30,7 @@ function getHeaderStyle(idx: number) {
   return HEADER_COLORS[Math.min(idx, HEADER_COLORS.length - 1)];
 }
 
-export function KanbanBoard({ stages, onMove, onReject, onToggleChecklistItem }: KanbanBoardProps) {
+export function KanbanBoard({ stages, onMove, onReject, onSchedule, onToggleChecklistItem }: KanbanBoardProps) {
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     if (result.source.droppableId === result.destination.droppableId) return;
@@ -121,8 +124,12 @@ export function KanbanBoard({ stages, onMove, onReject, onToggleChecklistItem }:
                         snapshot.isDraggingOver ? 'bg-[#1F114C]/5' : ''
                       }`}
                     >
-                      {stage.applications.map((app, appIdx) => (
-                        <Draggable key={app.id} draggableId={app.id} index={appIdx}>
+                      {stage.applications.map((app, appIdx) => {
+                        // A rejected or hired card (Rechazados / Todos views) is read-only: no drag, no actions.
+                        const actionable = isActionableApplication(app);
+                        const candidateName = `${app.candidate.firstName} ${app.candidate.lastName}`;
+                        return (
+                        <Draggable key={app.id} draggableId={app.id} index={appIdx} isDragDisabled={!actionable}>
                           {(dragProvided, dragSnapshot) => (
                             <div
                               ref={dragProvided.innerRef}
@@ -136,12 +143,18 @@ export function KanbanBoard({ stages, onMove, onReject, onToggleChecklistItem }:
                                 stageId={stage.id}
                                 checklist={stage.checklist}
                                 onToggleChecklistItem={onToggleChecklistItem}
-                                onReject={onReject ? () => onReject(app.id, `${app.candidate.firstName} ${app.candidate.lastName}`) : undefined}
+                                onReject={onReject && actionable ? () => onReject(app.id, candidateName) : undefined}
+                                onSchedule={
+                                  onSchedule && actionable
+                                    ? () => onSchedule({ applicationId: app.id, candidateId: app.candidate.id, candidateName })
+                                    : undefined
+                                }
                               />
                             </div>
                           )}
                         </Draggable>
-                      ))}
+                        );
+                      })}
                       {provided.placeholder}
                     </div>
                   )}

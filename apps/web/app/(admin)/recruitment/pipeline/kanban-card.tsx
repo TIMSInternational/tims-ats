@@ -3,8 +3,11 @@
 import Link from 'next/link';
 import { CandidateAvatar } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
-import { getPipelineFit } from '../../../../lib/pipeline-fit';
+import { fitBand, getPipelineFit, type FitBand } from '../../../../lib/pipeline-fit';
 import { candidateSourceLabel } from '../../../../lib/candidate-labels';
+import { daysInStageLabel } from '../../../../lib/pipeline-days';
+import { rejectionReasonLabel } from '../../../../lib/reject-reasons';
+import { formatDate } from '../../../../lib/format-utils';
 
 interface KanbanCardProps {
   application: {
@@ -13,6 +16,8 @@ interface KanbanCardProps {
     source: string;
     appliedAt: Date | string;
     enteredStageAt: Date | string;
+    rejectedAt?: Date | string | null;
+    rejectedReason?: string | null;
     // Prisma.JsonValue (read via isItemComplete below) — only the
     // current stage's completion map is ever written (Sprint 1.3 Task 1).
     checklistProgress?: unknown;
@@ -35,8 +40,10 @@ interface KanbanCardProps {
   stageId: string;
   checklist?: unknown;
   onToggleChecklistItem?: (applicationId: string, stageId: string, itemKey: string, completed: boolean) => void;
-  /** Opens the reject modal. Omitted when the user lacks pipeline:update. */
+  /** Opens the reject modal. Omitted when the user lacks pipeline:update or the card is not active. */
   onReject?: () => void;
+  /** Opens the prefilled schedule form (A-10). Omitted when the user lacks interview:create. */
+  onSchedule?: () => void;
 }
 
 interface ChecklistItem {
@@ -60,27 +67,17 @@ function isItemComplete(progress: unknown, stageId: string, itemKey: string): bo
   return !!entry && typeof entry === 'object' && (entry as { completed?: unknown }).completed === true;
 }
 
-function daysAgo(date: Date | string): number {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)));
-}
-
 function hoursAgo(date: Date | string): number {
   const d = typeof date === 'string' ? new Date(date) : date;
   return Math.max(0, (Date.now() - d.getTime()) / (1000 * 60 * 60));
 }
 
-function fitBorderColor(score: number | null): string {
-  if (score === null) return 'border-[#EDEDED]';
-  if (score >= 75) return 'border-green-500';
-  if (score >= 50) return 'border-amber-500';
-  return 'border-red-500';
-}
+// One FIT scale with the list, the table, the filter and the Candidate 360 (lib/pipeline-fit.ts FIT_BANDS).
+const FIT_BORDER: Record<FitBand, string> = { high: 'border-green-500', medium: 'border-amber-500', low: 'border-red-500' };
+const FIT_BADGE: Record<FitBand, string> = { high: 'bg-green-500', medium: 'bg-amber-500', low: 'bg-red-500' };
 
-function fitBadgeBg(score: number): string {
-  if (score >= 75) return 'bg-green-500';
-  if (score >= 50) return 'bg-amber-500';
-  return 'bg-red-500';
+function fitBorderColor(score: number | null): string {
+  return score === null ? 'border-[#EDEDED]' : FIT_BORDER[fitBand(score)];
 }
 
 const SOURCE_STYLES: Record<string, { bg: string; text: string }> = {
@@ -97,17 +94,22 @@ function getSourceStyle(source: string) {
   return SOURCE_STYLES[source.toLowerCase()] ?? SOURCE_STYLES.other!;
 }
 
-export function KanbanCard({ application: app, isDragging, slaHours, stageId, checklist, onToggleChecklistItem, onReject }: KanbanCardProps) {
+export function KanbanCard({ application: app, isDragging, slaHours, stageId, checklist, onToggleChecklistItem, onReject, onSchedule }: KanbanCardProps) {
   const { t } = useI18n();
   const candidate = app.candidate;
+  const candidateName = `${candidate.firstName} ${candidate.lastName}`;
   const fit = getPipelineFit(candidate);
   const fitScore = fit?.score ?? null;
-  const days = daysAgo(app.appliedAt);
+  const isActive = app.status === 'active';
+  // Days in the CURRENT stage (A-23) — the same clock as the SLA badge and the "Días en etapa" filter; the
+  // application date stays in the tooltip.
+  const inStage = daysInStageLabel(app.enteredStageAt, t.pipeline);
+  const appliedTitle = t.pipeline.appliedOnTitle.replace('{date}', formatDate(app.appliedAt));
   // SLA overdue is time-in-CURRENT-stage, not time since the original
   // application — a card that's been in the pipeline a while but just moved
   // into this stage isn't overdue. Uses precise hours, not floored days*24,
-  // so sub-24h SLAs (e.g. an 8h stage) can actually trigger same-day.
-  const isOverdue = slaHours != null && hoursAgo(app.enteredStageAt) > slaHours;
+  // so sub-24h SLAs (e.g. an 8h stage) can actually trigger same-day. Only an active card can be overdue.
+  const isOverdue = isActive && slaHours != null && hoursAgo(app.enteredStageAt) > slaHours;
   const sourceStyle = getSourceStyle(app.source);
   const checklistItems = coerceChecklist(checklist);
 
@@ -140,12 +142,30 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
         {fitScore === null ? (
           <span className="shrink-0 text-[10px] text-[#8B8B8B]" title={t.pipeline.fitPending}>—</span>
         ) : (
-          <div
-            className={`${fitBadgeBg(fitScore)} text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0`}
+          // The score is advisory: it opens the FIT detail on the profile, where its reasons are (ideal-110).
+          <Link
+            href={`/recruitment/candidates/${candidate.id}?tab=tabFitGaps`}
+            onMouseDown={(e) => e.stopPropagation()}
+            aria-label={t.pipeline.fitDetailLink.replace('{name}', candidateName)}
+            className={`${FIT_BADGE[fitBand(fitScore)]} text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 hover:opacity-90`}
             title={`${t.pipeline.fitScore}: ${fitScore}${fit?.isPartial ? ` (${t.pipeline.fitPartial})` : ''}`}
           >
             {Math.round(fitScore)}{fit?.isPartial ? '*' : ''}
-          </div>
+          </Link>
+        )}
+        {onSchedule && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onSchedule(); }}
+            aria-label={t.pipeline.scheduleInterviewFor.replace('{name}', candidateName)}
+            title={t.pipeline.scheduleInterview}
+            className="shrink-0 rounded p-0.5 text-[#8B8B8B] hover:bg-[#F0EEF5] hover:text-[#1F114C] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1F114C]/40"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+            </svg>
+          </button>
         )}
         {/* Reject button inside the drag handle: the dnd lib ignores drags from buttons, and
             stopPropagation keeps a mouse press from arming one. */}
@@ -154,7 +174,7 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
             type="button"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); onReject(); }}
-            aria-label={t.rejectCandidateModal.actionLabel.replace('{name}', `${candidate.firstName} ${candidate.lastName}`)}
+            aria-label={t.rejectCandidateModal.actionLabel.replace('{name}', candidateName)}
             title={t.pipeline.reject}
             className="shrink-0 rounded p-0.5 text-[#8B8B8B] hover:bg-red-50 hover:text-[#DD0C15] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DD0C15]/40"
           >
@@ -169,9 +189,22 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
         <span className={`text-[10px] ${sourceStyle.bg} ${sourceStyle.text} px-1.5 py-0.5 rounded`}>
           {candidateSourceLabel(app.source, t.candidates)}
         </span>
-        <span className={`text-[10px] ${isOverdue ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>
-          {days === 0 ? 'Hoy' : days === 1 ? '1 día' : `${days} días`}
-        </span>
+        {isActive ? (
+          <span title={appliedTitle} className={`text-[10px] ${isOverdue ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>
+            {inStage}
+          </span>
+        ) : app.status === 'rejected' ? (
+          <span
+            title={rejectionReasonLabel(app.rejectedReason, t.rejectCandidateModal.reasons) || undefined}
+            className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-medium"
+          >
+            {app.rejectedAt ? t.pipeline.rejectedOn.replace('{date}', formatDate(app.rejectedAt)) : t.pipeline.applicationStatus.rejected}
+          </span>
+        ) : (
+          <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded font-medium">
+            {t.pipeline.applicationStatus[app.status as keyof typeof t.pipeline.applicationStatus] ?? app.status}
+          </span>
+        )}
         {isOverdue && (
           <span className="text-[9px] bg-red-50 text-[#DD0C15] px-1.5 py-0.5 rounded font-medium">
             SLA!
@@ -184,7 +217,7 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
           <p className="text-[10px] text-teal-600 italic">{t.pipeline.iaReviewUrgent}</p>
         </div>
       )}
-      {!isOverdue && fitScore !== null && !fit?.isPartial && fitScore >= 80 && (
+      {isActive && !isOverdue && fitScore !== null && !fit?.isPartial && fitScore >= 80 && (
         <div className="mt-1.5 pt-1.5 border-t border-[#F0F0F0]">
           <p className="text-[10px] text-teal-600 italic">{t.pipeline.iaAdvanceHighFit}</p>
         </div>
@@ -205,6 +238,7 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
                 <input
                   type="checkbox"
                   checked={completed}
+                  disabled={!isActive}
                   onChange={(e) => onToggleChecklistItem?.(app.id, stageId, item.key, e.target.checked)}
                   className="w-3 h-3 accent-[#1F114C]"
                 />

@@ -4,6 +4,7 @@
 //
 // Pure module (no React) so node tests can exercise it.
 import { candidateSourceLabel, type CandidateSourceLabels } from './candidate-labels';
+import { rejectionReasonLabel } from './reject-reasons';
 
 export interface TimelineEventInput {
   type: string;
@@ -26,6 +27,7 @@ export interface TimelineEventInput {
 export interface TimelineLabels extends CandidateSourceLabels {
   timelineApplied: string;
   timelineSource: string;
+  timelineRejected: string;
   timelineStageStart: string;
   timelineAssessmentAssigned: string;
   timelineAssessmentCompleted: string;
@@ -63,6 +65,8 @@ function statusLabel(status: string, l: TimelineLabels): string {
 export function localizeTimelineEvent(
   event: TimelineEventInput,
   l: TimelineLabels,
+  /** rejectCandidateModal.reasons: the stored "<CODE>: <label>" reason is shown in the viewer's language. */
+  reasonLabels: Record<string, string> = {},
 ): { title: string; description: string | null } {
   const p = event.params;
   if (!p) return { title: event.title, description: event.description };
@@ -71,6 +75,11 @@ export function localizeTimelineEvent(
       return {
         title: fill(l.timelineApplied, { vacancy: p.vacancyTitle ?? '' }),
         description: p.source ? fill(l.timelineSource, { source: candidateSourceLabel(p.source, l) }) : null,
+      };
+    case 'application_rejected':
+      return {
+        title: fill(l.timelineRejected, { vacancy: p.vacancyTitle ?? '' }),
+        description: rejectionReasonLabel(p.reason, reasonLabels) || null,
       };
     case 'stage_movement':
       return {
