@@ -4,6 +4,7 @@ import { appRouter, verifyImpersonationToken, readImpersonationCookie } from '@t
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { db } from '@tims/db';
 import { logger, filterStaffRoleSlugs } from '@tims/shared';
+import { provisionPlatformOwner } from '../../../../lib/auth/platform-owner-provisioning';
 import * as Sentry from '@sentry/nextjs';
 import {
   resolveStaffContext,
@@ -136,15 +137,14 @@ const handler = (req: Request) =>
       // not an email-collision vector — it CREATES an owner row, never claims an
       // existing staff row).
       if (!appUser && supabaseUser.email) {
-        const isPlatformEmail = await db.platformOwnerEmail.findUnique({
-          where: { email: supabaseUser.email },
-        });
-
-        if (isPlatformEmail) {
-          appUser = await db.user.create({
+        // The allowlist check and the insert share the removal's advisory lock (platform-owner access-2), so
+        // an address removed meanwhile is never provisioned.
+        const ownerEmail = supabaseUser.email;
+        const provisioned = await provisionPlatformOwner(ownerEmail, (tx) =>
+          tx.user.create({
             data: {
               supabaseUserId: supabaseUser.id,
-              email: supabaseUser.email,
+              email: ownerEmail,
               firstName: supabaseUser.user_metadata?.first_name || supabaseUser.user_metadata?.full_name?.split(' ')[0] || 'Admin',
               lastName: supabaseUser.user_metadata?.last_name || supabaseUser.user_metadata?.full_name?.split(' ').slice(1).join(' ') || '',
               avatar: supabaseUser.user_metadata?.avatar_url,
@@ -156,8 +156,9 @@ const handler = (req: Request) =>
                 include: { role: { select: { slug: true } } },
               },
             },
-          });
-        }
+          }),
+        );
+        if (provisioned) appUser = provisioned;
       }
 
       if (!appUser) {

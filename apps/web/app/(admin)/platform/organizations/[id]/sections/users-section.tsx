@@ -7,7 +7,7 @@ import { useI18n } from '../../../../../../lib/i18n';
 import { getInitials, getAvatarColor, formatDate } from '../../../../../../lib/format-utils';
 import { Skeleton, Modal, ErrorState } from '../../../../../../components';
 import { InviteUserModal } from '../../../invitations/invite-user-modal';
-import { staffRoleOptions } from '../../../../../../lib/role-labels';
+import { roleLabel, staffRoleOptions } from '../../../../../../lib/role-labels';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
   super_admin: { bg: 'bg-purple-100', text: 'text-purple-700' },
@@ -20,32 +20,56 @@ const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
   platform_owner: { bg: 'bg-rose-100', text: 'text-rose-700' },
 };
 
-function RoleSelector({ userId, organizationId, currentRole }: { userId: string; organizationId: string; currentRole: string }) {
+// Picking a role no longer applies it on the spot: a confirmation names the old and the new role first
+// (D-14). Owner support requests change pilot tenant roles from here.
+function RoleSelector({ userId, userName, organizationId, currentRole }: { userId: string; userName: string; organizationId: string; currentRole: string }) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
   const changeRole = trpc.platform.changeOrgUserRole.useMutation({
     onSuccess: () => {
       utils.platform.getOrgUsers.invalidate({ organizationId });
       toast(t.users.roleUpdated, { type: 'success' });
+      setPendingRole(null);
     },
-    onError: (err) => { toast(err.message || 'Error al cambiar rol', { type: 'error' }); },
+    onError: (err) => { toast(err.message || t.common.error, { type: 'error' }); },
   });
 
   return (
-    <select
-      value={currentRole}
-      disabled={changeRole.isPending}
-      onChange={(e) => {
-        if (e.target.value !== currentRole) {
-          changeRole.mutate({ userId, organizationId, roleSlug: e.target.value });
-        }
-      }}
-      className="px-1.5 py-0.5 rounded text-[10px] font-semibold border border-[#EDEDED] bg-white text-[#333] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/30 disabled:opacity-50 cursor-pointer"
-    >
-      {staffRoleOptions(t.roles, { keep: currentRole }).map((r) => (
-        <option key={r.slug} value={r.slug}>{r.label}</option>
-      ))}
-    </select>
+    <>
+      <select
+        value={currentRole}
+        disabled={changeRole.isPending}
+        aria-label={`${t.users.role} — ${userName}`}
+        onChange={(e) => {
+          if (e.target.value !== currentRole) setPendingRole(e.target.value);
+        }}
+        className="px-1.5 py-0.5 rounded text-[10px] font-semibold border border-[#EDEDED] bg-white text-[#333] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/30 disabled:opacity-50 cursor-pointer"
+      >
+        {staffRoleOptions(t.roles, { keep: currentRole }).map((r) => (
+          <option key={r.slug} value={r.slug}>{r.label}</option>
+        ))}
+      </select>
+      {pendingRole && (
+        <Modal title={t.users.roleChangeConfirmTitle.replace('{name}', userName)} onClose={() => setPendingRole(null)} maxWidth="max-w-sm">
+          <p className="text-sm text-[#585858] mb-4">
+            {t.users.roleChangeConfirmMessage
+              .replace('{from}', roleLabel(t.roles, currentRole))
+              .replace('{to}', roleLabel(t.roles, pendingRole))}
+          </p>
+          <div className="flex gap-3">
+            <button onClick={() => setPendingRole(null)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
+            <button
+              onClick={() => changeRole.mutate({ userId, organizationId, roleSlug: pendingRole })}
+              disabled={changeRole.isPending}
+              className="flex-1 h-9 rounded-lg bg-[#1F114C] text-sm text-white font-medium hover:bg-[#2a1866] transition disabled:opacity-50"
+            >
+              {t.users.roleChangeConfirm}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -111,7 +135,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
           className="h-8 px-3 rounded-lg bg-[#DD0C15] text-xs text-white font-medium hover:bg-[#c40b13] transition flex items-center gap-1.5"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-          Invitar Usuario
+          {t.invitations.inviteUser}
         </button>
       </div>
 
@@ -180,7 +204,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
                       {user.isPlatformOwner ? (
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>{t.roles.platform_owner}</span>
                       ) : (
-                        <RoleSelector userId={user.id} organizationId={organizationId} currentRole={roleSlug} />
+                        <RoleSelector userId={user.id} userName={fullName} organizationId={organizationId} currentRole={roleSlug} />
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-[12px] text-[#585858]">{user.jobTitle || '\u2014'}</td>

@@ -5,6 +5,8 @@ import { useOrganizationInvitationCreate } from '../../../../lib/platform-api/or
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { sanitizeSlugInput, slugify } from '../../../../lib/slugify';
+import { trpc } from '../../../../lib/trpc';
+import { findSimilarOrganizations } from '../../../../lib/similar-organizations';
 
 export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
@@ -12,6 +14,12 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
   const [plan, setPlan] = useState<'trial' | 'starter' | 'professional' | 'enterprise'>('trial');
+  const [confirmNew, setConfirmNew] = useState(false);
+  // This creates a NEW organization. A name that resembles an existing one is most likely a person who
+  // belongs in that organization ("Invitar usuario"), so it needs an explicit confirmation (D-15).
+  const existingOrgs = trpc.platform.listOrganizationsMinimal.useQuery();
+  const similar = findSimilarOrganizations(orgName, existingOrgs.data ?? []);
+  const needsConfirm = similar.length > 0 && !confirmNew;
 
   const create = useOrganizationInvitationCreate({
     onSuccess: (delivery) => {
@@ -31,7 +39,7 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !orgName || !orgSlug) return;
+    if (!email || !orgName || !orgSlug || needsConfirm) return;
     create.mutate({ email, organizationName: orgName, organizationSlug: orgSlug, organizationPlan: plan });
   };
 
@@ -47,32 +55,41 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.adminEmail} *</label>
-            <input type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <label htmlFor="invite-org-email" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.adminEmail} *</label>
+            <input id="invite-org-email" type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.orgName} *</label>
-            <input type="text" minLength={2} maxLength={100} value={orgName} onChange={(e) => handleNameChange(e.target.value)} placeholder={t.invitations.orgNamePlaceholder} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <label htmlFor="invite-org-name" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.orgName} *</label>
+            <input id="invite-org-name" type="text" minLength={2} maxLength={100} value={orgName} onChange={(e) => { handleNameChange(e.target.value); setConfirmNew(false); }} placeholder={t.invitations.orgNamePlaceholder} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
-            <input type="text" minLength={2} maxLength={63} value={orgSlug} onChange={(e) => setOrgSlug(sanitizeSlugInput(e.target.value))} placeholder="mi-empresa" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required pattern="^[a-z0-9-]+$" />
+            <label htmlFor="invite-org-slug" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
+            <input id="invite-org-slug" type="text" minLength={2} maxLength={63} value={orgSlug} onChange={(e) => setOrgSlug(sanitizeSlugInput(e.target.value))} placeholder="mi-empresa" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required pattern="^[a-z0-9-]+$" />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>
-            <select value={plan} onChange={(e) => setPlan(e.target.value as typeof plan)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
+            <label htmlFor="invite-org-plan" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>
+            <select id="invite-org-plan" value={plan} onChange={(e) => setPlan(e.target.value as typeof plan)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
               <option value="trial">{t.invitations.trialPlan}</option>
               <option value="starter">{t.invitations.starterPlan}</option>
               <option value="professional">{t.invitations.professionalPlan}</option>
               <option value="enterprise">{t.invitations.enterprisePlan}</option>
             </select>
           </div>
+          {similar.length > 0 && (
+            <div role="alert" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg space-y-2">
+              <p>{t.invitations.similarOrgWarning.replace('{names}', similar.map((o) => o.name).join(', '))}</p>
+              <label className="flex items-center gap-2 font-medium">
+                <input type="checkbox" checked={confirmNew} onChange={(e) => setConfirmNew(e.target.checked)} />
+                {t.invitations.similarOrgConfirm}
+              </label>
+            </div>
+          )}
           {create.error && (
             <div className="text-xs text-[#DD0C15] bg-red-50 px-3 py-2 rounded-lg">{create.error.message}</div>
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.invitations.cancel}</button>
-            <button type="submit" disabled={!email || !orgName || !orgSlug || create.isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">{create.isPending ? t.invitations.sending : t.invitations.createAndSend}</button>
+            <button type="submit" disabled={!email || !orgName || !orgSlug || needsConfirm || create.isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">{create.isPending ? t.invitations.sending : t.invitations.createAndSend}</button>
           </div>
         </form>
       </div>

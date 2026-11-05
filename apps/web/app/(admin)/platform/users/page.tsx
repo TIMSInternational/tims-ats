@@ -55,7 +55,7 @@ export default function PlatformUsersPage() {
   });
 
   const changeRole = trpc.platform.changeOrgUserRole.useMutation({
-    onSuccess: () => { invalidateAll(); setEditRoleTarget(null); toast(t.common.save, { type: 'success' }); },
+    onSuccess: () => { invalidateAll(); setEditRoleTarget(null); toast(t.users.roleUpdated, { type: 'success' }); },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
 

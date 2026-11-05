@@ -9,20 +9,31 @@ import { ErrorState } from '../../../../components';
 export function PlatformOwnerSection() {
   const { t } = useI18n();
   const [newEmail, setNewEmail] = useState('');
+  // The allowlist grants cross-tenant access, so the address is typed twice before it is added
+  // (platform-owner journeys-30): a typo can no longer authorize a stranger's mailbox.
+  const [confirmEmail, setConfirmEmail] = useState('');
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
   const { data: emailsData, isLoading, isError, refetch } = trpc.platform.listPlatformOwnerEmails.useQuery();
   const addEmail = trpc.platform.addPlatformOwnerEmail.useMutation({
-    onSuccess: () => { setNewEmail(''); utils.platform.listPlatformOwnerEmails.invalidate(); toast(t.support.emailAdded, { type: 'success' }); },
+    onSuccess: () => { setNewEmail(''); setConfirmEmail(''); utils.platform.listPlatformOwnerEmails.invalidate(); toast(t.support.emailAdded, { type: 'success' }); },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
   const removeEmail = trpc.platform.removePlatformOwnerEmail.useMutation({
-    onSuccess: () => { setConfirmRemove(null); utils.platform.listPlatformOwnerEmails.invalidate(); toast(t.support.emailRemoved, { type: 'success' }); },
+    onSuccess: (result) => {
+      setConfirmRemove(null);
+      utils.platform.listPlatformOwnerEmails.invalidate();
+      toast(result.ownersRevoked > 0 ? `${t.support.emailRemoved}. ${t.support.ownerAccessRevoked}` : t.support.emailRemoved, { type: 'success' });
+    },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
 
   const emails = emailsData ?? [];
+  const typed = newEmail.trim().toLowerCase();
+  const confirmed = confirmEmail.trim().toLowerCase();
+  const mismatch = confirmed.length > 0 && typed !== confirmed;
+  const canAdd = typed.includes('@') && typed === confirmed && !addEmail.isPending;
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
@@ -31,12 +42,21 @@ export function PlatformOwnerSection() {
         {t.support.platformOwnerEmails}
       </h3>
 
-      <form onSubmit={(e) => { e.preventDefault(); const em = newEmail.trim(); if (em && em.includes('@')) addEmail.mutate({ email: em }); }} className="mb-4">
-        <div className="flex gap-2">
-          <input type="email" placeholder="nuevo@email.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="flex-1 border border-[#EDEDED] rounded-lg px-3 py-2.5 text-sm placeholder:text-[#ABABAB] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20 focus:border-[#1F114C]/30" />
-          <button type="submit" disabled={addEmail.isPending || !newEmail.trim()} className="px-3 py-2 bg-[#1F114C] text-white rounded-lg text-sm font-medium hover:bg-[#2a1866] whitespace-nowrap disabled:opacity-50">
-            {addEmail.isPending ? t.support.adding : t.support.addEmail}
-          </button>
+      <form onSubmit={(e) => { e.preventDefault(); if (canAdd) addEmail.mutate({ email: typed }); }} className="mb-4 space-y-2">
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{t.support.addOwnerWarning}</p>
+        <div>
+          <label htmlFor="owner-email" className="block text-[11px] font-medium text-[#585858] mb-1">{t.support.ownerEmailLabel}</label>
+          <input id="owner-email" type="email" maxLength={255} autoComplete="off" placeholder="nuevo@email.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-sm placeholder:text-[#ABABAB] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20 focus:border-[#1F114C]/30" />
+        </div>
+        <div>
+          <label htmlFor="owner-email-confirm" className="block text-[11px] font-medium text-[#585858] mb-1">{t.support.confirmEmailLabel}</label>
+          <div className="flex gap-2">
+            <input id="owner-email-confirm" type="email" maxLength={255} autoComplete="off" value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)} onPaste={(e) => e.preventDefault()} aria-invalid={mismatch || undefined} aria-describedby={mismatch ? 'owner-email-mismatch' : undefined} className="flex-1 border border-[#EDEDED] rounded-lg px-3 py-2.5 text-sm placeholder:text-[#ABABAB] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20 focus:border-[#1F114C]/30" />
+            <button type="submit" disabled={!canAdd} className="px-3 py-2 bg-[#1F114C] text-white rounded-lg text-sm font-medium hover:bg-[#2a1866] whitespace-nowrap disabled:opacity-50">
+              {addEmail.isPending ? t.support.adding : t.support.addEmail}
+            </button>
+          </div>
+          {mismatch && <p id="owner-email-mismatch" role="alert" className="mt-1 text-xs text-[#DD0C15]">{t.support.confirmEmailMismatch}</p>}
         </div>
       </form>
 

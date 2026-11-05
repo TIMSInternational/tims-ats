@@ -96,10 +96,11 @@ export default function BrandingPage() {
               </div>
 
               <div className="flex-1 min-w-0">
-                <label className="block text-[12px] font-medium text-[#585858] mb-1.5">
+                <label htmlFor="branding-logo-url" className="block text-[12px] font-medium text-[#585858] mb-1.5">
                   {t.branding.logoLabel}
                 </label>
                 <input
+                  id="branding-logo-url"
                   type="url"
                   value={logoUrl}
                   onChange={(e) => {

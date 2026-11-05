@@ -13,4 +13,5 @@ export * from './dei';
 export * from './csv';
 export * from './interview-scorecard';
 export * from './time-zone';
+export * from './platform-owner';
 export { logger, createTenantLogger } from './logger';

@@ -115,9 +115,18 @@ const DATA_REQUESTS_ITEM: NavItem = {
   action: 'update',
   featureFlag: 'candidateConsent',
 };
+// /settings/organization ("Datos de la organización", D-11): read-only country, currency, time zone, language,
+// careers page and candidate contact mailbox. organization:read — super_admin and hr_admin.
+const ORGANIZATION_PROFILE_ITEM: NavItem = {
+  href: '/settings/organization',
+  labelKey: 'sidebar.organizationProfile',
+  icon: 'settings',
+  module: 'organization',
+};
 const SETTINGS: NavSection = {
   labelKey: 'sidebar.settings',
   items: [
+    ORGANIZATION_PROFILE_ITEM,
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
     DATA_REQUESTS_ITEM,
@@ -158,6 +167,7 @@ const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_M
 const HR_ADMIN_SETTINGS: NavSection = {
   labelKey: 'sidebar.settings',
   items: [
+    ORGANIZATION_PROFILE_ITEM,
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
     DATA_REQUESTS_ITEM,
