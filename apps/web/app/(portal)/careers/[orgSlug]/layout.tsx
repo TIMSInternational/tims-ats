@@ -1,5 +1,5 @@
 import { db } from '@tims/db';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 export default async function OrgCareersLayout({
   children,
@@ -15,7 +15,16 @@ export default async function OrgCareersLayout({
     select: { id: true, isActive: true },
   });
 
-  if (!org || !org.isActive) notFound();
+  if (!org || !org.isActive) {
+    // Slugs are stored lower-case: a link typed or printed as /careers/ACME lands on the real board
+    // instead of a 404. (A layout cannot see the rest of the path, so this goes to the board itself.)
+    const lower = orgSlug.toLowerCase();
+    if (lower !== orgSlug) {
+      const match = await db.organization.findUnique({ where: { slug: lower }, select: { isActive: true } });
+      if (match?.isActive) redirect(`/careers/${encodeURIComponent(lower)}`);
+    }
+    notFound();
+  }
 
   return <>{children}</>;
 }

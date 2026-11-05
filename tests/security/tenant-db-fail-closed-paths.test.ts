@@ -160,7 +160,11 @@ describe('tRPC + tenantDb — fail closed unless scoped or explicitly opted in',
   it('public offer.getBySigningToken runs in the named offer-signing-token scope', async () => {
     const { router, createCallerFactory } = await import('../../packages/api/src/trpc');
     const { offerSigningRouter } = await import('../../packages/api/src/routers/offer/signing');
-    h.results.set('Offer.findMany', [{ id: 'o1', status: 'sent', expiresAt: null }]);
+    // The selected organization relation is required (Offer.organizationId is non-null), so Prisma always
+    // returns it; the procedure now reads it to expose the organization's time zone.
+    h.results.set('Offer.findMany', [
+      { id: 'o1', status: 'sent', expiresAt: null, organization: { name: 'Org', logo: null, settings: {} } },
+    ]);
     const res = await createCallerFactory(router({ offer: offerSigningRouter }))(ctxFor(null)).offer.getBySigningToken({
       token: 'tok',
     });

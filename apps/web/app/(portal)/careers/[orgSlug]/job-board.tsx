@@ -15,9 +15,10 @@ interface JobBoardProps {
   organizationId: string;
   orgName: string;
   orgSlug: string;
+  orgLogo?: string | null;
 }
 
-export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
+export function JobBoard({ organizationId, orgName, orgSlug, orgLogo = null }: JobBoardProps) {
   const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState('');
@@ -44,7 +45,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
 
   return (
     <div className="min-h-screen bg-white">
-      <PortalNav orgName={orgName} orgSlug={orgSlug} />
+      <PortalNav orgName={orgName} orgSlug={orgSlug} orgLogo={orgLogo} />
       <PortalHero
         orgName={orgName}
         stats={stats.data}
@@ -94,7 +95,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
           <>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
               {allItems.map((v) => (
-                <VacancyCard key={v.id} vacancy={v} orgSlug={orgSlug} />
+                <VacancyCard key={v.id} vacancy={v} orgSlug={orgSlug} orgName={orgName} />
               ))}
             </div>
             {vacancies.hasNextPage && <div className="mt-8 text-center"><button type="button" onClick={() => void vacancies.fetchNextPage()} disabled={vacancies.isFetchingNextPage} className="rounded-lg border border-[#1F114C] px-5 py-2 text-sm font-medium text-[#1F114C] disabled:opacity-50">{vacancies.isFetchingNextPage ? t.portal.loadingMore : t.portal.loadMore}</button></div>}
@@ -110,7 +111,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
         </div>
       )}
 
-      <PortalFooter orgName={orgName} />
+      <PortalFooter orgName={orgName} orgSlug={orgSlug} orgLogo={orgLogo} />
     </div>
   );
 }

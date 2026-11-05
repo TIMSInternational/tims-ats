@@ -35,6 +35,8 @@ export const emailService = {
     locale: 'es' | 'en';
     /** The organization's candidate contact (services/candidate-contact.ts): contact line + Reply-To. */
     contactEmail?: string | null;
+    /** Absolute link to the organization's candidate portal; the email omits the button without it. */
+    portalUrl?: string;
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.applicationReceived(rest);

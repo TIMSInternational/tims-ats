@@ -146,7 +146,7 @@ export const emailTemplates = {
     return { subject: `Cancelación de entrevista — ${p.vacancyTitle}`, html: baseLayout(content, p.companyName) };
   },
 
-  applicationReceived(p: { candidateName: string; vacancyTitle: string; companyName: string; locale: 'es' | 'en'; contactEmail?: string | null }): { subject: string; html: string } {
+  applicationReceived(p: { candidateName: string; vacancyTitle: string; companyName: string; locale: 'es' | 'en'; contactEmail?: string | null; portalUrl?: string }): { subject: string; html: string } {
     const en = p.locale === 'en';
     // The name comes from the UNAUTHENTICATED apply form and this email goes to an address
     // that form chose: only a plain personal name may reach the greeting (no URLs, digits
@@ -159,14 +159,23 @@ export const emailTemplates = {
     const contact = p.contactEmail
       ? paragraph(`${en ? 'If you have any questions, write to us at' : 'Si tiene preguntas, escríbanos a'} <a href="mailto:${esc(p.contactEmail)}" style="color:${BRAND.navy};text-decoration:underline;">${esc(p.contactEmail)}</a>.`)
       : '';
+    // The candidate portal is where the application's status can be followed (sign-in with the same
+    // email). Static label; the URL is built server-side from the org slug and guarded by safeUrl.
+    const portal = p.portalUrl
+      ? paragraph(en
+        ? 'You can follow the status of your application at any time in the candidate portal, signing in with this same email address.'
+        : 'Puede consultar el estado de su postulación en cualquier momento en el portal de candidatos, ingresando con este mismo correo electrónico.') +
+        ctaButton(p.portalUrl, en ? 'View my applications' : 'Ver mis postulaciones')
+      : '';
     const content = heading(en ? 'Application received' : 'Hemos recibido su postulación') +
       paragraph(greeting) +
       paragraph(en
         ? `Thank you for applying to <strong>${esc(p.vacancyTitle)}</strong> at ${esc(p.companyName)}. We have received your application.`
         : `Gracias por postularse al cargo de <strong>${esc(p.vacancyTitle)}</strong> en ${esc(p.companyName)}. Hemos recibido su postulación correctamente.`) +
       paragraph(en
-        ? 'Our team will review your profile and contact you by email if it matches the position. No further action is needed right now.'
-        : 'Nuestro equipo revisará su perfil y le contactaremos por correo electrónico si se ajusta al cargo. Por ahora no necesita hacer nada más.') +
+        ? 'Our team will review your profile and contact you by email if it matches the position.'
+        : 'Nuestro equipo revisará su perfil y le contactaremos por correo electrónico si se ajusta al cargo.') +
+      portal +
       contact +
       paragraph(en ? 'Kind regards,<br>Talent Team' : 'Cordialmente,<br>Equipo de Talento Humano');
     const title = p.vacancyTitle.replace(/[\r\n]+/g, ' ');

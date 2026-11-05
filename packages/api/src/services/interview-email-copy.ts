@@ -74,7 +74,7 @@ export const INTERVIEW_EMAIL_COPY = {
     online: 'en línea',
     joinNote:
       'El enlace es personal y se habilita 15 minutos antes de la hora programada. Si la entrevista se reprograma, recibirá un enlace nuevo y este dejará de funcionar.',
-    phoneNote: 'Le contactaremos por teléfono al número registrado en su postulación a la hora indicada.',
+    phoneNote: 'Le llamaremos a la hora indicada al número de teléfono de su postulación. Si no registró uno, comuníquese con el equipo de selección para indicarlo.',
     cancelNextStep: 'Si la entrevista se reprograma, recibirá una nueva invitación por este medio.',
     calendarNote: 'Adjuntamos una invitación de calendario (.ics) para que la agregue a su agenda.',
     cancelCalendarNote: 'Adjuntamos la cancelación para actualizar su calendario.',
@@ -123,7 +123,7 @@ export const INTERVIEW_EMAIL_COPY = {
     online: 'online',
     joinNote:
       'This link is personal and opens 15 minutes before the scheduled time. If the interview is rescheduled you will receive a new link and this one will stop working.',
-    phoneNote: 'We will call you at the phone number in your application at the scheduled time.',
+    phoneNote: 'We will call you at the scheduled time at the phone number in your application. If you did not provide one, contact the recruiting team to share it.',
     cancelNextStep: 'If the interview is rescheduled, you will receive a new invitation by email.',
     calendarNote: 'A calendar invitation (.ics) is attached so you can add it to your calendar.',
     cancelCalendarNote: 'The cancellation is attached so your calendar is updated.',

@@ -3,14 +3,17 @@
 import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { formatCandidateDate } from '../../../../../lib/candidate-format';
 import { DashboardApplicationTimeline } from './dashboard-application-timeline';
+import { candidatePhase, phaseText } from './candidate-phase';
 
 // "My Applications" section of the candidate dashboard (Wave 1 Slice 2). Lists the
 // signed-in candidate's applications at this org with status + current stage, and
 // expands each into its stage timeline. Data comes from candidatePortal.* which
 // resolves the candidate from the Supabase session — the orgSlug is the only input.
-export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
-  const { t } = useI18n();
+// Dates render in the organization's time zone (UTC when it has none), never the device's locale.
+export function DashboardApplications({ orgSlug, timeZone = null }: { orgSlug: string; timeZone?: string | null }) {
+  const { t, locale } = useI18n();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { data, isLoading, isError } = trpc.candidatePortal.myApplications.useQuery({ orgSlug });
 
@@ -65,6 +68,7 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
         <ul className="space-y-3">
           {applications.map((app) => {
             const isOpen = expandedId === app.id;
+            const phase = phaseText(candidatePhase(app.currentStage?.name, app.status), t.portalDashboard);
             return (
               <li key={app.id} className="rounded-xl border border-[#EDEDED] p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -74,7 +78,7 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
                       <p className="text-[12px] text-muted truncate">{app.vacancy.company.name}</p>
                     )}
                     <p className="text-[11px] text-muted mt-1">
-                      {t.portalDashboard.appliedOn} {new Date(app.appliedAt).toLocaleDateString()}
+                      {t.portalDashboard.appliedOn} {formatCandidateDate(app.appliedAt, locale, timeZone)}
                     </p>
                   </div>
                   <span
@@ -84,11 +88,14 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
                   </span>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="text-[12px] text-[#585858]">
-                    <span className="text-muted">{t.portalDashboard.currentStage}: </span>
-                    {app.currentStage.name}
-                  </p>
+                <div className="mt-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[12px] text-[#585858]">
+                      <span className="text-muted">{t.portalDashboard.currentStage}: </span>
+                      {phase.label}
+                    </p>
+                    <p className="text-[11px] text-muted">{phase.description}</p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setExpandedId(isOpen ? null : app.id)}
@@ -99,7 +106,7 @@ export function DashboardApplications({ orgSlug }: { orgSlug: string }) {
                   </button>
                 </div>
 
-                {isOpen && <DashboardApplicationTimeline orgSlug={orgSlug} applicationId={app.id} />}
+                {isOpen && <DashboardApplicationTimeline orgSlug={orgSlug} applicationId={app.id} timeZone={timeZone} />}
               </li>
             );
           })}

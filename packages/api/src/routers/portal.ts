@@ -11,6 +11,7 @@ import {
   APPLICATION_CONSENT_LOCALES,
   APPLICATION_CONSENT_TEXT_VERSION,
   APPLICATION_CONSENT_TYPE,
+  getAppUrl,
   logger,
 } from '@tims/shared';
 import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/application-consent-evidence';
@@ -51,6 +52,17 @@ async function findCandidatesByExactEmail(
 
 function isUniqueViolation(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === 'P2002';
+}
+
+// Absolute link to the organization's candidate portal for the application-received email, or
+// undefined (the email then simply has no link) when the slug or the public app origin is unusable.
+function candidatePortalUrl(orgSlug: string | undefined): string | undefined {
+  if (!orgSlug) return undefined;
+  try {
+    return new URL(`/careers/${encodeURIComponent(orgSlug)}/dashboard`, getAppUrl()).toString();
+  } catch {
+    return undefined;
+  }
 }
 
 // Verify a Cloudflare Turnstile token on the public apply form. In production the
@@ -166,13 +178,27 @@ export const portalRouter = router({
           createdAt: true,
           company: { select: { name: true } },
           unit: { select: { name: true } },
-          organization: { select: { name: true } },
+          organization: { select: { name: true, logo: true } },
           jobProfile: {
             select: { competencies: true, requirements: true },
           },
         },
       });
-      if (!vacancy) return null;
+      if (!vacancy) {
+        // A shared link to a vacancy of THIS organization that was closed (or frozen) says so instead
+        // of "not found" — the candidate learns it no longer takes applications. Nothing else about
+        // the vacancy is returned. Drafts and other organizations' ids stay indistinguishable (null).
+        const closed = await db.vacancy.findFirst({
+          where: {
+            id: input.id,
+            status: { in: ['closed', 'frozen'] },
+            deletedAt: null,
+            organization: { is: { slug: input.orgSlug } },
+          },
+          select: { id: true },
+        });
+        return closed ? ({ closed: true } as const) : null;
+      }
       const applicantCount = await db.application.count({ where: { vacancyId: vacancy.id } });
       // Anonymous endpoint: return ONLY the fields the public careers page renders, built
       // explicitly so internal columns (e.g. vacancy `settings`) can never ride along.
@@ -190,7 +216,7 @@ export const portalRouter = router({
         createdAt: vacancy.createdAt,
         company: vacancy.company ? { name: vacancy.company.name } : null,
         unit: vacancy.unit ? { name: vacancy.unit.name } : null,
-        organization: { name: vacancy.organization.name },
+        organization: { name: vacancy.organization.name, logo: vacancy.organization.logo },
         jobProfile: vacancy.jobProfile
           ? { competencies: vacancy.jobProfile.competencies, requirements: vacancy.jobProfile.requirements }
           : null,
@@ -263,7 +289,7 @@ export const portalRouter = router({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
         include: {
           stages: { where: { isDefault: true }, take: 1 },
-          organization: { select: { name: true, settings: true, billingEmail: true } },
+          organization: { select: { name: true, slug: true, settings: true, billingEmail: true } },
           company: { select: { language: true } },
         },
       });
@@ -490,6 +516,7 @@ export const portalRouter = router({
       // address per 24h platform-wide; a capped or unavailable limiter skips the email
       // (never the application).
       if (outcome.kind === 'new') {
+        const portalUrl = candidatePortalUrl(vacancy.organization?.slug);
         const confirmation = {
           candidateEmail: outcome.recipient.email,
           candidateName: outcome.recipient.firstName,
@@ -497,6 +524,7 @@ export const portalRouter = router({
           companyName: vacancy.organization?.name ?? '',
           locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
           contactEmail: candidateContactEmail(vacancy.organization),
+          ...(portalUrl ? { portalUrl } : {}),
         };
         // After the response (see lib/after-response.ts): a bare `void` promise is frozen by the
         // serverless runtime once the response is sent, so the email was never delivered.

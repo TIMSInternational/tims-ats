@@ -12,6 +12,7 @@ import { candidateConsentRepository } from '../../repositories/candidate-consent
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
+import { orgTimeZone } from '../../services/interview-email.service';
 import {
   assertApplicationNotRejected,
   lockAndAssertApplicationNotRejected,
@@ -269,25 +270,31 @@ export const offerSigningRouter = router({
             select: { title: true },
           },
           organization: {
-            select: { name: true, logo: true },
+            select: { name: true, logo: true, settings: true },
           },
         },
         take: 1,
       });
 
-      const offer = offers[0];
+      const found = offers[0];
 
-      if (!offer) {
+      if (!found) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma invalido' });
       }
 
       // Bound disclosure to the offer's validity window — an expired link must not
       // keep exposing salary/terms/candidate PII indefinitely.
-      if (offer.expiresAt && offer.expiresAt < new Date()) {
+      if (found.expiresAt && found.expiresAt < new Date()) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este enlace de firma ha expirado' });
       }
 
-      return offer;
+      // Only the organization's time zone leaves the settings JSON: the signing page formats the
+      // start date in it, like the candidate portal does.
+      const { organization, ...offer } = found;
+      return {
+        ...offer,
+        organization: { name: organization.name, logo: organization.logo, timeZone: orgTimeZone(organization.settings) },
+      };
     }),
 
   // PUBLIC: Accept offer by signing token (no auth required)
