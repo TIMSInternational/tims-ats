@@ -1,5 +1,5 @@
 import { S3Client, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import { createPresignedPost, type PresignedPostOptions } from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import { CV_ALLOWED_CONTENT_TYPES, type CvContentType } from './cv-extraction';
@@ -37,30 +37,46 @@ function getCvStorage(): { bucket: string; s3: S3Client } {
 // Presigned S3 POST (not PUT): a POST policy supports a content-length-range
 // condition, so the size cap and content-type are enforced by S3 itself at
 // upload time, not merely trusted from the client.
+/**
+ * S3 user-metadata key (x-amz-meta-candidate-id) a STAFF upload's presigned POST pins to the candidate it
+ * was issued for (A-21). The value is part of the signed POST policy, so the browser cannot change it, and
+ * recording the upload re-reads it (cvObjectHead): an object can only be attached to its own candidate.
+ */
+export const UPLOAD_CANDIDATE_METADATA = 'candidate-id';
+
 export async function createCvUploadPresignedPost(
   orgId: string,
   contentType: CvContentType,
+  options: { candidateId?: string } = {},
 ): Promise<{ url: string; fields: Record<string, string>; key: string }> {
   const key = `cv-uploads/${orgId}/${randomUUID()}.${CV_EXTENSIONS[contentType]}`;
   const { bucket, s3 } = getCvStorage();
+  const metadataField = `x-amz-meta-${UPLOAD_CANDIDATE_METADATA}`;
+  const bound = options.candidateId;
+  const conditions: NonNullable<PresignedPostOptions['Conditions']> = [
+    ['content-length-range', 0, CV_MAX_BYTES],
+    ['eq', '$Content-Type', contentType],
+  ];
+  if (bound) conditions.push(['eq', `$${metadataField}`, bound]);
   const { url, fields } = await createPresignedPost(s3, {
     Bucket: bucket,
     Key: key,
-    Conditions: [
-      ['content-length-range', 0, CV_MAX_BYTES],
-      ['eq', '$Content-Type', contentType],
-    ],
-    Fields: { 'Content-Type': contentType },
+    Conditions: conditions,
+    Fields: { 'Content-Type': contentType, ...(bound ? { [metadataField]: bound } : {}) },
     Expires: 300,
   });
   return { url, fields, key };
 }
 
-/** Size in bytes of a stored upload (HEAD only — the body is never read), for a staff document upload. */
-export async function cvObjectSize(key: string): Promise<number> {
+/**
+ * Size and pinned candidate of a stored upload (HEAD only — the body is never read), for recording a staff
+ * document upload. `candidateId` is null for an object that was not uploaded through a staff presigned POST
+ * (e.g. a public application's CV).
+ */
+export async function cvObjectHead(key: string): Promise<{ sizeBytes: number; candidateId: string | null }> {
   const { bucket, s3 } = getCvStorage();
   const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-  return head.ContentLength ?? 0;
+  return { sizeBytes: head.ContentLength ?? 0, candidateId: head.Metadata?.[UPLOAD_CANDIDATE_METADATA] ?? null };
 }
 
 export async function fetchCvObject(key: string): Promise<{ buffer: Buffer; sizeBytes: number }> {

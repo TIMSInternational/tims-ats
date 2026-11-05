@@ -6,7 +6,7 @@ import {
   createCvDownloadUrl,
   createCvUploadPresignedPost,
   cvKeyExtensionForOrg,
-  cvObjectSize,
+  cvObjectHead,
   CV_DOWNLOAD_URL_TTL_SECONDS,
   CV_MAX_BYTES,
 } from '../lib/s3';
@@ -28,7 +28,8 @@ export const candidateDocumentsService = {
     await candidateService.verifyExists(orgId, candidateId);
     // #312: no new documents for a candidate who revoked the data-processing authorization.
     await consentGuard.assertActive(orgId, candidateId);
-    return createCvUploadPresignedPost(orgId, contentType);
+    // The POST policy pins this candidate on the object (see UPLOAD_CANDIDATE_METADATA).
+    return createCvUploadPresignedPost(orgId, contentType, { candidateId });
   },
 
   async uploadDocument(orgId: string, candidateId: string, type: StaffDocumentType, fileName: string, fileKey: string) {
@@ -37,16 +38,30 @@ export const candidateDocumentsService = {
     if (!cvKeyExtensionForOrg(orgId, fileKey)) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_key_invalid' });
     }
-    let size = 0;
-    try {
-      size = await cvObjectSize(fileKey);
-    } catch {
-      size = 0;
+    // A key already on record (another candidate's file, or this upload recorded twice) is never re-attached.
+    if (await candidateRepository.findDocumentByFileKey(orgId, fileKey)) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_key_invalid' });
     }
-    if (size <= 0 || size > CV_MAX_BYTES) {
+    let head: { sizeBytes: number; candidateId: string | null } | null = null;
+    try {
+      head = await cvObjectHead(fileKey);
+    } catch {
+      head = null;
+    }
+    if (!head || head.sizeBytes <= 0 || head.sizeBytes > CV_MAX_BYTES) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_upload_missing' });
     }
-    return candidateRepository.createDocument(orgId, { candidateId, type, fileName, fileUrl: fileKey, fileSize: size });
+    // Only the candidate the upload URL was issued for: the pinned metadata is part of the signed POST policy.
+    if (head.candidateId !== candidateId) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_key_invalid' });
+    }
+    return candidateRepository.createDocument(orgId, {
+      candidateId,
+      type,
+      fileName,
+      fileUrl: fileKey,
+      fileSize: head.sizeBytes,
+    });
   },
 
   async getDocument(orgId: string, documentId: string) {

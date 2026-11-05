@@ -118,6 +118,13 @@ describe('A-15 interviews tab and offers card', () => {
     expect(screen.getByRole('link', { name: c.offersOpen }).getAttribute('href')).toBe('/recruitment/offers?offer=of1');
   });
 
+  it('says the offers could not be loaded instead of "no offers" when the read fails (Codex P2)', () => {
+    m.offers = { isLoading: false, isError: true, error: new Error('down'), refetch: vi.fn(), data: undefined };
+    render(<CandidateOffersCard candidateId="c1" />);
+    expect(screen.getByText(c.offersLoadError)).toBeTruthy();
+    expect(screen.queryByText(c.offersEmpty)).toBeNull();
+  });
+
   it('is hidden for a viewer without offer:read', () => {
     m.can.fn = (module) => module !== 'offer';
     const { container } = render(<CandidateOffersCard candidateId="c1" />);
@@ -155,6 +162,31 @@ describe('A-03 the process card uses the vacancy real stages', () => {
     expect(screen.getByText(/^Etapa actual · desde /)).toBeTruthy();
     expect(screen.getByText(c.stageNotReached)).toBeTruthy();
     expect(screen.queryByText(/via portal/)).toBeNull();
+  });
+});
+
+describe('A-03 without the movement history nothing is guessed (Codex P2)', () => {
+  it('shows only the current stage and says the history could not be loaded', () => {
+    m.stages = { isError: false, data: [{ id: 's0', name: 'Aplicado', order: 0 }, { id: 's1', name: 'Screening', order: 1 }] };
+    m.history = { isError: true, data: undefined };
+    render(
+      <StageTimeline
+        applications={[
+          {
+            id: 'a1',
+            status: 'active',
+            source: 'portal',
+            appliedAt: '2026-11-01T15:00:00.000Z',
+            vacancy: { id: 'v1', title: 'Analista', status: 'published' },
+            currentStage: { id: 's1', name: 'Screening', order: 1 },
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText(c.historyLoadError)).toBeTruthy();
+    expect(screen.queryByText(c.stageNotReached)).toBeNull();
+    expect(screen.queryByText(/^Etapa actual · desde /)).toBeNull();
+    m.history = { data: [] };
   });
 });
 

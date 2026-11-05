@@ -6,7 +6,7 @@ import { useI18n } from '../../../../../lib/i18n';
 import { useCan } from '../../../../../lib/permissions';
 import { formatDate } from '../../../../../lib/format-utils';
 import { offerDetailHref } from '../../../../../lib/offer-deep-link';
-import { Skeleton, StatusBadge } from '../../../../../components';
+import { ErrorState, Skeleton, StatusBadge } from '../../../../../components';
 
 const STATUS_CLASSES: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600',
@@ -50,7 +50,9 @@ function OffersCardBody({ candidateId }: { candidateId: string }) {
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.candidates.offersTitle}</h3>
       {offers.isLoading ? (
         <Skeleton className="h-12 w-full rounded-lg" />
-      ) : offers.isError || items.length === 0 ? (
+      ) : offers.isError ? (
+        <ErrorState message={t.candidates.offersLoadError} error={offers.error} onRetry={() => offers.refetch()} />
+      ) : items.length === 0 ? (
         <p className="text-[12px] text-[#8B8B8B] py-2 text-center">{t.candidates.offersEmpty}</p>
       ) : (
         <ul className="space-y-2">

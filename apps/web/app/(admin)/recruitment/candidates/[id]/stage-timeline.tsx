@@ -37,7 +37,9 @@ export function StageTimeline({ applications }: { applications: Application[] })
 
   if (!app) return null;
   const c = t.candidates;
-  const steps = stages.data ? buildStageSteps(stages.data, history.data ?? [], app) : null;
+  // Both reads must succeed: without the movement history, dates and "not reached" would be guesses (Codex P2).
+  const steps = stages.data && history.data ? buildStageSteps(stages.data, history.data, app) : null;
+  const loadError = stages.isError ? c.stagesLoadError : history.isError ? c.historyLoadError : null;
   const totalDays = Math.max(1, wholeDaysSince(app.appliedAt));
 
   const stepNote = (step: StageStep): string | null => {
@@ -74,12 +76,12 @@ export function StageTimeline({ applications }: { applications: Application[] })
       <p className="text-[11px] text-[#585858] mb-3">
         {c.stageAppliedVia.replace('{date}', formatDate(app.appliedAt)).replace('{source}', candidateSourceLabel(app.source, c))}
       </p>
-      {stages.isError ? (
+      {loadError ? (
         <div className="space-y-1">
           <p className="text-[12px] font-medium text-[#7B6BAA]">
             {app.currentStage.name} · {c.stageCurrent}
           </p>
-          <p role="alert" className="text-[11px] text-[#8B8B8B]">{c.stagesLoadError}</p>
+          <p role="alert" className="text-[11px] text-[#8B8B8B]">{loadError}</p>
         </div>
       ) : !steps ? (
         <div className="h-24 animate-pulse rounded-lg bg-[#F6F6F6]" />

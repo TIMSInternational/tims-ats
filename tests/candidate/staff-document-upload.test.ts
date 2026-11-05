@@ -1,25 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // A-21: staff attach a document through the same presigned S3 path as the public apply flow. The service
-// only records an object that lies in the org's own upload prefix and actually exists (<= 5 MB), and never
-// for a candidate who revoked the data-processing authorization.
+// only records an object that lies in the org's own upload prefix, actually exists (<= 5 MB), was uploaded
+// through a presigned POST issued for THIS candidate (pinned in signed S3 metadata) and is not on record
+// already — and never for a candidate who revoked the data-processing authorization.
 
 const m = vi.hoisted(() => ({
   exists: vi.fn(),
   createDocument: vi.fn(),
+  findByKey: vi.fn(),
   withdrawn: vi.fn(),
   size: vi.fn(),
   presign: vi.fn(),
 }));
 vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({
-  candidateRepository: { exists: m.exists, createDocument: m.createDocument },
+  candidateRepository: { exists: m.exists, createDocument: m.createDocument, findDocumentByFileKey: m.findByKey },
 }));
 vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
   candidateConsentRepository: { isRecruitmentConsentWithdrawn: m.withdrawn, withdrawnCandidateIds: vi.fn() },
 }));
 vi.mock('../../packages/api/src/lib/s3', async () => {
   const actual = await vi.importActual<typeof import('../../packages/api/src/lib/s3')>('../../packages/api/src/lib/s3');
-  return { ...actual, cvObjectSize: m.size, createCvUploadPresignedPost: m.presign };
+  return { ...actual, cvObjectHead: m.size, createCvUploadPresignedPost: m.presign };
 });
 
 import { candidateDocumentsService } from '../../packages/api/src/services/candidate-documents.service';
@@ -33,15 +35,37 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.exists.mockResolvedValue({ id: CANDIDATE });
   m.withdrawn.mockResolvedValue(false);
-  m.size.mockResolvedValue(20_000);
+  m.size.mockResolvedValue({ sizeBytes: 20_000, candidateId: CANDIDATE });
+  m.findByKey.mockResolvedValue(null);
   m.createDocument.mockImplementation(async (_org: string, data: Record<string, unknown>) => ({ id: 'doc-1', ...data }));
   m.presign.mockResolvedValue({ url: 'https://bucket.example.test', fields: {}, key: KEY });
 });
 
 describe('candidateDocumentsService staff upload', () => {
-  it('issues a presigned POST into the org prefix for the requested type', async () => {
+  it('issues a presigned POST into the org prefix, pinned to the candidate', async () => {
     await candidateDocumentsService.getUploadUrl(ORG, CANDIDATE, 'application/pdf');
-    expect(m.presign).toHaveBeenCalledWith(ORG, 'application/pdf');
+    expect(m.presign).toHaveBeenCalledWith(ORG, 'application/pdf', { candidateId: CANDIDATE });
+  });
+
+  it('refuses an object uploaded for another candidate, or not through a staff upload at all (Codex P1)', async () => {
+    m.size.mockResolvedValue({ sizeBytes: 20_000, candidateId: '44444444-4444-4444-8444-444444444444' });
+    await expect(candidateDocumentsService.uploadDocument(ORG, CANDIDATE, 'cv', 'cv.pdf', KEY)).rejects.toMatchObject({
+      message: 'document_key_invalid',
+    });
+    m.size.mockResolvedValue({ sizeBytes: 20_000, candidateId: null });
+    await expect(candidateDocumentsService.uploadDocument(ORG, CANDIDATE, 'cv', 'cv.pdf', KEY)).rejects.toMatchObject({
+      message: 'document_key_invalid',
+    });
+    expect(m.createDocument).not.toHaveBeenCalled();
+  });
+
+  it('never re-attaches a key that is already on record', async () => {
+    m.findByKey.mockResolvedValue({ id: 'existing-doc' });
+    await expect(candidateDocumentsService.uploadDocument(ORG, CANDIDATE, 'cv', 'cv.pdf', KEY)).rejects.toMatchObject({
+      message: 'document_key_invalid',
+    });
+    expect(m.size).not.toHaveBeenCalled();
+    expect(m.createDocument).not.toHaveBeenCalled();
   });
 
   it('records the uploaded object with its real size and the S3 key as the file location', async () => {
@@ -72,8 +96,8 @@ describe('candidateDocumentsService staff upload', () => {
 
   it.each([
     ['no object was uploaded', () => m.size.mockRejectedValue(new Error('NotFound'))],
-    ['the object is empty', () => m.size.mockResolvedValue(0)],
-    ['the object is larger than 5 MB', () => m.size.mockResolvedValue(5 * 1024 * 1024 + 1)],
+    ['the object is empty', () => m.size.mockResolvedValue({ sizeBytes: 0, candidateId: CANDIDATE })],
+    ['the object is larger than 5 MB', () => m.size.mockResolvedValue({ sizeBytes: 5 * 1024 * 1024 + 1, candidateId: CANDIDATE })],
   ])('refuses when %s', async (_label, arrange) => {
     arrange();
     await expect(candidateDocumentsService.uploadDocument(ORG, CANDIDATE, 'cv', 'cv.pdf', KEY)).rejects.toMatchObject({

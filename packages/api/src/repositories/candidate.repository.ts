@@ -374,6 +374,14 @@ export const candidateRepository = {
   // The CV document already recorded for this candidate + uploaded object key, if any —
   // public apply records it unparsed in the application transaction; processing reuses it,
   // and a retry never duplicates the row or the AI call.
+  // Any document of this org already stored under this key (staff upload: a key is recorded at most once).
+  async findDocumentByFileKey(orgId: string, fileUrl: string) {
+    return db.candidateDocument.findFirst({
+      where: { organizationId: orgId, fileUrl },
+      select: { id: true },
+    });
+  },
+
   async findCvDocumentByKey(orgId: string, candidateId: string, fileUrl: string) {
     return db.candidateDocument.findFirst({
       where: { organizationId: orgId, candidateId, type: 'cv', fileUrl },
