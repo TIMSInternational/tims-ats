@@ -13,7 +13,8 @@ namespace Tims.Domain.Access;
 /// (<c>assignedTo</c>, <c>createdBy</c>, <c>teamId</c>, <c>businessUnitId</c>, <c>userId</c>,
 /// <c>employeeId</c>, <c>leaderId</c>, <c>createdById</c>, <c>toUserId</c>, <c>fromUserId</c>,
 /// <c>buddyId</c>, <c>responsibleId</c>, <c>currentHolderId</c>, <c>deletedAt</c>, <c>id</c>),
-/// relation navs camelCase (<c>vacancy</c>, <c>applications</c>, <c>evaluators</c>), and the
+/// relation navs camelCase (<c>vacancy</c>, <c>applications</c>, <c>evaluators</c>, <c>user</c>,
+/// <c>hirePredictions</c>), and the
 /// combinator keys are <c>OR</c>/<c>AND</c>/<c>in</c>/<c>some</c> exactly as Prisma emits.
 /// </summary>
 public abstract record ScopePredicate

@@ -132,7 +132,19 @@ export async function scopeWhereFor(entity: ScopedEntity, access: AccessContext,
       return { OR: [{ toUserId: await subjectFragment() }, { fromUserId: userId }] };
     case 'onboardingPlan':
       // Subject = the new hire (userId); the assigned buddy always sees the plan.
-      return { OR: [{ userId: await subjectFragment() }, { buddyId: userId }] };
+      // B-09 — team scope (the hiring leader) also sees the plans of people HIRED INTO a vacancy it can
+      // see (led team or assigned to it), through the hire snapshot every confirmed hire writes
+      // (hire_predictions.user_id → vacancy). Without it a leader who authorized a hire found an empty
+      // list: the plan is created without a team unless the vacancy carries one.
+      return scope === 'team'
+        ? {
+            OR: [
+              { userId: await subjectFragment() },
+              { buddyId: userId },
+              { user: { hirePredictions: { some: viaVacancy } } },
+            ],
+          }
+        : { OR: [{ userId: await subjectFragment() }, { buddyId: userId }] };
     case 'criticalRole':
       // Anchored on the (nullable) current holder. Prisma `in` never matches
       // NULL → an unfilled critical role is hidden from narrow scopes (fail-narrow).
