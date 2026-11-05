@@ -2,7 +2,17 @@ import { TRPCError } from '@trpc/server';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { candidateService } from './candidate.service';
 import { logDataAccess } from '../access/audit';
-import { createCvDownloadUrl, cvKeyExtensionForOrg, CV_DOWNLOAD_URL_TTL_SECONDS } from '../lib/s3';
+import {
+  createCvDownloadUrl,
+  createCvUploadPresignedPost,
+  cvKeyExtensionForOrg,
+  cvObjectSize,
+  CV_DOWNLOAD_URL_TTL_SECONDS,
+  CV_MAX_BYTES,
+} from '../lib/s3';
+import type { CvContentType } from '../lib/cv-extraction';
+import type { StaffDocumentType } from '@tims/shared';
+import { consentGuard } from './consent-guard.service';
 
 // ---------------------------------------------------------------------------
 // Candidate Documents Service — document CRUD, no db imports.
@@ -10,20 +20,33 @@ import { createCvDownloadUrl, cvKeyExtensionForOrg, CV_DOWNLOAD_URL_TTL_SECONDS 
 // ---------------------------------------------------------------------------
 
 export const candidateDocumentsService = {
-  // This staff-side upload path is still a mock (fabricates fileUrl, never accepts real
-  // bytes) — unlike the public apply flow's real S3 upload (portalApplicationService,
-  // packages/api/src/routers/portal.ts), which is out of scope for this staff path.
-  async uploadDocument(orgId: string, candidateId: string, type: string, fileName: string, fileSize?: number) {
+  // Staff upload (A-21), the same presigned S3 path the public apply flow uses: getUploadUrl issues a
+  // presigned POST into the org's own `cv-uploads/<orgId>/` prefix (S3 enforces the content type and the
+  // 5 MB cap), the browser posts the file there, then uploadDocument records it. A key outside the org's
+  // prefix, or one with no object behind it, is refused — it could never be opened with getDocumentUrl.
+  async getUploadUrl(orgId: string, candidateId: string, contentType: CvContentType) {
     await candidateService.verifyExists(orgId, candidateId);
-    const mockUrl = `https://storage.tims.app/${orgId}/${candidateId}/${fileName}`;
-    const doc = await candidateRepository.createDocument(orgId, {
-      candidateId,
-      type,
-      fileName,
-      fileUrl: mockUrl,
-      fileSize,
-    });
-    return { document: doc, uploadUrl: mockUrl };
+    // #312: no new documents for a candidate who revoked the data-processing authorization.
+    await consentGuard.assertActive(orgId, candidateId);
+    return createCvUploadPresignedPost(orgId, contentType);
+  },
+
+  async uploadDocument(orgId: string, candidateId: string, type: StaffDocumentType, fileName: string, fileKey: string) {
+    await candidateService.verifyExists(orgId, candidateId);
+    await consentGuard.assertActive(orgId, candidateId);
+    if (!cvKeyExtensionForOrg(orgId, fileKey)) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_key_invalid' });
+    }
+    let size = 0;
+    try {
+      size = await cvObjectSize(fileKey);
+    } catch {
+      size = 0;
+    }
+    if (size <= 0 || size > CV_MAX_BYTES) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_upload_missing' });
+    }
+    return candidateRepository.createDocument(orgId, { candidateId, type, fileName, fileUrl: fileKey, fileSize: size });
   },
 
   async getDocument(orgId: string, documentId: string) {
@@ -44,7 +67,7 @@ export const candidateDocumentsService = {
   ) {
     const doc = await candidateRepository.findCandidateDocumentFile(orgId, candidateId, documentId);
     if (!doc) throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
-    // Rows written by the mock staff upload (uploadDocument) hold a non-S3 URL; legacy or tampered keys may sit
+    // Rows written by the former mock staff upload hold a non-S3 URL; legacy or tampered keys may sit
     // outside the org prefix. Neither has a file this org may read.
     if (!cvKeyExtensionForOrg(orgId, doc.fileUrl)) {
       throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'document_file_unavailable' });

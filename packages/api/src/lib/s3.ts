@@ -56,6 +56,13 @@ export async function createCvUploadPresignedPost(
   return { url, fields, key };
 }
 
+/** Size in bytes of a stored upload (HEAD only — the body is never read), for a staff document upload. */
+export async function cvObjectSize(key: string): Promise<number> {
+  const { bucket, s3 } = getCvStorage();
+  const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+  return head.ContentLength ?? 0;
+}
+
 export async function fetchCvObject(key: string): Promise<{ buffer: Buffer; sizeBytes: number }> {
   const { bucket, s3 } = getCvStorage();
   const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
