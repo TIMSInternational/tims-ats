@@ -40,13 +40,62 @@ export const candidatePortalRepo = {
     });
   },
 
-  // The candidate's display name for the portal /dashboard header. Same tenant-scoped path
-  // as everything else here — the SSR gate must NOT read candidate data on the
-  // privileged db (that would bypass RLS).
+  // The candidate's display name and the contact fields they may correct ("Mis datos") for the
+  // portal /dashboard. Same tenant-scoped path as everything else here — the SSR gate must NOT
+  // read candidate data on the privileged db (that would bypass RLS).
   findCandidateName(organizationId: string, email: string) {
     return tenantDb.candidate.findFirst({
       where: { organizationId, email, isActive: true, deletedAt: null },
-      select: { firstName: true, lastName: true },
+      select: { firstName: true, lastName: true, phone: true, location: true },
+    });
+  },
+
+  // The candidate's own correction of their name/phone/location. Conditional on the same
+  // org + id + active + not-deleted filters as every read, so a record that was deactivated or
+  // deleted meanwhile is never revived or edited. Returns null when nothing matched.
+  async updateCandidateProfile(
+    organizationId: string,
+    candidateId: string,
+    data: { firstName: string; lastName: string; phone: string | null; location: string | null },
+  ) {
+    const result = await tenantDb.candidate.updateMany({
+      where: { id: candidateId, organizationId, isActive: true, deletedAt: null },
+      data,
+    });
+    if (result.count !== 1) return null;
+    return tenantDb.candidate.findFirst({
+      where: { id: candidateId, organizationId },
+      select: { firstName: true, lastName: true, phone: true, location: true },
+    });
+  },
+
+  // The candidate withdraws ONE of their own applications. A single conditional statement: only
+  // an application of THIS candidate at THIS org that is still 'active' moves to 'withdrawn', so it
+  // can never overwrite a hire or a rejection that committed first (hire-closure and
+  // rejectApplication are conditional on 'active' the same way). It is also refused while the
+  // candidate holds a sent or accepted offer for that vacancy (linked or not): answering the offer
+  // is the way out at that stage, and a withdrawn application must not end up hired.
+  // Returns the number of rows moved (0 or 1).
+  async withdrawApplication(organizationId: string, candidateId: string, applicationId: string) {
+    const result = await tenantDb.application.updateMany({
+      where: {
+        id: applicationId,
+        candidateId,
+        organizationId,
+        status: 'active',
+        vacancy: { offers: { none: { candidateId, status: { in: ['sent', 'accepted'] } } } },
+      },
+      data: { status: 'withdrawn' },
+    });
+    return result.count;
+  },
+
+  // Why a withdrawal matched nothing: the application's current status, or null when this
+  // candidate has no such application at this org.
+  findOwnApplicationStatus(organizationId: string, candidateId: string, applicationId: string) {
+    return tenantDb.application.findFirst({
+      where: { id: applicationId, candidateId, organizationId },
+      select: { status: true },
     });
   },
 

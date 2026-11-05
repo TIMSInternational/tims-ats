@@ -51,8 +51,14 @@ import { appRouter } from '@tims/api';
  * company-admin access-1): `vacancy.getPending` (the approver inbox's vacancy half; offers already had
  * `offer.getPending`) and `vacancy.withdrawApproval` + `offer.withdrawApproval` (a request stuck with an
  * absent approver otherwise stays in pending_approval for good). Same terms: not headroom, owed a C# port.
+ *
+ * Third D-1 exception: 357 → 359 on 2026-11-04 for the pilot candidate portal (audit C-33):
+ * `candidatePortal.withdrawMyApplication` ("Retirar mi postulación", the existing 'withdrawn' status) and
+ * `candidatePortal.updateMyProfile` (a candidate could not correct a wrong phone number). The candidate
+ * reads they sit beside live only in this router; the current profile values are rendered server-side,
+ * so no read procedure was added. Same terms: not headroom, owed a C# port.
  */
-const PROCEDURE_CEILING = 357;
+const PROCEDURE_CEILING = 359;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.
