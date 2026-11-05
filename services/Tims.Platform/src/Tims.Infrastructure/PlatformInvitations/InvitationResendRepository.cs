@@ -31,6 +31,10 @@ public sealed class InvitationResendRepository(InvitationResendDbContext db) : I
             """, ct) == 1;
     }
 
+    // Privileged, cross-org context (like FindAsync above): no tenant scope.
+    public Task<string?> FindTimeZoneAsync(Guid organizationId, CancellationToken ct) =>
+        OrganizationTimeZoneQuery.FindAsync(db, organizationId, ct);
+
     private static NpgsqlParameter Timestamp(string name, DateTime value) => new(name, NpgsqlDbType.Timestamp)
     {
         Value = DateTime.SpecifyKind(value, DateTimeKind.Unspecified),

@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Net;
 using Tims.Domain.Identity;
+using Tims.Domain.Localization;
 
 namespace Tims.Application.PlatformInvitations;
 
@@ -8,8 +8,10 @@ namespace Tims.Application.PlatformInvitations;
 public static class InvitationEmail
 {
     /// <param name="role">The role SLUG the invitation grants; it is printed as its label (<see cref="RoleLabels"/>).</param>
+    /// <param name="timeZone">The organization's IANA time zone (<see cref="InvitationTimeZone"/>); null states the
+    /// expiry in UTC, labelled as such.</param>
     public static string Render(string organization, string? role, string url, DateTime expiresAt,
-        string locale = "es", bool reminder = false)
+        string locale = "es", bool reminder = false, string? timeZone = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var target) || target.Scheme != "https" ||
             target.UserInfo.Length != 0)
@@ -21,7 +23,9 @@ public static class InvitationEmail
         var steps = en
             ? "New to TIMS? Create your password, confirm your details and join your team. Already have an account? Sign in with your existing credentials."
             : "¿Es tu primera vez en TIMS? Crea tu contraseña, confirma tus datos y únete a tu equipo. Si ya tienes una cuenta, inicia sesión con tus credenciales actuales.";
-        var date = expiresAt.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo(en ? "en-US" : "es-CO"));
+        // In the organization's time zone with an explicit label, e.g. "15 de noviembre de 2026, 9:00 p. m., hora de
+        // Costa Rica (GMT-6)" (Pilot UX audit E-23). A bare UTC date read a day late in Costa Rica after 6 p.m.
+        var date = ZonedDateTimeText.Format(expiresAt, timeZone, en ? "en" : "es");
         var footer = en
             ? "Need help? Contact the administrator who invited you. If you were not expecting this invitation, you can ignore this email."
             : "¿Necesitas ayuda? Contacta al administrador que te invitó. Si no esperabas esta invitación, puedes ignorar este correo.";
@@ -40,7 +44,7 @@ public static class InvitationEmail
             <h1 style="font-size:30px;line-height:1.2;margin:0 0 20px;font-weight:600;">{heading}</h1>
             <p style="font-size:16px;line-height:1.7;color:#625c70;margin:0 0 24px;">{intro} <strong style="color:#241641;">{E(organization)}</strong>.</p>
             <table role="presentation" width="100%" style="background:#f6f5fa;border-radius:12px;margin-bottom:24px;"><tr><td style="padding:18px;font-size:14px;line-height:1.7;">
-            <strong>{E(organization)}</strong><br>{E(access)}<br><span style="font-size:12px;color:#776b8f;">{(en ? "Valid until" : "Válida hasta")}: {E(date)} UTC</span></td></tr></table>
+            <strong>{E(organization)}</strong><br>{E(access)}<br><span style="font-size:12px;color:#776b8f;">{(en ? "Valid until" : "Válida hasta")}: {E(date)}</span></td></tr></table>
             <p style="font-size:14px;line-height:1.8;color:#625c70;margin:0 0 26px;">{steps}</p>
             <table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#241641" style="border-radius:10px;"><a href="{E(url)}" style="display:inline-block;padding:16px 26px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;">{button} &#8594;</a></td></tr></table>
             <p style="font-size:12px;line-height:1.6;color:#776b8f;margin:26px 0 8px;">{(en ? "If the button does not work, open this link:" : "Si el botón no funciona, abre este enlace:")}</p>

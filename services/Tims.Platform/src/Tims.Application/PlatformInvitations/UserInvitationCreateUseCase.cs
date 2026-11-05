@@ -44,10 +44,11 @@ public sealed class UserInvitationCreateUseCase(IUserInvitationCreateRepository 
         if (pending.Outcome != UserInvitationCreateOutcome.Created) return new(pending.Outcome);
         var invitation = pending.Snapshot!;
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
+        var timeZone = await InvitationTimeZone.FindAsync(deliveryRepository, input.OrganizationId, ct);
         var outcome = await new InitialInvitationDelivery(deliveryRepository, sender, clock).SendAsync(invitation, pending.ExpiresAt!.Value,
             "Invitación para unirte a TIMS ATS",
             InvitationEmail.Render(invitation.OrganizationName ?? "TIMS ATS",
-                input.RoleSlug, url, pending.ExpiresAt.Value), ct);
+                input.RoleSlug, url, pending.ExpiresAt.Value, timeZone: timeZone), ct);
         return new(UserInvitationCreateOutcome.Created, new(invitation.Id, input.OrganizationId, outcome));
     }
 }

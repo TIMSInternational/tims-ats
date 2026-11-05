@@ -8,4 +8,10 @@ public interface IInvitationResendRepository
 {
     Task<InvitationResendSnapshot?> FindAsync(Guid id, CancellationToken ct);
     Task<bool> MarkSentAsync(InvitationResendSnapshot expected, DateTime sentAt, DateTime expiresAt, CancellationToken ct);
+
+    /// <summary>
+    /// The organization's IANA time zone for the email's expiry line: <c>settings.timezone</c>, else its oldest
+    /// active company's, else null (the email then states the expiry in UTC, labelled). Pilot UX audit E-23.
+    /// </summary>
+    Task<string?> FindTimeZoneAsync(Guid organizationId, CancellationToken ct);
 }
