@@ -185,7 +185,7 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
 
   // Step 1 — basic info
   await wizard.getByPlaceholder('Ej: Senior Software Engineer').fill(title);
-  await wizard.getByPlaceholder('Bogotá, Colombia').fill('Medellín, Colombia');
+  await wizard.getByPlaceholder('San José, Costa Rica').fill('San José, Costa Rica');
   await wizard.getByRole('button', { name: 'Presencial' }).click();
   if (PENDING.orgStructure.merged) {
     // #310: the vacancy is placed in the team whose leader approves it.
@@ -202,13 +202,14 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
   await wizard.getByRole('button', { name: 'Siguiente' }).click();
 
   // Step 3 — compensation; approval required, not auto-published
-  await wizard.getByPlaceholder('8,000,000').fill('6500000');
-  await wizard.getByPlaceholder('14,000,000').fill('9000000');
+  await wizard.getByPlaceholder('850000').fill('650000');
+  await wizard.getByPlaceholder('1200000').fill('900000');
   await wizard.getByRole('button', { name: 'Crear vacante' }).click();
   await expect(wizard).toBeHidden();
 
-  await page.getByRole('link', { name: title }).first().click();
+  // Creating a vacancy opens it: a draft's next step ("Enviar para aprobación") lives on its page.
   await expect(page).toHaveURL(/\/recruitment\/vacancies\/[0-9a-f-]{36}$/);
+  await expect(page.getByText(title).first()).toBeVisible();
   const id = page.url().split('/').pop()!;
   j.vacancy = { id, title };
   saveJourney(j);
@@ -218,7 +219,8 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
 /** Open the vacancy and submit it for approval to `approverName`. */
 async function submitForApproval(page: Page, approverName: string): Promise<void> {
   await page.goto(`/recruitment/vacancies/${j.vacancy!.id}`);
-  await page.getByRole('button', { name: 'Enviar para aprobación' }).click();
+  // The header CTA comes first; the approval card's link opens the same dialog.
+  await page.getByRole('button', { name: 'Enviar para aprobación' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Enviar para aprobación' });
   await dialog.getByPlaceholder('Buscar usuario...').fill(approverName.split(' ')[0]);
   await dialog
