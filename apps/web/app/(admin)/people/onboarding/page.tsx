@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { onboardingCheckInTypeLabel, onboardingStatusLabel } from '../../../../lib/onboarding-labels';
-import { derivedOnboardingPhase, isPastDue } from '../../../../lib/onboarding-schedule';
+import { isPastDue } from '../../../../lib/onboarding-schedule';
 import { useCan } from '../../../../lib/permissions';
 import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
 import { useOnboardingOrgScope } from './use-onboarding-org-scope';
@@ -65,9 +65,16 @@ function PlusIcon() {
 
 /* ── Page ───────────────────────────────────────────────────── */
 
+const START_PHASES = ['day1_30', 'day31_60', 'day61_90'] as const;
+type StartPhase = (typeof START_PHASES)[number];
+
+function isStartPhase(value: string): value is StartPhase {
+  return (START_PHASES as readonly string[]).includes(value);
+}
+
 export default function OnboardingPage() {
   const { t } = useI18n();
-  const [phase, setPhase] = useState<string | undefined>(undefined);
+  const [phase, setPhase] = useState<StartPhase | undefined>(undefined);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCheckIn, setSelectedCheckIn] = useState<{ id: string; label: string } | null>(null);
 
@@ -75,18 +82,21 @@ export default function OnboardingPage() {
   // The KPI strip aggregates the whole organization: only org-wide readers ask for it (B-09 / E-08).
   const orgScope = useOnboardingOrgScope();
   const kpis = trpc.onboarding.getDashboardKpis.useQuery(undefined, { enabled: orgScope });
-  // The phase is derived from the start date (the stored phase never advances), so the tabs filter here.
-  const plans = trpc.onboarding.list.useQuery({ limit: 50, status: 'active' });
+  // The tabs filter on the phase the START DATE gives today (the stored phase never advances). The server
+  // applies it before paginating, and "Cargar más" reaches every page, so no hire drops out of a tab.
+  const plans = trpc.onboarding.list.useInfiniteQuery(
+    { limit: 50, status: 'active', ...(phase ? { startPhase: phase } : {}) },
+    { getNextPageParam: (last) => last.nextCursor ?? undefined },
+  );
 
   const k = kpis.data;
-  const allItems = (plans.data?.plans ?? []) as OnboardingPlan[];
-  const items = phase ? allItems.filter((plan) => derivedOnboardingPhase(plan.startDate) === phase) : allItems;
+  const items = (plans.data?.pages.flatMap((page) => page.plans) ?? []) as OnboardingPlan[];
   const overdueTasks = k?.overdueTasks ?? 0;
   const pendingTasks = k ? k.totalTasks - k.completedTasks : 0;
   const canUpdate = can('onboarding', 'update');
 
   const handlePhaseChange = (p: string) => {
-    setPhase(p === 'all' ? undefined : p);
+    setPhase(isStartPhase(p) ? p : undefined);
   };
 
   return (
@@ -183,7 +193,21 @@ export default function OnboardingPage() {
             <ErrorState onRetry={() => plans.refetch()} />
           </div>
         ) : (
-          <OnboardingTable plans={items} isLoading={plans.isLoading} onPhaseChange={handlePhaseChange} />
+          <>
+            <OnboardingTable plans={items} isLoading={plans.isLoading} onPhaseChange={handlePhaseChange} />
+            {plans.hasNextPage && (
+              <div className="-mt-3 mb-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void plans.fetchNextPage()}
+                  disabled={plans.isFetchingNextPage}
+                  className="h-8 px-4 rounded-lg border border-[#EDEDED] bg-white text-[12px] font-medium text-[#1F114C] hover:bg-[#F6F6F6] transition disabled:opacity-50"
+                >
+                  {plans.isFetchingNextPage ? t.common.loading : t.onboarding.loadMore}
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* Row 2: Tasks + Docs + Courses */}

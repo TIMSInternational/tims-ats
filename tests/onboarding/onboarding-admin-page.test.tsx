@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   plans: [] as unknown[],
   queries: [] as Array<{ path: string; input: unknown; enabled: boolean }>,
   mutate: vi.fn(),
+  hasMore: false,
+  fetchNextPage: vi.fn(),
 }));
 
 vi.mock('../../apps/web/lib/permissions', () => ({
@@ -58,6 +60,19 @@ vi.mock('../../apps/web/lib/trpc', () => {
                 refetch: () => undefined,
               };
             return { data: undefined, isLoading: false, isError: false, refetch: () => undefined };
+          };
+        if (prop === 'useInfiniteQuery')
+          return (input?: unknown) => {
+            state.queries.push({ path: key, input, enabled: true });
+            return {
+              data: { pages: [{ plans: state.plans, nextCursor: state.hasMore ? 'next' : null }] },
+              isLoading: false,
+              isError: false,
+              hasNextPage: state.hasMore,
+              isFetchingNextPage: false,
+              fetchNextPage: state.fetchNextPage,
+              refetch: () => undefined,
+            };
           };
         if (prop === 'useMutation') return () => ({ mutate: state.mutate, isPending: false });
         if (prop === 'useUtils')
@@ -129,6 +144,8 @@ beforeEach(() => {
   cleanup();
   state.queries.length = 0;
   state.mutate.mockReset();
+  state.fetchNextPage.mockReset();
+  state.hasMore = false;
   state.privileged = false;
   state.plans = [plan()];
 });
@@ -173,16 +190,25 @@ describe('HR onboarding page — who sees what (B-09 / E-08)', () => {
     expect(screen.queryByText(/!/)).not.toBeInTheDocument();
   });
 
-  it('filters by the phase the start date gives today, not the stored one (B-23)', () => {
+  it('asks the server for the phase the start date gives today, before paging (B-23)', () => {
     state.grants = new Set(HR);
     state.sessionPermissions = [{ module: 'onboarding', action: 'read', scope: 'organization' }];
     renderPage();
-    const listCall = state.queries.find((q) => q.path === 'onboarding.list');
-    expect(listCall?.input).toEqual({ limit: 50, status: 'active' });
-    fireEvent.click(screen.getByRole('button', { name: 'Día 1-30' }));
-    expect(screen.queryAllByText('Ana Lopez')).toHaveLength(0);
+    const lists = () => state.queries.filter((q) => q.path === 'onboarding.list').map((q) => q.input);
+    expect(lists().at(-1)).toEqual({ limit: 50, status: 'active' });
     fireEvent.click(screen.getByRole('button', { name: 'Día 31-60' }));
-    expect(screen.getAllByText('Ana Lopez').length).toBeGreaterThan(0);
+    expect(lists().at(-1)).toEqual({ limit: 50, status: 'active', startPhase: 'day31_60' });
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(lists().at(-1)).toEqual({ limit: 50, status: 'active' });
+  });
+
+  it('keeps every hire reachable: "Cargar más" fetches the next page', () => {
+    state.grants = new Set(HR);
+    state.sessionPermissions = [{ module: 'onboarding', action: 'read', scope: 'organization' }];
+    state.hasMore = true;
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Cargar más' }));
+    expect(state.fetchNextPage).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -19,6 +19,54 @@ function startOfTodayIn(timeZone: string, now: Date = new Date()): Date {
   return zonedWallTimeToDate(zonedDateString(timeZone, 0, now), '00:00', timeZone) ?? now;
 }
 
+const DAY_MS = 86_400_000;
+const START_PHASES = ['day1_30', 'day31_60', 'day61_90'] as const;
+
+// B-23: the phase a hire is in TODAY comes from the start date (onboarding_plans.phase is written once
+// and never advances). Days 0-30 / 31-60 / 61+ since the start day, counted from the start of today in
+// the organization's zone — the same bands the web page shows (apps/web/lib/onboarding-schedule.ts).
+// Filtering here, before pagination, keeps older hires reachable from their tab.
+function startDateForPhase(phase: (typeof START_PHASES)[number], today: Date): Prisma.DateTimeFilter {
+  const daysAgo = (n: number) => new Date(today.getTime() - n * DAY_MS);
+  if (phase === 'day1_30') return { gte: daysAgo(30) };
+  if (phase === 'day31_60') return { gte: daysAgo(60), lt: daysAgo(30) };
+  return { lt: daysAgo(60) };
+}
+
+/** Start of today in the organization's zone (UTC when it has none). */
+async function organizationToday(orgId: string): Promise<Date> {
+  const org = await db.organization.findFirst({ where: { id: orgId }, select: { settings: true } });
+  return startOfTodayIn(orgSettingsTimeZone(org?.settings ?? null) ?? UTC_TIME_ZONE);
+}
+
+// A buddy must be able to open the plan (the buddy arm of the onboardingPlan scope only helps a holder of
+// onboarding:read) — otherwise HR is told "asignado" while the buddy gets FORBIDDEN on every screen.
+async function assertBuddyCanReadOnboarding(orgId: string, buddyId: string): Promise<void> {
+  const eligible = await db.user.count({
+    where: {
+      id: buddyId,
+      organizationId: orgId,
+      isActive: true,
+      userRoles: {
+        some: {
+          role: {
+            organizationId: orgId,
+            isActive: true,
+            rolePermissions: { some: { permission: { module: 'onboarding', action: 'read' } } },
+          },
+        },
+      },
+    },
+  });
+  if (eligible === 0) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message:
+        'Esta persona no tiene acceso a Onboarding, así que no podría ver el plan. Elige a otra persona (por ejemplo, un colaborador o su líder).',
+    });
+  }
+}
+
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
 async function assertUsersInOrg(orgId: string, userIds: (string | null | undefined)[]) {
@@ -49,6 +97,8 @@ export const onboardingRouter = router({
         limit: z.number().min(1).max(100).default(25),
         status: z.enum(['active', 'completed', 'cancelled']).optional(),
         phase: z.string().max(100).optional(),
+        // The phase derived from the start date (see startDateForPhase); prefer it over the stored `phase`.
+        startPhase: z.enum(START_PHASES).optional(),
         search: z.string().max(200).optional(),
         // Self-service ("Mi Onboarding"): only plans where the caller IS the hire.
         // Applied on top of the scope fragment, so it can only narrow.
@@ -56,8 +106,11 @@ export const onboardingRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { cursor, limit, status, phase, search, mine } = input;
+      const { cursor, limit, status, phase, startPhase, search, mine } = input;
       const scopeWhere = (await scopeWhereFor('onboardingPlan', ctx.access, ctx.user.id)) as Prisma.OnboardingPlanWhereInput;
+      const startDate = startPhase
+        ? startDateForPhase(startPhase, await organizationToday(ctx.user.organizationId))
+        : undefined;
 
       const where: Prisma.OnboardingPlanWhereInput = {
         AND: [
@@ -67,6 +120,7 @@ export const onboardingRouter = router({
             ...(mine ? { userId: ctx.user.id } : {}),
             ...(status ? { status } : {}),
             ...(phase ? { phase } : {}),
+            ...(startDate ? { startDate } : {}),
             ...(search
               ? {
                   user: {
@@ -155,6 +209,12 @@ export const onboardingRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Verify referenced users belong to the caller's org (no cross-tenant refs)
       await assertUsersInOrg(ctx.user.organizationId, [input.userId, input.buddyId]);
+      if (input.buddyId) {
+        if (input.buddyId === input.userId) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El compañero guía debe ser otra persona' });
+        }
+        await assertBuddyCanReadOnboarding(ctx.user.organizationId, input.buddyId);
+      }
 
       // Narrow scopes may only create onboarding plans for users inside their
       // subject set (the new hire must be in-scope; no row exists yet).
@@ -211,6 +271,7 @@ export const onboardingRouter = router({
         if (target?.userId === data.buddyId) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'El compañero guía debe ser otra persona' });
         }
+        await assertBuddyCanReadOnboarding(ctx.user.organizationId, data.buddyId);
       }
 
       const update = {
@@ -544,8 +605,7 @@ export const onboardingRouter = router({
     requireOrgScope(ctx.access);
 
     const orgId = ctx.user.organizationId;
-    const org = await db.organization.findFirst({ where: { id: orgId }, select: { settings: true } });
-    const today = startOfTodayIn(orgSettingsTimeZone(org?.settings ?? null) ?? UTC_TIME_ZONE);
+    const today = await organizationToday(orgId);
 
     const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns, overdueTasks] =
       await Promise.all([

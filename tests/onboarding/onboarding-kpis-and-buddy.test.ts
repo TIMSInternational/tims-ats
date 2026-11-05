@@ -75,7 +75,7 @@ beforeEach(() => {
   h.checkInCount.mockResolvedValue(0);
   h.planAggregate.mockResolvedValue({ _avg: { riskScore: null } });
   h.assertScoped.mockResolvedValue(undefined);
-  h.userCount.mockResolvedValue(1);
+  h.userCount.mockReset().mockResolvedValue(1);
   h.planUpdate.mockResolvedValue({ id: planId });
 });
 
@@ -117,11 +117,37 @@ describe('onboarding.getDashboardKpis', () => {
 });
 
 describe('onboarding.updatePlan buddy', () => {
-  it('saves a buddy from the same organization', async () => {
+  it('saves a buddy from the same organization who can read onboarding', async () => {
     h.planFindFirst.mockResolvedValue({ userId: hireId });
     await (await caller()).onboarding.updatePlan({ id: planId, buddyId });
     expect(h.userCount).toHaveBeenCalledWith({ where: { id: { in: [buddyId] }, organizationId: orgId } });
+    expect(h.userCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: buddyId,
+        organizationId: orgId,
+        isActive: true,
+        userRoles: {
+          some: {
+            role: {
+              organizationId: orgId,
+              isActive: true,
+              rolePermissions: { some: { permission: { module: 'onboarding', action: 'read' } } },
+            },
+          },
+        },
+      }),
+    });
     expect(h.planUpdate).toHaveBeenCalledWith({ where: { id: planId }, data: { buddyId } });
+  });
+
+  it('refuses a buddy who could not open the plan (no onboarding access), with a clear reason', async () => {
+    h.planFindFirst.mockResolvedValue({ userId: hireId });
+    h.userCount.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    await expect((await caller()).onboarding.updatePlan({ id: planId, buddyId })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+      message: expect.stringContaining('no tiene acceso a Onboarding'),
+    });
+    expect(h.planUpdate).not.toHaveBeenCalled();
   });
 
   it('refuses the hire as their own buddy', async () => {
@@ -130,6 +156,23 @@ describe('onboarding.updatePlan buddy', () => {
       code: 'BAD_REQUEST',
     });
     expect(h.planUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('onboarding.list phase tabs', () => {
+  it.each([
+    ['day1_30', { gte: new Date('2026-10-06T06:00:00.000Z') }],
+    ['day31_60', { gte: new Date('2026-09-06T06:00:00.000Z'), lt: new Date('2026-10-06T06:00:00.000Z') }],
+    ['day61_90', { lt: new Date('2026-09-06T06:00:00.000Z') }],
+  ] as const)('%s filters on the start date in the organization zone, before paging', async (startPhase, startDate) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-05T16:00:00.000Z'));
+    h.orgFindFirst.mockResolvedValue({ settings: { timezone: 'America/Costa_Rica' } });
+    h.planFindMany.mockResolvedValue([]);
+    await (await caller()).onboarding.list({ limit: 10, status: 'active', startPhase });
+    const where = (h.planFindMany.mock.calls[0]![0] as { where: { AND: Array<Record<string, unknown>> } }).where;
+    expect(where.AND[2]).toMatchObject({ status: 'active', startDate });
+    vi.useRealTimers();
   });
 });
 
