@@ -55,13 +55,16 @@ export const candidateDocumentsService = {
     if (head.candidateId !== candidateId) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_key_invalid' });
     }
-    return candidateRepository.createDocument(orgId, {
+    const doc = await candidateRepository.createDocumentOnce(orgId, {
       candidateId,
       type,
       fileName,
       fileUrl: fileKey,
       fileSize: head.sizeBytes,
     });
+    // Lost a race with a concurrent request recording the same key: it is on record once, refuse this one.
+    if (!doc) throw new TRPCError({ code: 'BAD_REQUEST', message: 'document_key_invalid' });
+    return doc;
   },
 
   async getDocument(orgId: string, documentId: string) {

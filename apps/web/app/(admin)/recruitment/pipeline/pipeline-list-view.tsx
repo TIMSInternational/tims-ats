@@ -10,6 +10,7 @@ import { daysInStageLabel } from '../../../../lib/pipeline-days';
 import { formatDate } from '../../../../lib/format-utils';
 import { isActionableApplication, type ScheduleRequest } from './pipeline-actions';
 import { applicationStatusMap } from './pipeline-status';
+import { RejectionBadge } from './rejection-badge';
 
 interface PipelineListViewProps {
   stages: PipelineStageWithApps[];
@@ -126,7 +127,11 @@ export function PipelineListView({ stages, onMove, onReject, onSchedule }: Pipel
                         </div>
                       )}
                       <div className="md:w-[80px] md:shrink-0">
-                        <StatusBadge status={app.status} map={statusMap} />
+                        {app.status === 'rejected' ? (
+                          <RejectionBadge rejectedAt={app.rejectedAt} rejectedReason={app.rejectedReason} showReason />
+                        ) : (
+                          <StatusBadge status={app.status} map={statusMap} />
+                        )}
                       </div>
                     </div>
 

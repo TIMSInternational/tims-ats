@@ -6,8 +6,8 @@ import { useI18n } from '../../../../lib/i18n';
 import { fitBand, getPipelineFit, type FitBand } from '../../../../lib/pipeline-fit';
 import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 import { daysInStageLabel } from '../../../../lib/pipeline-days';
-import { rejectionReasonLabel } from '../../../../lib/reject-reasons';
 import { formatDate } from '../../../../lib/format-utils';
+import { RejectionBadge } from './rejection-badge';
 
 interface KanbanCardProps {
   application: {
@@ -194,12 +194,7 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
             {inStage}
           </span>
         ) : app.status === 'rejected' ? (
-          <span
-            title={rejectionReasonLabel(app.rejectedReason, t.rejectCandidateModal.reasons) || undefined}
-            className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-medium"
-          >
-            {app.rejectedAt ? t.pipeline.rejectedOn.replace('{date}', formatDate(app.rejectedAt)) : t.pipeline.applicationStatus.rejected}
-          </span>
+          <RejectionBadge rejectedAt={app.rejectedAt} rejectedReason={app.rejectedReason} />
         ) : (
           <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded font-medium">
             {t.pipeline.applicationStatus[app.status as keyof typeof t.pipeline.applicationStatus] ?? app.status}

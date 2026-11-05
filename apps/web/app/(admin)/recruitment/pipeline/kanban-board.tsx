@@ -78,8 +78,10 @@ export function KanbanBoard({ stages, onMove, onReject, onSchedule, onToggleChec
             // Count overdue applications in this stage — time-in-CURRENT-stage,
             // not time since the original application (matches kanban-card.tsx).
             // Precise hours, not floored days*24, so sub-24h SLAs can trigger same-day.
+            // Only active applications can be overdue: a rejected or hired card (Rechazados / Todos) never is.
             const overdueCount = stage.slaHours
               ? stage.applications.filter((app) => {
+                  if (!isActionableApplication(app)) return false;
                   const hoursInStage = (Date.now() - new Date(app.enteredStageAt).getTime()) / 3600000;
                   return hoursInStage > stage.slaHours!;
                 }).length

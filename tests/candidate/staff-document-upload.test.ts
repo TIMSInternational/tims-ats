@@ -14,7 +14,7 @@ const m = vi.hoisted(() => ({
   presign: vi.fn(),
 }));
 vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({
-  candidateRepository: { exists: m.exists, createDocument: m.createDocument, findDocumentByFileKey: m.findByKey },
+  candidateRepository: { exists: m.exists, createDocumentOnce: m.createDocument, findDocumentByFileKey: m.findByKey },
 }));
 vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () => ({
   candidateConsentRepository: { isRecruitmentConsentWithdrawn: m.withdrawn, withdrawnCandidateIds: vi.fn() },
@@ -57,6 +57,13 @@ describe('candidateDocumentsService staff upload', () => {
       message: 'document_key_invalid',
     });
     expect(m.createDocument).not.toHaveBeenCalled();
+  });
+
+  it('refuses the loser of a concurrent record of the same key (the locked check found it)', async () => {
+    m.createDocument.mockResolvedValue(null);
+    await expect(candidateDocumentsService.uploadDocument(ORG, CANDIDATE, 'cv', 'cv.pdf', KEY)).rejects.toMatchObject({
+      message: 'document_key_invalid',
+    });
   });
 
   it('never re-attaches a key that is already on record', async () => {

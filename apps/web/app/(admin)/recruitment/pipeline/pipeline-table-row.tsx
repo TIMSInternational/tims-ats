@@ -7,6 +7,7 @@ import { fitBand, type FitBand } from '../../../../lib/pipeline-fit';
 import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 import type { ScheduleRequest } from './pipeline-actions';
 import type { FlatApp } from './pipeline-table-data';
+import { RejectionBadge } from './rejection-badge';
 
 const FIT_COLORS: Record<FitBand, string> = {
   high: 'text-green-600 bg-green-50',
@@ -101,7 +102,11 @@ export function PipelineTableRow({
         )}
       </td>
       <td className="py-2.5 px-3 text-center">
-        <StatusBadge status={app.status} map={statusMap} />
+        {app.status === 'rejected' ? (
+          <RejectionBadge rejectedAt={app.rejectedAt} rejectedReason={app.rejectedReason} showReason />
+        ) : (
+          <StatusBadge status={app.status} map={statusMap} />
+        )}
       </td>
       <td className="py-2.5 px-3 text-center">
         {app.isOverdue ? (

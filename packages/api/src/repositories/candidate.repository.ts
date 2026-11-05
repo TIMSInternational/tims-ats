@@ -374,7 +374,26 @@ export const candidateRepository = {
   // The CV document already recorded for this candidate + uploaded object key, if any —
   // public apply records it unparsed in the application transaction; processing reuses it,
   // and a retry never duplicates the row or the AI call.
-  // Any document of this org already stored under this key (staff upload: a key is recorded at most once).
+  // Staff upload: records the document only if no row of this org holds the key yet. The check and the insert
+  // run in one transaction under an advisory lock on the key, so two concurrent requests cannot both record it
+  // (the table has no unique constraint on file_url, and this change adds no schema). Null when already on record.
+  async createDocumentOnce(
+    orgId: string,
+    data: { candidateId: string; type: string; fileName: string; fileUrl: string; fileSize: number },
+  ) {
+    return runTenantTransaction(orgId, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`candidate_document_key:${orgId}:${data.fileUrl}`}, 0))`;
+      const existing = await tx.candidateDocument.findFirst({
+        where: { organizationId: orgId, fileUrl: data.fileUrl },
+        select: { id: true },
+      });
+      if (existing) return null;
+      return tx.candidateDocument.create({ data: { organizationId: orgId, ...data }, select: documentSelect });
+    });
+  },
+
+  // Any document of this org already stored under this key (fast refusal before the S3 HEAD; the authoritative
+  // check is the locked one in createDocumentOnce).
   async findDocumentByFileKey(orgId: string, fileUrl: string) {
     return db.candidateDocument.findFirst({
       where: { organizationId: orgId, fileUrl },

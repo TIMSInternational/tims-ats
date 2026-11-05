@@ -18,6 +18,8 @@ export interface FlatApp {
   currentTitle: string | null;
   source: string;
   status: string;
+  rejectedAt: Date | string | null;
+  rejectedReason: string | null;
   actionable: boolean;
   stageName: string;
   stageOrder: number;
@@ -48,6 +50,8 @@ export function flattenBoard(stages: PipelineStageWithApps[]): FlatApp[] {
         currentTitle: c.currentTitle ?? null,
         source: app.source,
         status: app.status,
+        rejectedAt: app.rejectedAt ?? null,
+        rejectedReason: app.rejectedReason ?? null,
         actionable,
         stageName: stage.name,
         stageOrder: stage.order,

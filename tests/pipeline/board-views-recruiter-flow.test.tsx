@@ -9,6 +9,7 @@ vi.mock('../../apps/web/lib/toast', () => ({ toast: (...args: unknown[]) => m.to
 import { KanbanCard } from '../../apps/web/app/(admin)/recruitment/pipeline/kanban-card';
 import { PipelineTableView } from '../../apps/web/app/(admin)/recruitment/pipeline/pipeline-table-view';
 import { PipelineListView } from '../../apps/web/app/(admin)/recruitment/pipeline/pipeline-list-view';
+import { KanbanBoard } from '../../apps/web/app/(admin)/recruitment/pipeline/kanban-board';
 import type { PipelineStageWithApps } from '../../apps/web/lib/trpc-types';
 
 const DAY = 86_400_000;
@@ -115,6 +116,37 @@ describe('table view bulk actions (journeys-26)', () => {
   it('has no selection column for a viewer without bulk actions', () => {
     render(<PipelineTableView stages={stages(app('a1', 'active'))} onMove={vi.fn()} />);
     expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+});
+
+describe('rejected rows say when and why in the list and table views (Codex round 2)', () => {
+  const rejected = app('a3', 'rejected', { rejectedAt: '2026-11-05T15:00:00.000Z', rejectedReason: 'NO_SHOW: No se presentó' });
+  const reasonLine = es.candidates.rejectionReason.replace('{reason}', es.rejectCandidateModal.reasons.NO_SHOW);
+
+  it('list view', () => {
+    render(<PipelineListView stages={stages(rejected)} onMove={vi.fn()} />);
+    expect(screen.getByText(/^Rechazado el /)).toBeTruthy();
+    expect(screen.getByText(reasonLine)).toBeTruthy();
+  });
+
+  it('table view', () => {
+    render(<PipelineTableView stages={stages(rejected)} boardStatus="rejected" onMove={vi.fn()} />);
+    expect(screen.getByText(/^Rechazado el /)).toBeTruthy();
+    expect(screen.getByText(reasonLine)).toBeTruthy();
+  });
+});
+
+describe('kanban column SLA count (Codex round 2)', () => {
+  it('never counts a rejected card as overdue', () => {
+    const old = app('a3', 'rejected', { enteredStageAt: iso(60) });
+    render(<KanbanBoard stages={stages(old)} onMove={vi.fn()} />);
+    expect(screen.queryByText(/SLA!/)).toBeNull();
+  });
+
+  it('still counts an overdue active card', () => {
+    const overdue = app('a1', 'active', { enteredStageAt: iso(60) });
+    render(<KanbanBoard stages={stages(overdue)} onMove={vi.fn()} />);
+    expect(screen.getByText('1 SLA!')).toBeTruthy();
   });
 });
 
