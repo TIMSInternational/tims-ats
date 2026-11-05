@@ -103,6 +103,15 @@ describe('table view bulk actions (journeys-26)', () => {
     expect(onBulkReject).toHaveBeenCalledWith([{ id: 'a2', vacancyTitle: 'Luis Mora' }]);
   });
 
+  it('tags the selected candidates (candidate.bulkTag)', () => {
+    const onBulkTag = vi.fn();
+    render(<PipelineTableView stages={stages(app('a1', 'active'), app('a2', 'active'))} onMove={vi.fn()} onBulkTag={onBulkTag} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: es.pipeline.bulkSelectAll }));
+    fireEvent.change(screen.getByLabelText(es.pipeline.bulkTagLabel), { target: { value: '  Revisar títulos ' } });
+    fireEvent.click(screen.getByRole('button', { name: es.pipeline.bulkTagAction }));
+    expect(onBulkTag).toHaveBeenCalledWith(['cand-a1', 'cand-a2'], 'Revisar títulos');
+  });
+
   it('has no selection column for a viewer without bulk actions', () => {
     render(<PipelineTableView stages={stages(app('a1', 'active'))} onMove={vi.fn()} />);
     expect(screen.queryByRole('checkbox')).toBeNull();

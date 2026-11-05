@@ -26,6 +26,8 @@ interface PipelineTableViewProps {
   /** Bulk actions on the selected rows (journeys-26). Omitted when the user lacks pipeline:update. */
   onBulkMove?: (applicationIds: string[], toStageId: string) => void;
   onBulkReject?: (applications: RejectableApplication[]) => void;
+  /** Tags the selected candidates (candidate.bulkTag). Omitted without candidate:update. */
+  onBulkTag?: (candidateIds: string[], tag: string) => void;
   isBulkPending?: boolean;
 }
 
@@ -48,6 +50,7 @@ export function PipelineTableView({
   onSchedule,
   onBulkMove,
   onBulkReject,
+  onBulkTag,
   isBulkPending = false,
 }: PipelineTableViewProps) {
   const { t } = useI18n();
@@ -86,7 +89,7 @@ export function PipelineTableView({
   const stageList = stages.map((s) => ({ id: s.id, name: s.name, order: s.order }));
 
   // Selection: active rows only, and only those still on the board (a rejected or moved-away row drops out).
-  const bulkEnabled = !!(onBulkMove || onBulkReject);
+  const bulkEnabled = !!(onBulkMove || onBulkReject || onBulkTag);
   const selectable = sorted.filter((app) => app.actionable);
   const selectedApps = selectable.filter((app) => selected.has(app.id));
   const allSelected = selectable.length > 0 && selectable.slice(0, BULK_MAX).every((app) => selected.has(app.id));
@@ -141,6 +144,7 @@ export function PipelineTableView({
               : undefined
           }
           onReject={onBulkReject ? () => onBulkReject(selectedApps.map((app) => ({ id: app.id, vacancyTitle: app.name }))) : undefined}
+          onTag={onBulkTag ? (tag) => onBulkTag(selectedApps.map((app) => app.candidateId), tag) : undefined}
         />
       )}
 

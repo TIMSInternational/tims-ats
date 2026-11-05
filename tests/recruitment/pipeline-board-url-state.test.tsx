@@ -35,6 +35,7 @@ vi.mock('../../apps/web/lib/trpc', () => {
         bulkMove: { useMutation: mutation },
         updateApplicationChecklist: { useMutation: mutation },
       },
+      candidate: { bulkTag: { useMutation: mutation } },
     },
   };
 });

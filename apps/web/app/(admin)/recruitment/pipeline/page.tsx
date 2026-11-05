@@ -137,6 +137,11 @@ export default function PipelinePage() {
     },
   });
 
+  const bulkTag = trpc.candidate.bulkTag.useMutation({
+    onSuccess: (data) => toast(t.pipeline.bulkTagged.replace('{n}', String(data.tagged)), { type: 'success' }),
+    onError: (err) => toast(err.message, { type: 'error' }),
+  });
+
   const updateApplicationChecklist = trpc.pipeline.updateApplicationChecklist.useMutation({
     onSuccess: () => {
       if (selectedVacancyId) utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
@@ -248,7 +253,8 @@ export default function PipelinePage() {
               onSchedule={openSchedule}
               onBulkMove={canUpdatePipeline ? (applicationIds, toStageId) => bulkMove.mutate({ applicationIds, toStageId }) : undefined}
               onBulkReject={canUpdatePipeline ? (targets) => setBulkRejectTargets(targets) : undefined}
-              isBulkPending={bulkMove.isPending}
+              onBulkTag={can('candidate', 'update') ? (candidateIds, tag) => bulkTag.mutate({ candidateIds, tag }) : undefined}
+              isBulkPending={bulkMove.isPending || bulkTag.isPending}
             />
           )
         ) : null}
