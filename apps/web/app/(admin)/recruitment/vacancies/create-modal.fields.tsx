@@ -1,6 +1,6 @@
 'use client';
 
-import { CONTRACT_TYPES, inputCls, labelCls, positionCountLabel, textareaCls } from './create-modal.helpers';
+import { CONTRACT_TYPES, withoutCopiedSections, inputCls, labelCls, positionCountLabel, textareaCls } from './create-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 import { enumLabel, formatPortalSalary, parsePortalSalary } from '../../../(portal)/careers/[orgSlug]/_lib/vacancy-display';
 import { AiGeneratePanel, InclusiveCheckPanel } from './create-modal.ai-panel';
@@ -111,7 +111,9 @@ export function Step2Description({
         title={title}
         location={location}
         onUseFormal={(desc, sections) => {
-          setDescription(desc);
+          // The three sections get their own fields below; leave them out of "Sobre el cargo", or the
+          // saved description would list them twice (F-6). Any other section is kept.
+          setDescription(withoutCopiedSections(desc, sections));
           setResponsibilities(sections.responsibilities.map((r) => `- ${r}`).join('\n'));
           setRequirements(sections.requirements.map((r) => `- ${r}`).join('\n'));
           setBenefits(sections.benefits.map((r) => `- ${r}`).join('\n'));
@@ -194,11 +196,11 @@ export function Step3Compensation({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <label className={labelCls}>{t.vacancies.salaryMin}</label>
-            <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder="8,000,000" className={inputCls} />
+            <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder={t.vacancies.salaryMinPlaceholder} className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>{t.vacancies.salaryMax}</label>
-            <input type="number" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)} placeholder="14,000,000" className={inputCls} />
+            <input type="number" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)} placeholder={t.vacancies.salaryMaxPlaceholder} className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>{t.vacancies.currency}</label>

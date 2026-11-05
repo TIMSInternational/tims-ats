@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -14,12 +15,14 @@ import { summarizeVacancyKpis } from './vacancy-kpis';
 
 export default function VacanciesPage() {
   const { t } = useI18n();
+  const router = useRouter();
+  // `?create=1` (the dashboard's "Nueva vacante" shortcut) opens the wizard straight away.
+  const openCreateOnLoad = useSearchParams().get('create') === '1';
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(openCreateOnLoad);
   const [closeTarget, setCloseTarget] = useState<VacancyListItem | null>(null);
   const [freezeTarget, setFreezeTarget] = useState<VacancyListItem | null>(null);
 
@@ -33,7 +36,6 @@ export default function VacanciesPage() {
     priority: priorityFilter
       ? (priorityFilter as 'low' | 'medium' | 'high' | 'urgent')
       : undefined,
-    businessUnitId: departmentFilter || undefined,
   });
 
   const utils = trpc.useUtils();
@@ -42,8 +44,14 @@ export default function VacanciesPage() {
     utils.vacancy.getDashboardKpis.invalidate();
   };
 
+  // After creating, open the new vacancy: a draft's next step ("Enviar a aprobación") lives on its page.
   const createVacancy = trpc.vacancy.create.useMutation({
-    onSuccess: () => { invalidateAll(); setShowCreate(false); toast(t.vacancies.created, { type: 'success' }); },
+    onSuccess: (created) => {
+      invalidateAll();
+      setShowCreate(false);
+      toast(created.status === 'draft' ? t.vacancies.createdDraftNextStep : t.vacancies.created, { type: 'success' });
+      router.push(`/recruitment/vacancies/${created.id}`);
+    },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
 
@@ -66,7 +74,6 @@ export default function VacanciesPage() {
     setSearch('');
     setStatusFilter('');
     setPriorityFilter('');
-    setDepartmentFilter('');
   };
 
   const items = vacancies.data?.items ?? [];
@@ -119,10 +126,8 @@ export default function VacanciesPage() {
         onStatusChange={setStatusFilter}
         priorityFilter={priorityFilter}
         onPriorityChange={setPriorityFilter}
-        departmentFilter={departmentFilter}
-        onDepartmentChange={setDepartmentFilter}
         onClearFilters={clearFilters}
-        hasFilters={!!(search || statusFilter || priorityFilter || departmentFilter)}
+        hasFilters={!!(search || statusFilter || priorityFilter)}
         onCreateClick={() => {
           createVacancy.reset();
           setShowCreate(true);
@@ -144,7 +149,11 @@ export default function VacanciesPage() {
       {showCreate && (
         <CreateModal
           onConfirm={(data) => createVacancy.mutate(data)}
-          onClose={() => setShowCreate(false)}
+          onClose={() => {
+            setShowCreate(false);
+            // Drop `?create=1` so a reload does not reopen the wizard the user just closed.
+            if (openCreateOnLoad) router.replace('/recruitment/vacancies');
+          }}
           isPending={createVacancy.isPending}
           errorMessage={createVacancy.error?.message ?? null}
         />

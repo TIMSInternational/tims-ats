@@ -22,6 +22,7 @@ function visibleHrefs(sections: readonly NavSection[], scope: 'pilot' | 'full'):
 
 const MUST_HIDE = [
   '/recruitment/assessments',
+  '/recruitment/talent-pools',
   '/my-360',
   '/talent/360',
   '/engagement/dei',
@@ -38,7 +39,6 @@ const MUST_KEEP_SUPER_ADMIN = [
   '/recruitment/candidates',
   '/recruitment/interviews',
   '/recruitment/offers',
-  '/recruitment/talent-pools',
   '/people/onboarding',
   '/settings/users',
   '/settings/branding',

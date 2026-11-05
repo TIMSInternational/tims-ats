@@ -24,6 +24,84 @@ export type Step = 1 | 2 | 3;
 /** Stored contract-type values. Their labels live in i18n `portal.contractTypes` — one source for both surfaces. */
 export const CONTRACT_TYPES = ['indefinido', 'termino_fijo', 'obra_labor', 'prestacion', 'temporal', 'practicas'] as const;
 
+type FormalSections = { responsibilities: readonly string[]; requirements: readonly string[]; benefits: readonly string[] };
+
+// Headings of the three sections "Usar" also copies into their own wizard fields (es + en).
+const STRUCTURED_HEADINGS: Array<{ key: keyof FormalSections; re: RegExp }> = [
+  { key: 'responsibilities', re: /^(responsabilidades|funciones|responsibilities)\b/i },
+  { key: 'requirements', re: /^(requisitos|requerimientos|requirements)\b/i },
+  { key: 'benefits', re: /^(beneficios|lo que ofrecemos|qu[eé] ofrecemos|ofrecemos|benefits)\b/i },
+];
+
+/** The heading text of a markdown heading ("## Requisitos"), a bold-only line ("**Requisitos:**") or a
+ *  short plain label line ("Requisitos:"); null for any other line. */
+function headingText(line: string): string | null {
+  const trimmed = line.trim();
+  const md = /^#{1,6}\s+(.+)$/.exec(trimmed);
+  if (md) return md[1]!.replace(/[*:]+/g, '').trim();
+  const bold = /^\*\*([^*]+)\*\*:?$/.exec(trimmed);
+  if (bold) return bold[1]!.replace(/:$/, '').trim();
+  const label = /^([^-*•\d][^:]{0,58}):$/.exec(trimmed);
+  return label ? label[1]!.trim() : null;
+}
+
+/** "**Requisitos: licencia profesional vigente**" carries text after its label; "**Requisitos:**" does not. */
+function headingCarriesText(line: string): boolean {
+  return /:\s*[^\s*:]/.test(line.trim().replace(/^#{1,6}\s+/, ''));
+}
+
+/** Compare a description line with a copied item: no list marker, emphasis, case or end punctuation. */
+function normalizeItem(text: string): string {
+  return text
+    .replace(/^\s*([-*•]|\d+[.)])\s+/, '')
+    .replace(/[*_`]/g, '')
+    .replace(/[\s.;:,]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * The AI's formal variant is a full job description: an opening, maybe other sections ("Sobre la empresa"),
+ * and its responsibilities, requirements and benefits. "Usar" also copies those three into their own wizard
+ * fields, and the saved description is built from all fields, so keeping the full text in "Sobre el cargo"
+ * listed them twice (F-6). This removes only what was copied: inside a responsibilities/requirements/benefits
+ * section, a line is dropped when it matches an item copied into that field; any other line (and the section
+ * heading above it) is kept, and every other section is kept whole. A heading is dropped only when it is a
+ * bare label ("## Requisitos", "**Beneficios:**") and every line under it was copied; a heading with text of
+ * its own ("**Requisitos: licencia profesional vigente**") is always kept. Nothing that was not copied is lost.
+ */
+export function withoutCopiedSections(description: string, sections: FormalSections): string {
+  const kept: string[] = [];
+  // A kept heading after kept text gets a blank line, as markdown sections are written.
+  const pushHeading = (heading: string) => {
+    if (kept.length > 0 && kept[kept.length - 1]!.trim() !== '') kept.push('');
+    kept.push(heading);
+  };
+  let copied: Set<string> | null = null; // items of the structured section being read, if any
+  let pendingHeading: string | null = null; // its heading, emitted only if one of its lines is kept
+  for (const line of description.split('\n')) {
+    const heading = headingText(line);
+    if (heading !== null) {
+      const structured = STRUCTURED_HEADINGS.find((h) => h.re.test(heading));
+      const items = structured ? sections[structured.key] : [];
+      copied = items.length > 0 ? new Set(items.map(normalizeItem)) : null;
+      // Only a bare label waits to see whether any of its lines survive; a heading with its own text
+      // after the label is content, so it is always kept (its copied lines are still dropped).
+      pendingHeading = copied && !headingCarriesText(line) ? line : null;
+      if (pendingHeading === null) pushHeading(line);
+      continue;
+    }
+    if (copied && line.trim() !== '' && copied.has(normalizeItem(line))) continue;
+    if (copied && line.trim() !== '' && pendingHeading !== null) {
+      pushHeading(pendingHeading);
+      pendingHeading = null;
+    }
+    if (!copied || line.trim() !== '') kept.push(line);
+  }
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /** "1 posición" / "3 posiciones" (or the English forms) from the active locale's labels. */
 export function positionCountLabel(count: number, labels: { positionCountOne: string; positionCountMany: string }): string {
   return count === 1 ? labels.positionCountOne : labels.positionCountMany.replace('{n}', String(count));

@@ -108,15 +108,6 @@ export function KanbanBoard({ stages, onMove, onReject, onToggleChecklistItem }:
                         {stage.slaHours}h SLA
                       </span>
                     )}
-                    {/* Three-dot menu */}
-                    <svg
-                      className={`w-4 h-4 cursor-pointer ${isDark ? 'text-white/70' : 'text-[#8B8B8B]'}`}
-                      fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"
-                    >
-                      <circle cx="12" cy="6" r="1" />
-                      <circle cx="12" cy="12" r="1" />
-                      <circle cx="12" cy="18" r="1" />
-                    </svg>
                   </div>
                 </div>
 

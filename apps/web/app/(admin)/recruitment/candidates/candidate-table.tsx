@@ -5,6 +5,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
 import { DataTable, EmptyState, ErrorState, CandidateAvatar, FitScoreBadge, StageBadge } from '../../../../components';
 import type { CandidateListItem } from '../../../../lib/trpc-types';
+import { candidatePoolLabel, candidateSourceLabel } from '../../../../lib/candidate-labels';
 
 interface CandidateTableProps {
   candidates: CandidateListItem[];
@@ -15,6 +16,7 @@ interface CandidateTableProps {
 
 const POOL_STYLES: Record<string, string> = {
   applicant: 'bg-blue-50 text-blue-700',
+  active: 'bg-teal-50 text-teal-700',
   referral: 'bg-green-50 text-green-700',
   sourced: 'bg-violet-50 text-violet-700',
   silver_medalist: 'bg-amber-50 text-amber-700',
@@ -31,14 +33,6 @@ export function CandidateTable({ candidates, isLoading, isError, onRetry }: Cand
       </div>
     );
   }
-
-  const poolLabels: Record<string, string> = {
-    applicant: t.candidates.poolApplicant,
-    referral: t.candidates.poolReferral,
-    sourced: t.candidates.poolSourced,
-    silver_medalist: t.candidates.poolSilverMedalist,
-    passive: t.candidates.poolPassive,
-  };
 
   const columns = [
     { key: 'name', label: t.candidates.colName },
@@ -81,11 +75,11 @@ export function CandidateTable({ candidates, isLoading, isError, onRetry }: Cand
             </td>
             <td className="px-4 py-3">
               <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${poolCls}`}>
-                {poolLabels[c.poolType] ?? c.poolType}
+                {candidatePoolLabel(c.poolType, t.candidates)}
               </span>
             </td>
             <td className="px-4 py-3">
-              <span className="text-[12px] text-[#585858]">{c.source}</span>
+              <span className="text-[12px] text-[#585858]">{candidateSourceLabel(c.source, t.candidates)}</span>
             </td>
             <td className="px-4 py-3 text-center">
               {fitScore != null ? (

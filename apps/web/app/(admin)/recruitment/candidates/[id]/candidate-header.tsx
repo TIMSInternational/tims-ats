@@ -9,6 +9,7 @@ import { CandidateStageModal } from './candidate-stage-modal';
 import { CreateOfferModal } from './create-offer-modal';
 import { RejectCandidateModal } from '../../pipeline/reject-candidate-modal';
 import { useCan } from '../../../../../lib/permissions';
+import { candidateSourceLabel } from '../../../../../lib/candidate-labels';
 
 function FitScoreCircle({ score }: { score: number }) {
   const { t } = useI18n();
@@ -101,7 +102,7 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
               </a>
             )}
             <span className="text-[11px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded">
-              {t.candidates.sourceLabel} {c.source}
+              {t.candidates.sourceLabel} {candidateSourceLabel(c.source, t.candidates)}
             </span>
             {activeApp && (
               <span className="text-[11px] text-[#8B8B8B]">

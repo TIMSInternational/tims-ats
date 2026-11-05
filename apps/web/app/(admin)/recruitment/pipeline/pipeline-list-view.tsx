@@ -5,6 +5,7 @@ import { CandidateAvatar, StatusBadge } from '../../../../components';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
 import { useI18n } from '../../../../lib/i18n';
 import { getPipelineFit } from '../../../../lib/pipeline-fit';
+import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 
 interface PipelineListViewProps {
   stages: PipelineStageWithApps[];
@@ -41,11 +42,6 @@ function fitColor(score: number) {
   if (score >= 50) return 'text-amber-600 bg-amber-50';
   return 'text-red-600 bg-red-50';
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-  linkedin: 'LinkedIn', referral: 'Referido', portal: 'Portal',
-  job_board: 'Job Board', university: 'Universidad', internal: 'Interno',
-};
 
 const STATUS_MAP: Record<string, { cls: string; label: string }> = {
   active: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: 'Activo' },
@@ -112,7 +108,7 @@ export function PipelineListView({ stages, onMove, onReject }: PipelineListViewP
 
                     {/* Source */}
                     <div className="w-[80px] shrink-0">
-                      <span className="text-[10px] text-[#585858]">{SOURCE_LABELS[app.source] ?? app.source}</span>
+                      <span className="text-[10px] text-[#585858]">{candidateSourceLabel(app.source, t.candidates)}</span>
                     </div>
 
                     {/* Days */}

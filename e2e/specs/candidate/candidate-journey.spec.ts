@@ -69,7 +69,7 @@ test('careers page lists the published vacancy', async () => {
 test('recruiter views the empty pipeline before the candidate applies', async () => {
   const { page } = recruiter;
   await navigateStaff(page, '/recruitment/pipeline');
-  await expect(page.getByText('Aplicado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Postulación recibida', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(fullName())).toHaveCount(0);
   await navigateStaff(page, '/dashboard');
 });
@@ -143,10 +143,10 @@ async function moveStage(page: Page, stage: string): Promise<void> {
 }
 
 test('recruiter moves the candidate through screening to the HR interview stage', async () => {
-  await moveStage(recruiter.page, 'Screening');
-  await moveStage(recruiter.page, 'Entrevista RRHH');
+  await moveStage(recruiter.page, 'Preselección');
+  await moveStage(recruiter.page, 'Entrevista con RR. HH.');
   await recruiter.page.reload();
-  await expect(recruiter.page.getByText('Entrevista RRHH', { exact: true }).first()).toBeVisible();
+  await expect(recruiter.page.getByText('Entrevista con RR. HH.', { exact: true }).first()).toBeVisible();
 });
 
 /** Schedule an in-person interview (never video — no Daily in E2E) with the leader as evaluator. */
@@ -198,7 +198,7 @@ test('company admin schedules the interview (main-only path)', async () => {
 
 test('candidate receives the interview invitation email', async () => {
   const mail = await waitForMail(cand().email, /entrevista/i);
-  // The interview-specific location, not just the city — 'Medellín' alone is already in the vacancy.
+  // The interview-specific location, not just the city — 'San José' alone is already in the vacancy.
   expect(mail.text).toContain('Sala 2');
 });
 
@@ -239,7 +239,7 @@ test('hiring leader submits a scorecard from the interview room', async () => {
 });
 
 test('recruiter moves the candidate to Oferta and drafts an offer', async () => {
-  await moveStage(recruiter.page, 'Entrevista Final');
+  await moveStage(recruiter.page, 'Entrevista final');
   await moveStage(recruiter.page, 'Oferta');
   const { page } = recruiter;
   await page.getByRole('button', { name: 'Crear borrador de oferta' }).click();

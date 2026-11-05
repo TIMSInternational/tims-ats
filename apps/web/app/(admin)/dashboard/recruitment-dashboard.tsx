@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
@@ -9,6 +10,8 @@ import { OpenVacanciesCard, OpenVacanciesCardSkeleton } from './open-vacancies-c
 import { AlertsSlaPanel } from './alerts-sla-panel';
 import { AlertsPendingPanel } from './alerts-pending-panel';
 import { AlertsRiskPanel } from './alerts-risk-panel';
+import { AlertsVacancySelect } from './alerts-vacancy-select';
+import { RecruiterQuickActions } from './recruiter-quick-actions';
 import { pickPrimaryDashboard, showsSetupChecklistFor } from './pick-dashboard';
 import { SetupChecklist } from './setup-checklist';
 import { OrgCommandCenter } from './org-command-center';
@@ -100,7 +103,11 @@ function RecruiterDashboard() {
 
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
   const kpiIsError = vacancyKpis.isError || candidateKpis.isError;
-  const firstVacancyId = publishedVacancies.data?.items?.[0]?.id;
+  // The SLA and risk panels read one vacancy's board: the one picked in the alerts header (default: the
+  // first published vacancy), named there so the scope is never silent.
+  const [pickedAlertsVacancyId, setPickedAlertsVacancyId] = useState<string | null>(null);
+  const alertVacancies = publishedVacancies.data?.items ?? [];
+  const alertsVacancyId = (alertVacancies.find((v) => v.id === pickedAlertsVacancyId) ?? alertVacancies[0])?.id;
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -108,7 +115,10 @@ function RecruiterDashboard() {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-lg font-bold text-[#1F114C]">{rd.overviewMetrics}</h1>
-          <span className="text-[13px] text-[#585858]">{rd.todaysStatus}</span>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <span className="text-[13px] text-[#585858]">{rd.todaysStatus}</span>
+            <RecruiterQuickActions />
+          </div>
         </div>
 
         {/* KPI Cards Strip */}
@@ -152,16 +162,19 @@ function RecruiterDashboard() {
         </div>
 
         {/* Alerts Section Header */}
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-base font-semibold text-[#1F114C]">{rd.alertsTitle}</span>
-          <span className="text-[13px] text-[#585858]">{rd.alertsSubtitle}</span>
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+          <div>
+            <span className="text-base font-semibold text-[#1F114C]">{rd.alertsTitle}</span>
+            <p className="text-[12px] text-[#585858]">{alertVacancies.length > 0 ? rd.alertsScopeHint : rd.alertsSubtitle}</p>
+          </div>
+          <AlertsVacancySelect vacancies={alertVacancies} selectedId={alertsVacancyId} onSelect={setPickedAlertsVacancyId} />
         </div>
 
         {/* 3-Column Alerts */}
         <div className="flex flex-col md:flex-row gap-4">
-          <AlertsSlaPanel vacancyId={firstVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
+          <AlertsSlaPanel vacancyId={alertsVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
           <AlertsPendingPanel />
-          <AlertsRiskPanel vacancyId={firstVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
+          <AlertsRiskPanel vacancyId={alertsVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
         </div>
       </div>
     </div>

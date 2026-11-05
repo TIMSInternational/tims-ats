@@ -105,7 +105,14 @@ export default function PipelinePage() {
       // stage-name matching gracefully returns null for org-custom stage
       // names, so unrecognized stages fall back to today's bare "moved" toast.
       const destinationStage = board.data?.stages.find((stage) => stage.id === variables.toStageId);
-      const nextAction = destinationStage ? visibleNextAction(getNextActionForStage(destinationStage.name)) : null;
+      // Only actions the viewer can follow (no link into a module they cannot open), and the offer
+      // action opens the moved candidate's profile, where the offer is created.
+      const movedCandidateId = board.data?.stages
+        .flatMap((stage) => stage.applications)
+        .find((application) => application.id === variables.applicationId)?.candidate.id;
+      const nextAction = destinationStage
+        ? visibleNextAction(getNextActionForStage(destinationStage.name), undefined, { can, candidateId: movedCandidateId })
+        : null;
 
       if (nextAction) {
         toast(t.pipeline.moved, {
@@ -154,7 +161,7 @@ export default function PipelinePage() {
   }, [board.data?.stages, filters]);
 
   const VIEW_OPTIONS: { key: ViewMode; label: string }[] = [
-    { key: 'kanban', label: 'Kanban' }, { key: 'list', label: 'List' }, { key: 'table', label: 'Table' },
+    { key: 'kanban', label: t.pipeline.viewKanban }, { key: 'list', label: t.pipeline.viewList }, { key: 'table', label: t.pipeline.viewTable },
   ];
 
   return (

@@ -36,7 +36,8 @@ export function ManagerDashboard({ isPilot = false }: ManagerDashboardProps) {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-lg font-bold text-[#1F114C]">{md.title}</h1>
-          <span className="text-[13px] text-[#585858]">{md.subtitle}</span>
+          {/* The team section is not mounted in the pilot, so the subtitle names only the hiring part. */}
+          <span className="text-[13px] text-[#585858]">{isPilot ? md.subtitlePilot : md.subtitle}</span>
         </div>
 
         {/* ── SECTION 1 — My Hiring ── */}

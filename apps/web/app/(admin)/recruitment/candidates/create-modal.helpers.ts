@@ -1,21 +1,8 @@
 export type Step = 1 | 2 | 3;
 
-export const SOURCES = [
-  { value: 'manual', label: 'Ingreso manual' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'referral', label: 'Referido' },
-  { value: 'portal', label: 'Portal de empleo' },
-  { value: 'job_board', label: 'Job Board' },
-  { value: 'university', label: 'Universidad' },
-  { value: 'internal', label: 'Interno / Transferencia' },
-];
-
-export const POOL_TYPES = [
-  { value: 'active', label: 'Activo — busca empleo activamente' },
-  { value: 'passive', label: 'Pasivo — no busca pero abierto a ofertas' },
-  { value: 'referral', label: 'Referido por un empleado' },
-  { value: 'sourced', label: 'Sourced — contactado directamente' },
-];
+// Stored source slugs, in picker order. Labels: lib/candidate-labels.ts (i18n candidates.source*).
+// Pool types come from the same module (CANDIDATE_STAFF_POOL_TYPES), so the forms and the tables agree.
+export const SOURCES = ['manual', 'linkedin', 'referral', 'portal', 'job_board', 'university', 'internal'] as const;
 
 export const EXPERIENCE_LEVELS = [
   { value: 0, label: 'Sin experiencia' },
