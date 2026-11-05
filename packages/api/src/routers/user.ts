@@ -6,6 +6,7 @@ import { createUserSchema, updateProfileSchema, assignRoleSchema, canGrantStaffR
 import { invalidatePermissionCache } from '../lib/cache';
 import { logSecurityEvent } from '../access/security-audit';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
+import { newStaffUserRepository } from '../repositories/new-staff-user.repository';
 
 /**
  * Staff-role grant policy (PR #307 panel, HIGH): `user:create` / `user:update` say WHETHER a caller may add or
@@ -184,6 +185,9 @@ export const userRouter = router({
       // on the row, so the user is linked from birth (no later email-join). Done
       // before the tx since it's an external call.
       const supabaseUserId = await resolveStaffSupabaseUserId(userData.email);
+      // F-2b: created in the organization's zone (then the company's, then UTC), not the America/Bogota
+      // column default. A companyId outside this organization resolves to no company (org-filtered read).
+      const { timeZone } = await newStaffUserRepository.findContext(ctx.user.organizationId, userData.companyId);
 
       // Create user + role assignment in ONE transaction. runTenantTransaction, not
       // db.$transaction: `db` is `tenantDb`, whose extension re-wraps every op in its
@@ -195,6 +199,7 @@ export const userRouter = router({
             ...userData,
             organizationId: ctx.user.organizationId,
             supabaseUserId,
+            timezone: timeZone,
           },
         });
 

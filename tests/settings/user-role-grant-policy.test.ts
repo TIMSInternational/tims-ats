@@ -22,6 +22,8 @@ const h = vi.hoisted(() => ({
   auditCreate: vi.fn(),
   provision: vi.fn(),
   invalidate: vi.fn(),
+  orgFindFirst: vi.fn(),
+  companyFindFirst: vi.fn(),
 }));
 
 vi.mock('@tims/db', () => ({
@@ -31,6 +33,8 @@ vi.mock('@tims/db', () => ({
     role: { findFirst: (args: unknown) => h.roleFindFirst(args) },
     user: { findFirst: (args: unknown) => h.userFindFirst(args) },
     userRole: { upsert: (args: unknown) => h.userRoleUpsert(args) },
+    organization: { findFirst: (args: unknown) => h.orgFindFirst(args) },
+    company: { findFirst: (args: unknown) => h.companyFindFirst(args) },
   },
   runTenantTransaction: (_orgId: string, fn: (tx: unknown) => unknown) =>
     fn({ user: { create: h.txUserCreate }, userRole: { create: h.txUserRoleCreate } }),
@@ -138,6 +142,30 @@ describe('user.create enforces the staff-role grant policy', () => {
   it('positive control: a recruiter may still create the default employee role', async () => {
     const caller = await makeCaller(['recruiter']);
     await expect(caller.user.create(newUser('employee'))).resolves.toEqual({ id: TARGET_ID });
+  });
+
+  // F-2b: users.timezone defaults to America/Bogota in the column; a created user takes the org's zone.
+  it("creates the user in the organization's time zone, not the America/Bogota column default", async () => {
+    h.orgFindFirst.mockResolvedValueOnce({ name: 'Org', settings: { timezone: 'America/Costa_Rica' }, billingEmail: null });
+    const caller = await makeCaller(['hr_admin']);
+    await caller.user.create(newUser('employee'));
+    expect(h.txUserCreate.mock.calls[0][0].data).toMatchObject({ timezone: 'America/Costa_Rica' });
+  });
+
+  it('falls back to the company zone, then UTC — never Bogota by default', async () => {
+    h.orgFindFirst
+      .mockResolvedValueOnce({ name: 'Org', settings: {}, billingEmail: null })
+      .mockResolvedValueOnce({ name: 'Org', settings: {}, billingEmail: null });
+    h.companyFindFirst.mockResolvedValueOnce({ timezone: 'America/Panama', language: 'es' });
+    const caller = await makeCaller(['hr_admin']);
+    await caller.user.create({ ...newUser('employee'), companyId: 'd3bbef22-2f3e-4b21-9e9f-9ee2ef6b3d44' });
+    expect(h.txUserCreate.mock.calls[0][0].data).toMatchObject({ timezone: 'America/Panama' });
+    expect(h.companyFindFirst.mock.calls[0][0]).toMatchObject({
+      where: { id: 'd3bbef22-2f3e-4b21-9e9f-9ee2ef6b3d44', organizationId: ORG_ID },
+    });
+
+    await caller.user.create(newUser('employee'));
+    expect(h.txUserCreate.mock.calls[1][0].data).toMatchObject({ timezone: 'UTC' });
   });
 });
 
