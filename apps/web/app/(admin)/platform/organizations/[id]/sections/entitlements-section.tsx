@@ -43,6 +43,14 @@ export function EntitlementsSection({ orgId }: { orgId: string }) {
 
   const isMutating = setEntitlement.isPending || applyPlan.isPending;
 
+  // One click used to flip a module (e.g. ai_voice_interview, which must stay off in the pilot) with no
+  // confirmation (D-14).
+  const handleToggle = (moduleCode: string, moduleName: string, enabled: boolean) => {
+    const message = (enabled ? t.entitlementsAdmin.toggleOnConfirm : t.entitlementsAdmin.toggleOffConfirm).replace('{module}', moduleName);
+    if (!window.confirm(message)) return;
+    setEntitlement.mutate({ orgId, moduleCode, enabled });
+  };
+
   const handleApplyPlan = () => {
     if (!selectedPlan) return;
     if (!window.confirm(t.entitlementsAdmin.applyPlanConfirm)) return;
@@ -114,7 +122,7 @@ export function EntitlementsSection({ orgId }: { orgId: string }) {
                   key={`${e.moduleCode}:${e.limit}:${e.source}`}
                   entitlement={e}
                   disabled={isMutating}
-                  onToggle={(moduleCode, enabled) => setEntitlement.mutate({ orgId, moduleCode, enabled })}
+                  onToggle={(moduleCode, enabled) => handleToggle(moduleCode, e.name, enabled)}
                   onLimitCommit={(moduleCode, limit) => setEntitlement.mutate({ orgId, moduleCode, limit })}
                   onUnitPriceCommit={(moduleCode, unitPrice) => setEntitlement.mutate({ orgId, moduleCode, unitPrice })}
                 />

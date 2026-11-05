@@ -168,10 +168,12 @@ export default function InvitationsPage() {
           <button onClick={handleExport} className="h-8 px-3 rounded-lg border border-[#EDEDED] text-xs font-medium text-[#585858] hover:bg-[#F6F6F6] transition flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>{t.invitations.exportCsv}
           </button>
-          <button onClick={() => setShowOrgInvite(true)} className="h-8 px-4 rounded-lg bg-[#1F114C] text-white text-xs font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5">
+          {/* Inviting a person into an EXISTING organization is the everyday task, so it is the filled primary
+              button; "Invitar organización" creates a new organization and is the secondary one (D-15). */}
+          <button onClick={() => setShowOrgInvite(true)} className="h-8 px-4 rounded-lg border border-[#1F114C] text-[#1F114C] text-xs font-medium hover:bg-[#1F114C]/5 transition flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>{t.invitations.inviteOrg}
           </button>
-          <button onClick={() => setShowUserInvite(true)} className="h-8 px-4 rounded-lg border border-[#1F114C] text-[#1F114C] text-xs font-medium hover:bg-[#1F114C]/5 transition flex items-center gap-1.5">
+          <button onClick={() => setShowUserInvite(true)} className="h-8 px-4 rounded-lg bg-[#1F114C] text-white text-xs font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>{t.invitations.inviteUser}
           </button>
         </div>
