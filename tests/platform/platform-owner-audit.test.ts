@@ -20,6 +20,7 @@ const m = vi.hoisted(() => ({
   ownerCreate: vi.fn(),
   ownerDeleteMany: vi.fn(),
   userUpdateMany: vi.fn(),
+  userFindMany: vi.fn(),
   userFindFirst: vi.fn(),
   roleFindFirst: vi.fn(),
   userRoleDeleteMany: vi.fn(),
@@ -42,7 +43,7 @@ vi.mock('@tims/db', () => {
       create: m.ownerCreate,
       deleteMany: m.ownerDeleteMany,
     },
-    user: { updateMany: m.userUpdateMany, findFirst: m.userFindFirst },
+    user: { updateMany: m.userUpdateMany, findFirst: m.userFindFirst, findMany: m.userFindMany },
     role: { findFirst: m.roleFindFirst },
     userRole: { deleteMany: m.userRoleDeleteMany, create: m.userRoleCreate },
     platformInvitation: { findUnique: m.invFindUnique, update: m.invUpdate },
@@ -136,6 +137,7 @@ describe('owner allowlist', () => {
 
   it('remove: deletes the entry AND revokes the owner flag in one transaction, then audits', async () => {
     m.ownerFindMany.mockResolvedValue([{ email: 'old@nexadev.test' }]);
+    m.userFindMany.mockResolvedValue([{ id: 'old-owner', email: 'Old@NexaDev.test' }]);
     m.userUpdateMany.mockResolvedValue({ count: 1 });
     const result = await callerOf(usersRouter).removePlatformOwnerEmail({ email: 'Old@NexaDev.test' });
     expect(result).toEqual({ email: 'old@nexadev.test', ownersRevoked: 1 });
@@ -143,12 +145,16 @@ describe('owner allowlist', () => {
     expect(m.ownerDeleteMany).toHaveBeenCalledWith({ where: { email: { in: ['old@nexadev.test'] } } });
     // Same advisory lock as first-sign-in provisioning, keyed on the lower-cased address (Codex P1).
     expect(m.lock).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_xact_lock'), 'platform-owner-email:old@nexadev.test');
-    expect(m.userUpdateMany).toHaveBeenCalledWith({
+    expect(m.userFindMany).toHaveBeenCalledWith({
       where: {
         email: { equals: 'Old@NexaDev.test', mode: 'insensitive' },
         isPlatformOwner: true,
         id: { not: 'owner-1' },
       },
+      select: { id: true, email: true },
+    });
+    expect(m.userUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['old-owner'] }, isPlatformOwner: true },
       data: { isPlatformOwner: false },
     });
     expect(audits()).toEqual([
@@ -157,6 +163,32 @@ describe('owner allowlist', () => {
         metadata: { email: 'old@nexadev.test', ownersRevoked: 1 },
       }),
     ]);
+  });
+
+  // Codex review of release/pilot-ux-wave2 (P1): case-insensitive equality is an ILIKE, so `_` matched `-`.
+  it('remove: an address with `_` deletes and revokes only the exact address, never a wildcard look-alike', async () => {
+    m.ownerFindMany.mockResolvedValue([{ email: 'ops_admin@nexadev.test' }, { email: 'ops-admin@nexadev.test' }]);
+    m.userFindMany.mockResolvedValue([
+      { id: 'exact-owner', email: 'ops_admin@nexadev.test' },
+      { id: 'lookalike-owner', email: 'ops-admin@nexadev.test' },
+    ]);
+    m.userUpdateMany.mockResolvedValue({ count: 1 });
+    const result = await callerOf(usersRouter).removePlatformOwnerEmail({ email: 'ops_admin@nexadev.test' });
+    expect(m.ownerDeleteMany).toHaveBeenCalledWith({ where: { email: { in: ['ops_admin@nexadev.test'] } } });
+    expect(m.userUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['exact-owner'] }, isPlatformOwner: true },
+      data: { isPlatformOwner: false },
+    });
+    expect(result).toEqual({ email: 'ops_admin@nexadev.test', ownersRevoked: 1 });
+  });
+
+  it('remove: only a wildcard look-alike listed is "not in the list", and nothing is revoked', async () => {
+    m.ownerFindMany.mockResolvedValue([{ email: 'ops-admin@nexadev.test' }]);
+    await expect(callerOf(usersRouter).removePlatformOwnerEmail({ email: 'ops_admin@nexadev.test' })).rejects.toThrow(
+      /no está en la lista/,
+    );
+    expect(m.ownerDeleteMany).not.toHaveBeenCalled();
+    expect(m.userUpdateMany).not.toHaveBeenCalled();
   });
 
   it('remove: refuses the caller own address and an unknown one, writing nothing', async () => {

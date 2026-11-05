@@ -160,16 +160,32 @@ export const usersRouter = router({
         // Same lock as first-sign-in owner provisioning (apps/web lib/auth/platform-owner-provisioning): a
         // sign-in racing this removal either finishes first (and is revoked below) or finds the address gone.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${platformOwnerEmailLockKey(input.email)}, 0))`;
-        const entries = await tx.platformOwnerEmail.findMany({
-          where: { email: { equals: input.email, mode: 'insensitive' } },
-          select: { email: true },
-        });
+        // Prisma's case-insensitive `equals` is an ILIKE on PostgreSQL, where `_` and `%` are wildcards: removing
+        // `ops_admin@x` would also match `ops-admin@x`. Keep only exact (case-folded) matches before deleting or
+        // revoking anything (Codex review of release/pilot-ux-wave2, P1).
+        const address = input.email.toLowerCase();
+        const exact = (email: string) => email.toLowerCase() === address;
+        const entries = (
+          await tx.platformOwnerEmail.findMany({
+            where: { email: { equals: input.email, mode: 'insensitive' } },
+            select: { email: true },
+          })
+        ).filter((e) => exact(e.email));
         if (entries.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Ese correo no está en la lista' });
         await tx.platformOwnerEmail.deleteMany({ where: { email: { in: entries.map((e) => e.email) } } });
-        const revoked = await tx.user.updateMany({
-          where: { email: { equals: input.email, mode: 'insensitive' }, isPlatformOwner: true, id: { not: ctx.user.id } },
-          data: { isPlatformOwner: false },
-        });
+        const owners = (
+          await tx.user.findMany({
+            where: { email: { equals: input.email, mode: 'insensitive' }, isPlatformOwner: true, id: { not: ctx.user.id } },
+            select: { id: true, email: true },
+          })
+        ).filter((u) => exact(u.email));
+        const revoked =
+          owners.length === 0
+            ? { count: 0 }
+            : await tx.user.updateMany({
+                where: { id: { in: owners.map((u) => u.id) }, isPlatformOwner: true },
+                data: { isPlatformOwner: false },
+              });
         return { email: entries[0]!.email, ownersRevoked: revoked.count };
       });
       await recordPlatformAudit(ctx, {
