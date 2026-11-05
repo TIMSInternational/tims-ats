@@ -1,4 +1,5 @@
 import type { Prisma } from '@tims/db';
+import { vacancyHireRepository, type VacancyHireCounts } from '../repositories/vacancy-hire.repository';
 
 // Closes the recruitment records a confirmed hire leaves open. Runs INSIDE the convert-to-employee
 // transaction so the hire, the application and the vacancy commit (or roll back) together.
@@ -54,56 +55,35 @@ export function vacancyFilledMessage(hires: number, positions: number): string {
   return `La vacante ya está cubierta: tiene ${hires} de ${total} ${total === 1 ? 'contratación registrada' : 'contrataciones registradas'}. No se puede registrar otra contratación para esta vacante.`;
 }
 
-export type VacancyHireCountClient = {
-  vacancy: {
-    findFirst(args: {
-      where: { id: string; organizationId: string };
-      select: { positions: true };
-    }): Promise<{ positions: number } | null>;
-  };
-  offer: { count(args: { where: { vacancyId: string; organizationId: string; status: string } }): Promise<number> };
-};
-
 /**
  * Pre-check, outside the hire transaction and BEFORE any external side effect (the new hire's sign-in
  * identity and its invitation email): refuse a hire for a vacancy whose positions are already covered.
  * The transaction repeats the check under the vacancy lock (lockVacancyForHire), which settles races.
+ * `readCounts` is injectable for tests; it defaults to the repository.
  */
 export async function assertVacancyNotFilled(
-  client: VacancyHireCountClient,
   ref: { organizationId: string; vacancyId: string },
+  readCounts: (organizationId: string, vacancyId: string) => Promise<VacancyHireCounts | null> = vacancyHireRepository.counts,
 ): Promise<void> {
-  const vacancy = await client.vacancy.findFirst({
-    where: { id: ref.vacancyId, organizationId: ref.organizationId },
-    select: { positions: true },
-  });
-  if (!vacancy) return;
-  const hires = await client.offer.count({
-    where: { vacancyId: ref.vacancyId, organizationId: ref.organizationId, status: 'converted' },
-  });
-  if (isVacancyFilled(hires, vacancy.positions)) throw new HireVacancyFilledError(hires, vacancy.positions);
+  const counts = await readCounts(ref.organizationId, ref.vacancyId);
+  if (counts && isVacancyFilled(counts.hires, counts.positions)) {
+    throw new HireVacancyFilledError(counts.hires, counts.positions);
+  }
 }
 
 /**
- * Inside the hire transaction, before the offer is claimed: lock the vacancy row (FOR NO KEY UPDATE, the
- * mode closeHireRecords takes again later in the same transaction) and refuse when the converted offers
- * already cover every position. Two concurrent hires for the last position serialize on this lock; the
+ * Inside the hire transaction, before the offer is claimed: lock the vacancy row and refuse when the converted
+ * offers already cover every position. Two concurrent hires for the last position serialize on this lock; the
  * second then counts the first one's conversion and is refused.
  */
 export async function lockVacancyForHire(
   tx: Prisma.TransactionClient,
   ref: { organizationId: string; vacancyId: string },
 ): Promise<void> {
-  const locked = await tx.$queryRaw<Array<{ positions: number }>>`
-    SELECT positions FROM vacancies
-    WHERE id = ${ref.vacancyId}::uuid AND organization_id = ${ref.organizationId}::uuid
-    FOR NO KEY UPDATE`;
-  const vacancy = locked[0];
-  if (!vacancy) return;
-  const hires = await tx.offer.count({
-    where: { vacancyId: ref.vacancyId, organizationId: ref.organizationId, status: 'converted' },
-  });
-  if (isVacancyFilled(hires, vacancy.positions)) throw new HireVacancyFilledError(hires, vacancy.positions);
+  const counts = await vacancyHireRepository.lockAndCount(tx, ref.organizationId, ref.vacancyId);
+  if (counts && isVacancyFilled(counts.hires, counts.positions)) {
+    throw new HireVacancyFilledError(counts.hires, counts.positions);
+  }
 }
 
 export async function closeHireRecords(

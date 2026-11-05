@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
 import { OPEN_OFFER_STATUSES } from '@tims/shared';
 import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
+import { offerDraftRepository } from '../../repositories/offer-draft.repository';
 
 // One open offer per candidate and vacancy (Pilot UX audit B-04 / A-15): a second draft for the same
 // application used to sit in the list and the KPIs next to the real one. Keyed on candidate + vacancy, not on
@@ -46,9 +47,9 @@ export async function assertNoOpenOffer(
   if (!found) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado en esta organización' });
   }
-  const open = await tx.offer.findFirst({
-    where: openOfferWhere(ref.organizationId, ref.candidateId, ref.vacancyId, now),
-    select: { id: true },
-  });
+  const open = await offerDraftRepository.findOpenOfferId(
+    tx,
+    openOfferWhere(ref.organizationId, ref.candidateId, ref.vacancyId, now),
+  );
   if (open) throw new TRPCError({ code: 'CONFLICT', message: OPEN_OFFER_EXISTS_MESSAGE });
 }

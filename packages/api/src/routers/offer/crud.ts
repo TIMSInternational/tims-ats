@@ -8,6 +8,7 @@ import { redactOfferSettings } from './offer-dto';
 import { assertNoOpenOffer, openOfferStatusWhere } from './open-offer-guard';
 import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
 import { resolveDefaultOfferCurrency } from './offer-currency';
+import { offerDraftRepository } from '../../repositories/offer-draft.repository';
 
 // ISO-4217-shaped: trimmed and upper-cased so 'cop ' is stored as 'COP'; anything else is rejected
 // instead of being stored and later mis-rendered.
@@ -17,29 +18,9 @@ const currencyCode = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Moneda
 const MAX_OFFER_SALARY = 1_000_000_000_000;
 const offerSalary = z.number().finite().positive().max(MAX_OFFER_SALARY, 'Salario fuera de rango');
 
-// What offer.update returns: the edited terms, never `settings` (the candidate's signing token lives there).
-const OFFER_EDIT_SELECT = {
-  id: true,
-  status: true,
-  salary: true,
-  currency: true,
-  startDate: true,
-  contractType: true,
-  benefits: true,
-  terms: true,
-  expiresAt: true,
-  updatedAt: true,
-} satisfies Prisma.OfferSelect;
-
 async function defaultCurrencyFor(organizationId: string, vacancyId: string): Promise<string> {
-  const [organization, vacancy] = await Promise.all([
-    db.organization.findFirst({ where: { id: organizationId }, select: { settings: true } }),
-    db.vacancy.findFirst({
-      where: { id: vacancyId, organizationId },
-      select: { company: { select: { currency: true } } },
-    }),
-  ]);
-  return resolveDefaultOfferCurrency(organization?.settings, vacancy?.company?.currency);
+  const { orgSettings, companyCurrency } = await offerDraftRepository.currencySources(organizationId, vacancyId);
+  return resolveDefaultOfferCurrency(orgSettings, companyCurrency);
 }
 
 export const offerCrudRouter = router({
@@ -213,22 +194,14 @@ export const offerCrudRouter = router({
       // same transaction as the insert, so two concurrent creates cannot both pass.
       const created = await offerApplicationLockRepository.inTransaction(orgId, async (tx) => {
         await assertNoOpenOffer(tx, { organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId });
-        return tx.offer.create({
-          data: {
-            ...rest,
-            currency: resolvedCurrency,
-            benefits: benefits as Prisma.InputJsonValue | undefined,
-            terms: terms as Prisma.InputJsonValue | undefined,
-            organizationId: orgId,
-            createdById: ctx.user.id,
-            status: 'draft',
-          },
-          include: {
-            candidate: {
-              select: { id: true, firstName: true, lastName: true },
-            },
-            vacancy: { select: { id: true, title: true } },
-          },
+        return offerDraftRepository.createDraft(tx, {
+          ...rest,
+          currency: resolvedCurrency,
+          benefits: benefits as Prisma.InputJsonValue | undefined,
+          terms: terms as Prisma.InputJsonValue | undefined,
+          organizationId: orgId,
+          createdById: ctx.user.id,
+          status: 'draft',
         });
       });
       return redactOfferSettings(created);
@@ -282,23 +255,17 @@ export const offerCrudRouter = router({
       const { benefits, terms, ...rest } = data;
       // Compare-and-set on draft: a submission for approval that lands between the check above and this
       // write must not let the approvers see terms other than the ones they are asked to approve.
-      const updated = await db.offer.updateMany({
-        where: { id, organizationId: ctx.user.organizationId, status: 'draft' },
-        data: {
-          ...rest,
-          ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
-          ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
-        },
+      const applied = await offerDraftRepository.updateDraft(ctx.user.organizationId, id, {
+        ...rest,
+        ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
+        ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
       });
-      if (updated.count !== 1) {
+      if (!applied) {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'La oferta ya no está en borrador; recarga la página para ver su estado actual',
         });
       }
-      return db.offer.findFirstOrThrow({
-        where: { id, organizationId: ctx.user.organizationId },
-        select: OFFER_EDIT_SELECT,
-      });
+      return offerDraftRepository.findEdited(ctx.user.organizationId, id);
     }),
 });

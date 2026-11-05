@@ -196,17 +196,15 @@ describe('filled-vacancy hire guards', () => {
   });
 
   it('pre-check: refuses when converted offers cover the positions, passes otherwise', async () => {
-    const client = (positions: number, hires: number) => ({
-      vacancy: { findFirst: vi.fn().mockResolvedValue({ positions }) },
-      offer: { count: vi.fn().mockResolvedValue(hires) },
-    });
-    await expect(assertVacancyNotFilled(client(1, 1), { organizationId: ORG, vacancyId: VAC })).rejects.toBeInstanceOf(
-      HireVacancyFilledError,
-    );
-    await expect(assertVacancyNotFilled(client(2, 1), { organizationId: ORG, vacancyId: VAC })).resolves.toBeUndefined();
-    const c = client(1, 0);
-    await assertVacancyNotFilled(c, { organizationId: ORG, vacancyId: VAC });
-    expect(c.offer.count).toHaveBeenCalledWith({ where: { vacancyId: VAC, organizationId: ORG, status: 'converted' } });
+    const counts = (positions: number, hires: number) => vi.fn().mockResolvedValue({ positions, hires });
+    const ref = { organizationId: ORG, vacancyId: VAC };
+    await expect(assertVacancyNotFilled(ref, counts(1, 1))).rejects.toBeInstanceOf(HireVacancyFilledError);
+    await expect(assertVacancyNotFilled(ref, counts(2, 1))).resolves.toBeUndefined();
+    // A vacancy outside the organization (no counts) is left to the transaction's own lookups.
+    await expect(assertVacancyNotFilled(ref, vi.fn().mockResolvedValue(null))).resolves.toBeUndefined();
+    const read = counts(1, 0);
+    await assertVacancyNotFilled(ref, read);
+    expect(read).toHaveBeenCalledWith(ORG, VAC);
   });
 
   it('in the transaction: locks the vacancy row (tenant-scoped) before counting, and refuses when filled', async () => {

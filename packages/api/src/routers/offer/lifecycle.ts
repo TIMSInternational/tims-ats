@@ -118,7 +118,7 @@ export const offerLifecycleRouter = router({
       // F-15: never hire past the vacancy's positions. Checked here, before the new hire's sign-in identity
       // (and its invitation email) is created, and again under the vacancy lock inside the transaction.
       try {
-        await assertVacancyNotFilled(db, { organizationId: ctx.user.organizationId, vacancyId: offer.vacancyId });
+        await assertVacancyNotFilled({ organizationId: ctx.user.organizationId, vacancyId: offer.vacancyId });
       } catch (error) {
         if (error instanceof HireVacancyFilledError) {
           throw new TRPCError({ code: 'CONFLICT', message: vacancyFilledMessage(error.hires, error.positions) });
