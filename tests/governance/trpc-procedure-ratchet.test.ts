@@ -51,8 +51,12 @@ import { appRouter } from '@tims/api';
  * company-admin access-1): `vacancy.getPending` (the approver inbox's vacancy half; offers already had
  * `offer.getPending`) and `vacancy.withdrawApproval` + `offer.withdrawApproval` (a request stuck with an
  * absent approver otherwise stays in pending_approval for good). Same terms: not headroom, owed a C# port.
+ *
+ * Third D-1 exception: 357 → 358 on 2026-11-04 for `vacancy.resume` (audit A-08): "Congelar" had no way
+ * back, so a frozen vacancy left the careers portal and the pipeline for good. Same terms: not headroom,
+ * owed a C# port with the rest of the vacancy spine.
  */
-const PROCEDURE_CEILING = 357;
+const PROCEDURE_CEILING = 358;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.
