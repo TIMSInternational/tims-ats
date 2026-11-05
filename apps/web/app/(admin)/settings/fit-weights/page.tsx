@@ -123,7 +123,7 @@ export default function FitWeightsPage() {
         {profiles.isLoading ? (
           <Skeleton className="h-32 w-full rounded-xl" />
         ) : profiles.isError ? (
-          <ErrorState onRetry={() => profiles.refetch()} />
+          <ErrorState onRetry={() => profiles.refetch()} error={profiles.error} />
         ) : (
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 overflow-x-auto">
             <table className="w-full min-w-[560px] text-[12px]">

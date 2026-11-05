@@ -43,8 +43,11 @@ export const LAUNCH_HIDDEN_HREFS: readonly string[] = [
   // Stripe self-serve billing / dunning + API keys / integrations
   '/settings/billing',
   '/settings/integrations',
-  // Platform-owner surfaces not used in the pilot
+  // Platform-owner surfaces not used in the pilot. System health reports every service as
+  // 'unmonitored' and has no login-failure writer yet (platform-owner spec-52), so it is hidden rather
+  // than shown as a dashboard that cannot turn red.
   '/platform/feature-flags',
+  '/platform/health',
 ];
 
 /** True when `pathname` is (or is nested under) a hidden href and the scope is the pilot. */

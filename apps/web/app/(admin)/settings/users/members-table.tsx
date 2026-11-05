@@ -26,7 +26,7 @@ export function MembersTable() {
     { getNextPageParam: (last) => last.nextCursor, retry: false },
   );
 
-  if (members.isError) return <ErrorState message={m.membersError} onRetry={() => void members.refetch()} />;
+  if (members.isError) return <ErrorState message={m.membersError} onRetry={() => void members.refetch()} error={members.error} />;
 
   const rows = members.data?.pages.flatMap((page) => page.users) ?? [];
 

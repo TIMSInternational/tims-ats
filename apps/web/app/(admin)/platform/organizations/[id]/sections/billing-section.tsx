@@ -58,7 +58,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
             ))}
           </div>
         ) : profile.isError ? (
-          <ErrorState onRetry={() => profile.refetch()} />
+          <ErrorState onRetry={() => profile.refetch()} error={profile.error} />
         ) : bp ? (
           <div className="grid grid-cols-3 gap-4">
             <div><span className="text-xs text-[#8B8B8B]">Empresa</span><p className="text-sm text-[#333] mt-0.5">{bp.companyName || '\u2014'}</p></div>
@@ -115,7 +115,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
             ))}
           </div>
         ) : invoices.isError ? (
-          <ErrorState onRetry={() => invoices.refetch()} />
+          <ErrorState onRetry={() => invoices.refetch()} error={invoices.error} />
         ) : !invData || invData.invoices.length === 0 ? (
           <div className="py-12 text-center">
             <svg className="w-10 h-10 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

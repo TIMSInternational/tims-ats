@@ -10,13 +10,23 @@
 import type { Prisma } from '@tims/db';
 import { MATRIX, SYSTEM_ROLE_CATALOG, flattenEntries } from '@tims/db';
 
+/**
+ * Country of a new organization's default company (Pilot UX re-audit company-admin data-60). It was a
+ * hard-coded 'CO' (Colombia). No creation path carries a country (platform create, invitation and
+ * self-serve sign-up inputs have none) and a brand-new organization's settings are still empty, so there is
+ * nothing to derive it from yet: the default is the pilot tenant's country, in ONE named place, mirrored by
+ * OrgProvisioningWriter.DefaultCountry in C# (parity pinned by tests/organization/signup-defaults.test.ts).
+ * Replace with the creation input once the create form asks for a country.
+ */
+export const DEFAULT_COMPANY_COUNTRY = 'CR';
+
 export async function provisionOrgDefaults(
   tx: Prisma.TransactionClient,
   orgId: string,
   companyName: string,
 ): Promise<{ companyId: string; businessUnitId: string; teamId: string }> {
   const company = await tx.company.create({
-    data: { organizationId: orgId, name: companyName, country: 'CO' },
+    data: { organizationId: orgId, name: companyName, country: DEFAULT_COMPANY_COUNTRY },
     select: { id: true },
   });
 

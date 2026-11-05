@@ -14,7 +14,12 @@ public sealed record TenantContext(
     string? ImpersonatedBy = null,
     IReadOnlyList<string>? ApiKeyScopes = null);
 
-/// <summary>The staff `User` row the resolver decides over (minimal shape; mirrors StaffAppUser, staff-context.ts).</summary>
+/// <summary>
+/// The staff `User` row the resolver decides over (minimal shape; mirrors StaffAppUser, staff-context.ts).
+/// <see cref="OrganizationIsActive"/> is false when the row's organization is deactivated
+/// (`organizations.is_active = false`): its non-owner staff are refused like an inactive user
+/// (Pilot UX re-audit platform-owner access-3 / journeys-18).
+/// </summary>
 public sealed record AppUserRow(
     string Id,
     string SupabaseUserId,
@@ -22,7 +27,8 @@ public sealed record AppUserRow(
     string? OrganizationId,
     bool IsActive,
     bool IsPlatformOwner,
-    IReadOnlyList<string> RoleSlugs);
+    IReadOnlyList<string> RoleSlugs,
+    bool OrganizationIsActive);
 
 /// <summary>Result of staff resolution: either a resolved <see cref="TenantContext"/> or "not staff" (fall back to candidate/anon).</summary>
 public sealed record StaffResolution(bool Resolved, TenantContext? Context)
@@ -37,9 +43,10 @@ public sealed record StaffResolution(bool Resolved, TenantContext? Context)
 /// name="appUser"/> and an already-fetched impersonation <paramref name="impersonationTarget"/>
 /// (or null), it returns the tenant context or <see cref="StaffResolution.NeedsFallback"/>.
 ///
-/// Fallback (not staff) when: no row, inactive, or neither org-scoped nor platform-owner —
-/// the candidate/anonymous/unprovisioned cases. Impersonation is honored ONLY for a real
-/// platform owner and ONLY for a valid target (active, org-scoped, NOT itself an owner); the
+/// Fallback (not staff) when: no row, inactive, neither org-scoped nor platform-owner, or a
+/// non-owner whose organization is deactivated — the candidate/anonymous/unprovisioned/suspended
+/// cases. Impersonation is honored ONLY for a real platform owner and ONLY for a valid target
+/// (active, org-scoped, in an active organization, NOT itself an owner); the
 /// impersonated context takes the target's org + filtered roles with IsPlatformOwner false,
 /// so it runs the DB-checked permission path with the target's grants (never owner bypass).
 /// </summary>
@@ -49,10 +56,12 @@ public static class StaffContextResolver
 
     public static StaffResolution ResolveStaffContext(AppUserRow? appUser, AppUserRow? impersonationTarget)
     {
-        // Not a staff/owner row, or inactive, or neither org-scoped nor owner → fall back.
+        // Not a staff/owner row, or inactive, or neither org-scoped nor owner, or a non-owner whose
+        // organization is deactivated → fall back.
         if (appUser is null
             || !appUser.IsActive
-            || (!appUser.IsPlatformOwner && string.IsNullOrEmpty(appUser.OrganizationId)))
+            || (!appUser.IsPlatformOwner && string.IsNullOrEmpty(appUser.OrganizationId))
+            || (!appUser.IsPlatformOwner && !appUser.OrganizationIsActive))
         {
             return StaffResolution.NeedsFallback;
         }
@@ -62,7 +71,8 @@ public static class StaffContextResolver
             && impersonationTarget is { } target
             && target.IsActive
             && !string.IsNullOrEmpty(target.OrganizationId)
-            && !target.IsPlatformOwner)
+            && !target.IsPlatformOwner
+            && target.OrganizationIsActive)
         {
             return StaffResolution.Resolve(new TenantContext(
                 PrincipalType: PrincipalType.OrgUser,

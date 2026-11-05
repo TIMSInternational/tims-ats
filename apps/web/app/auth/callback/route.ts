@@ -28,6 +28,16 @@ function recoveryRedirect(origin: string, invitationToken: string | null, userId
   return response;
 }
 
+/** True when this browser already holds a session for a linked staff/owner account (never a candidate). */
+async function hasOpenStaffSession(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>): Promise<boolean> {
+  const {
+    data: { user: current },
+  } = await supabase.auth.getUser();
+  if (!current) return false;
+  const staff = await db.user.findFirst({ where: { supabaseUserId: current.id }, select: { id: true } });
+  return staff !== null;
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
@@ -50,6 +60,14 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // E-19 (#410): a candidate's emailed link opened in a browser where a STAFF account is signed in would
+  // silently replace that session. Do not exchange the code; the portal login explains it ("Tiene una sesión
+  // abierta como …") and offers an explicit sign-out, after which the 6-digit code from the same email works.
+  if (portalLogin && (await hasOpenStaffSession(supabase))) {
+    return NextResponse.redirect(`${origin}${portalLogin}?error=open_session`);
+  }
+
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {

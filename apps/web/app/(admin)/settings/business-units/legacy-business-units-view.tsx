@@ -69,7 +69,7 @@ export function LegacyBusinessUnitsView() {
               {companies.isLoading ? (
                 <Skeleton className="h-9 w-full rounded-lg" />
               ) : companies.isError ? (
-                <ErrorState onRetry={() => companies.refetch()} />
+                <ErrorState onRetry={() => companies.refetch()} error={companies.error} />
               ) : (companies.data ?? []).length === 0 ? (
                 <p className="text-[12px] text-[#8B8B8B] py-2">{t.units.noCompanies}</p>
               ) : (
@@ -94,7 +94,7 @@ export function LegacyBusinessUnitsView() {
                 {t.units.selectUnit}
               </label>
               {units.isError ? (
-                <ErrorState onRetry={() => units.refetch()} />
+                <ErrorState onRetry={() => units.refetch()} error={units.error} />
               ) : companyId && units.data && units.data.length === 0 ? (
                 <p className="text-[12px] text-[#8B8B8B] py-2">{t.units.noUnits}</p>
               ) : (

@@ -8,6 +8,7 @@ import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
 import { getInitials, getAvatarColor } from '../../../../../lib/format-utils';
 import { Skeleton, Modal } from '../../../../../components';
+import { isPilotScope } from '../../../../../lib/launch-scope';
 
 function planBadge(plan: string) {
   const styles: Record<string, string> = {
@@ -50,20 +51,31 @@ const TAB_KEYS = ['overview', 'users', 'billing', 'features', 'ai', 'activity', 
 
 type TabKey = (typeof TAB_KEYS)[number];
 
+// The "Features" tab toggles per-org feature flags that gate nothing in the pilot build, like the hidden
+// /platform/feature-flags page (platform-owner spec-46 / ideal-84), so the pilot does not offer it.
+const PILOT_HIDDEN_TABS: readonly TabKey[] = ['features'];
+
+function visibleTabKeys(): readonly TabKey[] {
+  return isPilotScope() ? TAB_KEYS.filter((key) => !PILOT_HIDDEN_TABS.includes(key)) : TAB_KEYS;
+}
+
 export function OrgDetail({ id }: { id: string }) {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabKey) || 'overview';
-  const TABS: { key: TabKey; label: string }[] = [
-    { key: 'overview', label: t.organizations.tabOverview },
-    { key: 'users', label: t.organizations.tabUsers },
-    { key: 'billing', label: t.organizations.tabBilling },
-    { key: 'features', label: t.organizations.tabFeatures },
-    { key: 'ai', label: t.organizations.tabAi },
-    { key: 'activity', label: t.organizations.tabActivity },
-    { key: 'entitlements', label: t.entitlementsAdmin.tabLabel },
-  ];
-  const [activeTab, setActiveTab] = useState<TabKey>(TAB_KEYS.includes(initialTab) ? initialTab : 'overview');
+  const tabKeys = visibleTabKeys();
+  const TABS: { key: TabKey; label: string }[] = (
+    [
+      { key: 'overview', label: t.organizations.tabOverview },
+      { key: 'users', label: t.organizations.tabUsers },
+      { key: 'billing', label: t.organizations.tabBilling },
+      { key: 'features', label: t.organizations.tabFeatures },
+      { key: 'ai', label: t.organizations.tabAi },
+      { key: 'activity', label: t.organizations.tabActivity },
+      { key: 'entitlements', label: t.entitlementsAdmin.tabLabel },
+    ] as const
+  ).filter((tab) => tabKeys.includes(tab.key));
+  const [activeTab, setActiveTab] = useState<TabKey>(tabKeys.includes(initialTab) ? initialTab : 'overview');
   const [showEdit, setShowEdit] = useState(false);
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
 
@@ -201,7 +213,7 @@ export function OrgDetail({ id }: { id: string }) {
         {activeTab === 'overview' && <OverviewSection org={org} />}
         {activeTab === 'users' && <UsersSection organizationId={id} organizationName={org.name} />}
         {activeTab === 'billing' && <BillingSection organizationId={id} />}
-        {activeTab === 'features' && <FeaturesSection organizationId={id} />}
+        {activeTab === 'features' && tabKeys.includes('features') && <FeaturesSection organizationId={id} />}
         {activeTab === 'ai' && <AiSection organizationId={id} />}
         {activeTab === 'activity' && <ActivitySection organizationId={id} />}
         {activeTab === 'entitlements' && <EntitlementsSection orgId={id} />}

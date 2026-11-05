@@ -25,6 +25,8 @@ const fixture = (name: string): unknown =>
 interface AppUserDto {
   id: string; supabaseUserId: string; email: string; organizationId: string | null;
   isActive: boolean; isPlatformOwner: boolean; roleSlugs: string[];
+  /** Optional; absent = true. False = the row's organization is deactivated (platform-owner access-3). */
+  organizationIsActive?: boolean;
 }
 
 const toStaffAppUser = (d: AppUserDto): StaffAppUser => ({
@@ -36,6 +38,7 @@ const toStaffAppUser = (d: AppUserDto): StaffAppUser => ({
   isPlatformOwner: d.isPlatformOwner,
   lastLoginAt: null,
   userRoles: d.roleSlugs.map((slug) => ({ role: { slug } })),
+  organization: d.organizationId ? { isActive: d.organizationIsActive ?? true } : null,
 });
 
 beforeEach(() => vi.clearAllMocks());

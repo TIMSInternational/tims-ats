@@ -224,7 +224,7 @@ export default function PipelinePage() {
           <PipelineBoardSkeleton kanban={viewMode === 'kanban'} />
         ) : board.isError ? (
           <div className="h-full flex items-center justify-center">
-            <ErrorState onRetry={() => board.refetch()} />
+            <ErrorState onRetry={() => board.refetch()} error={board.error} />
           </div>
         ) : showEmptyState ? (
           <div className="h-full flex items-center justify-center">

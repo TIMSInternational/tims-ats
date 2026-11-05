@@ -158,7 +158,7 @@ function RecruiterDashboard() {
               {vacancyKpis.data && !vacancyKpis.isError ? (
                 <OpenVacanciesCard totalOpen={vacancyKpis.data.totalOpen} />
               ) : (
-                <ErrorState onRetry={() => vacancyKpis.refetch()} />
+                <ErrorState onRetry={() => vacancyKpis.refetch()} error={vacancyKpis.error} />
               )}
             </>
           )}

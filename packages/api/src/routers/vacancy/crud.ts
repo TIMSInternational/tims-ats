@@ -8,6 +8,7 @@ import { scopeWhereFor, assertScoped, buildAccessForUser } from '../../access';
 import { assertVacancyPlacement } from './org-placement';
 import { assigneeForCreator, isNarrowScope } from './creator-scope';
 import { DEFAULT_PIPELINE_STAGES } from './default-stages';
+import { withResolvedCurrency } from './vacancy-currency';
 
 // ---------------------------------------------------------------------------
 // Shared selects — explicit field selection (CLAUDE.md: never return full records)
@@ -114,7 +115,8 @@ export const salarySchema = z
   .object({
     min: z.number().min(0).optional(),
     max: z.number().min(0).optional(),
-    currency: z.string().max(10).default('COP'),
+    // No blind default: an omitted currency resolves to the organization's (./vacancy-currency.ts, data-62).
+    currency: z.string().max(10).optional(),
     period: z.enum(['monthly', 'yearly']).default('monthly'),
   })
   .optional();
@@ -269,7 +271,9 @@ export const vacancyCrudRouter = router({
       const baseData = {
         ...input,
         assignedTo,
-        salary: (input.salary ?? undefined) as Prisma.InputJsonValue | undefined,
+        salary: (await withResolvedCurrency(ctx.user.organizationId, input.salary, { companyId: input.companyId ?? null })) as
+          | Prisma.InputJsonValue
+          | undefined,
         settings: settings as Prisma.InputJsonValue,
         organizationId: ctx.user.organizationId,
         createdBy: ctx.user.id,

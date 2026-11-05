@@ -49,7 +49,7 @@ export default function CandidatesPage() {
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.isError ? (
           <div className="col-span-2 md:col-span-4">
-            <ErrorState onRetry={() => kpis.refetch()} />
+            <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} />
           </div>
         ) : kpis.data ? (
           <>

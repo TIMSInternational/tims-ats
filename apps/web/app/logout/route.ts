@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 // Why the session is being cleared, forwarded to /login as `?error=` so the page can explain it.
 // Only these exact values pass through; anything else signs out to a plain /login.
-const FORWARDED_REASONS = new Set(['no_access']);
+const FORWARDED_REASONS = new Set(['no_access', 'org_inactive']);
 
 // Signed-out pages `?next=` may land on instead of /login (exact match only). Middleware bounces a
 // signed-in user away from them, so a page that must reach one regardless of a lingering session

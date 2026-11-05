@@ -119,7 +119,7 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded" />)}
         </div>
       ) : board.isError ? (
-        <ErrorState onRetry={() => board.refetch()} />
+        <ErrorState onRetry={() => board.refetch()} error={board.error} />
       ) : riskCandidates.length === 0 ? (
         <div className="text-center py-6">
           <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">

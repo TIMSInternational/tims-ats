@@ -38,7 +38,7 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
     );
   }
   if (invoice.isError) {
-    return <div className="h-full flex items-center justify-center"><ErrorState onRetry={() => invoice.refetch()} /></div>;
+    return <div className="h-full flex items-center justify-center"><ErrorState onRetry={() => invoice.refetch()} error={invoice.error} /></div>;
   }
   if (!invoice.data) {
     return <div className="h-full flex items-center justify-center"><p className="text-[#8B8B8B]">{t.invoices.notFound}</p></div>;

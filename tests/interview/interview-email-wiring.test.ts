@@ -64,6 +64,11 @@ vi.mock('../../packages/api/src/access', () => ({
 vi.mock('../../packages/api/src/repositories/interview-email.repository', () => ({
   interviewEmailRepository: { findForNotification: m.findForNotification },
 }));
+// B-26: the panel's bell notification is its own post-response task (asserted below).
+const panelAssigned = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock('../../packages/api/src/services/bell-notification.service', () => ({
+  bellNotificationService: { panelAssigned, approvalRequested: vi.fn() },
+}));
 vi.mock('../../packages/api/src/lib/ses', () => ({
   sendRawEmail: m.sendRaw,
   sendEmail: m.sendPlain,
@@ -376,12 +381,16 @@ describe('interview emails run under the post-response scheduler (Vercel freeze,
     const tasks: Array<() => Promise<void>> = [];
     await (await caller((t) => tasks.push(t))).interview.schedule(scheduleInput);
 
-    expect(tasks).toHaveLength(1);
+    // The emails, then the panel's bell (B-26): both wait for the scheduler.
+    expect(tasks).toHaveLength(2);
     await new Promise((r) => setTimeout(r, 20));
     expect(m.findForNotification).not.toHaveBeenCalled();
     expect(m.sendRaw).not.toHaveBeenCalled();
+    expect(panelAssigned).not.toHaveBeenCalled();
     await tasks[0]!();
     expect(m.sendRaw).toHaveBeenCalledTimes(2);
+    await tasks[1]!();
+    expect(panelAssigned).toHaveBeenCalledWith(ORG_ID, INTERVIEW_ID, [EVAL_ID], USER_ID);
   });
 
   it('reschedule: hands the updated invitation to the scheduler', async () => {
@@ -504,8 +513,11 @@ describe('interview.addEvaluator — a late panelist is invited (B-06)', () => {
     m.findForNotification.mockResolvedValue(notificationData({ type: 'onsite', status: 'cancelled' }));
     const tasks: Array<() => Promise<void>> = [];
     await (await caller((t) => tasks.push(t))).interview.addEvaluator({ interviewId: INTERVIEW_ID, userId: EVAL_ID });
-    expect(tasks).toHaveLength(1);
+    // The email task, then the added evaluator's bell (B-26).
+    expect(tasks).toHaveLength(2);
     await tasks[0]!();
     expect(m.sendRaw).not.toHaveBeenCalled();
+    await tasks[1]!();
+    expect(panelAssigned).toHaveBeenCalledWith(ORG_ID, INTERVIEW_ID, [EVAL_ID], USER_ID);
   });
 });

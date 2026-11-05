@@ -79,7 +79,7 @@ describe('nav filtering under the pilot scope', () => {
     expect(visibleHrefs(MANIFESTS.super_admin.sections, 'full')).toContain('/my-360');
   });
 
-  it('filters the platform sidebar shape too (feature flags hidden, orgs/users/invitations/health/billing kept)', () => {
+  it('filters the platform sidebar shape too (feature flags + system health hidden, orgs/users/invitations/billing kept)', () => {
     const platform = [
       { label: null, items: [{ href: '/dashboard' }] },
       { label: 'p', items: [{ href: '/platform/organizations' }, { href: '/platform/invoices' }, { href: '/platform/users' }, { href: '/platform/invitations' }] },
@@ -87,13 +87,14 @@ describe('nav filtering under the pilot scope', () => {
     ];
     const hrefs = filterSectionsForScope(platform, 'pilot').flatMap((s) => s.items.map((i) => i.href));
     expect(hrefs).not.toContain('/platform/feature-flags');
+    // spec-52: system health hard-codes 'unmonitored' and has no login_failed writer — hidden in the pilot.
+    expect(hrefs).not.toContain('/platform/health');
     expect(hrefs).toEqual([
       '/dashboard',
       '/platform/organizations',
       '/platform/invoices',
       '/platform/users',
       '/platform/invitations',
-      '/platform/health',
     ]);
   });
 });

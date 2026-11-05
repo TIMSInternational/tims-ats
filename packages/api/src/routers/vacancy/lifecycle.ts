@@ -5,6 +5,7 @@ import { TRPCError } from '@trpc/server';
 import { assertScoped } from '../../access';
 import { assertVacancyUpdatePlacement } from './org-placement';
 import { salarySchema, settingsSchema } from './crud';
+import { withResolvedCurrency } from './vacancy-currency';
 import {
   vacancyLifecycleRepository,
   type VacancyLifecycleActor,
@@ -71,7 +72,10 @@ export const vacancyLifecycleRouter = router({
         id,
         {
           ...data,
-          salary: (data.salary ?? undefined) as Prisma.InputJsonValue | undefined,
+          salary: (await withResolvedCurrency(organizationId, data.salary ?? undefined, {
+            companyId: data.companyId,
+            vacancyId: id,
+          })) as Prisma.InputJsonValue | undefined,
           settings: (data.settings ?? undefined) as Prisma.InputJsonValue | undefined,
         },
         fields,

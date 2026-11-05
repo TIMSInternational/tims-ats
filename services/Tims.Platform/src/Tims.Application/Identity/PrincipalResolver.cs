@@ -60,7 +60,8 @@ public sealed class PrincipalResolver(IIdentityRepository identities, CandidateR
                 return StaffResolution.NeedsFallback;
 
             target = await _identities.FindByIdAsync(payload.TargetUserId, ct);
-            if (target is not { IsActive: true, IsPlatformOwner: false }
+            // A target in a deactivated organization is invalid too (platform-owner access-3).
+            if (target is not { IsActive: true, IsPlatformOwner: false, OrganizationIsActive: true }
                 || string.IsNullOrEmpty(target.OrganizationId))
                 return StaffResolution.NeedsFallback;
         }

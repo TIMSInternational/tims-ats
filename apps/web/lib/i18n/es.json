@@ -327,6 +327,7 @@
     "callbackError": "No pudimos completar el inicio de sesión. El enlace pudo haber expirado o haberse abierto en otro navegador. Inténtalo de nuevo.",
     "registrationClosed": "El registro es solo por invitación. Pide a un administrador de tu empresa que te invite.",
     "noAccess": "Tu cuenta no tiene acceso a TIMS ATS. Si recibiste una invitación, ábrela desde el correo para activar tu acceso. Si te postulaste a una vacante, entra desde el portal de empleo de la empresa.",
+    "orgInactive": "Tu organización no está activa en TIMS ATS, así que no puedes iniciar sesión. Si crees que es un error, contacta al administrador de tu empresa.",
     "sessionExpired": "Tu sesión expiró. Inicia sesión de nuevo para continuar.",
     "invitationOnlyHint": "¿No tienes cuenta? El acceso es solo por invitación de tu empresa.",
     "registrationClosedTitle": "Registro por invitación",
@@ -2818,6 +2819,17 @@
     }
   },
   "interviews": {
+    "reschedule": "Reprogramar",
+    "rescheduleDialogTitle": "Reprogramar entrevista",
+    "rescheduleDialogBody": "Elige la nueva fecha y hora. Enviaremos la invitación actualizada al candidato y al panel, y el enlace anterior dejará de funcionar.",
+    "rescheduleDateLabel": "Nueva fecha",
+    "rescheduleTimeLabel": "Nueva hora",
+    "rescheduleDurationLabel": "Duración",
+    "rescheduleKeep": "Volver",
+    "rescheduleConfirm": "Reprogramar y avisar",
+    "rescheduledToast": "Entrevista reprogramada. Enviamos la invitación actualizada al candidato y al panel.",
+    "rescheduleScoredConflict": "Esta entrevista ya tiene scorecards enviados y no se puede reprogramar. Programa una entrevista nueva.",
+    "reschedulePast": "Elige una fecha y hora futuras.",
     "cancelDialogTitle": "¿Cancelar la entrevista?",
     "cancelDialogBody": "Se notificará la cancelación y la entrevista dejará de estar agendada. Esta acción no se puede deshacer.",
     "cancelReasonLabel": "Motivo (opcional, se envía al candidato)",
@@ -3648,7 +3660,11 @@
     "errorRateLimited": "Se enviaron demasiados correos en poco tiempo. Espere unos minutos e inténtelo de nuevo.",
     "errorCaptcha": "No se pudo completar la verificación de seguridad. Inténtelo de nuevo.",
     "errorInvalidEmail": "Revise que el correo esté bien escrito.",
-    "backToJobs": "Volver a las vacantes"
+    "backToJobs": "Volver a las vacantes",
+    "openSession": "Tiene una sesión abierta como {email} en este navegador. Para ingresar a su portal de candidato cerraremos esa sesión.",
+    "openSessionFromLink": "Tiene una sesión abierta como {email} en este navegador, así que no usamos el enlace del correo para no cerrarla sin avisarle. Si desea continuar, cierre esa sesión e ingrese el código de 6 dígitos del mismo correo.",
+    "openSessionContinue": "Cerrar esa sesión y continuar",
+    "openSessionFailed": "No se pudo cerrar la sesión. Inténtelo de nuevo."
   },
   "portalDashboard": {
     "verifyEmailTitle": "Verifique su correo electrónico",
@@ -3716,7 +3732,7 @@
     "phaseOffer": "Oferta",
     "phaseOfferDesc": "Su postulación está en la etapa de oferta.",
     "phaseHired": "Contratación",
-    "phaseHiredDesc": "Fue seleccionado/a para este puesto.",
+    "phaseHiredDesc": "Fue seleccionado/a para este puesto. Siguiente paso: el equipo de selección le contactará para coordinar su ingreso; cuando se registre su contratación recibirá un correo de bienvenida para activar su acceso a «Mi Onboarding».",
     "phaseClosed": "Proceso finalizado",
     "phaseClosedDesc": "El proceso de selección terminó para esta postulación.",
     "intLoading": "Cargando sus entrevistas…",

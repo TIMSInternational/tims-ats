@@ -54,7 +54,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   if (vacancy.isError) {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-2">
-        <ErrorState onRetry={() => vacancy.refetch()} />
+        <ErrorState onRetry={() => vacancy.refetch()} error={vacancy.error} />
         <Link href={`/careers/${orgSlug}`} className="text-sm text-[#1F114C] hover:underline">{p.backToVacancies}</Link>
       </div>
     );
@@ -123,7 +123,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
               <div className="space-y-3 p-4">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}</div>
             ) : vacancies.isError ? (
               <div className="p-4">
-                <ErrorState onRetry={() => vacancies.refetch()} />
+                <ErrorState onRetry={() => vacancies.refetch()} error={vacancies.error} />
               </div>
             ) : (
               filtered.map((item) => (

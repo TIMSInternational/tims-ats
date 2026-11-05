@@ -100,7 +100,7 @@ export default function VacanciesPage() {
           Array.from({ length: 3 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.isError ? (
           <div className="col-span-2 md:col-span-3">
-            <ErrorState onRetry={() => kpis.refetch()} />
+            <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} />
           </div>
         ) : k ? (
           <>

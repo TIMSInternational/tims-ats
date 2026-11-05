@@ -98,7 +98,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   if (candidate.isError) {
     return (
       <div className="h-full flex items-center justify-center">
-        <ErrorState onRetry={() => candidate.refetch()} />
+        <ErrorState onRetry={() => candidate.refetch()} error={candidate.error} />
       </div>
     );
   }

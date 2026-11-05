@@ -20,6 +20,10 @@ import { CallStateBridge } from './call-state-bridge';
 import type { DailyJoinErrorCategory } from './daily-join-error';
 import { RoomNotFound } from './room-not-found';
 import { shouldRetryInterviewQuery } from './room-load-error';
+import { usePermissions } from '../../../../../../lib/permissions';
+import { canOfferInterviewCancel } from '../../interview-cancel';
+import { canRescheduleInterview } from '../../interview-reschedule';
+import { RescheduleInterviewDialog } from '../../reschedule-interview-dialog';
 
 function getInitials(name: string): string {
   return name
@@ -41,6 +45,9 @@ export default function InterviewRoomPage({
   const { id } = use(params);
 
   const interview = trpc.interview.getById.useQuery({ id }, { retry: shouldRetryInterviewQuery });
+  // "Reprogramar" from the room (recruiter-journeys-28): same people as the list's Cancel; the API decides.
+  const { roles, can } = usePermissions();
+  const [showReschedule, setShowReschedule] = useState(false);
 
   // Scoring never requires video (#325). null = the default stage for this interview
   // (see below); set once the evaluator switches between lobby, scoring and the call.
@@ -209,7 +216,19 @@ export default function InterviewRoomPage({
         vacancyTitle={data.vacancy.title}
         isCallActive={stage === 'call' && isCallActive}
         onLeaveCall={handleLeaveCall}
+        onReschedule={
+          canOfferInterviewCancel(roles, can('interview', 'update')) && canRescheduleInterview(data) && stage !== 'call'
+            ? () => setShowReschedule(true)
+            : undefined
+        }
       />
+      {showReschedule && (
+        <RescheduleInterviewDialog
+          target={{ id: data.id, vacancyId: data.vacancy.id, scheduledAt: data.scheduledAt, duration: data.duration }}
+          onClose={() => setShowReschedule(false)}
+          onDone={() => { setShowReschedule(false); void interview.refetch(); }}
+        />
+      )}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         <div className={stageClass}>{stageNode}</div>
         <div className={isScorecardVisible ? 'contents' : 'hidden'} hidden={!isScorecardVisible}>

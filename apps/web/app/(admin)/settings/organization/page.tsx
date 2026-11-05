@@ -39,7 +39,7 @@ export default function OrganizationProfilePage() {
 
   let body: ReactNode;
   if (profile.isLoading) body = <Skeleton className="h-48 w-full rounded-lg" />;
-  else if (profile.isError || !profile.data) body = <ErrorState onRetry={() => void profile.refetch()} />;
+  else if (profile.isError || !profile.data) body = <ErrorState onRetry={() => void profile.refetch()} error={profile.error} />;
   else {
     const p = profile.data;
     const careers = origin ? careersPageUrl(origin, p.slug) : null;

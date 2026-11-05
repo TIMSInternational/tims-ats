@@ -136,7 +136,7 @@ export default function OnboardingPage() {
               Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
             ) : kpis.isError ? (
               <div className="col-span-2 md:col-span-5">
-                <ErrorState onRetry={() => kpis.refetch()} />
+                <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} />
               </div>
             ) : (
               <>
@@ -190,7 +190,7 @@ export default function OnboardingPage() {
         {/* Active Onboardings Table */}
         {plans.isError ? (
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] mb-6">
-            <ErrorState onRetry={() => plans.refetch()} />
+            <ErrorState onRetry={() => plans.refetch()} error={plans.error} />
           </div>
         ) : (
           <>
@@ -214,7 +214,7 @@ export default function OnboardingPage() {
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           {plans.isError ? (
             <div className="w-full md:flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <ErrorState onRetry={() => plans.refetch()} />
+              <ErrorState onRetry={() => plans.refetch()} error={plans.error} />
             </div>
           ) : (
             <>
@@ -228,7 +228,7 @@ export default function OnboardingPage() {
         <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
           <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.checkinCalendar}</h3>
           {plans.isError ? (
-            <ErrorState onRetry={() => plans.refetch()} />
+            <ErrorState onRetry={() => plans.refetch()} error={plans.error} />
           ) : plans.isLoading ? (
             <KpiCardSkeleton />
           ) : items.flatMap((plan) => plan.checkIns).length === 0 ? (

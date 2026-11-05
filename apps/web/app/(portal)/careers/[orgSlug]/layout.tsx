@@ -1,5 +1,6 @@
 import { db } from '@tims/db';
 import { notFound, redirect } from 'next/navigation';
+import { PortalOrgBrandProvider } from './_components/portal-org-brand';
 
 export default async function OrgCareersLayout({
   children,
@@ -12,7 +13,7 @@ export default async function OrgCareersLayout({
 
   const org = await db.organization.findUnique({
     where: { slug: orgSlug },
-    select: { id: true, isActive: true },
+    select: { id: true, isActive: true, name: true, logo: true },
   });
 
   if (!org || !org.isActive) {
@@ -26,5 +27,5 @@ export default async function OrgCareersLayout({
     notFound();
   }
 
-  return <>{children}</>;
+  return <PortalOrgBrandProvider brand={{ name: org.name, logo: org.logo }}>{children}</PortalOrgBrandProvider>;
 }

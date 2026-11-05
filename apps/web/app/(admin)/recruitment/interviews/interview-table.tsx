@@ -9,6 +9,7 @@ import { isPilotScope } from '../../../../lib/launch-scope';
 import { isVideoInterview, ROOM_STATUSES } from './[id]/room/interview-mode';
 import { interviewTypeLabel } from './[id]/room/interview-type-label';
 import { canCancelInterview, canMarkNoShow, displayInterviewStatus } from './interview-status';
+import { canRescheduleInterview } from './interview-reschedule';
 
 interface InterviewTableProps {
   interviews: InterviewListItem[];
@@ -20,6 +21,8 @@ interface InterviewTableProps {
   isCancelling: boolean;
   /** "No se presentó" on a started, unscored row; omitted (hidden) for viewers who may not cancel. */
   onMarkNoShow?: (id: string) => void;
+  /** "Reprogramar" on an open, unscored row; omitted (hidden) for viewers who may not manage interviews. */
+  onReschedule?: (iv: InterviewListItem) => void;
   /** Omitted when the viewer may not manage the panel (e.g. committee-only) — the button is then hidden. */
   onManageEvaluators?: (id: string) => void;
   onStartAiScreen: (id: string) => void;
@@ -50,7 +53,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   cultural: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>,
 };
 
-export function InterviewTable({ interviews, isLoading, isError, onRetry, onCancel, isCancelling, onMarkNoShow, onManageEvaluators, onStartAiScreen, aiScreenEnabled, aiScreenError, canViewCandidate = true, pagination }: InterviewTableProps) {
+export function InterviewTable({ interviews, isLoading, isError, onRetry, onCancel, isCancelling, onMarkNoShow, onReschedule, onManageEvaluators, onStartAiScreen, aiScreenEnabled, aiScreenError, canViewCandidate = true, pagination }: InterviewTableProps) {
   const { t } = useI18n();
   const now = new Date();
   // The AI voice screen is not part of the pilot: no sales upsell on every row (F-9).
@@ -197,6 +200,15 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
               ) : showAiUpsell ? (
                 <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />
               ) : null}
+              {onReschedule && canRescheduleInterview(iv) && (
+                <button
+                  type="button"
+                  onClick={() => onReschedule(iv)}
+                  className="h-7 px-2.5 rounded-md text-[11px] text-[#1F114C] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
+                >
+                  {t.interviews.reschedule}
+                </button>
+              )}
               {onCancel && canCancelInterview(iv, now) && (
                 <button
                   onClick={() => onCancel(iv.id)}

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   tenantOrgs: [] as Array<string | null>,
   warn: vi.fn(),
   error: vi.fn(),
+  bulkCreate: vi.fn(),
 }));
 
 vi.mock('@tims/db', () => ({
@@ -30,6 +31,10 @@ vi.mock('@tims/shared', async (importOriginal) => ({
   logger: { warn: mocks.warn, error: mocks.error, info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../packages/api/src/lib/ses', () => ({ sendEmail: mocks.sendEmail }));
+// B-26: the bell rows go through the tenant-safe notification writer (membership-checked, org-scoped).
+vi.mock('../../packages/api/src/services/notification.service', () => ({
+  notificationService: { bulkCreate: mocks.bulkCreate },
+}));
 vi.mock('../../packages/api/src/repositories/approval-notification.repository', () => ({
   approvalNotificationRepository: {
     findVacancyRequest: mocks.findVacancyRequest,
@@ -61,6 +66,69 @@ beforeEach(() => {
   mocks.tenantOrgs.length = 0;
   mocks.warn.mockReset();
   mocks.error.mockReset();
+  mocks.bulkCreate.mockReset().mockResolvedValue({ count: 1 });
+});
+
+describe('approval request bell notifications (B-26)', () => {
+  it('writes one bell row per approver, in their locale, linking to the vacancy', async () => {
+    await approvalNotificationService.notifyApprovalRequested({
+      orgId: ORG_ID,
+      kind: 'vacancy',
+      entityId: ITEM_ID,
+      approverIds: [ANA, BEN, REQUESTER],
+      requesterId: REQUESTER,
+    });
+    expect(mocks.bulkCreate).toHaveBeenCalledTimes(2);
+    expect(mocks.bulkCreate).toHaveBeenCalledWith(ORG_ID, [ANA], {
+      type: 'info',
+      title: 'Tienes una vacante por aprobar: Analista de Datos',
+      message: 'Revísala y apruébala o recházala desde TIMS.',
+      module: 'vacancy',
+      entityType: 'vacancy',
+      entityId: ITEM_ID,
+      actionUrl: `/recruitment/vacancies/${ITEM_ID}`,
+    });
+    expect(mocks.bulkCreate).toHaveBeenCalledWith(
+      ORG_ID,
+      [BEN],
+      expect.objectContaining({ title: 'A vacancy is waiting for your approval: Analista de Datos' }),
+    );
+    // The submitter never gets a bell about their own request.
+    expect(mocks.bulkCreate.mock.calls.flatMap((c) => c[1])).not.toContain(REQUESTER);
+  });
+
+  it('links an offer approval to the offer, with the candidate in the title', async () => {
+    await approvalNotificationService.notifyApprovalRequested({
+      orgId: ORG_ID,
+      kind: 'offer',
+      entityId: ITEM_ID,
+      approverIds: [ANA],
+      requesterId: REQUESTER,
+    });
+    expect(mocks.bulkCreate).toHaveBeenCalledWith(
+      ORG_ID,
+      [ANA],
+      expect.objectContaining({
+        title: 'Tienes una oferta por aprobar: María Pérez (Analista de Datos)',
+        actionUrl: `/recruitment/offers/${ITEM_ID}`,
+        module: 'offer',
+      }),
+    );
+  });
+
+  it('a failed bell write never blocks the emails and never throws', async () => {
+    mocks.bulkCreate.mockRejectedValue(new Error('db down'));
+    await expect(
+      approvalNotificationService.notifyApprovalRequested({
+        orgId: ORG_ID,
+        kind: 'vacancy',
+        entityId: ITEM_ID,
+        approverIds: [ANA, BEN],
+        requesterId: REQUESTER,
+      }),
+    ).resolves.toBeUndefined();
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('approvalNotificationService.notifyApprovalRequested', () => {

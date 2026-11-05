@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { getAppUrl } from '@tims/shared';
 import { interviewEmailService } from '../../services/interview-email.service';
+import { bellNotificationService as bell } from '../../services/bell-notification.service';
 import { runAfterResponse } from '../../lib/after-response';
 import { clearedJoinTokenColumns, issueJoinToken } from '../../services/interview-join-token';
 import { scopeWhereFor, assertScoped } from '../../access';
@@ -266,10 +267,10 @@ export const interviewCrudRouter = router({
         },
       });
 
-      // After the response (never awaited, never frozen: see lib/after-response.ts): candidate (join
-      // link) + each evaluator (staff room link), with .ics.
+      // After the response (lib/after-response.ts): candidate + evaluator emails with .ics, and the panel's bell (B-26).
       const inviteParams = { orgId, interviewId: interview.id, kind: 'invite' as const, candidateJoinToken: joinToken.token };
       runAfterResponse(ctx, () => interviewEmailService.notify(inviteParams));
+      runAfterResponse(ctx, () => bell.panelAssigned(orgId, interview.id, evaluatorIds, ctx.user.id));
 
       // #312: the mailer skips a candidate who revoked the authorization; tell staff so they know the
       // candidate was NOT notified (evaluators still are).
@@ -413,6 +414,7 @@ export const interviewCrudRouter = router({
         onlyEvaluatorId: input.userId,
       };
       runAfterResponse(ctx, () => interviewEmailService.notify(addedParams));
+      runAfterResponse(ctx, () => bell.panelAssigned(ctx.user.organizationId, input.interviewId, [input.userId], ctx.user.id));
       return added;
     }),
 

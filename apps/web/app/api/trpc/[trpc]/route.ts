@@ -8,6 +8,7 @@ import { provisionPlatformOwner } from '../../../../lib/auth/platform-owner-prov
 import * as Sentry from '@sentry/nextjs';
 import {
   resolveStaffContext,
+  belongsToInactiveOrganization,
   NEEDS_FALLBACK,
   type StaffDbLookup,
   type StaffAppUser,
@@ -75,12 +76,18 @@ const handler = (req: Request) =>
         findUserBySupabaseId: (uid: string) =>
           db.user.findUnique({
             where: { supabaseUserId: uid },
-            include: { userRoles: { include: { role: { select: { slug: true } } } } },
+            include: {
+              userRoles: { include: { role: { select: { slug: true } } } },
+              organization: { select: { isActive: true } },
+            },
           }) as Promise<StaffAppUser | null>,
         findUserById: (id: string) =>
           db.user.findUnique({
             where: { id },
-            include: { userRoles: { include: { role: { select: { slug: true } } } } },
+            include: {
+              userRoles: { include: { role: { select: { slug: true } } } },
+              organization: { select: { isActive: true } },
+            },
           }) as Promise<StaffAppUser | null>,
         updateLastLogin: (id: string) => {
           db.user.update({ where: { id }, data: { lastLoginAt: new Date() } }).catch(() => {});
@@ -130,6 +137,7 @@ const handler = (req: Request) =>
           userRoles: {
             include: { role: { select: { slug: true } } },
           },
+          organization: { select: { isActive: true } },
         },
       });
 
@@ -155,6 +163,7 @@ const handler = (req: Request) =>
               userRoles: {
                 include: { role: { select: { slug: true } } },
               },
+              organization: { select: { isActive: true } },
             },
           }),
         );
@@ -173,6 +182,10 @@ const handler = (req: Request) =>
       // (e.g. a legacy candidate-account row from before invite-time linking) — such
       // a row must never be treated as staff just because it shares the Supabase id.
       if (!appUser.isActive || (!appUser.isPlatformOwner && !appUser.organizationId)) {
+        return { user: null, supabaseAuth, headers: new Headers(req.headers) };
+      }
+      // Staff of a deactivated organization are refused like a deactivated user (platform-owner access-3).
+      if (belongsToInactiveOrganization(appUser)) {
         return { user: null, supabaseAuth, headers: new Headers(req.headers) };
       }
 
@@ -207,10 +220,19 @@ const handler = (req: Request) =>
         if (payload) {
           const target = await db.user.findUnique({
             where: { id: payload.targetUserId },
-            include: { userRoles: { include: { role: { select: { slug: true } } } } },
+            include: {
+              userRoles: { include: { role: { select: { slug: true } } } },
+              organization: { select: { isActive: true } },
+            },
           });
-          // Never impersonate another platform owner or an inactive/org-less user.
-          if (target && target.isActive && target.organizationId && !target.isPlatformOwner) {
+          // Never impersonate another platform owner or an inactive/org-less user, or one whose org is deactivated.
+          if (
+            target &&
+            target.isActive &&
+            target.organizationId &&
+            !target.isPlatformOwner &&
+            !belongsToInactiveOrganization(target)
+          ) {
             return {
               user: {
                 id: target.id,

@@ -10,6 +10,7 @@ import { emailService } from '../../services/email.service';
 import { candidateContactEmail } from '../../services/candidate-contact';
 import { sendOfferResponseNotice } from '../../services/offer-response-notice.service';
 import { runAfterResponse } from '../../lib/after-response';
+import { sendOfferAcceptedCopy } from '../../services/offer-accepted-copy.service';
 import { candidateConsentRepository } from '../../repositories/candidate-consent.repository';
 import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
@@ -413,9 +414,10 @@ export const offerSigningRouter = router({
       // Notify the staff after the response (never delays or fails the candidate's answer). After the
       // response (see lib/after-response.ts): a bare call was frozen by the serverless runtime once the
       // response was sent, so HR never got the email. Recipients, link and time zone: services/offer-response-notice.service.ts.
-      runAfterResponse(ctx, () =>
-        sendOfferResponseNotice(offer.organizationId, offer.id, { kind: 'accepted', at: now }),
-      );
+      runAfterResponse(ctx, async () => {
+        await sendOfferResponseNotice(offer.organizationId, offer.id, { kind: 'accepted', at: now });
+        await sendOfferAcceptedCopy(offer.organizationId, offer.id, { at: now, signatureName: input.signatureName }); // C-31
+      });
 
       return { success: true };
     }),

@@ -119,7 +119,7 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
               {agentDetail.isLoading ? (
                 <div className="p-6 text-center text-[12px] text-[#8B8B8B]">{t.common.loading}</div>
               ) : agentDetail.isError ? (
-                <ErrorState onRetry={() => agentDetail.refetch()} />
+                <ErrorState onRetry={() => agentDetail.refetch()} error={agentDetail.error} />
               ) : (agentDetail.data?.orgConfigs ?? []).length === 0 ? (
                 <div className="p-8 text-center">
                   <p className="text-[12px] text-[#8B8B8B]">{t.aiAgents.noOrgConfigs}</p>
@@ -190,7 +190,7 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
               {usage.isLoading ? (
                 <div className="text-center text-[12px] text-[#8B8B8B] py-8">{t.common.loading}</div>
               ) : usage.isError ? (
-                <ErrorState onRetry={() => usage.refetch()} />
+                <ErrorState onRetry={() => usage.refetch()} error={usage.error} />
               ) : usage.data ? (
                 <>
                   <div className="grid grid-cols-2 gap-3">

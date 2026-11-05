@@ -131,7 +131,7 @@ export function UsageBillingPanel({ orgId }: { orgId: string }) {
           ))}
         </div>
       ) : preview.isError ? (
-        <ErrorState onRetry={() => preview.refetch()} />
+        <ErrorState onRetry={() => preview.refetch()} error={preview.error} />
       ) : lines.length === 0 ? (
         <EmptyState icon={emptyIcon} message={t.usageBilling.noUsage} />
       ) : (

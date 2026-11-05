@@ -78,7 +78,7 @@ export function OrgStructureManager() {
         {structure.isLoading ? (
           <Skeleton className="h-40 w-full rounded-xl" />
         ) : structure.isError ? (
-          <ErrorState onRetry={() => structure.refetch()} message={structure.error.message} />
+          <ErrorState onRetry={() => structure.refetch()} message={structure.error.message} error={structure.error} />
         ) : units.length === 0 ? (
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
             <EmptyState

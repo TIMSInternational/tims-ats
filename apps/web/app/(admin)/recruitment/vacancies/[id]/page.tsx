@@ -53,7 +53,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
   if (vacancy.isError) {
     return (
       <div className="h-full flex items-center justify-center">
-        <ErrorState onRetry={() => vacancy.refetch()} />
+        <ErrorState onRetry={() => vacancy.refetch()} error={vacancy.error} />
       </div>
     );
   }

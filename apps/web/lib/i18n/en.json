@@ -327,6 +327,7 @@
     "callbackError": "We could not complete sign-in. The link may have expired or been opened in a different browser. Please try again.",
     "registrationClosed": "Registration is by invitation only. Ask an administrator at your company to invite you.",
     "noAccess": "Your account does not have access to TIMS ATS. If you received an invitation, open it from the email to activate your access. If you applied for a job, sign in from the company's careers portal.",
+    "orgInactive": "Your organization is not active in TIMS ATS, so you cannot sign in. If you think this is a mistake, contact your company administrator.",
     "sessionExpired": "Your session has expired. Sign in again to continue.",
     "invitationOnlyHint": "No account? Access is by invitation from your company.",
     "registrationClosedTitle": "Registration by invitation",
@@ -2818,6 +2819,17 @@
     }
   },
   "interviews": {
+    "reschedule": "Reschedule",
+    "rescheduleDialogTitle": "Reschedule interview",
+    "rescheduleDialogBody": "Choose the new date and time. We will send the updated invitation to the candidate and the panel, and the previous link will stop working.",
+    "rescheduleDateLabel": "New date",
+    "rescheduleTimeLabel": "New time",
+    "rescheduleDurationLabel": "Duration",
+    "rescheduleKeep": "Back",
+    "rescheduleConfirm": "Reschedule and notify",
+    "rescheduledToast": "Interview rescheduled. We sent the updated invitation to the candidate and the panel.",
+    "rescheduleScoredConflict": "This interview already has submitted scorecards and cannot be rescheduled. Schedule a new interview.",
+    "reschedulePast": "Choose a future date and time.",
     "cancelDialogTitle": "Cancel the interview?",
     "cancelDialogBody": "The cancellation will be notified and the interview will no longer be scheduled. This cannot be undone.",
     "cancelReasonLabel": "Reason (optional, sent to the candidate)",
@@ -3648,7 +3660,11 @@
     "errorRateLimited": "Too many emails were sent in a short time. Wait a few minutes and try again.",
     "errorCaptcha": "The security check couldn't be completed. Try again.",
     "errorInvalidEmail": "Check that the email address is spelled correctly.",
-    "backToJobs": "Back to jobs"
+    "backToJobs": "Back to jobs",
+    "openSession": "You are signed in as {email} in this browser. To enter your candidate portal we will sign that session out.",
+    "openSessionFromLink": "You are signed in as {email} in this browser, so the email link was not used, to avoid signing you out without warning. To continue, sign that session out and enter the 6-digit code from the same email.",
+    "openSessionContinue": "Sign out and continue",
+    "openSessionFailed": "Could not sign out. Please try again."
   },
   "portalDashboard": {
     "verifyEmailTitle": "Verify your email address",
@@ -3716,7 +3732,7 @@
     "phaseOffer": "Offer",
     "phaseOfferDesc": "Your application is at the offer stage.",
     "phaseHired": "Hired",
-    "phaseHiredDesc": "You were selected for this position.",
+    "phaseHiredDesc": "You were selected for this position. Next step: the hiring team will contact you to arrange your start; once your hire is recorded you will receive a welcome email to activate your access to “My Onboarding”.",
     "phaseClosed": "Process closed",
     "phaseClosedDesc": "The selection process has ended for this application.",
     "intLoading": "Loading your interviews…",

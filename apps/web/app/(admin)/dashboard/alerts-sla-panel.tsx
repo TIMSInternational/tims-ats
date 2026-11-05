@@ -78,7 +78,7 @@ export function AlertsSlaPanel({ vacancyId, vacanciesLoading }: AlertsSlaPanelPr
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded" />)}
         </div>
       ) : slaQuery.isError ? (
-        <ErrorState onRetry={() => slaQuery.refetch()} />
+        <ErrorState onRetry={() => slaQuery.refetch()} error={slaQuery.error} />
       ) : slaData.length === 0 ? (
         <div className="text-center py-6">
           <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">

@@ -22,7 +22,7 @@ export default function ProfilePage() {
         {me.isLoading ? (
           <Skeleton className="h-64 w-full rounded-lg" />
         ) : me.isError || !me.data ? (
-          <ErrorState message={t.profile.loadError} onRetry={() => void me.refetch()} />
+          <ErrorState message={t.profile.loadError} onRetry={() => void me.refetch()} error={me.error} />
         ) : (
           <ProfileForm profile={me.data} />
         )}

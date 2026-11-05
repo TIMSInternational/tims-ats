@@ -76,7 +76,7 @@ export default function BrandingPage() {
           {org.isLoading ? (
             <Skeleton className="h-24 w-full rounded-lg" />
           ) : org.isError ? (
-            <ErrorState onRetry={() => org.refetch()} />
+            <ErrorState onRetry={() => org.refetch()} error={org.error} />
           ) : (
             <div className="flex flex-col md:flex-row gap-5">
               <div className="w-28 h-28 shrink-0 rounded-lg border border-[#EDEDED] bg-[#F6F6F6] flex items-center justify-center overflow-hidden">

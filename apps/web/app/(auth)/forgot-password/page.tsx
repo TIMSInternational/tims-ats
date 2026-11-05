@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
 import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../lib/auth/canonical-auth-origin';
 import { authErrorMessage } from '../auth-error-message';
+import { useAuthCaptcha } from '../../../lib/auth/use-auth-captcha';
+import { AuthCaptcha } from '../../../components/auth-captcha';
 
 export default function ForgotPasswordPage() {
   const { t } = useI18n();
@@ -14,11 +16,14 @@ export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // C-34: Turnstile token for Supabase Auth captcha (single-use: reset after every attempt).
+  const captcha = useAuthCaptcha();
   useCanonicalAuthOrigin();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ensureCanonicalAuthOrigin()) return;
+    if (!captcha.satisfied) return;
     setLoading(true);
     setError('');
 
@@ -32,9 +37,11 @@ export default function ForgotPasswordPage() {
       setLoading(false);
       return;
     }
+    const captchaOption = captcha.tokenOption();
+    captcha.reset();
     try {
       const supabase = createSupabaseBrowserClient();
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo, ...captchaOption });
       if (resetError) {
         setError(authErrorMessage(resetError, t.auth, t.auth.resetLinkFailed));
         setLoading(false);
@@ -106,9 +113,10 @@ export default function ForgotPasswordPage() {
                 placeholder="tu@empresa.com"
               />
             </div>
+            <AuthCaptcha captcha={captcha} />
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !captcha.satisfied}
               className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
             >
               {loading ? t.auth.sendingLink : t.auth.sendLink}

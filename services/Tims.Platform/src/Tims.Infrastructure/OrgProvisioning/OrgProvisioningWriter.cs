@@ -45,8 +45,12 @@ public sealed record OrgDefaultsIds(Guid CompanyId, Guid BusinessUnitId, Guid Te
 /// </summary>
 public static class OrgProvisioningWriter
 {
-    /// <summary><c>country: 'CO'</c>, hard-coded by the TS (<c>org-provisioning.ts:19</c>).</summary>
-    public const string DefaultCountry = "CO";
+    /// <summary>
+    /// <c>DEFAULT_COMPANY_COUNTRY</c> (<c>org-provisioning.ts</c>): the pilot tenant's country, Costa Rica. It was
+    /// a hard-coded <c>'CO'</c> in both stacks (Pilot UX re-audit company-admin data-60); no creation input
+    /// carries a country yet, so the default lives in one named place per stack and the two are pinned equal.
+    /// </summary>
+    public const string DefaultCountry = "CR";
 
     /// <summary><c>name: 'General'</c> (<c>org-provisioning.ts:24</c>).</summary>
     public const string DefaultBusinessUnit = "General";

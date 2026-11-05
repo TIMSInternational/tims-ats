@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { provisionOrgDefaults, provisionOrgEntitlements } from '../../packages/api/src/services/org-provisioning';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  DEFAULT_COMPANY_COUNTRY,
+  provisionOrgDefaults,
+  provisionOrgEntitlements,
+} from '../../packages/api/src/services/org-provisioning';
 import { ATS_BASE_MODULES, MODULES } from '../../packages/db/prisma/seed-entitlements';
 
 // ---------------------------------------------------------------------------
@@ -45,13 +51,24 @@ describe('provisionOrgDefaults', () => {
     tx = createMockTx();
   });
 
-  it('creates a Company with country defaulted to CO and the given name', async () => {
+  it('creates a Company with the pilot default country (CR, not a hard-coded CO) and the given name', async () => {
     await provisionOrgDefaults(tx as never, ORG_ID, 'Acme Corp');
 
     expect(tx.company.create).toHaveBeenCalledWith({
-      data: { organizationId: ORG_ID, name: 'Acme Corp', country: 'CO' },
+      data: { organizationId: ORG_ID, name: 'Acme Corp', country: 'CR' },
       select: { id: true },
     });
+    expect(DEFAULT_COMPANY_COUNTRY).toBe('CR');
+  });
+
+  it('parity pin (data-60): the C# OrgProvisioningWriter.DefaultCountry equals the TS default', () => {
+    const cs = readFileSync(
+      join(__dirname, '../../services/Tims.Platform/src/Tims.Infrastructure/OrgProvisioning/OrgProvisioningWriter.cs'),
+      'utf8',
+    );
+    expect(cs).toContain(`public const string DefaultCountry = "${DEFAULT_COMPANY_COUNTRY}";`);
+    const ts = readFileSync(join(__dirname, '../../packages/api/src/services/org-provisioning.ts'), 'utf8');
+    expect(ts).not.toMatch(/country:\s*['"]CO['"]/);
   });
 
   it('creates a BusinessUnit scoped to the just-created Company', async () => {

@@ -13,6 +13,7 @@ import { EvaluatorsModal } from './evaluators-modal';
 import { AiScreenModal } from './ai-screen-modal';
 import { CancelInterviewDialog } from './cancel-interview-dialog';
 import { NoShowDialog } from './no-show-dialog';
+import { RescheduleInterviewDialog, type RescheduleTarget } from './reschedule-interview-dialog';
 import { InterviewKpis } from './interview-kpis';
 import { canOfferInterviewCancel, canOfferInterviewScheduling, canOfferPanelManagement } from './interview-cancel';
 import { usePermissions } from '../../../../lib/permissions';
@@ -72,6 +73,7 @@ export default function InterviewsPage() {
   const utils = trpc.useUtils();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [noShowTargetId, setNoShowTargetId] = useState<string | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
   const { roles, can } = usePermissions();
   const showCancel = canOfferInterviewCancel(roles, can('interview', 'update'));
   // Panelists (committee) neither manage the panel nor schedule (B-05, E-08); the API enforces it too.
@@ -140,6 +142,7 @@ export default function InterviewsPage() {
           onCancel={showCancel ? (id) => setCancelTargetId(id) : undefined}
           isCancelling={cancelInterview.isPending}
           onMarkNoShow={showCancel ? (id) => setNoShowTargetId(id) : undefined}
+          onReschedule={showCancel ? (iv) => setRescheduleTarget({ id: iv.id, vacancyId: iv.vacancy.id, scheduledAt: iv.scheduledAt, duration: iv.duration }) : undefined}
           onManageEvaluators={showPanelManagement ? (id) => setEvaluatorsInterviewId(id) : undefined}
           onStartAiScreen={(id) => setAiScreenInterviewId(id)}
           aiScreenEnabled={aiScreenEnabled}
@@ -182,6 +185,14 @@ export default function InterviewsPage() {
           isPending={cancelInterview.isPending}
           onClose={() => setCancelTargetId(null)}
           onConfirm={(cancelReason) => cancelInterview.mutate({ id: cancelTargetId, cancelReason })}
+        />
+      )}
+
+      {rescheduleTarget && (
+        <RescheduleInterviewDialog
+          target={rescheduleTarget}
+          onClose={() => setRescheduleTarget(null)}
+          onDone={() => { setRescheduleTarget(null); void utils.interview.list.invalidate(); }}
         />
       )}
 

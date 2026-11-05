@@ -194,7 +194,7 @@ export default function AuditPage() {
             ))}
           </select>
           {orgs.isError ? (
-            <ErrorState onRetry={() => orgs.refetch()} />
+            <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
           ) : (
             <select
               value={organizationId}

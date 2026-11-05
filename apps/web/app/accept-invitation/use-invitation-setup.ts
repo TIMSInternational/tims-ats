@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { Session } from '@supabase/supabase-js';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import type { copy } from './invitation-copy';
+import type { AuthCaptcha } from '../../lib/auth/use-auth-captcha';
 import {
   invitationSchema,
   invitationPasswordSignIn,
@@ -21,7 +22,7 @@ type InvitationCopy = (typeof copy)['es'];
 type Adoption = { status: 'adopted' } | { status: 'other'; email: string } | { status: 'failed' };
 
 /** State and actions of the invitation page; the component only renders them. */
-export function useInvitationSetup(token: string, t: InvitationCopy) {
+export function useInvitationSetup(token: string, t: InvitationCopy, captcha: AuthCaptcha) {
   const [invitation, setInvitation] = useState<Invitation>();
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -180,7 +181,10 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
       if (!accessToken) {
         // Session expiry or logout in another tab must reveal a recoverable sign-in state.
         setSessionToken(undefined);
-        const signedIn = await invitationPasswordSignIn({ email: invitation.email, password: secret });
+        const captchaOption = captcha.tokenOption();
+        captcha.reset(); // single-use (C-34)
+        const options = captchaOption.captchaToken ? { options: captchaOption } : {};
+        const signedIn = await invitationPasswordSignIn({ email: invitation.email, password: secret, ...options });
         setSecret('');
         setConfirmation('');
         if (signedIn.error || !signedIn.data.session) {
@@ -246,7 +250,9 @@ export function useInvitationSetup(token: string, t: InvitationCopy) {
   function recover() {
     if (!invitation || busy) return Promise.resolve();
     return run(async () => {
-      const { error: recoveryError } = await invitationRecovery(invitation.email, token);
+      const option = captcha.tokenOption();
+      captcha.reset(); // single-use Turnstile token (C-34)
+      const { error: recoveryError } = await invitationRecovery(invitation.email, token, option);
       if (recoveryError) setError(t.error);
       else setNotice(t.recovery);
     });

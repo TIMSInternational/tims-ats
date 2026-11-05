@@ -58,7 +58,7 @@ export function JobBoard({ organizationId, orgName, orgSlug, orgLogo = null }: J
 
       {stats.isError && (
         <div className="mx-auto max-w-6xl px-6 pt-6">
-          <ErrorState onRetry={() => stats.refetch()} />
+          <ErrorState onRetry={() => stats.refetch()} error={stats.error} />
         </div>
       )}
 
@@ -84,7 +84,7 @@ export function JobBoard({ organizationId, orgName, orgSlug, orgLogo = null }: J
           </div>
         ) : vacancies.isError && !vacancies.data ? (
           <div className="py-16">
-            <ErrorState onRetry={() => vacancies.refetch()} />
+            <ErrorState onRetry={() => vacancies.refetch()} error={vacancies.error} />
           </div>
         ) : allItems.length === 0 ? (
           <div className="py-16 text-center">

@@ -44,7 +44,7 @@ export function InviteForm() {
 
   if (roles.isLoading) return <Skeleton className="h-24 w-full rounded-xl" />;
   if (roles.isError)
-    return <ErrorState message={invitationErrorMessage(roles.error, 'read', m)} onRetry={() => void roles.refetch()} />;
+    return <ErrorState message={invitationErrorMessage(roles.error, 'read', m)} onRetry={() => void roles.refetch()} error={roles.error} />;
 
   // Labels come from the shared role map (never the seeded DB name) and the launch scope hides the roles the
   // pilot does not use (PILOT_HIDDEN_ROLE_SLUGS). The API still enforces what this caller may grant.
