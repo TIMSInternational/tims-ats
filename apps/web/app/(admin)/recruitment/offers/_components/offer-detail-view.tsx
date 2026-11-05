@@ -10,6 +10,7 @@ import { OfferTimeline } from './offer-timeline';
 import { OfferValidations } from './offer-validations';
 import { OfferLetterModal } from './offer-letter-modal';
 import { HireConfirmationModal } from './hire-confirmation-modal';
+import { HireAccessNotice, type HireAccess } from './hire-access-notice';
 import { SigningLinkModal } from './signing-link-modal';
 import { OfferApprovalActions } from './offer-approval-actions';
 import { OFFER_STATUS_LABEL } from './offer-detail-view.helpers';
@@ -45,10 +46,13 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const [emailDeliveryAccepted, setEmailDeliveryAccepted] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [showHireConfirmation, setShowHireConfirmation] = useState(false);
+  // What the hire sent the new employee (invitation / set-password email / nothing) — shown until leaving.
+  const [hireAccess, setHireAccess] = useState<HireAccess | null>(null);
 
   const convertToEmployee = trpc.offer.convertToEmployee.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (hired) => {
       setShowHireConfirmation(false);
+      setHireAccess(hired.access);
       toast(t.offers.hiringAuthorized, { type: 'success' });
       await invalidateAfterHire(utils, offerId);
     },
@@ -157,6 +161,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         // Re-sending a SENT offer re-emails the live bearer link, which the server allows only to offer:update.
         canSendForSigning={o.status === 'approved' || (o.status === 'sent' && can('offer', 'update'))}
       />
+      {hireAccess && <HireAccessNotice access={hireAccess} loginUrl={`${window.location.origin}/login`} />}
       {signingError && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
           {signingError}

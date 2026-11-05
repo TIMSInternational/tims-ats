@@ -19,14 +19,42 @@ import { getAppUrl } from '@tims/shared';
 // (same approach as force-logout reading auth.sessions) because the JS admin SDK has
 // no get-user-by-email.
 export async function resolveStaffSupabaseUserId(email: string): Promise<string> {
+  return (await provisionStaffIdentity(email)).supabaseUserId;
+}
+
+/** The identity a staff row is linked to, and whether Supabase just emailed an invitation for it. */
+export type StaffIdentity = {
+  supabaseUserId: string;
+  /**
+   * true: a NEW Supabase user was invited (Supabase sent its "set your password" email).
+   * false: an existing identity was reused (e.g. a portal applicant's magic-link identity) and NO email
+   * went out — the caller must give the person a way in (the hire hand-off sends a set-password link).
+   */
+  invited: boolean;
+};
+
+function authAdminConfig(): { supabaseUrl: string; serviceKey: string } {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
-      message: 'Servicio de autenticacion no configurado',
+      message: 'Servicio de autenticación no configurado',
     });
   }
+  return { supabaseUrl, serviceKey };
+}
+
+async function authAdminClient(supabaseUrl: string, serviceKey: string) {
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+/** Same as resolveStaffSupabaseUserId, but also says whether an invitation email was sent. */
+export async function provisionStaffIdentity(email: string): Promise<StaffIdentity> {
+  const { supabaseUrl, serviceKey } = authAdminConfig();
   // Validate the invite-link origin up front, before any lookup/invite/tombstone write, so a
   // misconfiguration fails before anything is changed (callers create the User row afterwards).
   const appUrl = getAppUrl();
@@ -38,13 +66,11 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
   `;
 
   let supabaseUserId: string;
+  let invited = false;
   if (existing.length > 0 && existing[0]) {
     supabaseUserId = existing[0].id;
   } else {
-    const { createClient } = await import('@supabase/supabase-js');
-    const admin = createClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const admin = await authAdminClient(supabaseUrl, serviceKey);
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
       // Admin invite links use an implicit-flow URL fragment rather than a PKCE
       // code. The browser page must receive that fragment directly so Supabase can
@@ -54,10 +80,11 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
     if (error || !data?.user?.id) {
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
-        message: 'No se pudo crear la identidad de autenticacion del usuario',
+        message: 'No se pudo crear la identidad de autenticación del usuario',
       });
     }
     supabaseUserId = data.user.id;
+    invited = true;
   }
 
   // 2. Global-uniqueness guard: User.supabaseUserId is @unique, so the caller's
@@ -88,5 +115,42 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
     });
   }
 
-  return supabaseUserId;
+  return { supabaseUserId, invited };
+}
+
+/** How long the set-password link request may take before the hire reports it as not sent. */
+export const PASSWORD_SETUP_LINK_TIMEOUT_MS = 4_000;
+
+/**
+ * A single-use Supabase recovery link that lands on the password page (`/reset-password?setup=1`), for a
+ * person whose identity already exists and therefore received no invitation (see `invited` above).
+ * Nothing is emailed here: the caller sends it in its own (Spanish) message. Returns null when the link
+ * cannot be produced in time or is not a Supabase verify link of THIS project — the caller then tells
+ * staff no access email went out, instead of claiming one did.
+ */
+export async function generatePasswordSetupLink(email: string): Promise<string | null> {
+  const { supabaseUrl, serviceKey } = authAdminConfig();
+  const appUrl = getAppUrl();
+  try {
+    const admin = await authAdminClient(supabaseUrl, serviceKey);
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), PASSWORD_SETUP_LINK_TIMEOUT_MS));
+    const result = await Promise.race([
+      admin.auth.admin.generateLink({
+        type: 'recovery',
+        email,
+        // Same landing page as the invitation above: the admin client has no PKCE verifier, so the
+        // recovery credentials arrive in the URL fragment, which the password page consumes.
+        options: { redirectTo: `${appUrl}/reset-password?setup=1` },
+      }),
+      timeout,
+    ]);
+    if (!result || result.error) return null;
+    const link = result.data?.properties?.action_link;
+    if (typeof link !== 'string' || link.length > 4096) return null;
+    const parsed = new URL(link);
+    if (parsed.protocol !== 'https:' || parsed.origin !== new URL(supabaseUrl).origin) return null;
+    return link;
+  } catch {
+    return null;
+  }
 }

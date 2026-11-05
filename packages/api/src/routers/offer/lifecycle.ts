@@ -5,7 +5,10 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
 import { assertApplicationNotRejected } from './rejected-application-guard';
-import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
+import { provisionStaffIdentity } from '../../services/staff-provisioning.service';
+import { deliverHireAccess, type HireAccessOutcome } from '../../services/hire-access.service';
+import { candidateContactEmail } from '../../services/candidate-contact';
+import { newStaffUserRepository } from '../../repositories/new-staff-user.repository';
 import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
@@ -66,7 +69,8 @@ export const offerLifecycleRouter = router({
             where: { id: priorHire.userId, organizationId: ctx.user.organizationId },
             select: { id: true, email: true, firstName: true, lastName: true, jobTitle: true },
           });
-          if (priorUser) return priorUser;
+          // A retry of a finished hire: nothing new was sent, so the screen claims no email.
+          if (priorUser) return { ...priorUser, access: null as HireAccessOutcome | null };
         }
         throw new TRPCError({
           code: 'CONFLICT',
@@ -138,8 +142,13 @@ export const offerLifecycleRouter = router({
 
       // B2 invite-time linking: stamp the real Supabase identity now (reuses the
       // candidate's existing auth user if they applied via the portal). External
-      // call, so it runs before the tx.
-      const supabaseUserId = await resolveStaffSupabaseUserId(candidate.email);
+      // call, so it runs before the tx. `invited` says whether Supabase emailed an invitation.
+      // Organization name/contact for the access email, and the zone the new user is created in (F-2b:
+      // organization, then the vacancy's company, then UTC — never the America/Bogota column default).
+      // Read first: a failed read must not follow an invitation Supabase already sent.
+      const hireContext = await newStaffUserRepository.findContext(ctx.user.organizationId, offer.vacancy.companyId);
+      const identity = await provisionStaffIdentity(candidate.email);
+      const supabaseUserId = identity.supabaseUserId;
 
       // Read the candidate's current FIT prediction BEFORE the tx (a standalone
       // tenantDb read must not run nested inside the interactive transaction).
@@ -176,6 +185,7 @@ export const offerLifecycleRouter = router({
             jobTitle: input.jobTitle,
             companyId: offer.vacancy.companyId,
             businessUnitId: offer.vacancy.businessUnitId,
+            timezone: hireContext.timeZone,
             isActive: true,
           },
           select: { id: true, email: true, firstName: true, lastName: true, jobTitle: true },
@@ -260,6 +270,23 @@ export const offerLifecycleRouter = router({
       // After commit: the hire may have closed the vacancy and moved the application out of the active
       // pipeline, so move the tenant's vacancy KPIs to a new cache generation before the client refetches.
       await bumpVacancyKpiGeneration(ctx.user.organizationId);
-      return hired;
+
+      // After commit (the user row exists before any link is opened): give the new employee a way in and
+      // tell the hire screen exactly what was sent (E-06 / B-07). Bounded; never fails the hire.
+      const access = await deliverHireAccess({
+        email: hired.email,
+        invited: identity.invited,
+        firstName: candidate.firstName,
+        organizationName: hireContext.organizationName,
+        jobTitle: input.jobTitle,
+        startDate: offer.startDate,
+        timeZone: hireContext.timeZone,
+        contactEmail: candidateContactEmail({
+          settings: hireContext.organizationSettings,
+          billingEmail: hireContext.billingEmail,
+        }),
+        locale: hireContext.companyLanguage?.startsWith('en') ? 'en' : 'es',
+      });
+      return { ...hired, access: access as HireAccessOutcome | null };
     }),
 });

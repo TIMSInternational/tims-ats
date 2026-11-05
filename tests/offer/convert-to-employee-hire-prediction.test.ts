@@ -43,6 +43,8 @@ vi.mock('@tims/db', () => ({
     user: { findFirst: vi.fn().mockResolvedValue(null) },
     role: { findFirst: vi.fn().mockResolvedValue({ id: 'employee-role-1' }) },
     hirePrediction: { findFirst: vi.fn().mockResolvedValue(null) },
+    organization: { findFirst: vi.fn().mockResolvedValue({ name: 'Org', settings: {}, billingEmail: null }) },
+    company: { findFirst: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn(async (arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => Promise<unknown>)(mockTx)
@@ -66,7 +68,11 @@ vi.mock('../../packages/api/src/services/hire-prediction.service', () => ({
 }));
 
 vi.mock('../../packages/api/src/services/staff-provisioning.service', () => ({
-  resolveStaffSupabaseUserId: vi.fn().mockResolvedValue('supabase-uid-1'),
+  provisionStaffIdentity: vi.fn().mockResolvedValue({ supabaseUserId: 'supabase-uid-1', invited: true }),
+}));
+// The access email has its own tests (tests/offer/hire-access.test.ts).
+vi.mock('../../packages/api/src/services/hire-access.service', () => ({
+  deliverHireAccess: vi.fn(async (p: { email: string }) => ({ kind: 'invitation_sent', email: p.email })),
 }));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),

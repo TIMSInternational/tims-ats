@@ -81,7 +81,10 @@ describe('staff creation sites stamp a real Supabase id (no unclaimed sentinel)'
   });
 
   it('employee conversion links via the provisioning service, not a pending- sentinel', () => {
-    expect(OFFER_LIFECYCLE).toContain('resolveStaffSupabaseUserId');
+    // provisionStaffIdentity is the same provisioning service; it also reports whether Supabase sent an
+    // invitation, so the hire can send a set-password link when an existing identity was reused (E-06).
+    expect(OFFER_LIFECYCLE).toContain('provisionStaffIdentity(candidate.email)');
+    expect(PROVISION).toContain('return (await provisionStaffIdentity(email)).supabaseUserId;');
     expect(OFFER_LIFECYCLE).not.toMatch(/pending-/);
   });
 });
