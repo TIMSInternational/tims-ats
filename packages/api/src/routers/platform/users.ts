@@ -130,10 +130,14 @@ export const usersRouter = router({
   addPlatformOwnerEmail: platformProcedure
     .input(z.object({ email: z.string().trim().toLowerCase().email().max(255) }))
     .mutation(async ({ ctx, input }) => {
-      const existing = await db.platformOwnerEmail.findFirst({
-        where: { email: { equals: input.email, mode: 'insensitive' } },
-        select: { email: true },
-      });
+      // Case-insensitive `equals` is an ILIKE (`_`/`%` are wildcards): only an exact case-folded match is a
+      // duplicate, so `ops_admin@x` can be added beside `ops-admin@x`.
+      const existing = (
+        await db.platformOwnerEmail.findMany({
+          where: { email: { equals: input.email, mode: 'insensitive' } },
+          select: { email: true },
+        })
+      ).some((e) => e.email.toLowerCase() === input.email);
       if (existing) throw new TRPCError({ code: 'CONFLICT', message: 'Ese correo ya está en la lista' });
       const created = await db.platformOwnerEmail.create({
         data: { email: input.email, addedBy: ctx.user.id },

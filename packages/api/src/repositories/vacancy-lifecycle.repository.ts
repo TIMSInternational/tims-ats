@@ -1,5 +1,7 @@
 import { runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import { vacancyHireRepository } from './vacancy-hire.repository';
+import { isVacancyFilled } from '../services/hire-closure.service';
 
 // ---------------------------------------------------------------------------
 // Vacancy lifecycle repository: edit, freeze ("Congelar") and resume ("Reanudar"). Each write is a
@@ -38,6 +40,7 @@ export type ResumeStatus = 'published' | 'approved' | 'pending_approval' | 'draf
 export type ResumeResult =
   | { kind: 'not_frozen' }
   | { kind: 'not_resumable' }
+  | { kind: 'filled'; hires: number; positions: number }
   | { kind: 'resumed'; vacancy: VacancyLifecycleRow; status: ResumeStatus };
 
 /** What a frozen vacancy carries about the state it was frozen from. */
@@ -144,6 +147,11 @@ export const vacancyLifecycleRepository = {
    */
   resume(organizationId: string, vacancyId: string, actor: VacancyLifecycleActor): Promise<ResumeResult> {
     return runTenantTransaction(organizationId, async (tx) => {
+      // A hire leaves a FROZEN vacancy's status alone (hire-closure closes only published ones), so its
+      // positions can fill while it is frozen. Take the hire path's vacancy lock and count first: a vacancy
+      // whose hires already cover its positions is never reopened, and a hire racing this resume serializes
+      // on the same row lock (Codex review of release/pilot-ux-wave2).
+      const counts = await vacancyHireRepository.lockAndCount(tx, organizationId, vacancyId);
       const frozen = await tx.vacancy.findFirst({
         where: { id: vacancyId, organizationId, deletedAt: null, status: 'frozen' },
         select: {
@@ -160,6 +168,9 @@ export const vacancyLifecycleRepository = {
         approvals: frozen.approvals,
       });
       if (status === null) return { kind: 'not_resumable' } as const;
+      if (counts && isVacancyFilled(counts.hires, counts.positions)) {
+        return { kind: 'filled', hires: counts.hires, positions: counts.positions } as const;
+      }
 
       // Compare-and-set: a concurrent close or hire that committed after the read above wins.
       const moved = await tx.vacancy.updateMany({

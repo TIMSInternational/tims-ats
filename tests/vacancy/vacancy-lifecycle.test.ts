@@ -19,6 +19,9 @@ const db = vi.hoisted(() => ({
   user: { findFirst: vi.fn() },
 }));
 const tx = vi.hoisted(() => ({
+  // resume locks the vacancy row and counts converted offers first (the hire path's lock).
+  $queryRaw: vi.fn(),
+  offer: { count: vi.fn() },
   vacancy: { create: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(), findFirstOrThrow: vi.fn() },
   auditLog: { create: vi.fn() },
   jobProfile: { create: vi.fn() },
@@ -91,6 +94,8 @@ beforeEach(() => {
   grant.ledTeamIds = [];
   tx.vacancy.updateMany.mockResolvedValue({ count: 1 });
   tx.vacancy.findFirstOrThrow.mockResolvedValue(row('published'));
+  tx.$queryRaw.mockResolvedValue([{ positions: 1 }]);
+  tx.offer.count.mockResolvedValue(0);
   db.vacancy.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
     id: VACANCY,
     ...args.data,
@@ -234,6 +239,32 @@ describe('vacancy.freeze / vacancy.resume (A-08)', () => {
 
     tx.vacancy.findFirst.mockResolvedValue(null);
     await expect(caller.vacancy.resume({ id: VACANCY })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  // Codex review of release/pilot-ux-wave2 (P2): a hire leaves a frozen vacancy frozen, so its positions can
+  // fill meanwhile; resuming must not put a filled vacancy back on the careers portal.
+  it('refuses to resume a vacancy whose hires already cover its positions, under the hire path lock', async () => {
+    tx.vacancy.findFirst.mockResolvedValue(frozen({ channels: [{ id: 'ch-1' }] }));
+    tx.offer.count.mockResolvedValue(1);
+    const caller = await makeCaller();
+    await expect(caller.vacancy.resume({ id: VACANCY })).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: expect.stringMatching(/ya está cubierta \(1 de 1 contratación\)/),
+    });
+    const [strings, ...values] = tx.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    expect(strings.join('?')).toMatch(/FROM vacancies[\s\S]*FOR NO KEY UPDATE/);
+    expect(values).toEqual([VACANCY, ORG]);
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]!).toBeLessThan(tx.vacancy.findFirst.mock.invocationCallOrder[0]!);
+    expect(tx.vacancy.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('resumes while positions remain open', async () => {
+    tx.vacancy.findFirst.mockResolvedValue(frozen({ channels: [{ id: 'ch-1' }] }));
+    tx.$queryRaw.mockResolvedValue([{ positions: 3 }]);
+    tx.offer.count.mockResolvedValue(2);
+    const caller = await makeCaller();
+    await expect(caller.vacancy.resume({ id: VACANCY })).resolves.toMatchObject({ status: 'published' });
   });
 
   it('needs vacancy:publish, since resuming puts the vacancy back on the careers portal', async () => {

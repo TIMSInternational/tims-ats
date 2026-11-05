@@ -38,6 +38,12 @@ const NOT_FREEZABLE_MESSAGE = 'Solo se puede congelar una vacante publicada.';
 const NOT_FROZEN_MESSAGE = 'La vacante ya no está congelada; recarga la página.';
 const NOT_RESUMABLE_MESSAGE = 'Esta vacante se cerró antes de congelarse y no se puede reanudar. Duplícala para abrir un proceso nuevo.';
 
+/** Resume refused because hires recorded while the vacancy was frozen already cover its positions. */
+function filledResumeMessage(hires: number, positions: number): string {
+  const total = Math.max(1, positions);
+  return `La vacante ya está cubierta (${hires} de ${total} ${total === 1 ? 'contratación' : 'contrataciones'}) y no se puede reanudar. Si necesitas más personas, aumenta las posiciones con «Editar» y vuelve a reanudarla.`;
+}
+
 function actorOf(user: { id: string; impersonatorId?: string | null }): VacancyLifecycleActor {
   return { userId: user.id, actorId: user.impersonatorId ?? user.id };
 }
@@ -95,6 +101,9 @@ export const vacancyLifecycleRouter = router({
       const result = await vacancyLifecycleRepository.resume(ctx.user.organizationId, input.id, actorOf(ctx.user));
       if (result.kind === 'not_frozen') throw new TRPCError({ code: 'CONFLICT', message: NOT_FROZEN_MESSAGE });
       if (result.kind === 'not_resumable') throw new TRPCError({ code: 'CONFLICT', message: NOT_RESUMABLE_MESSAGE });
+      if (result.kind === 'filled') {
+        throw new TRPCError({ code: 'CONFLICT', message: filledResumeMessage(result.hires, result.positions) });
+      }
       return result.vacancy;
     }),
 });

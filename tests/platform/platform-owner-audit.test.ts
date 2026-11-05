@@ -110,7 +110,7 @@ beforeEach(() => {
 
 describe('owner allowlist', () => {
   it('add: lower-cases, records who added it, refuses a duplicate, and audits', async () => {
-    m.ownerFindFirst.mockResolvedValue(null);
+    m.ownerFindMany.mockResolvedValue([]);
     m.ownerCreate.mockImplementation(async ({ data }: { data: { email: string } }) => ({
       email: data.email,
       createdAt: new Date(),
@@ -129,9 +129,19 @@ describe('owner allowlist', () => {
       }),
     ]);
 
-    m.ownerFindFirst.mockResolvedValue({ email: 'new.owner@nexadev.test' });
-    await expect(callerOf(usersRouter).addPlatformOwnerEmail({ email: 'new.owner@nexadev.test' })).rejects.toThrow(
+    m.ownerFindMany.mockResolvedValue([{ email: 'new.owner@nexadev.test' }]);
+    await expect(callerOf(usersRouter).addPlatformOwnerEmail({ email: 'New.Owner@nexadev.test' })).rejects.toThrow(
       /ya está en la lista/,
+    );
+  });
+
+  // Codex review of release/pilot-ux-wave2 (P2): the ILIKE match must not make a distinct `_` address a duplicate.
+  it('add: a wildcard look-alike already listed is not a duplicate', async () => {
+    m.ownerFindMany.mockResolvedValue([{ email: 'ops-admin@nexadev.test' }]);
+    m.ownerCreate.mockImplementation(async ({ data }: { data: { email: string } }) => ({ email: data.email, createdAt: new Date() }));
+    await callerOf(usersRouter).addPlatformOwnerEmail({ email: 'ops_admin@nexadev.test' });
+    expect(m.ownerCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { email: 'ops_admin@nexadev.test', addedBy: 'owner-1' } }),
     );
   });
 
