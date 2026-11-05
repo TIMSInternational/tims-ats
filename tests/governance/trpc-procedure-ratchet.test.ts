@@ -53,7 +53,7 @@ import { appRouter } from '@tims/api';
  * absent approver otherwise stays in pending_approval for good). Same terms: not headroom, owed a C# port.
  *
  * Third D-1 exception: 357 → 358 on 2026-11-04 for `candidate.getDocumentUploadUrl` (pilot audit A-21:
- * staff could not attach any document to a candidate — the INVU workaround for required documents that
+ * staff could not attach any document to a candidate — the pilot tenant's workaround for required documents that
  * arrive by email; `candidate.uploadDocument` was a mock storing an unopenable URL). It issues the same
  * presigned S3 POST the public apply flow uses. Same terms: not headroom, owed a C# port.
  */
