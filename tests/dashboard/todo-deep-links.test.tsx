@@ -19,6 +19,8 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     interview: {
       getPendingScorecards: { useQuery: () => ({ data: ROWS, isLoading: false, isError: false }) },
+      // The committee landing also lists upcoming panels (B-29, interviews WP); none here.
+      list: { useQuery: () => ({ data: { items: [] }, isLoading: false, isError: false }) },
     },
   },
 }));

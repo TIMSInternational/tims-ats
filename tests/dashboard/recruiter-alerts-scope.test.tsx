@@ -63,6 +63,8 @@ vi.mock('../../apps/web/app/(admin)/dashboard/alerts-risk-panel', () => ({
 }));
 vi.mock('../../apps/web/app/(admin)/dashboard/alerts-pending-panel', () => ({ AlertsPendingPanel: () => null }));
 vi.mock('../../apps/web/app/(admin)/dashboard/setup-checklist', () => ({ SetupChecklist: () => null }));
+// The approver inbox card (B-01, approvals WP) has its own tests; it is not what this file covers.
+vi.mock('../../apps/web/app/(admin)/dashboard/my-approvals-card', () => ({ MyApprovalsCard: () => null }));
 vi.mock('../../apps/web/app/(admin)/dashboard/pick-dashboard', () => ({
   pickPrimaryDashboard: () => 'recruiter',
   showsSetupChecklistFor: () => false,
