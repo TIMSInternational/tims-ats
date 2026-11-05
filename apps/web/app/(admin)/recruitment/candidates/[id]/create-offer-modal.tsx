@@ -2,89 +2,169 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { OFFER_LINK_VALIDITY_DAYS } from '@tims/shared';
 import { Modal } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
-import type { CandidateDetail } from '../../../../../lib/trpc-types';
-import {
-  annualToPeriod,
-  formatMoneyCode,
-  MAX_OFFER_ANNUAL_SALARY,
-  parseVacancySalary,
-  toAnnualSalary,
-  vacancyMidpointIn,
-  type SalaryPeriod,
-} from '../../../../../lib/offer-salary';
+import { parseVacancySalary, type SalaryPeriod } from '../../../../../lib/offer-salary';
 import { describeOfferActionError } from '../../../../../lib/offer-action-error';
+import { offerDetailHref } from '../../../../../lib/offer-deep-link';
 import { toast } from '../../../../../lib/toast';
-import { currencyOptions } from '../../../../../lib/currency-options';
 import { defaultOfferCurrency } from '../../../../../lib/tenant-locale';
+import {
+  benefitsFromText,
+  benefitsToText,
+  buildOfferTerms,
+  choiceFor,
+  choiceText,
+  contractTypeSlugs,
+  dateInputValue,
+  editableSalary,
+  LEGACY_CHOICE,
+  offerSalaryState,
+  REMOTE_POLICIES,
+  termString,
+  todayInputValue,
+  type Choice,
+  type OfferFormApplication,
+  type OfferFormSource,
+} from './create-offer-form';
+import { CreateOfferTermsFields, type OfferTermsValues } from './create-offer-terms-fields';
+import { CreateOfferSalaryFields } from './create-offer-salary-fields';
 
-type Application = CandidateDetail['applications'][number];
+type FormValues = OfferTermsValues & {
+  applicationId: string;
+  salary: string;
+  period: SalaryPeriod;
+  currency: string;
+  startDate: string;
+  contractType: Choice;
+};
 
+const INPUT = 'mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]';
+const LABEL = 'block text-[12px] font-medium text-[#585858]';
+
+/**
+ * The offer form. `mode="create"` (default) creates a draft, optionally starting from `source` (an earlier
+ * offer, for "Crear nueva oferta"); `mode="edit"` changes the draft `source` through offer.update (B-04).
+ */
 export function CreateOfferModal({
   candidateId,
   applications,
   onClose,
+  source,
+  mode = 'create',
+  onSaved,
 }: {
   candidateId: string;
-  applications: Application[];
+  applications: OfferFormApplication[];
   onClose: () => void;
+  source?: OfferFormSource;
+  mode?: 'create' | 'edit';
+  onSaved?: () => void;
 }) {
   const { t } = useI18n();
   const router = useRouter();
-  const [applicationId, setApplicationId] = useState(applications[0]?.id ?? '');
-  const initialRange = parseVacancySalary(applications[0]?.vacancy.salary);
-  const [salary, setSalary] = useState('');
-  const [period, setPeriod] = useState<SalaryPeriod>(initialRange?.period ?? 'monthly');
-  const [currency, setCurrency] = useState(defaultOfferCurrency(initialRange?.currency));
-  const currencies = currencyOptions();
-  const [startDate, setStartDate] = useState('');
-  const [contractType, setContractType] = useState('');
+  const contractLabels = t.portal.contractTypes as Record<string, string>;
+  const remoteLabels = t.portal.remotePolicies as Record<string, string>;
+  const slugs = contractTypeSlugs();
+  const today = todayInputValue();
+
+  const [values, setValues] = useState<FormValues>(() => {
+    const first = applications[0];
+    const range = parseVacancySalary(first?.vacancy.salary);
+    const salary = source ? editableSalary(source.salary, range?.period ?? 'monthly') : null;
+    return {
+      applicationId: first?.id ?? '',
+      salary: salary?.amount ?? '',
+      period: salary?.period ?? range?.period ?? 'monthly',
+      currency: source?.currency ?? defaultOfferCurrency(range?.currency),
+      startDate: dateInputValue(source?.startDate),
+      contractType: choiceFor(source ? source.contractType : first?.vacancy.contractType, slugs, contractLabels),
+      schedule: termString(source?.terms, 'schedule'),
+      modality: choiceFor(
+        source ? termString(source.terms, 'modality') : first?.vacancy.remotePolicy,
+        REMOTE_POLICIES,
+        remoteLabels,
+      ),
+      bonus: termString(source?.terms, 'bonus'),
+      benefits: benefitsToText(source?.benefits),
+    };
+  });
+  const patch = (next: Partial<FormValues>) => setValues((current) => ({ ...current, ...next }));
   const [error, setError] = useState<string | null>(null);
   const create = trpc.offer.create.useMutation();
-  const application = applications.find((item) => item.id === applicationId);
-  const vacancyRange = parseVacancySalary(application?.vacancy.salary);
-  // The midpoint is a reference in the VACANCY's own currency. It is only offered as the numeric
-  // placeholder when the offer currency matches; it is never converted between currencies.
-  const referenceCurrency = vacancyRange?.currency ?? null;
-  const referenceAmount = referenceCurrency ? vacancyMidpointIn(vacancyRange, period) : null;
-  const placeholderAmount = referenceCurrency === currency ? referenceAmount : null;
-  const salaryValue = Number(salary);
-  const maxInPeriod = annualToPeriod(MAX_OFFER_ANNUAL_SALARY, period);
-  const isSalaryValid =
-    salary.trim() !== '' && Number.isFinite(salaryValue) && salaryValue > 0 && salaryValue <= maxInPeriod;
-  const annualSalary = isSalaryValid ? toAnnualSalary(salaryValue, period) : null;
-  const isValid = !!application && annualSalary !== null && !!startDate && !!contractType.trim();
+  const update = trpc.offer.update.useMutation();
+  const isSaving = create.isPending || update.isPending;
+
+  const application = applications.find((item) => item.id === values.applicationId);
+  const { annualSalary } = offerSalaryState(values, application?.vacancy.salary);
+  const contractType = choiceText(values.contractType, contractLabels);
+  const isStartDateValid = values.startDate !== '' && values.startDate >= today;
+
+  // B-33: the reason the submit button is disabled is spelled out.
+  const missing = [
+    !application ? t.offers.colVacancy : null,
+    annualSalary === null ? t.offers.salaryAmount : null,
+    !values.startDate ? t.offers.startDate : null,
+    !contractType ? t.offers.contractType : null,
+  ].filter((label): label is string => label !== null);
+  const startDateInPast = values.startDate !== '' && !isStartDateValid;
+  const isValid = missing.length === 0 && !startDateInPast;
 
   const selectApplication = (id: string) => {
-    // A typed amount belongs to the previous vacancy's period/currency — clear it rather than
-    // silently reinterpret it (no conversions are invented).
-    if (id !== applicationId) setSalary('');
-    setApplicationId(id);
-    const range = parseVacancySalary(applications.find((item) => item.id === id)?.vacancy.salary);
-    // A vacancy without salary data must not inherit the previous vacancy's period/currency —
-    // fall back to the form defaults (monthly / tenant currency).
-    setPeriod(range?.period ?? 'monthly');
-    setCurrency(defaultOfferCurrency(range?.currency));
+    const vacancy = applications.find((item) => item.id === id)?.vacancy;
+    const range = parseVacancySalary(vacancy?.salary);
+    // A typed amount belongs to the previous vacancy's period/currency — clear it rather than silently
+    // reinterpret it (no conversions are invented). A vacancy without salary data falls back to the form
+    // defaults (monthly / tenant currency). Contract type and modality follow the newly chosen vacancy.
+    patch({
+      applicationId: id,
+      salary: id !== values.applicationId ? '' : values.salary,
+      period: range?.period ?? 'monthly',
+      currency: defaultOfferCurrency(range?.currency),
+      contractType: choiceFor(vacancy?.contractType, slugs, contractLabels),
+      modality: choiceFor(vacancy?.remotePolicy, REMOTE_POLICIES, remoteLabels),
+    });
   };
 
-  const handleCreate = async () => {
+  const handleSubmit = async () => {
     if (!application || !isValid || annualSalary === null) return;
     setError(null);
+    const terms = buildOfferTerms(source?.terms, {
+      schedule: values.schedule,
+      modality: choiceText(values.modality, remoteLabels),
+      bonus: values.bonus,
+    });
+    const benefits = benefitsFromText(values.benefits);
+    const common = {
+      // Offer.salary is an ANNUAL base salary — convert explicitly from the entered period.
+      salary: annualSalary,
+      currency: values.currency,
+      startDate: new Date(`${values.startDate}T12:00:00`),
+      contractType,
+      terms,
+    };
     try {
-      await create.mutateAsync({
+      if (mode === 'edit' && source) {
+        // An emptied benefits box clears the stored list.
+        await update.mutateAsync({ id: source.id, ...common, benefits: benefits ?? {} });
+        toast(t.offers.draftUpdated, { type: 'success' });
+        onSaved?.();
+        onClose();
+        return;
+      }
+      const created = await create.mutateAsync({
         candidateId,
         vacancyId: application.vacancy.id,
-        applicationId,
-        // Offer.salary is an ANNUAL base salary — convert explicitly from the entered period.
-        salary: annualSalary,
-        currency,
-        startDate: new Date(`${startDate}T12:00:00`),
-        contractType: contractType.trim(),
+        applicationId: application.id,
+        ...common,
+        ...(benefits ? { benefits } : {}),
       });
+      // B-16: confirm, and open the new draft (where the approver is picked) instead of the bare list.
+      toast(t.offers.draftCreated, { type: 'success' });
       onClose();
-      router.push('/recruitment/offers');
+      router.push(created?.id ? offerDetailHref(created.id) : '/recruitment/offers');
     } catch (cause) {
       const message = describeOfferActionError(cause, {
         forbidden: t.offers.errorForbiddenAction,
@@ -96,14 +176,15 @@ export function CreateOfferModal({
   };
 
   return (
-    <Modal title={t.offers.createOffer} onClose={onClose}>
+    <Modal title={mode === 'edit' ? t.offers.editDraftTitle : t.offers.createOffer} onClose={onClose}>
       <div className="space-y-4">
-        <label className="block text-[12px] font-medium text-[#585858]">
-          {t.offers.colVacancy}
+        <label className={LABEL}>
+          {t.offers.colVacancy} *
           <select
-            value={applicationId}
+            value={values.applicationId}
+            disabled={mode === 'edit' || applications.length < 2}
             onChange={(event) => selectApplication(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px] text-[#333]"
+            className={`${INPUT} bg-white text-[#333] disabled:bg-[#FAFAFA]`}
           >
             {applications.map((item) => (
               <option key={item.id} value={item.id}>
@@ -112,78 +193,48 @@ export function CreateOfferModal({
             ))}
           </select>
         </label>
-        <div className="grid grid-cols-3 gap-3">
-          <label className="block text-[12px] font-medium text-[#585858]">
-            {t.offers.salaryAmount}
+        <CreateOfferSalaryFields values={values} vacancySalary={application?.vacancy.salary} onChange={patch} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className={LABEL}>
+            {t.offers.startDate} *
             <input
-              type="number"
-              min="1"
-              max={maxInPeriod}
-              step="0.01"
-              value={salary}
-              placeholder={placeholderAmount !== null ? String(placeholderAmount) : undefined}
-              onChange={(event) => setSalary(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]"
+              type="date"
+              min={today}
+              value={values.startDate}
+              onChange={(event) => patch({ startDate: event.target.value })}
+              className={INPUT}
             />
           </label>
-          <label className="block text-[12px] font-medium text-[#585858]">
-            {t.offers.salaryPeriod}
+          <label className={LABEL}>
+            {t.offers.contractType} *
             <select
-              value={period}
-              onChange={(event) => setPeriod(event.target.value === 'yearly' ? 'yearly' : 'monthly')}
-              className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]"
+              value={values.contractType.value}
+              onChange={(event) =>
+                patch({ contractType: { value: event.target.value, legacy: values.contractType.legacy } })
+              }
+              className={`${INPUT} bg-white`}
             >
-              <option value="monthly">{t.offers.periodMonthly}</option>
-              <option value="yearly">{t.offers.periodYearly}</option>
-            </select>
-          </label>
-          <label className="block text-[12px] font-medium text-[#585858]">
-            {t.offers.currency}
-            <select
-              value={currency}
-              onChange={(event) => setCurrency(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]"
-            >
-              {/* Full ISO list (popular first); a legacy non-ISO vacancy currency stays selectable. */}
-              {(currencies.some((c) => c.code === currency) ? currencies : [{ code: currency, label: currency }, ...currencies]).map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.label}
+              <option value="">{t.offers.contractTypePlaceholder}</option>
+              {slugs.map((slug) => (
+                <option key={slug} value={slug}>
+                  {contractLabels[slug] ?? slug}
                 </option>
               ))}
+              {values.contractType.legacy && <option value={LEGACY_CHOICE}>{values.contractType.legacy}</option>}
             </select>
           </label>
         </div>
-        {referenceAmount !== null && referenceCurrency !== null && (
-          <p data-testid="offer-salary-reference" className="text-[11px] text-[#8B8B8B]">
-            {t.offers.salaryPlaceholderHint.replace('{amount}', formatMoneyCode(referenceAmount, referenceCurrency))}
-          </p>
-        )}
-        {annualSalary !== null && (
-          <p data-testid="offer-salary-equivalents" className="text-[12px] font-medium text-[#1F114C]">
-            {t.offers.salaryEquivalents
-              .replace('{annual}', formatMoneyCode(annualSalary, currency))
-              .replace('{monthly}', formatMoneyCode(annualToPeriod(annualSalary, 'monthly'), currency))}
-          </p>
-        )}
-        <label className="block text-[12px] font-medium text-[#585858]">
-          {t.offers.startDate}
-          <input
-            type="date"
-            value={startDate}
-            onChange={(event) => setStartDate(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]"
-          />
-        </label>
-        <label className="block text-[12px] font-medium text-[#585858]">
-          {t.offers.contractType}
-          <input
-            type="text"
-            maxLength={100}
-            value={contractType}
-            onChange={(event) => setContractType(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]"
-          />
-        </label>
+        <CreateOfferTermsFields values={values} onChange={patch} />
+        <p className="text-[11px] text-[#8B8B8B]">
+          {t.offers.linkValidityHint.replace('{days}', String(OFFER_LINK_VALIDITY_DAYS))}
+        </p>
+        <p data-testid="offer-form-hint" className="text-[11px] text-[#585858]">
+          {startDateInPast
+            ? t.offers.startDatePast
+            : isValid
+              ? t.offers.requiredFieldsHint
+              : t.offers.missingFieldsHint.replace('{fields}', missing.join(', '))}
+        </p>
         {error && (
           <p role="alert" className="text-[12px] text-[#DD0C15]">
             {error}
@@ -193,18 +244,18 @@ export function CreateOfferModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={create.isPending}
+            disabled={isSaving}
             className="rounded-lg border border-[#EDEDED] px-4 py-2 text-[12px]"
           >
             {t.common.cancel}
           </button>
           <button
             type="button"
-            onClick={handleCreate}
-            disabled={!isValid || create.isPending}
+            onClick={handleSubmit}
+            disabled={!isValid || isSaving}
             className="rounded-lg bg-[#DD0C15] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
           >
-            {t.offers.createOffer}
+            {mode === 'edit' ? t.offers.saveDraft : t.offers.createOffer}
           </button>
         </div>
       </div>

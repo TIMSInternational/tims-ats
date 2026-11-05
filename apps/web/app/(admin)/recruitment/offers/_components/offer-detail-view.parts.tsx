@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate } from '../../../../../lib/format-utils';
 import { formatAnnualOfferSalary } from '../../../../../lib/offer-salary';
@@ -15,6 +16,8 @@ interface CandidateHeaderProps {
   completedValidations: number;
   totalValidations: number;
   progressPct: number;
+  /** B-20: the ring is hidden when the offer has no pre-employment checks (it read "0/0"). */
+  showValidations: boolean;
   canAuthorize: boolean;
   authorizationReason?: string;
   showHireAction: boolean;
@@ -25,7 +28,10 @@ interface CandidateHeaderProps {
   onViewLetter?: () => void;
   onSendForSigning?: () => void;
   isGeneratingLink?: boolean;
-  canSendForSigning?: boolean;
+  /** B-17: shown only to viewers who may send; when disabled, `reason` says why. */
+  sendForSigning: { visible: boolean; enabled: boolean; reason?: string };
+  /** Edit / withdraw / "Crear nueva oferta" (OfferManageActions). */
+  manageActions?: ReactNode;
 }
 
 export function CandidateHeader({
@@ -34,6 +40,7 @@ export function CandidateHeader({
   completedValidations,
   totalValidations,
   progressPct,
+  showValidations,
   canAuthorize,
   authorizationReason,
   showHireAction,
@@ -44,7 +51,8 @@ export function CandidateHeader({
   onViewLetter,
   onSendForSigning,
   isGeneratingLink,
-  canSendForSigning,
+  sendForSigning,
+  manageActions,
 }: CandidateHeaderProps) {
   const { t } = useI18n();
 
@@ -68,6 +76,7 @@ export function CandidateHeader({
         </div>
 
         {/* Progress circle */}
+        {showValidations && (
         <div className="shrink-0 text-center">
           <div className="relative w-16 h-16">
             <svg className="w-16 h-16 -rotate-90" viewBox="0 0 36 36">
@@ -87,6 +96,7 @@ export function CandidateHeader({
           </div>
           <p className="text-[10px] text-[#8B8B8B] mt-1">{t.offers.checksCompleted}</p>
         </div>
+        )}
 
         {/* Offer Letter + Signature + Authorize buttons */}
         <div className="flex flex-wrap items-center gap-2">
@@ -99,9 +109,12 @@ export function CandidateHeader({
             </svg>
             {t.offers.viewOfferLetter}
           </button>
+          {sendForSigning.visible && (
           <button
-            className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#1F114C] text-[#1F114C] hover:bg-[#1F114C] hover:text-white transition"
-            disabled={isGeneratingLink || !canSendForSigning}
+            type="button"
+            className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#1F114C] text-[#1F114C] hover:bg-[#1F114C] hover:text-white transition disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[#1F114C]"
+            disabled={isGeneratingLink || !sendForSigning.enabled}
+            title={sendForSigning.reason}
             onClick={onSendForSigning}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -109,6 +122,8 @@ export function CandidateHeader({
             </svg>
             {isGeneratingLink ? t.offers.generating : t.offers.sendForSignature}
           </button>
+          )}
+          {manageActions}
           {showHireAction && (
             <button
               type="button"
@@ -141,6 +156,7 @@ interface OfferCardProps {
     contractType: string | null;
     vacancy: { title: string };
     status: string;
+    expiresAt?: Date | string | null;
   };
   statusInfo: { bg: string; text: string; label: string };
   benefitList: string[];
@@ -175,10 +191,12 @@ export function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardPr
               {formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}
             </p>
           </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.annualBonus}</p>
-            <p className="text-[15px] font-bold text-[#1F114C]">{terms?.bonus || '—'}</p>
-          </div>
+          {terms?.bonus && (
+            <div>
+              <p className="text-[11px] text-[#8B8B8B]">{t.offers.bonusLabel}</p>
+              <p className="text-[15px] font-bold text-[#1F114C]">{terms.bonus}</p>
+            </div>
+          )}
           <div>
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.startDate}</p>
             <p className="text-[13px] text-[#333] font-medium">
@@ -189,14 +207,25 @@ export function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardPr
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.contractType}</p>
             <p className="text-[13px] text-[#333] font-medium">{offer.contractType || '—'}</p>
           </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.schedule}</p>
-            <p className="text-[13px] text-[#333]">{terms?.schedule || '—'}</p>
-          </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.modality}</p>
-            <p className="text-[13px] text-[#333]">{terms?.modality || '—'}</p>
-          </div>
+          {/* B-15: optional terms appear only when they were filled in (no wall of "—"). */}
+          {terms?.schedule && (
+            <div>
+              <p className="text-[11px] text-[#8B8B8B]">{t.offers.schedule}</p>
+              <p className="text-[13px] text-[#333]">{terms.schedule}</p>
+            </div>
+          )}
+          {terms?.modality && (
+            <div>
+              <p className="text-[11px] text-[#8B8B8B]">{t.offers.modality}</p>
+              <p className="text-[13px] text-[#333]">{terms.modality}</p>
+            </div>
+          )}
+          {offer.expiresAt && offer.status === 'sent' && (
+            <div>
+              <p className="text-[11px] text-[#8B8B8B]">{t.offers.linkValidUntil}</p>
+              <p className="text-[13px] text-[#333]">{formatDate(offer.expiresAt)}</p>
+            </div>
+          )}
         </div>
         {benefitList.length > 0 && (
           <div className="border-t border-[#F0F0F0] pt-3">

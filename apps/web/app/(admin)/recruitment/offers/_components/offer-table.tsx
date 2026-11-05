@@ -5,17 +5,33 @@ import { DataTable, EmptyState, StatusBadge, CandidateAvatar, ErrorState } from 
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate } from '../../../../../lib/format-utils';
 import { formatMoneyCode } from '../../../../../lib/offer-salary';
+import {
+  MINE_PENDING_FILTER,
+  OFFER_FILTER_STATUSES,
+  offerStatusLabel,
+  type OfferStatusLabels,
+} from '../../../../../lib/offer-status';
+import { displayOfferStatus } from '@tims/shared';
 
-const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-  draft: { cls: 'bg-gray-100 text-gray-600', label: 'Borrador' },
-  pending_approval: { cls: 'bg-amber-50 text-amber-600 border border-amber-200', label: 'Pendiente' },
-  approved: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: 'Aprobada' },
-  sent: { cls: 'bg-violet-50 text-violet-600 border border-violet-200', label: 'Enlace activo' },
-  accepted: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Aceptada' },
-  declined: { cls: 'bg-red-50 text-red-600', label: 'Rechazada' },
-  expired: { cls: 'bg-gray-100 text-gray-500', label: 'Expirada' },
-  withdrawn: { cls: 'bg-gray-100 text-gray-500', label: 'Retirada' },
+// Badge colours per status; labels come from i18n (lib/offer-status.ts), so no status prints raw (B-03).
+const STATUS_CLASSES: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-600',
+  pending_approval: 'bg-amber-50 text-amber-600 border border-amber-200',
+  approved: 'bg-blue-50 text-blue-600 border border-blue-200',
+  sent: 'bg-violet-50 text-violet-600 border border-violet-200',
+  accepted: 'bg-green-50 text-green-600 border border-green-200',
+  converted: 'bg-green-100 text-green-700 border border-green-300',
+  rejected: 'bg-red-50 text-red-600 border border-red-200',
+  declined: 'bg-red-50 text-red-600',
+  expired: 'bg-gray-100 text-gray-500',
+  withdrawn: 'bg-gray-100 text-gray-500',
 };
+
+function statusMap(labels: OfferStatusLabels): Record<string, { cls: string; label: string }> {
+  return Object.fromEntries(
+    Object.entries(STATUS_CLASSES).map(([status, cls]) => [status, { cls, label: offerStatusLabel(status, labels) }]),
+  );
+}
 
 interface OfferItem {
   id: string;
@@ -37,6 +53,8 @@ interface OfferTableProps {
   statusFilter: string;
   onStatusChange: (status: string) => void;
   onSelectOffer: (id: string) => void;
+  /** Offer "Pendientes de mi aprobación" in the filter (viewers who can approve offers). */
+  showMinePendingFilter?: boolean;
 }
 
 export function OfferTable({
@@ -47,8 +65,10 @@ export function OfferTable({
   statusFilter,
   onStatusChange,
   onSelectOffer,
+  showMinePendingFilter = false,
 }: OfferTableProps) {
   const { t } = useI18n();
+  const map = statusMap(t.offers);
 
   const columns = [
     { key: 'candidate', label: t.offers.colCandidate },
@@ -69,11 +89,12 @@ export function OfferTable({
           className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
         >
           <option value="">{t.offers.allStatuses}</option>
-          <option value="draft">{t.offers.statusDraft}</option>
-          <option value="pending_approval">{t.offers.statusPending}</option>
-          <option value="sent">{t.offers.statusSent}</option>
-          <option value="accepted">{t.offers.statusAccepted}</option>
-          <option value="declined">{t.offers.statusDeclined}</option>
+          {showMinePendingFilter && <option value={MINE_PENDING_FILTER}>{t.offers.filterMinePending}</option>}
+          {OFFER_FILTER_STATUSES.map((status) => (
+            <option key={status} value={status}>
+              {offerStatusLabel(status, t.offers)}
+            </option>
+          ))}
         </select>
         {statusFilter && (
           <button
@@ -139,7 +160,7 @@ export function OfferTable({
                 </span>
               </td>
               <td className="px-4 py-3">
-                <StatusBadge status={offer.status} map={STATUS_MAP} />
+                <StatusBadge status={displayOfferStatus(offer)} map={map} />
               </td>
               <td className="px-4 py-3">
                 {total > 0 ? (

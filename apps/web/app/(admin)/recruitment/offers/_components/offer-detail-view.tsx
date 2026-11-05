@@ -12,8 +12,10 @@ import { OfferLetterModal } from './offer-letter-modal';
 import { HireConfirmationModal } from './hire-confirmation-modal';
 import { SigningLinkModal } from './signing-link-modal';
 import { OfferApprovalActions } from './offer-approval-actions';
-import { OFFER_STATUS_LABEL } from './offer-detail-view.helpers';
+import { offerStatusBadge } from './offer-detail-view.helpers';
 import { CandidateHeader, OfferCard } from './offer-detail-view.parts';
+import { offerDetailModel } from './offer-detail-model';
+import { OfferManageActions } from './offer-manage-actions';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCan } from '../../../../../lib/permissions';
@@ -52,7 +54,15 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       toast(t.offers.hiringAuthorized, { type: 'success' });
       await invalidateAfterHire(utils, offerId);
     },
-    onError: (error) => toast(error.message, { type: 'error' }),
+    // B-21: hire errors go through the same mapping as every other offer action (no raw server text).
+    onError: (error) =>
+      toast(
+        describeOfferActionError(error, {
+          forbidden: t.offers.errorForbiddenAction,
+          generic: t.offers.errorOfferAction,
+        }),
+        { type: 'error' },
+      ),
   });
   const [signingError, setSigningError] = useState<string | null>(null);
 
@@ -100,7 +110,6 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   }
 
   const o = offer.data;
-  const statusInfo = OFFER_STATUS_LABEL[o.status] ?? OFFER_STATUS_LABEL.draft;
   const validations = o.validations ?? [];
   const legalChecks = (o.legalChecks ?? []) as Array<{
     id: string;
@@ -116,12 +125,25 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
     (v) => v.isBlocking && v.status !== 'passed' && v.status !== 'waived',
   );
   const legalCheckOpen = legalChecks.some((check) => !check.completed);
-  const canAuthorize = o.status === 'accepted' && !blockingValidationOpen && !legalCheckOpen && can('offer', 'approve');
-  const authorizationReason = blockingValidationOpen
-    ? t.offers.hireBlockedValidations
-    : legalCheckOpen
-      ? t.offers.hireBlockedLegal
-      : undefined;
+  const model = offerDetailModel(
+    {
+      status: o.status,
+      expiresAt: o.expiresAt,
+      validationsTotal: totalValidations,
+      legalChecksTotal: legalChecks.length,
+      blockingValidationOpen,
+      legalCheckOpen,
+      vacancyHires: o.vacancy._count?.offers,
+      vacancyPositions: o.vacancy.positions,
+      applicationStatus: o.application?.status ?? null,
+    },
+    { canCreate: can('offer', 'create'), canUpdate: can('offer', 'update'), canApprove: can('offer', 'approve') },
+    t.offers,
+  );
+  const statusInfo = offerStatusBadge(model.displayStatus, t.offers);
+  const refetchOffer = () => {
+    void offer.refetch();
+  };
   const benefits = o.benefits as Record<string, string> | null;
   const benefitList = benefits ? Object.values(benefits) : [];
   const terms = o.terms as Record<string, string> | null;
@@ -144,9 +166,10 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         completedValidations={completedValidations}
         totalValidations={totalValidations}
         progressPct={progressPct}
-        canAuthorize={canAuthorize}
-        authorizationReason={authorizationReason}
-        showHireAction={o.status === 'accepted' && can('offer', 'approve')}
+        showValidations={model.showValidations}
+        canAuthorize={model.hire.enabled}
+        authorizationReason={model.hire.reason}
+        showHireAction={model.hire.visible}
         isConverted={o.status === 'converted'}
         isAuthorizing={convertToEmployee.isPending}
         onAuthorize={() => setShowHireConfirmation(true)}
@@ -154,8 +177,28 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         onViewLetter={() => setShowLetterModal(true)}
         onSendForSigning={() => generateSigningLink.mutate({ offerId })}
         isGeneratingLink={generateSigningLink.isPending}
-        // Re-sending a SENT offer re-emails the live bearer link, which the server allows only to offer:update.
-        canSendForSigning={o.status === 'approved' || (o.status === 'sent' && can('offer', 'update'))}
+        sendForSigning={model.sendForSigning}
+        manageActions={
+          <OfferManageActions
+            offer={{
+              id: o.id,
+              status: o.status,
+              candidateId: o.candidate.id,
+              applicationId: o.application?.id ?? null,
+              vacancy: o.vacancy,
+              salary: o.salary,
+              currency: o.currency,
+              startDate: o.startDate,
+              contractType: o.contractType,
+              terms: o.terms,
+              benefits: o.benefits,
+            }}
+            canEdit={model.canEdit}
+            canWithdraw={model.canWithdraw}
+            canCreateNew={model.canCreateNew}
+            onChanged={refetchOffer}
+          />
+        }
       />
       {signingError && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
@@ -165,30 +208,30 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
 
       {/* Two columns */}
       <div className="flex flex-col md:flex-row gap-6">
-        {/* LEFT: Offer details 55% */}
-        <div className="w-full md:flex-[55] space-y-4">
+        {/* LEFT: Offer details 55% (full width when the offer has no pre-employment checks, B-20) */}
+        <div className={`w-full space-y-4 ${model.showValidations ? 'md:flex-[55]' : ''}`}>
           <OfferCard offer={o} statusInfo={statusInfo} benefitList={benefitList} terms={terms} />
           <ApprovalChain approvals={o.approvals ?? []} />
           <OfferApprovalActions
             offerId={offerId}
             status={o.status}
             approvals={o.approvals ?? []}
-            onUpdated={() => {
-              void offer.refetch();
-            }}
+            onUpdated={refetchOffer}
           />
           <OfferTimeline offer={o} />
         </div>
 
         {/* RIGHT: Validations 45% */}
-        <div className="w-full md:flex-[45]">
-          <OfferValidations
-            offerId={offerId}
-            validations={validations}
-            legalChecks={legalChecks}
-            readOnly={o.status === 'converted'}
-          />
-        </div>
+        {model.showValidations && (
+          <div className="w-full md:flex-[45]">
+            <OfferValidations
+              offerId={offerId}
+              validations={validations}
+              legalChecks={legalChecks}
+              readOnly={o.status === 'converted'}
+            />
+          </div>
+        )}
       </div>
 
       {/* Offer Letter Modal */}
@@ -223,6 +266,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       {showHireConfirmation && (
         <HireConfirmationModal
           candidateName={`${o.candidate.firstName} ${o.candidate.lastName}`}
+          accessEmail={o.candidate.email}
+          startDate={o.startDate}
           initialJobTitle={o.vacancy.title}
           isPending={convertToEmployee.isPending}
           onClose={() => setShowHireConfirmation(false)}

@@ -6,7 +6,7 @@ import { formatDate } from '../../../../../lib/format-utils';
 import { CandidateAvatar } from '../../../../../components';
 import type { CandidateDetail } from '../../../../../lib/trpc-types';
 import { CandidateStageModal } from './candidate-stage-modal';
-import { CreateOfferModal } from './create-offer-modal';
+import { CreateOfferButton } from './create-offer-button';
 import { RejectCandidateModal } from '../../pipeline/reject-candidate-modal';
 import { useCan } from '../../../../../lib/permissions';
 import { candidateSourceLabel } from '../../../../../lib/candidate-labels';
@@ -33,7 +33,6 @@ function FitScoreCircle({ score }: { score: number }) {
 export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }) {
   const { t } = useI18n();
   const [showStageModal, setShowStageModal] = useState(false);
-  const [showOfferModal, setShowOfferModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const canReject = useCan()('pipeline', 'update');
   const fitScore = c.fitScores?.[0]?.overallScore;
@@ -121,9 +120,7 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5-3L16.5 18m0 0L12 13.5m4.5 4.5V4.5" /></svg>
             {t.candidates.moveStage}
           </button>}
-          {activeApplications.length > 0 && <button type="button" onClick={() => setShowOfferModal(true)} className="flex items-center gap-2 border border-[#1F114C] text-[#1F114C] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#1F114C]/5 transition">
-            {t.offers.createOffer}
-          </button>}
+          <CreateOfferButton candidateId={c.id} applications={activeApplications} />
           {activeApplications.length > 0 && canReject && <button type="button" onClick={() => setShowRejectModal(true)} className="flex items-center gap-2 border border-[#DD0C15] text-[#DD0C15] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-red-50 transition">
             {t.pipeline.reject}
           </button>}
@@ -131,7 +128,6 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
       </div>
 
       {showStageModal && <CandidateStageModal candidateId={c.id} applications={activeApplications} onClose={() => setShowStageModal(false)} />}
-      {showOfferModal && <CreateOfferModal candidateId={c.id} applications={activeApplications} onClose={() => setShowOfferModal(false)} />}
       {showRejectModal && (
         <RejectCandidateModal
           candidateName={`${c.firstName} ${c.lastName}`}
