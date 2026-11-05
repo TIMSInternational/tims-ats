@@ -66,6 +66,8 @@ function pickerPurposes(source: string): Array<string | null> {
 // The mutation each picker feeds decides its purpose (services/Tims.Platform AssignablePurposes.RuleFor).
 const EXPECTED: Record<string, Array<string>> = {
   '(admin)/learning/enroll-modal.tsx': ['learning_enrollee'],
+  // B-08: the buddy of an existing plan, saved through onboarding.updatePlan (colleague directory).
+  '(admin)/people/onboarding/assign-buddy-modal.tsx': ['colleague'],
   '(admin)/people/onboarding/create-plan-modal.tsx': ['onboarding_hire', 'colleague'],
   '(admin)/people/performance/create-commitment-modal.tsx': ['performance_subject'],
   '(admin)/people/performance/create-okr-modal.tsx': ['performance_subject'],

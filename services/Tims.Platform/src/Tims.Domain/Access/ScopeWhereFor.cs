@@ -129,12 +129,23 @@ public static class ScopeWhereFor
                 new ScopePredicate.FieldEquals("fromUserId", userId),
             }),
 
-            // Subject = new hire (userId); the assigned buddy always sees the plan.
-            ScopedEntity.OnboardingPlan => new ScopePredicate.Or(new ScopePredicate[]
-            {
-                await SubjectAsync("userId"),
-                new ScopePredicate.FieldEquals("buddyId", userId),
-            }),
+            // Subject = new hire (userId); the assigned buddy always sees the plan. Team scope (the
+            // hiring leader) also sees the plans of people hired into a vacancy it can see, through the
+            // hire snapshot (hire_predictions.user_id → vacancy) — mirrors entity-policies.ts (B-09).
+            ScopedEntity.OnboardingPlan => scope == AccessScope.Team
+                ? new ScopePredicate.Or(new ScopePredicate[]
+                {
+                    await SubjectAsync("userId"),
+                    new ScopePredicate.FieldEquals("buddyId", userId),
+                    new ScopePredicate.RelationTo(
+                        "user",
+                        new ScopePredicate.RelationSome("hirePredictions", await ViaVacancyAsync())),
+                })
+                : new ScopePredicate.Or(new ScopePredicate[]
+                {
+                    await SubjectAsync("userId"),
+                    new ScopePredicate.FieldEquals("buddyId", userId),
+                }),
 
             // Anchored on the (nullable) current holder — an unfilled role is hidden from
             // narrow scopes (Prisma `in` never matches NULL; fail-narrow).

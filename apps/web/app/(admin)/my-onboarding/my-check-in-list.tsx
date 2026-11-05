@@ -2,6 +2,7 @@
 
 import { useI18n } from '../../../lib/i18n';
 import { onboardingCheckInTypeLabel, onboardingStatusLabel } from '../../../lib/onboarding-labels';
+import { isPastDue } from '../../../lib/onboarding-schedule';
 
 interface MyCheckInItem {
   id: string;
@@ -30,7 +31,12 @@ export function MyCheckInList({ checkIns }: MyCheckInListProps) {
             <li key={checkIn.id} className="flex items-center justify-between py-2.5 text-[13px]">
               <span className="font-medium text-[#333]">{onboardingCheckInTypeLabel(m.labels, checkIn.type)}</span>
               <span className="text-[#585858]">{new Date(checkIn.scheduledDate).toLocaleDateString(dateLocale)}</span>
-              <span className="text-[12px] text-[#585858]">{onboardingStatusLabel(m.labels, checkIn.status)}</span>
+              {/* B-24: a pending check-in whose day has passed reads "Vencido", not "Pendiente". */}
+              {checkIn.status === 'pending' && isPastDue(checkIn.scheduledDate) ? (
+                <span className="text-[12px] font-medium text-[#DD0C15]">{onboardingStatusLabel(m.labels, 'overdue')}</span>
+              ) : (
+                <span className="text-[12px] text-[#585858]">{onboardingStatusLabel(m.labels, checkIn.status)}</span>
+              )}
             </li>
           ))}
         </ul>
