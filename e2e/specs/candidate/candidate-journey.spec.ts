@@ -38,7 +38,8 @@ const fullName = () => `${cand().firstName} ${cand().lastName}`;
 async function navigateStaff(page: Page, path: string): Promise<void> {
   if (new URL(page.url()).pathname === path) return;
   await page.locator(`nav a[href="${path}"]`).first().click();
-  await expect(page).toHaveURL(new RegExp(`${path}$`));
+  // The pipeline keeps its selected vacancy in the query string (A-09), so match the path only.
+  await expect(page).toHaveURL(new RegExp(`${path}(\\?.*)?$`));
 }
 
 test.beforeAll(async ({ browser }, testInfo) => {
