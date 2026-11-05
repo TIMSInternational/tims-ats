@@ -3420,7 +3420,7 @@
     "withdrawSubmitting": "Withdrawing…",
     "withdrawDone": "You withdrew your application for “{vacancy}”.",
     "withdrawErrorNotActive": "This application is no longer in process, so it cannot be withdrawn.",
-    "withdrawErrorOpenOffer": "You have an open offer for this vacancy. Answer it under “My offer” or contact {org}.",
+    "withdrawErrorOpenOffer": "Your application is already at the offer stage, so it cannot be withdrawn here. If you received an offer, answer it under “My offer”; otherwise contact {org}.",
     "withdrawErrorGeneric": "We could not withdraw your application. Please try again.",
     "phaseReview": "Under review",
     "phaseReviewDesc": "The team is reviewing your profile.",

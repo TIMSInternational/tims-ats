@@ -11,6 +11,20 @@ const INTERVIEW_JOIN_GRACE_MS = 2 * 60 * 60 * 1000; // 2 hours
 // through `tenantDb` (RLS) AND carries explicit `organizationId` + `candidateId`
 // filters — defense in depth. The caller (service) wraps these in runWithTenant.
 
+// Offer statuses after which an offer is over for the candidate. Every OTHER status counts as in
+// progress (fail-closed for a status added later): being prepared, in approval, approved, accepted —
+// and 'sent' until its expiry.
+const OFFER_CLOSED_STATUSES = ['declined', 'rejected', 'converted', 'cancelled', 'expired', 'withdrawn'];
+
+function offerInProgress(now: Date) {
+  return {
+    OR: [
+      { status: { notIn: ['sent', ...OFFER_CLOSED_STATUSES] } },
+      { status: 'sent', OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    ],
+  };
+}
+
 export const candidatePortalRepo = {
   // Resolve an organization by its public careers slug. Returns minimal fields.
   findOrgBySlug(slug: string) {
@@ -72,18 +86,21 @@ export const candidatePortalRepo = {
   // The candidate withdraws ONE of their own applications. A single conditional statement: only
   // an application of THIS candidate at THIS org that is still 'active' moves to 'withdrawn', so it
   // can never overwrite a hire or a rejection that committed first (hire-closure and
-  // rejectApplication are conditional on 'active' the same way). It is also refused while the
-  // candidate holds a sent or accepted offer for that vacancy (linked or not): answering the offer
-  // is the way out at that stage, and a withdrawn application must not end up hired.
-  // Returns the number of rows moved (0 or 1).
-  async withdrawApplication(organizationId: string, candidateId: string, applicationId: string) {
+  // rejectApplication are conditional on 'active' the same way). It is also refused while an offer
+  // to this candidate for that vacancy (linked or not) is in progress — anything but closed: being
+  // prepared, in approval, approved, sent and not yet expired, or accepted. The offer
+  // send/accept/hire guards only refuse REJECTED applications, so such an offer must not go on to be
+  // sent, accepted or converted for a withdrawn application; at that stage the candidate answers
+  // the offer or asks the organization. A sent offer past its expiry cannot be answered any more
+  // (signing refuses it), so it does not block. Returns the number of rows moved (0 or 1).
+  async withdrawApplication(organizationId: string, candidateId: string, applicationId: string, now = new Date()) {
     const result = await tenantDb.application.updateMany({
       where: {
         id: applicationId,
         candidateId,
         organizationId,
         status: 'active',
-        vacancy: { offers: { none: { candidateId, status: { in: ['sent', 'accepted'] } } } },
+        vacancy: { offers: { none: { candidateId, ...offerInProgress(now) } } },
       },
       data: { status: 'withdrawn' },
     });

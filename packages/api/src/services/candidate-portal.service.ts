@@ -145,7 +145,7 @@ export const candidatePortalService = {
   // "Retirar mi postulación": the signed-in candidate withdraws one of their OWN applications
   // (status 'withdrawn'). NOT_FOUND unless the application belongs to this session's candidate at
   // this org (never reveal another candidate's id); CONFLICT when it is no longer in process;
-  // PRECONDITION_FAILED while a sent/accepted offer for that vacancy is open.
+  // PRECONDITION_FAILED while an offer for that vacancy is in progress (see the repository).
   async withdrawMyApplication(email: string, orgSlug: string, applicationId: string) {
     const org = await resolveOrg(orgSlug);
     return runWithTenant(org.id, async () => {
@@ -165,7 +165,7 @@ export const candidatePortalService = {
       }
       throw new TRPCError({
         code: 'PRECONDITION_FAILED',
-        message: 'Tiene una oferta abierta para esta vacante. Respóndala o comuníquese con la organización.',
+        message: 'Su postulación ya está en la etapa de oferta. Responda la oferta o comuníquese con la organización.',
       });
     });
   },

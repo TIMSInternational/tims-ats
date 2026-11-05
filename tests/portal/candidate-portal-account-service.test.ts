@@ -139,19 +139,44 @@ describe('candidatePortalRepo writes', () => {
   const realRepo = async () =>
     (await import('../../packages/api/src/repositories/candidate-portal.repository')).candidatePortalRepo;
 
-  it('withdraws only an active application of this candidate at this org with no open offer for the vacancy', async () => {
+  it('withdraws only an active application of this candidate at this org with no offer in progress for the vacancy', async () => {
     tenantDb.application.updateMany.mockResolvedValue({ count: 1 });
-    await expect((await realRepo()).withdrawApplication('org-1', 'cand-1', APP_ID)).resolves.toBe(1);
+    const now = new Date('2026-11-09T15:00:00.000Z');
+    await expect((await realRepo()).withdrawApplication('org-1', 'cand-1', APP_ID, now)).resolves.toBe(1);
     expect(tenantDb.application.updateMany).toHaveBeenCalledWith({
       where: {
         id: APP_ID,
         candidateId: 'cand-1',
         organizationId: 'org-1',
         status: 'active',
-        vacancy: { offers: { none: { candidateId: 'cand-1', status: { in: ['sent', 'accepted'] } } } },
+        vacancy: {
+          offers: {
+            none: {
+              candidateId: 'cand-1',
+              OR: [
+                // Any offer that is not closed blocks — one still being prepared or approved would otherwise be
+                // sent to a withdrawn candidate: the offer send/accept/hire guards refuse only REJECTED applications.
+                {
+                  status: { notIn: ['sent', 'declined', 'rejected', 'converted', 'cancelled', 'expired', 'withdrawn'] },
+                },
+                // A sent offer blocks only until it expires (an expired one cannot be answered any more).
+                { status: 'sent', OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+              ],
+            },
+          },
+        },
       },
       data: { status: 'withdrawn' },
     });
+  });
+
+  it('a draft, in-approval, approved or accepted offer blocks; a closed one never does', async () => {
+    tenantDb.application.updateMany.mockResolvedValue({ count: 1 });
+    await (await realRepo()).withdrawApplication('org-1', 'cand-1', APP_ID);
+    const where = tenantDb.application.updateMany.mock.calls[0]?.[0]?.where;
+    const notIn: string[] = where.vacancy.offers.none.OR[0].status.notIn;
+    for (const open of ['draft', 'pending_approval', 'approved', 'accepted']) expect(notIn).not.toContain(open);
+    for (const closed of ['declined', 'rejected', 'converted']) expect(notIn).toContain(closed);
   });
 
   it('edits only name/phone/location of an active, non-deleted candidate of this org, read back with select', async () => {

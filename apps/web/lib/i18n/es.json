@@ -3420,7 +3420,7 @@
     "withdrawSubmitting": "Retirando…",
     "withdrawDone": "Retiró su postulación a «{vacancy}».",
     "withdrawErrorNotActive": "Esta postulación ya no está en proceso, así que no se puede retirar.",
-    "withdrawErrorOpenOffer": "Tiene una oferta abierta para esta vacante. Respóndala en «Mi oferta» o comuníquese con {org}.",
+    "withdrawErrorOpenOffer": "Su postulación ya está en la etapa de oferta, así que no se puede retirar desde aquí. Si recibió una oferta, respóndala en «Mi oferta»; si no, comuníquese con {org}.",
     "withdrawErrorGeneric": "No pudimos retirar su postulación. Intente de nuevo.",
     "phaseReview": "En revisión",
     "phaseReviewDesc": "El equipo está revisando su perfil.",
