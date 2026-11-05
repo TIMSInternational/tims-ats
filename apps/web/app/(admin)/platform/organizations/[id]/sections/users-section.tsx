@@ -7,6 +7,7 @@ import { useI18n } from '../../../../../../lib/i18n';
 import { getInitials, getAvatarColor, formatDate } from '../../../../../../lib/format-utils';
 import { Skeleton, Modal, ErrorState } from '../../../../../../components';
 import { InviteUserModal } from '../../../invitations/invite-user-modal';
+import { staffRoleOptions } from '../../../../../../lib/role-labels';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
   super_admin: { bg: 'bg-purple-100', text: 'text-purple-700' },
@@ -18,16 +19,6 @@ const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
   employee: { bg: 'bg-gray-100', text: 'text-gray-600' },
   platform_owner: { bg: 'bg-rose-100', text: 'text-rose-700' },
 };
-
-const ASSIGNABLE_ROLES = [
-  { slug: 'super_admin', label: 'Super Admin' },
-  { slug: 'hr_admin', label: 'HR Admin' },
-  { slug: 'hrbp', label: 'HRBP' },
-  { slug: 'recruiter', label: 'Recruiter' },
-  { slug: 'leader', label: 'Leader' },
-  { slug: 'committee', label: 'Committee' },
-  { slug: 'employee', label: 'Employee' },
-];
 
 function RoleSelector({ userId, organizationId, currentRole }: { userId: string; organizationId: string; currentRole: string }) {
   const { t } = useI18n();
@@ -51,7 +42,7 @@ function RoleSelector({ userId, organizationId, currentRole }: { userId: string;
       }}
       className="px-1.5 py-0.5 rounded text-[10px] font-semibold border border-[#EDEDED] bg-white text-[#333] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/30 disabled:opacity-50 cursor-pointer"
     >
-      {ASSIGNABLE_ROLES.map((r) => (
+      {staffRoleOptions(t.roles, { keep: currentRole }).map((r) => (
         <option key={r.slug} value={r.slug}>{r.label}</option>
       ))}
     </select>
@@ -187,7 +178,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
                     <td className="px-4 py-2.5 text-[12px] text-[#585858]">{user.email}</td>
                     <td className="px-4 py-2.5">
                       {user.isPlatformOwner ? (
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>platform_owner</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>{t.roles.platform_owner}</span>
                       ) : (
                         <RoleSelector userId={user.id} organizationId={organizationId} currentRole={roleSlug} />
                       )}

@@ -3,15 +3,8 @@
 import { useState } from 'react';
 import { Modal } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
+import { staffRoleOptions } from '../../../../lib/role-labels';
 import type { UserListItem } from '../../../../lib/trpc-types';
-
-const ASSIGNABLE_ROLES = [
-  { slug: 'super_admin', label: 'Super Admin' },
-  { slug: 'hr_admin', label: 'HR Admin' },
-  { slug: 'recruiter', label: 'Recruiter' },
-  { slug: 'leader', label: 'Leader' },
-  { slug: 'employee', label: 'Employee' },
-];
 
 interface RoleChangeModalProps {
   user: UserListItem;
@@ -25,6 +18,8 @@ export function RoleChangeModal({ user, onConfirm, onClose, isPending }: RoleCha
   const currentRole = user.isPlatformOwner ? 'platform_owner' : user.userRoles?.[0]?.role?.slug || 'employee';
   const [selected, setSelected] = useState(currentRole);
   const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+  // Shared labels + launch scope; the current role stays listed even when the pilot hides it.
+  const assignableRoles = staffRoleOptions(t.roles, { keep: currentRole });
 
   return (
     <Modal title={`${t.users.role} — ${fullName}`} onClose={onClose}>
@@ -41,7 +36,7 @@ export function RoleChangeModal({ user, onConfirm, onClose, isPending }: RoleCha
           </div>
         ) : (
           <div className="space-y-1.5">
-            {ASSIGNABLE_ROLES.map((role) => {
+            {assignableRoles.map((role) => {
               const isCurrent = role.slug === currentRole;
               const isSelected = role.slug === selected;
               return (
@@ -57,7 +52,7 @@ export function RoleChangeModal({ user, onConfirm, onClose, isPending }: RoleCha
                     <span className="text-sm font-medium text-[#333]">{role.label}</span>
                   </div>
                   {isCurrent && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1F114C]/10 text-[#1F114C] font-bold">Actual</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1F114C]/10 text-[#1F114C] font-bold">{t.users.currentRole}</span>
                   )}
                 </button>
               );

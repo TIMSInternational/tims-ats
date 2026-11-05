@@ -20,13 +20,13 @@
   },
   "roles": {
     "platform_owner": "Dueño de plataforma",
-    "super_admin": "Administrador",
-    "hr_admin": "Administrador RRHH",
-    "hrbp": "HRBP",
+    "super_admin": "Super Administrador",
+    "hr_admin": "Administrador de RR. HH.",
+    "hrbp": "HR Business Partner (HRBP)",
     "recruiter": "Reclutador",
     "leader": "Líder",
-    "committee": "Comité",
-    "employee": "Empleado"
+    "committee": "Comité de entrevista",
+    "employee": "Colaborador"
   },
   "nav": {
     "dashboard": "Inicio",
@@ -896,8 +896,7 @@
     "previewFirst3": "Vista previa (primeras 3 filas)",
     "confirmImport": "Confirmar Importación",
     "importComplete": "Importación Completa",
-    "roleSuperAdmin": "Super Admin",
-    "roleHrAdmin": "HR Admin",
+    "currentRole": "Actual",
     "roleUpdated": "Rol actualizado",
     "userDeactivatedOrg": "Usuario desactivado",
     "userActivatedOrg": "Usuario activado",
@@ -2401,6 +2400,15 @@
     "emailPlaceholder": "nombre@empresa.com",
     "roleLabel": "Rol",
     "rolePlaceholder": "Selecciona un rol",
+    "roleDescriptions": {
+      "super_admin": "Acceso total a la organización, incluida la configuración y la invitación de otros administradores. Requiere verificación en dos pasos.",
+      "hr_admin": "Gestiona todo el reclutamiento, aprueba vacantes y ofertas, e invita usuarios (salvo Super Administradores).",
+      "hrbp": "Gestiona los procesos de las unidades de negocio que tiene asignadas.",
+      "recruiter": "Crea y publica vacantes, y gestiona candidatos, pipeline, entrevistas y ofertas. No aprueba.",
+      "leader": "Ve las vacantes y los candidatos de su equipo, entrevista y aprueba las vacantes y ofertas de su área.",
+      "committee": "Ve las entrevistas en las que participa y completa su evaluación.",
+      "employee": "Acceso a su propia información y a Mi Onboarding."
+    },
     "inviteSubmit": "Enviar invitación",
     "inviting": "Enviando...",
     "emailInvalid": "Ingresa un email válido (máximo 254 caracteres).",

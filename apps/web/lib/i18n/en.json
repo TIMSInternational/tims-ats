@@ -20,12 +20,12 @@
   },
   "roles": {
     "platform_owner": "Platform owner",
-    "super_admin": "Administrator",
+    "super_admin": "Super Administrator",
     "hr_admin": "HR Administrator",
-    "hrbp": "HRBP",
+    "hrbp": "HR Business Partner (HRBP)",
     "recruiter": "Recruiter",
     "leader": "Leader",
-    "committee": "Committee",
+    "committee": "Interview committee",
     "employee": "Employee"
   },
   "nav": {
@@ -896,8 +896,7 @@
     "previewFirst3": "Preview (first 3 rows)",
     "confirmImport": "Confirm Import",
     "importComplete": "Import Complete",
-    "roleSuperAdmin": "Super Admin",
-    "roleHrAdmin": "HR Admin",
+    "currentRole": "Current",
     "roleUpdated": "Role updated",
     "userDeactivatedOrg": "User deactivated",
     "userActivatedOrg": "User activated",
@@ -2401,6 +2400,15 @@
     "emailPlaceholder": "name@company.com",
     "roleLabel": "Role",
     "rolePlaceholder": "Select a role",
+    "roleDescriptions": {
+      "super_admin": "Full access to the organization, including settings and inviting other administrators. Requires two-step verification.",
+      "hr_admin": "Runs all recruiting, approves vacancies and offers, and invites users (except Super Administrators).",
+      "hrbp": "Runs the processes of the business units assigned to them.",
+      "recruiter": "Creates and publishes vacancies, and manages candidates, pipeline, interviews and offers. Does not approve.",
+      "leader": "Sees their team's vacancies and candidates, interviews, and approves their area's vacancies and offers.",
+      "committee": "Sees the interviews they take part in and completes their evaluation.",
+      "employee": "Access to their own information and to My Onboarding."
+    },
     "inviteSubmit": "Send invitation",
     "inviting": "Sending...",
     "emailInvalid": "Enter a valid email (254 characters max).",

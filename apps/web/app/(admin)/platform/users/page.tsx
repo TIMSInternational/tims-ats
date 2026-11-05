@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -176,11 +177,7 @@ export default function PlatformUsersPage() {
           onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
         >
           <option value="">{t.users.allRoles}</option>
-          <option value="super_admin">{t.users.roleSuperAdmin}</option>
-          <option value="hr_admin">{t.users.roleHrAdmin}</option>
-          <option value="recruiter">Recruiter</option>
-          <option value="leader">Leader</option>
-          <option value="employee">Employee</option>
+          {ASSIGNABLE_STAFF_ROLES.map((slug) => <option key={slug} value={slug}>{t.roles[slug]}</option>)}
         </select>
         <div className="flex items-center bg-white border border-[#EDEDED] rounded-lg overflow-hidden">
           <button

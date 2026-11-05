@@ -14,10 +14,29 @@ function wrapper({ children }: { children: React.ReactNode }) { return <QueryCli
 beforeEach(() => { mocks.enabled = true; mocks.post.mockReset(); mocks.legacy.mockReset(); });
 
 it('uses only the legacy writer when the flag is false', async () => {
-  mocks.legacy.mockResolvedValue({});
+  mocks.legacy.mockResolvedValue({ delivery: 'accepted' });
   const { useUserInvitationCreate } = await import('../../apps/web/lib/platform-api/user-invitation-create');
   const { result } = renderHook(() => useUserInvitationCreate(), { wrapper });
   await act(() => result.current.mutateAsync(input));
   expect(mocks.legacy).toHaveBeenCalledExactlyOnceWith(input);
   expect(mocks.post).not.toHaveBeenCalled();
+});
+
+// D-04: the legacy writer used to be reported as 'legacy' and treated as sent even when SES refused the email.
+it.each(['accepted', 'unconfirmed', 'changed', 'state_unconfirmed'])('passes the legacy writer delivery (%s) through', async (delivery) => {
+  mocks.legacy.mockResolvedValue({ delivery });
+  const success = vi.fn();
+  const { useUserInvitationCreate } = await import('../../apps/web/lib/platform-api/user-invitation-create');
+  const { result } = renderHook(() => useUserInvitationCreate({ onSuccess: success }), { wrapper });
+  await act(() => result.current.mutateAsync(input));
+  expect(success.mock.calls[0][0]).toBe(delivery);
+});
+
+it('rejects a legacy response without a delivery outcome instead of assuming it was sent', async () => {
+  mocks.legacy.mockResolvedValue({});
+  const success = vi.fn();
+  const { useUserInvitationCreate } = await import('../../apps/web/lib/platform-api/user-invitation-create');
+  const { result } = renderHook(() => useUserInvitationCreate({ onSuccess: success }), { wrapper });
+  await expect(act(() => result.current.mutateAsync(input))).rejects.toThrow();
+  expect(success).not.toHaveBeenCalled();
 });

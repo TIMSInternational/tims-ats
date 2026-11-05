@@ -6,6 +6,7 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { useInvitationResend } from '../../../../lib/platform-api/invitation-resend';
 import { formatDate } from '../../../../lib/format-utils';
+import { roleLabel } from '../../../../lib/role-labels';
 import { KpiCard, KpiCardSkeleton, DataTable, EmptyState, ErrorState, StatusBadge, Modal } from '../../../../components';
 import { InviteOrgModal } from './invite-org-modal';
 import { InviteUserModal } from './invite-user-modal';
@@ -199,7 +200,7 @@ export default function InvitationsPage() {
             <tr key={inv.id} className={`border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition ${isRevoked ? 'opacity-50' : ''}`}>
               <td className="px-4 py-3">
                 <span className="text-sm text-[#333] font-medium">{inv.email}</span>
-                {inv.roleSlug && <p className="text-[10px] text-[#8B8B8B]">{inv.roleSlug.replace(/_/g, ' ')}</p>}
+                {inv.roleSlug && <p className="text-[10px] text-[#8B8B8B]">{roleLabel(t.roles, inv.roleSlug)}</p>}
               </td>
               <td className="px-4 py-3 text-center">{typeBadge(inv.type, { orgAdmin: t.invitations.typeOrgAdmin, user: t.invitations.typeUser })}</td>
               <td className="px-4 py-3"><span className="text-sm text-[#585858]">{inv.organization?.name || inv.organizationName || '\u2014'}</span></td>

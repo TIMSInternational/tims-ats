@@ -7,7 +7,6 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { ErrorState } from '../../../../components';
-import { ROLES } from '../users/invite-wizard.helpers';
 import { isInviteRoleValid } from '../../../../lib/invitations/invite-role';
 
 export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselectedOrgName }: { onClose: () => void; onSuccess: () => void; preselectedOrgId?: string; preselectedOrgName?: string }) {
@@ -20,14 +19,14 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
   const orgs = trpc.platform.listOrganizations.useQuery({ search: orgSearch || undefined, limit: 10, page: 0 });
   const create = useUserInvitationCreate({
     onSuccess: (delivery) => {
-      toast(delivery === 'accepted' || delivery === 'legacy' ? t.invitations.userInvitationSent : t.invitations.userInviteDeliveryUnconfirmed,
-        { type: delivery === 'accepted' || delivery === 'legacy' ? 'success' : 'warning' });
+      toast(delivery === 'accepted' ? t.invitations.userInvitationSent : t.invitations.userInviteDeliveryUnconfirmed,
+        { type: delivery === 'accepted' ? 'success' : 'warning' });
       onSuccess();
     },
     onError: (err) => { toast(err.message || t.invitations.creationFailed, { type: 'error' }); },
   });
 
-  const invitationRoles = useUserInvitationRoles(orgId, ROLES);
+  const invitationRoles = useUserInvitationRoles(orgId);
 
   const [roleTouched, setRoleTouched] = useState(false);
   const roleError = roleTouched && !isInviteRoleValid(roleSlug);

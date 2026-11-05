@@ -194,6 +194,36 @@ public sealed class InvitationOnboardingRepositoryTests(InvitationOnboardingRepo
         Assert.Equal((1, 1, 1), (state.Users, state.Grants, state.Audits));
     }
 
+    [Theory]
+    [InlineData("America/Costa_Rica", null, "America/Costa_Rica")]
+    [InlineData(null, "America/Costa_Rica", "America/Costa_Rica")]
+    [InlineData("America/Costa_Rica", "America/Bogota", "America/Costa_Rica")]
+    [InlineData("Not/A_Zone", "America/Costa_Rica", "America/Costa_Rica")]
+    [InlineData("Not/A_Zone", null, "UTC")]
+    [InlineData(null, null, "UTC")]
+    public async Task New_user_takes_the_tenant_time_zone_never_the_column_default(
+        string? organizationZone, string? companyZone, string expected)
+    {
+        var email = $"tz-{Guid.NewGuid():N}@example.test";
+        var seeded = await _fixture.SeedAsync(email, "user", "recruiter");
+        await _fixture.SetTenantTimeZonesAsync(seeded.OrganizationId, organizationZone, companyZone);
+        Assert.True(await _fixture.Repository().CompleteAsync(seeded.Token,
+            new(Guid.NewGuid().ToString(), email), new("Zone", "Recipient"), default));
+        Assert.Equal(expected, await _fixture.UserTimeZoneAsync(seeded.InvitationId));
+    }
+
+    [Fact]
+    public async Task Existing_user_keeps_their_time_zone()
+    {
+        var seeded = await _fixture.SeedAsync("keeps-zone@example.test", "user", "recruiter");
+        var identity = Guid.NewGuid().ToString();
+        await _fixture.SeedExistingUserAsync(identity, "keeps-zone@example.test", seeded.OrganizationId);
+        await _fixture.SetTenantTimeZonesAsync(seeded.OrganizationId, "America/Costa_Rica", null);
+        Assert.True(await _fixture.Repository().CompleteAsync(seeded.Token,
+            new(identity, "keeps-zone@example.test"), new("Existing", "Member"), default));
+        Assert.Equal("America/Bogota", await _fixture.UserTimeZoneAsync(seeded.InvitationId));
+    }
+
     [Fact]
     public async Task Audit_failure_rolls_back_user_role_and_invitation_status()
     {
@@ -276,6 +306,38 @@ public sealed class InvitationOnboardingRepositoryFixture : IAsyncLifetime
         command.Parameters.AddWithValue("org", organizationId); command.Parameters.AddWithValue("id", Guid.NewGuid());
         command.Parameters.AddWithValue("identity", identity); command.Parameters.AddWithValue("email", email);
         await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task SetTenantTimeZonesAsync(Guid organizationId, string? organizationZone, string? companyZone)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE organizations SET settings = CASE WHEN @orgZone::text IS NULL THEN '{}'::jsonb
+              ELSE jsonb_build_object('timezone', @orgZone::text) END WHERE id=@org;
+            INSERT INTO companies(id,organization_id,timezone,is_active,created_at)
+            SELECT @company,@org,@companyZone::text,true,now() WHERE @companyZone::text IS NOT NULL;
+            -- An inactive company is never consulted.
+            INSERT INTO companies(id,organization_id,timezone,is_active,created_at)
+            VALUES(@inactive,@org,'Asia/Tokyo',false,now() - interval '1 day');
+            """;
+        command.Parameters.AddWithValue("org", organizationId);
+        command.Parameters.AddWithValue("orgZone", (object?)organizationZone ?? DBNull.Value);
+        command.Parameters.AddWithValue("companyZone", (object?)companyZone ?? DBNull.Value);
+        command.Parameters.AddWithValue("company", Guid.NewGuid());
+        command.Parameters.AddWithValue("inactive", Guid.NewGuid());
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<string?> UserTimeZoneAsync(Guid invitationId)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT u.timezone FROM platform_invitations i JOIN users u ON lower(u.email)=lower(i.email) WHERE i.id=@id
+            """;
+        command.Parameters.AddWithValue("id", invitationId);
+        return await command.ExecuteScalarAsync() as string;
     }
 
     public async Task SetRoleActiveAsync(Guid organizationId, string slug, bool active)
@@ -367,10 +429,14 @@ public sealed class InvitationOnboardingRepositoryFixture : IAsyncLifetime
         CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; GRANT app_tenant TO postgres;
         CREATE TYPE "InvitationType" AS ENUM ('org_admin','user');
         CREATE TYPE "InvitationStatus" AS ENUM ('pending','sent','accepted','expired','revoked');
-        CREATE TABLE organizations(id uuid PRIMARY KEY,name text NOT NULL,is_active boolean NOT NULL DEFAULT true,deleted_at timestamp NULL);
+        CREATE TABLE organizations(id uuid PRIMARY KEY,name text NOT NULL,is_active boolean NOT NULL DEFAULT true,deleted_at timestamp NULL,
+          settings jsonb NOT NULL DEFAULT '{}');
+        CREATE TABLE companies(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),
+          timezone text NOT NULL DEFAULT 'America/Bogota',is_active boolean NOT NULL DEFAULT true,created_at timestamp NOT NULL DEFAULT now());
         CREATE TABLE roles(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),slug text NOT NULL,is_active boolean NOT NULL DEFAULT true);
         CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),supabase_user_id text NOT NULL UNIQUE,
-          email text NOT NULL,first_name text,last_name text,is_platform_owner boolean NOT NULL DEFAULT false,is_active boolean NOT NULL DEFAULT true,
+          email text NOT NULL,first_name text,last_name text,timezone text NOT NULL DEFAULT 'America/Bogota',
+          is_platform_owner boolean NOT NULL DEFAULT false,is_active boolean NOT NULL DEFAULT true,
           deleted_at timestamp NULL,updated_at timestamp NOT NULL DEFAULT now());
         CREATE TABLE user_roles(id uuid PRIMARY KEY,user_id uuid NOT NULL REFERENCES users(id),role_id uuid NOT NULL REFERENCES roles(id),UNIQUE(user_id,role_id));
         CREATE TABLE platform_invitations(id uuid PRIMARY KEY,email text NOT NULL,type "InvitationType" NOT NULL,organization_id uuid NOT NULL REFERENCES organizations(id),
