@@ -88,15 +88,15 @@ export const candidatePortalRepo = {
   // can never overwrite a hire or a rejection that committed first (hire-closure and
   // rejectApplication are conditional on 'active' the same way). It is also refused while an offer
   // to this candidate for that vacancy (linked or not) is in progress — anything but closed: being
-  // prepared, in approval, approved, sent and not yet expired, or accepted. The offer
-  // send/accept/hire guards only refuse REJECTED applications, so an offer that already exists must
-  // not go on to be sent, accepted or converted for a withdrawn application; at that stage the
+  // prepared, in approval, approved, sent and not yet expired, or accepted. At that stage the
   // candidate answers the offer or asks the organization. A sent offer past its expiry cannot be
   // answered any more (signing refuses it), so it does not block.
-  // NOT covered here: an offer INSERTED concurrently with this statement (offer.create neither locks
-  // the application nor re-checks it at insert time). Closing that needs the offer create/send/accept
-  // and hire-closure guards to refuse 'withdrawn' like 'rejected' — offer-side code, tracked as a
-  // follow-up. Returns the number of rows moved (0 or 1).
+  // After a withdrawal the offer side refuses 'withdrawn' like 'rejected' (release/pilot-ux-wave2):
+  // offer.create refuses an unlinked offer when the candidate's applications for the vacancy are all closed
+  // and one was withdrawn (a linked one already needs an active application), and the
+  // send/accept guards (rejected-application-guard, locking the application FOR SHARE) and hire-closure
+  // (FOR NO KEY UPDATE) refuse to move one forward — so an offer inserted concurrently with this
+  // statement can be drafted but never sent, accepted or converted. Returns the number of rows moved (0 or 1).
   async withdrawApplication(organizationId: string, candidateId: string, applicationId: string, now = new Date()) {
     const result = await tenantDb.application.updateMany({
       where: {

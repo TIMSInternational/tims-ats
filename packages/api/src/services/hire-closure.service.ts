@@ -29,6 +29,14 @@ export class HireRejectedApplicationError extends Error {
   }
 }
 
+/** The candidate withdrew the application for this vacancy (C-33); the hire must not complete. */
+export class HireWithdrawnApplicationError extends Error {
+  constructor() {
+    super('hire refused: the candidate withdrew the application');
+    this.name = 'HireWithdrawnApplicationError';
+  }
+}
+
 export type HireClosureResult = { applicationClosed: boolean; vacancyClosed: boolean };
 
 // F-15 (pilot proof run): a hire used to be accepted on a vacancy whose positions were already covered, e.g.
@@ -110,10 +118,12 @@ export async function closeHireRecords(
         WHERE organization_id = ${organizationId}::uuid AND vacancy_id = ${vacancyId}::uuid
           AND candidate_id = ${candidateId}::uuid
         FOR NO KEY UPDATE`;
+  // Every application closed (rejected or withdrawn) refuses the hire; a withdrawal is reported as such.
   if (
     applications.length > 0 &&
-    applications.every((candidateApplication) => candidateApplication.status === 'rejected')
+    applications.every(({ status }) => status === 'rejected' || status === 'withdrawn')
   ) {
+    if (applications.some(({ status }) => status === 'withdrawn')) throw new HireWithdrawnApplicationError();
     throw new HireRejectedApplicationError();
   }
   const application = applications.find((candidateApplication) => candidateApplication.status === 'active');
@@ -137,6 +147,7 @@ export async function closeHireRecords(
         select: { status: true },
       });
       if (current?.status === 'rejected') throw new HireRejectedApplicationError();
+      if (current?.status === 'withdrawn') throw new HireWithdrawnApplicationError();
     } else {
       if (finalStage && finalStage.id !== application.currentStageId) {
         await tx.stageMovement.create({

@@ -52,6 +52,18 @@ vi.mock('@tims/db', () => ({
       },
       role: { findFirst: (args: unknown) => h.findRole(args) },
       userRole: { deleteMany: (args: unknown) => h.deleteRoles(args), create: (args: unknown) => h.createRole(args) },
+      // The caller's user:<action> permission is re-resolved from their re-read roles under the lock. The seeded
+      // matrix grants user:update/delete to super_admin and hr_admin only.
+      rolePermission: {
+        findMany: (args: unknown) => {
+          const where = (args as { where: { role: { slug: { in: string[] } }; permission: { module: string; action: string } } }).where;
+          return Promise.resolve(
+            where.role.slug.in
+              .filter((slug) => slug === 'super_admin' || slug === 'hr_admin')
+              .map((slug) => ({ scope: 'organization', role: { slug }, permission: where.permission })),
+          );
+        },
+      },
     }),
   runWithTenant: (_orgId: string, fn: () => unknown) => fn(),
 }));
@@ -232,11 +244,30 @@ describe('the caller is re-checked under the lock (Codex round 2: stale privileg
     const caller = await makeCaller(['super_admin']);
     h.actorRoles = ['employee']; // demoted by a request that held the lock first
     h.findTarget.mockResolvedValue(target(['recruiter']));
-    await expect(caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'committee' })).rejects.toThrow(/rol superior/);
-    await expect(caller.user.deactivate({ userId: TARGET_ID })).rejects.toThrow(/rol superior/);
+    // The re-read roles no longer grant user:update / user:delete, so the request is refused before the
+    // hierarchy policy runs.
+    await expect(caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'committee' })).rejects.toThrow(/ya no puede administrar/);
+    await expect(caller.user.deactivate({ userId: TARGET_ID })).rejects.toThrow(/ya no puede administrar/);
     expect(h.deleteRoles).not.toHaveBeenCalled();
     expect(h.updateUser).not.toHaveBeenCalled();
   });
+
+  // Codex review of release/pilot-ux-wave2 (P1): the hierarchy policy alone lets almost any role (even none)
+  // act on an `employee`, so a demotion that committed while this request waited let it deactivate one.
+  it.each([[['employee']], [['recruiter']], [[]]])(
+    'a caller demoted to %j meanwhile cannot deactivate an employee or change their role',
+    async (demotedTo) => {
+      const caller = await makeCaller(['hr_admin']);
+      h.actorRoles = demotedTo;
+      h.findTarget.mockResolvedValue(target(['employee']));
+      await expect(caller.user.deactivate({ userId: TARGET_ID })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      await expect(caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'employee' })).rejects.toMatchObject({
+        code: 'FORBIDDEN',
+      });
+      expect(h.updateUser).not.toHaveBeenCalled();
+      expect(h.deleteRoles).not.toHaveBeenCalled();
+    },
+  );
 
   it('an admin deactivated meanwhile is refused', async () => {
     const caller = await makeCaller(['super_admin']);

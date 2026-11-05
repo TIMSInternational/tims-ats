@@ -6,6 +6,8 @@ import type { Prisma } from '@tims/db';
 import { createUserSchema, updateProfileSchema, assignRoleSchema, canGrantStaffRole, filterStaffRoleSlugs } from '@tims/shared';
 import { invalidatePermissionCache } from '../lib/cache';
 import { logSecurityEvent } from '../access/security-audit';
+import { resolveAccess } from '../access/resolve';
+import type { Grant } from '../access/types';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
 import { newStaffUserRepository } from '../repositories/new-staff-user.repository';
 import {
@@ -253,7 +255,7 @@ export const userRouter = router({
 
       const result = await runTenantTransaction(organizationId, async (tx) => {
         await lockMemberAdmin(tx, organizationId);
-        const actorRoles = await currentActorRoles(tx, organizationId, ctx.user.id);
+        const actorRoles = await currentActorRoles(tx, organizationId, ctx.user, 'update');
         // IDOR: the member must be an active user of the caller's organization.
         const target = await tx.user.findFirst({
           where: { id: input.userId, organizationId, isActive: true, deletedAt: null },
@@ -325,7 +327,7 @@ export const userRouter = router({
       const organizationId = ctx.user.organizationId;
       const result = await runTenantTransaction(organizationId, async (tx) => {
         await lockMemberAdmin(tx, organizationId);
-        const actorRoles = await currentActorRoles(tx, organizationId, ctx.user.id);
+        const actorRoles = await currentActorRoles(tx, organizationId, ctx.user, 'delete');
         const target = await tx.user.findFirst({
           where: { id: input.userId, organizationId, isActive: true, deletedAt: null },
           select: { id: true, isPlatformOwner: true, userRoles: { select: { role: { select: { slug: true } } } } },
@@ -370,13 +372,45 @@ export const userRouter = router({
  * with the privileges they no longer have (Codex round 2). A caller who is no longer an active member of the
  * organization is refused.
  */
-async function currentActorRoles(tx: Prisma.TransactionClient, organizationId: string, actorId: string): Promise<string[]> {
-  const actor = await tx.user.findFirst({
-    where: { id: actorId, organizationId, isActive: true, deletedAt: null },
+const ACTOR_REVOKED_MESSAGE = 'Tu cuenta ya no puede administrar usuarios en esta organización.';
+
+/**
+ * The actor's staff roles as they are NOW, read under the member-admin lock — and the operation's permission
+ * re-resolved from them. permissionProcedure checked `user:<action>` before the lock; a demotion that commits
+ * while this request waits on the lock would otherwise leave that check stale, and the hierarchy policy alone
+ * lets almost any role act on an `employee` (Codex review of release/pilot-ux-wave2, P1). Resolved the same
+ * way as buildAccessForUser (grants for the roles → resolveAccess), uncached, inside this transaction.
+ */
+async function currentActorRoles(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  actor: { id: string; isPlatformOwner: boolean },
+  action: 'update' | 'delete',
+): Promise<string[]> {
+  const actorRow = await tx.user.findFirst({
+    where: { id: actor.id, organizationId, isActive: true, deletedAt: null },
     select: { userRoles: { select: { role: { select: { slug: true } } } } },
   });
-  if (!actor) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tu cuenta ya no puede administrar usuarios en esta organización.' });
-  return filterStaffRoleSlugs(actor.userRoles.map((ur) => ur.role.slug));
+  if (!actorRow) throw new TRPCError({ code: 'FORBIDDEN', message: ACTOR_REVOKED_MESSAGE });
+  const roleSlugs = actorRow.userRoles.map((ur) => ur.role.slug);
+  // Platform owners are allowed by buildAccessForUser without grants (from the session flag); mirror that.
+  if (!actor.isPlatformOwner) {
+    const rows = await tx.rolePermission.findMany({
+      where: { role: { slug: { in: roleSlugs }, organizationId }, permission: { module: 'user', action } },
+      select: { scope: true, role: { select: { slug: true } }, permission: { select: { module: true, action: true } } },
+    });
+    const grants: Grant[] = rows.map((r) => ({
+      role: r.role.slug,
+      module: r.permission.module,
+      action: r.permission.action,
+      // Same legacy alias as buildAccessForUser; resolveAccess re-validates the scope string.
+      scope: (r.scope === 'all' ? 'organization' : r.scope) as Grant['scope'],
+    }));
+    if (!resolveAccess(grants, 'user', action).allowed) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: ACTOR_REVOKED_MESSAGE });
+    }
+  }
+  return filterStaffRoleSlugs(roleSlugs);
 }
 
 /** Serializes member-admin writes in the organization (see memberAdminLockKey); released at commit. */

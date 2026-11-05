@@ -4,6 +4,7 @@ import {
   closeHireRecords,
   HireRejectedApplicationError,
   HireVacancyFilledError,
+  HireWithdrawnApplicationError,
   isVacancyFilled,
   lockVacancyForHire,
   vacancyFilledMessage,
@@ -115,6 +116,34 @@ describe('closeHireRecords', () => {
     await expect(closeHireRecords(t as never, { ...input, applicationId: null })).rejects.toBeInstanceOf(
       HireRejectedApplicationError,
     );
+  });
+
+  // Codex review of release/pilot-ux-wave2 (P1): a candidate-withdrawn application (C-33) must close the
+  // process like a rejection — no employee attached to an application the candidate left.
+  it('refuses the hire when the candidate withdrew the linked application', async () => {
+    const t = tx({ application: { id: APP_ID, status: 'withdrawn', currentStageId: 's' } });
+    await expect(closeHireRecords(t as never, input)).rejects.toBeInstanceOf(HireWithdrawnApplicationError);
+    expect(t.application.updateMany).not.toHaveBeenCalled();
+    expect(rawCalls(t, 'vacancies')).toHaveLength(0);
+  });
+
+  it('refuses an unlinked hire when every application for the vacancy is closed and one was withdrawn', async () => {
+    const t = tx({
+      applications: [
+        { id: 'a1', status: 'rejected', currentStageId: 's' },
+        { id: 'a2', status: 'withdrawn', currentStageId: 's' },
+      ],
+    });
+    await expect(closeHireRecords(t as never, { ...input, applicationId: null })).rejects.toBeInstanceOf(
+      HireWithdrawnApplicationError,
+    );
+  });
+
+  it('refuses the hire when a withdrawal committed after the read', async () => {
+    const t = tx({ transitioned: 0, statusAfterRace: 'withdrawn' });
+    await expect(closeHireRecords(t as never, input)).rejects.toBeInstanceOf(HireWithdrawnApplicationError);
+    expect(t.stageMovement.create).not.toHaveBeenCalled();
+    expect(rawCalls(t, 'vacancies')).toHaveLength(0);
   });
 
   it("closes the candidate's active application for the vacancy when the offer has no application link", async () => {

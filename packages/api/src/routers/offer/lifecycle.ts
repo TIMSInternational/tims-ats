@@ -4,7 +4,7 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
-import { assertApplicationNotRejected } from './rejected-application-guard';
+import { assertApplicationNotRejected, WITHDRAWN_APPLICATION_MESSAGE } from './rejected-application-guard';
 import { provisionStaffIdentity } from '../../services/staff-provisioning.service';
 import { deliverHireAccess, type HireAccessOutcome } from '../../services/hire-access.service';
 import { candidateContactEmail } from '../../services/candidate-contact';
@@ -16,6 +16,7 @@ import {
   assertVacancyNotFilled,
   closeHireRecords,
   HireRejectedApplicationError,
+  HireWithdrawnApplicationError,
   HireVacancyFilledError,
   lockVacancyForHire,
   vacancyFilledMessage,
@@ -298,6 +299,9 @@ export const offerLifecycleRouter = router({
               code: 'CONFLICT',
               message: 'El candidato fue descartado en el proceso; esta oferta no se puede convertir',
             });
+          }
+          if (error instanceof HireWithdrawnApplicationError) {
+            throw new TRPCError({ code: 'CONFLICT', message: WITHDRAWN_APPLICATION_MESSAGE });
           }
           throw error;
         }

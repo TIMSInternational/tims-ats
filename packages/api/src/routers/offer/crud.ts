@@ -6,6 +6,7 @@ import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { redactOfferSettings } from './offer-dto';
 import { assertNoOpenOffer, openOfferStatusWhere } from './open-offer-guard';
+import { closedApplicationReason, WITHDRAWN_APPLICATION_MESSAGE } from './rejected-application-guard';
 import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
 import { resolveDefaultOfferCurrency } from './offer-currency';
 import { offerDraftRepository } from '../../repositories/offer-draft.repository';
@@ -185,6 +186,17 @@ export const offerCrudRouter = router({
         });
         if (!application || application.candidateId !== input.candidateId || application.vacancyId !== input.vacancyId || application.status !== 'active') {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'La postulación no corresponde al candidato y la vacante activos' });
+        }
+      } else {
+        // An offer without the link falls back to the candidate's applications for the vacancy. When the
+        // candidate withdrew (C-33) and has no other open application for it, an unlinked offer would re-open a
+        // process they left; refuse it here (send/accept/hire refuse it too, see rejected-application-guard).
+        const applications = await db.application.findMany({
+          where: { organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId },
+          select: { status: true },
+        });
+        if (closedApplicationReason(applications.map((application) => application.status)) === 'withdrawn') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: WITHDRAWN_APPLICATION_MESSAGE });
         }
       }
 

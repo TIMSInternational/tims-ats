@@ -54,6 +54,18 @@ vi.mock('@tims/db', () => ({
       },
       role: { findFirst: (args: unknown) => h.roleFindFirst(args) },
       userRole: { create: h.txUserRoleCreate, deleteMany: h.txUserRoleDeleteMany },
+      // The caller's user:<action> permission is re-resolved from their re-read roles under the lock. The seeded
+      // matrix grants user:update/delete to super_admin and hr_admin only.
+      rolePermission: {
+        findMany: (args: unknown) => {
+          const where = (args as { where: { role: { slug: { in: string[] } }; permission: { module: string; action: string } } }).where;
+          return Promise.resolve(
+            where.role.slug.in
+              .filter((slug) => slug === 'super_admin' || slug === 'hr_admin')
+              .map((slug) => ({ scope: 'organization', role: { slug }, permission: where.permission })),
+          );
+        },
+      },
     }),
   runWithTenant: (_orgId: string, fn: () => unknown) => fn(),
 }));
