@@ -2,6 +2,7 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { candidateConsentRepository } from './candidate-consent.repository';
+import { APPLICATION_REJECTED_AUDIT_ACTION } from './pipeline.repository';
 
 // ---------------------------------------------------------------------------
 // Explicit select objects — never return full records (CLAUDE.md §4)
@@ -94,6 +95,11 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput,
         status: true,
         source: true,
         appliedAt: true,
+        // A rejection stays visible on the 360: when, why and the internal note (A-05). Who rejected comes
+        // from the rejection's audit row (findRejectionAuthors).
+        rejectedAt: true,
+        rejectedReason: true,
+        feedback: true,
         // salary: the posted range of an IN-SCOPE vacancy — the offer form uses its
         // period + midpoint as a placeholder so the offer amount is entered in the same unit.
         vacancy: { select: { id: true, title: true, status: true, salary: true } },
@@ -527,6 +533,24 @@ export const candidateRepository = {
   // Codex F1: application/assessment child loads are scope-filtered via the
   // threaded appScopeWhere ({vacancy: frag}) so out-of-scope rows never surface
   // in the timeline. At org scope appScopeWhere is {} → no behavior change.
+  // Who rejected each application: the audit row pipelineRepository.rejectApplication writes in the same
+  // transaction as the rejection (the applications table has no "rejected by" column). Newest row first, so
+  // the first match per application is the rejection that stands. Only the account's display name leaves.
+  async findRejectionAuthors(orgId: string, applicationIds: string[]) {
+    if (applicationIds.length === 0) return [];
+    return db.auditLog.findMany({
+      where: {
+        organizationId: orgId,
+        entity: 'application',
+        action: APPLICATION_REJECTED_AUDIT_ACTION,
+        entityId: { in: applicationIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      select: { entityId: true, createdAt: true, user: { select: { firstName: true, lastName: true } } },
+    });
+  },
+
   async getTimelineData(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
     return Promise.all([
       db.application.findMany({
@@ -536,6 +560,8 @@ export const candidateRepository = {
           status: true,
           source: true,
           appliedAt: true,
+          rejectedAt: true,
+          rejectedReason: true,
           vacancy: { select: { id: true, title: true } },
           movements: {
             select: {

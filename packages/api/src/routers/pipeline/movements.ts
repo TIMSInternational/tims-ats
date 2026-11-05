@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { pipelineService } from '../../services/pipeline.service';
+import { rejectionEmailService } from '../../services/rejection-email.service';
+import { runAfterResponse } from '../../lib/after-response';
 import type { Prisma } from '@tims/db';
 import { assertScoped, scopeWhereFor } from '../../access';
 
@@ -49,10 +51,29 @@ export const pipelineMovementsRouter = router({
       applicationId: z.string().uuid(),
       reason: z.string().min(1).max(500),
       feedback: z.string().max(2000).optional(),
+      // Opt-in, default OFF (C-11): one neutral email telling the candidate the process continued with
+      // other profiles. It never carries the reason or the internal note.
+      notifyCandidate: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return pipelineService.rejectCandidate(ctx.user.organizationId, input.applicationId, input.reason, input.feedback);
+      const orgId = ctx.user.organizationId;
+      await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
+      const rejected = await pipelineService.rejectCandidate(
+        orgId,
+        { userId: ctx.user.id, actorId: ctx.user.impersonatorId ?? ctx.user.id },
+        input.applicationId,
+        input.reason,
+        input.feedback,
+        input.notifyCandidate,
+      );
+      const candidateNotification = input.notifyCandidate
+        ? await rejectionEmailService.notificationOutcome(orgId, rejected?.candidate.id ?? null)
+        : ('not_requested' as const);
+      if (candidateNotification === 'queued') {
+        // After the response (lib/after-response.ts): a bare `void` send is frozen by the serverless runtime.
+        runAfterResponse(ctx, () => rejectionEmailService.send(orgId, input.applicationId).then(() => undefined));
+      }
+      return { ...rejected, candidateNotification };
     }),
 
   getMovementHistory: permissionProcedure('pipeline', 'read')

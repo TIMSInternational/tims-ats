@@ -96,7 +96,7 @@ function meetingLinkRow(meetingUrl?: string): string {
 }
 
 // Shared building blocks for the localized interview emails (interview-email-templates.ts).
-export const emailLayout = { esc, safeUrl, baseLayout, heading, paragraph, detailRow, detailsTable, ctaButton } as const;
+export const emailLayout = { esc, safeUrl, baseLayout, heading, paragraph, detailRow, detailsTable, ctaButton, SAFE_GREETING_NAME } as const;
 
 type InterviewParams = { candidateName: string; vacancyTitle: string; companyName: string; interviewType: string; scheduledAt: Date; duration: number; location?: string; meetingUrl?: string; contactEmail: string };
 
