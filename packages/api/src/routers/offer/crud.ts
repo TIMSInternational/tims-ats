@@ -1,10 +1,13 @@
 import { z } from 'zod';
-import { router, permissionProcedure } from '../../trpc';
+import { router, permissionProcedure, anyPermissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { redactOfferSettings } from './offer-dto';
+import { assertNoOpenOffer } from './open-offer-guard';
+import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
+import { resolveDefaultOfferCurrency } from './offer-currency';
 
 // ISO-4217-shaped: trimmed and upper-cased so 'cop ' is stored as 'COP'; anything else is rejected
 // instead of being stored and later mis-rendered.
@@ -13,6 +16,31 @@ const currencyCode = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Moneda
 // 1e12 comfortably covers any annual salary in a zero-decimal currency such as COP.
 const MAX_OFFER_SALARY = 1_000_000_000_000;
 const offerSalary = z.number().finite().positive().max(MAX_OFFER_SALARY, 'Salario fuera de rango');
+
+// What offer.update returns: the edited terms, never `settings` (the candidate's signing token lives there).
+const OFFER_EDIT_SELECT = {
+  id: true,
+  status: true,
+  salary: true,
+  currency: true,
+  startDate: true,
+  contractType: true,
+  benefits: true,
+  terms: true,
+  expiresAt: true,
+  updatedAt: true,
+} satisfies Prisma.OfferSelect;
+
+async function defaultCurrencyFor(organizationId: string, vacancyId: string): Promise<string> {
+  const [organization, vacancy] = await Promise.all([
+    db.organization.findFirst({ where: { id: organizationId }, select: { settings: true } }),
+    db.vacancy.findFirst({
+      where: { id: vacancyId, organizationId },
+      select: { company: { select: { currency: true } } },
+    }),
+  ]);
+  return resolveDefaultOfferCurrency(organization?.settings, vacancy?.company?.currency);
+}
 
 export const offerCrudRouter = router({
   // 9.1 — List offers with filters
@@ -87,14 +115,30 @@ export const offerCrudRouter = router({
               id: true, firstName: true, lastName: true, email: true, phone: true, avatar: true,
             },
           },
-          vacancy: { select: { id: true, title: true } },
-          application: { select: { id: true } },
+          // salary/contractType/remotePolicy prefill "Editar borrador" and "Crear nueva oferta"; positions and
+          // the converted-offer count let the hire button explain a filled vacancy (F-15) before a click.
+          vacancy: {
+            select: {
+              id: true,
+              title: true,
+              salary: true,
+              contractType: true,
+              remotePolicy: true,
+              positions: true,
+              _count: { select: { offers: { where: { status: 'converted' } } } },
+            },
+          },
+          application: { select: { id: true, status: true } },
           creator: { select: { id: true, firstName: true, lastName: true } },
           approvals: {
             orderBy: { step: 'asc' },
             include: {
-              approver: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+              approver: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
             },
+          },
+          // Who registered the hire and when (offer history, B-19).
+          hirePrediction: {
+            select: { createdAt: true, hiredBy: { select: { firstName: true, lastName: true } } },
           },
           validations: {
             include: {
@@ -124,7 +168,8 @@ export const offerCrudRouter = router({
         vacancyId: z.string().uuid(),
         applicationId: z.string().uuid().optional(),
         salary: offerSalary,
-        currency: currencyCode.default('USD'),
+        // Omitted → the organization's currency (resolveDefaultOfferCurrency), never a blind 'USD'.
+        currency: currencyCode.optional(),
         startDate: z.date(),
         contractType: z.string().max(100),
         benefits: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
@@ -146,7 +191,7 @@ export const offerCrudRouter = router({
         where: { id: input.candidateId, organizationId: orgId },
         select: { id: true },
       });
-      if (!candidate) throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado en esta organizacion' });
+      if (!candidate) throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado en esta organización' });
       if (input.applicationId) {
         await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
         const application = await db.application.findFirst({
@@ -154,32 +199,42 @@ export const offerCrudRouter = router({
           select: { candidateId: true, vacancyId: true, status: true },
         });
         if (!application || application.candidateId !== input.candidateId || application.vacancyId !== input.vacancyId || application.status !== 'active') {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La postulacion no corresponde al candidato y la vacante activos' });
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La postulación no corresponde al candidato y la vacante activos' });
         }
       }
 
-      const { benefits, terms, ...rest } = input;
-      const created = await db.offer.create({
-        data: {
-          ...rest,
-          benefits: benefits as Prisma.InputJsonValue | undefined,
-          terms: terms as Prisma.InputJsonValue | undefined,
-          organizationId: orgId,
-          createdById: ctx.user.id,
-          status: 'draft',
-        },
-        include: {
-          candidate: {
-            select: { id: true, firstName: true, lastName: true },
+      const { benefits, terms, currency, ...rest } = input;
+      const resolvedCurrency = currency ?? (await defaultCurrencyFor(orgId, input.vacancyId));
+      // One open offer per candidate and vacancy (B-04): checked under a lock on the candidate row, in the
+      // same transaction as the insert, so two concurrent creates cannot both pass.
+      const created = await offerApplicationLockRepository.inTransaction(orgId, async (tx) => {
+        await assertNoOpenOffer(tx, { organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId });
+        return tx.offer.create({
+          data: {
+            ...rest,
+            currency: resolvedCurrency,
+            benefits: benefits as Prisma.InputJsonValue | undefined,
+            terms: terms as Prisma.InputJsonValue | undefined,
+            organizationId: orgId,
+            createdById: ctx.user.id,
+            status: 'draft',
           },
-          vacancy: { select: { id: true, title: true } },
-        },
+          include: {
+            candidate: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+            vacancy: { select: { id: true, title: true } },
+          },
+        });
       });
       return redactOfferSettings(created);
     }),
 
-  // 9.4 — Update an offer (only while in draft)
-  update: permissionProcedure('offer', 'update')
+  // 9.4 — Update an offer (only while in draft). offer:create (recruiters) suffices, like submitForApproval
+  // and withdraw: a draft has not been approved, so editing it grants nothing that creating a new draft (after
+  // withdrawing this one) does not already allow, and any change still needs approval before it can be sent.
+  // Approved, sent and later offers stay frozen for everyone.
+  update: anyPermissionProcedure('offer', ['update', 'create'])
     .input(
       z.object({
         id: z.string().uuid(),
@@ -206,6 +261,7 @@ export const offerCrudRouter = router({
             scopeWhere as Prisma.OfferWhereInput,
           ],
         },
+        select: { id: true, status: true },
       });
 
       if (!existing) {
@@ -220,14 +276,25 @@ export const offerCrudRouter = router({
       }
 
       const { benefits, terms, ...rest } = data;
-      const updated = await db.offer.update({
-        where: { id },
+      // Compare-and-set on draft: a submission for approval that lands between the check above and this
+      // write must not let the approvers see terms other than the ones they are asked to approve.
+      const updated = await db.offer.updateMany({
+        where: { id, organizationId: ctx.user.organizationId, status: 'draft' },
         data: {
           ...rest,
           ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
           ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
         },
       });
-      return redactOfferSettings(updated);
+      if (updated.count !== 1) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'La oferta ya no está en borrador; recarga la página para ver su estado actual',
+        });
+      }
+      return db.offer.findFirstOrThrow({
+        where: { id, organizationId: ctx.user.organizationId },
+        select: OFFER_EDIT_SELECT,
+      });
     }),
 });

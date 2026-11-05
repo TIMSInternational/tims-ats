@@ -96,7 +96,8 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput,
         appliedAt: true,
         // salary: the posted range of an IN-SCOPE vacancy — the offer form uses its
         // period + midpoint as a placeholder so the offer amount is entered in the same unit.
-        vacancy: { select: { id: true, title: true, status: true, salary: true } },
+        // contractType / remotePolicy prefill the offer form's contract type and modality (B-15).
+        vacancy: { select: { id: true, title: true, status: true, salary: true, contractType: true, remotePolicy: true } },
         currentStage: { select: { id: true, name: true, order: true } },
       },
     },

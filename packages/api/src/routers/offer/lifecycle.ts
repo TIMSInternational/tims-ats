@@ -9,7 +9,14 @@ import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.se
 import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
-import { closeHireRecords, HireRejectedApplicationError } from '../../services/hire-closure.service';
+import {
+  assertVacancyNotFilled,
+  closeHireRecords,
+  HireRejectedApplicationError,
+  HireVacancyFilledError,
+  lockVacancyForHire,
+  vacancyFilledMessage,
+} from '../../services/hire-closure.service';
 import { bumpVacancyKpiGeneration } from '../../lib/vacancy-kpi-cache';
 
 export const offerLifecycleRouter = router({
@@ -70,7 +77,7 @@ export const offerLifecycleRouter = router({
         }
         throw new TRPCError({
           code: 'CONFLICT',
-          message: 'La oferta ya fue convertida, pero no se encontro al empleado',
+          message: 'La oferta ya fue convertida, pero no se encontró al colaborador',
         });
       }
 
@@ -85,7 +92,7 @@ export const offerLifecycleRouter = router({
         db,
         ctx.user.organizationId,
         offer.id,
-        'Esta oferta fue rechazada en su cadena de aprobacion y no se puede convertir',
+        'Esta oferta fue rechazada en su cadena de aprobación y no se puede convertir',
       );
       await assertApplicationNotRejected(
         db,
@@ -108,12 +115,26 @@ export const offerLifecycleRouter = router({
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay verificaciones legales pendientes' });
       }
 
+      // F-15: never hire past the vacancy's positions. Checked here, before the new hire's sign-in identity
+      // (and its invitation email) is created, and again under the vacancy lock inside the transaction.
+      try {
+        await assertVacancyNotFilled(db, { organizationId: ctx.user.organizationId, vacancyId: offer.vacancyId });
+      } catch (error) {
+        if (error instanceof HireVacancyFilledError) {
+          throw new TRPCError({ code: 'CONFLICT', message: vacancyFilledMessage(error.hires, error.positions) });
+        }
+        throw error;
+      }
+
       const employeeRole = await db.role.findFirst({
         where: { organizationId: ctx.user.organizationId, slug: 'employee', isActive: true },
         select: { id: true },
       });
       if (!employeeRole) {
-        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'El rol de colaborador no esta configurado' });
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'El rol Colaborador no está configurado en esta organización; pide a soporte que lo active',
+        });
       }
 
       const candidate = offer.candidate;
@@ -132,7 +153,7 @@ export const offerLifecycleRouter = router({
       if (existingUser) {
         throw new TRPCError({
           code: 'CONFLICT',
-          message: 'Ya existe un empleado con este correo electronico',
+          message: 'Ya existe un colaborador con este correo electrónico en la organización',
         });
       }
 
@@ -153,6 +174,16 @@ export const offerLifecycleRouter = router({
       // `tenantDb`, so the outer wrapper never composed and this multi-write hire
       // flow (user + onboarding plan + tasks + offer status) was not atomic.
       const hired = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
+        // F-15, race-safe: lock the vacancy and re-count its hires before claiming the offer.
+        try {
+          await lockVacancyForHire(tx, { organizationId: ctx.user.organizationId, vacancyId: offer.vacancyId });
+        } catch (error) {
+          if (error instanceof HireVacancyFilledError) {
+            throw new TRPCError({ code: 'CONFLICT', message: vacancyFilledMessage(error.hires, error.positions) });
+          }
+          throw error;
+        }
+
         // Claim the accepted offer before creating the employee. A concurrent
         // retry cannot create a second hire, and a later failure rolls this back.
         const claimed = await tx.offer.updateMany({
@@ -160,7 +191,7 @@ export const offerLifecycleRouter = router({
           data: { status: 'converted' },
         });
         if (claimed.count !== 1) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida o cambio de estado' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida o cambió de estado' });
         }
 
         // Create the user record, linked to its Supabase identity from birth.

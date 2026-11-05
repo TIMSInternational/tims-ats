@@ -51,8 +51,13 @@ import { appRouter } from '@tims/api';
  * company-admin access-1): `vacancy.getPending` (the approver inbox's vacancy half; offers already had
  * `offer.getPending`) and `vacancy.withdrawApproval` + `offer.withdrawApproval` (a request stuck with an
  * absent approver otherwise stays in pending_approval for good). Same terms: not headroom, owed a C# port.
+ *
+ * Third D-1 exception: 357 → 358 on 2026-11-04 for `offer.withdraw` (pilot audit B-04: a wrong or unwanted
+ * offer — including one already emailed — could not be taken back, so its signing link stayed live and a
+ * corrected offer could not be issued once one-open-offer-per-application is enforced). Same terms: not
+ * headroom, owed a C# port.
  */
-const PROCEDURE_CEILING = 357;
+const PROCEDURE_CEILING = 358;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.
