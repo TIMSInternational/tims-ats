@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   userRoleUpsert: vi.fn(),
   txUserCreate: vi.fn(),
   txUserRoleCreate: vi.fn(),
+  txUserRoleDeleteMany: vi.fn(),
   auditCreate: vi.fn(),
   provision: vi.fn(),
   invalidate: vi.fn(),
@@ -32,8 +33,14 @@ vi.mock('@tims/db', () => ({
     user: { findFirst: (args: unknown) => h.userFindFirst(args) },
     userRole: { upsert: (args: unknown) => h.userRoleUpsert(args) },
   },
+  // assignRole now REPLACES the member's role inside one transaction (company-admin access-3), so the tx
+  // carries the target lookup, the role lookup and the delete as well as the creates.
   runTenantTransaction: (_orgId: string, fn: (tx: unknown) => unknown) =>
-    fn({ user: { create: h.txUserCreate }, userRole: { create: h.txUserRoleCreate } }),
+    fn({
+      user: { create: h.txUserCreate, findFirst: (args: unknown) => h.userFindFirst(args), count: () => Promise.resolve(1) },
+      role: { findFirst: (args: unknown) => h.roleFindFirst(args) },
+      userRole: { create: h.txUserRoleCreate, deleteMany: h.txUserRoleDeleteMany },
+    }),
   runWithTenant: (_orgId: string, fn: () => unknown) => fn(),
 }));
 
@@ -92,7 +99,7 @@ beforeEach(() => {
     Promise.resolve({ id: `role-${where.slug}`, slug: where.slug }),
   );
   h.userFindFirst.mockImplementation(({ where }: { where: { id?: string } }) =>
-    Promise.resolve(where.id ? { id: where.id } : null),
+    Promise.resolve(where.id ? { id: where.id, isPlatformOwner: false, userRoles: [{ role: { slug: 'employee' } }] } : null),
   );
   h.userRoleUpsert.mockResolvedValue({ userId: TARGET_ID });
   h.txUserCreate.mockResolvedValue({ id: TARGET_ID });
@@ -148,7 +155,8 @@ describe('user.assignRole enforces the staff-role grant policy', () => {
       code: 'FORBIDDEN',
     });
     expect(h.userFindFirst).not.toHaveBeenCalled();
-    expect(h.userRoleUpsert).not.toHaveBeenCalled();
+    expect(h.txUserRoleDeleteMany).not.toHaveBeenCalled();
+    expect(h.txUserRoleCreate).not.toHaveBeenCalled();
     expect(h.invalidate).not.toHaveBeenCalled();
     await flush();
     expect(deniedAudits('user.assignRole')).toEqual([expect.objectContaining({ organizationId: ORG_ID })]);
@@ -159,22 +167,23 @@ describe('user.assignRole enforces the staff-role grant policy', () => {
     await expect(caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'hrbp' })).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
-    expect(h.userRoleUpsert).not.toHaveBeenCalled();
+    expect(h.txUserRoleCreate).not.toHaveBeenCalled();
   });
 
-  it('positive control: hr_admin assigns recruiter and the role is upserted', async () => {
+  // The old upsert added a role next to the existing ones, so a demotion was impossible (company-admin
+  // access-3); the role is now replaced: every org role of the member is deleted, then the new one created.
+  it('positive control: hr_admin assigns recruiter and the role replaces the previous one', async () => {
     const caller = await makeCaller(['hr_admin']);
     await caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'recruiter' });
-    expect(h.userRoleUpsert).toHaveBeenCalledTimes(1);
-    expect(h.userRoleUpsert.mock.calls[0][0]).toMatchObject({
-      where: { userId_roleId: { userId: TARGET_ID, roleId: 'role-recruiter' } },
-    });
+    expect(h.txUserRoleDeleteMany).toHaveBeenCalledWith({ where: { userId: TARGET_ID, role: { organizationId: ORG_ID } } });
+    expect(h.txUserRoleCreate).toHaveBeenCalledTimes(1);
+    expect(h.txUserRoleCreate.mock.calls[0][0]).toMatchObject({ data: { userId: TARGET_ID, roleId: 'role-recruiter' } });
     expect(h.invalidate).toHaveBeenCalledWith(ORG_ID);
   });
 
   it('positive control: super_admin assigns super_admin', async () => {
     const caller = await makeCaller(['super_admin']);
     await caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'super_admin' });
-    expect(h.userRoleUpsert).toHaveBeenCalledTimes(1);
+    expect(h.txUserRoleCreate).toHaveBeenCalledTimes(1);
   });
 });
