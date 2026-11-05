@@ -82,6 +82,8 @@ const EXPECTED: Record<string, Array<string>> = {
   '(admin)/recruitment/offers/_components/offer-approval-actions.tsx': ['offer_approver'],
   '(admin)/recruitment/interviews/evaluators-modal.tsx': ['interview_evaluator'],
   '(admin)/recruitment/vacancies/create-modal.org-fields.tsx': ['vacancy_assignee'],
+  // The vacancy "Editar" drawer's hiring manager: written as vacancy.update's assignedTo, same directory as create.
+  '(admin)/recruitment/vacancies/[id]/edit-vacancy-fields.tsx': ['vacancy_assignee'],
   '(admin)/recruitment/vacancies/[id]/submit-approval-modal.tsx': ['vacancy_approver'],
 };
 

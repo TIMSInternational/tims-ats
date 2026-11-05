@@ -5,7 +5,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatDate, formatCurrency } from '../../../../lib/format-utils';
 import { DataTable, StatusBadge, EmptyState, ErrorState } from '../../../../components';
 import type { VacancyListItem } from '../../../../lib/trpc-types';
-import { isPilotScope } from '../../../../lib/launch-scope';
+import { usePermissions } from '../../../../lib/permissions';
 import { vacancyStatusMap } from './vacancy-status';
 
 interface VacancyTableProps {
@@ -16,6 +16,8 @@ interface VacancyTableProps {
   onDuplicate: (id: string) => void;
   onClose: (vacancy: VacancyListItem) => void;
   onFreeze: (vacancy: VacancyListItem) => void;
+  /** A-08: "Reanudar" on a frozen row. Optional so read-only embeddings need not wire it. */
+  onResume?: (vacancy: VacancyListItem) => void;
 }
 
 const PRIORITY_DOTS: Record<string, string> = {
@@ -44,6 +46,7 @@ export function VacancyTable({
   onDuplicate,
   onClose,
   onFreeze,
+  onResume,
 }: VacancyTableProps) {
   const { t } = useI18n();
 
@@ -180,6 +183,7 @@ export function VacancyTable({
               onDuplicate={onDuplicate}
               onClose={onClose}
               onFreeze={onFreeze}
+              onResume={onResume}
             />
           </td>
         </tr>
@@ -196,13 +200,16 @@ function ActionButtons({
   onDuplicate,
   onClose,
   onFreeze,
+  onResume,
 }: {
   vacancy: VacancyListItem;
   t: ReturnType<typeof useI18n>['t'];
   onDuplicate: (id: string) => void;
   onClose: (v: VacancyListItem) => void;
   onFreeze: (v: VacancyListItem) => void;
+  onResume?: (v: VacancyListItem) => void;
 }) {
+  const { can } = usePermissions();
   return (
     <div className="flex items-center justify-end gap-1">
       <Link
@@ -244,8 +251,8 @@ function ActionButtons({
           </svg>
         </button>
       )}
-      {/* "Congelar" has no way back yet (no resume/reopen), so the pilot does not offer it at all. */}
-      {v.status === 'published' && !isPilotScope() && (
+      {/* A-08: "Congelar" now has a way back ("Reanudar" on the frozen row and on the detail page). */}
+      {v.status === 'published' && (
         <button
           onClick={() => onFreeze(v)}
           className="h-7 px-2.5 rounded-md text-[11px] text-purple-600 border border-purple-200 hover:bg-purple-50 transition"
@@ -260,6 +267,14 @@ function ActionButtons({
           >
             <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07" />
           </svg>
+        </button>
+      )}
+      {v.status === 'frozen' && onResume && can('vacancy', 'publish') && (
+        <button
+          onClick={() => onResume(v)}
+          className="h-7 px-2.5 rounded-md text-[11px] text-[#1F114C] border border-[#1F114C]/20 hover:bg-[#1F114C]/5 transition"
+        >
+          {t.vacancies.resumeVacancy}
         </button>
       )}
     </div>

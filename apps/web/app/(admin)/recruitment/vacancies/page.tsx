@@ -10,6 +10,8 @@ import { FilterBar } from './filter-bar';
 import { VacancyTable } from './vacancy-table';
 import { CreateModal } from './create-modal';
 import { CloseModal } from './close-modal';
+import { FreezeVacancyConfirm } from './freeze-vacancy-confirm';
+import { ResumeVacancyConfirm } from './resume-vacancy-confirm';
 import type { VacancyListItem } from '../../../../lib/trpc-types';
 import { summarizeVacancyKpis } from './vacancy-kpis';
 
@@ -25,6 +27,7 @@ export default function VacanciesPage() {
   const [showCreate, setShowCreate] = useState(openCreateOnLoad);
   const [closeTarget, setCloseTarget] = useState<VacancyListItem | null>(null);
   const [freezeTarget, setFreezeTarget] = useState<VacancyListItem | null>(null);
+  const [resumeTarget, setResumeTarget] = useState<VacancyListItem | null>(null);
 
   const kpis = trpc.vacancy.getDashboardKpis.useQuery();
   const vacancies = trpc.vacancy.list.useQuery({
@@ -63,6 +66,15 @@ export default function VacanciesPage() {
   const freezeVacancy = trpc.vacancy.freeze.useMutation({
     onSuccess: () => { invalidateAll(); setFreezeTarget(null); toast(t.vacancies.frozen, { type: 'success' }); },
     onError: (err) => { toast(err.message, { type: 'error' }); },
+  });
+
+  // A-08: the way back from "Congelar".
+  const resumeVacancy = trpc.vacancy.resume.useMutation({
+    onSuccess: () => { invalidateAll(); setResumeTarget(null); toast(t.vacancies.resumed, { type: 'success' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+      if (err.data?.code === 'CONFLICT') { invalidateAll(); setResumeTarget(null); }
+    },
   });
 
   const duplicateVacancy = trpc.vacancy.duplicate.useMutation({
@@ -143,6 +155,7 @@ export default function VacanciesPage() {
         onDuplicate={(id) => duplicateVacancy.mutate({ id })}
         onClose={setCloseTarget}
         onFreeze={setFreezeTarget}
+        onResume={setResumeTarget}
       />
 
       {/* Modals */}
@@ -167,11 +180,19 @@ export default function VacanciesPage() {
         />
       )}
       {freezeTarget && (
-        <FreezeConfirm
+        <FreezeVacancyConfirm
           vacancyTitle={freezeTarget.title}
           onConfirm={() => freezeVacancy.mutate({ id: freezeTarget.id })}
           onClose={() => setFreezeTarget(null)}
           isPending={freezeVacancy.isPending}
+        />
+      )}
+      {resumeTarget && (
+        <ResumeVacancyConfirm
+          vacancyTitle={resumeTarget.title}
+          onConfirm={() => resumeVacancy.mutate({ id: resumeTarget.id })}
+          onClose={() => setResumeTarget(null)}
+          isPending={resumeVacancy.isPending}
         />
       )}
     </div>
@@ -199,46 +220,5 @@ function CheckCircleIcon() {
     <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" />
     </svg>
-  );
-}
-
-/* ---------- Freeze Confirm ---------- */
-
-function FreezeConfirm({
-  vacancyTitle,
-  onConfirm,
-  onClose,
-  isPending,
-}: {
-  vacancyTitle: string;
-  onConfirm: () => void;
-  onClose: () => void;
-  isPending: boolean;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md mx-4 p-6">
-        <h2 className="text-lg font-semibold text-[#333] mb-2">{t.vacancies.confirmFreeze}</h2>
-        <p className="text-sm text-[#585858] mb-1">{vacancyTitle}</p>
-        <p className="text-xs text-[#8B8B8B] mb-6">{t.vacancies.confirmFreezeDesc}</p>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition"
-          >
-            {t.common.cancel}
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={isPending}
-            className="h-9 px-5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition disabled:opacity-50"
-          >
-            {isPending ? t.common.saving : t.vacancies.freezeVacancy}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

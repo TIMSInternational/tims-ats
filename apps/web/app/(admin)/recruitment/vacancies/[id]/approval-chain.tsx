@@ -100,6 +100,13 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
   const showWithdrawButton = vacancyStatus === 'pending_approval' && can('vacancy', 'update') && !!livePendingStepId;
   const openRejectStepId = rejectStepId !== null && rejectStepId === pendingStepForViewer?.id ? rejectStepId : null;
   const openWithdrawStepId = withdrawStepId !== null && withdrawStepId === livePendingStepId ? withdrawStepId : null;
+  // A rejected request returns to draft: the most recent decision tells the submitter what to do next (edit,
+  // then resubmit). A viewer who cannot submit (e.g. a leader who requested it) is told who moves it on.
+  const lastDecision = [...approvals]
+    .filter((a) => a.decidedAt !== null)
+    .sort((a, b) => new Date(b.decidedAt ?? 0).getTime() - new Date(a.decidedAt ?? 0).getTime())[0];
+  const showRejectedHint = vacancyStatus === 'draft' && showSubmitButton && lastDecision?.status === 'rejected';
+  const showAwaitingHrHint = vacancyStatus === 'draft' && !showSubmitButton;
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
@@ -127,8 +134,11 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
         )}
       </div>
 
-      {approvals.length === 0 && !showSubmitButton && (
-        <p className="text-[12px] text-[#8B8B8B]">{t.vacancies.statusDraft}</p>
+      {showAwaitingHrHint && <p className="text-[12px] text-[#8B8B8B] mb-2">{t.vacancies.draftAwaitingHr}</p>}
+      {showRejectedHint && (
+        <p className="text-[12px] text-[#92400e] bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+          {t.vacancies.rejectedEditHint}
+        </p>
       )}
 
       <div className="space-y-0">
