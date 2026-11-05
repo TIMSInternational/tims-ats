@@ -355,7 +355,9 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
     }
     expect(error).toMatchObject({
       code: 'BAD_REQUEST',
-      message: 'Uno o más aprobadores no tienen esta oferta dentro de su alcance',
+      // B-11: the message names the fix (the vacancy's hiring manager) instead of a bare scope error.
+      message:
+        'Uno de los aprobadores no tiene esta oferta dentro de su alcance. Si es el líder de la vacante, asígnalo como Responsable de la contratación en la vacante (botón Editar) o elige otro aprobador.',
     });
     expect(mockDb.offerApproval.createMany).not.toHaveBeenCalled();
     expect(mockDb.offer.update).not.toHaveBeenCalled();

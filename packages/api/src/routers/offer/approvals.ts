@@ -56,7 +56,10 @@ async function assertOfferApprovers(organizationId: string, offerId: string, app
       if (err instanceof TRPCError && err.code === 'NOT_FOUND') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Uno o más aprobadores no tienen esta oferta dentro de su alcance',
+          // B-11: say what fixes it. A team-scoped leader sees an offer through its vacancy (team they lead, or
+          // its assignee), so naming them the vacancy's hiring manager puts the offer in their scope.
+          message:
+            'Uno de los aprobadores no tiene esta oferta dentro de su alcance. Si es el líder de la vacante, asígnalo como Responsable de la contratación en la vacante (botón Editar) o elige otro aprobador.',
         });
       }
       throw err;
