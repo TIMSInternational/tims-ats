@@ -9,6 +9,7 @@ import {
   createBusinessUnitSchema,
   createTeamSchema,
 } from '@tims/shared';
+import { projectOrganizationProfile } from '../services/organization-profile';
 
 // Setup-checklist widget (first-login "what to do first" prompt, Sprint 1.2
 // Task 2). The 5 derived booleans are always read live — NOT cached.
@@ -67,17 +68,31 @@ async function loadSetupChecklistItems(organizationId: string): Promise<SetupChe
 }
 
 export const organizationRouter = router({
-  // Get current organization
+  // Current organization — an explicit, non-sensitive projection any staff session may read: the branding
+  // logo, the audit-log export day boundaries and the read-only "Datos de la organización" card (D-11). It
+  // used to return the full row (settings, billingEmail) plus every active company (taxId, legalName) to
+  // every role, committee and employee included (D-20). Now only the locale profile leaves the server:
+  // country, currency, time zone and language as the product resolves them, and the candidate contact
+  // mailbox — the address every candidate email already prints. Never the raw settings or billing data.
   getCurrent: protectedProcedure.query(async ({ ctx }) => {
-    return db.organization.findUnique({
+    const org = await db.organization.findUnique({
       where: { id: ctx.user.organizationId },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logo: true,
+        settings: true,
+        billingEmail: true,
         companies: {
           where: { isActive: true },
-          orderBy: { name: 'asc' },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { name: true, country: true, currency: true, timezone: true, language: true },
         },
       },
     });
+    return org ? projectOrganizationProfile(org) : null;
   }),
 
   // Update organization
@@ -223,7 +238,7 @@ export const organizationRouter = router({
         });
       } catch (err) {
         if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
-          throw new TRPCError({ code: 'CONFLICT', message: 'El usuario ya esta asignado a esta unidad' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'El usuario ya está asignado a esta unidad' });
         }
         throw err;
       }
@@ -240,7 +255,7 @@ export const organizationRouter = router({
         },
       });
       if (result.count === 0) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
       return { success: true };
     }),
