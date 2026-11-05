@@ -176,6 +176,26 @@ describe('onboarding.list phase tabs', () => {
   });
 });
 
+describe('onboarding.list badges and buddy view', () => {
+  it('returns the day and phase each hire is in today in the organization zone (same basis as the tabs)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-05T05:30:00.000Z'));
+    h.orgFindFirst.mockResolvedValue({ settings: { timezone: 'America/Costa_Rica' } });
+    h.planFindMany.mockResolvedValue([{ id: planId, startDate: new Date('2026-10-05T18:00:00.000Z'), tasks: [] }]);
+    const result = await (await caller()).onboarding.list({ limit: 10, status: 'active' });
+    expect(result.plans[0]).toMatchObject({ currentDay: 30, currentPhase: 'day1_30' });
+    vi.useRealTimers();
+  });
+
+  it('asBuddy narrows to the plans the caller accompanies', async () => {
+    h.orgFindFirst.mockResolvedValue({ settings: {} });
+    h.planFindMany.mockResolvedValue([]);
+    await (await caller()).onboarding.list({ limit: 10, status: 'active', asBuddy: true });
+    const where = (h.planFindMany.mock.calls[0]![0] as { where: { AND: Array<Record<string, unknown>> } }).where;
+    expect(where.AND[2]).toMatchObject({ buddyId: userId });
+  });
+});
+
 describe('onboarding.list', () => {
   it('returns each task with its due date, in checklist order', async () => {
     h.planFindMany.mockResolvedValue([]);

@@ -6,6 +6,7 @@ import { usePermissions } from '../../../lib/permissions';
 import { MyPlanSummary } from './my-plan-summary';
 import { MyTaskList } from './my-task-list';
 import { MyCheckInList } from './my-check-in-list';
+import { MyBuddyPlans } from './my-buddy-plans';
 
 // `mine: true` makes the SERVER return only plans where the caller is the hire
 // (without it the own-scoped list also returns plans where the caller is the
@@ -34,10 +35,14 @@ export function MyOnboardingView() {
   }
   if (!ownPlan || !detail.data) {
     return (
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-8 text-center">
-        <p className="text-[14px] font-semibold text-[#1F114C]">{m.noPlan}</p>
-        <p className="mt-1 text-[13px] text-[#585858]">{m.noPlanDesc}</p>
-      </div>
+      <>
+        <div className="rounded-xl border border-[#EDEDED] bg-white p-8 text-center">
+          <p className="text-[14px] font-semibold text-[#1F114C]">{m.noPlan}</p>
+          <p className="mt-1 text-[13px] text-[#585858]">{m.noPlanDesc}</p>
+        </div>
+        {/* A buddy may have no plan of their own. */}
+        <MyBuddyPlans />
+      </>
     );
   }
 
@@ -73,6 +78,7 @@ export function MyOnboardingView() {
           status: checkIn.status,
         }))}
       />
+      <MyBuddyPlans />
     </>
   );
 }

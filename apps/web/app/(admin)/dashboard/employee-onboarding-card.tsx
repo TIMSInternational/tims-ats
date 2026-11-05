@@ -10,6 +10,8 @@ import { EMPTY_ICON, ListSkeletonRows, ProgressBar } from './employee-dashboard-
 
 /** How many open tasks the home card previews; the full list is on /my-onboarding. */
 const NEXT_TASKS_SHOWN = 3;
+const OPEN_LINK_CLASS =
+  'inline-flex items-center h-8 px-3 rounded-lg bg-[#1F114C] text-white text-[12px] font-medium hover:bg-[#2d1a6b] transition';
 
 /**
  * B-25: the employee's home card. `mine: true` — without it the own-scoped list also returns plans where
@@ -24,7 +26,17 @@ export function EmployeeOnboardingCard() {
 
   if (onboarding.isError) return <LoadError message={e.loadError} />;
   if (onboarding.isLoading) return <ListSkeletonRows />;
-  if (!plan) return <EmptyState icon={EMPTY_ICON} message={e.noOnboarding} />;
+  if (!plan) {
+    // Still offer the page: an employee who is someone's buddy finds "Personas que acompañas" there.
+    return (
+      <div className="space-y-3">
+        <EmptyState icon={EMPTY_ICON} message={e.noOnboarding} />
+        <Link href="/my-onboarding" className={OPEN_LINK_CLASS}>
+          {e.openOnboarding}
+        </Link>
+      </div>
+    );
+  }
 
   const tasks = plan.tasks ?? [];
   const progress =
@@ -67,10 +79,7 @@ export function EmployeeOnboardingCard() {
           </ul>
         )}
       </div>
-      <Link
-        href="/my-onboarding"
-        className="inline-flex items-center h-8 px-3 rounded-lg bg-[#1F114C] text-white text-[12px] font-medium hover:bg-[#2d1a6b] transition"
-      >
+      <Link href="/my-onboarding" className={OPEN_LINK_CLASS}>
         {e.openOnboarding}
       </Link>
     </div>

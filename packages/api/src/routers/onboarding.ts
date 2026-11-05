@@ -11,32 +11,20 @@ import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } fr
 import { ownScopeTaskUpdateDecision, sentKeys } from '../services/onboarding-self-service';
 import { onboardingPlanRepository } from '../repositories/onboarding-plan.repository';
 import type { AccessContext } from '../access/types';
-import { orgSettingsTimeZone, UTC_TIME_ZONE, zonedDateString, zonedWallTimeToDate } from '@tims/shared';
+import { orgSettingsTimeZone, UTC_TIME_ZONE } from '@tims/shared';
+import {
+  START_PHASES,
+  onboardingDayIn,
+  phaseForDay,
+  startDateRangeForPhase,
+  startOfDayIn,
+} from '../services/onboarding-calendar';
 
-// "Overdue" is a calendar notion: a task due today is not late until tomorrow. Due dates are stored at
-// local noon (start date + N days), so the cut-off is the start of TODAY in the organization's zone.
-function startOfTodayIn(timeZone: string, now: Date = new Date()): Date {
-  return zonedWallTimeToDate(zonedDateString(timeZone, 0, now), '00:00', timeZone) ?? now;
-}
-
-const DAY_MS = 86_400_000;
-const START_PHASES = ['day1_30', 'day31_60', 'day61_90'] as const;
-
-// B-23: the phase a hire is in TODAY comes from the start date (onboarding_plans.phase is written once
-// and never advances). Days 0-30 / 31-60 / 61+ since the start day, counted from the start of today in
-// the organization's zone — the same bands the web page shows (apps/web/lib/onboarding-schedule.ts).
-// Filtering here, before pagination, keeps older hires reachable from their tab.
-function startDateForPhase(phase: (typeof START_PHASES)[number], today: Date): Prisma.DateTimeFilter {
-  const daysAgo = (n: number) => new Date(today.getTime() - n * DAY_MS);
-  if (phase === 'day1_30') return { gte: daysAgo(30) };
-  if (phase === 'day31_60') return { gte: daysAgo(60), lt: daysAgo(30) };
-  return { lt: daysAgo(60) };
-}
-
-/** Start of today in the organization's zone (UTC when it has none). */
-async function organizationToday(orgId: string): Promise<Date> {
+/** The organization's zone (UTC when it has none) and the instant today starts there (B-23). */
+async function organizationCalendar(orgId: string): Promise<{ timeZone: string; today: Date }> {
   const org = await db.organization.findFirst({ where: { id: orgId }, select: { settings: true } });
-  return startOfTodayIn(orgSettingsTimeZone(org?.settings ?? null) ?? UTC_TIME_ZONE);
+  const timeZone = orgSettingsTimeZone(org?.settings ?? null) ?? UTC_TIME_ZONE;
+  return { timeZone, today: startOfDayIn(timeZone, new Date()) };
 }
 
 // A buddy must be able to open the plan (the buddy arm of the onboardingPlan scope only helps a holder of
@@ -97,20 +85,22 @@ export const onboardingRouter = router({
         limit: z.number().min(1).max(100).default(25),
         status: z.enum(['active', 'completed', 'cancelled']).optional(),
         phase: z.string().max(100).optional(),
-        // The phase derived from the start date (see startDateForPhase); prefer it over the stored `phase`.
+        // The phase the start date gives today in the org zone (services/onboarding-calendar.ts). Applied
+        // before paging, so an older hire stays reachable from its tab; prefer it over the stored `phase`.
         startPhase: z.enum(START_PHASES).optional(),
         search: z.string().max(200).optional(),
         // Self-service ("Mi Onboarding"): only plans where the caller IS the hire.
         // Applied on top of the scope fragment, so it can only narrow.
         mine: z.boolean().optional(),
+        // "Personas que acompañas": only plans where the caller is the BUDDY. Also only narrows.
+        asBuddy: z.boolean().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { cursor, limit, status, phase, startPhase, search, mine } = input;
+      const { cursor, limit, status, phase, startPhase, search, mine, asBuddy } = input;
       const scopeWhere = (await scopeWhereFor('onboardingPlan', ctx.access, ctx.user.id)) as Prisma.OnboardingPlanWhereInput;
-      const startDate = startPhase
-        ? startDateForPhase(startPhase, await organizationToday(ctx.user.organizationId))
-        : undefined;
+      const calendar = await organizationCalendar(ctx.user.organizationId);
+      const startDate = startPhase ? startDateRangeForPhase(startPhase, calendar.today) : undefined;
 
       const where: Prisma.OnboardingPlanWhereInput = {
         AND: [
@@ -118,6 +108,7 @@ export const onboardingRouter = router({
           scopeWhere,
           {
             ...(mine ? { userId: ctx.user.id } : {}),
+            ...(asBuddy ? { buddyId: ctx.user.id } : {}),
             ...(status ? { status } : {}),
             ...(phase ? { phase } : {}),
             ...(startDate ? { startDate } : {}),
@@ -155,7 +146,13 @@ export const onboardingRouter = router({
             },
           });
 
-      const { items: plans, nextCursor } = takeCursorPage(rows, limit);
+      const { items, nextCursor } = takeCursorPage(rows, limit);
+      // The day and phase each hire is in today, on the same calendar basis as the startPhase filter, so a
+      // plan's badge always matches the tab that lists it.
+      const plans = items.map((plan) => {
+        const currentDay = onboardingDayIn(calendar.timeZone, plan.startDate);
+        return { ...plan, currentDay, currentPhase: phaseForDay(currentDay) };
+      });
 
       return { plans, nextCursor };
     }),
@@ -605,7 +602,7 @@ export const onboardingRouter = router({
     requireOrgScope(ctx.access);
 
     const orgId = ctx.user.organizationId;
-    const today = await organizationToday(orgId);
+    const { today } = await organizationCalendar(orgId);
 
     const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns, overdueTasks] =
       await Promise.all([

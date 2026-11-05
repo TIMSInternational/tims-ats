@@ -39,6 +39,9 @@ export interface OnboardingPlan {
   riskScore: number | null;
   startDate: Date | string;
   completedAt: Date | string | null;
+  /** Day and phase today in the ORGANIZATION's zone (onboarding.list) — the basis the phase tabs filter on. */
+  currentDay?: number;
+  currentPhase?: 'day1_30' | 'day31_60' | 'day61_90';
   user: { id: string; firstName: string; lastName: string; avatar: string | null; jobTitle?: string | null };
   buddy: { id: string; firstName: string; lastName: string; avatar: string | null } | null;
   tasks: OnboardingTask[];
@@ -137,7 +140,7 @@ export function OnboardingTable({
 
             {!isLoading &&
               plans.map((plan, idx) => {
-                const day = onboardingDay(plan.startDate);
+                const day = plan.currentDay ?? onboardingDay(plan.startDate);
                 // riskScore is only written by updatePlan; until something computes it there is no score to show.
                 const hasRisk = plan.riskScore !== null && plan.riskScore !== undefined;
                 const risk = plan.riskScore ?? 0;
@@ -150,7 +153,8 @@ export function OnboardingTable({
                 const colors = getProgressColor(risk);
 
                 // The stored phase never advances; show the phase the start date puts the hire in today.
-                const phaseKey = plan.status === 'completed' ? 'completed' : derivedOnboardingPhase(plan.startDate);
+                const phaseKey =
+                  plan.status === 'completed' ? 'completed' : (plan.currentPhase ?? derivedOnboardingPhase(plan.startDate));
                 const phase = PHASE_BADGE[phaseKey] ?? PHASE_BADGE.day1_30;
 
                 // Check-in milestones

@@ -8,6 +8,7 @@ import { I18nProvider } from '../../apps/web/lib/i18n';
 const state = vi.hoisted(() => ({
   listInput: undefined as unknown,
   plans: [] as unknown[],
+  mutate: vi.fn(),
 }));
 
 vi.mock('../../apps/web/lib/trpc', () => {
@@ -20,7 +21,7 @@ vi.mock('../../apps/web/lib/trpc', () => {
             if (path.join('.') === 'onboarding.list') state.listInput = input;
             return { data: { plans: state.plans }, isLoading: false, isError: false };
           };
-        if (prop === 'useMutation') return () => ({ mutate: vi.fn(), isPending: false });
+        if (prop === 'useMutation') return () => ({ mutate: state.mutate, isPending: false });
         if (prop === 'useUtils')
           return () => new Proxy({}, { get: () => new Proxy({}, { get: () => ({ invalidate: vi.fn() }) }) });
         return node([...path, prop]);
@@ -34,6 +35,7 @@ import { MyTaskList } from '../../apps/web/app/(admin)/my-onboarding/my-task-lis
 import { MyCheckInList } from '../../apps/web/app/(admin)/my-onboarding/my-check-in-list';
 import { MyPlanSummary } from '../../apps/web/app/(admin)/my-onboarding/my-plan-summary';
 import { HireAccessNotice } from '../../apps/web/app/(admin)/recruitment/offers/_components/hire-access-notice';
+import { MyBuddyPlans } from '../../apps/web/app/(admin)/my-onboarding/my-buddy-plans';
 
 const daysFromToday = (n: number) => {
   const d = new Date();
@@ -48,6 +50,7 @@ beforeEach(() => {
   cleanup();
   state.listInput = undefined;
   state.plans = [];
+  state.mutate.mockReset();
 });
 
 describe('employee home card (B-25)', () => {
@@ -82,9 +85,10 @@ describe('employee home card (B-25)', () => {
     expect(screen.getByText('20%')).toBeInTheDocument();
   });
 
-  it('keeps the empty state when the caller has no plan', () => {
+  it('keeps the empty state when the caller has no plan, and still links to Mi Onboarding (a buddy finds their hires there)', () => {
     es(<EmployeeOnboardingCard />);
     expect(screen.getByText('No tienes un plan de onboarding activo')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ver mi onboarding' })).toHaveAttribute('href', '/my-onboarding');
   });
 });
 
@@ -148,6 +152,35 @@ describe('Mi Onboarding (B-24 / E-09)', () => {
     expect(screen.getByText('Aún no tienes un compañero guía asignado')).toBeInTheDocument();
     expect(screen.getByText('Día 31-60')).toBeInTheDocument();
     expect(screen.queryByText(/buddy/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('Mi Onboarding: the hires a buddy accompanies (B-08)', () => {
+  it('lists only the buddy-owned tasks of each hire and lets the buddy tick them', () => {
+    state.plans = [
+      {
+        id: 'p-hire',
+        startDate: daysFromToday(-1),
+        user: { id: 'hire-1', firstName: 'Ana', lastName: 'Lopez' },
+        tasks: [
+          { id: 'b1', title: 'Presentación con el compañero guía', responsible: 'buddy', completed: false, dueDate: daysFromToday(-1) },
+          { id: 'h1', title: 'Leer y aceptar las políticas de la empresa', responsible: 'employee', completed: false, dueDate: daysFromToday(1) },
+        ],
+      },
+    ];
+    es(<MyBuddyPlans />);
+    expect(state.listInput).toEqual({ limit: 20, status: 'active', asBuddy: true });
+    expect(screen.getByText('Personas que acompañas')).toBeInTheDocument();
+    expect(screen.getByText('Ana Lopez')).toBeInTheDocument();
+    expect(screen.queryByText('Leer y aceptar las políticas de la empresa')).not.toBeInTheDocument();
+    expect(screen.getByText('Vencida')).toBeInTheDocument();
+    screen.getByRole('checkbox', { name: 'Presentación con el compañero guía — Ana Lopez' }).click();
+    expect(state.mutate).toHaveBeenCalledWith({ id: 'b1', completed: true });
+  });
+
+  it('renders nothing for someone who accompanies nobody', () => {
+    const { container } = es(<MyBuddyPlans />);
+    expect(container).toBeEmptyDOMElement();
   });
 });
 

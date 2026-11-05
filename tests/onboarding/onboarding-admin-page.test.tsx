@@ -241,6 +241,14 @@ describe('onboarding table rows', () => {
     expect(screen.queryByRole('button', { name: /Asignar/ })).not.toBeInTheDocument();
   });
 
+  it('shows the phase the server computed in the organization zone when it is given (same basis as the tabs)', () => {
+    state.grants = new Set(LEADER);
+    renderTable(plan({ currentDay: 30, currentPhase: 'day1_30' }));
+    const row = screen.getByText('Ana Lopez').closest('tr')!;
+    expect(within(row).getByText('Día 1-30')).toBeInTheDocument();
+    expect(within(row).getByText('30')).toBeInTheDocument();
+  });
+
   it('derives the phase badge, hides a risk dot no one computed, and flags overdue tasks (B-23)', () => {
     state.grants = new Set(LEADER);
     renderTable(plan());
