@@ -257,14 +257,14 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
   // F-15 (pilot proof run): a hire used to be accepted on a vacancy whose positions were already covered.
   it('refuses a hire on a filled vacancy before creating the sign-in identity (F-15)', async () => {
     const { runTenantTransaction } = await import('@tims/db');
-    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    const { provisionStaffIdentity } = await import('../../packages/api/src/services/staff-provisioning.service');
     hireGuards.assertVacancyNotFilled.mockRejectedValueOnce(new hireGuards.HireVacancyFilledError(1, 1));
     const caller = await makeCaller();
 
     await expect(
       caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
     ).rejects.toMatchObject({ code: 'CONFLICT', message: 'filled 1/1' });
-    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(provisionStaffIdentity).not.toHaveBeenCalled();
     expect(runTenantTransaction).not.toHaveBeenCalled();
   });
 
