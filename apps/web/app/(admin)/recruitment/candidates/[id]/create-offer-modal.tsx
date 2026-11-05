@@ -19,6 +19,7 @@ import { describeOfferActionError } from '../../../../../lib/offer-action-error'
 import { toast } from '../../../../../lib/toast';
 import { currencyOptions } from '../../../../../lib/currency-options';
 import { defaultOfferCurrency } from '../../../../../lib/tenant-locale';
+import { offerDetailHref } from '../../../../../lib/offer-deep-link';
 
 type Application = CandidateDetail['applications'][number];
 
@@ -73,7 +74,7 @@ export function CreateOfferModal({
     if (!application || !isValid || annualSalary === null) return;
     setError(null);
     try {
-      await create.mutateAsync({
+      const created = await create.mutateAsync({
         candidateId,
         vacancyId: application.vacancy.id,
         applicationId,
@@ -84,7 +85,9 @@ export function CreateOfferModal({
         contractType: contractType.trim(),
       });
       onClose();
-      router.push('/recruitment/offers');
+      // Confirm it and open THAT offer (A-15), not the offers list.
+      toast(t.candidates.offerDraftCreated, { type: 'success' });
+      router.push(created?.id ? offerDetailHref(created.id) : '/recruitment/offers');
     } catch (cause) {
       const message = describeOfferActionError(cause, {
         forbidden: t.offers.errorForbiddenAction,

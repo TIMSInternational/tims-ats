@@ -1935,6 +1935,7 @@
     "offersEmpty": "No offers for this candidate.",
     "offersOpen": "View offer",
     "offersCreatedOn": "Created on {date}",
+    "offerDraftCreated": "Offer draft created. Review it and submit it for approval.",
     "notesHelp": "General notes on the candidate: a single text shared by the recruiting team.",
     "notesEdit": "Edit notes",
     "notesSave": "Save notes",

@@ -1935,6 +1935,7 @@
     "offersEmpty": "Sin ofertas para este candidato.",
     "offersOpen": "Ver oferta",
     "offersCreatedOn": "Creada el {date}",
+    "offerDraftCreated": "Borrador de oferta creado. Revísalo y envíalo a aprobación.",
     "notesHelp": "Notas generales del candidato: un solo texto compartido por el equipo de reclutamiento.",
     "notesEdit": "Editar notas",
     "notesSave": "Guardar notas",
