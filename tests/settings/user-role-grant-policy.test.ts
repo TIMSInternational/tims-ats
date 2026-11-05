@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   txUserCreate: vi.fn(),
   txUserRoleCreate: vi.fn(),
   txUserRoleDeleteMany: vi.fn(),
+  actorRoles: [] as string[],
   auditCreate: vi.fn(),
   provision: vi.fn(),
   invalidate: vi.fn(),
@@ -38,7 +39,15 @@ vi.mock('@tims/db', () => ({
   runTenantTransaction: (_orgId: string, fn: (tx: unknown) => unknown) =>
     fn({
       $executeRaw: () => Promise.resolve(1),
-      user: { create: h.txUserCreate, findFirst: (args: unknown) => h.userFindFirst(args), count: () => Promise.resolve(1) },
+      user: {
+        create: h.txUserCreate,
+        // The caller's own row is re-read under the member-admin lock (it selects no isPlatformOwner).
+        findFirst: (args: unknown) =>
+          'isPlatformOwner' in ((args as { select?: Record<string, unknown> }).select ?? { isPlatformOwner: true })
+            ? h.userFindFirst(args)
+            : Promise.resolve({ userRoles: h.actorRoles.map((slug) => ({ role: { slug } })) }),
+        count: () => Promise.resolve(1),
+      },
       role: { findFirst: (args: unknown) => h.roleFindFirst(args) },
       userRole: { create: h.txUserRoleCreate, deleteMany: h.txUserRoleDeleteMany },
     }),
@@ -72,6 +81,7 @@ const ACTOR_ID = 'b1ffcd00-0d1c-4f09-cc7e-7cc0ce491b22';
 const TARGET_ID = 'c2aade11-1e2d-4a10-8d8f-8dd1df5a2c33';
 
 async function makeCaller(roles: string[]) {
+  h.actorRoles = roles;
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { userRouter } = await import('../../packages/api/src/routers/user');
   const ctx = {

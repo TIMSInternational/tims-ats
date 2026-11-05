@@ -98,6 +98,7 @@ describe('organization.getCurrent (D-20 + D-11)', () => {
       timeZoneSource: 'organization',
       locale: 'es-CR',
       candidateContactEmail: 'rrhh@pilot.test',
+      candidateContactSource: 'organization',
       companyName: 'Pilot Co',
     });
     const args = h.findOrg.mock.calls[0]![0] as { select?: Record<string, unknown>; include?: unknown };
@@ -125,7 +126,10 @@ describe('projectOrganizationProfile', () => {
       timeZoneSource: 'company',
       locale: 'es',
     });
-    expect(p.candidateContactEmail).toBe('billing@pilot.test');
+    // Codex round 2: the billing fallback is reported as a SOURCE only; the billing address never leaves.
+    expect(p.candidateContactEmail).toBeNull();
+    expect(p.candidateContactSource).toBe('billing');
+    expect(JSON.stringify(p)).not.toContain('billing@pilot.test');
   });
   it('shows nothing rather than a malformed value; no company means no fallback', () => {
     const p = projectOrganizationProfile(

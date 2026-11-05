@@ -35,7 +35,14 @@ export interface OrganizationProfile {
   timeZone: string | null;
   timeZoneSource: ProfileSource;
   locale: string | null;
+  /** Only an EXPLICITLY configured candidate mailbox (settings.candidateContactEmail). */
   candidateContactEmail: string | null;
+  /**
+   * Where candidate emails take their contact line from: the configured mailbox, the organization's billing
+   * email (the documented fallback — reported as a source only, the billing address itself never leaves the
+   * server here), or nowhere (the line is omitted).
+   */
+  candidateContactSource: 'organization' | 'billing' | null;
   companyName: string | null;
 }
 
@@ -61,6 +68,7 @@ export function projectOrganizationProfile(org: OrganizationProfileInput): Organ
   const orgTimeZone = orgSettingsTimeZone(org.settings);
   const companyTimeZone = isValidTimeZone(company?.timezone) ? (company?.timezone ?? null) : null;
   const locale = matching(settingsString(org.settings, 'locale'), LOCALE) ?? matching(company?.language, LOCALE);
+  const configuredContact = candidateContactEmail({ settings: org.settings });
 
   return {
     id: org.id,
@@ -73,7 +81,12 @@ export function projectOrganizationProfile(org: OrganizationProfileInput): Organ
     timeZone: orgTimeZone ?? companyTimeZone,
     timeZoneSource: orgTimeZone ? 'organization' : companyTimeZone ? 'company' : null,
     locale,
-    candidateContactEmail: candidateContactEmail({ settings: org.settings, billingEmail: org.billingEmail }),
+    candidateContactEmail: configuredContact,
+    candidateContactSource: configuredContact
+      ? 'organization'
+      : candidateContactEmail({ billingEmail: org.billingEmail })
+        ? 'billing'
+        : null,
     companyName: company?.name ?? null,
   };
 }

@@ -26,6 +26,8 @@ const h = vi.hoisted(() => ({
   invalidate: vi.fn(),
   lock: vi.fn(),
   order: [] as string[],
+  findActor: vi.fn(),
+  actorRoles: [] as string[],
 }));
 
 vi.mock('@tims/db', () => ({
@@ -39,7 +41,12 @@ vi.mock('@tims/db', () => ({
         return h.lock(strings.join('?'), ...values);
       },
       user: {
-        findFirst: (args: unknown) => (h.order.push('read'), h.findTarget(args)),
+        // The caller's own row (re-read under the lock) selects no isPlatformOwner; the target's does.
+        findFirst: (args: unknown) => {
+          const select = (args as { select?: Record<string, unknown> }).select ?? {};
+          if (!('isPlatformOwner' in select)) return h.order.push('actor'), h.findActor(args);
+          return h.order.push('read'), h.findTarget(args);
+        },
         count: (args: unknown) => h.countSuperAdmins(args),
         update: (args: unknown) => h.updateUser(args),
       },
@@ -74,6 +81,7 @@ const ACTOR_ID = 'b1ffcd00-0d1c-4f09-8c7e-7cc0ce491b22';
 const TARGET_ID = 'c2aade11-1e2d-4a10-8d8f-8dd1df5a2c33';
 
 async function makeCaller(roles: string[]) {
+  h.actorRoles = roles;
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { userRouter } = await import('../../packages/api/src/routers/user');
   const ctx = {
@@ -97,6 +105,7 @@ const auditActions = () => h.auditCreate.mock.calls.map(([a]) => (a as { data: {
 beforeEach(() => {
   vi.clearAllMocks();
   h.order = [];
+  h.findActor.mockImplementation(() => Promise.resolve({ userRoles: h.actorRoles.map((slug) => ({ role: { slug } })) }));
   h.findRole.mockResolvedValue({ id: 'role-id' });
   h.countSuperAdmins.mockResolvedValue(1);
   h.updateUser.mockResolvedValue({ id: TARGET_ID, isActive: false });
@@ -209,12 +218,32 @@ describe('per-organization serialization (Codex P1: concurrent admins)', () => {
     const caller = await makeCaller(['super_admin']);
     await caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'committee' });
     await caller.user.deactivate({ userId: TARGET_ID });
-    expect(h.order.slice(0, 2)).toEqual(['lock', 'read']);
+    expect(h.order.slice(0, 3)).toEqual(['lock', 'actor', 'read']);
     expect(h.order.filter((o) => o === 'lock')).toHaveLength(2);
     for (const call of h.lock.mock.calls) {
       expect(call[0]).toContain('pg_advisory_xact_lock');
       expect(call[1]).toBe(`member-admin:${ORG_ID}`);
     }
+  });
+});
+
+describe('the caller is re-checked under the lock (Codex round 2: stale privileges)', () => {
+  it('an admin demoted meanwhile cannot act with the privileges in their session', async () => {
+    const caller = await makeCaller(['super_admin']);
+    h.actorRoles = ['employee']; // demoted by a request that held the lock first
+    h.findTarget.mockResolvedValue(target(['recruiter']));
+    await expect(caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'committee' })).rejects.toThrow(/rol superior/);
+    await expect(caller.user.deactivate({ userId: TARGET_ID })).rejects.toThrow(/rol superior/);
+    expect(h.deleteRoles).not.toHaveBeenCalled();
+    expect(h.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('an admin deactivated meanwhile is refused', async () => {
+    const caller = await makeCaller(['super_admin']);
+    h.findActor.mockResolvedValue(null);
+    h.findTarget.mockResolvedValue(target(['recruiter']));
+    await expect(caller.user.deactivate({ userId: TARGET_ID })).rejects.toThrow(/ya no puede administrar/);
+    expect(h.updateUser).not.toHaveBeenCalled();
   });
 });
 

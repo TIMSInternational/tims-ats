@@ -77,7 +77,13 @@ export default function OrganizationProfilePage() {
         />
         <Row
           label={m.candidateContact}
-          value={p.candidateContactEmail ?? <span className="text-[#8B8B8B]">{m.candidateContactMissing}</span>}
+          value={
+            p.candidateContactEmail ?? (
+              <span className="text-[#8B8B8B]">
+                {p.candidateContactSource === 'billing' ? m.candidateContactBilling : m.candidateContactMissing}
+              </span>
+            )
+          }
           hint={p.candidateContactEmail ? m.candidateContactHint : null}
         />
       </dl>

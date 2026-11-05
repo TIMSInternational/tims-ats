@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
-import { createUserSchema, updateProfileSchema, assignRoleSchema, canGrantStaffRole } from '@tims/shared';
+import { createUserSchema, updateProfileSchema, assignRoleSchema, canGrantStaffRole, filterStaffRoleSlugs } from '@tims/shared';
 import { invalidatePermissionCache } from '../lib/cache';
 import { logSecurityEvent } from '../access/security-audit';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
@@ -248,6 +248,7 @@ export const userRouter = router({
 
       const result = await runTenantTransaction(organizationId, async (tx) => {
         await lockMemberAdmin(tx, organizationId);
+        const actorRoles = await currentActorRoles(tx, organizationId, ctx.user.id);
         // IDOR: the member must be an active user of the caller's organization.
         const target = await tx.user.findFirst({
           where: { id: input.userId, organizationId, isActive: true, deletedAt: null },
@@ -260,7 +261,7 @@ export const userRouter = router({
           : 0;
         const refusal = memberChangeRefusal({
           actorId: ctx.user.id,
-          actorRoles: ctx.user.roles,
+          actorRoles,
           target: { id: target.id, isPlatformOwner: target.isPlatformOwner, roleSlugs: previousRoles },
           newRole: input.roleSlug,
           otherActiveSuperAdmins,
@@ -319,6 +320,7 @@ export const userRouter = router({
       const organizationId = ctx.user.organizationId;
       const result = await runTenantTransaction(organizationId, async (tx) => {
         await lockMemberAdmin(tx, organizationId);
+        const actorRoles = await currentActorRoles(tx, organizationId, ctx.user.id);
         const target = await tx.user.findFirst({
           where: { id: input.userId, organizationId, isActive: true, deletedAt: null },
           select: { id: true, isPlatformOwner: true, userRoles: { select: { role: { select: { slug: true } } } } },
@@ -330,7 +332,7 @@ export const userRouter = router({
           : 0;
         const refusal = memberChangeRefusal({
           actorId: ctx.user.id,
-          actorRoles: ctx.user.roles,
+          actorRoles,
           target: { id: target.id, isPlatformOwner: target.isPlatformOwner, roleSlugs: roles },
           otherActiveSuperAdmins,
         });
@@ -356,6 +358,21 @@ export const userRouter = router({
       return { id: result.id, isActive: result.isActive };
     }),
 });
+
+/**
+ * The caller's roles as they are NOW, read under the member-admin lock. ctx.user.roles was captured before the
+ * lock: an admin demoted or deactivated by a concurrent request that held the lock first must not then act
+ * with the privileges they no longer have (Codex round 2). A caller who is no longer an active member of the
+ * organization is refused.
+ */
+async function currentActorRoles(tx: Prisma.TransactionClient, organizationId: string, actorId: string): Promise<string[]> {
+  const actor = await tx.user.findFirst({
+    where: { id: actorId, organizationId, isActive: true, deletedAt: null },
+    select: { userRoles: { select: { role: { select: { slug: true } } } } },
+  });
+  if (!actor) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tu cuenta ya no puede administrar usuarios en esta organización.' });
+  return filterStaffRoleSlugs(actor.userRoles.map((ur) => ur.role.slug));
+}
 
 /** Serializes member-admin writes in the organization (see memberAdminLockKey); released at commit. */
 async function lockMemberAdmin(tx: Prisma.TransactionClient, organizationId: string): Promise<void> {

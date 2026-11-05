@@ -102,6 +102,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
             timeZoneSource: 'organization',
             locale: 'es-CR',
             candidateContactEmail: null,
+            candidateContactSource: null,
             companyName: 'Piloto S.A.',
           },
         }),

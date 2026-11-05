@@ -3818,6 +3818,7 @@
     "candidateContact": "Candidate contact email",
     "candidateContactHint": "Shown in emails to candidates and receives their replies.",
     "candidateContactMissing": "Not set: emails to candidates include no contact email.",
+    "candidateContactBilling": "Emails to candidates use the organization's billing email. Ask support to set a dedicated contact email.",
     "fromCompany": "Taken from the company {company}.",
     "notConfigured": "Not set"
   },

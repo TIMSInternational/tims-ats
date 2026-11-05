@@ -3818,6 +3818,7 @@
     "candidateContact": "Correo de contacto para candidatos",
     "candidateContactHint": "Aparece en los correos a candidatos y recibe sus respuestas.",
     "candidateContactMissing": "No configurado: los correos a candidatos no incluyen un correo de contacto.",
+    "candidateContactBilling": "Los correos a candidatos usan el correo de facturación de la organización. Pide a soporte que configure un correo de contacto propio.",
     "fromCompany": "Tomado de la empresa {company}.",
     "notConfigured": "No configurado"
   },

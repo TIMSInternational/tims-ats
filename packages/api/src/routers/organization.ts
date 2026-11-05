@@ -73,7 +73,8 @@ export const organizationRouter = router({
   // used to return the full row (settings, billingEmail) plus every active company (taxId, legalName) to
   // every role, committee and employee included (D-20). Now only the locale profile leaves the server:
   // country, currency, time zone and language as the product resolves them, and the candidate contact
-  // mailbox — the address every candidate email already prints. Never the raw settings or billing data.
+  // mailbox when one is explicitly configured (a billing-email fallback is reported as a source, never as
+  // an address). Never the raw settings, the billing email or company tax data.
   getCurrent: protectedProcedure.query(async ({ ctx }) => {
     const org = await db.organization.findUnique({
       where: { id: ctx.user.organizationId },
