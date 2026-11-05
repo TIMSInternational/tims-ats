@@ -12,7 +12,8 @@ const state = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: state.push }),
-  useSearchParams: () => new URLSearchParams({ setup: '1' }),
+  // Follows the test's URL (set with history.replaceState) so `?invitation=` reaches the page.
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 vi.mock('@tims/auth/client', () => ({
   createSupabaseBrowserClient: () => ({
@@ -87,14 +88,37 @@ describe('staff invitation password setup', () => {
     expect(await screen.findByText('Password updated')).toBeInTheDocument();
   });
 
-  it('keeps password submission disabled when the invite link has no valid session', async () => {
+  it('replaces the form with a way out when the invite link has no valid session (E-05)', async () => {
     window.history.replaceState(null, '', '/reset-password?setup=1');
     state.getSession.mockResolvedValue({ data: { session: null }, error: null });
     render(<ResetPasswordPage />);
 
-    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Checking the link…');
+    expect(await screen.findByRole('alert')).toHaveTextContent('The password setup link is invalid or has expired');
+    expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
+    expect(screen.queryByLabelText('New password')).toBeNull();
+    // Both exits sign out first: a session can outlive a spent link, and middleware bounces a signed-in
+    // user off /forgot-password and /login (tests/auth/login-redirect-middleware.test.ts).
+    expect(screen.getByRole('link', { name: 'Request a new link' })).toHaveAttribute(
+      'href',
+      '/logout?next=/forgot-password',
+    );
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/logout');
+    expect(screen.queryByRole('status')).toBeNull();
     expect(state.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('sends an invalid invitation recovery link back to that invitation, not to a generic reset', async () => {
+    const invitation = '11111111-1111-4111-8111-111111111111';
+    window.history.replaceState(null, '', `/reset-password?invitation=${invitation}#error=access_denied`);
+    render(<ResetPasswordPage />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The password setup link is invalid or has expired');
+    expect(screen.getByRole('link', { name: 'Back to the invitation' })).toHaveAttribute(
+      'href',
+      `/accept-invitation?token=${invitation}`,
+    );
+    expect(screen.queryByRole('link', { name: 'Request a new link' })).toBeNull();
   });
 
   it('accepts a valid implicit recovery fragment on the shared password page', async () => {
@@ -122,7 +146,7 @@ describe('staff invitation password setup', () => {
     const page = render(<ResetPasswordPage />);
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
     expect(state.getSession).not.toHaveBeenCalled();
     expect(window.location.hash).toBe('');
 
@@ -141,7 +165,7 @@ describe('staff invitation password setup', () => {
     const page = render(<ResetPasswordPage />);
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
     expect(state.getSession).not.toHaveBeenCalled();
     expect(window.location.search).toBe('');
 
@@ -188,7 +212,7 @@ describe('staff invitation password setup', () => {
     render(<ResetPasswordPage />);
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
   });
 
   it('rechecks the account identity immediately before changing the password', async () => {
@@ -284,6 +308,6 @@ describe('staff invitation password setup', () => {
     render(<ResetPasswordPage />);
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
   });
 });

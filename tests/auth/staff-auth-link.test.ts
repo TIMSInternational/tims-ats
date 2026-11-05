@@ -124,7 +124,7 @@ describe('every recognition site matches by supabaseUserId only (no email-join)'
 
 describe('unlinked sessions exit without a redirect loop', () => {
   it('the admin SSR identity helper sends unlinked sessions to /logout (not /login)', () => {
-    expect(EFFECTIVE_IDENTITY).toMatch(/redirect\('\/logout'\)/);
+    expect(EFFECTIVE_IDENTITY).toMatch(/redirect\('\/logout\?reason=no_access'\)/);
   });
 
   it('/logout clears the Supabase session then redirects to /login', () => {
