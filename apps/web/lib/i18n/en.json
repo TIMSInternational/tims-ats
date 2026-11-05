@@ -2070,7 +2070,7 @@
     "editNoChanges": "No changes to save",
     "editFailed": "The changes could not be saved",
     "editTitleRequired": "The job title is required.",
-    "editSalaryInvalid": "Minimum and maximum salary must be whole numbers without dots or commas.",
+    "editSalaryInvalid": "Enter the salary without thousands separators (for example 850000); up to two decimals are allowed.",
     "editSalaryRange": "The minimum salary cannot be higher than the maximum.",
     "editDescriptionHint": "Simple formatting works: **bold**, lists with dashes and headings with ##.",
     "editHiringManagerHint": "If this is the leader who will approve the offer, make them the hiring manager: that is how they see this vacancy's candidates and offers.",

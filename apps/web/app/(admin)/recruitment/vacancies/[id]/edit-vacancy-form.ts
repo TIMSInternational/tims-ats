@@ -95,18 +95,32 @@ export function initialEditForm(v: EditableVacancy): EditVacancyForm {
   };
 }
 
-/** Whole, non-negative amounts only; '' is "not set". */
+/**
+ * Non-negative amounts with at most two decimals (the API accepts any non-negative number); '' is "not set".
+ * "1.200.000" or "1.200" (thousands separators) are refused rather than read as 1.2.
+ */
 function parseAmount(text: string): number | undefined | 'invalid' {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
-  if (!/^\d+$/.test(trimmed)) return 'invalid';
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return 'invalid';
   return Number(trimmed);
+}
+
+function salaryChanged(initial: EditVacancyForm, form: EditVacancyForm): boolean {
+  return (
+    form.salaryMin.trim() !== initial.salaryMin ||
+    form.salaryMax.trim() !== initial.salaryMax ||
+    form.currency !== initial.currency ||
+    form.salaryPeriod !== initial.salaryPeriod
+  );
 }
 
 export type EditFormError = 'titleRequired' | 'salaryInvalid' | 'salaryRange' | null;
 
-export function validateEditForm(form: EditVacancyForm): EditFormError {
+/** The salary band is only validated when it was touched: a stored value never blocks an unrelated edit. */
+export function validateEditForm(initial: EditVacancyForm, form: EditVacancyForm): EditFormError {
   if (!form.title.trim()) return 'titleRequired';
+  if (!salaryChanged(initial, form)) return null;
   const min = parseAmount(form.salaryMin);
   const max = parseAmount(form.salaryMax);
   if (min === 'invalid' || max === 'invalid') return 'salaryInvalid';
@@ -130,12 +144,7 @@ export function buildVacancyPatch(initial: EditVacancyForm, form: EditVacancyFor
   if (form.positions !== initial.positions) patch.positions = form.positions;
   if (form.priority !== initial.priority) patch.priority = form.priority;
 
-  const salaryChanged =
-    form.salaryMin.trim() !== initial.salaryMin ||
-    form.salaryMax.trim() !== initial.salaryMax ||
-    form.currency !== initial.currency ||
-    form.salaryPeriod !== initial.salaryPeriod;
-  if (salaryChanged) {
+  if (salaryChanged(initial, form)) {
     const min = parseAmount(form.salaryMin);
     const max = parseAmount(form.salaryMax);
     patch.salary = {

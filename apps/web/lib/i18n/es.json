@@ -2070,7 +2070,7 @@
     "editNoChanges": "Sin cambios por guardar",
     "editFailed": "No se pudieron guardar los cambios",
     "editTitleRequired": "El título del cargo es obligatorio.",
-    "editSalaryInvalid": "El salario mínimo y máximo deben ser números enteros sin puntos ni comas.",
+    "editSalaryInvalid": "Escribe el salario sin separadores de miles (por ejemplo 850000); se admiten hasta dos decimales.",
     "editSalaryRange": "El salario mínimo no puede ser mayor que el máximo.",
     "editDescriptionHint": "Admite formato sencillo: **negrita**, listas con guiones y títulos con ##.",
     "editHiringManagerHint": "Si es el líder que aprobará la oferta, debe ser el responsable de la contratación: así ve los candidatos y las ofertas de esta vacante.",

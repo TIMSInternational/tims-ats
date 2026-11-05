@@ -33,7 +33,7 @@ const updateVacancyInput = z.object({
 });
 
 const NOT_EDITABLE_MESSAGE =
-  'Esta vacante no se puede editar en su estado actual. Si está pendiente de aprobación, retira la solicitud primero; una vacante cerrada no se edita.';
+  'Esta vacante no se puede editar en su estado actual. Si tiene una solicitud de aprobación en curso, retírala primero; una vacante cerrada no se edita.';
 const NOT_FREEZABLE_MESSAGE = 'Solo se puede congelar una vacante publicada.';
 const NOT_FROZEN_MESSAGE = 'La vacante ya no está congelada; recarga la página.';
 const NOT_RESUMABLE_MESSAGE = 'Esta vacante se cerró antes de congelarse y no se puede reanudar. Duplícala para abrir un proceso nuevo.';

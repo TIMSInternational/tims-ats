@@ -120,10 +120,20 @@ describe('edit form helpers', () => {
 
   it('validates the title and the salary band', () => {
     const initial = initialEditForm(editable);
-    expect(validateEditForm({ ...initial, title: ' ' })).toBe('titleRequired');
-    expect(validateEditForm({ ...initial, salaryMin: '1.200.000' })).toBe('salaryInvalid');
-    expect(validateEditForm({ ...initial, salaryMin: '2000000' })).toBe('salaryRange');
-    expect(validateEditForm(initial)).toBeNull();
+    expect(validateEditForm(initial, { ...initial, title: ' ' })).toBe('titleRequired');
+    expect(validateEditForm(initial, { ...initial, salaryMin: '1.200.000' })).toBe('salaryInvalid');
+    expect(validateEditForm(initial, { ...initial, salaryMin: '1.200' })).toBe('salaryInvalid');
+    expect(validateEditForm(initial, { ...initial, salaryMin: '2000000' })).toBe('salaryRange');
+    expect(validateEditForm(initial, { ...initial, salaryMin: '850000.50' })).toBeNull();
+    expect(validateEditForm(initial, initial)).toBeNull();
+  });
+
+  // Codex P2: a stored decimal (the API accepts any non-negative number) must not block a title-only edit.
+  it('never lets an untouched stored salary block an unrelated edit', () => {
+    const initial = initialEditForm({ ...editable, salary: { min: 1500.5, max: 900, currency: 'CRC', period: 'monthly' } });
+    const titleOnly = { ...initial, title: 'Analista Sr' };
+    expect(validateEditForm(initial, titleOnly)).toBeNull();
+    expect(buildVacancyPatch(initial, titleOnly)).toEqual({ title: 'Analista Sr' });
   });
 });
 

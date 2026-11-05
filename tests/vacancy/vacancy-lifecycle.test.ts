@@ -117,6 +117,8 @@ describe('vacancy.update (edit drawer)', () => {
     expect(where.status.in).toEqual(['draft', 'approved', 'published', 'frozen']);
     expect(where.status.in).not.toContain('pending_approval');
     expect(where.status.in).not.toContain('closed');
+    // Codex P1: a legacy frozen request keeps a pending chain; editing it would bypass the earlier approvers.
+    expect(where.approvals).toEqual({ none: { status: 'pending' } });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         organizationId: ORG,
@@ -137,7 +139,7 @@ describe('vacancy.update (edit drawer)', () => {
     const caller = await makeCaller();
     await expect(caller.vacancy.update({ id: VACANCY, title: 'X' })).rejects.toMatchObject({
       code: 'CONFLICT',
-      message: expect.stringMatching(/retira la solicitud/),
+      message: expect.stringMatching(/solicitud de aprobación en curso, retírala primero/),
     });
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });

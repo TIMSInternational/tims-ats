@@ -46,7 +46,7 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
     },
   });
 
-  const error = validateEditForm(form);
+  const error = validateEditForm(initial, form);
   const patch = error === null ? buildVacancyPatch(initial, form) : null;
   const errorText =
     error === 'titleRequired'

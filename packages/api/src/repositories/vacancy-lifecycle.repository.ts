@@ -96,6 +96,9 @@ export const vacancyLifecycleRepository = {
   /**
    * Writes the edited fields while the vacancy is still in an editable status. Returns null when it is not
    * (pending approval, closed, deleted or gone). The audit row names the changed fields, never their values.
+   * A vacancy with a still-pending approval step is never edited either: only a legacy row frozen in the
+   * middle of a request has one outside pending_approval, and resuming it revives that chain (Codex P1), so
+   * an edit would let the remaining approvers sign off content the earlier ones never saw.
    */
   updateContent(
     organizationId: string,
@@ -106,7 +109,13 @@ export const vacancyLifecycleRepository = {
   ): Promise<VacancyLifecycleRow | null> {
     return runTenantTransaction(organizationId, async (tx) => {
       const moved = await tx.vacancy.updateMany({
-        where: { id: vacancyId, organizationId, deletedAt: null, status: { in: [...VACANCY_EDITABLE_STATUSES] } },
+        where: {
+          id: vacancyId,
+          organizationId,
+          deletedAt: null,
+          status: { in: [...VACANCY_EDITABLE_STATUSES] },
+          approvals: { none: { status: 'pending' } },
+        },
         data,
       });
       if (moved.count !== 1) return null;
