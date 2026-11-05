@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Modal } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate } from '../../../../../lib/format-utils';
@@ -30,9 +30,11 @@ export function HireConfirmationModal({
   const { t } = useI18n();
   const [jobTitle, setJobTitle] = useState(initialJobTitle);
   const normalizedJobTitle = jobTitle.trim();
-  const close = () => {
+  // Stable across keystrokes: Modal re-runs its focus effect when onClose changes identity, which would pull
+  // focus out of the job-title field after every character (Codex review; same fix as the apply modal).
+  const close = useCallback(() => {
     if (!isPending) onClose();
-  };
+  }, [isPending, onClose]);
 
   return (
     <Modal title={t.offers.confirmHiringTitle} onClose={close} maxWidth="max-w-md">

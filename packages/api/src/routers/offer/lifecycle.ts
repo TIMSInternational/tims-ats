@@ -159,7 +159,12 @@ export const offerLifecycleRouter = router({
 
       // B2 invite-time linking: stamp the real Supabase identity now (reuses the
       // candidate's existing auth user if they applied via the portal). External
-      // call, so it runs before the tx.
+      // call, so it runs before the tx: a non-transaction query inside the interactive
+      // transaction holds a second pool connection and can pool-starve (see
+      // hirePredictionService.readFitForHire). Known residual (Codex review of F-15): two hires
+      // racing for a vacancy's LAST position within this call can both pass the pre-check above,
+      // and the loser's candidate may receive the sign-in invitation although the transaction
+      // below refuses their hire. No second hire can be recorded either way.
       const supabaseUserId = await resolveStaffSupabaseUserId(candidate.email);
 
       // Read the candidate's current FIT prediction BEFORE the tx (a standalone

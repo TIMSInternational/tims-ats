@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { CreateOfferModal } from '../../candidates/[id]/create-offer-modal';
 import type { OfferFormSource, OfferFormVacancy } from '../../candidates/[id]/create-offer-form';
@@ -38,7 +38,8 @@ export function OfferManageActions({
 }) {
   const { t } = useI18n();
   const [dialog, setDialog] = useState<Dialog>(null);
-  const close = () => setDialog(null);
+  // Stable: Modal re-runs its focus effect when onClose changes identity (the detail view re-renders on refetch).
+  const close = useCallback(() => setDialog(null), []);
   const applications = offer.applicationId ? [{ id: offer.applicationId, vacancy: offer.vacancy }] : [];
 
   if (!canEdit && !canWithdraw && !canCreateNew) return null;

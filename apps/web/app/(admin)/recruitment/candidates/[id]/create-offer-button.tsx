@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { isOpenOffer } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
@@ -32,6 +32,8 @@ export function CreateOfferButton({
   const [showModal, setShowModal] = useState(false);
   const enabled = canCreate && applications.length > 0;
   const offers = trpc.offer.list.useQuery({ candidateId, pageSize: 100 }, { enabled });
+  // Stable: Modal re-runs its focus effect when onClose changes identity (this button re-renders on refetch).
+  const closeModal = useCallback(() => setShowModal(false), []);
 
   if (!enabled) return null;
 
@@ -59,7 +61,7 @@ export function CreateOfferButton({
         {t.offers.createOffer}
       </button>
       {showModal && (
-        <CreateOfferModal candidateId={candidateId} applications={available} onClose={() => setShowModal(false)} />
+        <CreateOfferModal candidateId={candidateId} applications={available} onClose={closeModal} />
       )}
     </>
   );

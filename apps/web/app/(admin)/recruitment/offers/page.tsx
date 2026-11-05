@@ -22,20 +22,21 @@ export default function OffersPage() {
   const openOffer = (offerId: string) => router.push(offerDetailHref(offerId), { scroll: false });
   const closeOffer = () => router.push(OFFERS_PATH, { scroll: false });
 
-  // "Pendientes de mi aprobación" (B-14): the pending offers of the list that offer.getPending says wait for
-  // THIS viewer's decision (the list carries the full row, getPending knows whose turn it is).
+  // "Pendientes de mi aprobación" (B-14): the rows offer.getPending returns (every offer waiting for THIS
+  // viewer's decision, unpaginated), not an intersection with the newest page of the list (Codex review).
+  // getPending carries no approval chain, so that column reads "—" for these rows.
   const canApprove = useCan()('offer', 'approve');
   const isMinePending = statusFilter === MINE_PENDING_FILTER;
-  const offers = trpc.offer.list.useQuery({
-    pageSize: 100,
-    status: isMinePending ? 'pending_approval' : statusFilter || undefined,
-  });
+  const offers = trpc.offer.list.useQuery(
+    { pageSize: 100, status: statusFilter || undefined },
+    { enabled: !isMinePending },
+  );
   const allOffers = trpc.offer.list.useQuery({ pageSize: 100 });
   const minePending = trpc.offer.getPending.useQuery(undefined, { enabled: isMinePending });
 
-  const listed = offers.data?.items ?? [];
-  const mineIds = new Set((minePending.data ?? []).map((pending) => pending.offer.id));
-  const items = isMinePending ? listed.filter((offer) => mineIds.has(offer.id)) : listed;
+  const items = isMinePending
+    ? (minePending.data ?? []).map((pending) => ({ ...pending.offer, approvals: [] }))
+    : (offers.data?.items ?? []);
 
   const kpis = useMemo(
     () => computeOfferKpis(allOffers.data?.items ?? [], allOffers.data?.total ?? 0),
@@ -68,12 +69,9 @@ export default function OffersPage() {
       />
       <OfferTable
         items={items}
-        loading={offers.isLoading || (isMinePending && minePending.isLoading)}
-        isError={offers.isError || (isMinePending && minePending.isError)}
-        onRetry={() => {
-          void offers.refetch();
-          if (isMinePending) void minePending.refetch();
-        }}
+        loading={isMinePending ? minePending.isLoading : offers.isLoading}
+        isError={isMinePending ? minePending.isError : offers.isError}
+        onRetry={() => void (isMinePending ? minePending.refetch() : offers.refetch())}
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
         onSelectOffer={openOffer}

@@ -16,7 +16,7 @@ import { offerStatusBadge } from './offer-detail-view.helpers';
 import { CandidateHeader, OfferCard } from './offer-detail-view.parts';
 import { offerDetailModel } from './offer-detail-model';
 import { OfferManageActions } from './offer-manage-actions';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCan } from '../../../../../lib/permissions';
 import { invalidateAfterHire } from './invalidate-after-hire';
@@ -47,6 +47,10 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const [emailDeliveryAccepted, setEmailDeliveryAccepted] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [showHireConfirmation, setShowHireConfirmation] = useState(false);
+  // Stable dialog callbacks: Modal re-runs its focus effect when onClose changes identity, and this view
+  // re-renders on every refetch (every 30 s while an offer is sent).
+  const closeSigningModal = useCallback(() => setShowSigningModal(false), []);
+  const closeHireConfirmation = useCallback(() => setShowHireConfirmation(false), []);
 
   const convertToEmployee = trpc.offer.convertToEmployee.useMutation({
     onSuccess: async () => {
@@ -259,7 +263,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
           signingUrl={signingUrl}
           emailDeliveryAccepted={emailDeliveryAccepted}
           recipientEmail={recipientEmail}
-          onClose={() => setShowSigningModal(false)}
+          onClose={closeSigningModal}
         />
       )}
 
@@ -270,7 +274,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
           startDate={o.startDate}
           initialJobTitle={o.vacancy.title}
           isPending={convertToEmployee.isPending}
-          onClose={() => setShowHireConfirmation(false)}
+          onClose={closeHireConfirmation}
           onConfirm={(jobTitle) => convertToEmployee.mutate({ offerId, jobTitle })}
         />
       )}

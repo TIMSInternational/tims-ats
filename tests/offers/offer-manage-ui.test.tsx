@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import es from '../../apps/web/lib/i18n/es.json';
 
 // Pilot UX audit B-04 / B-12 / B-16 / B-17 / B-31 / B-33 / A-15: the offer form in edit mode, its guidance,
@@ -245,5 +245,29 @@ describe('hire dialog (B-31)', () => {
     expect(screen.getByText(es.offers.hireStartDate)).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // Codex review: a new onClose per keystroke made Modal re-run its focus effect and pull focus out of the field.
+  it('keeps focus in the job-title field while typing', async () => {
+    const flush = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 10)));
+    render(
+      <HireConfirmationModal
+        candidateName="Ana Mora"
+        accessEmail="ana@example.test"
+        startDate="2026-12-01T12:00:00Z"
+        initialJobTitle=""
+        isPending={false}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    await flush();
+    const input = screen.getByLabelText(es.offers.hireJobTitle);
+    input.focus();
+    for (const value of ['A', 'An', 'Ana']) {
+      fireEvent.change(input, { target: { value } });
+      await flush();
+      expect(document.activeElement).toBe(input);
+    }
   });
 });
