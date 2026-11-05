@@ -10,6 +10,7 @@ export function CreateTaskModal({ planId, phase, onClose }: { planId: string; ph
   const { t } = useI18n();
   const utils = trpc.useUtils();
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [responsible, setResponsible] = useState('');
   const [dueDate, setDueDate] = useState('');
   const create = trpc.onboarding.createTask.useMutation({
@@ -24,10 +25,13 @@ export function CreateTaskModal({ planId, phase, onClose }: { planId: string; ph
   const submit = () => {
     const trimmedTitle = title.trim();
     const trimmedResponsible = responsible.trim();
+    const trimmedDescription = description.trim();
     if (!trimmedTitle || !trimmedResponsible || create.isPending) return;
     create.mutate({
       planId,
       title: trimmedTitle,
+      // Shown under the title in "Mi Onboarding" (B-24): what the task means and what to do.
+      ...(trimmedDescription ? { description: trimmedDescription } : {}),
       responsible: trimmedResponsible,
       phase,
       ...(dueDate ? { dueDate: new Date(`${dueDate}T12:00:00`) } : {}),
@@ -40,6 +44,10 @@ export function CreateTaskModal({ planId, phase, onClose }: { planId: string; ph
         <label className="block text-[12px] font-medium text-[#333]">
           {t.onboarding.taskTitleLabel}
           <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} required disabled={create.isPending} className="mt-1 w-full rounded-lg border border-[#EDEDED] px-3 py-2 text-[13px]" />
+        </label>
+        <label className="block text-[12px] font-medium text-[#333]">
+          {t.onboarding.taskDescriptionLabel}
+          <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={2000} rows={2} disabled={create.isPending} className="mt-1 w-full rounded-lg border border-[#EDEDED] px-3 py-2 text-[13px]" />
         </label>
         <label className="block text-[12px] font-medium text-[#333]">
           {t.onboarding.taskResponsibleLabel}

@@ -3,6 +3,7 @@
 import type { OnboardingPlan } from './onboarding-table';
 import { useI18n } from '../../../../lib/i18n';
 import { onboardingOwnerLabel } from '../../../../lib/onboarding-labels';
+import { formatDueDate, isTaskOverdue, sortByDueDate } from '../../../../lib/onboarding-schedule';
 
 // Task `responsible` is a slug for the default checklist (hr | it | manager |
 // buddy | employee — onboarding-defaults.ts) or free text HR typed by hand.
@@ -96,22 +97,25 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
   );
 }
 
+// B-23: the most urgent first — earliest due date across every hire — and "urgent" means the due day
+// has passed (riskScore is never computed, so it cannot drive urgency).
 export function PendingTasks({ plans }: { plans: OnboardingPlan[] }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const ownerLabel = useOwnerLabel();
-  const incompleteTasks = plans
-    .flatMap((p) =>
+  const incompleteTasks = sortByDueDate(
+    plans.flatMap((p) =>
       p.tasks
-        .filter((t) => !t.completed)
-        .map((t) => ({
-          id: t.id,
-          name: t.title,
-          responsible: t.responsible,
+        .filter((task) => !task.completed)
+        .map((task) => ({
+          id: task.id,
+          name: task.title,
+          responsible: task.responsible,
           person: `${p.user.firstName} ${p.user.lastName}`,
-          urgent: (p.riskScore ?? 0) > 0.3,
+          dueDate: task.dueDate ?? null,
+          urgent: isTaskOverdue(task),
         })),
-    )
-    .slice(0, 5);
+    ),
+  ).slice(0, 5);
 
   const totalPending = plans.reduce((s, p) => s + p.tasks.filter((t) => !t.completed).length, 0);
 
@@ -133,9 +137,15 @@ export function PendingTasks({ plans }: { plans: OnboardingPlan[] }) {
                 <p className="text-[11px] text-[#333] font-medium">{task.name}</p>
                 <p className="text-[10px] text-[#8B8B8B]">
                   {task.person} — {ownerLabel(task.responsible)}
+                  {task.dueDate && ` · ${t.onboarding.taskDueOn.replace('{date}', formatDueDate(task.dueDate, locale))}`}
                 </p>
               </div>
             </div>
+            {task.urgent && (
+              <span className="rounded bg-[#DD0C15]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#DD0C15]">
+                {t.onboarding.taskOverdue}
+              </span>
+            )}
           </div>
         ))}
         {totalPending > 5 && (

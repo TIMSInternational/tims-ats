@@ -11,6 +11,13 @@ import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } fr
 import { ownScopeTaskUpdateDecision, sentKeys } from '../services/onboarding-self-service';
 import { onboardingPlanRepository } from '../repositories/onboarding-plan.repository';
 import type { AccessContext } from '../access/types';
+import { orgSettingsTimeZone, UTC_TIME_ZONE, zonedDateString, zonedWallTimeToDate } from '@tims/shared';
+
+// "Overdue" is a calendar notion: a task due today is not late until tomorrow. Due dates are stored at
+// local noon (start date + N days), so the cut-off is the start of TODAY in the organization's zone.
+function startOfTodayIn(timeZone: string, now: Date = new Date()): Date {
+  return zonedWallTimeToDate(zonedDateString(timeZone, 0, now), '00:00', timeZone) ?? now;
+}
 
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
@@ -86,7 +93,10 @@ export const onboardingRouter = router({
             include: {
               user: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
               buddy: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-              tasks: { select: { id: true, title: true, completed: true, responsible: true, phase: true } },
+              tasks: {
+                select: { id: true, title: true, completed: true, responsible: true, phase: true, dueDate: true },
+                orderBy: [{ order: 'asc' }, { id: 'asc' }],
+              },
               checkIns: { select: { id: true, status: true, type: true, scheduledDate: true, completedAt: true } },
             },
           });
@@ -191,7 +201,17 @@ export const onboardingRouter = router({
       // Scope + IDOR probe: a narrow scope must not reach an out-of-scope plan by id.
       await assertScoped('onboardingPlan', id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      if (data.buddyId) await assertUsersInOrg(ctx.user.organizationId, [data.buddyId]);
+      if (data.buddyId) {
+        await assertUsersInOrg(ctx.user.organizationId, [data.buddyId]);
+        // The new hire cannot be their own buddy.
+        const target = await db.onboardingPlan.findFirst({
+          where: { id, organizationId: ctx.user.organizationId },
+          select: { userId: true },
+        });
+        if (target?.userId === data.buddyId) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El compañero guía debe ser otra persona' });
+        }
+      }
 
       const update = {
         ...data,
@@ -524,8 +544,10 @@ export const onboardingRouter = router({
     requireOrgScope(ctx.access);
 
     const orgId = ctx.user.organizationId;
+    const org = await db.organization.findFirst({ where: { id: orgId }, select: { settings: true } });
+    const today = startOfTodayIn(orgSettingsTimeZone(org?.settings ?? null) ?? UTC_TIME_ZONE);
 
-    const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns] =
+    const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns, overdueTasks] =
       await Promise.all([
         db.onboardingPlan.count({
           where: { organizationId: orgId, status: 'active' },
@@ -547,8 +569,12 @@ export const onboardingRouter = router({
             organizationId: orgId,
             plan: { status: 'active' },
             status: 'pending',
-            scheduledDate: { lt: new Date() },
+            scheduledDate: { lt: today },
           },
+        }),
+        // B-23: tasks of active plans whose due day has passed and that nobody completed.
+        db.onboardingTask.count({
+          where: { organizationId: orgId, completed: false, dueDate: { lt: today }, plan: { status: 'active' } },
         }),
       ]);
 
@@ -565,6 +591,7 @@ export const onboardingRouter = router({
       completedTasks,
       taskCompletionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
       overdueCheckIns: pendingCheckIns,
+      overdueTasks,
       averageRiskScore: avgRisk._avg.riskScore ?? 0,
     };
   }),

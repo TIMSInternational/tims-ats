@@ -4,7 +4,10 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { onboardingCheckInTypeLabel, onboardingStatusLabel } from '../../../../lib/onboarding-labels';
+import { derivedOnboardingPhase, isPastDue } from '../../../../lib/onboarding-schedule';
+import { useCan } from '../../../../lib/permissions';
 import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
+import { useOnboardingOrgScope } from './use-onboarding-org-scope';
 import { OnboardingTable, type OnboardingPlan } from './onboarding-table';
 import { CreatePlanModal } from './create-plan-modal';
 import { CompleteCheckInModal } from './complete-check-in-modal';
@@ -68,17 +71,19 @@ export default function OnboardingPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCheckIn, setSelectedCheckIn] = useState<{ id: string; label: string } | null>(null);
 
-  const kpis = trpc.onboarding.getDashboardKpis.useQuery();
-  const plans = trpc.onboarding.list.useQuery({
-    limit: 50,
-    status: 'active',
-    ...(phase ? { phase } : {}),
-  });
+  const can = useCan();
+  // The KPI strip aggregates the whole organization: only org-wide readers ask for it (B-09 / E-08).
+  const orgScope = useOnboardingOrgScope();
+  const kpis = trpc.onboarding.getDashboardKpis.useQuery(undefined, { enabled: orgScope });
+  // The phase is derived from the start date (the stored phase never advances), so the tabs filter here.
+  const plans = trpc.onboarding.list.useQuery({ limit: 50, status: 'active' });
 
   const k = kpis.data;
-  const items = (plans.data?.plans ?? []) as OnboardingPlan[];
-  const atRiskCount = k?.atRiskPlans ?? 0;
+  const allItems = (plans.data?.plans ?? []) as OnboardingPlan[];
+  const items = phase ? allItems.filter((plan) => derivedOnboardingPhase(plan.startDate) === phase) : allItems;
+  const overdueTasks = k?.overdueTasks ?? 0;
   const pendingTasks = k ? k.totalTasks - k.completedTasks : 0;
+  const canUpdate = can('onboarding', 'update');
 
   const handlePhaseChange = (p: string) => {
     setPhase(p === 'all' ? undefined : p);
@@ -89,81 +94,88 @@ export default function OnboardingPage() {
       {/* Top bar */}
       <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-[#8B8B8B]">People</span>
+          <span className="text-[13px] text-[#8B8B8B]">{t.onboarding.pageParent}</span>
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="m9 18 6-6-6-6" />
           </svg>
-          <span className="text-sm font-medium text-[#1F114C]">{t.onboarding.title} Dashboard</span>
+          <span className="text-sm font-medium text-[#1F114C]">{t.onboarding.title}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition"
-          >
-            <PlusIcon />
-            {t.onboarding.createPlanTitle}
-          </button>
-        </div>
+        {/* Creating a plan needs onboarding:create, which the leader does not hold (E-08). */}
+        {can('onboarding', 'create') && (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition"
+            >
+              <PlusIcon />
+              {t.onboarding.createPlanTitle}
+            </button>
+          </div>
+        )}
       </div>
       {showCreate && <CreatePlanModal onClose={() => setShowCreate(false)} />}
       {selectedCheckIn && <CompleteCheckInModal id={selectedCheckIn.id} label={selectedCheckIn.label} onClose={() => setSelectedCheckIn(null)} />}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {/* KPI Row */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-          {kpis.isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
-          ) : kpis.isError ? (
-            <div className="col-span-2 md:col-span-5">
-              <ErrorState onRetry={() => kpis.refetch()} />
-            </div>
-          ) : (
-            <>
-              <KpiCard
-                label="Onboardings Activos"
-                value={k?.activePlans ?? 0}
-                icon={<IconActive />}
-                iconBg="bg-[#1F114C]"
-                valueColor="text-[#1F114C]"
-              />
-              <KpiCard
-                label="Tasa Finalización"
-                value={`${k?.taskCompletionRate ?? 0}%`}
-                subtitle="tareas completadas"
-                icon={<IconCheck />}
-                iconBg="bg-green-600"
-                valueColor="text-green-600"
-              />
-              <KpiCard
-                label="Tareas Pendientes"
-                value={pendingTasks}
-                subtitle="requieren acción"
-                icon={<IconDoc />}
-                iconBg="bg-amber-500"
-                valueColor="text-amber-500"
-                highlight={pendingTasks > 0}
-              />
-              <KpiCard
-                label="Riesgo Onboarding"
-                value={atRiskCount}
-                subtitle="personas en riesgo"
-                icon={<IconRisk />}
-                iconBg="bg-[#DD0C15]"
-                valueColor="text-[#DD0C15]"
-                highlight={atRiskCount > 0}
-              />
-              <KpiCard
-                label="Check-ins Vencidos"
-                value={k?.overdueCheckIns ?? 0}
-                subtitle={t.onboarding.overdueCheckInDesc}
-                icon={<IconClock />}
-                iconBg="bg-[#1F114C]"
-                valueColor="text-[#1F114C]"
-              />
-            </>
-          )}
-        </div>
+        {/* KPI Row — organization-wide readers only */}
+        {orgScope && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            {kpis.isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
+            ) : kpis.isError ? (
+              <div className="col-span-2 md:col-span-5">
+                <ErrorState onRetry={() => kpis.refetch()} />
+              </div>
+            ) : (
+              <>
+                <KpiCard
+                  label={t.onboarding.kpiActivePlans}
+                  value={k?.activePlans ?? 0}
+                  icon={<IconActive />}
+                  iconBg="bg-[#1F114C]"
+                  valueColor="text-[#1F114C]"
+                />
+                <KpiCard
+                  label={t.onboarding.kpiCompletionRate}
+                  value={`${k?.taskCompletionRate ?? 0}%`}
+                  subtitle={t.onboarding.kpiCompletionRateDesc}
+                  icon={<IconCheck />}
+                  iconBg="bg-green-600"
+                  valueColor="text-green-600"
+                />
+                <KpiCard
+                  label={t.onboarding.pendingTasks}
+                  value={pendingTasks}
+                  subtitle={t.onboarding.kpiPendingTasksDesc}
+                  icon={<IconDoc />}
+                  iconBg="bg-amber-500"
+                  valueColor="text-amber-500"
+                  highlight={pendingTasks > 0}
+                />
+                {/* B-23: a real count (due day passed, not completed) instead of a risk score nothing computes. */}
+                <KpiCard
+                  label={t.onboarding.kpiOverdue}
+                  value={overdueTasks}
+                  subtitle={t.onboarding.kpiOverdueDesc}
+                  icon={<IconRisk />}
+                  iconBg="bg-[#DD0C15]"
+                  valueColor="text-[#DD0C15]"
+                  highlight={overdueTasks > 0}
+                />
+                <KpiCard
+                  label={t.onboarding.kpiOverdueCheckIns}
+                  value={k?.overdueCheckIns ?? 0}
+                  subtitle={t.onboarding.overdueCheckInDesc}
+                  icon={<IconClock />}
+                  iconBg="bg-[#1F114C]"
+                  valueColor="text-[#1F114C]"
+                />
+              </>
+            )}
+          </div>
+        )}
 
         {/* Active Onboardings Table */}
         {plans.isError ? (
@@ -202,10 +214,10 @@ export default function OnboardingPage() {
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="bg-[#FAFAFA]">
-                    <th className="py-2 px-3 text-left">Colaborador</th>
-                    <th className="py-2 px-3 text-left">Check-in</th>
+                    <th className="py-2 px-3 text-left">{t.onboarding.colEmployee}</th>
+                    <th className="py-2 px-3 text-left">{t.onboarding.colCheckIn}</th>
                     <th className="py-2 px-3 text-left">{t.onboarding.scheduledDate}</th>
-                    <th className="py-2 px-3 text-left">Estado</th>
+                    <th className="py-2 px-3 text-left">{t.onboarding.colStatus}</th>
                     <th className="py-2 px-3 text-left">{t.onboarding.checkInAction}</th>
                   </tr>
                 </thead>
@@ -218,9 +230,15 @@ export default function OnboardingPage() {
                         </td>
                         <td className="py-2 px-3">{onboardingCheckInTypeLabel(t.myOnboarding.labels, checkIn.type)}</td>
                         <td className="py-2 px-3">{new Date(checkIn.scheduledDate).toLocaleDateString('es')}</td>
-                        <td className="py-2 px-3">{onboardingStatusLabel(t.myOnboarding.labels, checkIn.status)}</td>
                         <td className="py-2 px-3">
-                          {checkIn.status === 'pending' && (
+                          {checkIn.status === 'pending' && isPastDue(checkIn.scheduledDate) ? (
+                            <span className="font-medium text-[#DD0C15]">{onboardingStatusLabel(t.myOnboarding.labels, 'overdue')}</span>
+                          ) : (
+                            onboardingStatusLabel(t.myOnboarding.labels, checkIn.status)
+                          )}
+                        </td>
+                        <td className="py-2 px-3">
+                          {checkIn.status === 'pending' && canUpdate && (
                             <button type="button" onClick={() => setSelectedCheckIn({ id: checkIn.id, label: `${plan.user.firstName} ${plan.user.lastName} — ${onboardingCheckInTypeLabel(t.myOnboarding.labels, checkIn.type)}` })} className="font-medium text-[#1F114C] underline">
                               {t.onboarding.completeCheckInTitle}
                             </button>
