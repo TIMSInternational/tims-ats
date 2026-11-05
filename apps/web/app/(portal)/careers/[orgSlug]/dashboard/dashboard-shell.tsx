@@ -11,10 +11,12 @@ import { DashboardAssessments } from './dashboard-assessments';
 import { DashboardOffer } from './dashboard-offer';
 import { DashboardFaqChat } from './dashboard-faq-chat';
 import { DashboardPrivacy } from './dashboard-privacy';
+import { DashboardProfile, type CandidateProfileView } from './dashboard-profile';
 
 // Candidate dashboard shell. Renders the authenticated frame with the full
 // dashboard: My Applications (Wave 1 Slice 2), My Interviews (Wave 1 Slice 3),
-// My Offer (Wave 1 Slice 4), My Assessments (Wave 1.5a Slice 4).
+// My Offer (Wave 1 Slice 4), My Assessments (Wave 1.5a Slice 4), and the account actions of audit C-33:
+// "Mis datos" (correct name/phone/location), "Retirar mi postulación" and an always-visible privacy panel.
 // If the signed-in email has no Candidate at this org, shows an empty state instead.
 export function PortalDashboardShell({
   orgSlug,
@@ -23,6 +25,8 @@ export function PortalDashboardShell({
   hasCandidate,
   consentWithdrawnAt = null,
   timeZone = null,
+  profile = null,
+  contactEmail = null,
 }: {
   orgSlug: string;
   orgName: string;
@@ -31,6 +35,10 @@ export function PortalDashboardShell({
   consentWithdrawnAt?: string | null;
   /** The organization's IANA time zone (settings.timezone); dates fall back to UTC when null. */
   timeZone?: string | null;
+  /** The candidate's own correctable details, server-rendered; null when there is no candidate. */
+  profile?: CandidateProfileView | null;
+  /** The organization's candidate contact mailbox for data requests; null when none is configured. */
+  contactEmail?: string | null;
 }) {
   const router = useRouter();
   const { t } = useI18n();
@@ -66,13 +74,19 @@ export function PortalDashboardShell({
 
         {hasCandidate ? (
           <div className="mt-6 space-y-4">
-            <DashboardApplications orgSlug={orgSlug} timeZone={timeZone} />
+            <DashboardApplications orgSlug={orgSlug} orgName={orgName} timeZone={timeZone} />
             <DashboardInterviews orgSlug={orgSlug} timeZone={timeZone} />
             {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
             {!pilot && <DashboardAssessments orgSlug={orgSlug} />}
             <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
             {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
-            <DashboardPrivacy orgSlug={orgSlug} orgName={orgName} withdrawnAt={consentWithdrawnAt} />
+            {profile && <DashboardProfile orgSlug={orgSlug} profile={profile} />}
+            <DashboardPrivacy
+              orgSlug={orgSlug}
+              orgName={orgName}
+              withdrawnAt={consentWithdrawnAt}
+              contactEmail={contactEmail}
+            />
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">

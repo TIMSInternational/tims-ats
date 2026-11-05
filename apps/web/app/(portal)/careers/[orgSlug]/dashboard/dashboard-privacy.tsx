@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useI18n } from '../../../../../lib/i18n';
 import { Modal } from '../../../../../components';
 import { formatDate } from '../../../../../lib/format-utils';
@@ -12,25 +13,31 @@ import {
 
 type Phase = 'idle' | 'confirming' | 'submitting' | 'done';
 
-// #312 — the candidate's own "Revocar autorización". The identity is the session's VERIFIED email (checked again by
-// the server against the auth service); nothing here sends an email or a candidate id. Dark unless the C# consent
-// surface is enabled.
+// The candidate's privacy panel. Always shown (audit C-33): how to ask the organization for a copy, a correction or
+// the deletion of their data — its candidate contact mailbox when it has one — and the privacy notice.
+// #312 — plus the candidate's own "Revocar autorización" when the C# consent surface is enabled. The identity is the
+// session's VERIFIED email (checked again by the server against the auth service); nothing here sends an email or a
+// candidate id.
 export function DashboardPrivacy({
   orgSlug,
   orgName,
   withdrawnAt = null,
+  contactEmail = null,
 }: {
   orgSlug: string;
   orgName: string;
   // Server-persisted withdrawal time (dashboard/page.tsx), so a revisit shows the revoked state.
   withdrawnAt?: string | null;
+  // The organization's candidate contact (settings.candidateContactEmail, else billingEmail); null = none set.
+  contactEmail?: string | null;
 }) {
   const { t } = useI18n();
   const m = t.portalConsentWithdrawal;
+  const pd = t.portalDashboard;
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState('');
-
-  if (!isCandidateConsentEnabled()) return null;
+  const consentEnabled = isCandidateConsentEnabled();
+  const [requestsBefore, requestsAfter = ''] = pd.privacyRequests.split('{email}');
 
   const revoke = async () => {
     setPhase('submitting');
@@ -56,9 +63,9 @@ export function DashboardPrivacy({
   return (
     <section aria-labelledby="portal-privacy-title" className="rounded-2xl border border-[#EDEDED] bg-white p-6">
       <h2 id="portal-privacy-title" className="mb-2 text-[15px] font-semibold text-[#1F114C]">
-        {m.title}
+        {pd.privacyTitle}
       </h2>
-      {phase === 'done' || withdrawnAt ? (
+      {!consentEnabled ? null : phase === 'done' || withdrawnAt ? (
         <div role="status">
           <p className="text-[13px] font-semibold text-[#333]">{m.doneTitle}</p>
           {withdrawnAt && phase !== 'done' && (
@@ -79,7 +86,27 @@ export function DashboardPrivacy({
         </>
       )}
 
-      {(phase === 'confirming' || phase === 'submitting') && (
+      <p className={`text-[13px] text-[#585858]${consentEnabled ? ' mt-4' : ''}`}>
+        {contactEmail ? (
+          <>
+            {requestsBefore}
+            <a href={`mailto:${contactEmail}`} className="font-medium text-[#1F114C] underline">
+              {contactEmail}
+            </a>
+            {requestsAfter}
+          </>
+        ) : (
+          pd.privacyRequestsNoContact.replace('{org}', orgName)
+        )}
+      </p>
+      <Link
+        href={`/careers/${orgSlug}/privacy`}
+        className="mt-2 inline-block text-[12px] font-medium text-[#1F114C] hover:underline"
+      >
+        {pd.privacyNoticeLink}
+      </Link>
+
+      {consentEnabled && (phase === 'confirming' || phase === 'submitting') && (
         <Modal title={m.confirmTitle} onClose={() => phase !== 'submitting' && setPhase('idle')}>
           <p className="text-[13px] text-[#585858]">{m.confirmBody.replace('{org}', orgName)}</p>
           {error && (

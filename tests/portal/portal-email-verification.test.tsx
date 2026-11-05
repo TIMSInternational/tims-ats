@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
   getUser: vi.fn(),
   findOrg: vi.fn(),
   getDisplayCandidate: vi.fn(),
+  getContactEmail: vi.fn(),
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
@@ -18,7 +19,9 @@ const m = vi.hoisted(() => ({
 vi.mock('server-only', () => ({}));
 vi.mock('@tims/auth/server', () => ({ getUser: m.getUser }));
 vi.mock('@tims/db', () => ({ db: { organization: { findUnique: m.findOrg } } }));
-vi.mock('@tims/api', () => ({ candidatePortalService: { getDisplayCandidate: m.getDisplayCandidate } }));
+vi.mock('@tims/api', () => ({
+  candidatePortalService: { getDisplayCandidate: m.getDisplayCandidate, getContactEmail: m.getContactEmail },
+}));
 const withdrawnAt = vi.hoisted(() => vi.fn(async (): Promise<string | null> => null));
 vi.mock('../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/consent-status', () => ({
   findConsentWithdrawnAt: withdrawnAt,
@@ -40,6 +43,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.findOrg.mockResolvedValue({ id: 'org-1', name: 'Acme', isActive: true });
   m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G' });
+  m.getContactEmail.mockReturnValue(null);
 });
 
 describe('candidate dashboard requires a confirmed email', () => {
@@ -58,6 +62,39 @@ describe('candidate dashboard requires a confirmed email', () => {
     expect(element.type).toBe(PortalDashboardShell);
     expect(element.props.hasCandidate).toBe(true);
     expect(m.getDisplayCandidate).toHaveBeenCalledWith('org-1', 'ana@example.com');
+  });
+
+  it('passes the candidate\'s own details and the organization contact to the dashboard (C-33)', async () => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    const org = { id: 'org-1', name: 'Acme', isActive: true, settings: {}, billingEmail: 'rrhh@acme.test' };
+    m.findOrg.mockResolvedValue(org);
+    m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G', phone: '+506 8888 8888', location: null });
+    m.getContactEmail.mockReturnValue('rrhh@acme.test');
+    const element = (await PortalDashboardPage({ params })) as {
+      props: { profile: unknown; contactEmail: string | null };
+    };
+    expect(element.props.profile).toEqual({
+      firstName: 'Ana',
+      lastName: 'G',
+      email: 'ana@example.com',
+      phone: '+506 8888 8888',
+      location: null,
+    });
+    expect(element.props.contactEmail).toBe('rrhh@acme.test');
+    expect(m.getContactEmail).toHaveBeenCalledWith(org);
+    // The contact is resolved from the org row, so billingEmail must be selected with it.
+    expect(m.findOrg.mock.calls[0]?.[0]).toMatchObject({ select: { settings: true, billingEmail: true } });
+  });
+
+  it('has no profile without a candidate', async () => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    m.getDisplayCandidate.mockResolvedValue(null);
+    const element = (await PortalDashboardPage({ params })) as { props: { profile: unknown; hasCandidate: boolean } };
+    expect(element.props.hasCandidate).toBe(false);
+    expect(element.props.profile).toBeNull();
+    // A confirmed sign-up with no application here never receives the organization's mailbox.
+    expect((element.props as { contactEmail?: string | null }).contactEmail).toBeNull();
+    expect(m.getContactEmail).not.toHaveBeenCalled();
   });
 
   it('passes the persisted withdrawal time to the dashboard (#312)', async () => {

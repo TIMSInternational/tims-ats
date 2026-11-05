@@ -13,7 +13,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: es, locale: 'ES' }) }));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({
+      candidatePortal: { myApplications: { invalidate: vi.fn() }, applicationStatus: { invalidate: vi.fn() } },
+    }),
     candidatePortal: {
+      withdrawMyApplication: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       myApplications: { useQuery: () => ({ data: mocks.applications, isLoading: false, isError: false }) },
       applicationStatus: {
         useQuery: () => ({ data: { status: mocks.appStatus, movements: mocks.movements }, isLoading: false, isError: false }),
