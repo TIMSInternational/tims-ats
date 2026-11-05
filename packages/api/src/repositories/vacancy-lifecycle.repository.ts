@@ -33,9 +33,41 @@ export interface VacancyLifecycleActor {
   actorId: string;
 }
 
+export type ResumeStatus = 'published' | 'approved' | 'pending_approval' | 'draft';
+
 export type ResumeResult =
   | { kind: 'not_frozen' }
-  | { kind: 'resumed'; vacancy: VacancyLifecycleRow; status: 'published' | 'approved' };
+  | { kind: 'not_resumable' }
+  | { kind: 'resumed'; vacancy: VacancyLifecycleRow; status: ResumeStatus };
+
+/** What a frozen vacancy carries about the state it was frozen from. */
+export interface FrozenVacancyFacts {
+  closedAt: Date | null;
+  hasPublishedChannel: boolean;
+  /** Its approval rows, any order. Rows written by one submitForApproval share one createdAt (one transaction). */
+  approvals: ReadonlyArray<{ status: string; createdAt: Date }>;
+}
+
+/**
+ * The status a frozen vacancy returns to, or null when it must not be resumed. Freeze now requires
+ * `published`, but rows frozen before that could have come from any status, so the target is derived from
+ * evidence and fails closed (never a status that skips an approval):
+ *  - closed before it was frozen (closedAt set) -> not resumable (a filled or cancelled process stays closed);
+ *  - a still-published channel -> `published` (publishing needs an approved vacancy);
+ *  - otherwise the LATEST approval request decides: a pending step -> `pending_approval` (its chain is live
+ *    again), every step approved -> `approved`;
+ *  - anything else (no request, rejected, withdrawn) -> `draft`, which must go through approval.
+ */
+export function resumeTargetFor(facts: FrozenVacancyFacts): ResumeStatus | null {
+  if (facts.closedAt !== null) return null;
+  if (facts.hasPublishedChannel) return 'published';
+  if (facts.approvals.length === 0) return 'draft';
+  const latest = Math.max(...facts.approvals.map((a) => a.createdAt.getTime()));
+  const cycle = facts.approvals.filter((a) => a.createdAt.getTime() === latest);
+  if (cycle.some((a) => a.status === 'pending')) return 'pending_approval';
+  if (cycle.every((a) => a.status === 'approved')) return 'approved';
+  return 'draft';
+}
 
 type Tx = Parameters<Parameters<typeof runTenantTransaction>[1]>[0];
 
@@ -97,20 +129,28 @@ export const vacancyLifecycleRepository = {
   },
 
   /**
-   * frozen -> back where it was. A vacancy reaches `published` only by publishing a channel, and freezing
-   * leaves its channels untouched, so one still-published channel means it was live: it returns to
-   * `published` (back on the careers portal and in the pipeline selector). A frozen vacancy with none never
-   * went live and returns to `approved` (only possible for rows frozen before freeze required `published`).
-   * Never to draft or pending_approval: resuming cannot skip an approval.
+   * frozen -> back where it was (resumeTargetFor). A vacancy frozen by today's freeze was published and
+   * keeps its published channels, so it returns to `published`: back on the careers portal and in the
+   * pipeline selector. Resuming never skips an approval.
    */
   resume(organizationId: string, vacancyId: string, actor: VacancyLifecycleActor): Promise<ResumeResult> {
     return runTenantTransaction(organizationId, async (tx) => {
       const frozen = await tx.vacancy.findFirst({
         where: { id: vacancyId, organizationId, deletedAt: null, status: 'frozen' },
-        select: { id: true, channels: { where: { status: 'published' }, select: { id: true }, take: 1 } },
+        select: {
+          id: true,
+          closedAt: true,
+          channels: { where: { status: 'published' }, select: { id: true }, take: 1 },
+          approvals: { select: { status: true, createdAt: true } },
+        },
       });
       if (!frozen) return { kind: 'not_frozen' } as const;
-      const status = frozen.channels.length > 0 ? ('published' as const) : ('approved' as const);
+      const status = resumeTargetFor({
+        closedAt: frozen.closedAt,
+        hasPublishedChannel: frozen.channels.length > 0,
+        approvals: frozen.approvals,
+      });
+      if (status === null) return { kind: 'not_resumable' } as const;
 
       // Compare-and-set: a concurrent close or hire that committed after the read above wins.
       const moved = await tx.vacancy.updateMany({

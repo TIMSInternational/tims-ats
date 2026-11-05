@@ -2214,7 +2214,7 @@
     "confirmFreeze": "Freeze this vacancy?",
     "confirmFreezeDesc": "The vacancy stops receiving applications and leaves the careers portal and the pipeline selector. Current candidates are kept. You can resume it at any time with the Resume button.",
     "confirmResume": "Resume this vacancy?",
-    "confirmResumeDesc": "The vacancy is published on the careers portal again and receives applications, with its current candidates. If it was never published, it returns to approved so you can publish it.",
+    "confirmResumeDesc": "The vacancy is published on the careers portal again and receives applications, with its current candidates. If it was never published, it returns to the state it had before it was frozen.",
     "frozenNotice": "Frozen vacancy: it is not on the careers portal and receives no applications. Its candidates are kept; use Resume to pick it up again.",
     "cancelled": "Cancelled",
     "kpiTotal": "Total Vacancies",

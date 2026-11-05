@@ -36,6 +36,7 @@ const NOT_EDITABLE_MESSAGE =
   'Esta vacante no se puede editar en su estado actual. Si está pendiente de aprobación, retira la solicitud primero; una vacante cerrada no se edita.';
 const NOT_FREEZABLE_MESSAGE = 'Solo se puede congelar una vacante publicada.';
 const NOT_FROZEN_MESSAGE = 'La vacante ya no está congelada; recarga la página.';
+const NOT_RESUMABLE_MESSAGE = 'Esta vacante se cerró antes de congelarse y no se puede reanudar. Duplícala para abrir un proceso nuevo.';
 
 function actorOf(user: { id: string; impersonatorId?: string | null }): VacancyLifecycleActor {
   return { userId: user.id, actorId: user.impersonatorId ?? user.id };
@@ -93,6 +94,7 @@ export const vacancyLifecycleRouter = router({
 
       const result = await vacancyLifecycleRepository.resume(ctx.user.organizationId, input.id, actorOf(ctx.user));
       if (result.kind === 'not_frozen') throw new TRPCError({ code: 'CONFLICT', message: NOT_FROZEN_MESSAGE });
+      if (result.kind === 'not_resumable') throw new TRPCError({ code: 'CONFLICT', message: NOT_RESUMABLE_MESSAGE });
       return result.vacancy;
     }),
 });

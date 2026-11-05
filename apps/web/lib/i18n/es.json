@@ -2214,7 +2214,7 @@
     "confirmFreeze": "¿Congelar esta vacante?",
     "confirmFreezeDesc": "La vacante deja de recibir postulaciones y sale del portal de empleo y del selector del pipeline. Los candidatos actuales se conservan. Puedes reanudarla cuando quieras con el botón Reanudar.",
     "confirmResume": "¿Reanudar esta vacante?",
-    "confirmResumeDesc": "La vacante vuelve a publicarse en el portal de empleo y a recibir postulaciones, con sus candidatos actuales. Si nunca se publicó, queda aprobada para que la publiques.",
+    "confirmResumeDesc": "La vacante vuelve a publicarse en el portal de empleo y a recibir postulaciones, con sus candidatos actuales. Si nunca se publicó, vuelve al estado que tenía antes de congelarla.",
     "frozenNotice": "Vacante congelada: no aparece en el portal de empleo ni recibe postulaciones. Sus candidatos se conservan; usa Reanudar para retomarla.",
     "cancelled": "Cancelada",
     "kpiTotal": "Total Vacantes",

@@ -69,6 +69,12 @@ async function makeCaller() {
   } as never);
 }
 
+const T1 = new Date('2026-10-01T15:00:00Z');
+const T2 = new Date('2026-10-05T15:00:00Z');
+function frozen(overrides: Record<string, unknown> = {}) {
+  return { id: VACANCY, closedAt: null, channels: [], approvals: [], ...overrides };
+}
+
 const row = (status: string) => ({
   id: VACANCY,
   title: 'Analista',
@@ -159,7 +165,7 @@ describe('vacancy.freeze / vacancy.resume (A-08)', () => {
   });
 
   it('resumes a frozen vacancy that was live back to published', async () => {
-    tx.vacancy.findFirst.mockResolvedValue({ id: VACANCY, channels: [{ id: 'ch-1' }] });
+    tx.vacancy.findFirst.mockResolvedValue(frozen({ channels: [{ id: 'ch-1' }] }));
     const caller = await makeCaller();
     const result = await caller.vacancy.resume({ id: VACANCY });
     expect(result.status).toBe('published');
@@ -178,16 +184,47 @@ describe('vacancy.freeze / vacancy.resume (A-08)', () => {
     });
   });
 
-  it('resumes a frozen vacancy that never went live to approved, never to draft', async () => {
-    tx.vacancy.findFirst.mockResolvedValue({ id: VACANCY, channels: [] });
+  // Codex P1: before this change freeze accepted ANY status, so a legacy frozen row may have been a draft
+  // or a pending request. Resuming must restore that, never hand out an approval it never got.
+  it('resumes a legacy frozen pending request to pending_approval, keeping its live chain', async () => {
+    tx.vacancy.findFirst.mockResolvedValue(
+      frozen({ approvals: [{ status: 'approved', createdAt: T1 }, { status: 'pending', createdAt: T1 }] }),
+    );
+    tx.vacancy.findFirstOrThrow.mockResolvedValue(row('pending_approval'));
+    const caller = await makeCaller();
+    await caller.vacancy.resume({ id: VACANCY });
+    expect(tx.vacancy.updateMany.mock.calls[0]![0].data).toEqual({ status: 'pending_approval' });
+  });
+
+  it('resumes a legacy frozen draft (no approval request) to draft, not approved', async () => {
+    tx.vacancy.findFirst.mockResolvedValue(frozen());
+    tx.vacancy.findFirstOrThrow.mockResolvedValue(row('draft'));
+    const caller = await makeCaller();
+    await caller.vacancy.resume({ id: VACANCY });
+    expect(tx.vacancy.updateMany.mock.calls[0]![0].data).toEqual({ status: 'draft' });
+  });
+
+  it('resumes to approved only when the latest approval request was fully approved', async () => {
+    tx.vacancy.findFirst.mockResolvedValue(frozen({ approvals: [{ status: 'approved', createdAt: T1 }] }));
     tx.vacancy.findFirstOrThrow.mockResolvedValue(row('approved'));
     const caller = await makeCaller();
     await caller.vacancy.resume({ id: VACANCY });
     expect(tx.vacancy.updateMany.mock.calls[0]![0].data).toEqual({ status: 'approved' });
   });
 
+  it('refuses a vacancy that was closed before it was frozen', async () => {
+    tx.vacancy.findFirst.mockResolvedValue(frozen({ closedAt: T1, channels: [{ id: 'ch-1' }] }));
+    const caller = await makeCaller();
+    await expect(caller.vacancy.resume({ id: VACANCY })).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: expect.stringMatching(/no se puede reanudar/),
+    });
+    expect(tx.vacancy.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('answers CONFLICT when the vacancy is no longer frozen (closed by a hire meanwhile)', async () => {
-    tx.vacancy.findFirst.mockResolvedValue({ id: VACANCY, channels: [] });
+    tx.vacancy.findFirst.mockResolvedValue(frozen({ channels: [{ id: 'ch-1' }] }));
     tx.vacancy.updateMany.mockResolvedValue({ count: 0 });
     const caller = await makeCaller();
     await expect(caller.vacancy.resume({ id: VACANCY })).rejects.toMatchObject({ code: 'CONFLICT' });
@@ -256,6 +293,26 @@ describe('vacancy.create / duplicate for a narrow-scope creator (B-10)', () => {
     const caller = await makeCaller();
     await caller.vacancy.duplicate({ id: VACANCY });
     expect(tx.vacancy.create.mock.calls[0]![0].data).toMatchObject({ status: 'draft', createdBy: ME, assignedTo: ME });
+  });
+});
+
+describe('resumeTargetFor (legacy frozen rows)', () => {
+  it('derives the pre-freeze status from the LATEST approval request and fails closed', async () => {
+    const { resumeTargetFor } = await import('../../packages/api/src/repositories/vacancy-lifecycle.repository');
+    const base = { closedAt: null, hasPublishedChannel: false };
+    // An older approved request, then a newer one that was rejected: a draft that needs approval again.
+    expect(
+      resumeTargetFor({ ...base, approvals: [{ status: 'approved', createdAt: T1 }, { status: 'rejected', createdAt: T2 }] }),
+    ).toBe('draft');
+    // Step 1 approved, then the request was withdrawn (step 2 cancelled): not an approved vacancy.
+    expect(
+      resumeTargetFor({ ...base, approvals: [{ status: 'approved', createdAt: T2 }, { status: 'cancelled', createdAt: T2 }] }),
+    ).toBe('draft');
+    expect(resumeTargetFor({ ...base, approvals: [{ status: 'approved', createdAt: T2 }, { status: 'approved', createdAt: T2 }] })).toBe(
+      'approved',
+    );
+    expect(resumeTargetFor({ ...base, hasPublishedChannel: true, approvals: [] })).toBe('published');
+    expect(resumeTargetFor({ closedAt: T1, hasPublishedChannel: true, approvals: [] })).toBeNull();
   });
 });
 
