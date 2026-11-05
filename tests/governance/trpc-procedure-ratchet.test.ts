@@ -51,8 +51,13 @@ import { appRouter } from '@tims/api';
  * company-admin access-1): `vacancy.getPending` (the approver inbox's vacancy half; offers already had
  * `offer.getPending`) and `vacancy.withdrawApproval` + `offer.withdrawApproval` (a request stuck with an
  * absent approver otherwise stays in pending_approval for good). Same terms: not headroom, owed a C# port.
+ *
+ * Third D-1 exception: 357 → 358 on 2026-11-04 for `candidate.getDocumentUploadUrl` (pilot audit A-21:
+ * staff could not attach any document to a candidate — the INVU workaround for required documents that
+ * arrive by email; `candidate.uploadDocument` was a mock storing an unopenable URL). It issues the same
+ * presigned S3 POST the public apply flow uses. Same terms: not headroom, owed a C# port.
  */
-const PROCEDURE_CEILING = 357;
+const PROCEDURE_CEILING = 358;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.

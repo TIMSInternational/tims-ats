@@ -55,6 +55,11 @@ vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/assign-assessmen
   stub('AssignAssessmentModal'),
 );
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/consent-card', () => stub('CandidateConsentCard'));
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-offers-card', () => stub('CandidateOffersCard'));
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-interviews-tab', () =>
+  stub('CandidateInterviewsTab'),
+);
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/notes-panel', () => stub('CandidateNotesPanel'));
 
 afterEach(() => {
   cleanup();
@@ -69,9 +74,10 @@ async function renderPage() {
 }
 
 describe('Candidate 360 assessments under the pilot scope', () => {
-  it('visibleCandidateTabs drops only the assessments tab under pilot', () => {
-    expect(visibleCandidateTabs(true)).toEqual(TABS.filter((tab) => tab !== 'tabAssessments'));
-    expect(visibleCandidateTabs(false)).toEqual(TABS);
+  it('visibleCandidateTabs drops the assessments tab under pilot (and the always-empty Validaciones everywhere)', () => {
+    // journeys-27: "Validaciones" has no content yet, so it is not offered as a tab that always opens empty.
+    expect(visibleCandidateTabs(true)).toEqual(TABS.filter((tab) => tab !== 'tabAssessments' && tab !== 'tabValidations'));
+    expect(visibleCandidateTabs(false)).toEqual(TABS.filter((tab) => tab !== 'tabValidations'));
   });
 
   it('pilot: no assign button, no assessments tab, no results block', async () => {

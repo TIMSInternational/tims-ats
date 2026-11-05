@@ -2,6 +2,10 @@
 
 import { useI18n } from '../../../../../lib/i18n';
 import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
+import { fitBand, type FitBand } from '../../../../../lib/pipeline-fit';
+
+// The same FIT scale as the header, the pipeline and the filter (A-23).
+const FIT_BAR: Record<FitBand, string> = { high: 'bg-green-500', medium: 'bg-amber-500', low: 'bg-red-500' };
 
 interface FitScore {
   id: string;
@@ -19,7 +23,7 @@ interface FitBreakdownShape {
 }
 
 function ProgressBar({ score }: { score: number }) {
-  const barColor = score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-amber-500' : 'bg-red-500';
+  const barColor = FIT_BAR[fitBand(score)];
   return (
     <div className="w-full bg-[#F6F6F6] rounded-full h-2">
       <div className={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${Math.min(score, 100)}%` }} />
