@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   updateMutate: vi.fn(),
   withdrawMutate: vi.fn(),
   listData: { items: [] as Array<Record<string, unknown>>, total: 0 },
+  listInputs: [] as unknown[],
   push: vi.fn(),
   toast: vi.fn(),
   can: vi.fn((_module: string, _action?: string) => true),
@@ -26,7 +27,12 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       create: { useMutation: () => ({ mutateAsync: h.createMutate, isPending: false }) },
       update: { useMutation: () => ({ mutateAsync: h.updateMutate, isPending: false }) },
       withdraw: { useMutation: () => ({ mutateAsync: h.withdrawMutate, isPending: false }) },
-      list: { useQuery: () => ({ data: h.listData, isLoading: false }) },
+      list: {
+        useQuery: (input: unknown) => {
+          h.listInputs.push(input);
+          return { data: h.listData, isLoading: false };
+        },
+      },
     },
   },
 }));
@@ -36,6 +42,7 @@ import { CreateOfferButton } from '../../apps/web/app/(admin)/recruitment/candid
 import { ApprovalChain } from '../../apps/web/app/(admin)/recruitment/offers/_components/approval-chain';
 import { WithdrawOfferModal } from '../../apps/web/app/(admin)/recruitment/offers/_components/withdraw-offer-modal';
 import { HireConfirmationModal } from '../../apps/web/app/(admin)/recruitment/offers/_components/hire-confirmation-modal';
+import { OfferManageActions } from '../../apps/web/app/(admin)/recruitment/offers/_components/offer-manage-actions';
 
 const OFFER_ID = 'abcdef01-1111-4222-8333-444455556666';
 const DAY = 86_400_000;
@@ -164,6 +171,11 @@ describe('candidate profile "Crear oferta" (A-15 / B-17)', () => {
     expect(container.textContent).toBe('');
   });
 
+  it("asks only for the candidate's open offers, so the decision never rests on a newest-page slice", () => {
+    render(<CreateOfferButton candidateId="cand-1" applications={applications} />);
+    expect(h.listInputs.at(-1)).toEqual({ candidateId: 'cand-1', openOnly: true, pageSize: 100 });
+  });
+
   it('becomes "Ver oferta" when the only application already has an open offer', () => {
     h.listData = {
       items: [{ id: OFFER_ID, status: 'pending_approval', vacancyId: 'vac-1', expiresAt: null }],
@@ -185,6 +197,27 @@ describe('candidate profile "Crear oferta" (A-15 / B-17)', () => {
     };
     render(<CreateOfferButton candidateId="cand-1" applications={applications} />);
     expect((screen.getByRole('button', { name: es.offers.createOffer }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('offer manage actions (B-04)', () => {
+  const draft = {
+    id: OFFER_ID,
+    status: 'draft',
+    candidateId: 'cand-1',
+    applicationId: null,
+    vacancy,
+    salary: 12_000_000,
+    currency: 'CRC',
+    startDate: `${isoDay(20)}T12:00:00`,
+    contractType: 'Plazo fijo',
+  };
+
+  it('a draft created without an application link can still be edited, but not copied into a new offer', () => {
+    render(<OfferManageActions offer={draft} canEdit canWithdraw canCreateNew onChanged={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: es.offers.createNewOffer })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: es.offers.editDraft }));
+    expect(screen.getByText(es.offers.editDraftTitle)).toBeTruthy();
   });
 });
 

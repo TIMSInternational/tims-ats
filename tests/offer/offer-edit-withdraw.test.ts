@@ -27,6 +27,8 @@ const mockDb = vi.hoisted(() => ({
     findFirstOrThrow: vi.fn(),
     updateMany: vi.fn(),
     create: vi.fn(),
+    findMany: vi.fn(),
+    count: vi.fn(),
   },
   offerApproval: { updateMany: vi.fn() },
   auditLog: { create: vi.fn() },
@@ -204,6 +206,22 @@ describe('offer.withdraw — "Retirar oferta"', () => {
     expect(await codeOf((await caller(['recruiter'])).offer.withdraw({ id: OFFER_ID, reason: 'x'.repeat(501) }))).toBe(
       'BAD_REQUEST',
     );
+  });
+});
+
+describe('offer.list openOnly — the candidate profile asks for open offers only (A-15)', () => {
+  it('adds the open-offer filter (expired sent offers excluded) only when asked', async () => {
+    mockDb.offer.findMany.mockResolvedValue([]);
+    mockDb.offer.count.mockResolvedValue(0);
+    await (await caller(['recruiter'])).offer.list({ candidateId: CANDIDATE_ID, openOnly: true, pageSize: 100 });
+    const { where } = mockDb.offer.findMany.mock.calls[0]![0] as { where: { AND: Array<Record<string, unknown>> } };
+    expect(where.AND).toHaveLength(4);
+    expect(JSON.stringify(where.AND[3])).toContain('pending_approval');
+    expect(JSON.stringify(where.AND[3])).not.toMatch(/rejected|declined|withdrawn/);
+
+    await (await caller(['recruiter'])).offer.list({ candidateId: CANDIDATE_ID, pageSize: 100 });
+    const second = mockDb.offer.findMany.mock.calls[1]![0] as { where: { AND: unknown[] } };
+    expect(second.where.AND).toHaveLength(3);
   });
 });
 

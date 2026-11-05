@@ -13,22 +13,24 @@ export const OPEN_OFFER_EXISTS_MESSAGE =
 
 const OPEN_WITHOUT_SENT = OPEN_OFFER_STATUSES.filter((status) => status !== 'sent');
 
-/** Prisma filter for the candidate's open offers for one vacancy (no SQL NULL trap on expiresAt). */
+/** Prisma filter for open offers (no SQL NULL trap on expiresAt): the same rule as isOpenOffer. */
+export function openOfferStatusWhere(now: Date): Prisma.OfferWhereInput {
+  return {
+    OR: [
+      { status: { in: [...OPEN_WITHOUT_SENT] } },
+      { status: 'sent', OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+    ],
+  };
+}
+
+/** Prisma filter for the candidate's open offers for one vacancy. */
 export function openOfferWhere(
   organizationId: string,
   candidateId: string,
   vacancyId: string,
   now: Date,
 ): Prisma.OfferWhereInput {
-  return {
-    organizationId,
-    candidateId,
-    vacancyId,
-    OR: [
-      { status: { in: [...OPEN_WITHOUT_SENT] } },
-      { status: 'sent', OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
-    ],
-  };
+  return { organizationId, candidateId, vacancyId, ...openOfferStatusWhere(now) };
 }
 
 /**

@@ -40,18 +40,22 @@ export function OfferManageActions({
   const [dialog, setDialog] = useState<Dialog>(null);
   // Stable: Modal re-runs its focus effect when onClose changes identity (the detail view re-renders on refetch).
   const close = useCallback(() => setDialog(null), []);
-  const applications = offer.applicationId ? [{ id: offer.applicationId, vacancy: offer.vacancy }] : [];
+  // "Crear nueva oferta" needs the (active) application to link the new offer to. Editing does not send an
+  // application, so a draft created without the link (offer.create allows it) stays editable: there the
+  // entry's id is only the form's select key.
+  const linked = offer.applicationId ? [{ id: offer.applicationId, vacancy: offer.vacancy }] : [];
+  const editEntry = [{ id: offer.applicationId ?? `offer-${offer.id}`, vacancy: offer.vacancy }];
 
   if (!canEdit && !canWithdraw && !canCreateNew) return null;
 
   return (
     <>
-      {canEdit && applications.length > 0 && (
+      {canEdit && (
         <button type="button" className={SECONDARY} onClick={() => setDialog('edit')}>
           {t.offers.editDraft}
         </button>
       )}
-      {canCreateNew && applications.length > 0 && (
+      {canCreateNew && linked.length > 0 && (
         <button
           type="button"
           className={SECONDARY}
@@ -74,14 +78,14 @@ export function OfferManageActions({
         <CreateOfferModal
           mode="edit"
           candidateId={offer.candidateId}
-          applications={applications}
+          applications={editEntry}
           source={offer}
           onClose={close}
           onSaved={onChanged}
         />
       )}
       {dialog === 'new' && (
-        <CreateOfferModal candidateId={offer.candidateId} applications={applications} source={offer} onClose={close} />
+        <CreateOfferModal candidateId={offer.candidateId} applications={linked} source={offer} onClose={close} />
       )}
       {dialog === 'withdraw' && (
         <WithdrawOfferModal

@@ -5,7 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { redactOfferSettings } from './offer-dto';
-import { assertNoOpenOffer } from './open-offer-guard';
+import { assertNoOpenOffer, openOfferStatusWhere } from './open-offer-guard';
 import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
 import { resolveDefaultOfferCurrency } from './offer-currency';
 
@@ -50,12 +50,15 @@ export const offerCrudRouter = router({
         vacancyId: z.string().uuid().optional(),
         candidateId: z.string().uuid().optional(),
         status: z.string().max(50).optional(),
+        // Only offers that still occupy their application (the one-open-offer rule of offer.create), so the
+        // candidate profile can decide "Crear oferta" vs "Ver oferta" from a short, complete list (A-15).
+        openOnly: z.boolean().optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(20),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, ...filters } = input;
+      const { page, pageSize, openOnly, ...filters } = input;
       const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
 
       const where: Prisma.OfferWhereInput = {
@@ -67,6 +70,7 @@ export const offerCrudRouter = router({
             ...(filters.candidateId && { candidateId: filters.candidateId }),
             ...(filters.status && { status: filters.status }),
           },
+          ...(openOnly ? [openOfferStatusWhere(new Date())] : []),
         ],
       };
 

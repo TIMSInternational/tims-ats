@@ -31,7 +31,9 @@ export function CreateOfferButton({
   const canCreate = useCan()('offer', 'create');
   const [showModal, setShowModal] = useState(false);
   const enabled = canCreate && applications.length > 0;
-  const offers = trpc.offer.list.useQuery({ candidateId, pageSize: 100 }, { enabled });
+  // Only this candidate's OPEN offers (at most one per vacancy), so the list is complete, never a newest-page
+  // slice in which an older open offer could hide behind newer ended ones (Codex review).
+  const offers = trpc.offer.list.useQuery({ candidateId, openOnly: true, pageSize: 100 }, { enabled });
   // Stable: Modal re-runs its focus effect when onClose changes identity (this button re-renders on refetch).
   const closeModal = useCallback(() => setShowModal(false), []);
 
