@@ -148,13 +148,27 @@ export const pipelineService = {
     return conflictIfNotActive(pipelineRepository.bulkMove(orgId, userId, applications, toStageId, reason));
   },
 
-  // Reject
-  async rejectCandidate(orgId: string, applicationId: string, reason: string, feedback?: string) {
+  // Reject — `actor` is recorded with the rejection (audit row) so the Candidate 360 can say who rejected.
+  async rejectCandidate(
+    orgId: string,
+    actor: { userId: string; actorId: string },
+    applicationId: string,
+    reason: string,
+    feedback?: string,
+    candidateNotificationRequested = false,
+  ) {
     const application = await pipelineRepository.findApplication(orgId, applicationId);
     if (!application || application.status !== 'active') {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada o ya fue rechazada' });
     }
-    const rejected = await pipelineRepository.rejectApplication(applicationId, reason, feedback);
+    const rejected = await pipelineRepository.rejectApplication(
+      orgId,
+      applicationId,
+      actor,
+      reason,
+      feedback,
+      candidateNotificationRequested,
+    );
     if (!rejected) {
       throw new TRPCError({ code: 'CONFLICT', message: 'La aplicación cambió de estado; recarga e intenta de nuevo' });
     }

@@ -42,7 +42,10 @@ export function CandidateTimeline({
       {events.length === 0 ? (
         <p className="text-xs text-[#8B8B8B] py-3 text-center">{t.candidates.noActivity}</p>
       ) : (
-        <ActivityTimeline events={events.map((e) => ({ ...e, ...localizeTimelineEvent(e, t.candidates) }))} maxItems={15} />
+        <ActivityTimeline
+          events={events.map((e) => ({ ...e, ...localizeTimelineEvent(e, t.candidates, t.rejectCandidateModal.reasons) }))}
+          maxItems={15}
+        />
       )}
     </div>
   );

@@ -29,17 +29,31 @@ export function buildRejectionReason(code: RejectionReasonCode, label: string): 
   return text.slice(0, REJECTION_REASON_MAX);
 }
 
-/** Maps the modal's form values onto the `rejectCandidate` mutation input. */
+/** Maps the modal's form values onto the `rejectCandidate` mutation input. `notifyCandidate` is opt-in (C-11). */
 export function toRejectCandidateInput(
   applicationId: string,
   code: RejectionReasonCode,
   label: string,
   note: string,
-): { applicationId: string; reason: string; feedback?: string } {
+  notifyCandidate = false,
+): { applicationId: string; reason: string; feedback?: string; notifyCandidate?: true } {
   const trimmed = note.trim();
   return {
     applicationId,
     reason: buildRejectionReason(code, label),
     ...(trimmed ? { feedback: trimmed.slice(0, REJECTION_NOTE_MAX) } : {}),
+    ...(notifyCandidate ? { notifyCandidate: true as const } : {}),
   };
+}
+
+/**
+ * The stored reason ("<CODE>: <label>") in the viewer's language: a known code reads from i18n, anything
+ * else (an older free-text reason) is shown as stored, minus a code-shaped prefix.
+ */
+export function rejectionReasonLabel(reason: string | null | undefined, labels: Record<string, string>): string {
+  if (!reason) return '';
+  const match = /^([A-Z_]{2,40}):\s*(.*)$/s.exec(reason.trim());
+  if (!match) return reason.trim();
+  const [, code, rest] = match;
+  return labels[code!] ?? (rest!.trim() || reason.trim());
 }

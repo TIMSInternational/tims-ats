@@ -62,6 +62,24 @@ describe('createCvUploadPresignedPost', () => {
     );
   });
 
+  it('pins a staff upload to its candidate inside the signed POST policy (A-21)', async () => {
+    createPresignedPostMock.mockResolvedValue({ url: 'https://s3.example.com', fields: {} });
+
+    await createCvUploadPresignedPost('org-1', 'application/pdf', { candidateId: 'cand-1' });
+
+    expect(createPresignedPostMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        Conditions: [
+          ['content-length-range', 0, CV_MAX_BYTES],
+          ['eq', '$Content-Type', 'application/pdf'],
+          ['eq', '$x-amz-meta-candidate-id', 'cand-1'],
+        ],
+        Fields: { 'Content-Type': 'application/pdf', 'x-amz-meta-candidate-id': 'cand-1' },
+      }),
+    );
+  });
+
   it('uses a .docx extension for the DOCX content type', async () => {
     createPresignedPostMock.mockResolvedValue({ url: 'https://s3.example.com', fields: {} });
 

@@ -2,6 +2,7 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { ErrorState, Skeleton } from '../../../../../components';
@@ -19,7 +20,13 @@ import { ScreenCandidateCard } from './screen-candidate-card';
 import { AssignAssessmentModal } from './assign-assessment-modal';
 import { CandidateConsentCard } from './consent-card';
 import { isPilotScope } from '../../../../../lib/launch-scope';
-import { visibleCandidateTabs, type TabKey } from './candidate-tabs';
+import { useCan } from '../../../../../lib/permissions';
+import { SCHEDULE_QUERY_PARAM } from '../../../../../lib/pipeline-next-actions';
+import { readTabParam, visibleCandidateTabs, type TabKey } from './candidate-tabs';
+import { CandidateInterviewsTab } from './candidate-interviews-tab';
+import { CandidateOffersCard } from './candidate-offers-card';
+import { CandidateNotesPanel } from './notes-panel';
+import { ScheduleModal, type SchedulePrefill } from '../../interviews/schedule-modal';
 
 function EmptyTabPanel({ title, message }: { title: string; message: string }) {
   return (
@@ -30,26 +37,37 @@ function EmptyTabPanel({ title, message }: { title: string; message: string }) {
   );
 }
 
-function NotesPanel({ title, notes, empty }: { title: string; notes: string | null | undefined; empty: string }) {
-  const value = notes?.trim();
-
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{title}</h3>
-      {value ? (
-        <p className="text-[13px] text-[#585858] whitespace-pre-wrap leading-relaxed">{value}</p>
-      ) : (
-        <p className="text-[12px] text-[#8B8B8B] py-4 text-center">{empty}</p>
-      )}
-    </div>
-  );
+/** Replaces (or removes) query parameters in place: no history entry, no server round trip. */
+function replaceQuery(changes: Record<string, string | null>) {
+  const params = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) params.delete(key);
+    else params.set(key, value);
+  }
+  const query = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
 }
 
 export default function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<TabKey>('tabProfile');
+  const can = useCan();
+  const searchParams = useSearchParams();
+  // The open tab lives in the URL (?tab=), so a refresh or Back keeps it (journeys-27).
+  const [activeTab, setActiveTab] = useState<TabKey>(() => readTabParam(searchParams?.get('tab'), isPilotScope()) ?? 'tabProfile');
+  // ?schedule=<applicationId> (the "Programar la entrevista" step after a move) opens the prefilled form (A-10).
+  const [scheduleFor, setScheduleFor] = useState<string | null>(() => searchParams?.get(SCHEDULE_QUERY_PARAM) ?? null);
   const [showAssignAssessment, setShowAssignAssessment] = useState(false);
+  // Bumped after scheduling: remounts the interviews tab, which refetches on mount.
+  const [interviewsVersion, setInterviewsVersion] = useState(0);
+  const selectTab = (tab: TabKey) => {
+    setActiveTab(tab);
+    replaceQuery({ tab: tab === 'tabProfile' ? null : tab });
+  };
+  const closeSchedule = () => {
+    setScheduleFor(null);
+    replaceQuery({ [SCHEDULE_QUERY_PARAM]: null });
+  };
 
   const candidate = trpc.candidate.getById.useQuery({ id });
   const timeline = trpc.candidate.getTimeline.useQuery({ candidateId: id });
@@ -109,6 +127,20 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   };
 
   const empty = t.common.noResults;
+  const activeApplications = c.applications.filter((application) => application.status === 'active');
+  const canSchedule = can('interview', 'create') && activeApplications.length > 0;
+  const openSchedule = canSchedule ? () => setScheduleFor(activeApplications[0]?.id ?? '') : undefined;
+  // The preferred application first (the one named by ?schedule=, else the first active one).
+  const schedulePrefill: SchedulePrefill | null =
+    canSchedule && scheduleFor !== null
+      ? {
+          candidateId: c.id,
+          candidateName: `${c.firstName} ${c.lastName}`,
+          applications: [...activeApplications]
+            .sort((a, b) => Number(b.id === scheduleFor) - Number(a.id === scheduleFor))
+            .map((a) => ({ id: a.id, vacancyId: a.vacancy.id, vacancyTitle: a.vacancy.title })),
+        }
+      : null;
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -126,6 +158,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
               <CvParseCard candidateId={id} />
               <StageTimeline applications={c.applications} />
+              <CandidateOffersCard candidateId={id} />
               <TagsCard tags={c.tags} candidateId={id} />
               <CandidateConsentCard candidateId={id} />
               <RiskFlags />
@@ -150,7 +183,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           <EmptyTabPanel title={tabLabels.tabAssessments} message={empty} />
         );
       case 'tabInterviews':
-        return <EmptyTabPanel title={tabLabels.tabInterviews} message={empty} />;
+        return <CandidateInterviewsTab key={interviewsVersion} candidateId={id} onSchedule={openSchedule} />;
       case 'tabFitGaps':
         return (
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4">
@@ -176,7 +209,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />
         );
       case 'tabNotes':
-        return <NotesPanel title={tabLabels.tabNotes} notes={c.notes} empty={empty} />;
+        return <CandidateNotesPanel candidateId={id} notes={c.notes} />;
       default:
         return (
           <div className="flex flex-col md:flex-row gap-6">
@@ -217,7 +250,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {/* Header Card */}
-        <CandidateHeader candidate={c} />
+        <CandidateHeader candidate={c} onScheduleInterview={openSchedule} />
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-[#EDEDED] overflow-x-auto">
@@ -225,7 +258,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
             <button
               type="button"
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => selectTab(tab)}
               className={`px-4 py-2.5 text-[13px] font-medium transition shrink-0 whitespace-nowrap ${
                 activeTab === tab ? 'text-[#1F114C] border-b-2 border-[#DD0C15]' : 'text-[#8B8B8B] hover:text-[#585858]'
               }`}
@@ -237,6 +270,17 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
         {renderActiveTab()}
       </div>
+      {schedulePrefill && (
+        <ScheduleModal
+          prefill={schedulePrefill}
+          onClose={closeSchedule}
+          onSuccess={() => {
+            closeSchedule();
+            setInterviewsVersion((v) => v + 1);
+            selectTab('tabInterviews');
+          }}
+        />
+      )}
       {showAssessments && showAssignAssessment && (
         <AssignAssessmentModal
           candidateId={id}

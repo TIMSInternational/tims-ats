@@ -2,19 +2,30 @@ import { z } from 'zod';
 import { consentGuard } from '../../services/consent-guard.service';
 import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../../trpc';
+import { STAFF_DOCUMENT_TYPES } from '@tims/shared';
 import { candidateDocumentsService } from '../../services/candidate-documents.service';
+import { CV_ALLOWED_CONTENT_TYPES } from '../../lib/cv-extraction';
 import { candidateAiService } from '../../services/candidate-ai.service';
 import { assertScoped } from '../../access';
 import { clientIpFrom } from '../../lib/client-ip';
 
 export const candidateDocumentsRouter = router({
+  // Step 1 of a staff upload (A-21): a presigned POST into the org's upload prefix (PDF or DOCX, 5 MB).
+  getDocumentUploadUrl: permissionProcedure('candidate', 'update')
+    .input(z.object({ candidateId: z.string().uuid(), contentType: z.enum(CV_ALLOWED_CONTENT_TYPES) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return candidateDocumentsService.getUploadUrl(ctx.user.organizationId, input.candidateId, input.contentType);
+    }),
+
+  // Step 2: record the uploaded object as the candidate's document (the key is re-checked server-side).
   uploadDocument: permissionProcedure('candidate', 'update')
     .input(
       z.object({
         candidateId: z.string().uuid(),
-        type: z.string().min(1).max(50),
-        fileName: z.string().min(1).max(255),
-        fileSize: z.number().int().min(0).max(52428800).optional(),
+        type: z.enum(STAFF_DOCUMENT_TYPES),
+        fileName: z.string().trim().min(1).max(255),
+        fileKey: z.string().min(1).max(500),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -24,7 +35,7 @@ export const candidateDocumentsRouter = router({
         input.candidateId,
         input.type,
         input.fileName,
-        input.fileSize,
+        input.fileKey,
       );
     }),
 

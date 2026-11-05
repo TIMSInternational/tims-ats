@@ -56,7 +56,12 @@ function normalizeStageName(name: string): string {
 export function getNextActionForStage(stageName: string, _stageType?: string | null): NextAction | null {
   if (!stageName) return null;
   const normalized = normalizeStageName(stageName);
-  return CANONICAL_STAGE_ACTIONS[normalized] ?? null;
+  const exact = CANONICAL_STAGE_ACTIONS[normalized];
+  if (exact) return exact;
+  // Every interview stage gets the interview action (A-10): the default pipeline names them "Entrevista con
+  // RR. HH." and "Entrevista final" (and older vacancies "Entrevista RRHH"), none of which is "Entrevistas".
+  if (/^entrevistas?\b/.test(normalized)) return CANONICAL_STAGE_ACTIONS.entrevistas ?? null;
+  return null;
 }
 
 export interface NextActionContext {
@@ -66,7 +71,13 @@ export interface NextActionContext {
   /** The candidate that was just moved. An offer is created from the candidate's profile (the offers
    *  list has no create button), so "Preparar la oferta" opens that profile when the candidate is known. */
   candidateId?: string | null;
+  /** The application that was just moved: "Programar la entrevista" then opens the candidate's profile with
+   *  the schedule form already filled for this application (A-10), instead of the empty interviews list. */
+  applicationId?: string | null;
 }
+
+/** Query parameter the Candidate 360 reads to open the schedule form for one of its applications. */
+export const SCHEDULE_QUERY_PARAM = 'schedule';
 
 /**
  * Resolves the destination of a suggested next action for the viewer, or drops it when following it
@@ -79,16 +90,20 @@ export function visibleNextAction(
   context: NextActionContext = {},
 ): NextAction | null {
   if (!action) return null;
-  const { can, candidateId } = context;
+  const { can, candidateId, applicationId } = context;
+  const profileHref = candidateId ? `/recruitment/candidates/${encodeURIComponent(candidateId)}` : null;
   const resolved =
-    action.labelKey === 'oferta' && candidateId
-      ? { ...action, href: `/recruitment/candidates/${encodeURIComponent(candidateId)}` }
-      : action;
+    action.labelKey === 'oferta' && profileHref
+      ? { ...action, href: profileHref }
+      : action.labelKey === 'entrevistas' && profileHref && applicationId
+        ? { ...action, href: `${profileHref}?${SCHEDULE_QUERY_PARAM}=${encodeURIComponent(applicationId)}` }
+        : action;
   if (isHrefHiddenInScope(resolved.href, scope)) return null;
   if (can) {
     const routeModule = moduleForPath(resolved.href);
     if (routeModule && !can(routeModule, 'read')) return null;
     if (resolved.labelKey === 'oferta' && !can('offer', 'create')) return null;
+    if (resolved.labelKey === 'entrevistas' && !can('interview', 'create')) return null;
   }
   return resolved;
 }

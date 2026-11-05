@@ -13,6 +13,9 @@ const boardApplicationSelect = (organizationId: string, vacancyId: string, visib
     status: true,
     source: true,
     appliedAt: true,
+    // The "Rechazados" / "Todos" board views say when and why a card was rejected (A-05).
+    rejectedAt: true,
+    rejectedReason: true,
     checklistProgress: true,
     movements: {
       orderBy: { movedAt: 'desc' as const },
@@ -76,6 +79,9 @@ const movementSelect = {
 // ---------------------------------------------------------------------------
 // Repository
 // ---------------------------------------------------------------------------
+
+/** audit_logs.action of the row written with every rejection; it is how "who rejected" is known (A-05). */
+export const APPLICATION_REJECTED_AUDIT_ACTION = 'application_rejected';
 
 /** A stage move targeted an application that is no longer active (hired or rejected since it was read). */
 export class ApplicationNotActiveError extends Error {
@@ -236,18 +242,45 @@ export const pipelineRepository = {
   // Conditional transition: only a STILL-active application is rejected, so a rejection can never
   // overwrite a hire (or a second rejection) that committed after the caller's read. Returns null when the
   // application was no longer active.
-  async rejectApplication(applicationId: string, reason: string, feedback?: string) {
-    const result = await db.application.updateMany({
-      where: { id: applicationId, status: 'active' },
-      data: {
-        status: 'rejected',
-        rejectedAt: new Date(),
-        rejectedReason: reason,
-        feedback,
-      },
+  //
+  // The applications table has no "rejected by" column, so who rejected is recorded as an audit row in the
+  // SAME transaction (A-05): the Candidate 360 reads it back to say who rejected and when. The row carries no
+  // PII and not the reason (that stays on the application).
+  async rejectApplication(
+    orgId: string,
+    applicationId: string,
+    actor: { userId: string; actorId: string },
+    reason: string,
+    feedback?: string,
+    candidateNotificationRequested = false,
+  ) {
+    return runTenantTransaction(orgId, async (tx) => {
+      const result = await tx.application.updateMany({
+        where: { id: applicationId, organizationId: orgId, status: 'active' },
+        data: {
+          status: 'rejected',
+          rejectedAt: new Date(),
+          rejectedReason: reason,
+          feedback,
+        },
+      });
+      if (result.count !== 1) return null;
+      await tx.auditLog.create({
+        data: {
+          organizationId: orgId,
+          userId: actor.userId,
+          actorId: actor.actorId,
+          action: APPLICATION_REJECTED_AUDIT_ACTION,
+          entity: 'application',
+          entityId: applicationId,
+          metadata: { candidateNotificationRequested },
+        },
+      });
+      return tx.application.findFirst({
+        where: { id: applicationId, organizationId: orgId },
+        select: applicationMutationSelect,
+      });
     });
-    if (result.count !== 1) return null;
-    return db.application.findFirst({ where: { id: applicationId }, select: applicationMutationSelect });
   },
 
   // Movement history

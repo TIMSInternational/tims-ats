@@ -2,6 +2,7 @@ export * from './eval360';
 export * from './currencies';
 export * from './application-consent';
 export * from './offer-status';
+export * from './candidate-documents';
 
 export const APP_NAME = 'TIMS Platform';
 export const APP_DOMAIN = 'tims.com';

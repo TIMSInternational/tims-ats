@@ -10,12 +10,18 @@ import { CreateOfferButton } from './create-offer-button';
 import { RejectCandidateModal } from '../../pipeline/reject-candidate-modal';
 import { useCan } from '../../../../../lib/permissions';
 import { candidateSourceLabel } from '../../../../../lib/candidate-labels';
+import { FIT_BANDS, fitBand, type FitBand } from '../../../../../lib/pipeline-fit';
+
+// The same FIT scale as the pipeline card, list, table and filter (A-23).
+const FIT_BORDER: Record<FitBand, string> = { high: 'border-green-500', medium: 'border-amber-500', low: 'border-red-500' };
+const FIT_TEXT: Record<FitBand, string> = { high: 'text-green-600', medium: 'text-amber-600', low: 'text-red-600' };
 
 function FitScoreCircle({ score }: { score: number }) {
   const { t } = useI18n();
-  const borderColor = score >= 70 ? 'border-green-500' : score >= 40 ? 'border-amber-500' : 'border-red-500';
-  const labelColor = score >= 70 ? 'text-green-600' : score >= 40 ? 'text-amber-600' : 'text-red-600';
-  const label = score >= 70 ? t.candidates.highFit : score >= 40 ? t.candidates.mediumFit : t.candidates.lowFit;
+  const band = fitBand(score);
+  const borderColor = FIT_BORDER[band];
+  const labelColor = FIT_TEXT[band];
+  const label = band === 'high' ? t.candidates.highFit : band === 'medium' ? t.candidates.mediumFit : t.candidates.lowFit;
 
   return (
     <div className="flex flex-col items-center shrink-0">
@@ -30,7 +36,14 @@ function FitScoreCircle({ score }: { score: number }) {
   );
 }
 
-export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }) {
+export function CandidateHeader({
+  candidate: c,
+  onScheduleInterview,
+}: {
+  candidate: CandidateDetail;
+  /** Opens the schedule form prefilled with this candidate (A-10); omitted without interview:create. */
+  onScheduleInterview?: () => void;
+}) {
   const { t } = useI18n();
   const [showStageModal, setShowStageModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -120,6 +133,9 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5-3L16.5 18m0 0L12 13.5m4.5 4.5V4.5" /></svg>
             {t.candidates.moveStage}
           </button>}
+          {activeApplications.length > 0 && onScheduleInterview && <button type="button" onClick={onScheduleInterview} className="flex items-center gap-2 border border-[#1F114C] text-[#1F114C] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#1F114C]/5 transition">
+            {t.candidates.scheduleInterview}
+          </button>}
           <CreateOfferButton candidateId={c.id} applications={activeApplications} />
           {activeApplications.length > 0 && canReject && <button type="button" onClick={() => setShowRejectModal(true)} className="flex items-center gap-2 border border-[#DD0C15] text-[#DD0C15] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-red-50 transition">
             {t.pipeline.reject}
@@ -137,7 +153,7 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
       )}
 
       {/* AI Recommendation Banner */}
-      {fitScore != null && fitScore >= 70 && (
+      {fitScore != null && fitScore >= FIT_BANDS.high && (
         <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-3 flex items-start gap-2">
           <svg className="w-4 h-4 text-teal-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
             <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
