@@ -2,7 +2,9 @@
   "accessDenied": {
     "title": "Acceso denegado",
     "message": "No tienes permiso para ver esta sección. Si crees que es un error, contacta a tu administrador.",
-    "back": "Volver al inicio"
+    "back": "Volver al inicio",
+    "pilotTitle": "No disponible en el piloto",
+    "pilotMessage": "Este módulo no está incluido en el piloto de tu organización."
   },
   "unassignedDashboard": {
     "title": "Tu acceso está pendiente",
@@ -27,18 +29,38 @@
     "employee": "Empleado"
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "dashboard": "Inicio",
     "search": "Buscar...",
     "notifications": "Notificaciones",
     "unread": "sin leer",
     "markAllRead": "Marcar todas como leídas",
     "viewAll": "Ver todas las notificaciones",
     "noNotifications": "No hay notificaciones",
-    "noNotificationsDesc": "Cuando algo importante pase, aparecerá aquí",
+    "noNotificationsDesc": "Aquí llegan los avisos generales. Tus tareas pendientes aparecen en Inicio.",
+    "notificationModules": {
+      "platform": "Plataforma",
+      "candidate": "Candidatos",
+      "vacancy": "Vacantes",
+      "pipeline": "Pipeline",
+      "interview": "Entrevistas",
+      "offer": "Ofertas",
+      "onboarding": "Onboarding",
+      "organization": "Organización",
+      "user": "Usuarios"
+    },
+    "notificationTypes": {
+      "critical": "Crítica",
+      "warning": "Advertencia",
+      "success": "Éxito",
+      "info": "Información"
+    },
     "helpCenter": "Centro de ayuda",
     "contactSupport": "Escribir a soporte",
     "collapse": "Colapsar",
     "expand": "Expandir",
+    "menu": "Menú",
+    "closeMenu": "Cerrar menú",
+    "language": "Idioma",
     "admin": "Administrador",
     "logout": "Cerrar sesión",
     "now": "Ahora",
@@ -78,11 +100,12 @@
     "monitoring": "Monitoreo",
     "integrations": "Integraciones",
     "billing": "Facturación",
+    "settings": "Configuración",
     "businessUnits": "Unidades de Negocio",
     "team": "Equipo",
     "branding": "Marca",
     "fitWeights": "Pesos FIT",
-    "commandCenter": "Command Center",
+    "commandCenter": "Inicio",
     "assessments": "Evaluaciones",
     "myHiring": "Mi Reclutamiento",
     "myTeam": "Mi Equipo",
@@ -118,7 +141,10 @@
   },
   "breadcrumbs": {
     "/dashboard": {
-      "label": "Dashboard"
+      "label": "Inicio"
+    },
+    "/platform": {
+      "label": "Plataforma"
     },
     "/platform/organizations": {
       "parent": "Plataforma",
@@ -172,6 +198,9 @@
       "parent": "Soporte",
       "label": "Soporte"
     },
+    "/recruitment": {
+      "label": "Reclutamiento"
+    },
     "/recruitment/pipeline": {
       "parent": "Reclutamiento",
       "label": "Pipeline"
@@ -200,9 +229,16 @@
       "parent": "Reclutamiento",
       "label": "Analytics"
     },
+    "/people": {
+      "label": "Personas"
+    },
     "/people/onboarding": {
       "parent": "Personas",
       "label": "Onboarding"
+    },
+    "/my-onboarding": {
+      "parent": "Mi Espacio",
+      "label": "Mi Onboarding"
     },
     "/people/performance": {
       "parent": "Personas",
@@ -239,6 +275,37 @@
     "/monitoring": {
       "parent": "Estrategia",
       "label": "Monitoreo Estratégico"
+    },
+    "/settings": {
+      "label": "Configuración"
+    },
+    "/settings/users": {
+      "parent": "Configuración",
+      "label": "Equipo"
+    },
+    "/settings/business-units": {
+      "parent": "Configuración",
+      "label": "Unidades de Negocio"
+    },
+    "/settings/branding": {
+      "parent": "Configuración",
+      "label": "Marca"
+    },
+    "/settings/fit-weights": {
+      "parent": "Configuración",
+      "label": "Pesos FIT"
+    },
+    "/settings/audit-log": {
+      "parent": "Configuración",
+      "label": "Registro de Auditoría"
+    },
+    "/settings/data-requests": {
+      "parent": "Configuración",
+      "label": "Solicitudes de titulares"
+    },
+    "/settings/billing": {
+      "parent": "Configuración",
+      "label": "Facturación"
     },
     "/settings/integrations": {
       "parent": "Configuración",
@@ -326,6 +393,7 @@
     "comingSoon": "próximamente",
     "loading": "Cargando...",
     "error": "Error inesperado",
+    "errorForbidden": "No tienes acceso a esta información.",
     "retry": "Reintentar",
     "confirm": "Confirmar",
     "cancel": "Cancelar",
@@ -661,6 +729,12 @@
     "viewInvoices": "Ver Facturas",
     "viewUsers": "Ver Usuarios",
     "features": "Funcionalidades",
+    "tabOverview": "Resumen",
+    "tabUsers": "Usuarios",
+    "tabBilling": "Facturación",
+    "tabFeatures": "Funcionalidades",
+    "tabAi": "IA",
+    "tabActivity": "Actividad",
     "selected": "seleccionados",
     "suspendSelected": "Suspender Seleccionados",
     "activateSelected": "Activar Seleccionados",
@@ -2197,7 +2271,7 @@
     "customerHealthSubtitle": "Señales de salud por organización"
   },
   "recruitingDashboard": {
-    "overviewMetrics": "Overview Metrics",
+    "overviewMetrics": "Resumen de reclutamiento",
     "todaysStatus": "Estado del día",
     "openVacancies": "Vacantes Abiertas",
     "critical": "críticas",

@@ -8,6 +8,7 @@ import { manifestFor, computeVisibleSections, resolveLabel, isNavItemActive } fr
 import { isNavFeatureOn } from '../../lib/nav/feature-flags';
 import { filterSectionsForScope } from '../../lib/launch-scope';
 import { SidebarCollapseToggle } from './sidebar-collapse-toggle';
+import { SidebarDrawerClose } from './sidebar-drawer-close';
 import { SidebarProfileMenu } from './sidebar-profile-menu';
 
 export function Icon({ name, className }: { name: string; className: string }) {
@@ -58,7 +59,7 @@ export function Icon({ name, className }: { name: string; className: string }) {
   }
 }
 
-export function Sidebar({ userInitials, displayName, expanded, onToggle, ready = true, avatar }: { userInitials: string; displayName: string; expanded: boolean; onToggle: () => void; ready?: boolean; avatar?: string | null }) {
+export function Sidebar({ userInitials, displayName, expanded, onToggle, onClose, ready = true, avatar }: { userInitials: string; displayName: string; expanded: boolean; onToggle: () => void; onClose?: () => void; ready?: boolean; avatar?: string | null }) {
   const pathname = usePathname();
   const { t } = useI18n();
   const { can, roles, roleLabel, isLoading } = usePermissions();
@@ -83,7 +84,12 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
             </div>
           )}
         </Link>
-        {expanded && <SidebarCollapseToggle expanded={expanded} onToggle={onToggle} collapseLabel={t.nav.collapse} expandLabel={t.nav.expand} />}
+        {expanded && (
+          <div className="hidden md:flex">
+            <SidebarCollapseToggle expanded={expanded} onToggle={onToggle} collapseLabel={t.nav.collapse} expandLabel={t.nav.expand} />
+          </div>
+        )}
+        {onClose && <SidebarDrawerClose onClose={onClose} label={t.nav.closeMenu} />}
       </div>
       {!expanded && (
         <div className="flex justify-center pb-2">
@@ -108,7 +114,7 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
                     key={item.href}
                     href={item.href}
                     title={!expanded ? resolveLabel(t, item.labelKey) : undefined}
-                    className={`group flex items-center gap-2 h-[var(--nav-item-h)] rounded-[var(--r-sm)] transition-colors ${
+                    className={`group flex items-center gap-2 h-10 md:h-[var(--nav-item-h)] rounded-[var(--r-sm)] transition-colors ${
                       expanded ? 'px-2' : 'justify-center'
                     } ${
                       isActive ? 'bg-[var(--chrome-accent-active)]' : 'hover:bg-[var(--chrome-hover)]'

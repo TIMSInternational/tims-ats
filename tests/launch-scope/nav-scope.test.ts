@@ -66,9 +66,9 @@ describe('nav filtering under the pilot scope', () => {
     for (const h of MUST_KEEP_SUPER_ADMIN) expect(hrefs).toContain(h);
   });
 
-  it('employee keeps a non-empty home (own onboarding) and committee keeps its panels', () => {
-    expect(visibleHrefs(MANIFESTS.employee.sections, 'pilot')).toEqual(['/my-onboarding']);
-    expect(visibleHrefs(MANIFESTS.committee.sections, 'pilot')).toEqual(['/recruitment/interviews']);
+  it('employee keeps a non-empty home (own onboarding) and committee keeps its panels, both with Inicio', () => {
+    expect(visibleHrefs(MANIFESTS.employee.sections, 'pilot')).toEqual(['/dashboard', '/my-onboarding']);
+    expect(visibleHrefs(MANIFESTS.committee.sections, 'pilot')).toEqual(['/dashboard', '/recruitment/interviews']);
   });
 
   it('is a no-op when the scope is full (behaviour unchanged)', () => {

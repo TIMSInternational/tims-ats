@@ -100,8 +100,8 @@ export default function FitWeightsPage() {
         ) : profiles.isError ? (
           <ErrorState onRetry={() => profiles.refetch()} />
         ) : (
-          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-            <table className="w-full text-[12px]">
+          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-[12px]">
               <thead>
                 <tr className="text-[#8B8B8B] border-b border-[#EDEDED]">
                   <th className="text-left pb-2 font-medium">{t.fitWeights.profileName}</th>
