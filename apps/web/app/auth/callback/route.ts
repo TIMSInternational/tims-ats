@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@tims/auth/server';
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
+import { provisionPlatformOwner } from '../../../lib/auth/platform-owner-provisioning';
 import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '@tims/api';
 import { isSafePortalNext, portalLoginPathFor } from '../../../lib/portal-auth';
 import { safeStaffRedirectPath } from '../../../lib/auth/staff-login-redirect';
@@ -25,11 +26,6 @@ function recoveryRedirect(origin: string, invitationToken: string | null, userId
     maxAge: 300,
   });
   return response;
-}
-
-async function isPlatformOwnerEmail(email: string): Promise<boolean> {
-  const entry = await db.platformOwnerEmail.findUnique({ where: { email } });
-  return !!entry;
 }
 
 export async function GET(request: Request) {
@@ -104,12 +100,14 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}${destination}`);
   }
 
-  // New user — check if platform owner
-  if (await isPlatformOwnerEmail(supabaseUser.email)) {
-    await db.user.create({
+  // New user — check if platform owner. The allowlist check and the insert share the removal's advisory
+  // lock (platform-owner access-2), so an address removed meanwhile is never provisioned.
+  const ownerEmail = supabaseUser.email;
+  const ownerCreated = await provisionPlatformOwner(ownerEmail, (tx) =>
+    tx.user.create({
       data: {
         supabaseUserId: supabaseUser.id,
-        email: supabaseUser.email,
+        email: ownerEmail,
         firstName:
           supabaseUser.user_metadata?.full_name?.split(' ')[0] ||
           supabaseUser.user_metadata?.name?.split(' ')[0] ||
@@ -122,7 +120,10 @@ export async function GET(request: Request) {
         isPlatformOwner: true,
         lastLoginAt: new Date(),
       },
-    });
+      select: { id: true },
+    }),
+  );
+  if (ownerCreated) {
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 

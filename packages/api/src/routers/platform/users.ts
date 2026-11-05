@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { csvRow, getAppUrl, ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
+import { csvRow, getAppUrl, ASSIGNABLE_STAFF_ROLES, platformOwnerEmailLockKey } from '@tims/shared';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -8,6 +8,7 @@ import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
 import { invalidatePermissionCache } from '../../lib/cache';
 import { recordPlatformAudit } from './platform-audit';
+import { memberAdminLockKey } from '../../services/member-admin.policy';
 
 const userListSelect = {
   id: true,
@@ -156,6 +157,9 @@ export const usersRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes quitar tu propio correo de la lista' });
       }
       const result = await db.$transaction(async (tx) => {
+        // Same lock as first-sign-in owner provisioning (apps/web lib/auth/platform-owner-provisioning): a
+        // sign-in racing this removal either finishes first (and is revoked below) or finds the address gone.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${platformOwnerEmailLockKey(input.email)}, 0))`;
         const entries = await tx.platformOwnerEmail.findMany({
           where: { email: { equals: input.email, mode: 'insensitive' } },
           select: { email: true },
@@ -366,6 +370,9 @@ export const usersRouter = router({
       // Delete-then-create in ONE transaction (D-14): run separately, a failure between the two left the
       // user with no role at all ("Tu acceso está pendiente"). The user must belong to the organization.
       const previousRoles = await db.$transaction(async (tx) => {
+        // Serialized with the tenant role writers (memberAdminLockKey): two overlapping replacements on one
+        // member could otherwise each delete before the other's insert and leave both roles.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${memberAdminLockKey(input.organizationId)}, 0))`;
         const user = await tx.user.findFirst({
           where: { id: input.userId, organizationId: input.organizationId },
           select: { id: true, isPlatformOwner: true, userRoles: { select: { role: { select: { slug: true } } } } },

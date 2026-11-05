@@ -8,6 +8,7 @@ import { invalidatePermissionCache } from '../lib/cache';
 import { logSecurityEvent } from '../access/security-audit';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
 import {
+  memberAdminLockKey,
   memberChangeRefusal,
   removesSuperAdmin,
   MEMBER_CHANGE_REFUSAL_MESSAGES,
@@ -246,6 +247,7 @@ export const userRouter = router({
       const organizationId = ctx.user.organizationId;
 
       const result = await runTenantTransaction(organizationId, async (tx) => {
+        await lockMemberAdmin(tx, organizationId);
         // IDOR: the member must be an active user of the caller's organization.
         const target = await tx.user.findFirst({
           where: { id: input.userId, organizationId, isActive: true, deletedAt: null },
@@ -316,6 +318,7 @@ export const userRouter = router({
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.user.organizationId;
       const result = await runTenantTransaction(organizationId, async (tx) => {
+        await lockMemberAdmin(tx, organizationId);
         const target = await tx.user.findFirst({
           where: { id: input.userId, organizationId, isActive: true, deletedAt: null },
           select: { id: true, isPlatformOwner: true, userRoles: { select: { role: { select: { slug: true } } } } },
@@ -353,6 +356,11 @@ export const userRouter = router({
       return { id: result.id, isActive: result.isActive };
     }),
 });
+
+/** Serializes member-admin writes in the organization (see memberAdminLockKey); released at commit. */
+async function lockMemberAdmin(tx: Prisma.TransactionClient, organizationId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${memberAdminLockKey(organizationId)}, 0))`;
+}
 
 /** Active super_admins of the organization other than `excludeUserId` (the last-admin guard). */
 function countOtherActiveSuperAdmins(tx: Prisma.TransactionClient, organizationId: string, excludeUserId: string): Promise<number> {

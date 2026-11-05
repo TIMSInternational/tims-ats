@@ -37,6 +37,7 @@ vi.mock('@tims/db', () => ({
   // carries the target lookup, the role lookup and the delete as well as the creates.
   runTenantTransaction: (_orgId: string, fn: (tx: unknown) => unknown) =>
     fn({
+      $executeRaw: () => Promise.resolve(1),
       user: { create: h.txUserCreate, findFirst: (args: unknown) => h.userFindFirst(args), count: () => Promise.resolve(1) },
       role: { findFirst: (args: unknown) => h.roleFindFirst(args) },
       userRole: { create: h.txUserRoleCreate, deleteMany: h.txUserRoleDeleteMany },

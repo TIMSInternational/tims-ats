@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
   auditCreate: vi.fn(),
   ownerFindFirst: vi.fn(),
   ownerFindMany: vi.fn(),
+  ownerFindUnique: vi.fn(),
   ownerCreate: vi.fn(),
   ownerDeleteMany: vi.fn(),
   userUpdateMany: vi.fn(),
@@ -27,6 +28,7 @@ const m = vi.hoisted(() => ({
   invUpdate: vi.fn(),
   resend: vi.fn(),
   invalidate: vi.fn(),
+  lock: vi.fn(),
   txCalls: 0,
 }));
 
@@ -36,6 +38,7 @@ vi.mock('@tims/db', () => {
     platformOwnerEmail: {
       findFirst: m.ownerFindFirst,
       findMany: m.ownerFindMany,
+      findUnique: m.ownerFindUnique,
       create: m.ownerCreate,
       deleteMany: m.ownerDeleteMany,
     },
@@ -43,6 +46,7 @@ vi.mock('@tims/db', () => {
     role: { findFirst: m.roleFindFirst },
     userRole: { deleteMany: m.userRoleDeleteMany, create: m.userRoleCreate },
     platformInvitation: { findUnique: m.invFindUnique, update: m.invUpdate },
+    $executeRaw: (strings: TemplateStringsArray, ...values: unknown[]) => m.lock(strings.join('?'), ...values),
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       m.txCalls += 1;
       return fn(db);
@@ -81,6 +85,7 @@ type Ctx = { user: { id: string; email: string; organizationId: string; isPlatfo
 
 import { usersRouter } from '../../packages/api/src/routers/platform/users';
 import { invitationsRouter } from '../../packages/api/src/routers/platform/invitations';
+import { provisionPlatformOwner } from '../../apps/web/lib/auth/platform-owner-provisioning';
 
 const t = initTRPC.context<Ctx>().create();
 const OWNER_ORG = '99999999-9999-4999-8999-999999999999';
@@ -136,6 +141,8 @@ describe('owner allowlist', () => {
     expect(result).toEqual({ email: 'old@nexadev.test', ownersRevoked: 1 });
     expect(m.txCalls).toBe(1);
     expect(m.ownerDeleteMany).toHaveBeenCalledWith({ where: { email: { in: ['old@nexadev.test'] } } });
+    // Same advisory lock as first-sign-in provisioning, keyed on the lower-cased address (Codex P1).
+    expect(m.lock).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_xact_lock'), 'platform-owner-email:old@nexadev.test');
     expect(m.userUpdateMany).toHaveBeenCalledWith({
       where: {
         email: { equals: 'Old@NexaDev.test', mode: 'insensitive' },
@@ -180,6 +187,24 @@ describe('owner allowlist', () => {
   });
 });
 
+describe('first-sign-in owner provisioning shares the removal lock (Codex P1)', () => {
+  it('locks on the same key, then creates only while the address is still listed', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'new-owner' });
+    m.ownerFindUnique.mockResolvedValue({ email: 'Owner2@NexaDev.test' });
+    await expect(provisionPlatformOwner('Owner2@NexaDev.test', create)).resolves.toEqual({ id: 'new-owner' });
+    expect(m.lock).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_xact_lock'), 'platform-owner-email:owner2@nexadev.test');
+    expect(m.lock.mock.invocationCallOrder[0]).toBeLessThan(m.ownerFindUnique.mock.invocationCallOrder[0]!);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('an address removed meanwhile is not provisioned', async () => {
+    const create = vi.fn();
+    m.ownerFindUnique.mockResolvedValue(null);
+    await expect(provisionPlatformOwner('gone@nexadev.test', create)).resolves.toBeNull();
+    expect(create).not.toHaveBeenCalled();
+  });
+});
+
 describe('changeOrgUserRole (D-14)', () => {
   it('replaces the role inside one transaction and audits the previous roles', async () => {
     m.roleFindFirst.mockResolvedValue({ id: 'role-1', slug: 'committee' });
@@ -190,6 +215,7 @@ describe('changeOrgUserRole (D-14)', () => {
     });
     await callerOf(usersRouter).changeOrgUserRole({ userId: USER, organizationId: ORG, roleSlug: 'committee' });
     expect(m.txCalls).toBe(1);
+    expect(m.lock).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_xact_lock'), `member-admin:${ORG}`);
     expect(m.userFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: USER, organizationId: ORG } }));
     expect(m.userRoleDeleteMany).toHaveBeenCalled();
     expect(m.userRoleCreate).toHaveBeenCalledWith({ data: { userId: USER, roleId: 'role-1', assignedBy: 'owner-1' } });

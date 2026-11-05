@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   updateUser: vi.fn(),
   auditCreate: vi.fn(),
   invalidate: vi.fn(),
+  lock: vi.fn(),
+  order: [] as string[],
 }));
 
 vi.mock('@tims/db', () => ({
@@ -32,8 +34,12 @@ vi.mock('@tims/db', () => ({
   tenantDb: {},
   runTenantTransaction: (_orgId: string, fn: (tx: unknown) => unknown) =>
     fn({
+      $executeRaw: (strings: TemplateStringsArray, ...values: unknown[]) => {
+        h.order.push('lock');
+        return h.lock(strings.join('?'), ...values);
+      },
       user: {
-        findFirst: (args: unknown) => h.findTarget(args),
+        findFirst: (args: unknown) => (h.order.push('read'), h.findTarget(args)),
         count: (args: unknown) => h.countSuperAdmins(args),
         update: (args: unknown) => h.updateUser(args),
       },
@@ -90,6 +96,7 @@ const auditActions = () => h.auditCreate.mock.calls.map(([a]) => (a as { data: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.order = [];
   h.findRole.mockResolvedValue({ id: 'role-id' });
   h.countSuperAdmins.mockResolvedValue(1);
   h.updateUser.mockResolvedValue({ id: TARGET_ID, isActive: false });
@@ -193,6 +200,21 @@ describe('user.assignRole (now replaces the role)', () => {
     expect(h.findTarget).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: TARGET_ID, organizationId: ORG_ID, isActive: true, deletedAt: null } }),
     );
+  });
+});
+
+describe('per-organization serialization (Codex P1: concurrent admins)', () => {
+  it('assignRole and deactivate take the organization member-admin lock before reading anything', async () => {
+    h.findTarget.mockResolvedValue(target(['recruiter']));
+    const caller = await makeCaller(['super_admin']);
+    await caller.user.assignRole({ userId: TARGET_ID, roleSlug: 'committee' });
+    await caller.user.deactivate({ userId: TARGET_ID });
+    expect(h.order.slice(0, 2)).toEqual(['lock', 'read']);
+    expect(h.order.filter((o) => o === 'lock')).toHaveLength(2);
+    for (const call of h.lock.mock.calls) {
+      expect(call[0]).toContain('pg_advisory_xact_lock');
+      expect(call[1]).toBe(`member-admin:${ORG_ID}`);
+    }
   });
 });
 

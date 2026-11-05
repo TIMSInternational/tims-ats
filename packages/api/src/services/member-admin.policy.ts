@@ -47,6 +47,18 @@ export function memberChangeRefusal(input: MemberChangeInput): MemberChangeRefus
   return null;
 }
 
+/**
+ * Advisory-lock key that serializes every role change and deactivation inside one organization. The
+ * last-super_admin count and the delete-then-create role replacement are read-then-write sequences: two
+ * admins deactivating each other, or two concurrent role changes on one member, would otherwise both pass
+ * their checks and commit (zero super_admins left, or two roles kept). Taken first in each write
+ * transaction, by the tenant writers (user.assignRole / user.deactivate) and the platform writer
+ * (platform.changeOrgUserRole) alike.
+ */
+export function memberAdminLockKey(organizationId: string): string {
+  return `member-admin:${organizationId}`;
+}
+
 /** Spanish message for each refusal (the API's user-facing error text). */
 export const MEMBER_CHANGE_REFUSAL_MESSAGES: Readonly<Record<MemberChangeRefusal, string>> = {
   self: 'No puedes cambiar tu propio rol ni desactivar tu propia cuenta.',
