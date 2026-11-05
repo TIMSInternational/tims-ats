@@ -24,7 +24,7 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
 
   const org = await db.organization.findUnique({
     where: { slug: orgSlug },
-    select: { id: true, name: true, isActive: true, settings: true },
+    select: { id: true, name: true, isActive: true, settings: true, billingEmail: true },
   });
   if (!org || !org.isActive) notFound();
 
@@ -32,6 +32,16 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
   const consentWithdrawnAt = candidate ? await findConsentWithdrawnAt(org.id, supabaseUser.email) : null;
 
   const displayName = candidate ? `${candidate.firstName} ${candidate.lastName}`.trim() : supabaseUser.email;
+  // "Mis datos": what the candidate may correct. The email is the session identity, shown read-only.
+  const profile = candidate
+    ? {
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        email: supabaseUser.email,
+        phone: candidate.phone ?? null,
+        location: candidate.location ?? null,
+      }
+    : null;
 
   return (
     <PortalDashboardShell
@@ -41,6 +51,9 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
       hasCandidate={candidate !== null}
       consentWithdrawnAt={consentWithdrawnAt}
       timeZone={orgSettingsTimeZone(org.settings)}
+      profile={profile}
+      // Only a real candidate of this org gets the contact (it may be the billing email): never any signed-in visitor.
+      contactEmail={candidate ? candidatePortalService.getContactEmail(org) : null}
     />
   );
 }
