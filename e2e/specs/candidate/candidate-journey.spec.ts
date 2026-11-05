@@ -248,13 +248,14 @@ test('recruiter moves the candidate to Oferta and drafts an offer', async () => 
   await dialog.getByLabel(/salario base/i).fill('96000000');
   const start = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   await dialog.getByLabel('Fecha Inicio').fill(start);
-  await dialog.getByLabel('Tipo Contrato').fill('Término indefinido');
+  // Contract type is a select of Costa Rican terms (portal.contractTypes), prefilled from the vacancy.
+  await dialog.getByLabel('Tipo Contrato').selectOption({ label: 'Plazo indefinido' });
   await dialog.getByRole('button', { name: 'Crear borrador de oferta' }).click();
   await expect(dialog).toBeHidden();
-  // On success the modal closes and THEN the app router-pushes to the offers list. Wait for that list to
-  // show the new offer before the next test navigates, so its page.goto cannot race the in-flight client
-  // navigation (a first attempt once found the list without the offer: CI run 36754356674, flaky).
-  await expect(page).toHaveURL(/\/recruitment\/offers$/);
+  // On success the modal closes and THEN the app router-pushes to the new draft (B-16:
+  // /recruitment/offers?offer=<id>). Wait for it to show the offer before the next test navigates, so its
+  // navigation cannot race the in-flight client push (CI run 36754356674 once found the list without it).
+  await expect(page).toHaveURL(/\/recruitment\/offers(\?offer=[^&]+)?$/);
   await expect(page.getByText(fullName()).first()).toBeVisible();
 });
 
