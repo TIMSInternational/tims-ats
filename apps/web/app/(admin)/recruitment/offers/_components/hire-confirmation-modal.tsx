@@ -46,7 +46,7 @@ export function HireConfirmationModal({
       >
         <p className="text-sm font-medium text-[#1F114C]">{candidateName}</p>
         <p className="mt-3 text-sm text-[#585858]">{t.offers.confirmHiringDescription}</p>
-        <dl className="mt-4 grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5 rounded-lg bg-[#F6F6F6] p-3 text-[13px]">
+        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg bg-[#F6F6F6] p-3 text-[13px]">
           <dt className="text-[#8B8B8B]">{t.offers.hireStartDate}</dt>
           <dd className="text-[#333]">{formatDate(startDate)}</dd>
           <dt className="text-[#8B8B8B]">{t.offers.hireAccessEmail}</dt>

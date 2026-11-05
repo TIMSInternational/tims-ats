@@ -276,6 +276,9 @@ describe('hire dialog (B-31)', () => {
     expect(screen.getByText('ana@example.test')).toBeTruthy();
     expect(screen.getByText(es.roles.employee)).toBeTruthy();
     expect(screen.getByText(es.offers.hireStartDate)).toBeTruthy();
+    // Two columns (label | value). Tailwind 4 needs `_` for the space: `[auto,1fr]` compiled to invalid CSS.
+    const facts = screen.getByText('ana@example.test').closest('dl');
+    expect(facts?.className).toContain('grid-cols-[auto_1fr]');
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });
