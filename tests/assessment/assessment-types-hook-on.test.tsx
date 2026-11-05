@@ -84,7 +84,7 @@ describe('assessment-type C# wrapper (flag on)', () => {
 
     // The C# handler's own 404 carries { message } — the id is not in the caller's org.
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ message: 'Tipo de evaluacion no encontrado' }), { status: 404 }),
+      new Response(JSON.stringify({ message: 'Tipo de evaluación no encontrado' }), { status: 404 }),
     );
     let caught: unknown;
     await act(async () => {

@@ -43,11 +43,11 @@ public static class NineBoxWriteEndpoints
     private const string CreateAction = "create";
     private const string UpdateAction = "update";
 
-    private const string SessionNotFoundMessage = "Sesion de calibracion no encontrada";
-    private const string NotMemberMessage = "Solo un miembro del comite puede votar";
+    private const string SessionNotFoundMessage = "Sesión de calibración no encontrada";
+    private const string NotMemberMessage = "Solo un miembro del comité puede votar";
     private const string EvaluatedNotFoundMessage = "Usuario evaluado no encontrado";
     private const string UserNotFoundMessage = "Usuario no encontrado";
-    private const string MemberConflictMessage = "El usuario ya es miembro de este comite";
+    private const string MemberConflictMessage = "El usuario ya es miembro de este comité";
     private const string MemberNotFoundMessage = "Miembro no encontrado";
 
     private const int MaxPeriodLength = 100;
@@ -93,7 +93,7 @@ public static class NineBoxWriteEndpoints
                     // A memberId is not a user in the caller's org (a cross-tenant reference RLS would not block on
                     // the member insert) → 400, nothing written.
                     CreateCalibrationOutcome.MemberNotInOrg => Results.BadRequest(
-                        new { error = "invalid_member", message = "Uno o mas miembros no pertenecen a esta organizacion" }),
+                        new { error = "invalid_member", message = "Uno o más miembros no pertenecen a esta organización" }),
                     _ => Results.Ok(result.Session),
                 };
             })

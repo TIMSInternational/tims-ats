@@ -352,7 +352,7 @@ public sealed class EngagementWriteTests(EngagementWriteFixture fixture)
         var ex = await Assert.ThrowsAsync<ScopedNotFoundException>(() => Probe().AssertScopedAsync(
             ScopedEntity.ActionPlan, EngagementWriteFixture.ApOutScope, AccessScope.Team, anchors,
             EngagementWriteFixture.OrgA, EngagementWriteFixture.TeamLeadId, CancellationToken.None));
-        Assert.Equal("Plan de accion no encontrado", ex.Message);
+        Assert.Equal("Plan de acción no encontrado", ex.Message);
     }
 
     [Fact]

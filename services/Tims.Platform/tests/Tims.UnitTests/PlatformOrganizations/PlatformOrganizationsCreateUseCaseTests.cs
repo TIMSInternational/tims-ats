@@ -272,7 +272,7 @@ public class PlatformOrganizationsCreateUseCaseTests
         Assert.Equal(org, notification.OrganizationId);
         Assert.Equal("success", notification.Type);
         // Unaccented "organizacion" is what the TS actually writes; asserting the misspelling is the point.
-        Assert.Equal("Nueva organizacion creada: Acme", notification.Title);
+        Assert.Equal("Nueva organización creada: Acme", notification.Title);
         Assert.Equal("platform", notification.Module);
         Assert.Equal("/platform/organizations", notification.ActionUrl);
         Assert.Null(notification.Message);
@@ -286,7 +286,7 @@ public class PlatformOrganizationsCreateUseCaseTests
         // organizations.ts:222 uses `org.name` — the value the row came back with.
         var notification = PlatformOrganizationsCreateUseCase.BuildCreatedNotification(Row(Guid.NewGuid(), "Stored Name"));
 
-        Assert.Equal("Nueva organizacion creada: Stored Name", notification.Title);
+        Assert.Equal("Nueva organización creada: Stored Name", notification.Title);
     }
 
     // ── the notify contract, over a recording repository ─────────────────────────────────────────

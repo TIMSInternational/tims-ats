@@ -63,7 +63,7 @@ const isAuthed = t.middleware(({ ctx, next }) => {
   if (!ctx.user) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
-      message: 'Debes iniciar sesion para acceder a este recurso',
+      message: 'Debes iniciar sesión para acceder a este recurso',
     });
   }
   return next({
@@ -84,7 +84,7 @@ const isCandidate = t.middleware(({ ctx, next }) => {
   if (!ctx.supabaseAuth) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
-      message: 'Debes iniciar sesion para acceder a tu portal',
+      message: 'Debe iniciar sesión para acceder a su portal',
     });
   }
   return next({
@@ -119,7 +119,7 @@ const withTenantContext = t.middleware(({ ctx, next }) => {
   if (!orgId) {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'No se encontro contexto de organizacion',
+      message: 'No se encontró contexto de organización',
     });
   }
   // Validate UUID format as defense-in-depth before it becomes the RLS GUC value.
@@ -284,7 +284,7 @@ export const candidateProcedure = publicProcedure.use(isCandidate);
 const requireApiKey = t.middleware(async ({ ctx, next, path, type }) => {
   const principal = await resolveApiKeyPrincipal(ctx.headers, new Date());
   if (!principal) {
-    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Clave de API invalida o expirada' });
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Clave de API inválida o expirada' });
   }
   // Per-KEY rate limit. publicProcedure's withRateLimit runs BEFORE this middleware
   // and keys on source IP (no apiKeyId yet); a paid integration surface needs per-key

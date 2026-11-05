@@ -68,8 +68,8 @@ function baseLayout(content: string, companyName: string, locale: 'es' | 'en' = 
   return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:${BRAND.surface};${FONT}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.surface};padding:32px 0;">
-<tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:${BRAND.white};border-radius:8px;overflow:hidden;border:1px solid ${BRAND.border};">
+<tr><td align="center" style="padding:0 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:${BRAND.white};border-radius:8px;overflow:hidden;border:1px solid ${BRAND.border};">
 <tr><td style="background:${BRAND.navy};padding:24px 32px;">
 <span style="color:${BRAND.white};font-size:20px;font-weight:700;${FONT}">${company}</span>
 </td></tr>
@@ -92,7 +92,7 @@ function paragraph(text: string): string {
 }
 
 function detailRow(label: string, value: string): string {
-  return `<tr><td style="padding:8px 12px;font-size:13px;color:${BRAND.muted};${FONT};border-bottom:1px solid ${BRAND.border};width:140px;">${label}</td><td style="padding:8px 12px;font-size:14px;color:${BRAND.text};${FONT};border-bottom:1px solid ${BRAND.border};font-weight:500;">${value}</td></tr>`;
+  return `<tr><td style="padding:8px 12px;font-size:13px;color:${BRAND.muted};${FONT};border-bottom:1px solid ${BRAND.border};width:32%;vertical-align:top;">${label}</td><td style="padding:8px 12px;font-size:14px;color:${BRAND.text};${FONT};border-bottom:1px solid ${BRAND.border};font-weight:500;word-break:break-word;overflow-wrap:anywhere;">${value}</td></tr>`;
 }
 
 function detailsTable(rows: string): string {
@@ -112,7 +112,7 @@ function signOff(contactEmail: string): string {
 // Builds the "Enlace" detail row with a guarded, escaped meeting URL.
 function meetingLinkRow(meetingUrl?: string): string {
   if (!meetingUrl) return '';
-  return detailRow('Enlace', `<a href="${safeUrl(meetingUrl)}" style="color:${BRAND.navy};">${esc(meetingUrl)}</a>`);
+  return detailRow('Enlace', `<a href="${safeUrl(meetingUrl)}" style="color:${BRAND.navy};word-break:break-all;">${esc(meetingUrl)}</a>`);
 }
 
 // Shared building blocks for the localized interview emails (interview-email-templates.ts).

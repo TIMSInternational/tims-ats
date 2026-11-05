@@ -40,8 +40,8 @@ public static class CompensationReadEndpoints
 {
     private const string SalaryAdjustmentEntity = "salaryAdjustment";
     private const string EmployeeCompensationEntity = "employeeCompensation";
-    private const string CompNotFoundMessage = "Compensacion no encontrada";
-    private const string SubjectForbiddenMessage = "No puedes ver la compensacion de este usuario";
+    private const string CompNotFoundMessage = "Compensación no encontrada";
+    private const string SubjectForbiddenMessage = "No puedes ver la compensación de este usuario";
 
     public static void MapCompensationReadEndpoints(this WebApplication app)
     {
@@ -275,7 +275,7 @@ public static class CompensationReadEndpoints
                 var result = await useCase.GetEmployeeCompAsync(
                     gate.Context!.OrganizationId, userId, compFields, cancellationToken);
 
-                // Missing row → 404 (the not-found semantic; TS throws a generic "Compensacion no encontrada").
+                // Missing row → 404 (the not-found semantic; TS throws a generic "Compensación no encontrada").
                 if (result is null)
                 {
                     return Results.NotFound(new { message = CompNotFoundMessage });

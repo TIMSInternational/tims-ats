@@ -18,7 +18,7 @@ function NotFoundContent() {
         careers.href && (
           <Link
             href={careers.href}
-            className="mt-6 inline-flex h-10 items-center rounded-lg bg-[#DD0C15] px-5 text-[13px] font-medium text-white transition-colors hover:bg-[#c00b13]"
+            className="mt-6 inline-flex h-10 items-center rounded-lg bg-[#1F114C] px-5 text-[13px] font-medium text-white transition-colors hover:bg-[#2a1866]"
           >
             {t.notFound.backToVacancies}
           </Link>
@@ -26,7 +26,7 @@ function NotFoundContent() {
       ) : (
         <Link
           href="/dashboard"
-          className="mt-6 inline-flex h-10 items-center rounded-lg bg-[#DD0C15] px-5 text-[13px] font-medium text-white transition-colors hover:bg-[#c00b13]"
+          className="mt-6 inline-flex h-10 items-center rounded-lg bg-[#1F114C] px-5 text-[13px] font-medium text-white transition-colors hover:bg-[#2a1866]"
         >
           {t.notFound.backToDashboard}
         </Link>

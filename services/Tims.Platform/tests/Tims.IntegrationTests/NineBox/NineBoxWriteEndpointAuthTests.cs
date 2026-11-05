@@ -214,7 +214,7 @@ public sealed class NineBoxWriteEndpointAuthTests(NineBoxWriteFixture fixture)
         Assert.Contains($"\"evaluatedUserId\":\"{NineBoxWriteFixture.E1Id}\"", body);
     }
 
-    // ── INV-1 (HTTP): a non-member org-admin → 403 "Solo un miembro del comite puede votar" ──
+    // ── INV-1 (HTTP): a non-member org-admin → 403 "Solo un miembro del comité puede votar" ──
     [Fact]
     public async Task SubmitVote_OrgAdmin_NonMember_Is403()
     {

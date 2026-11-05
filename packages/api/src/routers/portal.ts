@@ -268,10 +268,10 @@ export const portalRouter = router({
         // Explicit, prior data-processing authorization (Ley 1581). Required: a submission
         // without it — or against a superseded consent text — is rejected before any write.
         consentAccepted: z.literal(true, {
-          error: 'Debes autorizar el tratamiento de tus datos personales para aplicar.',
+          error: 'Debe autorizar el tratamiento de sus datos personales para postularse.',
         }),
         consentTextVersion: z.literal(APPLICATION_CONSENT_TEXT_VERSION, {
-          error: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.',
+          error: 'El texto de autorización cambió. Recargue la página e intente de nuevo.',
         }),
         // Locale the consent text was shown in; the server hashes ITS canonical copy (#313).
         consentLocale: z.enum(APPLICATION_CONSENT_LOCALES).default('es'),
@@ -281,7 +281,7 @@ export const portalRouter = router({
       if (!(await verifyCaptcha(input.captchaToken))) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Verificacion de seguridad fallida. Recarga la pagina e intenta de nuevo.',
+          message: 'Verificación de seguridad fallida. Recargue la página e intente de nuevo.',
         });
       }
 

@@ -108,7 +108,7 @@ export const performanceOkrsRouter = router({
         where: { id: input.userId, organizationId: ctx.user.organizationId },
       });
       if (userInOrg === 0) {
-        throw new Error('Usuario referenciado no encontrado en esta organizacion');
+        throw new Error('Usuario referenciado no encontrado en esta organización');
       }
 
       // The optional team is a tenant reference too: without this, an OKR could be
@@ -118,7 +118,7 @@ export const performanceOkrsRouter = router({
           where: { id: input.teamId, organizationId: ctx.user.organizationId },
         });
         if (teamInOrg === 0) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Equipo no encontrado en esta organizacion' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Equipo no encontrado en esta organización' });
         }
       }
 

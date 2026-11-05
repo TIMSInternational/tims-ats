@@ -9,7 +9,7 @@ export function requireOrgScope(access: AccessContext): void {
   if (access.scope !== 'organization' && access.scope !== 'company') {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'Disponible solo con alcance de organizacion',
+      message: 'Disponible solo con alcance de organización',
     });
   }
 }

@@ -227,7 +227,7 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
         Assert.All(notifications, n =>
         {
             Assert.Equal("warning", n.Type);
-            Assert.Equal("Organizacion suspendida: Notify Target", n.Title);
+            Assert.Equal("Organización suspendida: Notify Target", n.Title);
             Assert.Equal("platform", n.Module);
             Assert.Equal("/platform/organizations", n.ActionUrl);
         });

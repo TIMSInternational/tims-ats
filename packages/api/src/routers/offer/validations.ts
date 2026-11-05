@@ -44,7 +44,7 @@ export const offerValidationsRouter = router({
       });
 
       if (!validation) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Validacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Validación no encontrada' });
       }
 
       await assertScoped('offer', validation.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);
@@ -100,7 +100,7 @@ export const offerValidationsRouter = router({
       });
 
       if (!check) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Verificacion legal no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Verificación legal no encontrada' });
       }
 
       await assertScoped('offer', check.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);

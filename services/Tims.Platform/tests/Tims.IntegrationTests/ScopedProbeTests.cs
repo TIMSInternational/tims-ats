@@ -141,7 +141,7 @@ public sealed class ScopedProbeTests(AnchorProbeFixture fixture)
     {
         // CR2's holder (U4) is on team T2 (not U1's) → out of scope → NOT_FOUND.
         var ex = await AssertThrows(ScopedEntity.CriticalRole, AnchorProbeFixture.CR2, AnchorProbeFixture.OrgA);
-        Assert.Equal("Rol critico no encontrado", ex.Message);
+        Assert.Equal("Rol crítico no encontrado", ex.Message);
     }
 
     [Fact]

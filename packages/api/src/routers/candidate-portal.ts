@@ -14,7 +14,7 @@ const orgSlug = z
   .string()
   .min(1)
   .max(100)
-  .regex(/^[a-z0-9-]+$/, 'Slug invalido');
+  .regex(/^[a-z0-9-]+$/, 'Slug inválido');
 const faqQuestion = z.string().trim().min(3).max(800);
 
 export const candidatePortalRouter = router({

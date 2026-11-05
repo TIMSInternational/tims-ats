@@ -54,7 +54,7 @@ const ENTITIES: ReadonlySet<string> = new Set(SCOPED_ENTITIES);
 
 export async function scopeWhereFor(entity: ScopedEntity, access: AccessContext, userId: string): Promise<Fragment> {
   if (!ENTITIES.has(entity)) {
-    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Entidad sin politica de alcance: ${entity}` });
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Entidad sin política de alcance: ${entity}` });
   }
   const { scope, anchors } = access;
 
@@ -65,7 +65,7 @@ export async function scopeWhereFor(entity: ScopedEntity, access: AccessContext,
   }
   if (!anchors) {
     // Narrow scope but no anchor loader (org-less user) — fail closed, never unscoped.
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Sin contexto de organizacion para alcance restringido' });
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Sin contexto de organización para alcance restringido' });
   }
 
   const vacancyFragment: Fragment =

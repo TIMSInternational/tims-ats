@@ -28,7 +28,7 @@ function extractSigningToken(settings: unknown): string | null {
 export async function resolveOrg(orgSlug: string) {
   const org = await candidatePortalRepo.findOrgBySlug(orgSlug);
   if (!org || !org.isActive) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Organización no encontrada' });
   }
   return org;
 }
@@ -226,11 +226,11 @@ export const candidatePortalService = {
     return runWithTenant(org.id, async () => {
       const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
       if (!candidate) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
       }
       const application = await candidatePortalRepo.findApplicationDetail(org.id, candidate.id, applicationId);
       if (!application) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
       }
       return application;
     });
@@ -255,7 +255,7 @@ export const candidatePortalService = {
       ]);
 
       if (applicationId && !applications.some((app) => app.id === applicationId)) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
       }
 
       return buildCandidateFaqContext(org.name, candidate, applications, interviews, offers, applicationId);

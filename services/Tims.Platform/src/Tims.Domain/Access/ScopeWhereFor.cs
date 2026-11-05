@@ -9,7 +9,7 @@ namespace Tims.Domain.Access;
 public sealed class ScopeAnchorMissingException : Exception
 {
     public ScopeAnchorMissingException()
-        : base("Sin contexto de organizacion para alcance restringido") { }
+        : base("Sin contexto de organización para alcance restringido") { }
 }
 
 /// <summary>
@@ -161,8 +161,8 @@ public static class ScopeWhereFor
             ScopedEntity.LeaderCommitment => await SubjectAsync("leaderId"),
 
             // Enum-typed so unreachable, but keep the fail-closed default (matches the TS
-            // `Entidad sin politica de alcance` guard).
-            _ => throw new InvalidOperationException($"Entidad sin politica de alcance: {entity}"),
+            // `Entidad sin política de alcance` guard).
+            _ => throw new InvalidOperationException($"Entidad sin política de alcance: {entity}"),
         };
     }
 }

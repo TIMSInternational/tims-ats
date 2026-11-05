@@ -543,7 +543,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         {
             Assert.Equal("success", n.Type);
             // Unaccented "organizacion" is what the TS actually writes.
-            Assert.Equal("Nueva organizacion creada: Notificada", n.Title);
+            Assert.Equal("Nueva organización creada: Notificada", n.Title);
             Assert.Equal("platform", n.Module);
             Assert.Equal("/platform/organizations", n.ActionUrl);
         });

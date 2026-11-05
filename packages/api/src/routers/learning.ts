@@ -164,8 +164,8 @@ export const learningRouter = router({
           select: { id: true },
         }),
       ]);
-      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
-      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario activo no encontrado en esta organizacion' });
+      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organización' });
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario activo no encontrado en esta organización' });
 
       const enrollment = await db.enrollment.create({
         data: {
@@ -194,13 +194,13 @@ export const learningRouter = router({
         where: { id: input.courseId, organizationId: ctx.user.organizationId, isActive: true },
         select: { id: true },
       });
-      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
+      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organización' });
 
       const userCount = await db.user.count({
         where: { id: { in: uniqueTargets }, organizationId: ctx.user.organizationId, isActive: true },
       });
       if (userCount !== uniqueTargets.length) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas usuarios activos no pertenecen a esta organizacion' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o más usuarios activos no pertenecen a esta organización' });
       }
 
       // At narrow scope every target must be within the caller's subject set.
@@ -208,7 +208,7 @@ export const learningRouter = router({
       const { scope, anchors } = ctx.access;
       if (scope !== 'organization' && scope !== 'company') {
         if (!anchors) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sin contexto de organizacion para alcance restringido' });
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sin contexto de organización para alcance restringido' });
         }
         const subjects =
           scope === 'own'
@@ -219,7 +219,7 @@ export const learningRouter = router({
         const subjectSet = new Set(subjects);
         const outOfScope = uniqueTargets.filter((id) => !subjectSet.has(id));
         if (outOfScope.length > 0) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Uno o mas usuarios estan fuera de tu alcance' });
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Uno o más usuarios están fuera de tu alcance' });
         }
       }
 
@@ -303,7 +303,7 @@ export const learningRouter = router({
           where: { id: { in: uniqueCourseIds }, organizationId: ctx.user.organizationId, isActive: true },
         });
         if (courseCount !== uniqueCourseIds.length) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas cursos no pertenecen a esta organizacion' });
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o más cursos no pertenecen a esta organización' });
         }
       }
       const path = await db.learningPath.create({
@@ -336,7 +336,7 @@ export const learningRouter = router({
     .query(() => {
       throw new TRPCError({
         code: 'NOT_IMPLEMENTED',
-        message: 'Las rutas basadas en brechas con IA aun no estan disponibles (agente pendiente).',
+        message: 'Las rutas basadas en brechas con IA aún no están disponibles (agente pendiente).',
       });
     }),
 
@@ -436,7 +436,7 @@ export const learningRouter = router({
     .query(() => {
       throw new TRPCError({
         code: 'NOT_IMPLEMENTED',
-        message: 'Las recomendaciones de cursos con IA aun no estan disponibles (agente pendiente).',
+        message: 'Las recomendaciones de cursos con IA aún no están disponibles (agente pendiente).',
       });
     }),
 

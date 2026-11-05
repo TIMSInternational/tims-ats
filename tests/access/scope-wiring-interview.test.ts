@@ -46,7 +46,7 @@ describe('interview module scope wiring', () => {
     // codex round-3: omitted applicationId must auto-resolve the binding
     // application (persisted) and fail closed for narrow scopes when none exists
     expect(block).toMatch(/data\.applicationId\s*=\s*boundApp\.id/);
-    expect(block).toMatch(/El candidato no tiene aplicacion a esta vacante/);
+    expect(block).toMatch(/El candidato no tiene aplicación a esta vacante/);
   });
 
   it('no scope-fragment spreads', () => {

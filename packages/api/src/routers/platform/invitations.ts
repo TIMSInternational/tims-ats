@@ -271,7 +271,7 @@ export const invitationsRouter = router({
       metadata: { outcome: 'error' in result ? result.error : 'sent', surface: 'platform' },
     });
     if ('error' in result) {
-      if (result.error === 'not_found') throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+      if (result.error === 'not_found') throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitación no encontrada' });
       if (result.error === 'delivery_failed')
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -287,9 +287,9 @@ export const invitationsRouter = router({
       where: { id: input.id },
       select: { id: true, status: true, organizationId: true },
     });
-    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitación no encontrada' });
     if (existing.status === 'accepted')
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede revocar una invitacion aceptada' });
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede revocar una invitación aceptada' });
 
     const revoked = await db.platformInvitation.update({
       where: { id: input.id },
@@ -385,7 +385,7 @@ export const invitationsRouter = router({
         organization: { select: { id: true, name: true, slug: true } },
       },
     });
-    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitación no encontrada' });
 
     // A public read must not race a revoke or resend and overwrite its terminal/new expiry state.
     // Expiry is derived for this response; administrative writers persist lifecycle transitions.
@@ -411,7 +411,7 @@ export const invitationsRouter = router({
     void input;
     throw new TRPCError({
       code: 'PRECONDITION_FAILED',
-      message: 'Completa la configuracion de tu cuenta desde el enlace de invitacion.',
+      message: 'Completa la configuración de tu cuenta desde el enlace de invitación.',
     });
   }),
 

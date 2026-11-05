@@ -124,7 +124,7 @@ describe('portal.applyToVacancy — CAPTCHA verification', () => {
     vi.stubEnv('TURNSTILE_SECRET_KEY', 'test-secret');
     const caller = await makeCaller();
 
-    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow('Verificacion de seguridad fallida');
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow('Verificación de seguridad fallida');
     expect(dbMocks.candidate.findMany).not.toHaveBeenCalled();
   });
 
@@ -165,7 +165,7 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
     const caller = await makeCaller();
 
     await expect(caller.portal.applyToVacancy({ ...baseApplyInput, consentAccepted: false })).rejects.toThrow(
-      'Debes autorizar el tratamiento',
+      'Debe autorizar el tratamiento',
     );
     expect(dbMocks.candidate.findMany).not.toHaveBeenCalled();
   });

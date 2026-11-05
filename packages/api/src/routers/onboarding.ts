@@ -64,7 +64,7 @@ async function assertUsersInOrg(orgId: string, userIds: (string | null | undefin
   if (count !== ids.length) {
     throw new TRPCError({
       code: 'NOT_FOUND',
-      message: 'Usuario referenciado no encontrado en esta organizacion',
+      message: 'Usuario referenciado no encontrado en esta organización',
     });
   }
 }

@@ -278,15 +278,15 @@ public sealed class PlatformDashboardReadEndpointAuthTests(PlatformDashboardRead
         var m0 = _fixture.MonthStartUtc;
         var expected = new (Guid Id, string Type, string Title, string Meta, DateTime Instant)[]
         {
-            (PlatformDashboardReadFixture.OrgH, "org_created", "Nueva organizacion: Pied Piper", "enterprise", m0.AddMinutes(45).AddMilliseconds(123)),
+            (PlatformDashboardReadFixture.OrgH, "org_created", "Nueva organización: Pied Piper", "enterprise", m0.AddMinutes(45).AddMilliseconds(123)),
             (PlatformDashboardReadFixture.UserNewest, "user_created", "Nuevo usuario: Nina Newest", "newest@acme.test", m0.AddMinutes(45).AddMilliseconds(123)),
-            (PlatformDashboardReadFixture.OrgG, "org_created", "Nueva organizacion: Hooli", "professional", m0.AddMinutes(44)),
+            (PlatformDashboardReadFixture.OrgG, "org_created", "Nueva organización: Hooli", "professional", m0.AddMinutes(44)),
             (PlatformDashboardReadFixture.UserSecondOwner, "platform_owner", "Nuevo usuario: Pat Platform", "owner2@tims.test", m0.AddMinutes(40)),
-            (PlatformDashboardReadFixture.OrgF, "org_created", "Nueva organizacion: Wayne Enterprises", "professional", m0.AddMinutes(35)),
+            (PlatformDashboardReadFixture.OrgF, "org_created", "Nueva organización: Wayne Enterprises", "professional", m0.AddMinutes(35)),
             (PlatformDashboardReadFixture.UserCurrent, "user_created", "Nuevo usuario: Carlos Current", "current@acme.test", m0.AddMinutes(30)),
-            (PlatformDashboardReadFixture.OrgE, "org_created", "Nueva organizacion: Stark Industries", "professional", m0.AddMinutes(25)),
+            (PlatformDashboardReadFixture.OrgE, "org_created", "Nueva organización: Stark Industries", "professional", m0.AddMinutes(25)),
             (PlatformDashboardReadFixture.UserGhost, "user_created", "Nuevo usuario: Gus Ghost", "ghost@globex.test", m0.AddMinutes(20)),
-            (PlatformDashboardReadFixture.OrgD, "org_created", "Nueva organizacion: Umbrella Corp", "starter", m0.AddMinutes(15)),
+            (PlatformDashboardReadFixture.OrgD, "org_created", "Nueva organización: Umbrella Corp", "starter", m0.AddMinutes(15)),
             (PlatformDashboardReadFixture.UserLater, "user_created", "Nuevo usuario: Lena Later", "later@acme.test", m0.AddMinutes(10)),
         };
 

@@ -1243,7 +1243,8 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       rbacDenyStatus: 403,
       // Prove hr_admin's 403 is specifically NotMember (it passed the grant gate → the membership check
       // is what denied it) — self-substantiating the anchor + implicitly proving hr_admin's :update resolved.
-      denyBodyIncludes: { hr_admin: 'miembro del comite' },
+      // Accent-tolerant prefix: matches "comité" (current) and "comite" (an image deployed before the accent fix).
+      denyBodyIncludes: { hr_admin: 'miembro del comit' },
       // The no-org_id tenancy-quirk vector: an org-A session + an org-B EVALUATED user. RLS WITH CHECK
       // validates only the session org, so the in-org evaluated check is app-code — probe it (super IS a
       // member of voteA, so control reaches the evaluated-in-org check → EvaluatedNotFound 404).
@@ -1668,7 +1669,7 @@ export interface PlatformOrganizationsCreateResolved extends WriteResolvedBase {
 // THE ONE RESIDUAL FEDERICO SHOULD KNOW ABOUT, because it cannot be engineered away: the platform-owner
 // notify fan-out is UNCONDITIONAL in both stacks (organizations.ts:220 has no branch and no catch;
 // PlatformOwnerNotifier queries an unfiltered `WHERE is_platform_owner`). Every run therefore puts one
-// "Nueva organizacion creada: …" notification in every REAL platform owner's bell. The cleanup deletes
+// "Nueva organización creada: …" notification in every REAL platform owner's bell. The cleanup deletes
 // them on the next run; it cannot prevent them. This is the same cost the `organization` surface above
 // deliberately AVOIDED by sending `{ suspend: false }` — create has no equivalent lever. Judged worth it
 // against a domain that is otherwise unverifiable by anyone; veto by deleting this surface and replacing

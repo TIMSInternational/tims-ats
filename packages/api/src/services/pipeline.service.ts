@@ -94,7 +94,7 @@ export const pipelineService = {
   // blocking.
   async moveCandidate(orgId: string, userId: string, applicationId: string, toStageId: string, reason?: string) {
     const application = await pipelineRepository.findApplication(orgId, applicationId);
-    if (!application) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
+    if (!application) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicación no encontrada' });
 
     const targetStage = await pipelineRepository.stageExistsForVacancy(toStageId, application.vacancyId);
     if (!targetStage)
@@ -128,7 +128,7 @@ export const pipelineService = {
     const uniqueIds = [...new Set(applicationIds)];
     const inScopeCount = await pipelineRepository.countApplicationsInScope(orgId, uniqueIds, scopeWhere);
     if (inScopeCount !== uniqueIds.length) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicación no encontrada' });
     }
 
     const applications = await pipelineRepository.findApplications(orgId, uniqueIds);
@@ -159,7 +159,7 @@ export const pipelineService = {
   ) {
     const application = await pipelineRepository.findApplication(orgId, applicationId);
     if (!application || application.status !== 'active') {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada o ya fue rechazada' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicación no encontrada o ya fue rechazada' });
     }
     const rejected = await pipelineRepository.rejectApplication(
       orgId,
@@ -178,7 +178,7 @@ export const pipelineService = {
   // Movement history
   async getMovementHistory(orgId: string, applicationId: string) {
     const application = await pipelineRepository.findApplication(orgId, applicationId);
-    if (!application) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
+    if (!application) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicación no encontrada' });
     return pipelineRepository.getMovementHistory(applicationId);
   },
 
@@ -201,7 +201,7 @@ export const pipelineService = {
   ) {
     const entry = { completed, completedBy: userId, completedAt: new Date().toISOString() };
     const updated = await pipelineRepository.setChecklistItem(orgId, applicationId, stageId, itemKey, entry);
-    if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
+    if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicación no encontrada' });
     return updated;
   },
 };

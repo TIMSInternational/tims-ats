@@ -27,7 +27,7 @@ export async function buildAccessForUser(
       // org. Refuse rather than run on the privileged unscoped client.
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'Selecciona o impersona una organizacion para operar datos de tenant',
+        message: 'Selecciona o impersona una organización para operar datos de tenant',
       });
     }
     // super_admin returns roles as-is (may include non-contributing roles, unlike

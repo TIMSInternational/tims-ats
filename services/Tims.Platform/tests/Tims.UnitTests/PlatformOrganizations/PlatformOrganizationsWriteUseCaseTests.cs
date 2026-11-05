@@ -195,7 +195,7 @@ public class PlatformOrganizationsWriteUseCaseTests
         Assert.Equal("warning", notification.Type);
         // Unaccented "Organizacion" is what the TS actually writes; correcting the spelling here would be a
         // silent content change in a user-visible string.
-        Assert.Equal("Organizacion suspendida: Acme", notification.Title);
+        Assert.Equal("Organización suspendida: Acme", notification.Title);
         Assert.Equal("platform", notification.Module);
         Assert.Equal("/platform/organizations", notification.ActionUrl);
         Assert.Null(notification.Message);

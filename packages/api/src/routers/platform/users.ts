@@ -259,7 +259,7 @@ export const usersRouter = router({
       if (!supabaseUrl || !serviceKey) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Servicio de autenticacion no configurado',
+          message: 'Servicio de autenticación no configurado',
         });
       }
       const { createClient } = await import('@supabase/supabase-js');
@@ -314,14 +314,14 @@ export const usersRouter = router({
       if (!user.supabaseUserId) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'El usuario no tiene una sesion de autenticacion activa',
+          message: 'El usuario no tiene una sesión de autenticación activa',
         });
       }
       // supabaseUserId is stored as plain String (not @db.Uuid). Validate the
       // format before it becomes the `::uuid`-cast bind value, so a malformed
       // record fails cleanly here instead of as a raw Postgres cast 500.
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.supabaseUserId)) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ID de autenticacion malformado' });
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ID de autenticación malformado' });
       }
 
       // Parameterized ($executeRaw, not Unsafe) — deletes every session row for the

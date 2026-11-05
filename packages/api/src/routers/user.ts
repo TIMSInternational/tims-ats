@@ -190,7 +190,7 @@ export const userRouter = router({
       if (existing) {
         throw new TRPCError({
           code: 'CONFLICT',
-          message: 'Ya existe un usuario con este correo en la organizacion',
+          message: 'Ya existe un usuario con este correo en la organización',
         });
       }
 

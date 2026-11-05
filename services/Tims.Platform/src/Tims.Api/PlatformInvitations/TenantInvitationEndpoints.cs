@@ -122,7 +122,7 @@ public static class TenantInvitationEndpoints
             return result.Outcome switch
             {
                 InvitationResendOutcome.Sent => Results.Ok(result.Response),
-                InvitationResendOutcome.NotFound => Results.NotFound(new { message = "Invitacion no encontrada" }),
+                InvitationResendOutcome.NotFound => Results.NotFound(new { message = "Invitación no encontrada" }),
                 InvitationResendOutcome.InvalidStatus => Results.BadRequest(new { message = "Cannot resend accepted or revoked invitation" }),
                 InvitationResendOutcome.ChangedDuringDelivery => Results.Conflict(new { message = "Invitation changed during delivery; refresh before resending" }),
                 InvitationResendOutcome.StateUnconfirmed => Results.Json(new { message = "Email accepted but invitation status is unconfirmed; refresh before resending" }, statusCode: 503),
@@ -151,7 +151,7 @@ public static class TenantInvitationEndpoints
             return outcome switch
             {
                 TenantInvitationRevokeOutcome.Revoked => Results.Ok(new TenantInvitationRevokeResponse(invitationId, "revoked")),
-                TenantInvitationRevokeOutcome.NotFound => Results.NotFound(new { message = "Invitacion no encontrada" }),
+                TenantInvitationRevokeOutcome.NotFound => Results.NotFound(new { message = "Invitación no encontrada" }),
                 _ => Results.BadRequest(new { message = "Cannot revoke an accepted or revoked invitation" }),
             };
         }).RequireAuthorization().Produces<TenantInvitationRevokeResponse>().Produces(400).Produces(401).Produces(403).Produces(404)

@@ -33,7 +33,7 @@ public static class FitEngineReadEndpoints
     private const string NoFitScoreMessage = "No hay FIT score calculado para este candidato";
 
     private const string ExplainNotImplementedMessage =
-        "explainFit no esta portado: la narrativa viene del pipeline de IA (Bedrock) que solo existe en TS";
+        "explainFit no está portado: la narrativa viene del pipeline de IA (Bedrock) que solo existe en TS";
 
     public static void MapFitEngineReadEndpoints(this WebApplication app)
     {

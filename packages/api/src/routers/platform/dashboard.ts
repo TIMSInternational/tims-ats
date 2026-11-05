@@ -361,7 +361,7 @@ export const dashboardRouter = router({
     const activity: Array<{ id: string; type: string; title: string; timestamp: Date; meta?: string }> = [];
 
     for (const org of recentOrgs) {
-      activity.push({ id: org.id, type: 'org_created', title: `Nueva organizacion: ${org.name}`, timestamp: org.createdAt, meta: org.plan });
+      activity.push({ id: org.id, type: 'org_created', title: `Nueva organización: ${org.name}`, timestamp: org.createdAt, meta: org.plan });
     }
     for (const user of recentUsers) {
       activity.push({ id: user.id, type: user.isPlatformOwner ? 'platform_owner' : 'user_created', title: `Nuevo usuario: ${user.firstName} ${user.lastName}`, timestamp: user.createdAt, meta: user.email });

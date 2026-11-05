@@ -47,23 +47,23 @@ public sealed class BillingSelfServeException(int statusCode, string message) : 
     public int StatusCode { get; } = statusCode;
 
     public static BillingSelfServeException NotConfigured() =>
-        new(412, "El pago con Stripe no esta configurado.");
+        new(412, "El pago con Stripe no está configurado.");
 
     public static BillingSelfServeException PlanUnavailable() =>
         new(412, "Plan no disponible.");
 
     public static BillingSelfServeException OrgNotFound() =>
-        new(404, "Organizacion no encontrada.");
+        new(404, "Organización no encontrada.");
 
     public static BillingSelfServeException CheckoutConflict() =>
-        new(409, "Ya tienes una suscripcion activa. Administra tu plan desde el portal de facturacion.");
+        new(409, "Ya tienes una suscripción activa. Administra tu plan desde el portal de facturación.");
 
     public static BillingSelfServeException CheckoutUrlMissing() =>
-        new(500, "No se pudo crear la sesion de pago.");
+        new(500, "No se pudo crear la sesión de pago.");
 
     public static BillingSelfServeException NoStripeCustomer() =>
-        new(412, "Aun no tienes una cuenta de facturacion de Stripe.");
+        new(412, "Aún no tienes una cuenta de facturación de Stripe.");
 
     public static BillingSelfServeException NoActiveSubscription() =>
-        new(412, "No hay una suscripcion de Stripe activa para cancelar.");
+        new(412, "No hay una suscripción de Stripe activa para cancelar.");
 }

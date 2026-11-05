@@ -13,8 +13,8 @@ import { TRPC_ERROR_CODES_BY_KEY } from '@trpc/server/rpc';
  *   messages are written for the user.
  */
 
-export const GENERIC_INTERNAL_ERROR_MESSAGE = 'Ocurrio un error inesperado. Intenta de nuevo mas tarde.';
-export const GENERIC_NOT_FOUND_MESSAGE = 'No se encontro el recurso solicitado.';
+export const GENERIC_INTERNAL_ERROR_MESSAGE = 'Ocurrió un error inesperado. Intenta de nuevo más tarde.';
+export const GENERIC_NOT_FOUND_MESSAGE = 'No se encontró el recurso solicitado.';
 
 type Env = Readonly<Record<string, string | undefined>>;
 

@@ -28,7 +28,7 @@ public sealed class InvitationResendUseCase(IInvitationResendRepository reposito
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
         var timeZone = await InvitationTimeZone.FindAsync(repository, invitation.OrganizationId, ct);
         var accepted = await sender.SendEmailAsync(invitation.Email,
-            $"Recordatorio: Invitacion pendiente - {organization}",
+            $"Recordatorio: Invitación pendiente - {organization}",
             InvitationEmail.Render(organization, null, url, expiresAt, reminder: true, timeZone: timeZone), ct);
         if (!accepted) return new(InvitationResendOutcome.DeliveryUnconfirmed, invitation.OrganizationId);
 

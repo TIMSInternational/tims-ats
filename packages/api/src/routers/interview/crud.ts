@@ -192,7 +192,7 @@ export const interviewCrudRouter = router({
         where: { id: { in: uniqueEvaluators }, organizationId: orgId },
       });
       if (evaluatorCount !== uniqueEvaluators.length) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado en esta organizacion' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado en esta organización' });
       }
       if (input.applicationId) {
         await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
@@ -209,7 +209,7 @@ export const interviewCrudRouter = router({
         if (!bound) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'La aplicacion no corresponde al candidato y la vacante indicados',
+            message: 'La aplicación no corresponde al candidato y la vacante indicados',
           });
         }
       } else {
@@ -227,7 +227,7 @@ export const interviewCrudRouter = router({
         if (boundApp) {
           data.applicationId = boundApp.id;
         } else if (ctx.access.scope !== 'organization' && ctx.access.scope !== 'company') {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene aplicacion a esta vacante' });
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene aplicación a esta vacante' });
         }
       }
 
@@ -400,7 +400,7 @@ export const interviewCrudRouter = router({
         });
       } catch (err) {
         if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
-          throw new TRPCError({ code: 'CONFLICT', message: 'El evaluador ya esta asignado a esta entrevista' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'El evaluador ya está asignado a esta entrevista' });
         }
         throw err;
       }

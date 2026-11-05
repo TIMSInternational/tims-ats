@@ -11,6 +11,6 @@ export async function assertUsersInOrg(organizationId: string, userIds: readonly
   });
   if (count !== ids.length) {
     // The same response covers foreign, inactive, deleted, and nonexistent ids.
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario referenciado no encontrado en esta organizacion' });
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario referenciado no encontrado en esta organización' });
   }
 }

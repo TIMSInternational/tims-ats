@@ -127,14 +127,14 @@ export const aiInterviewRouter = router({
     .mutation(async ({ input }) => {
       const session = await aiInterviewRepository.findSessionByCandidateToken(input.candidateToken);
       if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de entrevista invalido' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de entrevista inválido' });
       }
 
       // Consent can only be recorded for sessions that have not yet started.
       if (session.status !== AiInterviewStatus.pending) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'No se puede registrar consentimiento en una sesion ya iniciada',
+          message: 'No se puede registrar consentimiento en una sesión ya iniciada',
         });
       }
 
@@ -202,14 +202,14 @@ export const aiInterviewRouter = router({
     if (!isElevenLabsConfigured()) {
       throw new TRPCError({
         code: 'SERVICE_UNAVAILABLE',
-        message: 'El servicio de entrevista de voz no esta disponible en este momento',
+        message: 'El servicio de entrevista de voz no está disponible en este momento',
       });
     }
 
     // Gate 2: Token must resolve to a session.
     const session = await aiInterviewRepository.findSessionByCandidateToken(input.candidateToken);
     if (!session) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de entrevista invalido' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de entrevista inválido' });
     }
 
     // Feature gate: AI Voice Interview must be enabled for this org (paid add-on).
@@ -219,7 +219,7 @@ export const aiInterviewRouter = router({
     if (session.status !== AiInterviewStatus.pending) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'Esta sesion de entrevista ya fue iniciada o ha finalizado',
+        message: 'Esta sesión de entrevista ya fue iniciada o ha finalizado',
       });
     }
 
@@ -283,7 +283,7 @@ export const aiInterviewRouter = router({
     if (!agentId) {
       throw new TRPCError({
         code: 'SERVICE_UNAVAILABLE',
-        message: 'El agente de voz no esta configurado',
+        message: 'El agente de voz no está configurado',
       });
     }
 
