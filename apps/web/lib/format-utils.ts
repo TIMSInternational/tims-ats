@@ -1,11 +1,14 @@
 import { normalizeCurrencyCode } from '@tims/shared';
+import { TENANT_LOCALE } from './tenant-locale';
 
-const ZERO_DECIMAL_CURRENCIES = new Set(['BIF', 'CLP', 'COP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF']);
+// Shown without minor units. CRC included: colones are quoted without céntimos (as on the candidate pages).
+const ZERO_DECIMAL_CURRENCIES = new Set(['BIF', 'CLP', 'COP', 'CRC', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF']);
 
+/** Tenant-locale money: "₡1 000 000" for colones, "USD 1 234,50" for dollars (never "$1,234.50"). */
 export function formatCurrency(value: number, currency = 'USD', decimals?: number): string {
   const normalizedCurrency = normalizeCurrencyCode(currency);
   const fractionDigits = decimals ?? (ZERO_DECIMAL_CURRENCIES.has(normalizedCurrency) ? 0 : 2);
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat(TENANT_LOCALE, {
     style: 'currency',
     currency: normalizedCurrency,
     minimumFractionDigits: fractionDigits,

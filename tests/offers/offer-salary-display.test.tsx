@@ -68,6 +68,8 @@ import OfferSignPage from '../../apps/web/app/offers/sign/[token]/page';
 import { DashboardOffer } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-offer';
 
 const labels = { perYear: 'año', perMonth: 'mes' };
+// es-CR (the tenant locale) groups digits with a non-breaking space; so does the code-to-digits gap.
+const money = (text: string) => text.replace(/ /g, '\u00a0');
 
 describe('offer salary semantics', () => {
   it('converts a monthly amount to the stored annual base salary', () => {
@@ -84,15 +86,24 @@ describe('offer salary semantics', () => {
   });
 
   it('formats with the ISO currency code and period, never a bare "$"', () => {
-    expect(formatMoneyCode(96_000_000, 'COP')).toBe('COP 96.000.000');
-    expect(formatMoneyCode(96_000_000, ' cop ')).toBe('COP 96.000.000');
+    expect(formatMoneyCode(96_000_000, 'COP')).toBe(money('COP 96 000 000'));
+    expect(formatMoneyCode(96_000_000, ' cop ')).toBe(money('COP 96 000 000'));
     // A non-ISO legacy value is shown verbatim, never replaced by USD.
-    expect(formatMoneyCode(96_000_000, 'COP$')).toBe('COP$ 96.000.000');
+    expect(formatMoneyCode(96_000_000, 'COP$')).toBe(`COP$ ${money('96 000 000')}`);
     expect(formatMoneyCode(96_000_000, 'COP$')).not.toContain('USD');
-    expect(formatMoneyCode(1_500, '')).toBe('1.500');
+    expect(formatMoneyCode(1_500, '')).toBe(money('1 500'));
     const text = formatAnnualOfferSalary(96_000_000, 'COP', labels);
-    expect(text).toBe('COP 96.000.000 / año (COP 8.000.000 / mes)');
+    expect(text).toBe(`${money('COP 96 000 000')} / año (${money('COP 8 000 000')} / mes)`);
     expect(text).not.toContain('$');
+  });
+
+  it('uses the tenant locale (es-CR), never es-CO dots, and shows colones without céntimos', () => {
+    expect(formatMoneyCode(850_000, 'CRC')).toBe(money('CRC 850 000'));
+    expect(formatMoneyCode(1_000_000 / 12, 'CRC')).toBe(money('CRC 83 333'));
+    expect(formatMoneyCode(96_000_000, 'COP')).not.toContain('96.000.000');
+    expect(formatAnnualOfferSalary(10_200_000, 'CRC', labels)).toBe(
+      `${money('CRC 10 200 000')} / año (${money('CRC 850 000')} / mes)`,
+    );
   });
 });
 
@@ -115,7 +126,7 @@ describe('offer letter preview amount', () => {
       }),
     );
     const html = container.textContent ?? '';
-    expect(html).toContain('COP 96.000.000 / año (COP 8.000.000 / mes)');
+    expect(html).toContain(`${money('COP 96 000 000')} / año (${money('COP 8 000 000')} / mes)`);
     expect(html).not.toContain('$');
   });
 });
@@ -181,7 +192,7 @@ describe('create offer form', () => {
     expect((selects[1] as HTMLSelectElement).value).toBe('monthly');
 
     fireEvent.change(amount, { target: { value: '8000000' } });
-    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain('COP 96.000.000');
+    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain(money('COP 96 000 000'));
     fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
       target: { value: '2026-10-01' },
     });
@@ -230,12 +241,12 @@ describe('create offer form', () => {
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications, onClose: vi.fn() }),
     );
     const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
-    expect(screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent).toContain('COP 8.000.000');
+    expect(screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent).toContain(money('COP 8 000 000'));
 
     const selects = container.querySelectorAll('select');
     fireEvent.change(selects[2] as HTMLSelectElement, { target: { value: 'USD' } });
     const reference = screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent ?? '';
-    expect(reference).toContain('COP 8.000.000');
+    expect(reference).toContain(money('COP 8 000 000'));
     expect(reference).not.toContain('USD');
     expect(amount.placeholder).toBe('');
   });
@@ -256,7 +267,7 @@ describe('offer KPI average salary', () => {
       }),
     );
     const text = container.textContent ?? '';
-    expect(text).toMatch(/USD\s120\.000 \/ (año|year)/);
+    expect(text).toMatch(/USD\s120\s000 \/ (año|year)/);
     expect(text).not.toContain('$');
     // The average covers every offer the viewer can see (offer.list is scope-filtered), and the label says so.
     expect(text).toMatch(/visibles para ti|you can see/);
@@ -415,7 +426,7 @@ describe('candidate-facing salary rendering', () => {
       }),
     );
     const text = container.textContent ?? '';
-    expect(text).toMatch(/COP 96\.000\.000 \/ (año|year)/);
+    expect(text).toMatch(/COP\s96\s000\s000 \/ (año|year)/);
     expect(text).not.toContain('$');
   });
 });
@@ -457,6 +468,6 @@ describe('create offer form — vacancy switching and bounds', () => {
     fireEvent.change(amount, { target: { value: '1000000000001' } });
     expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
     fireEvent.change(amount, { target: { value: '120000' } });
-    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain('USD 120.000');
+    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain(money('USD 120 000'));
   });
 });

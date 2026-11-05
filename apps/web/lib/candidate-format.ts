@@ -10,9 +10,11 @@
  *   never to the viewer's device clock and never to a guessed zone.
  */
 
+import { TENANT_LOCALE } from './tenant-locale';
+
 export type CandidateLocale = 'ES' | 'EN';
 
-export const CANDIDATE_INTL_LOCALE: Record<CandidateLocale, string> = { ES: 'es-CR', EN: 'en-US' };
+export const CANDIDATE_INTL_LOCALE: Record<CandidateLocale, string> = { ES: TENANT_LOCALE, EN: 'en-US' };
 
 const SYMBOL_CURRENCIES = new Set(['CRC']);
 const ZERO_DECIMAL_CURRENCIES = new Set(['CRC', 'COP', 'CLP', 'JPY', 'KRW', 'PYG', 'VND']);

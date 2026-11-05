@@ -5,6 +5,12 @@
 // default — change it here, in one place.
 export const DEFAULT_TENANT_CURRENCY = 'CRC';
 
+/**
+ * The Intl locale every money and number format uses for Spanish (es-CR: "₡1 000 000", digits grouped
+ * with a non-breaking space). Never es-CO or en-US for tenant amounts.
+ */
+export const TENANT_LOCALE = 'es-CR';
+
 /** The offer currency defaults to the vacancy's own currency, else the tenant default. */
 export function defaultOfferCurrency(vacancyCurrency: string | null | undefined): string {
   const code = (vacancyCurrency ?? '').trim().toUpperCase();
