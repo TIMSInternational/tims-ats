@@ -28,18 +28,30 @@ interface AiGeneratePanelProps {
   ) => void;
   onUseSocial: (description: string) => void;
   onUseWhatsapp: (description: string) => void;
+  /** The competencies the vacancy writer suggested with this description (for review in step 2). */
+  onSuggestedCompetencies?: (list: VacancyDescriptionVariants['competencies']) => void;
 }
 
-export function AiGeneratePanel({ title, location, onUseFormal, onUseSocial, onUseWhatsapp }: AiGeneratePanelProps) {
+export function AiGeneratePanel({
+  title,
+  location,
+  onUseFormal,
+  onUseSocial,
+  onUseWhatsapp,
+  onSuggestedCompetencies,
+}: AiGeneratePanelProps) {
   const { t } = useI18n();
   const [variants, setVariants] = useState<VacancyDescriptionVariants | null>(null);
   const [tab, setTab] = useState<VariantTab>('formal');
 
   const generate = trpc.vacancy.generateDescription.useMutation({
     onSuccess: (data) => {
+      if (data.kind !== 'variants') return;
       setVariants(data);
       setTab('formal');
       toast(t.vacancies.aiVariantsGenerated, { type: 'success' });
+      // Shown for review in "Competencias del puesto", right below this panel.
+      if (data.competencies.length > 0) onSuggestedCompetencies?.(data.competencies);
     },
     onError: (err) => toast(err.message, { type: 'error' }),
   });

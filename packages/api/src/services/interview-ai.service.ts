@@ -4,7 +4,9 @@ import {
   generateInterviewGuide,
   detectScorecardBias,
   type ScorecardInput,
+  guideCvFromParsedDocuments,
 } from '@tims/ai';
+import { readJobProfile } from '@tims/shared';
 import { interviewAiRepository } from '../repositories/interview-ai.repository';
 
 /** Coerce an unknown JSON value into a clean string[] (skills can be Json/null). */
@@ -46,9 +48,18 @@ export const interviewAiService = {
       durationMinutes: interview.duration,
       candidateTitle: interview.candidate.currentTitle,
       candidateSkills: toStringArray(interview.candidate.skills),
+      // The same competency set the room's scorecard rates (job profile, via the shared reader).
+      competencies: readJobProfile(interview.vacancy.jobProfile).competencies.map((c) => ({
+        name: c.name,
+        description: c.description,
+        targetLevel: c.targetLevel,
+        targetScaleMax: c.scaleMax,
+      })),
+      candidateCv: guideCvFromParsedDocuments(interview.candidate.documents),
+      redact: [interview.candidate.firstName, interview.candidate.lastName],
     });
 
-    return { interviewId, sections: result.sections, model };
+    return { interviewId, sections: result.sections, competencyQuestions: result.competencyQuestions, model };
   },
 
   /**

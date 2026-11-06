@@ -4,12 +4,14 @@ export { calculateCost } from './client';
 export { bedrockCircuit, CircuitBreaker } from './circuit';
 export { checkBudget } from './budget';
 export { getCached, setCached, cacheKey } from './cache';
-export { sanitizeInput, wrapAsData, bedrockGuardrailOptions } from './pii';
+export { sanitizeInput, wrapAsData, redactContactDetails, bedrockGuardrailOptions } from './pii';
 export type { BedrockGuardrailConfig } from './pii';
 export { logInvocation } from './logger';
 export { resolveAgentId, seedLiveAgents, AGENT_REGISTRY } from './registry';
 export { generateVacancyDescription } from './agents/vacancy-writer';
 export type { VacancyDescriptionVariants } from './agents/vacancy-writer';
+export { suggestVacancyCompetencies } from './agents/vacancy-competencies';
+export type { SuggestedCompetency } from './agents/vacancy-competencies';
 export { checkInclusiveLanguage } from './agents/inclusive-language';
 export { parseCV } from './agents/cv-parser';
 export type { ParsedCVData } from './agents/cv-parser';
@@ -19,8 +21,13 @@ export { answerCandidateFaq } from './agents/candidate-faq';
 export type { CandidateFaqAnswer, CandidateFaqContext } from './agents/candidate-faq';
 export { summarizeInterview } from './agents/interview-summarizer';
 export type { InterviewSummaryResult, ScorecardInput } from './agents/interview-summarizer';
-export { generateInterviewGuide } from './agents/interview-guide';
-export type { InterviewGuideResult } from './agents/interview-guide';
+export { generateInterviewGuide, guideCvFromParsedDocuments } from './agents/interview-guide';
+export type {
+  InterviewGuideResult,
+  CompetencyQuestionSet,
+  GuideCompetency,
+  GuideCandidateCv,
+} from './agents/interview-guide';
 export { detectScorecardBias } from './agents/bias-detector';
 export type { BiasAnalysisResult } from './agents/bias-detector';
 export { scoreInterviewFit, fitScoreOutputSchema } from './agents/interview-fit-score';

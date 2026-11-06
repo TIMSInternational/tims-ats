@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { CONTRACT_TYPES, withoutCopiedSections, inputCls, labelCls, positionCountLabel, textareaCls } from './create-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 import { enumLabel, formatPortalSalary, parsePortalSalary } from '../../../(portal)/careers/[orgSlug]/_lib/vacancy-display';
@@ -97,12 +98,16 @@ interface Step2Props {
   setBenefits: (v: string) => void;
   setSocialDescription: (v: string) => void;
   setWhatsappDescription: (v: string) => void;
+  /** Competencies the AI suggested with the description (shown for review, never auto-applied). */
+  onSuggestedCompetencies?: (list: Array<{ name: string; description: string; level: number }>) => void;
+  /** "Competencias del puesto", rendered right below "Generar con IA". */
+  competenciesSlot?: ReactNode;
 }
 
 export function Step2Description({
   title, location, description, setDescription, responsibilities, setResponsibilities,
   requirements, setRequirements, desiredQualifications, setDesiredQualifications,
-  benefits, setBenefits, setSocialDescription, setWhatsappDescription,
+  benefits, setBenefits, setSocialDescription, setWhatsappDescription, onSuggestedCompetencies, competenciesSlot,
 }: Step2Props) {
   const { t } = useI18n();
   return (
@@ -120,7 +125,9 @@ export function Step2Description({
         }}
         onUseSocial={setSocialDescription}
         onUseWhatsapp={setWhatsappDescription}
+        onSuggestedCompetencies={onSuggestedCompetencies}
       />
+      {competenciesSlot}
       <div>
         <label className={labelCls}>{t.vacancies.aboutRole}</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.vacancies.descPlaceholder} maxLength={2000} rows={3} className={textareaCls} autoFocus />

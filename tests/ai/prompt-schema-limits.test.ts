@@ -41,6 +41,10 @@ import {
 import { readdirSync } from 'fs';
 import { resolve } from 'path';
 import { VACANCY_WRITER_SYSTEM_PROMPT, vacancyWriterOutputSchema } from '../../packages/ai/src/agents/vacancy-writer';
+import {
+  VACANCY_COMPETENCIES_SYSTEM_PROMPT,
+  vacancyCompetenciesOutputSchema,
+} from '../../packages/ai/src/agents/vacancy-competencies';
 
 /** The .max() of a zod 4 string or array: a `max_length` check in its definition. */
 function ownMax(schema: z.ZodTypeAny): number | undefined {
@@ -84,6 +88,7 @@ const CASES = [
   ['interview-guide', INTERVIEW_GUIDE_SYSTEM_PROMPT, interviewGuideOutputSchema],
   ['interview-summarizer', INTERVIEW_SUMMARIZER_SYSTEM_PROMPT, interviewSummarizerOutputSchema],
   ['vacancy-writer', VACANCY_WRITER_SYSTEM_PROMPT, vacancyWriterOutputSchema],
+  ['vacancy-competencies', VACANCY_COMPETENCIES_SYSTEM_PROMPT, vacancyCompetenciesOutputSchema],
 ] as const;
 
 describe('every enforced output limit is stated in the agent prompt', () => {

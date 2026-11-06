@@ -1,9 +1,9 @@
 'use client';
 
+import { readJobProfile } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
 
 interface DiscRange { min: number; max: number }
-interface Competency { name: string; level: number }
 interface Kpi { name: string; target: string }
 interface Requirement { text: string; isRequired: boolean }
 
@@ -24,7 +24,8 @@ export function JobProfileCard({ jobProfile }: JobProfileCardProps) {
   const disc = jobProfile.discTargets as Record<string, DiscRange> | null;
   const pca = jobProfile.pcaExpected as Record<string, DiscRange> | null;
   const mil = jobProfile.milExpected as { minScore?: number } | null;
-  const competencies = (Array.isArray(jobProfile.competencies) ? jobProfile.competencies : []) as Competency[];
+  // Same reader as the interview scorecard: what is listed here is exactly what evaluators rate.
+  const competencies = readJobProfile(jobProfile).competencies;
   const kpis = (Array.isArray(jobProfile.kpis) ? jobProfile.kpis : []) as Kpi[];
   const requirements = (Array.isArray(jobProfile.requirements) ? jobProfile.requirements : []) as Requirement[];
 
@@ -81,14 +82,25 @@ export function JobProfileCard({ jobProfile }: JobProfileCardProps) {
         <div className="mb-4">
           <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.competencies}</p>
           <div className="grid grid-cols-2 gap-2">
-            {competencies.map((c, i) => (
-              <div key={i} className="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2">
-                <span className="text-[12px] text-[#333]">{c.name}</span>
-                <div className="flex gap-0.5">
-                  {Array.from({ length: 5 }).map((_, j) => (
-                    <span key={j} className={`w-2 h-2 rounded-full ${j < c.level ? 'bg-[#1F114C]' : 'bg-[#EDEDED]'}`} />
-                  ))}
+            {competencies.map((c) => (
+              <div key={c.key} className="flex items-center justify-between gap-2 bg-[#F6F6F6] rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <span className="text-[12px] text-[#333] break-words">{c.name}</span>
+                  {c.description && <p className="text-[10px] text-[#8B8B8B] break-words">{c.description}</p>}
                 </div>
+                {c.targetLevel !== null && (
+                  <div
+                    className="flex gap-0.5 shrink-0"
+                    role="img"
+                    aria-label={t.vacancies.competencyLevelBadge
+                      .replace('{n}', String(c.targetLevel))
+                      .replace('{max}', String(c.scaleMax))}
+                  >
+                    {Array.from({ length: c.scaleMax }).map((_, j) => (
+                      <span key={j} className={`w-2 h-2 rounded-full ${j < (c.targetLevel ?? 0) ? 'bg-[#1F114C]' : 'bg-[#EDEDED]'}`} />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

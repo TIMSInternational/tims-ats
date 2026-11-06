@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the AI package by the realpath the service resolves '@tims/ai' to.
-vi.mock('../../packages/ai/src/index', () => ({
-  summarizeInterview: vi.fn(),
-  generateInterviewGuide: vi.fn(),
-  detectScorecardBias: vi.fn(),
-}));
+vi.mock('../../packages/ai/src/index', async () => {
+  const guide = await vi.importActual<typeof import('../../packages/ai/src/agents/interview-guide')>(
+    '../../packages/ai/src/agents/interview-guide',
+  );
+  return {
+    summarizeInterview: vi.fn(),
+    generateInterviewGuide: vi.fn(),
+    detectScorecardBias: vi.fn(),
+    // Pure: the real reader of stored CV parses.
+    guideCvFromParsedDocuments: guide.guideCvFromParsedDocuments,
+  };
+});
 vi.mock('../../packages/api/src/repositories/interview-ai.repository', () => ({
   interviewAiRepository: { findInterviewForAi: vi.fn(), upsertSummary: vi.fn() },
 }));
@@ -22,8 +29,8 @@ const INTERVIEW = {
   id: 'i1',
   type: 'technical',
   duration: 60,
-  candidate: { firstName: 'Ana', lastName: 'Gomez', currentTitle: 'Dev', skills: ['ts', 'react'] },
-  vacancy: { title: 'Senior Dev', description: 'Build things' },
+  candidate: { firstName: 'Ana', lastName: 'Gomez', currentTitle: 'Dev', skills: ['ts', 'react'], documents: [] },
+  vacancy: { title: 'Senior Dev', description: 'Build things', jobProfile: null },
   scorecards: [
     {
       ratings: { tech: 4 },
@@ -62,9 +69,43 @@ describe('interviewAiService.generateGuide', () => {
       durationMinutes: 60,
       candidateTitle: 'Dev',
       candidateSkills: ['ts', 'react'],
+      competencies: [],
+      candidateCv: null,
+      redact: ['Ana', 'Gomez'],
     });
     expect(r.sections).toHaveLength(1);
     expect(r.model).toBe('sonnet');
+  });
+});
+
+describe('interviewAiService.generateGuide — job profile + parsed CV', () => {
+  it('sends the scorecard competency set and the newest parsed CV (no contact fields), and returns the question sets', async () => {
+    vi.mocked(interviewAiRepository.findInterviewForAi).mockResolvedValue({
+      ...INTERVIEW,
+      candidate: {
+        ...INTERVIEW.candidate,
+        documents: [
+          { parsedData: null },
+          { parsedData: { name: 'Ana Gomez', email: 'ana@x.co', summary: 'Dev 5 años', experience: [] } },
+        ],
+      },
+      vacancy: {
+        ...INTERVIEW.vacancy,
+        jobProfile: { competencies: [{ name: 'SQL', level: 4, scaleMax: 5, description: 'Consultas' }, { name: 'Excel', level: 2 }] },
+      },
+    } as never);
+    const SETS = [{ competency: 'SQL', targetLevel: 4, targetScaleMax: 5, questions: ['q'] }];
+    vi.mocked(generateInterviewGuide).mockResolvedValue({ result: { sections: [], competencyQuestions: SETS }, model: 'haiku' } as never);
+
+    const r = await interviewAiService.generateGuide('org-1', 'i1');
+    const input = vi.mocked(generateInterviewGuide).mock.calls[0]![1];
+    expect(input.competencies).toEqual([
+      { name: 'SQL', description: 'Consultas', targetLevel: 4, targetScaleMax: 5 },
+      { name: 'Excel', description: null, targetLevel: 2, targetScaleMax: 5 },
+    ]);
+    expect(input.candidateCv).toEqual({ summary: 'Dev 5 años', experience: [] });
+    expect(JSON.stringify(input.candidateCv)).not.toContain('ana@x.co');
+    expect(r.competencyQuestions).toEqual(SETS);
   });
 });
 

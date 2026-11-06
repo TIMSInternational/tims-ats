@@ -14,8 +14,23 @@ export const interviewAiRepository = {
         id: true,
         type: true,
         duration: true,
-        candidate: { select: { firstName: true, lastName: true, currentTitle: true, skills: true } },
-        vacancy: { select: { title: true, description: true } },
+        candidate: {
+          select: {
+            firstName: true,
+            lastName: true,
+            currentTitle: true,
+            skills: true,
+            // The latest parsed CVs (parsed_data holds the structured parse, not the file); the service
+            // picks the newest one that parsed.
+            documents: {
+              where: { organizationId: orgId, type: 'cv' },
+              orderBy: { uploadedAt: 'desc' },
+              take: 3,
+              select: { parsedData: true },
+            },
+          },
+        },
+        vacancy: { select: { title: true, description: true, jobProfile: { select: { competencies: true } } } },
         scorecards: {
           select: {
             ratings: true,

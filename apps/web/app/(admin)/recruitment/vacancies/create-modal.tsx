@@ -7,6 +7,13 @@ import type { PickedUser } from '../../../../components/user-picker';
 import { Step1BasicInfo, Step2Description, Step3Compensation } from './create-modal.fields';
 import { VacancyOrgFields } from './create-modal.org-fields';
 import type { Step, VacancyFormData } from './create-modal.helpers';
+import { CompetenciesSection } from './competencies-section';
+import {
+  toCompetencyInput,
+  validateCompetencyDrafts,
+  type CompetencyDraft,
+  type CompetencySuggestion,
+} from './competencies-model';
 import { DEFAULT_TENANT_CURRENCY } from '../../../../lib/tenant-locale';
 
 interface CreateModalProps {
@@ -42,6 +49,9 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   // the user picked "Use this" for that variant; otherwise left empty/omitted.
   const [socialDescription, setSocialDescription] = useState('');
   const [whatsappDescription, setWhatsappDescription] = useState('');
+  // "Competencias del puesto" (optional) and the AI's suggestions awaiting review.
+  const [competencies, setCompetencies] = useState<CompetencyDraft[]>([]);
+  const [competencySuggestions, setCompetencySuggestions] = useState<CompetencySuggestion[]>([]);
 
   // Step 3: Compensation & settings
   const [salaryMin, setSalaryMin] = useState('');
@@ -58,6 +68,8 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   };
 
   const isStep1Valid = title.trim().length > 0;
+  // No competencies is fine; a blank or repeated one must be fixed (or removed) before moving on.
+  const isStep2Valid = validateCompetencyDrafts(competencies) === null;
 
   const buildDescription = () => {
     const parts: string[] = [];
@@ -70,7 +82,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   };
 
   const handleSubmit = () => {
-    if (!isStep1Valid) return;
+    if (!isStep1Valid || !isStep2Valid) return;
     const salary = (salaryMin || salaryMax) ? {
       min: salaryMin ? parseInt(salaryMin) : undefined,
       max: salaryMax ? parseInt(salaryMax) : undefined,
@@ -92,6 +104,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
       businessUnitId: businessUnitId ?? undefined,
       teamId: teamId ?? undefined,
       assignedTo: hiringManager?.id,
+      competencies: competencies.length > 0 ? toCompetencyInput(competencies) : undefined,
       settings: {
         slaTargetDays: parseInt(slaTargetDays) || 30,
         autoPublish: requireApproval ? false : autoPublish,
@@ -154,6 +167,17 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
           benefits={benefits} setBenefits={setBenefits}
           setSocialDescription={setSocialDescription}
           setWhatsappDescription={setWhatsappDescription}
+          onSuggestedCompetencies={setCompetencySuggestions}
+          competenciesSlot={
+            <CompetenciesSection
+              value={competencies}
+              onChange={setCompetencies}
+              suggestions={competencySuggestions}
+              onSuggestionsChange={setCompetencySuggestions}
+              title={title}
+              descriptionText={[description, responsibilities, requirements].join('\n')}
+            />
+          }
         />
       )}
 
@@ -194,7 +218,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
           {step < 3 ? (
             <button
               onClick={() => setStep((step + 1) as Step)}
-              disabled={step === 1 && !isStep1Valid}
+              disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid)}
               className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1a5c] transition disabled:opacity-50 flex items-center gap-1"
             >
               Siguiente
@@ -203,7 +227,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={!isStep1Valid || isPending}
+              disabled={!isStep1Valid || !isStep2Valid || isPending}
               className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
             >
               {isPending ? t.vacancies.creatingVacancy : t.vacancies.createVacancySubmit}

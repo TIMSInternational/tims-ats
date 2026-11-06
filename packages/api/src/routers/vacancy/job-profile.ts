@@ -4,6 +4,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { assertScoped } from '../../access';
 import { EDUCATION_LEVELS } from '../../services/fit-engine.service';
+import { jobProfileCompetenciesInputSchema, toStoredCompetencies } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // Typed Zod schemas for JSON fields (no z.unknown)
@@ -16,12 +17,9 @@ const discTargetsSchema = z.object({
   compliance: z.object({ min: z.number().min(0).max(100), max: z.number().min(0).max(100) }).optional(),
 }).optional();
 
-const competencySchema = z.object({
-  name: z.string().max(100),
-  level: z.number().int().min(1).max(5),
-});
-
-const competenciesSchema = z.array(competencySchema).max(20).optional();
+// Same writer contract as vacancy.create / vacancy.update (packages/shared job-profile.ts): the interview
+// scorecard reads these, so every writer must store the same shape.
+const competenciesSchema = jobProfileCompetenciesInputSchema.optional();
 
 const pcaExpectedSchema = z.object({
   dominance: z.object({ min: z.number().min(0).max(100), max: z.number().min(0).max(100) }).optional(),
@@ -107,7 +105,8 @@ export const vacancyJobProfileRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      const { vacancyId, ...data } = input;
+      const { vacancyId, competencies, ...rest } = input;
+      const data = { ...rest, competencies: competencies && toStoredCompetencies(competencies) };
 
       return db.jobProfile.upsert({
         where: { vacancyId },

@@ -102,6 +102,9 @@ export const vacancyLifecycleRepository = {
    * A vacancy with a still-pending approval step is never edited either: only a legacy row frozen in the
    * middle of a request has one outside pending_approval, and resuming it revives that chain (Codex P1), so
    * an edit would let the remaining approvers sign off content the earlier ones never saw.
+   *
+   * `competencies` (the job profile the interview scorecard rates) is part of that content: it is written
+   * under the same status check, in the same transaction, and named in the same audit row.
    */
   updateContent(
     organizationId: string,
@@ -109,6 +112,7 @@ export const vacancyLifecycleRepository = {
     data: Prisma.VacancyUncheckedUpdateManyInput,
     fields: string[],
     actor: VacancyLifecycleActor,
+    competencies?: Prisma.InputJsonValue,
   ): Promise<VacancyLifecycleRow | null> {
     return runTenantTransaction(organizationId, async (tx) => {
       const moved = await tx.vacancy.updateMany({
@@ -119,9 +123,19 @@ export const vacancyLifecycleRepository = {
           status: { in: [...VACANCY_EDITABLE_STATUSES] },
           approvals: { none: { status: 'pending' } },
         },
-        data,
+        // A competencies-only edit still writes the vacancy row, so the status check above is a real
+        // compare-and-set (and updatedAt says the vacancy changed).
+        data: competencies === undefined ? data : { ...data, updatedAt: new Date() },
       });
       if (moved.count !== 1) return null;
+      if (competencies !== undefined) {
+        await tx.jobProfile.upsert({
+          where: { vacancyId },
+          create: { organizationId, vacancyId, competencies },
+          update: { competencies },
+          select: { id: true },
+        });
+      }
       await writeAudit(tx, organizationId, actor, 'vacancy_updated', vacancyId, { fields });
       return tx.vacancy.findFirstOrThrow({ where: { id: vacancyId, organizationId }, select: vacancyLifecycleSelect });
     });

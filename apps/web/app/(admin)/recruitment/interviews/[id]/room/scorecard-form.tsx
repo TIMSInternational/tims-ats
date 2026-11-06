@@ -157,9 +157,12 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
             >
               <div className="min-w-0">
                 <p className="text-[12px] font-medium text-[#333] break-words">{label}</p>
+                {c.description && <p className="text-[10px] text-[#585858] break-words">{c.description}</p>}
                 {c.targetLevel !== null && (
                   <p className="text-[10px] text-[#8B8B8B]">
-                    {t.interviewRoom.targetLevel.replace('{n}', String(c.targetLevel))}
+                    {t.interviewRoom.targetLevel
+                      .replace('{n}', String(c.targetLevel))
+                      .replace('{max}', String(c.targetScaleMax))}
                   </p>
                 )}
               </div>
@@ -201,6 +204,8 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
           scorecards={interview.scorecards}
           currentUserId={currentUserId}
           isViewerBlinded={isEvaluator && submittedAt === null}
+          competencies={competencies}
+          labelFor={labelFor}
         />
       </div>
 

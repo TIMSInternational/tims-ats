@@ -5,7 +5,17 @@ import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { Drawer } from '../../../../../components';
+import { usePermissions } from '../../../../../lib/permissions';
 import { EditVacancyFields } from './edit-vacancy-fields';
+import { CompetenciesSection } from '../competencies-section';
+import {
+  competenciesChanged,
+  draftsFromStored,
+  toCompetencyInput,
+  validateCompetencyDrafts,
+  type CompetencyDraft,
+  type CompetencySuggestion,
+} from '../competencies-model';
 import {
   buildVacancyPatch,
   initialEditForm,
@@ -17,7 +27,8 @@ import {
 interface EditVacancyDrawerProps {
   vacancyId: string;
   vacancyStatus: string;
-  vacancy: EditableVacancy;
+  /** The vacancy detail; its job profile seeds "Competencias del puesto". */
+  vacancy: EditableVacancy & { jobProfile?: { competencies: unknown } | null };
   onClose: () => void;
 }
 
@@ -25,12 +36,18 @@ interface EditVacancyDrawerProps {
  * "Editar" on the vacancy detail (journeys-23 / spec-39): title, location, modality, contract, positions,
  * priority, description, salary band and hiring manager, through `vacancy.update`. Only changed fields are
  * sent. The server refuses a vacancy pending approval or closed, and the button is not offered for those.
+ * "Competencias del puesto" (the scorecard's job profile) is saved by the same `vacancy.update`, under the
+ * same status check, and only when it changed.
  */
 export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }: EditVacancyDrawerProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
   const [initial] = useState<EditVacancyForm>(() => initialEditForm(vacancy));
   const [form, setForm] = useState<EditVacancyForm>(initial);
+  const [initialCompetencies] = useState<CompetencyDraft[]>(() => draftsFromStored(vacancy.jobProfile?.competencies));
+  const [competencies, setCompetencies] = useState<CompetencyDraft[]>(initialCompetencies);
+  const [suggestions, setSuggestions] = useState<CompetencySuggestion[]>([]);
+  const canSuggest = usePermissions().can('vacancy', 'create');
 
   const update = trpc.vacancy.update.useMutation({
     onSuccess: () => {
@@ -48,6 +65,9 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
 
   const error = validateEditForm(initial, form);
   const patch = error === null ? buildVacancyPatch(initial, form) : null;
+  const competencyError = validateCompetencyDrafts(competencies);
+  const competenciesDirty = competenciesChanged(initialCompetencies, competencies);
+  const hasChanges = patch !== null || competenciesDirty;
   const errorText =
     error === 'titleRequired'
       ? t.vacancies.editTitleRequired
@@ -58,8 +78,12 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
           : null;
 
   const save = () => {
-    if (error !== null || patch === null) return;
-    update.mutate({ id: vacancyId, ...patch });
+    if (error !== null || competencyError !== null || !hasChanges) return;
+    update.mutate({
+      id: vacancyId,
+      ...(patch ?? {}),
+      ...(competenciesDirty ? { competencies: toCompetencyInput(competencies) } : {}),
+    });
   };
 
   return (
@@ -75,6 +99,19 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
         onChange={(next) => setForm((prev) => ({ ...prev, ...next }))}
         disabled={update.isPending}
       />
+
+      <div className="mt-5">
+        <CompetenciesSection
+          value={competencies}
+          onChange={setCompetencies}
+          suggestions={suggestions}
+          onSuggestionsChange={setSuggestions}
+          title={form.title}
+          descriptionText={form.description}
+          canSuggest={canSuggest}
+          disabled={update.isPending}
+        />
+      </div>
 
       {errorText && (
         <p
@@ -94,7 +131,7 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
       )}
 
       <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-[#EDEDED]">
-        {patch === null && error === null && (
+        {!hasChanges && error === null && (
           <p className="mr-auto text-[11px] text-[#8B8B8B]">{t.vacancies.editNoChanges}</p>
         )}
         <button
@@ -107,7 +144,7 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
         <button
           type="button"
           onClick={save}
-          disabled={update.isPending || error !== null || patch === null}
+          disabled={update.isPending || error !== null || competencyError !== null || !hasChanges}
           className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
         >
           {update.isPending ? t.common.saving : t.vacancies.editSave}

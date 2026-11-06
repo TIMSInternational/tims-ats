@@ -33,6 +33,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       update: { useMutation: () => ({ ...idle(), mutate: m.update }) },
       freeze: { useMutation: () => ({ ...idle(), mutate: m.freeze }) },
       resume: { useMutation: () => ({ ...idle(), mutate: m.resume }) },
+      generateDescription: { useMutation: idle },
       submitForApproval: { useMutation: idle },
       approve: { useMutation: idle },
       reject: { useMutation: idle },

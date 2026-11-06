@@ -1,3 +1,5 @@
+import type { JobProfileCompetencyInput } from '@tims/shared';
+
 export interface VacancyFormData {
   title: string;
   description?: string;
@@ -17,6 +19,8 @@ export interface VacancyFormData {
   teamId?: string;
   /** The vacancy's assignee (shown as "Hiring manager"); counts as in-scope for its approvals. */
   assignedTo?: string;
+  /** "Competencias del puesto" (step 2): the job profile the interview scorecard rates. Omitted when none. */
+  competencies?: JobProfileCompetencyInput[];
 }
 
 export type Step = 1 | 2 | 3;

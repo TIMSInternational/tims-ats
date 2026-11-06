@@ -18,6 +18,7 @@ import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/ap
 import { emailService } from '../services/email.service';
 import { candidateContactEmail } from '../services/candidate-contact';
 import { runAfterResponse } from '../lib/after-response';
+import { publicCompetencyNames } from '@tims/shared';
 import { checkRateLimit, consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
 // The ONE public response of portal.applyToVacancy, whatever happened server-side.
@@ -217,8 +218,12 @@ export const portalRouter = router({
         company: vacancy.company ? { name: vacancy.company.name } : null,
         unit: vacancy.unit ? { name: vacancy.unit.name } : null,
         organization: { name: vacancy.organization.name, logo: vacancy.organization.logo },
+        // Competency NAMES only: their target levels and descriptions are the staff's evaluation rubric.
         jobProfile: vacancy.jobProfile
-          ? { competencies: vacancy.jobProfile.competencies, requirements: vacancy.jobProfile.requirements }
+          ? {
+              competencies: publicCompetencyNames(vacancy.jobProfile.competencies),
+              requirements: vacancy.jobProfile.requirements,
+            }
           : null,
         applicantCount,
       };
