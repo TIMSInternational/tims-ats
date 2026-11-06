@@ -141,7 +141,8 @@ export function wrapAsData(tag: string, content: string): string {
 
 // Whitespace (incl. line breaks from PDF extraction) is allowed around "@" and the dots of the domain:
 // "recruiting123@\nexample.com", "ana @ acme . com". Over-masking a word after "x@y. " is accepted.
-const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9-]+(?:\s*\.\s*[A-Za-z0-9-]+)*\s*\.\s*[A-Za-z]{2,}/g;
+// Internationalized addresses too: any letter or digit in the local part and the domain ("josé@acmé.com").
+const EMAIL_PATTERN = /[\p{L}\p{N}._%+-]+\s*@\s*[\p{L}\p{N}-]+(?:\s*\.\s*[\p{L}\p{N}-]+)*\s*\.\s*\p{L}{2,}/gu;
 // A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
 // Separators include line breaks (PDF extraction wraps "+506 8888\n7777"), no-break/thin spaces, every
 // dash and the slash ("8888\u00a07777", "2020\u20132024", "8888/7777"). Over-masking two numbers on
@@ -150,6 +151,7 @@ const DIGIT_RUN = /\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-
 // Every run of 8+ digits is masked, year ranges included ("2019-2023"): a phone can take any shape, so no
 // digit pattern is exempt. Structured dates (e.g. a CV's start/end years) must be added AFTER redaction.
 const PHONE_MIN_DIGITS = 8;
+const LABELLED_PHONE_MIN_DIGITS = 7;
 // A phone label followed by a number of 7+ digits (the label is kept, the number masked).
 const LABELLED_PHONE =
   /((?:tel|tel[eé]fono|telefone|cel|celular|m[oó]vil|phone|mobile|whatsapp|fax|contacto|contact)\.?\s*(?:n[oº°]\.?\s*)?[:#]?\s*)(\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d)/giu;
@@ -207,7 +209,9 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
   // Every Unicode decimal digit (Arabic-Indic "٢٠٢", full-width "２０２"…) is read as its ASCII digit.
   let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, '')).replace(EMAIL_PATTERN, '[email]');
   // A number right after a phone label is masked from 7 digits ("Tel: 555-1234"); any other run from 8.
-  out = out.replace(LABELLED_PHONE, (_m, label: string) => `${label}[teléfono]`);
+  out = out.replace(LABELLED_PHONE, (match: string, label: string, number: string) =>
+    number.replace(/\D/g, '').length >= LABELLED_PHONE_MIN_DIGITS ? `${label}[teléfono]` : match,
+  );
   out = out.replace(DIGIT_RUN, (run) => (run.replace(/\D/g, '').length >= PHONE_MIN_DIGITS ? '[teléfono]' : run));
   for (const term of redactionVariants(terms)) out = maskName(out, term);
   return out;

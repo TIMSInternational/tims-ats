@@ -297,6 +297,15 @@ describe('guide helpers', () => {
     expect(redactContactDetails('Equipo de 1234567 usuarios')).toBe('Equipo de 1234567 usuarios');
   });
 
+  it('masks internationalized e-mails, and leaves short numbers after a contact word alone (Codex round 11)', () => {
+    expect(redactContactDetails('escriba a recruitingé@example.com')).toBe('escriba a [email]');
+    expect(redactContactDetails('josé@acmé.cr')).toBe('[email]');
+    expect(redactContactDetails('Contacto 40 clientes diarios')).toBe('Contacto 40 clientes diarios');
+    expect(redactContactDetails('Tel: 555-1234')).toBe('Tel: [teléfono]');
+    const out = formatCandidateCv({ summary: 'recruitingé@example.com; Contacto 40 clientes', experience: [] }, []);
+    expect(out).toBe('Summary: [email]; Contacto 40 clientes');
+  });
+
   it('bounds the CV block', () => {
     const text = formatCandidateCv({
       summary: 'x'.repeat(5000),
