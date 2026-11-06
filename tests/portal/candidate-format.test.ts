@@ -89,13 +89,10 @@ describe('candidate dates and time zones', () => {
     expect(candidateTimeZone(undefined, 'Mars/Olympus')).toBeNull();
   });
 
-  it("the portal's interview and offer reads carry the vacancy company zone the per-item fallback needs", () => {
+  it("the portal's interview read carries the vacancy company zone the per-interview fallback needs", () => {
     const repo = readFileSync(join(__dirname, '../../packages/api/src/repositories/candidate-portal.repository.ts'), 'utf8');
     expect(blockAt(repo, 'findInterviews(', { minLines: 10 })).toMatch(
       /vacancy: \{ select: \{ title: true, company: \{ select: \{ timezone: true \} \} \} \}/,
-    );
-    expect(blockAt(repo, 'findOffers(', { minLines: 10 })).toMatch(
-      /vacancy: \{ select: \{ title: true, company: \{ select: \{ name: true, timezone: true \} \} \} \}/,
     );
   });
 });

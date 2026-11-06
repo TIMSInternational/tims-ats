@@ -50,8 +50,9 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
       displayName={displayName}
       hasCandidate={candidate !== null}
       consentWithdrawnAt={consentWithdrawnAt}
-      // The organization's own zone. Interviews and offers fall back per item to their vacancy company's zone
-      // (candidateTimeZone), as their emails do; everything else falls back to UTC.
+      // The organization's own zone. Interviews fall back per interview to their vacancy company's zone
+      // (candidateTimeZone), as the interview email does; everything else (offer dates included, like the
+      // signing page) falls back to UTC.
       timeZone={orgSettingsTimeZone(org.settings)}
       profile={profile}
       // Only a real candidate of this org gets the contact (it may be the billing email): never any signed-in visitor.

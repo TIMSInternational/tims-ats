@@ -73,7 +73,16 @@ function amountText(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? String(value) : '';
 }
 
-/** `tenantCurrency` (the organization's, lib/tenant-locale-context.tsx) fills a vacancy saved without one. */
+/** The form with `tenantCurrency` where no currency is stored or chosen yet (an explicit one is kept). */
+export function withDefaultCurrency(form: EditVacancyForm, tenantCurrency: string): EditVacancyForm {
+  return form.currency ? form : { ...form, currency: tenantCurrency };
+}
+
+/**
+ * `tenantCurrency` (the organization's, lib/tenant-locale-context.tsx) fills a vacancy saved without one. The
+ * drawer passes '' and applies the tenant's at render with `withDefaultCurrency`, so a profile that loads
+ * after the drawer opened is still used.
+ */
 export function initialEditForm(v: EditableVacancy, tenantCurrency: string = DEFAULT_TENANT_CURRENCY): EditVacancyForm {
   const salary = asRecord(v.salary);
   const currency =

@@ -13,6 +13,7 @@ delete process.env.NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP;
 const m = vi.hoisted(() => ({
   tenant: { currency: 'CRC', intlLocale: 'es-CR' },
   updateMutate: vi.fn(),
+  vacancyUpdate: vi.fn(),
 }));
 vi.mock('../../apps/web/lib/tenant-locale-context', () => ({ useTenantLocale: () => m.tenant }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: vi.fn() }));
@@ -23,6 +24,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     useUtils: () => ({
       platform: { listOrganizations: invalidate, getOrganizationKpis: invalidate, getOrganization: invalidate },
+      vacancy: { getById: invalidate, list: invalidate },
     }),
     platform: {
       updateOrganization: { useMutation: () => ({ mutate: m.updateMutate, isPending: false, error: null }) },
@@ -38,6 +40,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       update: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
     },
     vacancy: {
+      update: { useMutation: () => ({ mutate: m.vacancyUpdate, isPending: false }) },
       generateDescription: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       checkInclusiveLanguage: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
@@ -50,6 +53,7 @@ import { orgLocaleFormFromOrg } from '../../apps/web/lib/org-locale-form';
 beforeEach(() => {
   m.tenant = { currency: 'CRC', intlLocale: 'es-CR' };
   m.updateMutate.mockReset();
+  m.vacancyUpdate.mockReset();
 });
 
 async function createVacancyWithSalary(): Promise<{ currency?: string } | undefined> {
@@ -114,6 +118,58 @@ describe('offer form default currency', () => {
     m.tenant = { currency: 'GTQ', intlLocale: 'es-GT' };
     await renderOffer(application({ min: 1000, max: 2000, currency: 'usd', period: 'monthly' }));
     expect(currency()).toBe('USD');
+  });
+});
+
+describe('vacancy edit drawer default currency', () => {
+  // Codex review of #424, round 2 (P2): the drawer froze the tenant currency at mount, so a vacancy saved
+  // without one kept CRC after a Guatemalan profile arrived.
+  const vacancy = {
+    title: 'Analista',
+    description: null,
+    location: null,
+    remotePolicy: null,
+    contractType: null,
+    positions: 1,
+    priority: 'medium',
+    salary: null,
+    assignee: null,
+  };
+  async function renderDrawer(salary: unknown = null) {
+    const { EditVacancyDrawer } = await import('../../apps/web/app/(admin)/recruitment/vacancies/[id]/edit-vacancy-drawer');
+    const ui = () => (
+      <EditVacancyDrawer vacancyId="vac-1" vacancyStatus="draft" vacancy={{ ...vacancy, salary }} onClose={() => {}} />
+    );
+    const view = render(ui());
+    return { rerender: () => view.rerender(ui()) };
+  }
+  const save = () => fireEvent.click(screen.getByRole('button', { name: es.vacancies.editSave }));
+
+  it('uses the tenant profile that arrives after the drawer opened', async () => {
+    const { rerender } = await renderDrawer();
+    m.tenant = { currency: 'GTQ', intlLocale: 'es-GT' };
+    rerender();
+    fireEvent.change(screen.getByLabelText(es.vacancies.salaryMin), { target: { value: '8000' } });
+    save();
+    expect(m.vacancyUpdate).toHaveBeenCalledExactlyOnceWith({
+      id: 'vac-1',
+      salary: { min: 8000, currency: 'GTQ', period: 'monthly' },
+    });
+  });
+
+  it('keeps a stored currency', async () => {
+    const stored = await renderDrawer({ min: 1000, currency: 'USD', period: 'monthly' });
+    m.tenant = { currency: 'GTQ', intlLocale: 'es-GT' };
+    stored.rerender();
+    expect((screen.getByLabelText(es.vacancies.currency) as HTMLSelectElement).value).toBe('USD');
+  });
+
+  it('keeps a currency picked before the profile arrived', async () => {
+    const picked = await renderDrawer();
+    fireEvent.change(screen.getByLabelText(es.vacancies.currency), { target: { value: 'USD' } });
+    m.tenant = { currency: 'GTQ', intlLocale: 'es-GT' };
+    picked.rerender();
+    expect((screen.getByLabelText(es.vacancies.currency) as HTMLSelectElement).value).toBe('USD');
   });
 });
 

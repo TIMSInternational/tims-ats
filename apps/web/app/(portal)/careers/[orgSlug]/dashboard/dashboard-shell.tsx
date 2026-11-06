@@ -34,8 +34,8 @@ export function PortalDashboardShell({
   hasCandidate: boolean;
   consentWithdrawnAt?: string | null;
   /**
-   * The organization's IANA time zone (settings.timezone). When null, interviews and offers use their vacancy
-   * company's zone (as their emails do) and everything else UTC.
+   * The organization's IANA time zone (settings.timezone). When null, interviews use their vacancy company's
+   * zone (as the interview email does) and everything else UTC.
    */
   timeZone?: string | null;
   /** The candidate's own correctable details, server-rendered; null when there is no candidate. */

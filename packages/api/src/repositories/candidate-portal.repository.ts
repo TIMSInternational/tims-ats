@@ -194,8 +194,7 @@ export const candidatePortalRepo = {
         contractType: true,
         expiresAt: true,
         settings: true,
-        // The company zone is the fallback the offer emails use (resolveInterviewTimeZone).
-        vacancy: { select: { title: true, company: { select: { name: true, timezone: true } } } },
+        vacancy: { select: { title: true, company: { select: { name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });

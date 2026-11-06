@@ -404,8 +404,9 @@ describe('candidate-facing salary rendering', () => {
     expect(text).not.toContain('$');
   });
 
-  it("candidate portal offer card dates use the organization zone, else the offer's vacancy company zone (as its email)", () => {
-    // Codex review of #424 (P2). 03:00 UTC on 1 December is still 30 November in Guatemala (GMT-6).
+  it("candidate portal offer card dates use the organization's own zone only, like the signing page", () => {
+    // Codex review of #424, round 2 (P2): a vacancy-company fallback here moved the start day away from the
+    // signing page's. 03:00 UTC on 1 December is still 30 November in Guatemala (GMT-6).
     const offer = (company: { name: string; timezone?: string } | null) => ({
       id: 'o1',
       status: 'sent',
@@ -424,10 +425,9 @@ describe('candidate-facing salary rendering', () => {
       view.unmount();
       return text;
     };
-    expect(startText({ name: 'GT Co', timezone: 'America/Guatemala' })).toContain('30 de noviembre de 2026');
-    expect(startText({ name: 'No zone' })).toContain('1 de diciembre de 2026');
+    expect(startText({ name: 'GT Co', timezone: 'America/Guatemala' })).toContain('1 de diciembre de 2026');
     expect(startText(null)).toContain('1 de diciembre de 2026');
-    expect(startText({ name: 'GT Co', timezone: 'America/Guatemala' }, 'Etc/UTC')).toContain('1 de diciembre de 2026');
+    expect(startText({ name: 'GT Co' }, 'America/Guatemala')).toContain('30 de noviembre de 2026');
   });
 
   it('offer table labels the stored amount as annual with the ISO code', () => {

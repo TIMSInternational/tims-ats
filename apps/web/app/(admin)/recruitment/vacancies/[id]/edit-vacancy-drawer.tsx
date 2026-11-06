@@ -9,6 +9,7 @@ import { EditVacancyFields } from './edit-vacancy-fields';
 import {
   buildVacancyPatch,
   initialEditForm,
+  withDefaultCurrency,
   validateEditForm,
   type EditableVacancy,
   type EditVacancyForm,
@@ -31,8 +32,12 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
   const { t } = useI18n();
   const utils = trpc.useUtils();
   const tenant = useTenantLocale();
-  const [initial] = useState<EditVacancyForm>(() => initialEditForm(vacancy, tenant.currency));
-  const [form, setForm] = useState<EditVacancyForm>(initial);
+  // A vacancy saved without a currency keeps '' in state; the tenant's currency is applied at render, never
+  // frozen at mount — the admin shell's one organization.getCurrent can resolve after the drawer opened.
+  const [storedInitial] = useState<EditVacancyForm>(() => initialEditForm(vacancy, ''));
+  const [storedForm, setForm] = useState<EditVacancyForm>(storedInitial);
+  const initial = withDefaultCurrency(storedInitial, tenant.currency);
+  const form = withDefaultCurrency(storedForm, tenant.currency);
 
   const update = trpc.vacancy.update.useMutation({
     onSuccess: () => {

@@ -5,8 +5,8 @@
  * - Spanish renders with es-CR conventions (the pilot tenant is in Costa Rica): "₡4 500 000".
  * - The colón is the only currency shown with its symbol; every other currency keeps its ISO code
  *   ("USD 4 500"), so a bare "$" never appears.
- * - Dates and times are rendered in the organization's time zone (organization, then the item's vacancy
- *   company — the chain the emails use) and carry the shared explicit zone label ("hora de Guatemala
+ * - Dates and times are rendered in the organization's time zone (an interview: organization, then its
+ *   vacancy company — the chain its email uses) and carry the shared explicit zone label ("hora de Guatemala
  *   (GMT-6)"). Without a configured zone they fall back to UTC and say so — never to the viewer's device
  *   clock and never to a guessed zone.
  */
@@ -88,11 +88,10 @@ export function orgSettingsTimeZone(settings: unknown): string | null {
 }
 
 /**
- * The zone one interview or offer is shown in: the organization's own (`settings.timezone`), then the zone of
- * THAT item's vacancy company — the chain its email resolves (resolveInterviewTimeZone over
- * interview.vacancy.company / offer.vacancy.company) — else null (UTC). Per item, never the primary company:
- * an organization's companies can sit in different zones, and a vacancy without a company gets UTC in its
- * email too.
+ * The zone one interview is shown in: the organization's own (`settings.timezone`), then the zone of THAT
+ * interview's vacancy company — the chain its email resolves (resolveInterviewTimeZone over
+ * interview.vacancy.company) — else null (UTC). Per interview, never the primary company: an organization's
+ * companies can sit in different zones, and a vacancy without a company gets UTC in the email too.
  */
 export function candidateTimeZone(
   orgTimeZone: string | null | undefined,
