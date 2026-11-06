@@ -251,4 +251,37 @@ describe('offer salary bounds', () => {
     await expect((await caller()).offer.update({ id: OFFER_ID, ...patch })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(offerUpdateMany).not.toHaveBeenCalled();
   });
+
+  // Codex review of fix/pilot-call-flow, run 2 (P2): two edits of one draft's pay that read the same snapshot must
+  // not both write. Both reads happen before either write; the stored row only changes through updateMany's where.
+  it('two concurrent edits of the pay: one applies, the other is a CONFLICT, and no fractional colón is stored', async () => {
+    const row: Record<string, unknown> = { id: OFFER_ID, organizationId: ORG_ID, status: 'draft', currency: 'USD', salary: 12_000 };
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => (release = resolve));
+    let reads = 0;
+    offerFindFirst.mockImplementation(async () => {
+      const snapshot = { id: OFFER_ID, status: row.status, currency: row.currency, salary: row.salary };
+      if (++reads === 2) release();
+      await bothRead;
+      return snapshot;
+    });
+    offerUpdateMany.mockImplementation(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      if (!Object.entries(where).every(([key, value]) => row[key] === value)) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    });
+    const results = await Promise.allSettled([
+      (await caller()).offer.update({ id: OFFER_ID, currency: 'CRC' }),
+      (await caller()).offer.update({ id: OFFER_ID, salary: 24_000.12 }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { code: 'CONFLICT' } });
+    expect(row.currency === 'CRC' ? Number.isInteger(row.salary) : true).toBe(true);
+  });
+
+  it('an edit that does not touch the pay is not compared on it', async () => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: 'USD', salary: 12_000 });
+    await (await caller()).offer.update({ id: OFFER_ID, contractType: 'Indefinido' });
+    expect(offerUpdateMany.mock.calls[0]![0].where).toEqual({ id: OFFER_ID, organizationId: ORG_ID, status: 'draft' });
+  });
 });

@@ -280,11 +280,12 @@ export const offerCrudRouter = router({
 
       const { benefits, terms, ...rest } = data;
       // The salary/currency pair as it will be stored: a salary sent alone is in the stored currency, and a
-      // currency change alone re-checks the stored salary (USD 12 000.12 → CRC). That one is written only when
-      // rounding changes it, so a currency-only edit does not overwrite a concurrent salary edit for nothing.
+      // currency change alone re-checks the stored salary (USD 12 000.12 → CRC), written only when rounding changes it.
+      // Both are computed from `existing`, so an edit of the pay is also a compare-and-set on that salary and currency.
       const salaryAfter = rest.salary ?? (rest.currency !== undefined ? existing.salary : undefined);
       const storedSalary = salaryAfter === undefined ? undefined : storedOfferSalary(salaryAfter, rest.currency ?? existing.currency);
       const salaryPatch = rest.salary !== undefined || storedSalary !== existing.salary ? storedSalary : undefined;
+      const editsPay = rest.salary !== undefined || rest.currency !== undefined;
       // Compare-and-set on draft: a submission for approval that lands between the check above and this
       // write must not let the approvers see terms other than the ones they are asked to approve.
       const applied = await offerDraftRepository.updateDraft(ctx.user.organizationId, id, {
@@ -292,11 +293,11 @@ export const offerCrudRouter = router({
         ...(salaryPatch !== undefined && { salary: salaryPatch }),
         ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
         ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
-      });
+      }, editsPay ? { salary: existing.salary, currency: existing.currency } : undefined);
       if (!applied) {
         throw new TRPCError({
           code: 'CONFLICT',
-          message: 'La oferta ya no está en borrador; recarga la página para ver su estado actual',
+          message: 'La oferta cambió o ya no está en borrador; recarga la página para ver su estado actual',
         });
       }
       return offerDraftRepository.findEdited(ctx.user.organizationId, id);
