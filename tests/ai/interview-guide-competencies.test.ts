@@ -169,12 +169,12 @@ describe('generateInterviewGuide with the job profile', () => {
     });
     await generateInterviewGuide('org-1', {
       ...BASE,
-      candidateCv: { summary: 'Jo\u200bse Perez, Tel: 8888\u200b7777, móvil 2020-2024. Ventas (2016-2024).', experience: [] },
+      candidateCv: { summary: 'Jo\u200bse Perez, Tel: 8888\u200b7777, móvil 2020-2024, cel 2021\u20132025, 8888\u00a06666. Ventas (2016-2024).', experience: [] },
       redact: ['José', 'Pérez'],
     });
     const [, , userMessage] = vi.mocked(bedrockGenerate).mock.calls.at(-1)!;
     const cv = /<candidate_cv>([\s\S]*)<\/candidate_cv>/.exec(userMessage)?.[1] ?? '';
-    expect(cv).not.toMatch(/Jose|Perez|88887777|8888|2020-2024/);
+    expect(cv).not.toMatch(/Jose|Perez|88887777|8888|2020-2024|2021\u20132025/);
     expect(cv).toContain('(2016-2024)');
   });
 });
@@ -262,5 +262,12 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('WhatsApp: 2020 2024')).not.toMatch(/2020/);
     expect(redactContactDetails('+506 2020-2024')).toBe('[teléfono]');
     expect(redactContactDetails('Ventas (2020-2024) y soporte 2016–2019')).toBe('Ventas (2020-2024) y soporte 2016–2019');
+  });
+
+  it('masks phones written with an en dash or a no-break space (Codex round 3 on #421)', () => {
+    expect(redactContactDetails('Tel: 2020\u20132024')).toBe('Tel: [teléfono]');
+    expect(redactContactDetails('Tel: 8888\u00a07777')).toBe('Tel: [teléfono]');
+    expect(redactContactDetails('Tel: 8888\u202f7777 o 8888\u20147777')).toBe('Tel: [teléfono] o [teléfono]');
+    expect(redactContactDetails('Soporte 2016\u20132019')).toBe('Soporte 2016\u20132019');
   });
 });

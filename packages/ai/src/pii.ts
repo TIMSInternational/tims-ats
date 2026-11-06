@@ -142,7 +142,8 @@ export function wrapAsData(tag: string, content: string): string {
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
 // Never across a line break: separate CV lines are separate facts.
-const DIGIT_RUN = /\+?\(?\d[\d \t().-]*\d/g;
+// Separators include no-break/thin spaces and every dash ("8888\u00a07777", "2020\u20132024").
+const DIGIT_RUN = /\+?\(?\d[\d \t\u00a0\u2007\u2009\u200a\u202f().\-\u2010-\u2015\u2212]*\d/g;
 // "2019-2023" in a CV is a period, not a phone; protected before digit runs are masked.
 const YEAR_RANGE = /(?<!\d)(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}(?!\d)/g;
 const PHONE_MIN_DIGITS = 8;
@@ -150,7 +151,7 @@ const PHONE_MIN_DIGITS = 8;
 // continues a digit run ("+506 2020-2024"): then it is left to the phone masking below.
 const PHONE_LABEL_BEFORE =
   /(?:tel|tel[eé]fono|telefone|cel|celular|m[oó]vil|movil|phone|mobile|whatsapp|wa|fax|contacto|contact)\.?\s*(?:n[oº°]\.?\s*)?[:#]?\s*$/i;
-const DIGIT_RUN_BEFORE = /[\d+][ \t.-]*$/;
+const DIGIT_RUN_BEFORE = /[\d+][ \t\u00a0\u2007\u2009\u200a\u202f.\-\u2010-\u2015\u2212]*$/;
 
 // Name particles never masked on their own ("de", "del" are ordinary words).
 const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
