@@ -112,13 +112,23 @@ export const vacancyJobProfileRouter = router({
       // vacancy.update (editable status, no pending approval, compare-and-set, audit row in one transaction),
       // never a bare upsert — so they cannot change while an approval is pending or the vacancy is closed.
       if (competencies !== undefined) {
+        // The whole request in ONE guarded transaction: competencies and every other field sent with them.
+        const profileFields = {
+          ...(rest.discTargets !== undefined && { discTargets: rest.discTargets as Prisma.InputJsonValue }),
+          ...(rest.pcaExpected !== undefined && { pcaExpected: rest.pcaExpected as Prisma.InputJsonValue }),
+          ...(rest.milExpected !== undefined && { milExpected: rest.milExpected as Prisma.InputJsonValue }),
+          ...(rest.kpis !== undefined && { kpis: rest.kpis as Prisma.InputJsonValue }),
+          ...(rest.requirements !== undefined && { requirements: rest.requirements as Prisma.InputJsonValue }),
+        };
+        const fields = ['competencies', ...Object.keys(profileFields)].sort();
         const row = await vacancyLifecycleRepository.updateContent(
           ctx.user.organizationId,
           vacancyId,
           {},
-          ['competencies'],
+          fields,
           { userId: ctx.user.id, actorId: ctx.user.impersonatorId ?? ctx.user.id },
           toStoredCompetencies(competencies) as Prisma.InputJsonValue,
+          profileFields,
         );
         if (!row) {
           throw new TRPCError({
@@ -127,6 +137,7 @@ export const vacancyJobProfileRouter = router({
               'Esta vacante no se puede editar en su estado actual. Si tiene una solicitud de aprobación en curso, retírala primero; una vacante cerrada no se edita.',
           });
         }
+        return db.jobProfile.findUniqueOrThrow({ where: { vacancyId }, select: jobProfileSelect });
       }
       const data = { ...rest, competencies: undefined as Prisma.InputJsonValue | undefined };
 

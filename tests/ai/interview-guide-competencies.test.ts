@@ -288,6 +288,15 @@ describe('guide helpers', () => {
     expect(userMessage).not.toMatch(/Jose|Perez/);
   });
 
+  it('masks phones in any digit script and labelled 7-digit local numbers (Codex round 10)', () => {
+    expect(redactContactDetails('Contact: +١ ٢٠٢ ٥٥٥ ٠١٢٣')).toBe('Contact: [teléfono]');
+    expect(redactContactDetails('Tel ８８８８−７７７７')).toBe('Tel [teléfono]');
+    expect(redactContactDetails('Contact: 555-1234')).toBe('Contact: [teléfono]');
+    expect(redactContactDetails('Teléfono: 2222 333')).toBe('Teléfono: [teléfono]');
+    // An unlabelled short number is not a phone: it stays.
+    expect(redactContactDetails('Equipo de 1234567 usuarios')).toBe('Equipo de 1234567 usuarios');
+  });
+
   it('bounds the CV block', () => {
     const text = formatCandidateCv({
       summary: 'x'.repeat(5000),

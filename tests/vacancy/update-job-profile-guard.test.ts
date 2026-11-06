@@ -5,8 +5,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // guarded, audited write as vacancy.update (vacancyLifecycleRepository.updateContent).
 
 const jobProfileUpsert = vi.fn();
+const jobProfileFind = vi.fn();
 vi.mock('@tims/db', () => ({
-  tenantDb: { jobProfile: { upsert: (...a: unknown[]) => jobProfileUpsert(...a) } },
+  tenantDb: {
+    jobProfile: {
+      upsert: (...a: unknown[]) => jobProfileUpsert(...a),
+      findUniqueOrThrow: (...a: unknown[]) => jobProfileFind(...a),
+    },
+  },
   runWithTenant: (_o: string, f: () => unknown) => f(),
 }));
 const updateContent = vi.hoisted(() => vi.fn());
@@ -46,17 +52,29 @@ describe('vacancy.updateJobProfile competencies guard', () => {
     await expect(
       caller.vacancy.updateJobProfile({ vacancyId: VACANCY_ID, competencies: [{ name: 'Liderazgo', level: 3 }] }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
-    expect(updateContent).toHaveBeenCalledWith(ORG_ID, VACANCY_ID, {}, ['competencies'], expect.anything(), expect.anything());
+    expect(updateContent).toHaveBeenCalledWith(ORG_ID, VACANCY_ID, {}, ['competencies'], expect.anything(), expect.anything(), {});
     expect(jobProfileUpsert).not.toHaveBeenCalled();
   });
 
-  it('never writes competencies through the bare upsert', async () => {
+  it('writes competencies AND the other fields sent with them in the one guarded transaction (Codex round 10)', async () => {
     updateContent.mockResolvedValue({ id: VACANCY_ID });
-    jobProfileUpsert.mockResolvedValue({ id: 'jp-1' });
+    jobProfileFind.mockResolvedValue({ id: 'jp-1' });
     const caller = await makeCaller();
-    await caller.vacancy.updateJobProfile({ vacancyId: VACANCY_ID, competencies: [{ name: 'Liderazgo', level: 3 }] });
-    const args = jobProfileUpsert.mock.calls[0]?.[0] as { update: Record<string, unknown> } | undefined;
-    expect(args?.update.competencies).toBeUndefined();
+    await caller.vacancy.updateJobProfile({
+      vacancyId: VACANCY_ID,
+      competencies: [{ name: 'Liderazgo', level: 3 }],
+      kpis: [],
+    });
+    expect(jobProfileUpsert).not.toHaveBeenCalled();
+    expect(updateContent).toHaveBeenCalledWith(
+      ORG_ID,
+      VACANCY_ID,
+      {},
+      ['competencies', 'kpis'],
+      expect.anything(),
+      expect.anything(),
+      { kpis: [] },
+    );
   });
 
   it('leaves other job-profile fields on the existing path when no competencies are sent', async () => {

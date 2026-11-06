@@ -113,6 +113,9 @@ export const vacancyLifecycleRepository = {
     fields: string[],
     actor: VacancyLifecycleActor,
     competencies?: Prisma.InputJsonValue,
+    // Other job-profile fields written in the SAME upsert as the competencies (updateJobProfile), so a request
+    // either applies completely or not at all.
+    profileFields?: Omit<Prisma.JobProfileUncheckedCreateInput, 'organizationId' | 'vacancyId' | 'competencies'>,
   ): Promise<VacancyLifecycleRow | null> {
     return runTenantTransaction(organizationId, async (tx) => {
       const moved = await tx.vacancy.updateMany({
@@ -131,8 +134,8 @@ export const vacancyLifecycleRepository = {
       if (competencies !== undefined) {
         await tx.jobProfile.upsert({
           where: { vacancyId },
-          create: { organizationId, vacancyId, competencies },
-          update: { competencies },
+          create: { organizationId, vacancyId, ...profileFields, competencies },
+          update: { ...profileFields, competencies },
           select: { id: true },
         });
       }
