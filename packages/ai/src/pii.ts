@@ -140,22 +140,21 @@ export function wrapAsData(tag: string, content: string): string {
 }
 
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-// A run of digits with phone-style separators. Counted, not trusted: see redactContactDetails.
-const PHONE_CANDIDATE = /\+?\(?\d[\d\s().-]{6,}\d/g;
-const YEAR_RANGE = /^(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}$/;
+// A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
+// Never across a line break: separate CV lines are separate facts.
+const DIGIT_RUN = /\+?\(?\d[\d \t().-]*\d/g;
+// "2019-2023" in a CV is a period, not a phone; protected before digit runs are masked.
+const YEAR_RANGE = /(?<!\d)(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}(?!\d)/g;
+const PHONE_MIN_DIGITS = 8;
 
 // Name particles never masked on their own ("de", "del" are ordinary words).
 const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /** A term and its separate words, longest first, without particles or 1-2 letter fragments. */
 function redactionVariants(terms: readonly string[]): string[] {
   const out = new Set<string>();
   for (const term of terms) {
-    const whole = term.trim().replace(/\s+/g, ' ');
+    const whole = term.normalize('NFC').trim().replace(/\s+/g, ' ');
     if (whole.length >= 3) out.add(whole);
     for (const part of whole.split(' ')) {
       if (part.length >= 3 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
@@ -164,23 +163,32 @@ function redactionVariants(terms: readonly string[]): string[] {
   return [...out].sort((a, b) => b.length - a.length);
 }
 
+/** Private-use placeholder for the i-th protected span: no digits, so it can never join a digit run. */
+const placeholder = (i: number) => `\uE000${i.toString(26).replace(/\d/g, (d) => 'qrstuvwxyz'[Number(d)]!)}\uE001`;
+
 /**
  * Data minimization for free text about a candidate (e.g. a parsed CV summary) before it is sent to a
- * model that does not need to know who the person is: masks e-mail addresses, phone numbers (8 to 15
- * digits; a year range such as "2019-2023" is left alone) and the given literal terms (the candidate's
- * own names, whole and word by word, skipping particles such as "de"), whole-word and case-insensitive.
- * Run it BEFORE sanitizeInput / wrapAsData.
+ * model that does not need to know who the person is: masks e-mail addresses, every run of 8+ digits
+ * (phone numbers, alone or several in a row; year ranges such as "2019-2023" are kept) and the given
+ * literal terms (the candidate's own names, whole and word by word, skipping particles such as "de"),
+ * whole-word, case- and accent-insensitive. Run it BEFORE sanitizeInput / wrapAsData.
  */
 export function redactContactDetails(text: string, terms: readonly string[] = []): string {
-  let out = text.replace(EMAIL_PATTERN, '[email]');
-  out = out.replace(PHONE_CANDIDATE, (match) => {
-    const digits = match.replace(/\D/g, '').length;
-    // "(2016-2024)" reaches here as "(2016-2024": the opening parenthesis is not part of the range.
-    if (digits < 8 || digits > 15 || YEAR_RANGE.test(match.replace(/^[\s(+]+/, '').trim())) return match;
-    return '[teléfono]';
+  let out = text.normalize('NFC').replace(EMAIL_PATTERN, '[email]');
+  const kept: string[] = [];
+  out = out.replace(YEAR_RANGE, (range) => {
+    kept.push(range);
+    return placeholder(kept.length - 1);
+  });
+  out = out.replace(DIGIT_RUN, (run) => (run.replace(/\D/g, '').length >= PHONE_MIN_DIGITS ? '[teléfono]' : run));
+  kept.forEach((range, i) => {
+    out = out.replace(placeholder(i), range);
   });
   for (const term of redactionVariants(terms)) {
-    const pattern = term.split(' ').map(escapeRegExp).join('\\s+');
+    const pattern = term
+      .split(' ')
+      .map((word) => fold(word.toLowerCase()))
+      .join('\\s+');
     out = out.replace(new RegExp(`${START}${pattern}${END}`, 'giu'), '[nombre]');
   }
   return out;

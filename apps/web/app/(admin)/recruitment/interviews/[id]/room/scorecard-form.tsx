@@ -204,7 +204,7 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
           scorecards={interview.scorecards}
           currentUserId={currentUserId}
           isViewerBlinded={isEvaluator && submittedAt === null}
-          competencies={competencies}
+          competencies={resolved.items}
           labelFor={labelFor}
         />
       </div>

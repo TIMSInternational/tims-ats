@@ -128,6 +128,21 @@ describe('interview room — vacancy competencies', () => {
     expect(within(otherRow).getByText(en.interviewRoom.comparisonNotRated)).toBeInTheDocument();
   });
 
+  // Codex review on #421 (P2): a card filed before the profile changed kept its old rating out of the
+  // breakdown (while it still counted in the average), most visibly for a recruiter with no card of their own.
+  it("breaks each card down by the current set plus that card's own stored keys", () => {
+    const RECRUITER = '44444444-4444-4444-8444-444444444444';
+    const before = { id: 's1', evaluatorId: OTHER, ratings: { 'Negociación comercial': 4, SQL: 3 }, recommendation: 'yes', submittedAt: new Date(), isWithheld: false };
+    wrap(<ScorecardForm interview={interview([before])} currentUserId={RECRUITER} />);
+    const otherRow = screen.getByText(/Otra Persona/).closest('li')!;
+    const items = within(otherRow).getAllByRole('listitem').map((li) => li.textContent);
+    expect(items).toEqual([
+      expect.stringContaining(en.interviewRoom.comparisonNotRated), // Negociación (current, not on that card)
+      expect.stringContaining(en.interviewRoom.comparisonRating.replace('{n}', '3')), // SQL
+      expect.stringMatching(new RegExp(`^Negociación comercial${en.interviewRoom.comparisonRating.replace('{n}', '4')}`)),
+    ]);
+  });
+
   it('shows no breakdown for a withheld stub', () => {
     const stub = {
       id: 's1',

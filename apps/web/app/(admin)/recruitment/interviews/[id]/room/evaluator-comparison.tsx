@@ -6,6 +6,7 @@ import {
   averageRating,
   parseRecommendation,
   parseStoredRatings,
+  withStoredCompetencies,
   type ScorecardCompetency,
 } from './scorecard-model';
 import { RECOMMENDATION_LABEL_KEYS } from './recommendation-picker';
@@ -20,8 +21,9 @@ interface EvaluatorComparisonProps {
    */
   isViewerBlinded: boolean;
   /**
-   * The competencies the scorecard form rates, in its order and with its labels (the vacancy's job profile,
-   * or the generic set), so each visible card is broken down exactly as it was filled in.
+   * The competencies the scorecard rates now (the vacancy's job profile, or the generic set), in its order.
+   * Each visible card is broken down by these PLUS the keys that card itself stored, so a rating given before
+   * the profile changed (renamed or removed competency) still shows, as it does in the card's average.
    */
   competencies?: ScorecardCompetency[];
   labelFor?: (c: ScorecardCompetency) => string;
@@ -79,7 +81,7 @@ export function EvaluatorComparison({
                       {t.interviewRoom.comparisonDetails}
                     </summary>
                     <ul className="mt-1 space-y-0.5">
-                      {competencies.map((c) => {
+                      {withStoredCompetencies(competencies, ratings).map((c) => {
                         const value = ratings[c.key];
                         return (
                           <li key={c.key} className="flex items-center gap-2">

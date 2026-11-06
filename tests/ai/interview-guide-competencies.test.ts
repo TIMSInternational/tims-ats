@@ -220,4 +220,15 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('Cruzó la meta con Cruz', ['Cruz'])).toBe('Cruzó la meta con [nombre]');
     expect(redactContactDetails('1.200.000 ventas', [])).toBe('1.200.000 ventas');
   });
+
+  // Codex review on #421 (P1): adjacent numbers pushed a greedy match above 15 digits, which was then kept,
+  // and an unaccented spelling of an accented name was not masked.
+  it('masks phones next to other numbers, and names spelled without their accents', () => {
+    expect(redactContactDetails('Tel: 8888-7777 (2019-2023)')).toBe('Tel: [teléfono] (2019-2023)');
+    expect(redactContactDetails('Tel: +506 8888-7777 8888-6666')).toBe('Tel: [teléfono]');
+    expect(redactContactDetails('Jose Perez y JOSÉ PÉREZ', ['José', 'Pérez'])).toBe('[nombre] [nombre] y [nombre] [nombre]');
+    expect(redactContactDetails('Muñoz / Munoz', ['Muñoz'])).toBe('[nombre] / [nombre]');
+    // A line break separates facts: two years on two lines are not a phone.
+    expect(redactContactDetails('2015\n2016')).toBe('2015\n2016');
+  });
 });
