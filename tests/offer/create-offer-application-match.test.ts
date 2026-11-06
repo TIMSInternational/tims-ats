@@ -37,6 +37,11 @@ vi.mock('@tims/db', () => {
     runTenantTransaction: async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(tenantDb),
   };
 });
+// This file makes more mutations than the in-memory per-user limit allows in a minute; the limiter is not under test.
+vi.mock('../../packages/api/src/middleware/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue(undefined),
+  getRateLimitCategory: vi.fn().mockReturnValue('standard'),
+}));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
   createAnchorLoader: vi.fn().mockReturnValue(null),
@@ -188,6 +193,30 @@ describe('offer salary bounds', () => {
         where: expect.objectContaining({ id: OFFER_ID, organizationId: ORG_ID, status: 'draft' }),
         data: expect.objectContaining({ salary: 96_000_000 }),
       }),
+    );
+  });
+
+  // Pilot call audit 2026-11-05: a zero-decimal currency (CRC, COP…) stores whole amounts (crud.ts wholeIfZeroDecimal).
+  it('create rounds a zero-decimal salary and keeps the cents of any other currency', async () => {
+    await (await caller()).offer.create({ ...input, currency: 'CRC', salary: 12_000_000.12 });
+    expect(offerCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ salary: 12_000_000, currency: 'CRC' }) }),
+    );
+    await (await caller()).offer.create({ ...input, currency: 'USD', salary: 4_500.5 });
+    expect(offerCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ salary: 4_500.5, currency: 'USD' }) }),
+    );
+  });
+
+  it.each([
+    { label: 'the sent currency', stored: 'USD', sent: 'CRC' as string | undefined, salary: 12_000_000.12, saved: 12_000_000 },
+    { label: 'the stored currency when none is sent', stored: 'CRC', sent: undefined, salary: 12_000_000.12, saved: 12_000_000 },
+    { label: 'a currency with cents', stored: 'CRC', sent: 'USD', salary: 4_500.5, saved: 4_500.5 },
+  ])('update rounds a zero-decimal salary by $label', async ({ stored, sent, salary, saved }) => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: stored });
+    await (await caller()).offer.update({ id: OFFER_ID, salary, ...(sent && { currency: sent }) });
+    expect(offerUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ salary: saved }) }),
     );
   });
 });

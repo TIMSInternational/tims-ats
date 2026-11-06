@@ -9,7 +9,7 @@ export type EvaluatorCandidate = {
   roleSlugs: string[];
 };
 
-// Data access for the evaluator guard (routers/interview/evaluator-guard.ts). Org-filtered, explicit selects.
+// Data access for the evaluator guard (services/interview-evaluator-eligibility.service.ts). Org-filtered, explicit selects.
 export const interviewEvaluatorRepository = {
   /** The proposed evaluators that are users of this organization (an id from another tenant is simply absent). */
   async findCandidates(organizationId: string, userIds: readonly string[]): Promise<EvaluatorCandidate[]> {

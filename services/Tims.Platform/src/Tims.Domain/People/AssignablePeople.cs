@@ -95,7 +95,7 @@ public static class AssignablePurposes
     ///   an evaluator must hold both, at any scope (the interview's panel arm makes an assigned evaluator see it at
     ///   every narrow scope). A Colaborador (employee: onboarding/performance only) used to be offered, received the
     ///   invitation with the room link and then got FORBIDDEN; interview.schedule / reschedule / addEvaluator now
-    ///   refuse such an evaluator too (routers/interview/evaluator-guard.ts).</description></item>
+    ///   refuse such an evaluator too (services/interview-evaluator-eligibility.service.ts).</description></item>
     ///   <item><description>vacancy_approver → vacancy:update (<c>vacancy.submitForApproval</c>).</description></item>
     ///   <item><description>offer_approver → offer:create (<c>offer.submitForApproval</c> accepts offer:update OR
     ///   offer:create; every matrix holder of offer:update also holds offer:create).</description></item>

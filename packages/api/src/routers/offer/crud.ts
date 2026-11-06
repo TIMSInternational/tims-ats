@@ -254,7 +254,7 @@ export const offerCrudRouter = router({
             scopeWhere as Prisma.OfferWhereInput,
           ],
         },
-        select: { id: true, status: true },
+        select: { id: true, status: true, currency: true },
       });
 
       if (!existing) {
@@ -273,7 +273,8 @@ export const offerCrudRouter = router({
       // write must not let the approvers see terms other than the ones they are asked to approve.
       const applied = await offerDraftRepository.updateDraft(ctx.user.organizationId, id, {
         ...rest,
-        ...(rest.salary !== undefined && rest.currency !== undefined && { salary: wholeIfZeroDecimal(rest.salary, rest.currency) }),
+        // A salary sent without a currency is in the offer's stored one.
+        ...(rest.salary !== undefined && { salary: wholeIfZeroDecimal(rest.salary, rest.currency ?? existing.currency) }),
         ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
         ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
       });

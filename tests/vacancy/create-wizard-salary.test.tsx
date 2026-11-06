@@ -1,8 +1,9 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import es from '../../apps/web/lib/i18n/es.json';
+import type { VacancyFormData } from '../../apps/web/app/(admin)/recruitment/vacancies/create-modal.helpers';
 
 // Pilot call audit 2026-11-05: the wizard's salary band was <input type="number"> + parseInt(text): no digit
 // grouping, a wheel/arrow step could change it, and nothing refused a minimum above the maximum. It now uses the
@@ -26,7 +27,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 
-let onConfirm: ReturnType<typeof vi.fn>;
+let onConfirm: Mock<(data: VacancyFormData) => void>;
 beforeEach(async () => {
   const { CreateModal } = await import('../../apps/web/app/(admin)/recruitment/vacancies/create-modal');
   onConfirm = vi.fn();
