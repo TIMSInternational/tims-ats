@@ -112,7 +112,8 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
 
     // Acme's grants are seed-access-matrix.ts's MATRIX rows (same scopes) for every permission this surface
     // reads — caller gates interview:create/update, vacancy:create/update, offer:create/update; eligibility
-    // vacancy:approve, offer:approve; plus hr_admin's user:read. Deliberate divergences, each load-bearing:
+    // vacancy:approve, offer:approve, interview:create + interview:read; plus hr_admin's user:read. Deliberate
+    // divergences, each load-bearing:
     //  1. super_admin holds NO role_permissions rows, so the directory's super_admin short-circuit (the one
     //     PermissionService applies) is what lists Ada — rows would make that branch untested.
     //  2. the non-staff `external` role holds vacancy:approve + offer:approve (MATRIX gives it neither), so the
@@ -121,6 +122,9 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
     //     so Gil — whose only approve grants ride that role — must be absent from both Globex approver lists.
     //  4. b1…010 is a DRIFTED row: Acme's Uma linked to Globex's hr_admin role. It must never make her an Acme
     //     approver (the directory joins roles on the caller's organization, and RLS hides the row).
+    //  5. Globex's recruiter holds interview:create WITHOUT interview:read, and Globex's hr_admin holds both: an
+    //     evaluator must hold BOTH (open the room + submit the scorecard), so only Fiona is a Globex evaluator.
+    //     Globex's deactivated leader role also carries both, so Gil must still be absent.
     // #317 pickers, also MATRIX rows: performance:create (hr_admin @organization, leader @team, employee @own),
     // onboarding:create (hr_admin @organization, hrbp @unit), user/learning/succession/evaluation360:create and
     // ninebox:update (hr_admin @organization), ninebox:update (committee @team). Zed is a platform owner whose
@@ -151,7 +155,8 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('e1000000-0000-0000-0000-00000000000d', 'learning', 'create'),
           ('e1000000-0000-0000-0000-00000000000e', 'succession', 'create'),
           ('e1000000-0000-0000-0000-00000000000f', 'evaluation360', 'create'),
-          ('e1000000-0000-0000-0000-000000000010', 'ninebox', 'update');
+          ('e1000000-0000-0000-0000-000000000010', 'ninebox', 'update'),
+          ('e1000000-0000-0000-0000-000000000011', 'interview', 'read');
         INSERT INTO roles (id, organization_id, slug, is_active) VALUES
           ('a1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'recruiter', true),
           ('a1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'super_admin', true),
@@ -171,6 +176,7 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('f1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000002', 'organization'),
           ('f1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000008', 'organization'),
           ('f1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000003', 'organization'),
+          ('f1000000-0000-0000-0000-000000000006', 'a1000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000011', 'organization'),
           -- hr_admin (MATRIX: CRUD on interview/vacancy/offer/user + vacancy/offer approve — all organization)
           ('f1000000-0000-0000-0000-000000000011', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000001', 'organization'),
           ('f1000000-0000-0000-0000-000000000012', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000007', 'organization'),
@@ -181,19 +187,23 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('f1000000-0000-0000-0000-000000000017', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000004', 'organization'),
           ('f1000000-0000-0000-0000-000000000018', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000005', 'organization'),
           ('f1000000-0000-0000-0000-000000000019', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000006', 'organization'),
+          ('f1000000-0000-0000-0000-00000000001a', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000011', 'organization'),
           -- leader (MATRIX: vacancy read/create/approve, interview read/create/update, offer read/approve — team)
           ('f1000000-0000-0000-0000-000000000021', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000002', 'team'),
           ('f1000000-0000-0000-0000-000000000022', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000004', 'team'),
           ('f1000000-0000-0000-0000-000000000023', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000001', 'team'),
           ('f1000000-0000-0000-0000-000000000024', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000007', 'team'),
           ('f1000000-0000-0000-0000-000000000025', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000005', 'team'),
+          ('f1000000-0000-0000-0000-000000000026', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000011', 'team'),
           -- hrbp (MATRIX: vacancy read/create/update, interview read/create, offer read only — unit)
           ('f1000000-0000-0000-0000-000000000031', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-000000000002', 'unit'),
           ('f1000000-0000-0000-0000-000000000032', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-000000000008', 'unit'),
           ('f1000000-0000-0000-0000-000000000033', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-000000000001', 'unit'),
+          ('f1000000-0000-0000-0000-000000000034', 'a1000000-0000-0000-0000-000000000007', 'e1000000-0000-0000-0000-000000000011', 'unit'),
           -- committee (MATRIX: interview read/create/update — team)
           ('f1000000-0000-0000-0000-000000000041', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000001', 'team'),
           ('f1000000-0000-0000-0000-000000000042', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000007', 'team'),
+          ('f1000000-0000-0000-0000-000000000043', 'a1000000-0000-0000-0000-000000000008', 'e1000000-0000-0000-0000-000000000011', 'team'),
           -- #317 subject-scoped pickers (MATRIX)
           ('f1000000-0000-0000-0000-000000000061', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000a', 'organization'),
           ('f1000000-0000-0000-0000-000000000062', 'a1000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-00000000000b', 'organization'),
@@ -217,7 +227,12 @@ public sealed class TenantPeopleFixture : IAsyncLifetime
           ('f2000000-0000-0000-0000-000000000004', 'a2000000-0000-0000-0000-000000000002', 'e1000000-0000-0000-0000-000000000003', 'organization'),
           ('f2000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000002', 'e1000000-0000-0000-0000-000000000008', 'organization'),
           ('f2000000-0000-0000-0000-000000000006', 'a2000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000004', 'team'),
-          ('f2000000-0000-0000-0000-000000000007', 'a2000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000005', 'team');
+          ('f2000000-0000-0000-0000-000000000007', 'a2000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000005', 'team'),
+          -- Globex: DIVERGENCE 5 (recruiter: interview:create only; hr_admin and the deactivated leader: create + read)
+          ('f2000000-0000-0000-0000-000000000008', 'a2000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000001', 'organization'),
+          ('f2000000-0000-0000-0000-000000000009', 'a2000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000011', 'organization'),
+          ('f2000000-0000-0000-0000-00000000000a', 'a2000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000001', 'team'),
+          ('f2000000-0000-0000-0000-00000000000b', 'a2000000-0000-0000-0000-000000000003', 'e1000000-0000-0000-0000-000000000011', 'team');
         INSERT INTO users (id, organization_id, supabase_user_id, email, first_name, last_name, avatar, phone, is_platform_owner, is_active, deleted_at) VALUES
           ('c1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'sub-people-recruiter', 'rita@acme.test', 'Rita', 'Recruiter', NULL, '+57 300 0000001', false, true, NULL),
           ('c1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-people-admin', 'ada@acme.test', 'Ada', 'Admin', 'https://cdn.test/ada.png', NULL, false, true, NULL),

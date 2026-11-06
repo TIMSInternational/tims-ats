@@ -69,25 +69,31 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
         people.Select(p => p.GetProperty("id").GetGuid()).Order().ToArray();
 
     [Fact]
-    public async Task VacancyAssignees_AreEveryActiveMember_TheSameDirectoryAsEvaluators()
+    public async Task VacancyAssignees_AreEveryActiveMemberOfOwnTenant()
     {
         // vacancy.create accepts ANY active member as assignedTo (org-placement.ts), so no eligibility filter.
-        Assert.Equal(Ids(await People("?purpose=interview_evaluator&limit=50")),
-            Ids(await People("?purpose=vacancy_assignee&limit=50")));
-        Assert.Contains(TenantPeopleFixture.Employee, Ids(await People("?purpose=vacancy_assignee&limit=50")));
-    }
-
-    [Fact]
-    public async Task Recruiter_ListsEveryActiveMemberOfOwnTenantAsEvaluators()
-    {
-        var people = await People("?purpose=interview_evaluator");
         Assert.Equal(new[]
         {
             TenantPeopleFixture.Recruiter, TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin,
             TenantPeopleFixture.Leader, TenantPeopleFixture.Employee, TenantPeopleFixture.ExternalOnly,
             TenantPeopleFixture.Underscore, TenantPeopleFixture.Hrbp, TenantPeopleFixture.Committee,
             TenantPeopleFixture.HomeOwner,
+        }.Order().ToArray(), Ids(await People("?purpose=vacancy_assignee&limit=50")));
+    }
+
+    [Fact]
+    public async Task Evaluators_AreOnlyStaffWhoCanOpenTheRoomAndSubmitAScorecard()
+    {
+        // interview:read (room) AND interview:create (scorecard), at any scope, or super_admin (Ada). NOT the
+        // employee-role Colaboradores Eli and Uma (they used to be offered, got the room link, then FORBIDDEN),
+        // not the external-role holder (non-staff), not Zed (platform owner without a staff role).
+        var people = await People("?purpose=interview_evaluator&limit=50");
+        Assert.Equal(new[]
+        {
+            TenantPeopleFixture.Admin, TenantPeopleFixture.Recruiter, TenantPeopleFixture.HrAdmin,
+            TenantPeopleFixture.Leader, TenantPeopleFixture.Hrbp, TenantPeopleFixture.Committee,
         }.Order().ToArray(), Ids(people));
+        Assert.DoesNotContain(TenantPeopleFixture.Employee, Ids(people));
     }
 
     [Fact]
@@ -129,11 +135,10 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [Fact]
     public async Task OtherTenant_SeesOnlyItsOwnPeople_AndADeactivatedRoleGrantsNothing()
     {
+        // DIVERGENCE 5: Fabio (the caller) holds interview:create but not interview:read, so he cannot act as an
+        // evaluator; Gil's read + create ride Globex's DEACTIVATED leader role. Only Fiona holds both.
         var evaluators = await People("?purpose=interview_evaluator", TenantPeopleFixture.OrgBRecruiterSub);
-        Assert.Equal(new[]
-        {
-            TenantPeopleFixture.OrgBHrAdmin, TenantPeopleFixture.OrgBRecruiter, TenantPeopleFixture.OrgBInactiveRoleLeader,
-        }.Order().ToArray(), Ids(evaluators));
+        Assert.Equal([TenantPeopleFixture.OrgBHrAdmin], Ids(evaluators));
         // Gil's only approve grants ride Globex's DEACTIVATED leader role.
         Assert.Equal([TenantPeopleFixture.OrgBHrAdmin],
             Ids(await People("?purpose=offer_approver", TenantPeopleFixture.OrgBRecruiterSub)));
@@ -146,7 +151,7 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     {
         Assert.Equal([TenantPeopleFixture.HrAdmin], Ids(await People("?purpose=interview_evaluator&search=HUGO%40ACME")));
         // `_` is a LIKE wildcard; unescaped it would match every name with at least one character.
-        Assert.Equal([TenantPeopleFixture.Underscore], Ids(await People("?purpose=interview_evaluator&search=_")));
+        Assert.Equal([TenantPeopleFixture.Underscore], Ids(await People("?purpose=vacancy_assignee&search=_")));
         Assert.Empty(await People("?purpose=interview_evaluator&search=%25"));
         Assert.Empty(await People("?purpose=interview_evaluator&search=fiona"));
     }
@@ -161,12 +166,14 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [Fact]
     public async Task Limit_BoundsTheResultInStableNameOrder()
     {
-        var people = await People("?purpose=interview_evaluator&limit=2");
+        var people = await People("?purpose=vacancy_assignee&limit=2");
         Assert.Equal(["Ada", "Eli"], people.Select(p => p.GetProperty("firstName").GetString()));
+        var evaluators = await People("?purpose=interview_evaluator&limit=2");
+        Assert.Equal(["Ada", "Hugo"], evaluators.Select(p => p.GetProperty("firstName").GetString()));
     }
 
     // Caller authorization follows the mutation each picker feeds (AssignablePurposes.RuleFor) with the grants of
-    // seed-access-matrix.ts, and the unfiltered evaluator directory additionally needs org-wide scope.
+    // seed-access-matrix.ts, and the unfiltered assignee directory additionally needs org-wide scope.
     [Theory]
     [InlineData(TenantPeopleFixture.RecruiterSub, "interview_evaluator")]
     [InlineData(TenantPeopleFixture.RecruiterSub, "vacancy_approver")]
@@ -178,6 +185,10 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [InlineData(TenantPeopleFixture.HrAdminSub, "vacancy_assignee")]
     // hrbp holds vacancy:update at UNIT scope: an approver list (permission-filtered) is allowed at any scope.
     [InlineData(TenantPeopleFixture.HrbpSub, "vacancy_approver")]
+    // interview:create at team/unit scope: the evaluator list is permission-filtered, so any scope is enough.
+    [InlineData(TenantPeopleFixture.LeaderSub, "interview_evaluator")]
+    [InlineData(TenantPeopleFixture.CommitteeSub, "interview_evaluator")]
+    [InlineData(TenantPeopleFixture.HrbpSub, "interview_evaluator")]
     public async Task CallerHoldingThePickerMutationPermission_Is200(string sub, string purpose)
     {
         var response = await Get($"?purpose={purpose}", sub);
@@ -194,10 +205,6 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [InlineData(TenantPeopleFixture.HrbpSub, "offer_approver")] // offer:read only
     [InlineData(TenantPeopleFixture.CommitteeSub, "vacancy_approver")]
     [InlineData(TenantPeopleFixture.CommitteeSub, "offer_approver")]
-    // interview:create IS granted, but at team/unit scope: the whole staff directory needs org-wide scope.
-    [InlineData(TenantPeopleFixture.LeaderSub, "interview_evaluator")]
-    [InlineData(TenantPeopleFixture.CommitteeSub, "interview_evaluator")]
-    [InlineData(TenantPeopleFixture.HrbpSub, "interview_evaluator")]
     // vacancy:create IS granted to leader (@team) and hrbp (@unit), but the assignee list is the whole directory.
     [InlineData(TenantPeopleFixture.LeaderSub, "vacancy_assignee")]
     [InlineData(TenantPeopleFixture.HrbpSub, "vacancy_assignee")]

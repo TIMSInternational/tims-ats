@@ -32,13 +32,15 @@ public enum AssignablePurpose
 /// The permission the CALLER must hold to open a picker — the permission of the mutation the picker feeds
 /// (null = no permission: any staff member, see <see cref="AssignablePurposes.IsAnyStaffMember"/>) —
 /// plus the permission an assignable person must hold to be offered at all (null = any active member of the
-/// organization; see <see cref="AssignablePurposes.CallerScopeAllows"/>). <c>SubjectScoped</c> marks a picker
+/// organization; see <see cref="AssignablePurposes.CallerScopeAllows"/>). <c>EligibilityAlsoAction</c> is a
+/// second action of the same eligibility module the person must ALSO hold, through any of their roles (the
+/// interview evaluator needs interview:create AND interview:read). <c>SubjectScoped</c> marks a picker
 /// whose mutation runs <c>assertSubjectInScope</c> on the picked person: a narrow-scoped caller is then shown
 /// only their subject set (own → self, team → members of teams they lead, unit → members of their units)
 /// instead of being refused. <c>StaffOnly</c> lists only people holding at least one ACTIVE staff role in the
 /// organization, so a non-staff principal (external validator) is never enumerated by a whole-directory picker.
-/// The four recruitment purposes predate it and keep listing every active member (interview.schedule and
-/// vacancy.create accept any member). Eligibility is PERMISSION-based
+/// The recruitment purposes predate it and keep their own filters (vacancy.create accepts any member as
+/// assignee; the approver and evaluator lists are permission-filtered). Eligibility is PERMISSION-based
 /// only: it is not scope-aware. A scope-limited approver (e.g. a leader holding offer:approve at team scope)
 /// is listed even for a record outside their scope; the submit step re-checks each approver's scope against
 /// the specific record and rejects the submission with a user-visible error instead of storing an approver
@@ -50,7 +52,8 @@ public sealed record AssignablePurposeRule(
     string? EligibilityModule,
     string? EligibilityAction,
     bool SubjectScoped = false,
-    bool StaffOnly = false);
+    bool StaffOnly = false,
+    string? EligibilityAlsoAction = null);
 
 public static class AssignablePurposes
 {
@@ -85,9 +88,14 @@ public static class AssignablePurposes
     /// Caller gates follow the tRPC mutation each picker feeds:
     /// <list type="bullet">
     ///   <item><description>interview_evaluator → interview:create (<c>interview.schedule</c>). The evaluators modal
-    ///   feeds <c>interview.addEvaluator</c>, which needs interview:update; not split, because the org-wide callers
-    ///   <see cref="CallerScopeAllows"/> admits hold both in seed-access-matrix.ts (super_admin, hr_admin,
-    ///   recruiter) — the two only differ at team/unit scope, which is refused here anyway.</description></item>
+    ///   feeds <c>interview.addEvaluator</c>, which needs interview:update; not split: every seed-access-matrix.ts
+    ///   holder of interview:update also holds interview:create. Only people who can ACT on the interview are
+    ///   offered: opening the room reads it (<c>interview.getById</c> / <c>getVideoToken</c>: interview:read) and
+    ///   the scorecard is <c>interview.submitScorecard</c> / the call <c>createVideoRoom</c> (interview:create), so
+    ///   an evaluator must hold both, at any scope (the interview's panel arm makes an assigned evaluator see it at
+    ///   every narrow scope). A Colaborador (employee: onboarding/performance only) used to be offered, received the
+    ///   invitation with the room link and then got FORBIDDEN; interview.schedule / reschedule / addEvaluator now
+    ///   refuse such an evaluator too (routers/interview/evaluator-guard.ts).</description></item>
     ///   <item><description>vacancy_approver → vacancy:update (<c>vacancy.submitForApproval</c>).</description></item>
     ///   <item><description>offer_approver → offer:create (<c>offer.submitForApproval</c> accepts offer:update OR
     ///   offer:create; every matrix holder of offer:update also holds offer:create).</description></item>
@@ -113,11 +121,10 @@ public static class AssignablePurposes
     ///   <item><description>org_structure_member → user:create (team member / unit assignee PUTs, organization.assignUserToUnit;
     ///   the user→unit PUT is user:update, held by exactly the same seed-access-matrix.ts roles at org scope).</description></item>
     /// </list>
-    /// interview.schedule only requires the evaluators to be members of the organization.
     /// </remarks>
     public static AssignablePurposeRule RuleFor(AssignablePurpose purpose) => purpose switch
     {
-        AssignablePurpose.InterviewEvaluator => new("interview", "create", null, null),
+        AssignablePurpose.InterviewEvaluator => new("interview", "create", "interview", "create", EligibilityAlsoAction: "read"),
         AssignablePurpose.VacancyApprover => new("vacancy", "update", "vacancy", "approve"),
         AssignablePurpose.OfferApprover => new("offer", "create", "offer", "approve"),
         AssignablePurpose.VacancyAssignee => new("vacancy", "create", null, null),
@@ -135,11 +142,11 @@ public static class AssignablePurposes
     /// <summary>
     /// Whether the caller's resolved scope for the picker permission is enough to see the list. A purpose with no
     /// eligibility permission lists EVERY active member of the organization — the whole staff directory — so it
-    /// requires an org-wide (organization/company) grant: a team/unit-scoped holder (leader, committee, hrbp for
-    /// interview:create) is refused rather than shown people outside their scope. Filtering to the caller's team or
-    /// unit instead would silently hide evaluators the mutation accepts (interview.schedule takes any org member).
-    /// Approver purposes list only holders of the approve permission, which a narrow-scoped submitter (hrbp for
-    /// vacancy:update) legitimately needs to choose from, so any granted scope suffices there.
+    /// requires an org-wide (organization/company) grant: a team/unit-scoped holder (leader, hrbp for
+    /// vacancy:create) is refused rather than shown people outside their scope. Permission-filtered purposes list
+    /// only holders of that permission, which a narrow-scoped caller legitimately needs to choose from (hrbp
+    /// submitting a vacancy picks approvers; a leader or committee member scheduling an interview on a vacancy of
+    /// their team picks evaluators), so any granted scope suffices there.
     /// </summary>
     /// <remarks>A subject-scoped purpose admits every granted scope: a narrow caller sees only their subject set
     /// (<see cref="NeedsSubjectFilter"/>), which is exactly the set the mutation's assertSubjectInScope accepts.</remarks>
