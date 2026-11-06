@@ -158,6 +158,25 @@ describe('generateInterviewGuide with the job profile', () => {
     expect(cv).toContain('(2016-2024)');
     expect(cv).not.toMatch(/Ana|María|Ruiz|ana\.ruiz@mail\.com|8888/);
   });
+
+  it('never lets an invisible character re-join a masked identifier in the FINAL prompt', async () => {
+    vi.mocked(bedrockGenerate).mockResolvedValue({
+      text: JSON.stringify({ sections: SECTIONS }),
+      inputTokens: 1,
+      outputTokens: 1,
+      model: 'haiku',
+      latencyMs: 1,
+    });
+    await generateInterviewGuide('org-1', {
+      ...BASE,
+      candidateCv: { summary: 'Jo\u200bse Perez, Tel: 8888\u200b7777, móvil 2020-2024. Ventas (2016-2024).', experience: [] },
+      redact: ['José', 'Pérez'],
+    });
+    const [, , userMessage] = vi.mocked(bedrockGenerate).mock.calls.at(-1)!;
+    const cv = /<candidate_cv>([\s\S]*)<\/candidate_cv>/.exec(userMessage)?.[1] ?? '';
+    expect(cv).not.toMatch(/Jose|Perez|88887777|8888|2020-2024/);
+    expect(cv).toContain('(2016-2024)');
+  });
 });
 
 describe('guide helpers', () => {
@@ -230,5 +249,18 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('Muñoz / Munoz', ['Muñoz'])).toBe('[nombre] / [nombre]');
     // A line break separates facts: two years on two lines are not a phone.
     expect(redactContactDetails('2015\n2016')).toBe('2015\n2016');
+  });
+
+  it('masks identifiers split by invisible characters (Codex P1 on #421)', () => {
+    expect(redactContactDetails('Tel: 8888\u200b7777')).toBe('Tel: [teléfono]');
+    expect(redactContactDetails('Jo\u200bse Perez', ['José', 'Pérez'])).toBe('[nombre] [nombre]');
+  });
+
+  it('masks a phone shaped like a year range, but keeps real periods (Codex P2 on #421)', () => {
+    expect(redactContactDetails('Tel: 2020-2024')).toBe('Tel: [teléfono]');
+    expect(redactContactDetails('Celular 2020-2024')).toBe('Celular [teléfono]');
+    expect(redactContactDetails('WhatsApp: 2020 2024')).not.toMatch(/2020/);
+    expect(redactContactDetails('+506 2020-2024')).toBe('[teléfono]');
+    expect(redactContactDetails('Ventas (2020-2024) y soporte 2016–2019')).toBe('Ventas (2020-2024) y soporte 2016–2019');
   });
 });

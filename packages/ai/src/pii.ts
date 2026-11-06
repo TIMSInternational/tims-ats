@@ -146,6 +146,11 @@ const DIGIT_RUN = /\+?\(?\d[\d \t().-]*\d/g;
 // "2019-2023" in a CV is a period, not a phone; protected before digit runs are masked.
 const YEAR_RANGE = /(?<!\d)(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}(?!\d)/g;
 const PHONE_MIN_DIGITS = 8;
+// A year range is NOT a period when the text right before it says it is a phone ("Tel: 2020-2024") or it
+// continues a digit run ("+506 2020-2024"): then it is left to the phone masking below.
+const PHONE_LABEL_BEFORE =
+  /(?:tel|tel[eé]fono|telefone|cel|celular|m[oó]vil|movil|phone|mobile|whatsapp|wa|fax|contacto|contact)\.?\s*(?:n[oº°]\.?\s*)?[:#]?\s*$/i;
+const DIGIT_RUN_BEFORE = /[\d+][ \t.-]*$/;
 
 // Name particles never masked on their own ("de", "del" are ordinary words).
 const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
@@ -154,7 +159,7 @@ const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da',
 function redactionVariants(terms: readonly string[]): string[] {
   const out = new Set<string>();
   for (const term of terms) {
-    const whole = term.normalize('NFC').trim().replace(/\s+/g, ' ');
+    const whole = term.normalize('NFC').replace(DANGEROUS_CHARS, '').trim().replace(/\s+/g, ' ');
     if (whole.length >= 3) out.add(whole);
     for (const part of whole.split(' ')) {
       if (part.length >= 3 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
@@ -174,9 +179,13 @@ const placeholder = (i: number) => `\uE000${i.toString(26).replace(/\d/g, (d) =>
  * whole-word, case- and accent-insensitive. Run it BEFORE sanitizeInput / wrapAsData.
  */
 export function redactContactDetails(text: string, terms: readonly string[] = []): string {
-  let out = text.normalize('NFC').replace(EMAIL_PATTERN, '[email]');
+  // Invisible and control characters go FIRST: removed later (by sanitizeInput / wrapAsData) they would
+  // re-join a phone number or a name this function failed to recognise ("8888\u200b7777", "Jo\u200bse").
+  let out = text.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(EMAIL_PATTERN, '[email]');
   const kept: string[] = [];
-  out = out.replace(YEAR_RANGE, (range) => {
+  out = out.replace(YEAR_RANGE, (range: string, offset: number, whole: string) => {
+    const before = whole.slice(Math.max(0, offset - 32), offset).split('\n').pop() ?? '';
+    if (PHONE_LABEL_BEFORE.test(before) || DIGIT_RUN_BEFORE.test(before)) return range;
     kept.push(range);
     return placeholder(kept.length - 1);
   });
