@@ -107,6 +107,16 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
     batchEligible: false,
     cacheTtlSeconds: 0,
   },
+  // Video-interview transcript analysis (advisory: questions/answers, verified evidence, SUGGESTED ratings).
+  // Pseudonymized candidate statements ⇒ ttl 0 (never cached).
+  'interview-transcript-analyst': {
+    slug: 'interview-transcript-analyst',
+    name: 'Interview Transcript Analyst',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
   'interview-fit-score': {
     slug: 'interview-fit-score',
     name: 'Interview Fit Scorer',

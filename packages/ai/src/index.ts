@@ -23,6 +23,17 @@ export { generateInterviewGuide } from './agents/interview-guide';
 export type { InterviewGuideResult } from './agents/interview-guide';
 export { detectScorecardBias } from './agents/bias-detector';
 export type { BiasAnalysisResult } from './agents/bias-detector';
+export {
+  analyzeInterviewTranscript,
+  TRANSCRIPT_ANALYST_SLUG,
+} from './agents/interview-transcript-analyst';
+export type {
+  TranscriptAnalysis,
+  TranscriptAnalysisInput,
+  TranscriptCompetencyInput,
+  TranscriptEvidence,
+} from './agents/interview-transcript-analyst';
+export type { TranscriptSegment } from './transcript-evidence';
 export { scoreInterviewFit, fitScoreOutputSchema } from './agents/interview-fit-score';
 export type { FitScoreResult, FitScoreInput } from './agents/interview-fit-score';
 export { explainFit, fitExplainerOutputSchema } from './agents/fit-explainer';

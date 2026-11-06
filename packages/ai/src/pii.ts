@@ -132,10 +132,12 @@ export function sanitizeInput(text: string, maxLength: number = DEFAULT_MAX_LENG
  * occurrence of the wrapper tag (opening or closing) inside the content is
  * neutralized first. Tag-aware, so unrelated angle brackets in the text (e.g.
  * "C++ < C#") are left untouched. Content is sanitized as part of wrapping.
+ * `maxLength` defaults to the shared bound; a caller that budgets its own content
+ * (the interview-transcript analyst's chunks) passes that budget explicitly.
  */
-export function wrapAsData(tag: string, content: string): string {
+export function wrapAsData(tag: string, content: string, maxLength: number = DEFAULT_MAX_LENGTH): string {
   const delimiter = new RegExp(`</?\\s*${tag}\\b[^>]*>`, 'gi');
-  const safe = sanitizeInput(content).replace(delimiter, '[delimiter]');
+  const safe = sanitizeInput(content, maxLength).replace(delimiter, '[delimiter]');
   return `<${tag}>\n${safe}\n</${tag}>`;
 }
 

@@ -705,6 +705,17 @@ export const aiAgentsRouter = router({
         costPerCall: 0.003,
       },
       {
+        slug: 'interview-transcript-analyst',
+        name: 'Interview Transcript Analyst',
+        description:
+          'Sugiere evidencia y calificaciones por competencia a partir de la transcripcion de una videoentrevista (consultivo)',
+        category: 'interview',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.02,
+      },
+      {
         slug: 'fit-explainer',
         name: 'FIT Score Explainer',
         description: 'Explica el puntaje de ajuste (FIT) del candidato',

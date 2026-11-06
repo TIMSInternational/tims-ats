@@ -21,6 +21,11 @@ import {
 } from '../../packages/ai/src/agents/interview-fit-score';
 import { checkInclusiveLanguage } from '../../packages/ai/src/agents/inclusive-language';
 import { PROTECTED_CHARACTERISTICS } from '../../packages/ai/src/fairness';
+import {
+  EVIDENCE_SYSTEM_PROMPT as TRANSCRIPT_EVIDENCE_PROMPT,
+  QUESTIONS_SYSTEM_PROMPT as TRANSCRIPT_QUESTIONS_PROMPT,
+  SYNTHESIS_SYSTEM_PROMPT as TRANSCRIPT_SYNTHESIS_PROMPT,
+} from '../../packages/ai/src/agents/interview-transcript-analyst';
 
 interface CapturedParams {
   input: unknown;
@@ -116,6 +121,9 @@ describe('protected-attribute instruction', () => {
     ['candidate-matcher', CANDIDATE_MATCHER_SYSTEM_PROMPT],
     ['fit-explainer', FIT_EXPLAINER_SYSTEM_PROMPT],
     ['interview-fit-score', INTERVIEW_FIT_SCORE_SYSTEM_PROMPT],
+    ['interview-transcript-analyst (questions)', TRANSCRIPT_QUESTIONS_PROMPT],
+    ['interview-transcript-analyst (evidence)', TRANSCRIPT_EVIDENCE_PROMPT],
+    ['interview-transcript-analyst (synthesis)', TRANSCRIPT_SYNTHESIS_PROMPT],
   ])('%s system prompt forbids inferring/using protected characteristics', (_slug, prompt) => {
     expect(prompt).toMatch(/Do NOT infer, guess, use or mention any protected characteristic/);
     for (const c of PROTECTED_CHARACTERISTICS) expect(prompt).toContain(c);
