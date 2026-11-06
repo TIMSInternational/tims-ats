@@ -4,6 +4,7 @@ import {
   formatCandidateDateTime,
   formatCandidateMoney,
   formatCandidateOfferSalary,
+  candidateTimeZone,
   orgSettingsTimeZone,
   safeTimeZone,
   timeZoneLabel,
@@ -11,7 +12,6 @@ import {
 
 // Intl separates es-CR digit groups with a (narrow) no-break space; compare on plain spaces.
 const plain = (text: string) => text.replace(/[  ]/g, ' ');
-const labels = { tzCostaRica: 'hora de Costa Rica' };
 
 describe('candidate money (es-CR)', () => {
   it('shows colones with the ₡ symbol and no decimals', () => {
@@ -41,16 +41,21 @@ describe('candidate dates and time zones', () => {
   const at = new Date('2026-11-04T16:00:00Z'); // 10:00 in Costa Rica (GMT-6)
 
   it('formats an interview in the organization zone with "hora de Costa Rica (GMT-6)" and no seconds', () => {
-    const text = plain(formatCandidateDateTime(at, 'ES', 'America/Costa_Rica', labels));
+    const text = plain(formatCandidateDateTime(at, 'ES', 'America/Costa_Rica'));
     expect(text).toContain('4 de noviembre de 2026');
     expect(text).toContain('10:00');
     expect(text).not.toMatch(/10:00:00/);
     expect(text.endsWith('hora de Costa Rica (GMT-6)')).toBe(true);
   });
 
-  it('labels another zone by its offset and falls back to an explicit UTC — never the device clock or Bogotá', () => {
-    expect(timeZoneLabel(at, 'America/Mexico_City', labels)).toBe('GMT-6');
-    const utc = plain(formatCandidateDateTime(at, 'ES', null, labels));
+  it('names another zone with the shared label and falls back to an explicit UTC — never the device clock or Bogotá', () => {
+    // The shared label (the one interview emails print), not a Costa-Rica-only special case.
+    expect(timeZoneLabel(at, 'America/Guatemala', 'ES')).toBe('hora de Guatemala (GMT-6)');
+    expect(timeZoneLabel(at, 'America/Guatemala', 'EN')).toBe('Guatemala time (GMT-6)');
+    expect(timeZoneLabel(at, 'America/Mexico_City', 'ES')).toBe('hora de Ciudad de México (GMT-6)');
+    expect(timeZoneLabel(at, null, 'ES')).toBe('UTC');
+    expect(plain(formatCandidateDateTime(at, 'ES', 'America/Guatemala')).endsWith('hora de Guatemala (GMT-6)')).toBe(true);
+    const utc = plain(formatCandidateDateTime(at, 'ES', null));
     expect(utc).toMatch(/4:00 p\. m\./);
     expect(utc.endsWith('UTC')).toBe(true);
   });
@@ -69,5 +74,14 @@ describe('candidate dates and time zones', () => {
     expect(orgSettingsTimeZone(null)).toBeNull();
     expect(orgSettingsTimeZone(['America/Costa_Rica'])).toBeNull();
     expect(safeTimeZone('x'.repeat(65))).toBeNull();
+  });
+
+  it('resolves the portal zone organization → primary company, like the emails (not settings only)', () => {
+    expect(candidateTimeZone({ timezone: 'America/Guatemala' }, 'America/Bogota')).toBe('America/Guatemala');
+    // No zone on the organization: the company's, as the interview and offer emails already show it.
+    expect(candidateTimeZone({}, 'America/Guatemala')).toBe('America/Guatemala');
+    expect(candidateTimeZone({ timezone: 'Mars/Olympus' }, 'America/Costa_Rica')).toBe('America/Costa_Rica');
+    expect(candidateTimeZone(null, null)).toBeNull();
+    expect(candidateTimeZone({}, 'Mars/Olympus')).toBeNull();
   });
 });

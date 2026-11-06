@@ -13,6 +13,7 @@ import {
   type EditableVacancy,
   type EditVacancyForm,
 } from './edit-vacancy-form';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
 interface EditVacancyDrawerProps {
   vacancyId: string;
@@ -29,7 +30,8 @@ interface EditVacancyDrawerProps {
 export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }: EditVacancyDrawerProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
-  const [initial] = useState<EditVacancyForm>(() => initialEditForm(vacancy));
+  const tenant = useTenantLocale();
+  const [initial] = useState<EditVacancyForm>(() => initialEditForm(vacancy, tenant.currency));
   const [form, setForm] = useState<EditVacancyForm>(initial);
 
   const update = trpc.vacancy.update.useMutation({

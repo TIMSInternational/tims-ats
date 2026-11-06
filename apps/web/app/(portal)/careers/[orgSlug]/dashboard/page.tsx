@@ -6,7 +6,7 @@ import { candidatePortalService } from '@tims/api';
 import { PortalDashboardShell } from './dashboard-shell';
 import { DashboardVerifyEmail } from './dashboard-verify-email';
 import { findConsentWithdrawnAt } from './consent-status';
-import { orgSettingsTimeZone } from '../../../../../lib/candidate-format';
+import { candidateTimeZone } from '../../../../../lib/candidate-format';
 
 // Authenticated candidate landing. Server-resolves identity by (Supabase email) ×
 // (org from the route) → Candidate. No staff User / org-membership involved. The
@@ -24,7 +24,15 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
 
   const org = await db.organization.findUnique({
     where: { slug: orgSlug },
-    select: { id: true, name: true, isActive: true, settings: true, billingEmail: true },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      settings: true,
+      billingEmail: true,
+      // The primary (oldest active) company's zone: the fallback the interview and offer emails use.
+      companies: { where: { isActive: true }, orderBy: { createdAt: 'asc' }, take: 1, select: { timezone: true } },
+    },
   });
   if (!org || !org.isActive) notFound();
 
@@ -50,7 +58,7 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
       displayName={displayName}
       hasCandidate={candidate !== null}
       consentWithdrawnAt={consentWithdrawnAt}
-      timeZone={orgSettingsTimeZone(org.settings)}
+      timeZone={candidateTimeZone(org.settings, org.companies[0]?.timezone)}
       profile={profile}
       // Only a real candidate of this org gets the contact (it may be the billing email): never any signed-in visitor.
       contactEmail={candidate ? candidatePortalService.getContactEmail(org) : null}

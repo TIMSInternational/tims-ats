@@ -264,7 +264,7 @@ export const SURFACES: Record<string, Surface> = {
   // no tenant boundary FOR THIS CALLER. Those are different properties; overloading one flag for both
   // is what would silently disable a real IDOR probe on some future surface. The access-review entry
   // below sidesteps the problem with a fixed NON-EXISTENT org id, which cannot work here —
-  // `getOrganization` 404s on an unknown org (organizations.ts:145 / the C# repository returns null at
+  // `getOrganization` 404s on an unknown org (organizations.ts:147 / the C# repository returns null at
   // PlatformOrganizationsReadRepository.cs:151-156, mapped to Results.NotFound() at
   // PlatformOrganizationsReadEndpoints.cs:133), so the platform_owner case would assert 404, not 200.
   // The answer was a distinct, explicitly-named marker — `noTenantBoundaryForCaller`, the read-side
@@ -358,7 +358,7 @@ export const SURFACES: Record<string, Surface> = {
       // OPERATIONAL CONSEQUENCE 2 — a parity FAIL PRINTS DIFF VALUES (checks/parity.ts → normalize.ts
       // `DiffEntry {path, a, b}` → report.ts → console.log), and this is the first registered read
       // whose payload carries user records: `users[].email`, `firstName`, `lastName`, `jobTitle`,
-      // `lastLoginAt` (organizations.ts:150-187). Against the seeded `__parity_a` org that data is
+      // `lastLoginAt` (organizations.ts:152-192). Against the seeded `__parity_a` org that data is
       // synthetic, so this is not a leak — but the harness now has a stdout/CI-log path for
       // user-shaped records that it did not have before. This argument USED TO REST on a
       // predicted-red block that guaranteed the diff branch would execute; that block was removed when
@@ -375,7 +375,7 @@ export const SURFACES: Record<string, Surface> = {
         noTenantBoundaryForCaller: true,
         expectedByRole: { platform_owner: 200, org_admin: 403 },
         // sortArraysBy is NOT cosmetic: both stacks order `users` by createdAt desc
-        // (organizations.ts:119-131; PlatformOrganizationsReadRepository.cs) and seeded users can
+        // (organizations.ts:121-133; PlatformOrganizationsReadRepository.cs) and seeded users can
         // share a created_at, making tie order nondeterministic across the two stacks.
         //
         // WHAT IT COSTS, stated because it is not free: `sortArraysBy` re-sorts EVERY array at EVERY

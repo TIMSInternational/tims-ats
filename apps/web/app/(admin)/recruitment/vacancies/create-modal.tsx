@@ -7,7 +7,7 @@ import type { PickedUser } from '../../../../components/user-picker';
 import { Step1BasicInfo, Step2Description, Step3Compensation } from './create-modal.fields';
 import { VacancyOrgFields } from './create-modal.org-fields';
 import type { Step, VacancyFormData } from './create-modal.helpers';
-import { DEFAULT_TENANT_CURRENCY } from '../../../../lib/tenant-locale';
+import { useTenantLocale } from '../../../../lib/tenant-locale-context';
 
 interface CreateModalProps {
   onConfirm: (data: VacancyFormData) => void;
@@ -46,7 +46,11 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   // Step 3: Compensation & settings
   const [salaryMin, setSalaryMin] = useState('');
   const [salaryMax, setSalaryMax] = useState('');
-  const [currency, setCurrency] = useState<string>(DEFAULT_TENANT_CURRENCY);
+  // The organization's currency until the recruiter picks one (null = not chosen yet, so a profile that
+  // loads after the wizard opened still becomes the default).
+  const tenant = useTenantLocale();
+  const [chosenCurrency, setCurrency] = useState<string | null>(null);
+  const currency = chosenCurrency ?? tenant.currency;
   const [salaryPeriod, setSalaryPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [slaTargetDays, setSlaTargetDays] = useState('30');
   const [autoPublish, setAutoPublish] = useState(false);

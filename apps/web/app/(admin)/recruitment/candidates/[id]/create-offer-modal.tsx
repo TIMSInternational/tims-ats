@@ -11,6 +11,7 @@ import { describeOfferActionError } from '../../../../../lib/offer-action-error'
 import { offerDetailHref } from '../../../../../lib/offer-deep-link';
 import { toast } from '../../../../../lib/toast';
 import { defaultOfferCurrency } from '../../../../../lib/tenant-locale';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 import {
   benefitsFromText,
   benefitsToText,
@@ -64,6 +65,7 @@ export function CreateOfferModal({
   onSaved?: () => void;
 }) {
   const { t } = useI18n();
+  const tenant = useTenantLocale();
   const router = useRouter();
   const contractLabels = t.portal.contractTypes as Record<string, string>;
   const remoteLabels = t.portal.remotePolicies as Record<string, string>;
@@ -78,7 +80,7 @@ export function CreateOfferModal({
       applicationId: first?.id ?? '',
       salary: salary?.amount ?? '',
       period: salary?.period ?? range?.period ?? 'monthly',
-      currency: source?.currency ?? defaultOfferCurrency(range?.currency),
+      currency: source?.currency ?? defaultOfferCurrency(range?.currency, tenant.currency),
       startDate: dateInputValue(source?.startDate),
       contractType: choiceFor(source ? source.contractType : first?.vacancy.contractType, slugs, contractLabels),
       schedule: termString(source?.terms, 'schedule'),
@@ -122,7 +124,7 @@ export function CreateOfferModal({
       applicationId: id,
       salary: id !== values.applicationId ? '' : values.salary,
       period: range?.period ?? 'monthly',
-      currency: defaultOfferCurrency(range?.currency),
+      currency: defaultOfferCurrency(range?.currency, tenant.currency),
       contractType: choiceFor(vacancy?.contractType, slugs, contractLabels),
       modality: choiceFor(vacancy?.remotePolicy, REMOTE_POLICIES, remoteLabels),
     });

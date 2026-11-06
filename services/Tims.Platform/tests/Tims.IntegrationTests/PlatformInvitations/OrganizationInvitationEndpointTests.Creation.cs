@@ -134,6 +134,35 @@ public sealed partial class OrganizationInvitationEndpointTests
         return new(r.GetGuid(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetDateTime(2), r.GetString(3), r.GetDateTime(4),
             r.GetDateTime(5), r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7), r.GetGuid(8));
     }
+    [Fact]
+    public async Task Locale_profile_reaches_settings_the_company_and_the_email_expiry_zone()
+    {
+        var slug = "org-" + Guid.NewGuid().ToString("N");
+        var sender = new FakeSender();
+        await using var factory = Factory(sender);
+        using var client = factory.CreateClient();
+        var body = JsonSerializer.Serialize(new
+        {
+            email = "admin@example.test",
+            organizationName = "Maquila Guatemala",
+            organizationSlug = slug,
+            localeProfile = new { country = "GT", timezone = "America/Guatemala", currency = "GTQ", locale = "es-GT" },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, (await Post(client, body)).StatusCode);
+
+        var orgId = (await ReadInvitation(await FindBySlug(slug))).Org;
+        var org = await fixture.Organizations.ReadOrganizationAsync(orgId);
+        Assert.Equal(
+            """{"locale": "es-GT", "country": "GT", "currency": "GTQ", "timezone": "America/Guatemala"}""",
+            org!.Settings);
+        var company = Assert.Single(await fixture.Organizations.ReadCompaniesAsync(orgId));
+        Assert.Equal(("GT", "GTQ", "America/Guatemala"), (company.Country, company.Currency, company.Timezone));
+        // The invitation's expiry line is stated in the new organization's zone, not Colombia's.
+        Assert.Contains("hora de Guatemala", sender.Html);
+        Assert.DoesNotContain("Colombia", sender.Html);
+    }
+
     private async Task<Guid> FindBySlug(string slug)
     {
         await using var db = new NpgsqlConnection(fixture.ConnectionString); await db.OpenAsync();

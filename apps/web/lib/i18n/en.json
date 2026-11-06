@@ -3754,7 +3754,6 @@
     "intTypeOnline": "Online",
     "intTypeOther": "Interview",
     "intTypeOnlineSuffix": "online",
-    "tzCostaRica": "Costa Rica time",
     "offerLoading": "Loading your offer…",
     "offerError": "We couldn't load your offer.",
     "offerEmpty": "You don't have any offers yet.",
@@ -4059,6 +4058,21 @@
     "candidateContactBilling": "Emails to candidates use the organization's billing email. Ask support to set a dedicated contact email.",
     "fromCompany": "Taken from the company {company}.",
     "notConfigured": "Not set"
+  },
+  "orgLocale": {
+    "legend": "Country and regional format",
+    "country": "Country",
+    "countryPlaceholder": "Select a country",
+    "countryOther": "Other country",
+    "countryCode": "Country code (ISO, 2 letters)",
+    "countryCodePlaceholder": "AR",
+    "timeZone": "Time zone",
+    "currency": "Currency",
+    "locale": "Number and amount format",
+    "hint": "Choosing the country fills in the time zone, currency and format. You can change them.",
+    "editHint": "Only the values you change are saved; the organization's other settings (such as the candidate contact email) are kept.",
+    "sample": "Example: {sample}",
+    "invalid": "Check the country, time zone, currency and format."
   },
   "committee": {
     "committeeTitle": "Calibration Committee",

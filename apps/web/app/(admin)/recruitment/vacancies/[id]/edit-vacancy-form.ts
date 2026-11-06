@@ -73,7 +73,8 @@ function amountText(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? String(value) : '';
 }
 
-export function initialEditForm(v: EditableVacancy): EditVacancyForm {
+/** `tenantCurrency` (the organization's, lib/tenant-locale-context.tsx) fills a vacancy saved without one. */
+export function initialEditForm(v: EditableVacancy, tenantCurrency: string = DEFAULT_TENANT_CURRENCY): EditVacancyForm {
   const salary = asRecord(v.salary);
   const currency =
     typeof salary.currency === 'string' && salary.currency.trim() ? salary.currency.trim().toUpperCase() : '';
@@ -87,7 +88,7 @@ export function initialEditForm(v: EditableVacancy): EditVacancyForm {
     priority: PRIORITIES.includes(v.priority) ? (v.priority as Priority) : 'medium',
     salaryMin: amountText(salary.min),
     salaryMax: amountText(salary.max),
-    currency: currency || DEFAULT_TENANT_CURRENCY,
+    currency: currency || tenantCurrency,
     salaryPeriod: salary.period === 'yearly' || salary.period === 'annual' ? 'yearly' : 'monthly',
     hiringManager: v.assignee
       ? { id: v.assignee.id, firstName: v.assignee.firstName, lastName: v.assignee.lastName }

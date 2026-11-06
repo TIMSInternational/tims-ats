@@ -20,6 +20,7 @@ export const COMMON_TIME_ZONES: readonly string[] = [
   'America/Bogota',
   'America/Lima',
   'America/Santo_Domingo',
+  'America/Santiago',
   'America/New_York',
   'America/Chicago',
   'America/Denver',

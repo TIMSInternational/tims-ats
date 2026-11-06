@@ -354,7 +354,7 @@ public sealed class PlatformOrganizationsCreateEndpointAuthTests(PlatformOrganiz
     {
         // #207 LANDED, and this assertion INVERTED as its predecessor said it would: it used to assert
         // 200, pinning the ported-as-is absence of a bound. Zod now carries `.max(254)`
-        // (organizations.ts:179-180) and IsValidEmail enforces the same 254 here.
+        // (organizations.ts:181-182) and IsValidEmail enforces the same 254 here.
         //
         // The ReadIdBySlugAsync assertion is the load-bearing half: a 400 that STILL INSERTED would
         // satisfy a status-code-only test, and that is the failure mode worth catching.

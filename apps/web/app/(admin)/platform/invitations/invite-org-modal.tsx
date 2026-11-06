@@ -7,6 +7,8 @@ import { useI18n } from '../../../../lib/i18n';
 import { sanitizeSlugInput, slugify } from '../../../../lib/slugify';
 import { trpc } from '../../../../lib/trpc';
 import { findSimilarOrganizations } from '../../../../lib/similar-organizations';
+import { EMPTY_ORG_LOCALE_FORM, orgLocaleFormToProfile } from '../../../../lib/org-locale-form';
+import { OrgLocaleFields } from '../organizations/org-locale-fields';
 
 export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
@@ -15,6 +17,8 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
   const [orgSlug, setOrgSlug] = useState('');
   const [plan, setPlan] = useState<'trial' | 'starter' | 'professional' | 'enterprise'>('trial');
   const [confirmNew, setConfirmNew] = useState(false);
+  const [localeForm, setLocaleForm] = useState(EMPTY_ORG_LOCALE_FORM);
+  const localeProfile = orgLocaleFormToProfile(localeForm);
   // This creates a NEW organization. A name that resembles an existing one is most likely a person who
   // belongs in that organization ("Invitar usuario"), so it needs an explicit confirmation (D-15).
   const existingOrgs = trpc.platform.listOrganizationsMinimal.useQuery();
@@ -39,14 +43,14 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !orgName || !orgSlug || needsConfirm) return;
-    create.mutate({ email, organizationName: orgName, organizationSlug: orgSlug, organizationPlan: plan });
+    if (!email || !orgName || !orgSlug || !localeProfile || needsConfirm) return;
+    create.mutate({ email, organizationName: orgName, organizationSlug: orgSlug, organizationPlan: plan, localeProfile });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-[#333]">{t.invitations.inviteOrgTitle}</h2>
           <button aria-label={t.common.close} onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
@@ -75,6 +79,7 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
               <option value="enterprise">{t.invitations.enterprisePlan}</option>
             </select>
           </div>
+          <OrgLocaleFields idPrefix="invite-org" value={localeForm} onChange={setLocaleForm} />
           {similar.length > 0 && (
             <div role="alert" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg space-y-2">
               <p>{t.invitations.similarOrgWarning.replace('{names}', similar.map((o) => o.name).join(', '))}</p>
@@ -89,7 +94,7 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.invitations.cancel}</button>
-            <button type="submit" disabled={!email || !orgName || !orgSlug || needsConfirm || create.isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">{create.isPending ? t.invitations.sending : t.invitations.createAndSend}</button>
+            <button type="submit" disabled={!email || !orgName || !orgSlug || !localeProfile || needsConfirm || create.isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">{create.isPending ? t.invitations.sending : t.invitations.createAndSend}</button>
           </div>
         </form>
       </div>

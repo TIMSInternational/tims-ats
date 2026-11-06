@@ -5,11 +5,13 @@
  * - Spanish renders with es-CR conventions (the pilot tenant is in Costa Rica): "₡4 500 000".
  * - The colón is the only currency shown with its symbol; every other currency keeps its ISO code
  *   ("USD 4 500"), so a bare "$" never appears.
- * - Dates and times are rendered in the organization's time zone and carry an explicit zone label
- *   ("hora de Costa Rica (GMT-6)"). Without a configured zone they fall back to UTC and say so —
- *   never to the viewer's device clock and never to a guessed zone.
+ * - Dates and times are rendered in the organization's time zone (organization, then its primary
+ *   company — the chain the emails use) and carry the shared explicit zone label ("hora de Guatemala
+ *   (GMT-6)"). Without a configured zone they fall back to UTC and say so — never to the viewer's device
+ *   clock and never to a guessed zone.
  */
 
+import { timeZoneLabel as sharedTimeZoneLabel } from '@tims/shared';
 import { TENANT_LOCALE } from './tenant-locale';
 
 export type CandidateLocale = 'ES' | 'EN';
@@ -85,25 +87,20 @@ export function orgSettingsTimeZone(settings: unknown): string | null {
   return safeTimeZone((settings as Record<string, unknown>).timezone);
 }
 
-export interface TimeZoneLabels {
-  /** "hora de Costa Rica" */
-  tzCostaRica: string;
+/**
+ * The zone a candidate surface shows: the organization's own (`settings.timezone`), then its primary
+ * company's — the same organization → company chain interview and offer emails resolve — else null (UTC).
+ */
+export function candidateTimeZone(settings: unknown, companyTimeZone: string | null | undefined): string | null {
+  return orgSettingsTimeZone(settings) ?? safeTimeZone(companyTimeZone);
 }
 
-const UTC_ZONES = new Set(['UTC', 'Etc/UTC', 'Etc/GMT', 'GMT']);
-
-function gmtOffset(date: Date, timeZone: string): string {
-  const part = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' })
-    .formatToParts(date)
-    .find((p) => p.type === 'timeZoneName');
-  return part?.value ?? timeZone;
-}
-
-/** "hora de Costa Rica (GMT-6)", "GMT-5" for another zone, "UTC" when no zone is configured. */
-export function timeZoneLabel(date: Date, timeZone: string | null, labels: TimeZoneLabels): string {
-  if (!timeZone || UTC_ZONES.has(timeZone)) return 'UTC';
-  const offset = gmtOffset(date, timeZone);
-  return timeZone === 'America/Costa_Rica' ? `${labels.tzCostaRica} (${offset})` : offset;
+/**
+ * The shared zone label (packages/shared time-zone.ts, the one the emails print): "hora de Costa Rica
+ * (GMT-6)", "hora de Guatemala (GMT-6)", "Mexico City time (GMT-6)"; "UTC" when no zone is configured.
+ */
+export function timeZoneLabel(date: Date, timeZone: string | null, locale: CandidateLocale): string {
+  return sharedTimeZoneLabel(timeZone ?? 'UTC', locale === 'EN' ? 'en' : 'es', date);
 }
 
 function toDate(value: Date | string): Date | null {
@@ -124,12 +121,7 @@ export function formatCandidateDate(value: Date | string, locale: CandidateLocal
 }
 
 /** "miércoles, 4 de noviembre de 2026, 10:00 a. m., hora de Costa Rica (GMT-6)" — no seconds. */
-export function formatCandidateDateTime(
-  value: Date | string,
-  locale: CandidateLocale,
-  timeZone: string | null,
-  labels: TimeZoneLabels,
-): string {
+export function formatCandidateDateTime(value: Date | string, locale: CandidateLocale, timeZone: string | null): string {
   const date = toDate(value);
   if (!date) return '';
   const text = new Intl.DateTimeFormat(CANDIDATE_INTL_LOCALE[locale], {
@@ -141,5 +133,5 @@ export function formatCandidateDateTime(
     minute: '2-digit',
     timeZone: timeZone ?? 'UTC',
   }).format(date);
-  return `${text}, ${timeZoneLabel(date, timeZone, labels)}`;
+  return `${text}, ${timeZoneLabel(date, timeZone, locale)}`;
 }

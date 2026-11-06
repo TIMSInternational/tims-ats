@@ -20,7 +20,7 @@ namespace Tims.Application.PlatformOrganizations;
 ///
 /// <para><b>Why every model reproduces the FULL Prisma scalar set.</b> The TS side uses bare Prisma
 /// <c>include</c> (<c>companies</c>, <c>subscription</c>, <c>featureFlags</c>, <c>billingProfile</c> at
-/// <c>organizations.ts:118-134</c>) and, for the organization row itself, <c>include</c> rather than
+/// <c>organizations.ts:120-136</c>) and, for the organization row itself, <c>include</c> rather than
 /// <c>select</c> — all of which return EVERY column of those tables. So the wire payload carries
 /// <c>settings</c>, <c>deletedAt</c>, the full company/business-unit/team rows,
 /// <c>billing_profiles.tax_id</c>, the postal address and <c>billing_phone</c>. CLAUDE.md forbids
@@ -49,23 +49,23 @@ namespace Tims.Application.PlatformOrganizations;
 /// </summary>
 public sealed record PlatformOrganizationKpis(int Total, int Active, int Suspended, int Trialing, int ExpiringThisWeek);
 
-/// <summary>Subscription fields the list projects (<c>organizations.ts:87</c>) — an explicit 3-key
+/// <summary>Subscription fields the list projects (<c>organizations.ts:89</c>) — an explicit 3-key
 /// <c>select</c>, so unlike the detail's subscription this one is genuinely narrow.</summary>
 public sealed record PlatformOrganizationListSubscription(
     string Plan,
     string Status,
     [property: JsonConverter(typeof(NodeIsoNullableDateTimeConverter))] DateTime? TrialEndsAt);
 
-/// <summary>A pending invoice as the list projects it (<c>organizations.ts:101-105</c>).</summary>
+/// <summary>A pending invoice as the list projects it (<c>organizations.ts:103-107</c>).</summary>
 public sealed record PlatformOrganizationPendingInvoice(
     string Id,
     [property: JsonConverter(typeof(NodeIsoNullableDateTimeConverter))] DateTime? DueDate);
 
-/// <summary>Relation counts the list projects (<c>organizations.ts:86</c>).</summary>
+/// <summary>Relation counts the list projects (<c>organizations.ts:88</c>).</summary>
 public sealed record PlatformOrganizationCounts(int Users, int Vacancies, int Invoices);
 
 /// <summary>
-/// The TS <c>users</c> include on the list (<c>organizations.ts:88-93</c>):
+/// The TS <c>users</c> include on the list (<c>organizations.ts:90-95</c>):
 /// <c>{ select: { lastLoginAt }, where: { lastLoginAt: { not: null } }, orderBy: desc, take: 1 }</c>.
 ///
 /// <para><b>It is an ARRAY of zero or one element, not a scalar</b> — <c>take: 1</c> caps the length, it
@@ -94,7 +94,7 @@ public sealed record PlatformOrganizationListItem(
     [property: JsonConverter(typeof(NodeIsoDateTimeConverter))] DateTime CreatedAt,
     [property: JsonConverter(typeof(NodeIsoDateTimeConverter))] DateTime UpdatedAt,
     // `deleted_at`. Null on every live org today, so `dropNullish` masks it — but listOrganizations'
-    // `where` builder (organizations.ts:61-69) applies NO soft-delete filter, so one soft-deleted org
+    // `where` builder (organizations.ts:63-71) applies NO soft-delete filter, so one soft-deleted org
     // turns this into a hard FAIL. Present for that reason, not for completeness.
     [property: JsonConverter(typeof(NodeIsoNullableDateTimeConverter))] DateTime? DeletedAt,
     [property: JsonPropertyName("_count")] PlatformOrganizationCounts Counts,
@@ -151,7 +151,7 @@ public sealed record PlatformOrganizationCompany(
 
 /// <summary>
 /// The detail's <c>users</c>. UNLIKE every other relation on this payload, the TS uses an explicit 8-key
-/// <c>select</c> (<c>organizations.ts:119-131</c>), so this record is narrow BY PARITY, not by omission.
+/// <c>select</c> (<c>organizations.ts:121-133</c>), so this record is narrow BY PARITY, not by omission.
 /// </summary>
 public sealed record PlatformOrganizationUser(
     string Id,
@@ -209,7 +209,7 @@ public sealed record PlatformOrganizationBillingProfile(
     [property: JsonConverter(typeof(NodeIsoDateTimeConverter))] DateTime CreatedAt,
     [property: JsonConverter(typeof(NodeIsoDateTimeConverter))] DateTime UpdatedAt);
 
-/// <summary>Detail counts — note <c>Invitations</c> counts only pending+sent (<c>organizations.ts:135-142</c>).</summary>
+/// <summary>Detail counts — note <c>Invitations</c> counts only pending+sent (<c>organizations.ts:137-144</c>).</summary>
 public sealed record PlatformOrganizationDetailCounts(int Users, int Vacancies, int Invoices, int Invitations);
 
 public sealed record PlatformOrganizationDetail(
@@ -234,7 +234,7 @@ public sealed record PlatformOrganizationDetail(
 
 /// <summary>
 /// Validated input for <c>listOrganizations</c>. Mirrors the Zod schema at
-/// <c>organizations.ts:46-57</c>, including its defaults (page 0, limit 20) and bounds
+/// <c>organizations.ts:48-59</c>, including its defaults (page 0, limit 20) and bounds
 /// (limit 1..50, search &lt;= 200, plan/status &lt;= 50).
 /// </summary>
 public sealed record PlatformOrganizationListQuery(

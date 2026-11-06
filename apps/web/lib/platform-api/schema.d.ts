@@ -3754,6 +3754,7 @@ export interface components {
             plan: string;
             adminEmail: string;
             billingEmail?: string;
+            localeProfile?: components["schemas"]["OrgLocaleProfileBody"];
         };
         CreateSurveyBody: {
             title: string;
@@ -4502,12 +4503,13 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
-        OrganizationInvitationInput: {
+        OrganizationInvitationBody: {
             email: string;
             organizationName: string;
             organizationSlug: string;
             /** @default trial */
             organizationPlan: string;
+            localeProfile?: components["schemas"]["OrgLocaleProfileBody"];
         };
         OrganizationInvitationResponse: {
             /** Format: uuid */
@@ -4539,6 +4541,12 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        OrgLocaleProfileBody: {
+            country: string;
+            timezone: string;
+            currency: string;
+            locale: string;
         };
         OrgPerson: {
             /** Format: uuid */
@@ -5387,6 +5395,7 @@ export interface components {
             locale?: string;
             timezone?: string;
             currency?: string;
+            country?: string;
         };
         UpdatePreferencesResult: {
             emailEnabled: boolean;
@@ -7340,7 +7349,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OrganizationInvitationInput"];
+                "application/json": components["schemas"]["OrganizationInvitationBody"];
             };
         };
         responses: {

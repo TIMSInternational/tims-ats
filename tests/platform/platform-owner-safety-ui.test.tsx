@@ -159,6 +159,7 @@ describe('invitations (D-15)', () => {
     render(<InviteOrgModal onClose={vi.fn()} onSuccess={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Email del Admin *'), { target: { value: 'admin@x.test' } });
     fireEvent.change(screen.getByLabelText('Nombre de la Organización *'), { target: { value: 'Nova Costa Rica' } });
+    fireEvent.change(screen.getByLabelText(/^País/), { target: { value: 'CR' } });
     expect(screen.getByRole('alert')).toHaveTextContent('nombre parecido: Nova');
     const submit = screen.getByRole('button', { name: 'Crear & Enviar Invitación' });
     expect(submit).toBeDisabled();

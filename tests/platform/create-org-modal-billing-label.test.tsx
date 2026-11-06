@@ -31,18 +31,24 @@ describe('Nueva Organización modal — the email field is a billing email, not 
     expect('adminEmailLabel' in en.organizations).toBe(false);
   });
 
-  it('still submits the unchanged payload (adminEmail key → billing_email server-side)', () => {
+  it('still submits the adminEmail key (→ billing_email server-side), now with the chosen locale profile', () => {
+    mocks.mutate.mockClear();
     const { container } = render(<CreateOrgModal onClose={() => {}} onSuccess={() => {}} />);
     const inputs = container.querySelectorAll('input');
     fireEvent.change(inputs[0], { target: { value: 'Acme' } });
     fireEvent.change(inputs[1], { target: { value: 'acme' } });
     fireEvent.change(screen.getByLabelText(es.organizations.billingEmailLabel), { target: { value: 'pay@acme.test' } });
+    // The country is required: without one nothing is sent.
+    fireEvent.submit(container.querySelector('form')!);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/^País/), { target: { value: 'GT' } });
     fireEvent.submit(container.querySelector('form')!);
     expect(mocks.mutate).toHaveBeenCalledExactlyOnceWith({
       name: 'Acme',
       slug: 'acme',
       plan: 'trial',
       adminEmail: 'pay@acme.test',
+      localeProfile: { country: 'GT', timezone: 'America/Guatemala', currency: 'GTQ', locale: 'es-GT' },
     });
   });
 });

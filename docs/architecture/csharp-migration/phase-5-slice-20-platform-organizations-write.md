@@ -76,7 +76,7 @@ exists.
   (unscoped `db`).
 
 **Correction to the executable spec on #76**, which called `notify` "best-effort in TS": it is not.
-`organizations.ts:299` awaits it with no `.catch`, so a notify failure propagates and fails the request
+`organizations.ts:309` awaits it with no `.catch`, so a notify failure propagates and fails the request
 (after the update has already committed). This port reproduces that — exceptions propagate — rather than
 adding a swallow that TS does not have. Only the audit divergence was authorized; inventing a second one
 would make step 5 harder to read, not easier.
@@ -186,6 +186,13 @@ guardrail CLAUDE.md claims does not reach this stack.
 
 **The two narrowings deliberately not done here are #201:** `settings` REPLACES rather than merges on a
 partial update, and `getOrganization` over-fetches a whole `billing_profiles` row to read one field.
+
+> **Update 2026-11-06 (multi-country organizations):** the first half of #201 is done, in BOTH stacks
+> together so parity holds. `settings` is now MERGED (TS: `mergeOrgSettings` under a `FOR UPDATE` row lock;
+> C#: `settings || patch` in the one UPDATE), its members are the validated locale-profile keys
+> (`locale`, `timezone`, `currency`, `country` — `orgLocaleSettingsPatchSchema` /
+> `OrgLocaleProfileRules`), and unknown settings keys are rejected. The `getOrganization` over-fetch is
+> still open. The row above that says "REPLACES" describes the slice as shipped.
 
 ## Endpoint-layer coverage, and why it was nearly missing
 

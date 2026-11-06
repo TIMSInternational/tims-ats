@@ -128,7 +128,7 @@ export function DashboardInterviews({ orgSlug, timeZone = null }: { orgSlug: str
                     <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
                     <p className="text-[12px] text-[#585858] mt-0.5">{candidateInterviewTypeLabel(t, iv.type, joinUrl)}</p>
                     <p className="text-[11px] text-muted mt-1">
-                      {formatCandidateDateTime(iv.scheduledAt, locale, timeZone, t.portalDashboard)}
+                      {formatCandidateDateTime(iv.scheduledAt, locale, timeZone)}
                       {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
                     </p>
                     {iv.location && !isSameLink(iv.location, joinUrl) && (

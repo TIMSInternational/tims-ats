@@ -1690,7 +1690,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/OrganizationInvitationInput"
+                "$ref": "#/components/schemas/OrganizationInvitationBody"
               }
             }
           },
@@ -10984,6 +10984,9 @@
           "billingEmail": {
             "maxLength": 254,
             "type": "string"
+          },
+          "localeProfile": {
+            "$ref": "#/components/schemas/OrgLocaleProfileBody"
           }
         }
       },
@@ -14172,7 +14175,7 @@
           }
         }
       },
-      "OrganizationInvitationInput": {
+      "OrganizationInvitationBody": {
         "required": [
           "email",
           "organizationName",
@@ -14192,6 +14195,9 @@
           "organizationPlan": {
             "type": "string",
             "default": "trial"
+          },
+          "localeProfile": {
+            "$ref": "#/components/schemas/OrgLocaleProfileBody"
           }
         }
       },
@@ -14306,6 +14312,33 @@
             "format": "uuid"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "OrgLocaleProfileBody": {
+        "required": [
+          "country",
+          "timezone",
+          "currency",
+          "locale"
+        ],
+        "type": "object",
+        "properties": {
+          "country": {
+            "pattern": "^[A-Z]{2}$",
+            "type": "string"
+          },
+          "timezone": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "type": "string"
+          },
+          "locale": {
+            "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
             "type": "string"
           }
         }
@@ -17806,11 +17839,15 @@
             "type": "string"
           },
           "timezone": {
-            "maxLength": 50,
+            "maxLength": 64,
             "type": "string"
           },
           "currency": {
             "maxLength": 10,
+            "type": "string"
+          },
+          "country": {
+            "pattern": "^[A-Z]{2}$",
             "type": "string"
           }
         }
