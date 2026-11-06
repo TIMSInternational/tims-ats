@@ -1,7 +1,8 @@
 // Tenant locale for the web app: the organization's own currency and number locale (its locale profile,
-// `organizations.settings.currency` / `.locale`, as organization.getCurrent resolves them), falling back to
-// the closed pilot tenant's (Costa Rica) when the organization has none or it has not loaded yet. Pure, so
-// node tests cover it; components read it through lib/use-tenant-locale.ts.
+// `organizations.settings.currency` / `.locale`, as organization.getCurrent reports them — never the primary
+// company's columns it falls back to), else the closed pilot tenant's (Costa Rica) when the organization has
+// none or it has not loaded yet. Pure, so node tests cover it; components read it through
+// lib/tenant-locale-context.tsx.
 
 /** The currency a vacancy or offer starts with when the organization has none configured. */
 export const DEFAULT_TENANT_CURRENCY = 'CRC';
@@ -32,12 +33,24 @@ function supportedLocale(tag: string): boolean {
   }
 }
 
-/** The organization's currency and locale when they are usable values, else the defaults (per field). */
-export function resolveTenantLocale(
-  profile: { currency?: string | null; locale?: string | null } | null | undefined,
-): TenantLocale {
-  const currency = profile?.currency?.trim().toUpperCase() ?? '';
-  const locale = profile?.locale?.trim() ?? '';
+/** What organization.getCurrent says about the currency and locale, and where each came from. */
+export interface TenantLocaleProfile {
+  currency: string | null;
+  currencySource: 'organization' | 'company' | null;
+  locale: string | null;
+  localeSource: 'organization' | 'company' | null;
+}
+
+/**
+ * The organization's OWN currency and locale (its locale profile in `organizations.settings`) when they are
+ * usable values, else the defaults (per field). A value organization.getCurrent took from the primary
+ * company is ignored on purpose: those columns hold their defaults (USD, "es") on every organization
+ * provisioned before the profile existed, so honouring them would silently move an organization without a
+ * profile off CRC / es-CR.
+ */
+export function resolveTenantLocale(profile: TenantLocaleProfile | null | undefined): TenantLocale {
+  const currency = profile?.currencySource === 'organization' ? (profile.currency?.trim().toUpperCase() ?? '') : '';
+  const locale = profile?.localeSource === 'organization' ? (profile.locale?.trim() ?? '') : '';
   return {
     currency: ISO_CURRENCY.test(currency) ? currency : DEFAULT_TENANT_CURRENCY,
     intlLocale: LOCALE_TAG.test(locale) && supportedLocale(locale) ? locale : TENANT_LOCALE,

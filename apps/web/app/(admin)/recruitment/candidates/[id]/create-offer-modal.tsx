@@ -42,6 +42,14 @@ type FormValues = OfferTermsValues & {
   contractType: Choice;
 };
 
+/**
+ * The form state: `currency` null = not chosen yet — the vacancy's own currency, else the tenant's. It is
+ * resolved at every render, never frozen when the modal opens: the tenant profile (the admin shell's one
+ * organization.getCurrent) can arrive after the modal does, and an offer must not keep the CRC fallback
+ * of the first render. The vacancy wizard does the same with its chosen currency.
+ */
+type FormState = Omit<FormValues, 'currency'> & { currency: string | null };
+
 const INPUT = 'mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]';
 const LABEL = 'block text-[12px] font-medium text-[#585858]';
 
@@ -72,7 +80,7 @@ export function CreateOfferModal({
   const slugs = contractTypeSlugs();
   const today = todayInputValue();
 
-  const [values, setValues] = useState<FormValues>(() => {
+  const [state, setState] = useState<FormState>(() => {
     const first = applications[0];
     const range = parseVacancySalary(first?.vacancy.salary);
     const salary = source ? editableSalary(source.salary, range?.period ?? 'monthly') : null;
@@ -80,7 +88,7 @@ export function CreateOfferModal({
       applicationId: first?.id ?? '',
       salary: salary?.amount ?? '',
       period: salary?.period ?? range?.period ?? 'monthly',
-      currency: source?.currency ?? defaultOfferCurrency(range?.currency, tenant.currency),
+      currency: source?.currency ?? null,
       startDate: dateInputValue(source?.startDate),
       contractType: choiceFor(source ? source.contractType : first?.vacancy.contractType, slugs, contractLabels),
       schedule: termString(source?.terms, 'schedule'),
@@ -93,13 +101,18 @@ export function CreateOfferModal({
       benefits: benefitsToText(source?.benefits),
     };
   });
-  const patch = (next: Partial<FormValues>) => setValues((current) => ({ ...current, ...next }));
+  const patch = (next: Partial<FormState>) => setState((current) => ({ ...current, ...next }));
   const [error, setError] = useState<string | null>(null);
   const create = trpc.offer.create.useMutation();
   const update = trpc.offer.update.useMutation();
   const isSaving = create.isPending || update.isPending;
 
-  const application = applications.find((item) => item.id === values.applicationId);
+  const application = applications.find((item) => item.id === state.applicationId);
+  const values: FormValues = {
+    ...state,
+    currency:
+      state.currency ?? defaultOfferCurrency(parseVacancySalary(application?.vacancy.salary)?.currency, tenant.currency),
+  };
   const { annualSalary } = offerSalaryState(values, application?.vacancy.salary);
   const contractType = choiceText(values.contractType, contractLabels);
   const isStartDateValid = values.startDate !== '' && values.startDate >= today;
@@ -124,7 +137,7 @@ export function CreateOfferModal({
       applicationId: id,
       salary: id !== values.applicationId ? '' : values.salary,
       period: range?.period ?? 'monthly',
-      currency: defaultOfferCurrency(range?.currency, tenant.currency),
+      currency: null,
       contractType: choiceFor(vacancy?.contractType, slugs, contractLabels),
       modality: choiceFor(vacancy?.remotePolicy, REMOTE_POLICIES, remoteLabels),
     });

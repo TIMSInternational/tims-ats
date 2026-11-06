@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock('../../apps/web/lib/tenant-locale-context', () => ({ useTenantLocale: () => m.tenant }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 const ok = (data: unknown) => ({ data, isLoading: false, isError: false, error: null, refetch: vi.fn() });
 const invalidate = { invalidate: vi.fn() };
 vi.mock('../../apps/web/lib/trpc', () => ({
@@ -32,6 +33,10 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       listTeams: { useQuery: () => ok(undefined) },
     },
     user: { list: { useQuery: () => ok({ users: [] }) } },
+    offer: {
+      create: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
+      update: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
+    },
     vacancy: {
       generateDescription: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       checkInclusiveLanguage: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
@@ -72,6 +77,43 @@ describe('vacancy wizard default currency', () => {
 
   it('stays CRC for INVU / an organization without a profile', async () => {
     expect(await createVacancyWithSalary()).toMatchObject({ currency: 'CRC' });
+  });
+});
+
+describe('offer form default currency', () => {
+  // Codex review of #424 (P2): the modal read the tenant currency once, in a useState initializer, so an offer
+  // opened before the admin shell's organization.getCurrent resolved kept the CRC fallback for good.
+  const application = (salary: unknown = null) => [
+    { id: 'app-1', vacancy: { id: 'vac-1', title: 'Analista', salary, contractType: null, remotePolicy: null } },
+  ];
+  async function renderOffer(applications = application()) {
+    const { CreateOfferModal } = await import('../../apps/web/app/(admin)/recruitment/candidates/[id]/create-offer-modal');
+    const ui = () => <CreateOfferModal candidateId="cand-1" applications={applications} onClose={() => {}} />;
+    const view = render(ui());
+    return { rerender: () => view.rerender(ui()) };
+  }
+  const currency = () => (screen.getByLabelText(es.offers.currency) as HTMLSelectElement).value;
+
+  it('follows the tenant profile that arrives after the modal opened', async () => {
+    const { rerender } = await renderOffer();
+    expect(currency()).toBe('CRC');
+    m.tenant = { currency: 'GTQ', intlLocale: 'es-GT' };
+    rerender();
+    expect(currency()).toBe('GTQ');
+  });
+
+  it('keeps a currency the recruiter picked', async () => {
+    const { rerender } = await renderOffer();
+    fireEvent.change(screen.getByLabelText(es.offers.currency), { target: { value: 'USD' } });
+    m.tenant = { currency: 'GTQ', intlLocale: 'es-GT' };
+    rerender();
+    expect(currency()).toBe('USD');
+  });
+
+  it("the vacancy's own currency still wins over the tenant's", async () => {
+    m.tenant = { currency: 'GTQ', intlLocale: 'es-GT' };
+    await renderOffer(application({ min: 1000, max: 2000, currency: 'usd', period: 'monthly' }));
+    expect(currency()).toBe('USD');
   });
 });
 

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { formatCandidateDate, formatCandidateOfferSalary } from '../../../../../lib/candidate-format';
+import { candidateTimeZone, formatCandidateDate, formatCandidateOfferSalary } from '../../../../../lib/candidate-format';
 
 /** A sent offer whose expiry has passed can no longer be signed (the API withholds its link). */
 function isExpired(offer: { status: string; expiresAt: Date | string | null }, now: number): boolean {
@@ -94,7 +94,9 @@ export function DashboardOffer({ orgSlug, timeZone = null }: { orgSlug: string; 
                 </div>
                 <div>
                   <dt className="text-muted">{t.portalDashboard.offerStartDate}</dt>
-                  <dd className="text-[#1F114C]">{formatCandidateDate(offer.startDate, locale, timeZone)}</dd>
+                  <dd className="text-[#1F114C]">
+                    {formatCandidateDate(offer.startDate, locale, candidateTimeZone(timeZone, offer.vacancy.company?.timezone))}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-muted">{t.portalDashboard.offerContract}</dt>
@@ -107,7 +109,8 @@ export function DashboardOffer({ orgSlug, timeZone = null }: { orgSlug: string; 
               ) : (
                 offer.expiresAt && (
                   <p className="text-[11px] text-muted mt-2">
-                    {t.portalDashboard.offerExpiresOn} {formatCandidateDate(offer.expiresAt, locale, timeZone)}
+                    {t.portalDashboard.offerExpiresOn}{' '}
+                    {formatCandidateDate(offer.expiresAt, locale, candidateTimeZone(timeZone, offer.vacancy.company?.timezone))}
                   </p>
                 )
               )}

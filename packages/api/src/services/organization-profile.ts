@@ -35,6 +35,11 @@ export interface OrganizationProfile {
   timeZone: string | null;
   timeZoneSource: ProfileSource;
   locale: string | null;
+  /**
+   * 'organization' = `settings.locale`; 'company' = the primary company's `language` column (a column default,
+   * "es", on every organization provisioned before the locale profile existed).
+   */
+  localeSource: ProfileSource;
   /** Only an EXPLICITLY configured candidate mailbox (settings.candidateContactEmail). */
   candidateContactEmail: string | null;
   /**
@@ -67,7 +72,8 @@ export function projectOrganizationProfile(org: OrganizationProfileInput): Organ
   const companyCurrency = matching(company?.currency, CURRENCY);
   const orgTimeZone = orgSettingsTimeZone(org.settings);
   const companyTimeZone = isValidTimeZone(company?.timezone) ? (company?.timezone ?? null) : null;
-  const locale = matching(settingsString(org.settings, 'locale'), LOCALE) ?? matching(company?.language, LOCALE);
+  const orgLocale = matching(settingsString(org.settings, 'locale'), LOCALE);
+  const companyLocale = matching(company?.language, LOCALE);
   const configuredContact = candidateContactEmail({ settings: org.settings });
 
   return {
@@ -82,7 +88,8 @@ export function projectOrganizationProfile(org: OrganizationProfileInput): Organ
     currencySource: orgCurrency ? 'organization' : companyCurrency ? 'company' : null,
     timeZone: orgTimeZone ?? companyTimeZone,
     timeZoneSource: orgTimeZone ? 'organization' : companyTimeZone ? 'company' : null,
-    locale,
+    locale: orgLocale ?? companyLocale,
+    localeSource: orgLocale ? 'organization' : companyLocale ? 'company' : null,
     candidateContactEmail: configuredContact,
     candidateContactSource: configuredContact
       ? 'organization'

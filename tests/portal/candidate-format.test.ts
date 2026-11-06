@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { blockAt } from '../helpers/source-blocks';
 import {
   formatCandidateDate,
   formatCandidateDateTime,
@@ -76,12 +79,23 @@ describe('candidate dates and time zones', () => {
     expect(safeTimeZone('x'.repeat(65))).toBeNull();
   });
 
-  it('resolves the portal zone organization → primary company, like the emails (not settings only)', () => {
-    expect(candidateTimeZone({ timezone: 'America/Guatemala' }, 'America/Bogota')).toBe('America/Guatemala');
-    // No zone on the organization: the company's, as the interview and offer emails already show it.
-    expect(candidateTimeZone({}, 'America/Guatemala')).toBe('America/Guatemala');
-    expect(candidateTimeZone({ timezone: 'Mars/Olympus' }, 'America/Costa_Rica')).toBe('America/Costa_Rica');
+  it("resolves an interview's or offer's zone organization → its vacancy company, like its email", () => {
+    expect(candidateTimeZone('America/Guatemala', 'America/Bogota')).toBe('America/Guatemala');
+    // No zone on the organization: the item's vacancy company's, as its email shows it.
+    expect(candidateTimeZone(null, 'America/Guatemala')).toBe('America/Guatemala');
+    expect(candidateTimeZone('Mars/Olympus', 'America/Costa_Rica')).toBe('America/Costa_Rica');
+    // A vacancy without a company: UTC (null), as in the email — never another company's zone.
     expect(candidateTimeZone(null, null)).toBeNull();
-    expect(candidateTimeZone({}, 'Mars/Olympus')).toBeNull();
+    expect(candidateTimeZone(undefined, 'Mars/Olympus')).toBeNull();
+  });
+
+  it("the portal's interview and offer reads carry the vacancy company zone the per-item fallback needs", () => {
+    const repo = readFileSync(join(__dirname, '../../packages/api/src/repositories/candidate-portal.repository.ts'), 'utf8');
+    expect(blockAt(repo, 'findInterviews(', { minLines: 10 })).toMatch(
+      /vacancy: \{ select: \{ title: true, company: \{ select: \{ timezone: true \} \} \} \}/,
+    );
+    expect(blockAt(repo, 'findOffers(', { minLines: 10 })).toMatch(
+      /vacancy: \{ select: \{ title: true, company: \{ select: \{ name: true, timezone: true \} \} \} \}/,
+    );
   });
 });

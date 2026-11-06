@@ -10,6 +10,7 @@ import {
   sanitizeCountryCode,
 } from '../../apps/web/lib/org-locale-form';
 import { DEFAULT_TENANT_LOCALE, defaultOfferCurrency, resolveTenantLocale } from '../../apps/web/lib/tenant-locale';
+import { projectOrganizationProfile } from '../../packages/api/src/services/organization-profile';
 import { formatMoneyCode } from '../../apps/web/lib/offer-salary';
 import { COMMON_TIME_ZONES } from '../../apps/web/lib/time-zone-options';
 
@@ -100,17 +101,54 @@ describe('"País y formato regional" form helpers', () => {
   });
 });
 
+const own = (currency: string | null, locale: string | null) => ({
+  currency,
+  currencySource: currency === null ? null : ('organization' as const),
+  locale,
+  localeSource: locale === null ? null : ('organization' as const),
+});
+
+// organization.getCurrent's real projection, from the row shape it selects.
+const projected = (settings: unknown, company?: { currency: string; language: string }) =>
+  projectOrganizationProfile({
+    id: 'org-1',
+    name: 'Org',
+    slug: 'org',
+    logo: null,
+    settings,
+    billingEmail: null,
+    companies: company ? [{ name: 'Org Co', country: 'CR', timezone: 'America/Bogota', ...company }] : [],
+  });
+
 describe('tenant locale (vacancy and offer defaults, money formatting)', () => {
   it('INVU and any organization without a profile keep CRC / es-CR exactly as before', () => {
     expect(DEFAULT_TENANT_LOCALE).toEqual({ currency: 'CRC', intlLocale: 'es-CR' });
     expect(resolveTenantLocale(null)).toEqual(DEFAULT_TENANT_LOCALE);
-    expect(resolveTenantLocale({ currency: null, locale: null })).toEqual(DEFAULT_TENANT_LOCALE);
-    expect(resolveTenantLocale({ currency: 'CRC', locale: 'es-CR' })).toEqual(DEFAULT_TENANT_LOCALE);
+    expect(resolveTenantLocale(own(null, null))).toEqual(DEFAULT_TENANT_LOCALE);
+    expect(resolveTenantLocale(own('CRC', 'es-CR'))).toEqual(DEFAULT_TENANT_LOCALE);
     expect(plain(formatMoneyCode(850_000, 'CRC', DEFAULT_TENANT_LOCALE.intlLocale))).toBe('CRC 850 000');
   });
 
+  it('getCurrent → provider: a company fallback (legacy USD / "es" column defaults) never replaces CRC / es-CR', () => {
+    // Codex review of #424 (P1): the projection falls back to the primary company, whose currency and
+    // language are column defaults on every organization provisioned before the profile existed.
+    const legacy = projected({}, { currency: 'USD', language: 'es' });
+    expect(legacy).toMatchObject({ currency: 'USD', currencySource: 'company', locale: 'es', localeSource: 'company' });
+    expect(resolveTenantLocale(legacy)).toEqual(DEFAULT_TENANT_LOCALE);
+    expect(resolveTenantLocale(projected({}))).toEqual(DEFAULT_TENANT_LOCALE);
+    // The organization's own profile wins over its company, field by field.
+    expect(resolveTenantLocale(projected({ currency: 'GTQ', locale: 'es-GT' }, { currency: 'USD', language: 'es' }))).toEqual({
+      currency: 'GTQ',
+      intlLocale: 'es-GT',
+    });
+    expect(resolveTenantLocale(projected({ currency: 'GTQ' }, { currency: 'USD', language: 'es' }))).toEqual({
+      currency: 'GTQ',
+      intlLocale: 'es-CR',
+    });
+  });
+
   it('a Guatemalan organization defaults to GTQ and formats with es-GT', () => {
-    const gt = resolveTenantLocale({ currency: 'GTQ', locale: 'es-GT' });
+    const gt = resolveTenantLocale(own('GTQ', 'es-GT'));
     expect(gt).toEqual({ currency: 'GTQ', intlLocale: 'es-GT' });
     expect(defaultOfferCurrency(null, gt.currency)).toBe('GTQ');
     expect(defaultOfferCurrency('usd', gt.currency)).toBe('USD'); // the vacancy's own currency still wins
@@ -118,11 +156,11 @@ describe('tenant locale (vacancy and offer defaults, money formatting)', () => {
   });
 
   it('falls back per field on an unusable value', () => {
-    expect(resolveTenantLocale({ currency: 'quetzal', locale: 'es-GT' })).toEqual({
+    expect(resolveTenantLocale(own('quetzal', 'es-GT'))).toEqual({
       currency: 'CRC',
       intlLocale: 'es-GT',
     });
-    expect(resolveTenantLocale({ currency: 'gtq', locale: 'es_GT' })).toEqual({ currency: 'GTQ', intlLocale: 'es-CR' });
+    expect(resolveTenantLocale(own('gtq', 'es_GT'))).toEqual({ currency: 'GTQ', intlLocale: 'es-CR' });
     expect(defaultOfferCurrency(null)).toBe('CRC');
   });
 });

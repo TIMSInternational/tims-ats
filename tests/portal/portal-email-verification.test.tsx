@@ -105,22 +105,18 @@ describe('candidate dashboard requires a confirmed email', () => {
     expect(withdrawnAt).toHaveBeenCalledWith('org-1', 'ana@example.com');
   });
 
-  it('shows dates in the organization zone, else the primary company zone — the chain the emails use', async () => {
+  it("passes the organization's own zone; the per-item company fallback is the lists' job, as in the emails", async () => {
     m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
     const render = async (org: Record<string, unknown>) => {
       m.findOrg.mockResolvedValueOnce({ id: 'org-1', name: 'Acme', isActive: true, billingEmail: null, ...org });
       return ((await PortalDashboardPage({ params })) as { props: { timeZone: string | null } }).props.timeZone;
     };
-    expect(await render({ settings: { timezone: 'America/Guatemala' }, companies: [{ timezone: 'America/Bogota' }] })).toBe(
-      'America/Guatemala',
-    );
-    // Before: settings only, so an organization without a configured zone showed UTC while its emails did not.
-    expect(await render({ settings: {}, companies: [{ timezone: 'America/Guatemala' }] })).toBe('America/Guatemala');
-    expect(await render({ settings: {}, companies: [] })).toBeNull();
-    // The primary company is the oldest ACTIVE one.
-    expect(m.findOrg.mock.calls[0]?.[0]).toMatchObject({
-      select: { companies: { where: { isActive: true }, orderBy: { createdAt: 'asc' }, take: 1, select: { timezone: true } } },
-    });
+    expect(await render({ settings: { timezone: 'America/Guatemala' } })).toBe('America/Guatemala');
+    expect(await render({ settings: { timezone: 'Mars/Olympus' } })).toBeNull();
+    expect(await render({ settings: {} })).toBeNull();
+    // Codex review of #424 (P2): no primary-company zone for the whole page — an interview's email uses ITS
+    // vacancy company, which may be another company or none (UTC).
+    expect(JSON.stringify(m.findOrg.mock.calls[0]?.[0])).not.toContain('companies');
   });
 
   it('no session still goes to login', async () => {

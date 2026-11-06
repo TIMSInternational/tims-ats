@@ -166,7 +166,8 @@ export const candidatePortalRepo = {
         duration: true,
         location: true,
         meetingUrl: true,
-        vacancy: { select: { title: true } },
+        // The company zone is the fallback the interview email uses (resolveInterviewTimeZone).
+        vacancy: { select: { title: true, company: { select: { timezone: true } } } },
       },
       orderBy: { scheduledAt: 'asc' },
     });
@@ -193,7 +194,8 @@ export const candidatePortalRepo = {
         contractType: true,
         expiresAt: true,
         settings: true,
-        vacancy: { select: { title: true, company: { select: { name: true } } } },
+        // The company zone is the fallback the offer emails use (resolveInterviewTimeZone).
+        vacancy: { select: { title: true, company: { select: { name: true, timezone: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
