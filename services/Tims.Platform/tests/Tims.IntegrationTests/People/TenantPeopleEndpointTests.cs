@@ -185,6 +185,8 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [InlineData(TenantPeopleFixture.HrAdminSub, "vacancy_assignee")]
     // hrbp holds vacancy:update at UNIT scope: an approver list (permission-filtered) is allowed at any scope.
     [InlineData(TenantPeopleFixture.HrbpSub, "vacancy_approver")]
+    // The leader holds vacancy:update @team (pilot 2026-11-06): they send their own drafts for approval.
+    [InlineData(TenantPeopleFixture.LeaderSub, "vacancy_approver")]
     // interview:create at team/unit scope: the evaluator list is permission-filtered, so any scope is enough.
     [InlineData(TenantPeopleFixture.LeaderSub, "interview_evaluator")]
     [InlineData(TenantPeopleFixture.CommitteeSub, "interview_evaluator")]
@@ -201,7 +203,6 @@ public sealed class TenantPeopleEndpointTests(TenantPeopleFixture fixture)
     [InlineData(TenantPeopleFixture.EmployeeSub, "offer_approver")]
     // No grant at all for the picker's mutation.
     [InlineData(TenantPeopleFixture.LeaderSub, "offer_approver")] // offer:read/approve only
-    [InlineData(TenantPeopleFixture.LeaderSub, "vacancy_approver")] // vacancy:create, not vacancy:update
     [InlineData(TenantPeopleFixture.HrbpSub, "offer_approver")] // offer:read only
     [InlineData(TenantPeopleFixture.CommitteeSub, "vacancy_approver")]
     [InlineData(TenantPeopleFixture.CommitteeSub, "offer_approver")]

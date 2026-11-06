@@ -107,8 +107,8 @@ test('company admin invites the recruiter and the hiring leader from the team pa
   needs('tenantInvitations');
   // Written against #307's Equipo page (settings/users/invite-form.tsx on feat/tenant-team-invitations).
   // Option labels come from the shared role map (`roles.*` in apps/web/lib/i18n/es.json), not the seeded,
-  // unaccented DB `roles.name`. The E2E stack runs the full launch scope, so `leader` is offered here; under
-  // NEXT_PUBLIC_LAUNCH_SCOPE=pilot it is not (PILOT_HIDDEN_ROLE_SLUGS in apps/web/lib/role-labels.ts).
+  // unaccented DB `roles.name`. `leader` is offered in the full launch scope the E2E stack runs and, since
+  // 2026-11-06, under NEXT_PUBLIC_LAUNCH_SCOPE=pilot too (only hrbp is in PILOT_HIDDEN_ROLE_SLUGS).
   const { page } = admin;
   await page.goto('/settings/users');
   for (const [who, role] of [
