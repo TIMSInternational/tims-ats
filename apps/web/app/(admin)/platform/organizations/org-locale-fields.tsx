@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { isOrgCurrencyCode } from '@tims/shared';
 import { currencyOptions } from '../../../../lib/currency-options';
 import { timeZoneOptions } from '../../../../lib/time-zone-options';
 import { formatMoneyCode } from '../../../../lib/offer-salary';
@@ -45,7 +46,8 @@ export function OrgLocaleFields({
   const ui = uiLocale === 'EN' ? 'en' : 'es';
   const set = (patch: Partial<OrgLocaleForm>) => onChange({ ...value, ...patch });
   const zones = timeZoneOptions(ui, value.timezone || null);
-  const currencies = currencyOptions();
+  // Only codes the profile validation accepts (Intl can list newer codes such as XCG that it rejects).
+  const currencies = currencyOptions().filter((option) => isOrgCurrencyCode(option.code));
   const locales = localeOptions(value.locale);
   const profile = orgLocaleFormToProfile(value);
   const countryName = (code: string) => (countryLabel(code, ui) ?? code).replace(/ \([A-Z]{2}\)$/, '');

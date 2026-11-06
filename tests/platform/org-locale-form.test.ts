@@ -183,3 +183,14 @@ describe('tenant locale (vacancy and offer defaults, money formatting)', () => {
     expect(defaultOfferCurrency(null)).toBe('CRC');
   });
 });
+
+describe('currency picker (Codex round 4 on #424)', () => {
+  it('offers only codes the org profile validation accepts', async () => {
+    const { currencyOptions } = await import('../../apps/web/lib/currency-options');
+    const { isOrgCurrencyCode } = await import('@tims/shared');
+    const offered = currencyOptions().filter((o: { code: string }) => isOrgCurrencyCode(o.code));
+    expect(offered.length).toBeGreaterThan(10);
+    expect(offered.every((o: { code: string }) => isOrgCurrencyCode(o.code))).toBe(true);
+    expect(offered.map((o: { code: string }) => o.code)).toEqual(expect.arrayContaining(['CRC', 'GTQ', 'USD']));
+  });
+});
