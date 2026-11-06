@@ -41,8 +41,9 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
             ConsentTextVersion), default));
 
         var consents = await repo.ListConsentsAsync(F.OrgA, interview, default);
-        Assert.Equal([(SubjectCandidate, (Guid?)null, Accepted), (SubjectStaff, F.RecruiterId, Accepted),
-                (SubjectCandidate, null, Declined)],
+        // All three rows are kept (append-only); the read returns the LATEST per subject/user, oldest first.
+        Assert.Equal(3, await fixture.CountAuditAsync(interview, ConsentAction));
+        Assert.Equal([(SubjectStaff, (Guid?)F.RecruiterId, Accepted), (SubjectCandidate, null, Declined)],
             consents.Select(c => (c.Subject, c.UserId, c.Decision)).ToArray());
         Assert.All(consents, c => Assert.Equal(DateTimeKind.Utc, c.RecordedAt!.Value.Kind));
         Assert.Equal(Declined, InterviewTranscriptionUseCase.CandidateDecision(consents).Decision);
