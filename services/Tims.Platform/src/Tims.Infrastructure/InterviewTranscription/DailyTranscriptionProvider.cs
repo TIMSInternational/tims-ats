@@ -188,9 +188,9 @@ public sealed class DailyTranscriptionProvider(HttpClient client, IOptions<Daily
     }
 
     /// <summary>
-    /// Stops the room's real-time transcription. A 4xx other than 401/403 is read as "nothing to stop" (Daily does
-    /// not document the status for an idle room) so a stale state can never trap a candidate who declines; auth,
-    /// 5xx and network failures are reported as failure.
+    /// Stops the room's real-time transcription. Only 400 and 404 are read as "nothing to stop" (Daily does not
+    /// document the idle-room status; these are its invalid-request / not-found answers), so a stale state cannot trap
+    /// a candidate who declines. 429, 401/403, other 4xx, 5xx and network failures are failures (Codex P1).
     /// </summary>
     public async Task<bool> StopAsync(string roomName, CancellationToken ct)
     {
@@ -201,7 +201,7 @@ public sealed class DailyTranscriptionProvider(HttpClient client, IOptions<Daily
                 new { });
             using var response = await client.SendAsync(request, ct);
             var status = (int)response.StatusCode;
-            if (response.IsSuccessStatusCode || (status is >= 400 and < 500 && status is not (401 or 403))) return true;
+            if (response.IsSuccessStatusCode || status is 400 or 404) return true;
             logger.LogWarning("Daily transcription stop failed with {Status}", status);
             return false;
         }

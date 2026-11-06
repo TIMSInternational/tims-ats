@@ -168,11 +168,24 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         if (started != TranscriptionStartResult.Started)
             return TranscriptionResult<TranscriptionStatusView>.Fail(502, "provider_failed",
                 "No se pudo iniciar la transcripción. Verifica que el candidato esté en la llamada e inténtalo de nuevo.");
-        // Fail closed on the evidence: a start that cannot be recorded leaves the webhook nothing to accept.
+        // Fail closed on the evidence: a start that cannot be recorded is stopped again (best effort; if even that
+        // fails, the webhook finds no start to account for the transcript and deletes it).
         if (!await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, organizationId,
                 TranscriptStates.Requested, UserId: userId, Language: language), ct))
+        {
+            await provider.StopAsync(room, ct);
             return TranscriptionResult<TranscriptionStatusView>.Fail(503, "event_not_recorded",
-                "La transcripción se inició pero no se pudo registrar; no se guardará. Inténtalo de nuevo.");
+                "No se pudo registrar el inicio; la transcripción se detuvo. Inténtalo de nuevo.");
+        }
+        // A decline committed while the provider call ran: the candidate's join records the decline THEN reads the
+        // transcription state; this records the start THEN re-reads the decision — one of the two always sees the
+        // other, so a declined candidate is never transcribed by a start that raced the decline.
+        if (CandidateDecision(await repository.ListConsentsAsync(organizationId, interviewId, ct)).Decision != Accepted)
+        {
+            await provider.StopAsync(room, ct);
+            return TranscriptionResult<TranscriptionStatusView>.Fail(409, "candidate_consent_missing",
+                "El candidato no ha aceptado la transcripción. La entrevista puede continuar sin ella.");
+        }
         return await GetStatusAsync(organizationId, userId, interviewId, ct);
     }
 
@@ -236,6 +249,10 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         if (webhookEvent.TranscriptId is not { } transcriptId) return WebhookHandling.Ignored;
         var consents = await repository.ListConsentsAsync(org, interviewId, ct);
         var events = await repository.ListEventsAsync(org, interviewId, ct);
+        // The same transcript reported again (a redelivery under another event id, or a concurrent duplicate that
+        // lost the race) is never deleted once it was accepted.
+        if (events.Any(e => e.State == TranscriptStates.Ready && e.TranscriptId == transcriptId))
+            return WebhookHandling.Duplicate;
         var start = AuthorizingStart(events, webhookEvent.StartedAtUtc, _clock.GetUtcNow().UtcDateTime);
         if (start is null || CandidateDecision(consents).Decision != Accepted)
         {

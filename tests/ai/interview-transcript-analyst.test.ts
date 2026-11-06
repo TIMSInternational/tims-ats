@@ -183,6 +183,22 @@ describe('transcript evidence helpers', () => {
   });
 });
 
+describe('quote verification keeps meaning-bearing symbols', () => {
+  // Codex P1 (re-run): "+20%" used to verify against a candidate who said "-20%".
+  const said: TranscriptSegment[] = [
+    { startSeconds: 9, speaker: 'candidate', text: 'I changed revenue by -20% last year, in Q3 (US$ 2 M).' },
+  ];
+  it('rejects a quote that flips a sign, number or currency', () => {
+    expect(locateCandidateQuote('I changed revenue by +20% last year', said)).toBeNull();
+    expect(locateCandidateQuote('I changed revenue by -30% last year', said)).toBeNull();
+    expect(locateCandidateQuote('in Q3 (€ 2 M)', said)).toBeNull();
+  });
+  it('still tolerates case, spacing, quote marks and sentence punctuation', () => {
+    expect(locateCandidateQuote('«i changed revenue by -20% last year»', said)?.startSeconds).toBe(9);
+    expect(locateCandidateQuote('revenue by -20%  last year in Q3', said)?.startSeconds).toBe(9);
+  });
+});
+
 describe('protected-inference backstop (adversarial phrasings)', () => {
   // Codex P2 on this branch: these two passed the first version of the guard.
   it.each([

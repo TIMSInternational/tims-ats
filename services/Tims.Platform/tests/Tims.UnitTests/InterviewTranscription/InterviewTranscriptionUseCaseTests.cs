@@ -86,10 +86,13 @@ public sealed class InterviewTranscriptionUseCaseTests
         public string? Vtt { get; set; } = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Laura Mora>¿Cómo está?</v>\n\n" +
                                            "00:00:03.000 --> 00:00:05.000\n<v Ana Pérez>Bien, gracias.</v>\n";
 
-        public Task<TranscriptionStartResult> StartAsync(string roomName, string language, CancellationToken ct)
+        public Func<Task>? OnStart { get; set; }
+
+        public async Task<TranscriptionStartResult> StartAsync(string roomName, string language, CancellationToken ct)
         {
             Starts.Add((roomName, language));
-            return Task.FromResult(StartResult);
+            if (OnStart is not null) await OnStart();
+            return StartResult;
         }
 
         public Task<string?> DownloadTranscriptAsync(Guid transcriptId, CancellationToken ct) => Task.FromResult(Vtt);
@@ -345,6 +348,40 @@ public sealed class InterviewTranscriptionUseCaseTests
         Assert.Equal(TranscriptReference(TranscriptId), repo.Reference);
         Assert.Equal(repo.Events.Single(e => e.State == TranscriptStates.Requested).Id,
             repo.Events.Single(e => e.State == TranscriptStates.Ready).AuthorizedBy);
+    }
+
+    [Fact]
+    public async Task A_start_whose_record_fails_is_stopped_again()
+    {
+        var (useCase, repo, provider) = Build();
+        await Consent(repo, Accepted);
+        repo.Consents.Add(Staff(Evaluator));
+        repo.Writes = false;
+        Assert.Equal((503, "event_not_recorded"), Pick(await useCase.StartAsync(Org, Evaluator, InterviewId, "es", default)));
+        Assert.Equal(CandidateInterviewJoin.RoomNameFor(InterviewId), Assert.Single(provider.Stopped));
+    }
+
+    [Fact]
+    public async Task A_decline_that_raced_the_start_stops_it()
+    {
+        var (useCase, repo, provider) = Build();
+        await Consent(repo, Accepted);
+        repo.Consents.Add(Staff(Evaluator));
+        provider.OnStart = () => repo.RecordConsentAsync(Candidate(Declined), default); // committed mid-call
+        Assert.Equal((409, "candidate_consent_missing"),
+            Pick(await useCase.StartAsync(Org, Evaluator, InterviewId, "es", default)));
+        Assert.Single(provider.Stopped);
+    }
+
+    [Fact]
+    public async Task An_accepted_transcript_reported_again_under_another_event_id_is_never_deleted()
+    {
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase);
+        Assert.Equal(WebhookHandling.Stored, await useCase.HandleWebhookAsync(Ready("evt-a"), default));
+        Assert.Equal(WebhookHandling.Duplicate, await useCase.HandleWebhookAsync(Ready("evt-b"), default));
+        Assert.Empty(provider.Deleted);
+        Assert.Equal(TranscriptReference(TranscriptId), repo.Reference);
     }
 
     [Fact]

@@ -62,12 +62,17 @@ export function chunkTranscript(segments: readonly TranscriptSegment[]): {
   return { chunks, truncated: false };
 }
 
-/** Lowercase, NFC, punctuation and whitespace collapsed — so a quote matches despite commas or line breaks. */
+/**
+ * Lowercase, NFC, whitespace collapsed, and ONLY sentence punctuation and quote marks ignored — so a quote matches
+ * despite commas, line breaks or « » vs " ". Signs, symbols and digits are kept: "+20%" must never verify against a
+ * candidate who said "-20%" (Codex P1). Hyphens/dashes stay too, for the same reason.
+ */
 export function normalizeForMatch(text: string): string {
   return text
     .normalize('NFC')
     .toLowerCase()
-    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+    .replace(/[.,;:!?¡¿…"'“”‘’«»()[\]{}]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
     .trim();
 }
 
