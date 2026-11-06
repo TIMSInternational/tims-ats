@@ -404,6 +404,32 @@ describe('candidate-facing salary rendering', () => {
     expect(text).not.toContain('$');
   });
 
+  it("candidate portal offer card dates use the organization zone, else the offer's vacancy company zone (as its email)", () => {
+    // Codex review of #424 (P2). 03:00 UTC on 1 December is still 30 November in Guatemala (GMT-6).
+    const offer = (company: { name: string; timezone?: string } | null) => ({
+      id: 'o1',
+      status: 'sent',
+      salary: 96_000_000,
+      currency: 'GTQ',
+      startDate: '2026-12-01T03:00:00Z',
+      contractType: 'indefinido',
+      expiresAt: null,
+      signingToken: null,
+      vacancy: { title: 'Analista', company },
+    });
+    const startText = (company: { name: string; timezone?: string } | null, timeZone: string | null = null) => {
+      portalOffers.mockReturnValue({ isLoading: false, isError: false, data: [offer(company)] });
+      const view = render(createElement(DashboardOffer, { orgSlug: 'acme', timeZone }));
+      const text = view.container.textContent ?? '';
+      view.unmount();
+      return text;
+    };
+    expect(startText({ name: 'GT Co', timezone: 'America/Guatemala' })).toContain('30 de noviembre de 2026');
+    expect(startText({ name: 'No zone' })).toContain('1 de diciembre de 2026');
+    expect(startText(null)).toContain('1 de diciembre de 2026');
+    expect(startText({ name: 'GT Co', timezone: 'America/Guatemala' }, 'Etc/UTC')).toContain('1 de diciembre de 2026');
+  });
+
   it('offer table labels the stored amount as annual with the ISO code', () => {
     const { container } = render(
       createElement(OfferTable, {
