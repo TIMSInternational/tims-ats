@@ -15,8 +15,8 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
 
   const create = useOrganizationInvitationCreate({
     onSuccess: (delivery) => {
-      toast(delivery === 'accepted' || delivery === 'legacy' ? t.invitations.orgInviteSent : t.invitations.orgInviteDeliveryUnconfirmed,
-        { type: delivery === 'accepted' || delivery === 'legacy' ? 'success' : 'warning' });
+      toast(delivery === 'accepted' ? t.invitations.orgInviteSent : t.invitations.orgInviteDeliveryUnconfirmed,
+        { type: delivery === 'accepted' ? 'success' : 'warning' });
       onSuccess();
     },
     onError: (err) => { toast(err.message || t.invitations.creationFailed, { type: 'error' }); },

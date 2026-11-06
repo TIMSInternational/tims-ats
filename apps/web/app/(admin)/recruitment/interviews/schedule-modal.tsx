@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { timeZoneLabel, zonedWallTimeToDate } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
@@ -14,8 +15,16 @@ interface ScheduleModalProps {
   onSuccess: () => void;
 }
 
+/** "YYYY-MM-DD" of tomorrow on the user's own calendar (not UTC: after 18:00 in Costa Rica UTC is
+ *  already the next day, so the UTC date skipped a day). */
+function localTomorrow(now: Date = new Date()): string {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [step, setStep] = useState<Step>(1);
 
   // Step 1: Who
@@ -27,7 +36,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
 
   // Step 2: What & When
   const [interviewType, setInterviewType] = useState(() => defaultInterviewType());
-  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledDate, setScheduledDate] = useState(localTomorrow);
   const [scheduledTime, setScheduledTime] = useState('10:00');
   const [duration, setDuration] = useState(60);
   const [location, setLocation] = useState('');
@@ -47,6 +56,32 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
     { staleTime: 60_000 },
   );
 
+  // The zone the typed time means — the chain the invitation emails print: the organization's, then the
+  // selected vacancy's company, then UTC said explicitly. Read from interview.list (filtered to the
+  // vacancy, one row) rather than a procedure of its own. The browser's zone plays no part (A-17).
+  const zoneQuery = trpc.interview.list.useQuery(
+    { vacancyId: selectedVacancyId, pageSize: 1 },
+    { enabled: selectedVacancyId !== '', staleTime: 5 * 60_000 },
+  );
+  const schedulingTimeZone = zoneQuery.data?.schedulingTimeZone ?? null;
+  const isTimeZoneError = zoneQuery.isError;
+  const timeZone = schedulingTimeZone?.timeZone ?? null;
+  const labelLocale = locale === 'EN' ? 'en' : 'es';
+  const scheduledAt = timeZone ? zonedWallTimeToDate(scheduledDate, scheduledTime, timeZone) : null;
+  const zoneLabel = timeZone
+    ? timeZoneLabel(timeZone, labelLocale, scheduledAt ?? new Date())
+    : isTimeZoneError
+      ? t.common.error
+      : t.common.loading;
+  const whenLabel =
+    scheduledAt && timeZone
+      ? `${new Intl.DateTimeFormat(labelLocale === 'en' ? 'en-US' : 'es-CR', {
+          dateStyle: 'full',
+          timeStyle: 'short',
+          timeZone,
+        }).format(scheduledAt)}, ${zoneLabel}`
+      : '';
+
   // Evaluators come from the tenant people directory (interview:create), not user.list (user:read),
   // which recruiters do not hold.
   const evaluators = useAssignablePeople({ purpose: 'interview_evaluator', limit: 50 });
@@ -54,14 +89,13 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
   const createInterview = trpc.interview.schedule.useMutation();
 
   const isStep1Valid = selectedCandidateId && selectedVacancyId;
-  const isStep2Valid = interviewType && scheduledDate && scheduledTime;
+  const isStep2Valid = interviewType && scheduledDate && scheduledTime && scheduledAt !== null;
   const isStep3Valid = selectedEvaluatorIds.length > 0;
   const isPending = createInterview.isPending;
 
   const handleSubmit = async () => {
-    if (!isStep1Valid || !isStep2Valid || !isStep3Valid) return;
+    if (!isStep1Valid || !isStep2Valid || !isStep3Valid || !scheduledAt) return;
     try {
-      const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
       const created = await createInterview.mutateAsync({
         candidateId: selectedCandidateId,
         vacancyId: selectedVacancyId,
@@ -87,13 +121,6 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
-
-  // Default date to tomorrow
-  if (!scheduledDate) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setScheduledDate(tomorrow.toISOString().split('T')[0]!);
-  }
 
   return (
     <Modal title={t.interviews.modalTitle} onClose={onClose} maxWidth="max-w-2xl">
@@ -142,6 +169,8 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
           setDuration={setDuration}
           location={location}
           setLocation={setLocation}
+          timeZoneLabel={zoneLabel}
+          isUtcFallback={schedulingTimeZone?.source === 'utc'}
         />
       )}
 
@@ -156,8 +185,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
           selectedCandidateName={selectedCandidateName}
           selectedVacancyTitle={selectedVacancyTitle}
           interviewType={interviewType}
-          scheduledDate={scheduledDate}
-          scheduledTime={scheduledTime}
+          whenLabel={whenLabel}
           duration={duration}
         />
       )}

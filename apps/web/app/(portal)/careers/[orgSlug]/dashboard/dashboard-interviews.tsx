@@ -3,6 +3,7 @@
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { isSafeDailyJoinUrl } from '../../../../../lib/interview-join';
+import { formatCandidateDateTime } from '../../../../../lib/candidate-format';
 
 // "My Interviews" section of the candidate dashboard (Wave 1 Slice 3). Lists the
 // signed-in candidate's UPCOMING interviews (scheduled/confirmed) with a join link
@@ -31,8 +32,48 @@ function safeMeetingUrl(url: string | null): string | null {
   }
 }
 
-export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
-  const { t } = useI18n();
+type PortalTranslations = ReturnType<typeof useI18n>['t'];
+
+const TYPE_KEYS = {
+  phone: 'intTypePhone',
+  video: 'intTypeVideo',
+  technical: 'intTypeTechnical',
+  cultural: 'intTypeCultural',
+  panel: 'intTypePanel',
+  onsite: 'intTypeOnsite',
+  in_person: 'intTypeOnsite',
+  online: 'intTypeOnline',
+} as const;
+
+/** Types that say WHERE the interview is: with a meeting link they read "En línea". */
+const PLACE_TYPES: ReadonlySet<string> = new Set(['onsite', 'in_person', 'online']);
+
+/**
+ * The interview type in the candidate's language — never the raw enum ("Onsite") — and honest about
+ * the modality: a pasted Teams/Meet/Zoom link is an ONLINE interview, not "Presencial" (C-02, C-03).
+ */
+export function candidateInterviewTypeLabel(t: PortalTranslations, type: string, joinUrl: string | null): string {
+  const p = t.portalDashboard;
+  const key = (TYPE_KEYS as Record<string, (typeof TYPE_KEYS)[keyof typeof TYPE_KEYS]>)[type];
+  const label = key ? p[key] : p.intTypeOther;
+  if (!joinUrl || type === 'video') return label;
+  return PLACE_TYPES.has(type) ? p.intTypeOnline : `${label} (${p.intTypeOnlineSuffix})`;
+}
+
+/** The schedule modal stores a pasted link as both location and meeting URL: show it once (as Join). */
+function isSameLink(location: string | null, url: string | null): boolean {
+  if (!location || !url) return false;
+  if (location.trim() === url) return true;
+  try {
+    return new URL(location.trim()).toString() === url;
+  } catch {
+    return false;
+  }
+}
+
+// Times render in the organization's time zone with an explicit zone label (UTC when it has none).
+export function DashboardInterviews({ orgSlug, timeZone = null }: { orgSlug: string; timeZone?: string | null }) {
+  const { t, locale } = useI18n();
   const { data, isLoading, isError } = trpc.candidatePortal.myInterviews.useQuery({ orgSlug });
 
   const statusLabel = (s: string) => {
@@ -85,13 +126,13 @@ export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
-                    <p className="text-[12px] text-[#585858] mt-0.5 capitalize">{iv.type}</p>
+                    <p className="text-[12px] text-[#585858] mt-0.5">{candidateInterviewTypeLabel(t, iv.type, joinUrl)}</p>
                     <p className="text-[11px] text-muted mt-1">
-                      {new Date(iv.scheduledAt).toLocaleString()}
+                      {formatCandidateDateTime(iv.scheduledAt, locale, timeZone, t.portalDashboard)}
                       {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
                     </p>
-                    {iv.location && (
-                      <p className="text-[11px] text-muted mt-0.5">
+                    {iv.location && !isSameLink(iv.location, joinUrl) && (
+                      <p className="text-[11px] text-muted mt-0.5 break-all">
                         {t.portalDashboard.intLocation}: {iv.location}
                       </p>
                     )}

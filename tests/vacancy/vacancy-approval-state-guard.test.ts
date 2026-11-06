@@ -15,6 +15,9 @@ const APPROVER_A = '11111111-1111-4111-8111-111111111111';
 const APPROVER_B = '22222222-2222-4222-8222-222222222222';
 
 type Store = ReturnType<typeof createApprovalRaceStore>;
+// Decisions name the step they act on (`approvalId`, required): one step per approver per seed, so
+// the step id is derived from the approver.
+const stepFor = (approverId: string) => `5afe0000${approverId.slice(8)}`;
 const holder = vi.hoisted(() => ({ store: null as unknown }));
 const store = () => holder.store as Store;
 
@@ -37,7 +40,7 @@ function seed(status: string, approvals: Array<[string, string]>) {
     parentKey: 'vacancyId',
     parent: { id: VACANCY_ID, organizationId: ORG_ID, status, deletedAt: null },
     approvals: approvals.map(([approverId, s], i) => ({
-      id: `appr-${i + 1}`,
+      id: stepFor(approverId),
       organizationId: ORG_ID,
       parentId: VACANCY_ID,
       approverId,
@@ -76,9 +79,9 @@ beforeEach(() => {
 
 describe('vacancy approval — state-guarded transitions', () => {
   it('non-vacuity: sequential approvals move pending_approval -> approved on the last one', async () => {
-    await (await callerFor(APPROVER_A)).vacancy.approve({ id: VACANCY_ID });
+    await (await callerFor(APPROVER_A)).vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A) });
     expect(store().committed.parent.status).toBe('pending_approval');
-    await (await callerFor(APPROVER_B)).vacancy.approve({ id: VACANCY_ID });
+    await (await callerFor(APPROVER_B)).vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_B) });
     expect(store().committed.parent.status).toBe('approved');
   });
 
@@ -86,8 +89,8 @@ describe('vacancy approval — state-guarded transitions', () => {
     const [a, b] = await Promise.all([callerFor(APPROVER_A), callerFor(APPROVER_B)]);
     store().overlapNextTransactions(2);
     const results = await Promise.allSettled([
-      a.vacancy.approve({ id: VACANCY_ID }),
-      b.vacancy.approve({ id: VACANCY_ID }),
+      a.vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A) }),
+      b.vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_B) }),
     ]);
     expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
     expect(store().committed.parent.status).toBe('approved');
@@ -97,19 +100,19 @@ describe('vacancy approval — state-guarded transitions', () => {
   it('final approval is idempotent: a retry after it committed returns the approved vacancy', async () => {
     seed('pending_approval', [[APPROVER_A, 'pending']]);
     const a = await callerFor(APPROVER_A);
-    await a.vacancy.approve({ id: VACANCY_ID });
-    const replay = await a.vacancy.approve({ id: VACANCY_ID });
+    await a.vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A) });
+    const replay = await a.vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A) });
     expect(replay).toMatchObject({ status: 'approved' });
     expect(store().committed.parent.status).toBe('approved');
     expect(statuses()).toEqual(['approved']);
   });
 
   it('a rejected vacancy cannot become approved: the other approver gets CONFLICT', async () => {
-    await (await callerFor(APPROVER_A)).vacancy.reject({ id: VACANCY_ID, comment: 'budget' });
+    await (await callerFor(APPROVER_A)).vacancy.reject({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A), comment: 'budget' });
     expect(store().committed.parent.status).toBe('draft');
     expect(statuses()).toEqual(['rejected', 'cancelled']);
 
-    await expect((await callerFor(APPROVER_B)).vacancy.approve({ id: VACANCY_ID })).rejects.toMatchObject({
+    await expect((await callerFor(APPROVER_B)).vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_B) })).rejects.toMatchObject({
       code: 'CONFLICT',
     });
     expect(store().committed.parent.status).toBe('draft');
@@ -120,8 +123,8 @@ describe('vacancy approval — state-guarded transitions', () => {
     for (const status of ['closed', 'frozen', 'draft', 'published']) {
       seed(status, [[APPROVER_A, 'pending']]);
       const a = await callerFor(APPROVER_A);
-      await expect(a.vacancy.approve({ id: VACANCY_ID })).rejects.toMatchObject({ code: 'CONFLICT' });
-      await expect(a.vacancy.reject({ id: VACANCY_ID, comment: 'no' })).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(a.vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A) })).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(a.vacancy.reject({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A), comment: 'no' })).rejects.toMatchObject({ code: 'CONFLICT' });
       expect(store().committed.parent.status).toBe(status);
       expect(statuses()).toEqual(['pending']);
     }
@@ -133,7 +136,7 @@ describe('vacancy approval — state-guarded transitions', () => {
       [APPROVER_B, 'approved'],
     ]);
     await expect(
-      (await callerFor(APPROVER_A)).vacancy.reject({ id: VACANCY_ID, comment: 'late' }),
+      (await callerFor(APPROVER_A)).vacancy.reject({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A), comment: 'late' }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(store().committed.parent.status).toBe('approved');
   });
@@ -142,8 +145,8 @@ describe('vacancy approval — state-guarded transitions', () => {
     const [a, b] = await Promise.all([callerFor(APPROVER_A), callerFor(APPROVER_B)]);
     store().overlapNextTransactions(2);
     const results = await Promise.allSettled([
-      a.vacancy.reject({ id: VACANCY_ID, comment: 'no' }),
-      b.vacancy.approve({ id: VACANCY_ID }),
+      a.vacancy.reject({ id: VACANCY_ID, approvalId: stepFor(APPROVER_A), comment: 'no' }),
+      b.vacancy.approve({ id: VACANCY_ID, approvalId: stepFor(APPROVER_B) }),
     ]);
     expect(results[0].status).toBe('fulfilled');
     expect(store().committed.parent.status).toBe('draft');

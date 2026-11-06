@@ -53,6 +53,7 @@ export function SidebarProfileMenu({
     <div ref={wrapRef} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className={`flex items-center gap-2.5 w-full rounded-[var(--r-lg)] text-[var(--chrome-text-primary)] hover:bg-[var(--chrome-hover)] transition-colors ${
           expanded ? 'px-2 py-2' : 'justify-center px-1 py-1.5'
         }`}

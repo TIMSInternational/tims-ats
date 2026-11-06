@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   hasNextInvitations: false,
   fetchNextInvitations: vi.fn(),
   memberListInputs: [] as unknown[],
+  roles: [{ slug: 'employee', name: 'Empleado' }] as { slug: string; name: string }[],
 }));
 
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -53,7 +54,7 @@ vi.mock('../../apps/web/lib/platform-api/tenant-invitations', async (importOrigi
     useTenantInvitationRoles: () => ({
       isLoading: false,
       isError: false,
-      data: [{ slug: 'employee', name: 'Empleado' }],
+      data: mocks.roles,
     }),
     useTenantInvitations: (_enabled: boolean, status: string) => {
       mocks.invitationsFilter.push(status);
@@ -103,6 +104,8 @@ beforeEach(() => {
   mocks.invitationRole = 'employee';
   mocks.invitationsFilter = [];
   mocks.hasNextInvitations = false;
+  mocks.roles = [{ slug: 'employee', name: 'Empleado' }];
+  delete process.env.NEXT_PUBLIC_LAUNCH_SCOPE;
   for (const fn of [mocks.create, mocks.revoke, mocks.resend, mocks.toast, mocks.fetchNextInvitations]) fn.mockReset();
 });
 
@@ -199,5 +202,64 @@ describe('/settings/users (Equipo)', () => {
     mocks.invitationRole = null;
     render(<TeamSettingsPage />);
     expect((screen.getByRole('button', { name: m.resend }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  // D-02 / D-09 / E-17: the picker showed the seeded DB names ("Lider", "Miembro de Comite", "HR Business
+  // Partner") in DB-name order, and offered hrbp/leader although the pilot decision (D-HRBP) drops them.
+  const DB_ROLES = [
+    { slug: 'hr_admin', name: 'Administrador RRHH' },
+    { slug: 'employee', name: 'Colaborador' },
+    { slug: 'hrbp', name: 'HR Business Partner' },
+    { slug: 'leader', name: 'Lider' },
+    { slug: 'committee', name: 'Miembro de Comite' },
+    { slug: 'recruiter', name: 'Reclutador' },
+    { slug: 'super_admin', name: 'Super Administrador' },
+  ];
+  const optionLabels = () =>
+    Array.from((screen.getByLabelText(m.roleLabel) as HTMLSelectElement).options).map((option) => option.textContent);
+
+  it('pilot: offers only the pilot roles, with the shared labels, most privileged first', () => {
+    process.env.NEXT_PUBLIC_LAUNCH_SCOPE = 'pilot';
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(optionLabels()).toEqual([
+      m.rolePlaceholder,
+      'Super Administrador',
+      'Administrador de RR. HH.',
+      'Reclutador',
+      'Comité de entrevista',
+      'Colaborador',
+    ]);
+  });
+
+  it('full scope: still offers hrbp and leader, labelled from the shared map', () => {
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(optionLabels()).toEqual([
+      m.rolePlaceholder,
+      'Super Administrador',
+      'Administrador de RR. HH.',
+      'HR Business Partner (HRBP)',
+      'Reclutador',
+      'Líder',
+      'Comité de entrevista',
+      'Colaborador',
+    ]);
+  });
+
+  it('explains the selected role in one line', () => {
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(screen.queryByText(m.roleDescriptions.committee)).toBeNull();
+    fireEvent.change(screen.getByLabelText(m.roleLabel), { target: { value: 'committee' } });
+    expect(screen.getByText(m.roleDescriptions.committee)).toBeTruthy();
+  });
+
+  it('shows pending invitations by role label, not the slug', () => {
+    mocks.invitationRole = 'super_admin';
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(screen.getByRole('cell', { name: 'Super Administrador' })).toBeTruthy();
+    expect(screen.queryByRole('cell', { name: 'super_admin' })).toBeNull();
   });
 });

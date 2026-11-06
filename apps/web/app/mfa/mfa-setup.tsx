@@ -5,13 +5,17 @@ import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../lib/i18n';
 import { mfaMode, type MfaMode, type Aal } from '../../lib/mfa';
+import { takePostLoginDestination } from '../../lib/auth/post-login-destination';
 
 // Two-factor (TOTP) setup + step-up, backed by Supabase Auth MFA. Three modes,
 // derived purely in lib/mfa.ts:
 //   enroll    — no verified factor: show QR + secret, verify a code to activate
 //   challenge — verified factor but session is aal1: step up with a code
 //   enabled   — verified factor and session is aal2: manage / disable
-export function MfaSetup({ returnTo }: { returnTo?: string }) {
+// `required` (computed on the server with the gate's own rule) = the user cannot skip MFA: the page
+// says why, offers "Cerrar sesión" instead of a "Volver al panel" that would loop, and never offers
+// "Desactivar". A successful code always continues to the app (or back to `returnTo`).
+export function MfaSetup({ returnTo, required }: { returnTo?: string; required: boolean }) {
   const router = useRouter();
   const { t } = useI18n();
 
@@ -23,6 +27,8 @@ export function MfaSetup({ returnTo }: { returnTo?: string }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   // Stable reference (the browser client is a module singleton; useMemo makes the
   // stability explicit so the callbacks below memoize correctly).
@@ -87,12 +93,12 @@ export function MfaSetup({ returnTo }: { returnTo?: string }) {
       return;
     }
     setCode('');
-    if (mode === 'challenge' || returnTo) {
-      router.push(returnTo ?? '/dashboard');
-      router.refresh();
-    } else {
-      await refresh();
-    }
+    // Enrollment and step-up both continue to the app (or back to the invitation / password step that
+    // sent the user here), never onto the management screen and its "Desactivar" button. A user forced
+    // here by the gate right after signing in continues to the page they were signing in to.
+    setRedirecting(true);
+    router.push(returnTo ?? (required ? takePostLoginDestination() : null) ?? '/dashboard');
+    router.refresh();
   };
 
   const disable = async () => {
@@ -110,12 +116,41 @@ export function MfaSetup({ returnTo }: { returnTo?: string }) {
       }
     }
     setBusy(false);
+    setConfirmingDisable(false);
     setFactorId(null);
     await refresh();
     router.refresh();
   };
 
   const onCodeChange = (v: string) => setCode(v.replace(/\D/g, '').slice(0, 6));
+
+  // Under enforcement "/dashboard" sends the user straight back here, so the only real exit is signing
+  // out. A plain <a> (not next/link): /logout is a GET route handler and must never be prefetched.
+  const exitLink =
+    required || returnTo ? (
+      <a href="/logout" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">
+        {t.mfa.signOut}
+      </a>
+    ) : (
+      <a href="/dashboard" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">
+        {t.mfa.backToDashboard}
+      </a>
+    );
+
+  const successIcon = (
+    <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
+      <svg
+        className="w-6 h-6 text-green-600"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path d="M5 13l4 4L19 7" />
+      </svg>
+    </div>
+  );
 
   return (
     <div className="w-full max-w-[440px]">
@@ -132,34 +167,72 @@ export function MfaSetup({ returnTo }: { returnTo?: string }) {
       <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
         {loading ? (
           <p className="text-center text-[13px] text-[#585858]">{t.mfa.loading}</p>
+        ) : redirecting ? (
+          <div className="text-center" role="status">
+            {successIcon}
+            <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">{t.mfa.enabledTitle}</h3>
+            <p className="text-[13px] text-[#585858]">{t.mfa.redirecting}</p>
+          </div>
         ) : mode === 'enabled' ? (
           <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-              <svg
-                className="w-6 h-6 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
+            {successIcon}
             <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">{t.mfa.enabledTitle}</h3>
             <p className="text-[13px] text-[#585858] mb-6">{t.mfa.enabledDesc}</p>
-            <button
-              onClick={disable}
-              disabled={busy}
-              className="w-full h-11 rounded-xl border border-red-200 text-red-600 text-[13px] font-semibold hover:bg-red-50 disabled:opacity-50 transition mb-3"
+            <a
+              href="/dashboard"
+              className="flex w-full h-11 items-center justify-center rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] transition mb-4"
             >
-              {busy ? t.mfa.disabling : t.mfa.disable}
-            </button>
-            <a href="/dashboard" className="text-[13px] text-[#1F114C] font-medium hover:underline">
               {t.mfa.backToDashboard}
             </a>
+            {error && (
+              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700 mb-3">
+                {error}
+              </div>
+            )}
+            {required ? (
+              <p className="text-[12px] text-[#8B8B8B]">{t.mfa.requiredCannotDisable}</p>
+            ) : confirmingDisable ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-left">
+                <p className="text-[13px] text-red-700 mb-3">{t.mfa.disableConfirm}</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDisable(false)}
+                    disabled={busy}
+                    className="flex-1 h-10 rounded-xl border border-[#EDEDED] bg-white text-[13px] font-medium text-[#333] hover:bg-[#FAFAFA] disabled:opacity-50 transition"
+                  >
+                    {t.mfa.cancel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void disable()}
+                    disabled={busy}
+                    className="flex-1 h-10 rounded-xl bg-red-600 text-white text-[13px] font-semibold hover:bg-red-700 disabled:opacity-50 transition"
+                  >
+                    {busy ? t.mfa.disabling : t.mfa.disableConfirmBtn}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDisable(true)}
+                className="text-[13px] font-medium text-red-600 hover:underline"
+              >
+                {t.mfa.disable}
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
+            {required && (
+              <div
+                role="status"
+                className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-800"
+              >
+                {t.mfa.enforcedNotice}
+              </div>
+            )}
             <div>
               <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">
                 {mode === 'enroll' ? t.mfa.enrollTitle : t.mfa.challengeTitle}
@@ -183,7 +256,7 @@ export function MfaSetup({ returnTo }: { returnTo?: string }) {
             )}
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
                 {error}
               </div>
             )}
@@ -212,11 +285,7 @@ export function MfaSetup({ returnTo }: { returnTo?: string }) {
               {busy ? t.mfa.verifying : mode === 'enroll' ? t.mfa.verify : t.mfa.continueBtn}
             </button>
 
-            <div className="text-center">
-              <a href="/dashboard" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">
-                {t.mfa.backToDashboard}
-              </a>
-            </div>
+            <div className="text-center">{exitLink}</div>
           </div>
         )}
       </div>

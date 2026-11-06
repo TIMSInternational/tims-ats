@@ -1,4 +1,5 @@
 import { isHrefHiddenInScope, readLaunchScope, type LaunchScope } from './launch-scope';
+import { moduleForPath } from './nav/routes';
 // Pure mapping: pipeline stage -> suggested next action (Sprint 1.3 Task 2).
 //
 // Powers the proactive "what should I do now" toast shown after a successful
@@ -58,13 +59,36 @@ export function getNextActionForStage(stageName: string, _stageType?: string | n
   return CANONICAL_STAGE_ACTIONS[normalized] ?? null;
 }
 
+export interface NextActionContext {
+  /** The viewer's permission check. When given, an action whose destination module the viewer cannot
+   *  read is dropped (e.g. "Iniciar el onboarding" for a recruiter without onboarding access). */
+  can?: (module: string, action?: string) => boolean;
+  /** The candidate that was just moved. An offer is created from the candidate's profile (the offers
+   *  list has no create button), so "Preparar la oferta" opens that profile when the candidate is known. */
+  candidateId?: string | null;
+}
+
 /**
- * Drops a suggested next action whose destination is hidden in the current launch scope (e.g. assessments
- * under the pilot): the route guard would answer it with AccessDenied.
+ * Resolves the destination of a suggested next action for the viewer, or drops it when following it
+ * would dead-end: the destination is hidden in the current launch scope (e.g. assessments under the
+ * pilot) or the viewer lacks the grant the route guard checks (both answer with AccessDenied).
  */
 export function visibleNextAction(
   action: NextAction | null,
   scope: LaunchScope = readLaunchScope(),
+  context: NextActionContext = {},
 ): NextAction | null {
-  return action && !isHrefHiddenInScope(action.href, scope) ? action : null;
+  if (!action) return null;
+  const { can, candidateId } = context;
+  const resolved =
+    action.labelKey === 'oferta' && candidateId
+      ? { ...action, href: `/recruitment/candidates/${encodeURIComponent(candidateId)}` }
+      : action;
+  if (isHrefHiddenInScope(resolved.href, scope)) return null;
+  if (can) {
+    const routeModule = moduleForPath(resolved.href);
+    if (routeModule && !can(routeModule, 'read')) return null;
+    if (resolved.labelKey === 'oferta' && !can('offer', 'create')) return null;
+  }
+  return resolved;
 }

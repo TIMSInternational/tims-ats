@@ -1,11 +1,13 @@
 using System.Globalization;
 using System.Net;
+using Tims.Domain.Identity;
 
 namespace Tims.Application.PlatformInvitations;
 
 /// <summary>Table-based, inline-styled invitation email for Outlook and mobile clients.</summary>
 public static class InvitationEmail
 {
+    /// <param name="role">The role SLUG the invitation grants; it is printed as its label (<see cref="RoleLabels"/>).</param>
     public static string Render(string organization, string? role, string url, DateTime expiresAt,
         string locale = "es", bool reminder = false)
     {
@@ -24,7 +26,7 @@ public static class InvitationEmail
             ? "Need help? Contact the administrator who invited you. If you were not expecting this invitation, you can ignore this email."
             : "¿Necesitas ayuda? Contacta al administrador que te invitó. Si no esperabas esta invitación, puedes ignorar este correo.";
         string E(string value) => WebUtility.HtmlEncode(value);
-        var access = role?.Replace('_', ' ') ??
+        var access = role is not null ? RoleLabels.For(role, en ? "en" : "es") :
             (en ? "Review your access during setup" : "Revisa tu acceso durante la configuración");
         return $"""
             <!doctype html><html lang="{(en ? "en" : "es")}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>

@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
-import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
 import { clearPasswordSetupAuthorization, establishPasswordSetupSession } from './password-setup-session';
+
+const INVITATION_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function ResetPasswordPage() {
   return (
@@ -28,6 +29,9 @@ function ResetPasswordForm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const setupPromise = useRef<Promise<string | null> | null>(null);
+  const invitationParam = searchParams.get('invitation');
+  const invitationToken = invitationParam && INVITATION_TOKEN.test(invitationParam) ? invitationParam : null;
+  const verifying = !setupUserId && !invalidLink;
 
   useEffect(() => {
     let active = true;
@@ -114,12 +118,12 @@ function ResetPasswordForm() {
 
   return (
     <div className="w-full max-w-[420px]">
+      {/* Brand — visible only on mobile where the left panel is hidden */}
       <div className="text-center mb-8 lg:hidden">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
           <span className="text-white text-xl font-bold">T</span>
         </div>
-        <h1 className="text-2xl font-bold text-[#1F114C]">{t.auth.newPassword}</h1>
-        <p className="text-sm text-[#8B8B8B] mt-1">{t.auth.enterNewPassword}</p>
+        <p className="text-2xl font-bold text-[#1F114C]">{t.auth.platformName}</p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
@@ -139,11 +143,46 @@ function ResetPasswordForm() {
             <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.passwordUpdated}</h3>
             <p className="text-[13px] text-[#585858]">{t.auth.redirectingToDashboard}</p>
           </div>
+        ) : invalidLink ? (
+          <div className="space-y-4">
+            {/* Invalid, expired or spent link: no form, only the ways out (a new link, or back to the
+                invitation that sent it, and the sign-in page). A session can outlive a spent link and
+                middleware bounces signed-in users off /forgot-password and /login, so both exits sign
+                out first. Plain <a>: /logout is a GET route handler and must never be prefetched. */}
+            <h1 className="text-lg font-semibold text-[#1F114C]">{t.auth.newPassword}</h1>
+            <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+              {t.auth.invalidPasswordSetupLink}
+            </div>
+            <a
+              href={
+                invitationToken
+                  ? `/accept-invitation?token=${encodeURIComponent(invitationToken)}`
+                  : '/logout?next=/forgot-password'
+              }
+              className="flex w-full h-11 items-center justify-center rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] transition"
+            >
+              {invitationToken ? t.auth.backToInvitation : t.auth.requestNewLink}
+            </a>
+            <div className="text-center">
+              <a href="/logout" className="text-[12px] text-[#8B8B8B] hover:text-[#585858]">
+                {t.auth.backToLogin}
+              </a>
+            </div>
+          </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            {(error || invalidLink) && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
-                {invalidLink ? t.auth.invalidPasswordSetupLink : error}
+            <div>
+              <h1 className="text-lg font-semibold text-[#1F114C] mb-1">{t.auth.newPassword}</h1>
+              <p className="text-[13px] text-[#8B8B8B]">{t.auth.enterNewPassword}</p>
+            </div>
+            {verifying && (
+              <p role="status" className="text-[13px] text-[#585858]">
+                {t.auth.verifyingPasswordSetupLink}
+              </p>
+            )}
+            {error && (
+              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+                {error}
               </div>
             )}
 

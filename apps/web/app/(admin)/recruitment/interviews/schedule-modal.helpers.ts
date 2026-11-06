@@ -1,13 +1,26 @@
 export type Step = 1 | 2 | 3;
 
+// Labels and descriptions are i18n keys under `interviews` (typeX / typeDescX). `online` is a pasted
+// Teams/Meet/Zoom meeting: candidates read it as "En línea", never as an in-person interview.
 export const INTERVIEW_TYPES = [
-  { value: 'phone', label: 'Telefónica', icon: '📞', desc: 'Llamada rápida de screening' },
-  { value: 'video', label: 'Videoconferencia', icon: '📹', desc: 'Entrevista por Daily.co / Meet' },
-  { value: 'technical', label: 'Técnica', icon: '💻', desc: 'Evaluación de habilidades técnicas' },
-  { value: 'cultural', label: 'Cultural', icon: '🤝', desc: 'Fit cultural y valores' },
-  { value: 'panel', label: 'Panel', icon: '👥', desc: 'Multiples evaluadores simultaneos' },
-  { value: 'onsite', label: 'Presencial', icon: '🏢', desc: 'Entrevista en oficina' },
-];
+  { value: 'phone', icon: '📞', labelKey: 'typePhone', descKey: 'typeDescPhone' },
+  { value: 'video', icon: '📹', labelKey: 'typeVideo', descKey: 'typeDescVideo' },
+  { value: 'online', icon: '🔗', labelKey: 'typeOnline', descKey: 'typeDescOnline' },
+  { value: 'technical', icon: '💻', labelKey: 'typeTechnical', descKey: 'typeDescTechnical' },
+  { value: 'cultural', icon: '🤝', labelKey: 'typeCultural', descKey: 'typeDescCultural' },
+  { value: 'panel', icon: '👥', labelKey: 'typePanel', descKey: 'typeDescPanel' },
+  { value: 'onsite', icon: '🏢', labelKey: 'typeOnsite', descKey: 'typeDescOnsite' },
+] as const;
+
+export type InterviewTypeOption = (typeof INTERVIEW_TYPES)[number];
+
+/** i18n key of the location placeholder for a type (an office in San José for on-site, a link for online). */
+export function locationPlaceholderKey(type: string) {
+  if (type === 'video') return 'scheduleLocationPlaceholderVideo' as const;
+  if (type === 'onsite') return 'scheduleLocationPlaceholderOnsite' as const;
+  if (type === 'online') return 'scheduleLocationPlaceholderOnline' as const;
+  return 'scheduleLocationPlaceholderOther' as const;
+}
 
 // Video interviews mint a Daily.co room + candidate join token. Until Daily is configured in a deployment
 // (NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED=true, exact string) the type is not offered, so scheduling never
@@ -16,8 +29,8 @@ export function isInterviewVideoEnabled(raw: string | undefined = process.env.NE
   return raw === 'true';
 }
 
-export function availableInterviewTypes(videoEnabled: boolean = isInterviewVideoEnabled()) {
-  return videoEnabled ? INTERVIEW_TYPES : INTERVIEW_TYPES.filter((it) => it.value !== 'video');
+export function availableInterviewTypes(videoEnabled: boolean = isInterviewVideoEnabled()): InterviewTypeOption[] {
+  return videoEnabled ? [...INTERVIEW_TYPES] : INTERVIEW_TYPES.filter((it) => it.value !== 'video');
 }
 
 export function defaultInterviewType(videoEnabled: boolean = isInterviewVideoEnabled()): string {

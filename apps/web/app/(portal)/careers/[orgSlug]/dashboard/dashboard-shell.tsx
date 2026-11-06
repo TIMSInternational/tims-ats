@@ -22,12 +22,15 @@ export function PortalDashboardShell({
   displayName,
   hasCandidate,
   consentWithdrawnAt = null,
+  timeZone = null,
 }: {
   orgSlug: string;
   orgName: string;
   displayName: string;
   hasCandidate: boolean;
   consentWithdrawnAt?: string | null;
+  /** The organization's IANA time zone (settings.timezone); dates fall back to UTC when null. */
+  timeZone?: string | null;
 }) {
   const router = useRouter();
   const { t } = useI18n();
@@ -63,11 +66,11 @@ export function PortalDashboardShell({
 
         {hasCandidate ? (
           <div className="mt-6 space-y-4">
-            <DashboardApplications orgSlug={orgSlug} />
-            <DashboardInterviews orgSlug={orgSlug} />
+            <DashboardApplications orgSlug={orgSlug} timeZone={timeZone} />
+            <DashboardInterviews orgSlug={orgSlug} timeZone={timeZone} />
             {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
             {!pilot && <DashboardAssessments orgSlug={orgSlug} />}
-            <DashboardOffer orgSlug={orgSlug} />
+            <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
             {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
             <DashboardPrivacy orgSlug={orgSlug} orgName={orgName} withdrawnAt={consentWithdrawnAt} />
           </div>

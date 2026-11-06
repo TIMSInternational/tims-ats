@@ -55,12 +55,12 @@ export function OrgDetail({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabKey) || 'overview';
   const TABS: { key: TabKey; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'users', label: 'Users' },
-    { key: 'billing', label: 'Billing' },
-    { key: 'features', label: 'Features' },
-    { key: 'ai', label: 'AI' },
-    { key: 'activity', label: 'Activity' },
+    { key: 'overview', label: t.organizations.tabOverview },
+    { key: 'users', label: t.organizations.tabUsers },
+    { key: 'billing', label: t.organizations.tabBilling },
+    { key: 'features', label: t.organizations.tabFeatures },
+    { key: 'ai', label: t.organizations.tabAi },
+    { key: 'activity', label: t.organizations.tabActivity },
     { key: 'entitlements', label: t.entitlementsAdmin.tabLabel },
   ];
   const [activeTab, setActiveTab] = useState<TabKey>(TAB_KEYS.includes(initialTab) ? initialTab : 'overview');

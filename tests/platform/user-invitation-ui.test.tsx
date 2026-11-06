@@ -86,7 +86,7 @@ it('role lookup failure shows retry without offering fixed fallback roles', asyn
 
 it('changing organization does not retain the previous role choices', async () => {
   const { useUserInvitationRoles } = await import('../../apps/web/lib/platform-api/user-invitation-roles');
-  const { result, rerender } = renderHook(({ id }) => useUserInvitationRoles(id, []), { wrapper, initialProps: { id: org } });
+  const { result, rerender } = renderHook(({ id }) => useUserInvitationRoles(id), { wrapper, initialProps: { id: org } });
   await waitFor(() => expect(result.current.roles).toHaveLength(1));
   mocks.get.mockReturnValue(new Promise(() => {}));
   act(() => rerender({ id: '33333333-3333-4333-8333-333333333333' }));

@@ -1,11 +1,21 @@
+import { ROLE_DEFINITIONS, type RoleDefinition } from '@tims/shared';
+
 type InvitationEmailInput = {
   organization: string;
+  /** The role SLUG the invitation grants (e.g. `recruiter`); it is printed as its label, never raw. */
   role?: string | null;
   url: string;
   expiresAt: Date;
   reminder?: boolean;
   locale?: 'es' | 'en';
 };
+
+/** The people-facing role label (the shared ROLE_DEFINITIONS map); an unknown value reads without underscores. */
+export function invitationRoleLabel(role: string, locale: 'es' | 'en' = 'es'): string {
+  const definition = (ROLE_DEFINITIONS as Partial<Record<string, RoleDefinition>>)[role];
+  if (!definition) return role.replace(/_/g, ' ');
+  return locale === 'en' ? definition.name : definition.nameEs;
+}
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => ({
@@ -33,7 +43,7 @@ export function renderInvitationEmail({ organization, role, url, expiresAt, remi
   const date = new Intl.DateTimeFormat(en ? 'en-US' : 'es-CO', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
   }).format(expiresAt);
-  const access = role?.replace(/_/g, ' ') || (en ? 'Review your access during setup' : 'Revisa tu acceso durante la configuración');
+  const access = role ? invitationRoleLabel(role, locale) : (en ? 'Review your access during setup' : 'Revisa tu acceso durante la configuración');
   const name = escapeHtml(organization);
   const safeRole = escapeHtml(access);
   const safeUrl = escapeHtml(url);

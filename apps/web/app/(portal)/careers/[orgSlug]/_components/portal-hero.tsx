@@ -14,6 +14,11 @@ interface PortalHeroProps {
   onSearch: () => void;
 }
 
+/** "1 vacante abierta" / "3 vacantes abiertas" — `{n}` in the label is replaced with the count. */
+function countLabel(n: number, one: string, many: string): string {
+  return (n === 1 ? one : many).replace('{n}', String(n));
+}
+
 export function PortalHero({
   orgName,
   stats,
@@ -24,12 +29,13 @@ export function PortalHero({
   onSearch,
 }: PortalHeroProps) {
   const { t } = useI18n();
+  const p = t.portal;
   return (
     <section className="relative flex min-h-[420px] items-center justify-center overflow-hidden">
       {/* Background Image */}
       <Image
         src="/portal-hero.png"
-        alt="Hero background"
+        alt=""
         fill
         className="object-cover"
         priority
@@ -67,7 +73,7 @@ export function PortalHero({
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t.portal.searchPlaceholder}
-              className="w-full bg-transparent text-[14px] text-[#333333] placeholder:text-muted outline-none"
+              className="w-full bg-transparent text-base text-[#333333] placeholder:text-muted outline-none sm:text-[14px]"
             />
           </div>
 
@@ -82,7 +88,7 @@ export function PortalHero({
               value={location}
               onChange={(e) => onLocationChange(e.target.value)}
               placeholder={t.portal.locationPlaceholder}
-              className="w-full bg-transparent text-[14px] text-[#333333] placeholder:text-muted outline-none"
+              className="w-full bg-transparent text-base text-[#333333] placeholder:text-muted outline-none sm:text-[14px]"
             />
           </div>
 
@@ -94,18 +100,22 @@ export function PortalHero({
           </button>
         </form>
 
-        {/* Quick Stats */}
-        {stats && (
+        {/* Quick Stats — pluralized, and a zero count is not shown (e.g. no departments in use). */}
+        {stats && stats.totalVacancies > 0 && (
           <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-[13px] text-white/60">
             <span className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
               </span>
-              {stats.totalVacancies} vacantes abiertas
+              {countLabel(stats.totalVacancies, p.statsVacancyOne, p.statsVacancyMany)}
             </span>
-            <span>{stats.totalLocations} ciudades</span>
-            <span>{stats.totalDepartments} departamentos</span>
+            {stats.totalLocations > 0 && (
+              <span>{countLabel(stats.totalLocations, p.statsLocationOne, p.statsLocationMany)}</span>
+            )}
+            {stats.totalDepartments > 0 && (
+              <span>{countLabel(stats.totalDepartments, p.statsDepartmentOne, p.statsDepartmentMany)}</span>
+            )}
           </div>
         )}
       </div>

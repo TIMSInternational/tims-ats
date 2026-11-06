@@ -45,7 +45,7 @@ public sealed class UserInvitationCreateUseCase(IUserInvitationCreateRepository 
         var invitation = pending.Snapshot!;
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
         var outcome = await new InitialInvitationDelivery(deliveryRepository, sender, clock).SendAsync(invitation, pending.ExpiresAt!.Value,
-            "Invitacion para unirte a TIMS ATS",
+            "Invitación para unirte a TIMS ATS",
             InvitationEmail.Render(invitation.OrganizationName ?? "TIMS ATS",
                 input.RoleSlug, url, pending.ExpiresAt.Value), ct);
         return new(UserInvitationCreateOutcome.Created, new(invitation.Id, input.OrganizationId, outcome));

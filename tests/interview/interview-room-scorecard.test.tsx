@@ -38,7 +38,8 @@ vi.mock('../../apps/web/lib/trpc', () => ({
         getPendingScorecards: { invalidate: () => h.invalidate.getPending() },
       },
     }),
-    vacancy: { getJobProfile: { useQuery: () => h.jobProfile } },
+    // F-10: no vacancy.* here — the competencies arrive WITH the interview (getById, interview:read),
+    // so a form that still called vacancy.getJobProfile would crash this suite.
     interview: {
       getScorecard: { useQuery: () => h.existing },
       submitScorecard: {
@@ -52,7 +53,9 @@ vi.mock('../../apps/web/lib/trpc', () => ({
 }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: (m: string, o?: unknown) => h.toast(m, o) }));
 vi.mock('../../apps/web/components', () => ({ Skeleton: () => <div data-testid="skeleton" /> }));
-vi.mock('../../apps/web/lib/permissions', () => ({ usePermissions: () => ({ userId: '11111111-1111-4111-8111-111111111111' }) }));
+vi.mock('../../apps/web/lib/permissions', () => ({
+  usePermissions: () => ({ userId: '11111111-1111-4111-8111-111111111111', can: () => true }),
+}));
 vi.mock('../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-ai-panel', () => ({
   InterviewAiPanel: () => <div>ai-stub</div>,
 }));
@@ -90,6 +93,10 @@ function interview(overrides: Partial<InterviewDetail> = {}): InterviewDetail {
       },
     ],
     scorecards: [],
+    // What interview.getById returns since F-10 (the job profile's competencies, or null).
+    scorecardCompetencies: h.jobProfile.isError
+      ? null
+      : ((h.jobProfile.data as { competencies?: unknown } | null)?.competencies ?? null),
     ...overrides,
   } as unknown as InterviewDetail;
 }
@@ -152,10 +159,10 @@ describe('interview room scorecard', () => {
     expect(screen.getByTestId('competency-source')).toHaveTextContent(en.interviewRoom.competenciesSourceDefault);
   });
 
-  it('labels the fallback differently when the job profile could not be read', () => {
-    h.jobProfile = { isLoading: false, isError: true, data: undefined };
+  it('F-10: never shows "could not load the competencies" — they come with the interview itself', () => {
     renderForm();
-    expect(screen.getByTestId('competency-source')).toHaveTextContent(en.interviewRoom.competenciesSourceUnavailable);
+    expect(screen.queryByText(en.interviewRoom.competenciesSourceUnavailable)).toBeNull();
+    expect(screen.getByRole('radiogroup', { name: 'SQL' })).toBeInTheDocument();
   });
 
   it('keeps submit disabled until every competency is rated and a recommendation is chosen, then submits the real payload', () => {
@@ -183,6 +190,8 @@ describe('interview room scorecard', () => {
       ratings: { SQL: 4, Storytelling: 2 },
       recommendation: 'yes',
       overallNotes: 'Solid SQL',
+      // the appointment the room showed (#405 review): refused server-side once it has moved
+      expectedScheduledAt: new Date('2026-09-30T15:00:00Z'),
     });
   });
 
@@ -493,6 +502,12 @@ describe('interview room scorecard', () => {
     expect(toastSpy).toHaveBeenCalledWith(en.interviewRoom.submitIncomplete, { type: 'error' });
   });
 
+  it('maps a CONFLICT (the interview was rescheduled while scoring) to its own message (#405 review)', () => {
+    renderForm();
+    h.mutationOpts?.onError({ data: { code: 'CONFLICT' } });
+    expect(toastSpy).toHaveBeenCalledWith(en.interviewRoom.submitRescheduled, { type: 'error' });
+  });
+
   it('the room panel submit button is wired end to end (it used to have no onClick)', () => {
     localStorage.setItem('tims-locale', 'EN');
     const props = { interview: interview(), candidateInitials: 'AR', candidateName: 'Ana Ruiz', interviewId: INTERVIEW_ID, vacancyTitle: 'Analista' };
@@ -511,6 +526,7 @@ describe('interview room scorecard', () => {
       ratings: { SQL: 3, Storytelling: 3 },
       recommendation: 'neutral',
       overallNotes: '',
+      expectedScheduledAt: new Date('2026-09-30T15:00:00Z'),
     });
     expect(screen.queryByRole('tab', { name: /notas|notes/i })).toBeNull();
   });

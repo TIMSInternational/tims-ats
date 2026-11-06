@@ -6,6 +6,7 @@ import { CandidateAvatar, StatusBadge } from '../../../../components';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
 import { useI18n } from '../../../../lib/i18n';
 import { getPipelineFit } from '../../../../lib/pipeline-fit';
+import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 
 interface PipelineTableViewProps {
   stages: PipelineStageWithApps[];
@@ -32,11 +33,6 @@ function fitColor(score: number) {
   if (score >= 50) return 'text-amber-600 bg-amber-50';
   return 'text-red-600 bg-red-50';
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-  linkedin: 'LinkedIn', referral: 'Referido', portal: 'Portal',
-  job_board: 'Job Board', university: 'Universidad', internal: 'Interno',
-};
 
 const STAGE_BADGE: Record<number, string> = {
   0: 'bg-[#E8E5F0] text-[#1F114C]',
@@ -170,7 +166,7 @@ export function PipelineTableView({ stages, onMove, onReject }: PipelineTableVie
                 Fuente <SortIcon active={sortKey === 'source'} dir={sortDir} />
               </th>
               <th className="text-center py-2.5 px-3 text-[#585858] font-medium cursor-pointer select-none" onClick={() => toggleSort('days')}>
-                Dias <SortIcon active={sortKey === 'days'} dir={sortDir} />
+                {t.pipeline.colDays} <SortIcon active={sortKey === 'days'} dir={sortDir} />
               </th>
               <th className="text-center py-2.5 px-3 text-[#585858] font-medium">Estado</th>
               <th className="text-center py-2.5 px-3 text-[#585858] font-medium">SLA</th>
@@ -208,7 +204,7 @@ export function PipelineTableView({ stages, onMove, onReject }: PipelineTableVie
                     )}
                   </td>
                   <td className="py-2.5 px-3 text-center">
-                    <span className="text-[10px] text-[#585858]">{SOURCE_LABELS[app.source] ?? app.source}</span>
+                    <span className="text-[10px] text-[#585858]">{candidateSourceLabel(app.source, t.candidates)}</span>
                   </td>
                   <td className="py-2.5 px-3 text-center">
                     <span className={`text-[11px] ${app.isOverdue ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>{app.days}d</span>

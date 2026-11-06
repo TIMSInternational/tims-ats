@@ -69,7 +69,7 @@ test('careers page lists the published vacancy', async () => {
 test('recruiter views the empty pipeline before the candidate applies', async () => {
   const { page } = recruiter;
   await navigateStaff(page, '/recruitment/pipeline');
-  await expect(page.getByText('Aplicado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Postulación recibida', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(fullName())).toHaveCount(0);
   await navigateStaff(page, '/dashboard');
 });
@@ -77,14 +77,14 @@ test('recruiter views the empty pipeline before the candidate applies', async ()
 /** Fill the three-step apply form. `cv` attaches a PDF. */
 async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
   await page.goto(`/careers/${j.orgSlug}/${j.vacancy!.id}`);
-  await page.getByRole('button', { name: 'Aplicar ahora' }).first().click();
-  const form = page.getByRole('dialog', { name: `Aplicar a ${j.vacancy!.title}` });
+  await page.getByRole('button', { name: 'Postularse' }).first().click();
+  const form = page.getByRole('dialog', { name: `Postularse a ${j.vacancy!.title}` });
 
   await form.getByPlaceholder('María', { exact: true }).fill(cand().firstName);
   await form.getByPlaceholder('López Rodríguez').fill(cand().lastName);
   await form.getByPlaceholder('maria.lopez@gmail.com').fill(cand().email);
-  await form.getByPlaceholder('+57 310 123 4567').fill('+57 300 555 0101');
-  await form.getByPlaceholder('Bogotá, Colombia').fill('Envigado, Colombia');
+  await form.getByPlaceholder('+506 8888 8888').fill('+506 8555 0101');
+  await form.getByPlaceholder('San José, Costa Rica').fill('Heredia, Costa Rica');
   await form.getByRole('button', { name: 'Siguiente' }).click();
 
   await form.getByPlaceholder('Analista de Recursos Humanos').fill('Analista de Logística');
@@ -97,14 +97,14 @@ async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
   }
   await form.getByRole('button', { name: 'Siguiente' }).click();
 
-  const submit = form.getByRole('button', { name: /enviar aplicaci[oó]n/i });
+  const submit = form.getByRole('button', { name: /enviar postulaci[oó]n/i });
   if (PENDING.explicitConsent.merged) {
     // #302: explicit, unticked-by-default consent — no consent, no application.
     await expect(submit).toBeDisabled();
     await form.getByRole('checkbox').check();
   }
   await submit.click();
-  await expect(page.getByText(/aplicaci[oó]n enviada/i)).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText(/postulaci[oó]n enviada/i).first()).toBeVisible({ timeout: 45_000 });
 }
 
 test('candidate applies with a CV upload and explicit consent', async () => {
@@ -143,10 +143,10 @@ async function moveStage(page: Page, stage: string): Promise<void> {
 }
 
 test('recruiter moves the candidate through screening to the HR interview stage', async () => {
-  await moveStage(recruiter.page, 'Screening');
-  await moveStage(recruiter.page, 'Entrevista RRHH');
+  await moveStage(recruiter.page, 'Preselección');
+  await moveStage(recruiter.page, 'Entrevista con RR. HH.');
   await recruiter.page.reload();
-  await expect(recruiter.page.getByText('Entrevista RRHH', { exact: true }).first()).toBeVisible();
+  await expect(recruiter.page.getByText('Entrevista con RR. HH.', { exact: true }).first()).toBeVisible();
 });
 
 /** Schedule an in-person interview (never video — no Daily in E2E) with the leader as evaluator. */
@@ -172,7 +172,7 @@ async function scheduleInterview(page: Page): Promise<void> {
   const when = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   await wizard.locator('input[type=date]').fill(when);
   await wizard.locator('input[type=time]').fill('10:00');
-  await wizard.getByPlaceholder('Oficina Bogotá, Sala 3A').fill('Oficina Medellín, Sala 2');
+  await wizard.getByPlaceholder('Oficina central, San José — Sala 3').fill('Oficina central, San José — Sala 2');
   await wizard.getByRole('button', { name: 'Siguiente' }).click();
 
   await wizard.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first().click();
@@ -198,7 +198,7 @@ test('company admin schedules the interview (main-only path)', async () => {
 
 test('candidate receives the interview invitation email', async () => {
   const mail = await waitForMail(cand().email, /entrevista/i);
-  // The interview-specific location, not just the city — 'Medellín' alone is already in the vacancy.
+  // The interview-specific location, not just the city — 'San José' alone is already in the vacancy.
   expect(mail.text).toContain('Sala 2');
 });
 
@@ -239,7 +239,7 @@ test('hiring leader submits a scorecard from the interview room', async () => {
 });
 
 test('recruiter moves the candidate to Oferta and drafts an offer', async () => {
-  await moveStage(recruiter.page, 'Entrevista Final');
+  await moveStage(recruiter.page, 'Entrevista final');
   await moveStage(recruiter.page, 'Oferta');
   const { page } = recruiter;
   await page.getByRole('button', { name: 'Crear borrador de oferta' }).click();
@@ -292,7 +292,10 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
   await openOffer(approverPage);
   const approved = approverPage.getByText('Aprobada', { exact: true });
   await expect(approved).toHaveCount(0);
+  // Approving an offer is a deliberate second step (B-13): 'Aprobar' opens the optional comment, and
+  // 'Confirmar aprobación' records the decision.
   await approverPage.getByRole('button', { name: 'Aprobar', exact: true }).click();
+  await approverPage.getByRole('button', { name: 'Confirmar aprobación', exact: true }).click();
   await expect(approved.first()).toBeVisible();
 }
 
@@ -325,7 +328,7 @@ test('candidate signs the offer on the public signing page', async () => {
   const { page } = candidate; // never signed in: the token in the link is the only credential
   await page.goto(signingLink);
   await page.getByRole('checkbox').check();
-  await page.getByPlaceholder('Ingresa tu nombre completo').fill(fullName());
+  await page.getByPlaceholder('Ingrese su nombre completo').fill(fullName());
   await page.getByRole('button', { name: 'Aceptar Oferta' }).click();
   await expect(page.getByText(/oferta aceptada/i)).toBeVisible();
 });

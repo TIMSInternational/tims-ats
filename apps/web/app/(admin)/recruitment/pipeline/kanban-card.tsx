@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { CandidateAvatar } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
 import { getPipelineFit } from '../../../../lib/pipeline-fit';
+import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 
 interface KanbanCardProps {
   application: {
@@ -96,14 +97,6 @@ function getSourceStyle(source: string) {
   return SOURCE_STYLES[source.toLowerCase()] ?? SOURCE_STYLES.other!;
 }
 
-function formatSource(source: string): string {
-  const map: Record<string, string> = {
-    linkedin: 'LinkedIn', referral: 'Referido', portal: 'Portal',
-    job_board: 'Job Board', university: 'Universidad', internal: 'Interno',
-  };
-  return map[source.toLowerCase()] ?? source;
-}
-
 export function KanbanCard({ application: app, isDragging, slaHours, stageId, checklist, onToggleChecklistItem, onReject }: KanbanCardProps) {
   const { t } = useI18n();
   const candidate = app.candidate;
@@ -174,7 +167,7 @@ export function KanbanCard({ application: app, isDragging, slaHours, stageId, ch
 
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <span className={`text-[10px] ${sourceStyle.bg} ${sourceStyle.text} px-1.5 py-0.5 rounded`}>
-          {formatSource(app.source)}
+          {candidateSourceLabel(app.source, t.candidates)}
         </span>
         <span className={`text-[10px] ${isOverdue ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>
           {days === 0 ? 'Hoy' : days === 1 ? '1 día' : `${days} días`}

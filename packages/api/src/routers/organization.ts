@@ -33,7 +33,7 @@ interface SetupChecklistItems {
 }
 
 async function loadSetupChecklistItems(organizationId: string): Promise<SetupChecklistItems> {
-  const [org, companyCount, userCount, vacancyCount, publishedVacancyCount] = await Promise.all([
+  const [org, companyCount, teamInvitationCount, vacancyCount, publishedVacancyCount] = await Promise.all([
     db.organization.findUnique({ where: { id: organizationId }, select: { logo: true } }),
     // Live check, NOT hardcoded true: provisionOrgDefaults (Sprint 1.2 Task 1)
     // guarantees a Company for every org created from this sprint onward, but
@@ -42,14 +42,24 @@ async function loadSetupChecklistItems(organizationId: string): Promise<SetupChe
     // "ready" for those orgs. This count is one more entry in the existing
     // parallel query, on an organizationId-indexed table.
     db.company.count({ where: { organizationId } }),
-    db.user.count({ where: { organizationId } }),
+    // "Invita a tu equipo" means an admin of THIS organization sent a user invitation (tenant self-serve
+    // /settings/users writes the same table). A second admin invited by the platform owner accepting is
+    // not the org inviting its team, so a plain user count ticked this off too early (D-18).
+    db.platformInvitation.count({
+      where: {
+        organizationId,
+        type: 'user',
+        status: { not: 'revoked' },
+        invitedBy: { organizationId, isPlatformOwner: false },
+      },
+    }),
     db.vacancy.count({ where: { organizationId, deletedAt: null } }),
     db.vacancy.count({ where: { organizationId, status: 'published', deletedAt: null } }),
   ]);
 
   return {
     companyStructureReady: companyCount > 0,
-    teamInvited: userCount > 1,
+    teamInvited: teamInvitationCount > 0,
     brandingSet: org?.logo != null,
     firstVacancyPosted: vacancyCount > 0,
     firstVacancyPublished: publishedVacancyCount > 0,

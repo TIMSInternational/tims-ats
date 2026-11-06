@@ -9,17 +9,19 @@ import { isNavFeatureOn } from '../../lib/nav/feature-flags';
 import { filterSectionsForScope } from '../../lib/launch-scope';
 import { Icon } from './sidebar';
 import { SidebarCollapseToggle } from './sidebar-collapse-toggle';
+import { SidebarDrawerClose } from './sidebar-drawer-close';
 import { SidebarProfileMenu } from './sidebar-profile-menu';
 
 // ParticipantSidebar = the manifest-driven chrome for participant-shell roles (committee, employee).
 // It mirrors Sidebar's rendering loop exactly (same manifest, same computeVisibleSections pruning) and,
 // as of the FormMaps shell replication, now shares the identical dark-blue chrome — TIMS's 3 sidebar
 // variants read as one consistent shell rather than 3 differently-themed surfaces.
-export function ParticipantSidebar({ userInitials, displayName, expanded, onToggle, ready = true, avatar }: {
+export function ParticipantSidebar({ userInitials, displayName, expanded, onToggle, onClose, ready = true, avatar }: {
   userInitials: string;
   displayName: string;
   expanded: boolean;
   onToggle: () => void;
+  onClose?: () => void;
   ready?: boolean;
   avatar?: string | null;
 }) {
@@ -47,7 +49,12 @@ export function ParticipantSidebar({ userInitials, displayName, expanded, onTogg
             </div>
           )}
         </Link>
-        {expanded && <SidebarCollapseToggle expanded={expanded} onToggle={onToggle} collapseLabel={t.nav.collapse} expandLabel={t.nav.expand} />}
+        {expanded && (
+          <div className="hidden md:flex">
+            <SidebarCollapseToggle expanded={expanded} onToggle={onToggle} collapseLabel={t.nav.collapse} expandLabel={t.nav.expand} />
+          </div>
+        )}
+        {onClose && <SidebarDrawerClose onClose={onClose} label={t.nav.closeMenu} />}
       </div>
       {!expanded && (
         <div className="flex justify-center pb-2">
@@ -72,7 +79,7 @@ export function ParticipantSidebar({ userInitials, displayName, expanded, onTogg
                     key={item.href}
                     href={item.href}
                     title={!expanded ? resolveLabel(t, item.labelKey) : undefined}
-                    className={`group flex items-center gap-2 h-[var(--nav-item-h)] rounded-[var(--r-sm)] transition-colors ${
+                    className={`group flex items-center gap-2 h-10 md:h-[var(--nav-item-h)] rounded-[var(--r-sm)] transition-colors ${
                       expanded ? 'px-2' : 'justify-center'
                     } ${
                       isActive ? 'bg-[var(--chrome-accent-active)]' : 'hover:bg-[var(--chrome-hover)]'

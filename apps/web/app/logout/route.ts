@@ -1,6 +1,15 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+// Why the session is being cleared, forwarded to /login as `?error=` so the page can explain it.
+// Only these exact values pass through; anything else signs out to a plain /login.
+const FORWARDED_REASONS = new Set(['no_access']);
+
+// Signed-out pages `?next=` may land on instead of /login (exact match only). Middleware bounces a
+// signed-in user away from them, so a page that must reach one regardless of a lingering session
+// (the invalid password-setup link's "Solicitar un enlace nuevo") goes through here.
+const SIGNED_OUT_DESTINATIONS = new Set(['/forgot-password']);
+
 // Sign out the current Supabase session server-side, then bounce to /login. This is
 // the non-looping exit for an authenticated session that is NOT a linked staff user
 // (e.g. a candidate who navigated to /admin) — see (admin)/layout.tsx. Redirecting
@@ -8,7 +17,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 // off /login → / → /dashboard → back to the guard); clearing the session first
 // breaks that cycle.
 export async function GET(request: NextRequest) {
-  const response = NextResponse.redirect(new URL('/login', request.url), { status: 303 });
+  const next = request.nextUrl.searchParams.get('next');
+  const destination = new URL(next && SIGNED_OUT_DESTINATIONS.has(next) ? next : '/login', request.url);
+  const reason = request.nextUrl.searchParams.get('reason');
+  if (destination.pathname === '/login' && reason && FORWARDED_REASONS.has(reason)) {
+    destination.searchParams.set('error', reason);
+  }
+  const response = NextResponse.redirect(destination, { status: 303 });
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -16,9 +31,7 @@ export async function GET(request: NextRequest) {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
         },
       },
     },

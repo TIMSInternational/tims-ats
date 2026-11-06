@@ -26,9 +26,11 @@ export function isPilotScope(scope: LaunchScope = readLaunchScope()): boolean {
 /** Route prefixes that are out of scope for the pilot. Segment-aware prefix match (see
  *  isHrefHiddenInScope): '/talent' hides '/talent/360' but not '/talentos'. */
 export const LAUNCH_HIDDEN_HREFS: readonly string[] = [
-  // Recruitment extras outside v1
+  // Recruitment extras outside v1. The talent pool's filters, recontact campaign and "Contactar" do not
+  // work yet (fake success toasts); candidates stay reachable through /recruitment/candidates.
   '/recruitment/assessments',
   '/recruitment/analytics',
+  '/recruitment/talent-pools',
   // Performance / learning / 360
   '/people/performance',
   '/learning',

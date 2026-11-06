@@ -63,7 +63,9 @@ public sealed class UserInvitationCreateUseCaseTests
             : await action.ExecuteAsync(input, Guid.NewGuid(), new Uri("https://app.example.test"), default);
         Assert.Equal(UserInvitationCreateOutcome.Created, result.Outcome);
         Assert.Equal(RoleSlugs.DefaultStaffRole, repo.LastInput?.RoleSlug);
-        Assert.Contains(RoleSlugs.DefaultStaffRole, sender.Html);
+        // The email names the role by its label, never the raw slug (F-1).
+        Assert.Contains(RoleLabels.For(RoleSlugs.DefaultStaffRole), sender.Html);
+        Assert.DoesNotContain(RoleSlugs.DefaultStaffRole, sender.Html);
     }
     private static UserInvitationCreateUseCase Case(Repo repo, Sender sender) => new(repo, repo, sender, new Clock());
     private sealed class Clock : TimeProvider { public override DateTimeOffset GetUtcNow() => Now; }

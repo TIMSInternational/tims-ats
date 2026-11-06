@@ -188,9 +188,15 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
       .applyToVacancy({ ...baseApplyInput, consentTextVersion: 'portal-apply-1999-01-01' })
       .catch((e: unknown) => e);
 
-    expect(applyErrorMessage(err, { applySubmitError: 'GENERIC', applyConsentVersionChanged: 'RELOAD' })).toBe(
-      'RELOAD',
-    );
+    expect(
+      applyErrorMessage(err, {
+        applySubmitError: 'GENERIC',
+        applyConsentVersionChanged: 'RELOAD',
+        applyVacancyClosed: 'CLOSED',
+        emailInvalid: 'EMAIL',
+        linkedinInvalid: 'LINKEDIN',
+      }),
+    ).toBe('RELOAD');
   });
 
   it('records the consent (org, candidate, purpose, text version, timestamp) inside the application transaction', async () => {
@@ -923,10 +929,54 @@ describe('portal.applyToVacancy — application received email', () => {
       vacancyTitle: 'Analista de Datos',
       companyName: 'Acme',
       locale: 'es',
+      // The organization has no candidate contact configured: no contact line, no Reply-To.
+      contactEmail: null,
     });
     expect(dbMocks.application.create.mock.invocationCallOrder[0]).toBeLessThan(
       sendApplicationReceivedMock.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("passes the organization's candidate contact (settings first, then billing email) — never a vendor mailbox", async () => {
+    const vacancyFor = (organization: Record<string, unknown>) => ({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Analista de Datos',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization,
+      company: { language: 'es' },
+    });
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue(
+      vacancyFor({
+        name: 'Acme',
+        settings: { candidateContactEmail: 'Reclutamiento@Acme.test' },
+        billingEmail: 'facturas@acme.test',
+      }),
+    );
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy({ ...baseApplyInput, email: 'ana@example.com' });
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ contactEmail: 'reclutamiento@acme.test' });
+    // The lookup asks only for what the contact needs.
+    const include = dbMocks.vacancy.findFirstOrThrow.mock.calls.at(-1)![0].include;
+    // (slug builds the candidate-portal link in the same confirmation — careers WP.)
+    expect(include.organization).toEqual({ select: { name: true, slug: true, settings: true, billingEmail: true } });
+  });
+
+  it('links the organization\'s candidate portal in the confirmation (built server-side from the slug)', async () => {
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Analista de Datos',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization: { name: 'Acme', slug: 'acme' },
+      company: null,
+    });
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy(baseApplyInput);
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    const sent = sendApplicationReceivedMock.mock.calls[0]![0] as { portalUrl?: string };
+    expect(sent.portalUrl).toMatch(/^https?:\/\/[^/]+\/careers\/acme\/dashboard$/);
   });
 
   it('uses the English template for an English-language company', async () => {

@@ -9,6 +9,7 @@ import { toast } from '../../../../lib/toast';
 import { Skeleton } from '../../../../components/skeleton';
 import { ErrorState } from '../../../../components/error-state';
 import { useCreateTenantInvitation, useTenantInvitationRoles } from '../../../../lib/platform-api/tenant-invitations';
+import { roleOptions } from '../../../../lib/role-labels';
 import { invitationErrorMessage } from './invitation-error-message';
 
 const INPUT_CLS =
@@ -45,8 +46,14 @@ export function InviteForm() {
   if (roles.isError)
     return <ErrorState message={invitationErrorMessage(roles.error, 'read', m)} onRetry={() => void roles.refetch()} />;
 
-  const available = roles.data ?? [];
+  // Labels come from the shared role map (never the seeded DB name) and the launch scope hides the roles the
+  // pilot does not use (PILOT_HIDDEN_ROLE_SLUGS). The API still enforces what this caller may grant.
+  const available = roleOptions(roles.data ?? [], t.roles);
   if (available.length === 0) return <p className="text-sm text-[#8B8B8B]">{m.rolesEmpty}</p>;
+  const selectedRole = form.watch('roleSlug');
+  const roleHint = Object.prototype.hasOwnProperty.call(m.roleDescriptions, selectedRole)
+    ? m.roleDescriptions[selectedRole as keyof typeof m.roleDescriptions]
+    : null;
 
   return (
     <form
@@ -74,15 +81,25 @@ export function InviteForm() {
         <label htmlFor="team-invite-role" className="block text-xs font-medium text-[#585858] mb-1.5">
           {m.roleLabel}
         </label>
-        <select id="team-invite-role" className={INPUT_CLS} {...form.register('roleSlug')}>
+        <select
+          id="team-invite-role"
+          className={INPUT_CLS}
+          aria-describedby={roleHint ? 'team-invite-role-hint' : undefined}
+          {...form.register('roleSlug')}
+        >
           <option value="">{m.rolePlaceholder}</option>
           {available.map((role) => (
             <option key={role.slug} value={role.slug}>
-              {role.name}
+              {role.label}
             </option>
           ))}
         </select>
         {errors.roleSlug && <p className="mt-1 text-xs text-[#DD0C15]">{errors.roleSlug.message}</p>}
+        {roleHint && !errors.roleSlug && (
+          <p id="team-invite-role-hint" className="mt-1 text-xs text-[#8B8B8B]">
+            {roleHint}
+          </p>
+        )}
       </div>
       <button
         type="submit"

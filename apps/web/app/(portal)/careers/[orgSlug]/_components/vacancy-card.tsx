@@ -20,6 +20,8 @@ interface VacancyCardProps {
     unit: { name: string } | null;
   };
   orgSlug: string;
+  /** The organization that owns the board: shown when the vacancy has no client company. */
+  orgName: string;
 }
 
 function isNew(createdAt: Date | string) {
@@ -28,10 +30,11 @@ function isNew(createdAt: Date | string) {
   return now.getTime() - created.getTime() < 7 * 24 * 60 * 60 * 1000;
 }
 
-export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
+export function VacancyCard({ vacancy, orgSlug, orgName }: VacancyCardProps) {
   const { t, locale } = useI18n();
   const p = t.portal;
-  const initial = vacancy.company?.name?.charAt(0).toUpperCase() ?? 'T';
+  const employerName = vacancy.company?.name || orgName || p.companyFallback;
+  const initial = employerName.charAt(0).toUpperCase();
   const tags = [
     enumLabel(vacancy.contractType, p.contractTypes),
     enumLabel(vacancy.remotePolicy, p.remotePolicies),
@@ -51,7 +54,7 @@ export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
               <span className="text-[11px] font-bold text-white">{initial}</span>
             </div>
             <div>
-              <p className="text-[12px] font-medium text-[#333]">{vacancy.company?.name ?? p.companyFallback}</p>
+              <p className="text-[12px] font-medium text-[#333]">{employerName}</p>
               {vacancy.location && <p className="text-[11px] text-muted">{vacancy.location}</p>}
             </div>
           </div>

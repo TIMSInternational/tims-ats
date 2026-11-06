@@ -46,13 +46,14 @@ const PRECEDENCE: NavRole[] = ['super_admin', 'hr_admin', 'hrbp', 'recruiter', '
 // hr_admin, hrbp, recruiter, and leader in one place. Committee (participant
 // shell, no COMMAND_CENTER) gets its own entry in COMMITTEE_TASKS below.
 // Employee already has it in EMPLOYEE_HOME.
+// The landing ("Inicio") item. Every manifest starts with it — admin shells via COMMAND_CENTER,
+// participant shells via PARTICIPANT_HOME — so the home page is never reachable only through the logo.
+const HOME_ITEM: NavItem = { href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null };
 const COMMAND_CENTER: NavSection = {
   labelKey: null,
-  items: [
-    { href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null },
-    { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
-  ],
+  items: [HOME_ITEM, { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null }],
 };
+const PARTICIPANT_HOME: NavSection = { labelKey: null, items: [HOME_ITEM] };
 const RECRUITMENT: NavSection = {
   labelKey: 'sidebar.recruitment',
   items: [
@@ -115,7 +116,7 @@ const DATA_REQUESTS_ITEM: NavItem = {
   featureFlag: 'candidateConsent',
 };
 const SETTINGS: NavSection = {
-  labelKey: null,
+  labelKey: 'sidebar.settings',
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
@@ -155,7 +156,7 @@ const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_M
 // hr_admin = org-wide HR steward, people-first IA + a reduced admin section (business units only;
 // no billing/integrations — org-config is read-only per the access spec). can() still prunes.
 const HR_ADMIN_SETTINGS: NavSection = {
-  labelKey: null,
+  labelKey: 'sidebar.settings',
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
@@ -187,6 +188,7 @@ const participantManifest = (sections: NavSection[]): RoleManifest => ({
 // surfaced as a panel ON the committee landing (useNineBoxMyCalibrations, member-scoped) rather than a
 // nav route — there is no committee-reachable /talent/calibrations page, so no nav item is added here.
 const COMMITTEE_TASKS: NavSection[] = [
+  PARTICIPANT_HOME,
   {
     labelKey: 'sidebar.myTasks',
     items: [
@@ -203,14 +205,21 @@ const COMMITTEE_TASKS: NavSection[] = [
 // their backend ships.
 // Fix wave (FIX C): /my-360's module is null (always-allowed) — self-service is
 // identity-authorized via protectedProcedure, not RBAC-gated, so it needs no grant.
+const MY_ONBOARDING_ITEM: NavItem = {
+  href: '/my-onboarding',
+  labelKey: 'sidebar.myOnboarding',
+  icon: 'rocket',
+  module: 'onboarding',
+};
 const EMPLOYEE_HOME: NavSection[] = [
+  PARTICIPANT_HOME,
   {
     labelKey: 'sidebar.myHome',
     items: [
       { href: '/people/performance', labelKey: 'sidebar.myPerformance', icon: 'target', module: 'performance' },
       { href: '/learning', labelKey: 'sidebar.myLearning', icon: 'book', module: 'learning' },
       // Personal view (F12) — /people/onboarding is the HR dashboard (HR actions, org KPIs).
-      { href: '/my-onboarding', labelKey: 'sidebar.myOnboarding', icon: 'rocket', module: 'onboarding' },
+      MY_ONBOARDING_ITEM,
       { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
     ],
   },
@@ -228,17 +237,33 @@ export const MANIFESTS: Record<NavRole, RoleManifest> = {
 
 // A linked staff account may temporarily have no assigned role (or only a
 // legacy/non-staff slug). Never show admin-shaped navigation in that state.
-const FALLBACK_MANIFEST: RoleManifest = participantManifest([
-  {
-    labelKey: null,
-    items: [{ href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null }],
-  },
-]);
+const FALLBACK_MANIFEST: RoleManifest = participantManifest([PARTICIPANT_HOME]);
+
+// A staff user who is ALSO a new hire (holds `employee` next to a higher role — e.g. a recruiter hired
+// into the org) keeps the primary role's nav but must still reach their own onboarding. Built once per
+// primary role so manifestFor stays referentially stable for a given role set.
+// The link only helps when the resolved onboarding:read scope still contains the caller's own plan
+// (access resolution takes the WIDEST granted scope): organization (super_admin, hr_admin), team (leader —
+// teamMemberIds always includes self) and no grant at all (recruiter, committee — the employee's own
+// scope applies). hrbp is left out: its `unit` scope resolves through unitMemberIds, which does NOT
+// include the caller, so an HRBP outside their own units would get "no plan" for a plan they have.
+const OWN_ONBOARDING_SECTION: NavSection = { labelKey: 'sidebar.myHome', items: [MY_ONBOARDING_ITEM] };
+const withOwnOnboarding = (m: RoleManifest): RoleManifest => ({ ...m, sections: [...m.sections, OWN_ONBOARDING_SECTION] });
+const WITH_OWN_ONBOARDING: Record<NavRole, RoleManifest> = {
+  super_admin: withOwnOnboarding(MANIFESTS.super_admin),
+  hr_admin: withOwnOnboarding(MANIFESTS.hr_admin),
+  hrbp: MANIFESTS.hrbp, // unit scope may exclude the caller's own plan — see above
+  recruiter: withOwnOnboarding(MANIFESTS.recruiter),
+  leader: withOwnOnboarding(MANIFESTS.leader),
+  committee: withOwnOnboarding(MANIFESTS.committee),
+  employee: MANIFESTS.employee, // already has its own onboarding item
+};
 
 /** The manifest for the user's primary (highest-precedence) role. */
 export function manifestFor(roles: readonly string[]): RoleManifest {
   const primary = PRECEDENCE.find((r) => roles.includes(r));
-  return primary ? MANIFESTS[primary] : FALLBACK_MANIFEST;
+  if (!primary) return FALLBACK_MANIFEST;
+  return roles.includes('employee') ? WITH_OWN_ONBOARDING[primary] : MANIFESTS[primary];
 }
 
 /** Which sidebar chrome to render. Platform owner always wins; participant manifests get the

@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { roleLabel } from '../../../../lib/role-labels';
 import type { ParsedRow } from './invite-wizard.helpers';
 
 interface BulkMapStepProps {
@@ -89,7 +90,7 @@ export function BulkPreviewStep({ parsedUsers, bulkOrgId, isPending, setBulkStep
               <tr key={i} className="border-b border-[#F6F6F6]">
                 <td className="px-3 py-2 text-[#333]">{u.email}</td>
                 <td className="px-3 py-2 text-[#585858]">{[u.firstName, u.lastName].filter(Boolean).join(' ') || '-'}</td>
-                <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 text-gray-600">{u.role || 'employee'}</span></td>
+                <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 text-gray-600">{u.role?.trim() ? roleLabel(t.roles, u.role.trim()) : t.teamSettings.noRole}</span></td>
               </tr>
             ))}
           </tbody>

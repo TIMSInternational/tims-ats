@@ -30,6 +30,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       submitForApproval: { useMutation: () => ({ mutateAsync, isPending: false }) },
       approve: { useMutation: () => ({ mutateAsync, isPending: false }) },
       reject: { useMutation: () => ({ mutateAsync, isPending: false }) },
+      withdrawApproval: { useMutation: () => ({ mutateAsync, isPending: false }) },
       getBySigningToken: { useQuery: () => signingOffer() },
       acceptByToken: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
       declineByToken: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
@@ -296,11 +297,12 @@ describe('offer approval actions surface errors', () => {
   });
 });
 
-// Annual 96M COP must read as annual with its monthly equivalent — never as a bare "$" or a monthly figure.
-const ANNUAL_COP = /COP 96\.000\.000 \/ (año|year) \(COP 8\.000\.000 \/ (mes|month)\)/;
+// Candidate-facing: Costa Rican pay is read monthly, so the monthly figure leads and the stored annual
+// base follows; es-CR digit grouping; ISO code for non-colón currencies — never a bare "$".
+const MONTHLY_FIRST_COP = /COP\s8\s000\s000 \/ (mes|month) \(COP\s96\s000\s000 \/ (año|year)\)/;
 
 describe('candidate-facing salary rendering', () => {
-  it('public signing page shows the annual amount with the monthly equivalent', () => {
+  it('public signing page leads with the monthly amount, then the annual base', () => {
     signingOffer.mockReturnValue({
       isLoading: false,
       error: null,
@@ -318,11 +320,54 @@ describe('candidate-facing salary rendering', () => {
     });
     const { container } = render(createElement(OfferSignPage));
     const text = container.textContent ?? '';
-    expect(text).toMatch(ANNUAL_COP);
+    expect(text).toMatch(MONTHLY_FIRST_COP);
     expect(text).not.toContain('$');
+    expect(text).not.toContain('96.000.000');
   });
 
-  it('candidate portal offer card shows the annual amount with the monthly equivalent', () => {
+  it('public signing page shows colones with the ₡ symbol', () => {
+    signingOffer.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        status: 'sent',
+        salary: 10_200_000,
+        currency: 'CRC',
+        contractType: 'Plazo indefinido',
+        startDate: '2026-11-09T18:00:00Z',
+        benefits: null,
+        candidate: { firstName: 'Ana', lastName: 'Gomez' },
+        vacancy: { title: 'Analista' },
+        organization: { name: 'Example Co', logo: null },
+      },
+    });
+    const { container } = render(createElement(OfferSignPage));
+    expect(container.textContent).toMatch(/₡850\s000 \/ (mes|month) \(₡10\s200\s000 \/ (año|year)\)/);
+    expect(container.textContent).not.toContain('CRC');
+  });
+
+  it('public signing page shows the start date in the organization zone (Codex review)', () => {
+    // Chosen as 9 Nov by a recruiter in UTC+13 (stored at their local noon = 8 Nov 23:00 UTC).
+    signingOffer.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        status: 'sent',
+        salary: 10_200_000,
+        currency: 'CRC',
+        contractType: 'Plazo indefinido',
+        startDate: '2026-11-08T23:00:00Z',
+        benefits: null,
+        candidate: { firstName: 'Ana', lastName: 'Gomez' },
+        vacancy: { title: 'Analista' },
+        organization: { name: 'Example Co', logo: null, timeZone: 'Pacific/Auckland' },
+      },
+    });
+    const { container } = render(createElement(OfferSignPage));
+    expect(container.textContent).toContain('9 de noviembre de 2026');
+  });
+
+  it('candidate portal offer card leads with the monthly amount, then the annual base', () => {
     portalOffers.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -342,7 +387,7 @@ describe('candidate-facing salary rendering', () => {
     });
     const { container } = render(createElement(DashboardOffer, { orgSlug: 'acme' }));
     const text = container.textContent ?? '';
-    expect(text).toMatch(ANNUAL_COP);
+    expect(text).toMatch(MONTHLY_FIRST_COP);
     expect(text).not.toContain('$');
   });
 

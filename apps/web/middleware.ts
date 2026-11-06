@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
 import { buildCsp, cvUploadCspOrigin, originOf, type CspOrigins } from './lib/security/csp';
+import { hasSupabaseSessionCookie, staffLoginUrl } from './lib/auth/staff-login-redirect';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -74,6 +75,8 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('content-security-policy', csp);
 
+  // Read BEFORE the refresh: a failed refresh blanks the session cookie on the request.
+  const hadSessionCookie = hasSupabaseSessionCookie(request.cookies.getAll());
   const { supabaseResponse, user } = await updateSession(request, requestHeaders);
 
   // Mirror the CSP onto every response we return (including redirects).
@@ -109,9 +112,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // Admin routes (app.tims.com or localhost)
+  // Keep path + query so the user returns to the same view; a session cookie that no longer
+  // resolves to a user means the session expired, and /login says so.
   if (!isPublicPath && !user) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
+    const loginUrl = staffLoginUrl(request.url, `${pathname}${request.nextUrl.search}`, hadSessionCookie);
     return applyCsp(NextResponse.redirect(loginUrl));
   }
 

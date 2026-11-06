@@ -4,6 +4,7 @@ import type { Context } from './context';
 import { db, runWithTenant } from '@tims/db';
 import { clientIpFrom } from './lib/client-ip';
 import { shapeClientError } from './lib/error-shape';
+import { permissionDeniedMessage } from './lib/permission-labels';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
@@ -146,7 +147,7 @@ function requirePermission(module: string, action: string) {
     if (!access.allowed) {
       throw new TRPCError({
         code: 'FORBIDDEN',
-        message: `No tienes permiso para ${action} en ${module}`,
+        message: permissionDeniedMessage(module, action),
       });
     }
 
@@ -175,7 +176,7 @@ function requireAnyPermission(module: string, actions: readonly [string, ...stri
     }
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: `No tienes permiso para ${actions[0]} en ${module}`,
+      message: permissionDeniedMessage(module, actions[0]),
     });
   });
 }

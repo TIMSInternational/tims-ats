@@ -51,9 +51,11 @@ export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
       count: s.currentCount,
       pct: s.conversionRate > 0 ? `${s.conversionRate}%` : '',
     }));
-    result.unshift({ label: rd.applied, count: data.totalApplications, pct: '' });
+    // The all-time total, distinct from the first stage's current count (it read "Postulados" and then
+    // "Aplicado", two names for what looked like the same number).
+    result.unshift({ label: rd.funnelTotal, count: data.totalApplications, pct: '' });
     return result;
-  }, [funnelQuery.data, rd.applied]);
+  }, [funnelQuery.data, rd.funnelTotal]);
 
   const maxCount = Math.max(...stages.map((s) => s.count), 1);
 

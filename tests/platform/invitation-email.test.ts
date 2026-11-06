@@ -26,6 +26,16 @@ describe('invitation email', () => {
     expect(html).toContain('September 29, 2026 UTC');
   });
 
+  it('prints the role label from the shared map, never the slug (F-1)', () => {
+    const url = 'https://tims.example/accept-invitation?token=abc';
+    expect(renderInvitationEmail({ organization: 'Org', role: 'committee', url, expiresAt })).toContain('<br>Comité de entrevista<br>');
+    expect(renderInvitationEmail({ organization: 'Org', role: 'super_admin', url, expiresAt })).toContain('<br>Super Administrador<br>');
+    const html = renderInvitationEmail({ organization: 'Org', role: 'recruiter', url, expiresAt });
+    expect(html).toContain('<br>Reclutador<br>');
+    expect(html).not.toContain('<br>recruiter<br>');
+    expect(renderInvitationEmail({ organization: 'Org', role: 'hr_admin', url, expiresAt, locale: 'en' })).toContain('<br>HR Administrator<br>');
+  });
+
   it('rejects untrusted link schemes and credential-bearing URLs', () => {
     for (const url of ['javascript:alert(1)', 'http://evil.example/invite', 'https://user:pass@tims.example/invite']) {
       expect(() => renderInvitationEmail({ organization: 'TIMS', url, expiresAt })).toThrow();

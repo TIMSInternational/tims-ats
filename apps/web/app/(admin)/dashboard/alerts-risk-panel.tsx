@@ -24,7 +24,7 @@ interface RiskItem {
   title: string;
   riskLabel: string;
   riskColor: string;
-  aiAction: string;
+  nextStep: string;
   days: number;
 }
 
@@ -60,22 +60,25 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
 
         const c = app.candidate as { id: string; firstName: string; lastName: string; avatar: string | null; currentTitle?: string | null };
 
+        // A fixed rule (time in stage vs. the stage SLA), not an AI suggestion — labelled as a next step.
+        const fill = (template: string) =>
+          template.replace('{days}', String(days)).replace('{stage}', () => stage.name);
         let riskLabel: string;
         let riskColor: string;
-        let aiAction: string;
+        let nextStep: string;
 
         if (isOverdue && days > 10) {
-          riskLabel = `Detenida ${days} días en ${stage.name}`;
+          riskLabel = fill(rd.stalledDays);
           riskColor = 'text-[#DD0C15]';
-          aiAction = 'Agendar entrevista urgente';
+          nextStep = rd.nextStepActNow;
         } else if (isOverdue) {
-          riskLabel = `SLA vencido en ${stage.name} (${days}d)`;
+          riskLabel = fill(rd.slaOverdueInStage);
           riskColor = 'text-[#DD0C15]';
-          aiAction = 'Revisar y avanzar candidato';
+          nextStep = rd.nextStepReviewAndAdvance;
         } else {
-          riskLabel = `Sin movimiento hace ${days} días`;
+          riskLabel = fill(rd.noMovementDays);
           riskColor = 'text-amber-500';
-          aiAction = 'Contactar para seguimiento';
+          nextStep = rd.nextStepFollowUp;
         }
 
         risks.push({
@@ -87,7 +90,7 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
           title: c.currentTitle ?? stage.name,
           riskLabel,
           riskColor,
-          aiAction,
+          nextStep,
           days,
         });
       }
@@ -95,7 +98,7 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
 
     // Sort by days stalled (most stalled first), limit to 4
     return risks.sort((a, b) => b.days - a.days).slice(0, 4);
-  }, [board.data]);
+  }, [board.data, rd]);
 
   const isLoading = vacanciesLoading || board.isLoading;
 
@@ -140,8 +143,8 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
                   <p className={`text-[11px] ${c.riskColor}`}>{c.riskLabel}</p>
                 </div>
               </div>
-              <p className="text-[11px] text-teal-600 mt-1 ml-10 italic">
-                {rd.aiSuggestion}: {c.aiAction}
+              <p className="text-[11px] text-teal-600 mt-1 ml-10">
+                {rd.aiSuggestion}: {c.nextStep}
               </p>
             </div>
           ))}

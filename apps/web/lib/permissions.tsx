@@ -135,9 +135,13 @@ function GuardSkeleton() {
   );
 }
 
-export function AccessDenied() {
+// `reason="pilotScope"`: the route belongs to a module the pilot launch scope leaves out
+// (lib/launch-scope.ts). That is not a missing permission — telling an admin "you have no permission,
+// contact your administrator" sends them chasing a grant that would change nothing.
+export function AccessDenied({ reason = 'permission' }: { reason?: 'permission' | 'pilotScope' } = {}) {
   const { t } = useI18n();
   const router = useRouter();
+  const pilot = reason === 'pilotScope';
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-6">
       <div className="w-full max-w-md rounded-2xl border border-[#ECECEC] bg-white p-8 text-center shadow-sm">
@@ -155,9 +159,9 @@ export function AccessDenied() {
           </svg>
         </div>
         <h1 className="text-lg font-semibold text-[#1F114C]">
-          {t.accessDenied.title}
+          {pilot ? t.accessDenied.pilotTitle : t.accessDenied.title}
         </h1>
-        <p className="mt-2 text-sm text-[#8B8B8B]">{t.accessDenied.message}</p>
+        <p className="mt-2 text-sm text-[#8B8B8B]">{pilot ? t.accessDenied.pilotMessage : t.accessDenied.message}</p>
         <button
           onClick={() => router.push('/dashboard')}
           className="mt-6 h-9 rounded-lg bg-[#1F114C] px-4 text-sm font-medium text-white transition hover:bg-[#2a1866]"
@@ -176,7 +180,7 @@ export function RouteAccessGuard({ children }: { children: React.ReactNode }) {
   // Launch scope first: a route hidden by the pilot scope (lib/launch-scope.ts) is denied for EVERY
   // role, privileged included — the privileged bypass below must not reopen it. No-op when the
   // NEXT_PUBLIC_LAUNCH_SCOPE flag is unset.
-  if (isHrefHiddenInScope(pathname)) return <AccessDenied />;
+  if (isHrefHiddenInScope(pathname)) return <AccessDenied reason="pilotScope" />;
 
   // Resolve the path FIRST (codex: ungated routes — /dashboard, /settings,
   // /mfa… — must render immediately, never wait on a slow/hung sessionInfo).

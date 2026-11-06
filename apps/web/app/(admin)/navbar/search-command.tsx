@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useDashboardSearch } from '../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
+import { isHrefHiddenInScope } from '../../../lib/launch-scope';
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
   useEffect(() => {
@@ -56,11 +57,14 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
     { enabled: debouncedQuery.length >= 1 && searchFocused },
   );
 
+  // The static page results come from the server's fixed page list (TS dashboard.helpers + C# search use
+  // case), which knows nothing about the pilot launch scope — drop the ones the scope hides, or a result
+  // like "Feature Flags" leads straight to AccessDenied.
+  const pages = (searchResults.data?.pages ?? []).filter((page) => !isHrefHiddenInScope(page.href));
+
   const hasResults =
     searchResults.data &&
-    (searchResults.data.organizations.length > 0 ||
-      searchResults.data.users.length > 0 ||
-      searchResults.data.pages.length > 0);
+    (searchResults.data.organizations.length > 0 || searchResults.data.users.length > 0 || pages.length > 0);
 
   const showDropdown = searchFocused && searchQuery.length >= 1;
 
@@ -119,7 +123,7 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
               <p className="text-[11px] text-[#8B8B8B]">{t.nav.searching}</p>
             </div>
           ) : searchResults.isError ? (
-            <ErrorState onRetry={() => searchResults.refetch()} />
+            <ErrorState error={searchResults.error} onRetry={() => searchResults.refetch()} />
           ) : !hasResults ? (
             <div className="px-4 py-6 text-center">
               <svg
@@ -138,12 +142,12 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
             </div>
           ) : (
             <>
-              {searchResults.data!.pages.length > 0 && (
+              {pages.length > 0 && (
                 <div>
                   <div className="px-3 py-2 text-[10px] font-semibold text-[#8B8B8B] uppercase tracking-wider bg-[#FAFAFA]">
                     {t.nav.pages}
                   </div>
-                  {searchResults.data!.pages.map((page) => (
+                  {pages.map((page) => (
                     <button
                       key={page.href}
                       onMouseDown={() => {

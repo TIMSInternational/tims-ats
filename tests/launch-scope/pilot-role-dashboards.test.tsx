@@ -101,6 +101,8 @@ describe('pilot scope: role dashboards run no out-of-scope query', () => {
       expect.arrayContaining([
         'trpc.vacancy.getDashboardKpis',
         'trpc.offer.getPending',
+        // B-01: the leader's approvals card also lists vacancies waiting for them.
+        'trpc.vacancy.getPending',
         'trpc.interview.getPendingScorecards',
       ]),
     );
@@ -118,7 +120,8 @@ describe('pilot scope: role dashboards run no out-of-scope query', () => {
 
   it('committee keeps its panels and drops 9-box calibrations', () => {
     const ran = renderFor('committee');
-    expect(ran).toEqual(['trpc.interview.getPendingScorecards']);
+    // Pending scorecards plus, listed apart, the member's upcoming panels (B-29) — both in the pilot.
+    expect(ran).toEqual(['trpc.interview.getPendingScorecards', 'trpc.interview.list']);
     expect(screen.queryByText(en.committeeTasks.calibrationsTitle)).toBeNull();
   });
 });

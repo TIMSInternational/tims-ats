@@ -40,7 +40,6 @@ interface ScorecardFormProps {
 export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) {
   const { t, locale } = useI18n();
   const utils = trpc.useUtils();
-  const jobProfile = trpc.vacancy.getJobProfile.useQuery({ vacancyId: interview.vacancy.id }, { retry: false });
   const existing = trpc.interview.getScorecard.useQuery({ interviewId: interview.id });
   const [draft, setDraft] = useState<ScorecardDraft>({ ratings: {}, recommendation: null, overallNotes: '' });
 
@@ -57,20 +56,23 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
     });
   }, [existing.data]);
 
-  const resolved = useMemo(
-    () => resolveCompetencies(jobProfile.isError ? null : jobProfile.data?.competencies),
-    [jobProfile.isError, jobProfile.data],
-  );
+  // The competencies come WITH the interview (interview.getById, interview:read) instead of a separate
+  // vacancy.getJobProfile call (vacancy:read): a committee panelist has no vacancy:read and used to see
+  // "could not load the competencies" (F-10). They are the same set submitScorecard requires.
+  const resolved = useMemo(() => resolveCompetencies(interview.scorecardCompetencies), [interview.scorecardCompetencies]);
   const competencies = useMemo(() => withStoredCompetencies(resolved.items, stored), [resolved.items, stored]);
 
   // BAD_REQUEST = the server's completeness check refused the card (e.g. the job profile
-  // changed while the room was open); FORBIDDEN = not an assigned evaluator.
+  // changed while the room was open); FORBIDDEN = not an assigned evaluator; CONFLICT = the interview
+  // was rescheduled while the card was being filled in (it is not filed against the new appointment).
   const submitErrorMessage = (code: string | undefined) =>
     code === 'FORBIDDEN'
       ? t.interviewRoom.submitForbidden
       : code === 'BAD_REQUEST'
         ? t.interviewRoom.submitIncomplete
-        : t.interviewRoom.submitError;
+        : code === 'CONFLICT'
+          ? t.interviewRoom.submitRescheduled
+          : t.interviewRoom.submitError;
 
   const submit = trpc.interview.submitScorecard.useMutation({
     onSuccess: (saved) => {
@@ -84,10 +86,12 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
     },
     onError: (err) => {
       toast(submitErrorMessage(err.data?.code), { type: 'error' });
+      // Show the new schedule after a reschedule refused the card.
+      if (err.data?.code === 'CONFLICT') void utils.interview.getById.invalidate({ id: interview.id });
     },
   });
 
-  if (jobProfile.isLoading || existing.isLoading) {
+  if (existing.isLoading) {
     return (
       <div className="p-4 space-y-3" aria-busy="true">
         <Skeleton className="h-16 w-full rounded-lg" />
@@ -114,11 +118,8 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
 
   const labelFor = (c: ScorecardCompetency) =>
     c.label ?? t.interviewRoom[DEFAULT_LABEL_KEYS[c.key as DefaultCompetencyId]] ?? c.key;
-  const sourceNote = jobProfile.isError
-    ? t.interviewRoom.competenciesSourceUnavailable
-    : resolved.source === 'vacancy'
-      ? t.interviewRoom.competenciesSourceVacancy
-      : t.interviewRoom.competenciesSourceDefault;
+  const sourceNote =
+    resolved.source === 'vacancy' ? t.interviewRoom.competenciesSourceVacancy : t.interviewRoom.competenciesSourceDefault;
 
   const isEvaluator = currentUserId !== null && interview.evaluators.some((e) => e.userId === currentUserId);
   const submission = buildSubmission(competencies, draft);
@@ -134,7 +135,8 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
 
   const handleSubmit = () => {
     if (!canSubmit || !submission) return;
-    submit.mutate({ interviewId: interview.id, ...submission });
+    // The appointment this form was filled in for: the server refuses the card if it has since moved.
+    submit.mutate({ interviewId: interview.id, ...submission, expectedScheduledAt: new Date(interview.scheduledAt) });
   };
 
   return (

@@ -65,6 +65,8 @@ vi.mock('../../packages/api/src/access', () => ({
 
 const ORG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 const VACANCY_ID = '99999999-9999-4999-8999-999999999999';
+// Decisions name the step they act on (`approvalId`, required); the mocks do not key on it.
+const STEP_ID = '5afe0000-0000-4000-8000-000000000001';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -112,7 +114,7 @@ describe('vacancy.approve — transaction wrapper', () => {
     setPendingCountAfterApproval(0);
     const caller = await makeCaller();
 
-    const result = await caller.vacancy.approve({ id: VACANCY_ID });
+    const result = await caller.vacancy.approve({ id: VACANCY_ID, approvalId: STEP_ID });
 
     expect(runTenantTransactionMock).toHaveBeenCalledTimes(1);
     // The org id must be threaded through — runTenantTransaction uses it to set
@@ -132,7 +134,7 @@ describe('vacancy.approve — transaction wrapper', () => {
     });
     const caller = await makeCaller();
 
-    const result = await caller.vacancy.approve({ id: VACANCY_ID });
+    const result = await caller.vacancy.approve({ id: VACANCY_ID, approvalId: STEP_ID });
 
     expect(runTenantTransactionMock).toHaveBeenCalledTimes(1);
     expect(mockDb.$transaction).not.toHaveBeenCalled();

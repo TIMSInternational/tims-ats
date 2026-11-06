@@ -9,6 +9,7 @@ import { toast } from '../../../../../lib/toast';
 import { canSubmitForApproval, findPendingApprovalForUser } from '../../../../../lib/vacancy-approval-helpers';
 import { SubmitApprovalModal } from './submit-approval-modal';
 import { RejectModal } from './reject-modal';
+import { WithdrawApprovalModal } from './withdraw-approval-modal';
 
 interface Approval {
   id: string;
@@ -42,7 +43,10 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
   const { can, userId } = usePermissions();
   const utils = trpc.useUtils();
   const [showSubmit, setShowSubmit] = useState(false);
-  const [showReject, setShowReject] = useState(false);
+  // Each open dialog remembers the step it was opened for (Codex P1): the decision is sent for THAT step,
+  // and the dialog closes by itself when a refetch shows a different step (withdrawn and resubmitted).
+  const [rejectStepId, setRejectStepId] = useState<string | null>(null);
+  const [withdrawStepId, setWithdrawStepId] = useState<string | null>(null);
 
   const invalidate = () => {
     utils.vacancy.getById.invalidate({ id: vacancyId });
@@ -68,16 +72,34 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
   });
 
   const reject = trpc.vacancy.reject.useMutation({
-    onSuccess: () => { invalidate(); setShowReject(false); toast(t.vacancies.rejectSuccess, { type: 'success' }); },
+    onSuccess: () => { invalidate(); setRejectStepId(null); toast(t.vacancies.rejectSuccess, { type: 'success' }); },
     onError: (err) => {
       toast(err.message, { type: 'error' });
-      // CONFLICT: the vacancy moved on (another approver decided first) - refetch so stale buttons go.
-      if (err.data?.code === 'CONFLICT') invalidate();
+      // CONFLICT: the vacancy moved on - close the dialog (its reason was for that request) and refetch.
+      if (err.data?.code === 'CONFLICT') { invalidate(); setRejectStepId(null); }
+    },
+  });
+
+  // Stuck-approval unblock: whoever may submit a vacancy may take a pending request back (same gate).
+  const withdrawApproval = trpc.vacancy.withdrawApproval.useMutation({
+    onSuccess: () => { invalidate(); setWithdrawStepId(null); toast(t.vacancies.withdrawApprovalSuccess, { type: 'success' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+      // CONFLICT: an approver decided first - refetch so the stale button goes.
+      if (err.data?.code === 'CONFLICT') { invalidate(); setWithdrawStepId(null); }
     },
   });
 
   const pendingStepForViewer = findPendingApprovalForUser(approvals, userId);
   const showSubmitButton = canSubmitForApproval(vacancyStatus) && can('vacancy', 'update');
+  // Decisions and withdrawals name the step the viewer saw, so a stale tab can never act on a newer,
+  // resubmitted request (the server answers CONFLICT and the chain refetches).
+  const livePendingStepId = approvals.find((a) => a.status === 'pending')?.id;
+  // Also offered to a submitter who is one of the approvers (Codex P2): they can take the request back
+  // without first deciding their own step.
+  const showWithdrawButton = vacancyStatus === 'pending_approval' && can('vacancy', 'update') && !!livePendingStepId;
+  const openRejectStepId = rejectStepId !== null && rejectStepId === pendingStepForViewer?.id ? rejectStepId : null;
+  const openWithdrawStepId = withdrawStepId !== null && withdrawStepId === livePendingStepId ? withdrawStepId : null;
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
@@ -92,6 +114,15 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
             className="text-[12px] text-[#DD0C15] font-medium"
           >
             {t.vacancies.submitForApproval}
+          </button>
+        )}
+        {showWithdrawButton && (
+          <button
+            type="button"
+            onClick={() => setWithdrawStepId(livePendingStepId ?? null)}
+            className="text-[12px] text-[#585858] font-medium hover:text-[#1F114C]"
+          >
+            {t.vacancies.withdrawApproval}
           </button>
         )}
       </div>
@@ -139,14 +170,14 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
                 {isViewersPendingStep && (
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => approve.mutate({ id: vacancyId })}
+                      onClick={() => approve.mutate({ id: vacancyId, approvalId: a.id })}
                       disabled={approve.isPending}
                       className="text-[11px] font-medium text-green-600 hover:text-green-700 disabled:opacity-50"
                     >
                       {t.vacancies.approveStep}
                     </button>
                     <button
-                      onClick={() => setShowReject(true)}
+                      onClick={() => setRejectStepId(a.id)}
                       className="text-[11px] font-medium text-[#DD0C15] hover:text-[#c00b13]"
                     >
                       {t.vacancies.rejectStep}
@@ -168,10 +199,17 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
           isPending={submitForApproval.isPending}
         />
       )}
-      {showReject && (
+      {openWithdrawStepId !== null && (
+        <WithdrawApprovalModal
+          onConfirm={() => withdrawApproval.mutate({ id: vacancyId, approvalId: openWithdrawStepId })}
+          onClose={() => setWithdrawStepId(null)}
+          isPending={withdrawApproval.isPending}
+        />
+      )}
+      {openRejectStepId !== null && (
         <RejectModal
-          onConfirm={(comment) => reject.mutate({ id: vacancyId, comment })}
-          onClose={() => setShowReject(false)}
+          onConfirm={(comment) => reject.mutate({ id: vacancyId, approvalId: openRejectStepId, comment })}
+          onClose={() => setRejectStepId(null)}
           isPending={reject.isPending}
         />
       )}

@@ -5,6 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { Skeleton, ErrorState } from '../../../../components';
+import { isCspAllowedImageUrl } from '../../../../lib/security/csp-img-src';
 
 function isValidHttpUrl(value: string): boolean {
   try {
@@ -44,8 +45,11 @@ export default function BrandingPage() {
 
   const trimmed = logoUrl.trim();
   const isValid = trimmed.length === 0 || isValidHttpUrl(trimmed);
+  // The careers portal and the offer signing page only load images from the hosts the CSP img-src
+  // allows: a logo anywhere else would never be shown to a candidate, so it cannot be saved.
+  const hostAllowed = trimmed.length === 0 || !isValid || isCspAllowedImageUrl(trimmed);
   const isDirty = trimmed !== (org.data?.logo ?? '');
-  const canSave = trimmed.length > 0 && isValid && isDirty && !update.isPending;
+  const canSave = trimmed.length > 0 && isValid && hostAllowed && !previewBroken && isDirty && !update.isPending;
 
   const onSave = () => {
     if (!canSave) return;
@@ -76,7 +80,7 @@ export default function BrandingPage() {
           ) : (
             <div className="flex flex-col md:flex-row gap-5">
               <div className="w-28 h-28 shrink-0 rounded-lg border border-[#EDEDED] bg-[#F6F6F6] flex items-center justify-center overflow-hidden">
-                {trimmed.length > 0 && isValid && !previewBroken ? (
+                {trimmed.length > 0 && isValid && hostAllowed && !previewBroken ? (
                   <img
                     src={trimmed}
                     alt={t.branding.previewAlt}
@@ -86,7 +90,7 @@ export default function BrandingPage() {
                   />
                 ) : (
                   <span className="text-[11px] text-[#B8B8B8] text-center px-2">
-                    {previewBroken ? t.branding.previewError : t.branding.noLogo}
+                    {previewBroken || !hostAllowed ? t.branding.previewError : t.branding.noLogo}
                   </span>
                 )}
               </div>
@@ -110,6 +114,11 @@ export default function BrandingPage() {
                 <p className="text-[11px] text-[#8B8B8B] mt-1.5">{t.branding.logoHint}</p>
                 {trimmed.length > 0 && !isValid && (
                   <p className="text-[11px] text-[#DD0C15] mt-1">{t.branding.invalidUrl}</p>
+                )}
+                {!hostAllowed && (
+                  <p role="alert" className="text-[11px] text-[#DD0C15] mt-1">
+                    {t.branding.logoHostBlocked}
+                  </p>
                 )}
 
                 <div className="flex justify-end mt-4">

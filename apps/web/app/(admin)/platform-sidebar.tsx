@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useI18n } from '../../lib/i18n';
 import { filterSectionsForScope } from '../../lib/launch-scope';
 import { SidebarCollapseToggle } from './sidebar-collapse-toggle';
+import { SidebarDrawerClose } from './sidebar-drawer-close';
 import { SidebarProfileMenu } from './sidebar-profile-menu';
 
 function useNavSections() {
@@ -161,6 +162,7 @@ export function PlatformSidebar({
   displayName,
   expanded,
   onToggle,
+  onClose,
   ready = true,
   avatar,
 }: {
@@ -168,6 +170,7 @@ export function PlatformSidebar({
   displayName: string;
   expanded: boolean;
   onToggle: () => void;
+  onClose?: () => void;
   ready?: boolean;
   avatar?: string | null;
 }) {
@@ -195,13 +198,16 @@ export function PlatformSidebar({
           )}
         </Link>
         {expanded && (
-          <SidebarCollapseToggle
-            expanded={expanded}
-            onToggle={onToggle}
-            collapseLabel={t.nav.collapse}
-            expandLabel={t.nav.expand}
-          />
+          <div className="hidden md:flex">
+            <SidebarCollapseToggle
+              expanded={expanded}
+              onToggle={onToggle}
+              collapseLabel={t.nav.collapse}
+              expandLabel={t.nav.expand}
+            />
+          </div>
         )}
+        {onClose && <SidebarDrawerClose onClose={onClose} label={t.nav.closeMenu} />}
       </div>
       {!expanded && (
         <div className="flex justify-center pb-2">
@@ -231,7 +237,7 @@ export function PlatformSidebar({
                     key={item.href}
                     href={item.href}
                     title={!expanded ? item.label : undefined}
-                    className={`group flex items-center gap-2 h-[var(--nav-item-h)] rounded-[var(--r-sm)] transition-colors ${
+                    className={`group flex items-center gap-2 h-10 md:h-[var(--nav-item-h)] rounded-[var(--r-sm)] transition-colors ${
                       expanded ? 'px-2' : 'justify-center'
                     } ${isActive ? 'bg-[var(--chrome-accent-active)]' : 'hover:bg-[var(--chrome-hover)]'} ${
                       isActive ? 'text-white' : 'text-[var(--chrome-text-secondary)]'

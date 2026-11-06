@@ -16,6 +16,8 @@ import { ApprovalChain } from './approval-chain';
 import { FitRanking } from './fit-ranking';
 import { RoleFamilyCard } from './role-family-card';
 import { FitRequirementsCard } from './fit-requirements-card';
+import { SubmitForApprovalCta } from './submit-for-approval-cta';
+import { vacancyStatusMap } from '../vacancy-status';
 
 export default function VacancyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -23,14 +25,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
   const vacancy = trpc.vacancy.getById.useQuery({ id });
   const stats = trpc.vacancy.getStats.useQuery({ id });
 
-  const statusMap: Record<string, { cls: string; label: string }> = {
-    draft: { cls: 'bg-gray-100 text-gray-600', label: t.vacancies.statusDraft },
-    pending_approval: { cls: 'bg-amber-50 text-amber-600 border border-amber-200', label: t.vacancies.statusPendingApproval },
-    approved: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: t.vacancies.statusApproved },
-    published: { cls: 'bg-green-50 text-green-600 border border-green-200', label: t.vacancies.statusPublished },
-    closed: { cls: 'bg-red-50 text-red-600', label: t.vacancies.statusClosed },
-    frozen: { cls: 'bg-purple-50 text-purple-600 border border-purple-200', label: t.vacancies.statusFrozen },
-  };
+  const statusMap = vacancyStatusMap(t.vacancies);
 
   if (vacancy.isLoading) {
     return (
@@ -85,6 +80,8 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
           <StatusBadge status={v.status} map={statusMap} />
         </div>
         <div className="flex items-center gap-3">
+          {/* A draft's next step, as the primary action (it was a small link at the bottom of the page). */}
+          <SubmitForApprovalCta vacancyId={id} vacancyStatus={v.status} />
           {/* RH-09: the "Editar" link pointed at this same page; hidden until a real edit flow ships. */}
           <Link
             href={`/recruitment/pipeline?vacancy=${id}`}

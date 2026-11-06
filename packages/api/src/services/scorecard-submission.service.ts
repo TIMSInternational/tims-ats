@@ -1,4 +1,5 @@
 import { ratingsCoverCompetencySet } from '@tims/shared';
+import { candidateJoinApplies, joinTokenExpiry } from './interview-join-token';
 import {
   interviewScorecardRepository,
   SCORECARD_CLOSED_STATUSES,
@@ -27,13 +28,39 @@ import {
 //     took place, so there is nothing to score. `completed` stays OPEN — scoring
 //     after the interview ends is the normal flow, and the room's "Update" edit
 //     must keep working once the interview is marked completed. Checked here
-//     (fast refusal) and again inside the write transaction (the repository
-//     returns null if a cancel landed in between).
+//     (fast refusal) and again inside the write transaction, under the interview
+//     row lock (the repository refuses if a cancel or no-show landed in between).
+//   - A CARD BELONGS TO THE APPOINTMENT IT WAS FILLED IN FOR: the room sends the
+//     start it showed (`expectedScheduledAt`); a card for an appointment that has
+//     since moved is refused (`rescheduled`) instead of "completing" the new one.
+//     The write is then bound, under the interview row lock, to that same start
+//     and to the duration / link read here, so a reschedule landing between this
+//     read and the write is refused too.
+//   - A SUBMITTED CARD COMPLETES A STARTED INTERVIEW (B-30): a past interview no
+//     longer stays "Programada" forever. Exception: while the candidate's own
+//     video join link is still valid (scheduled end + JOIN_TOKEN_GRACE_MINUTES —
+//     the window the C# join honours for overruns) the interview stays open, since
+//     the join refuses a completed interview and would block a rejoin. The list
+//     shows such a scored-but-open interview as completed (submitted-card count).
 // ---------------------------------------------------------------------------
 
+/** Whether a card submitted at `now` should mark the interview completed. */
+export function shouldCompleteOnScorecard(
+  interview: { id: string; type: string; meetingUrl: string | null; scheduledAt: Date; duration: number },
+  now: Date = new Date(),
+): boolean {
+  if (interview.scheduledAt.getTime() > now.getTime()) return false;
+  const joinStillValid =
+    candidateJoinApplies(interview.type, { meetingUrl: interview.meetingUrl, interviewId: interview.id }) &&
+    now.getTime() < joinTokenExpiry(interview.scheduledAt, interview.duration).getTime();
+  return !joinStillValid;
+}
+
+type SubmitWrite = Awaited<ReturnType<typeof interviewScorecardRepository.submit>>;
+
 export type SubmitScorecardResult =
-  | { ok: true; scorecard: NonNullable<Awaited<ReturnType<typeof interviewScorecardRepository.submit>>> }
-  | { ok: false; reason: 'not_found' | 'incomplete' | 'closed' };
+  | { ok: true; scorecard: Extract<SubmitWrite, { ok: true }>['scorecard'] }
+  | { ok: false; reason: 'not_found' | 'incomplete' | 'closed' | 'rescheduled' };
 
 export const scorecardSubmissionService = {
   async submit(
@@ -42,13 +69,23 @@ export const scorecardSubmissionService = {
     evaluatorId: string,
     actorId: string,
     data: ScorecardSubmissionData,
+    expectedScheduledAt?: Date,
   ): Promise<SubmitScorecardResult> {
     const context = await interviewScorecardRepository.getSubmissionContext(orgId, interviewId);
     if (context === undefined) return { ok: false, reason: 'not_found' };
     if (SCORECARD_CLOSED_STATUSES.includes(context.status)) return { ok: false, reason: 'closed' };
+    if (expectedScheduledAt && expectedScheduledAt.getTime() !== context.scheduledAt.getTime()) {
+      return { ok: false, reason: 'rescheduled' };
+    }
     if (!ratingsCoverCompetencySet(data.ratings, context.competencies)) return { ok: false, reason: 'incomplete' };
-    const scorecard = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data);
-    if (!scorecard) return { ok: false, reason: 'closed' };
-    return { ok: true, scorecard };
+    // The write is bound to the schedule this decision was made on (a concurrent reschedule wins).
+    const schedule = { scheduledAt: context.scheduledAt, duration: context.duration, meetingUrl: context.meetingUrl ?? null };
+    const complete = shouldCompleteOnScorecard({ id: interviewId, ...context });
+    const written = await interviewScorecardRepository.submit(orgId, interviewId, evaluatorId, actorId, data, {
+      schedule,
+      complete,
+    });
+    if (!written.ok) return { ok: false, reason: written.reason };
+    return { ok: true, scorecard: written.scorecard };
   },
 };

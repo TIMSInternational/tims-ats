@@ -35,6 +35,7 @@ export interface ApprovalRow {
 interface Staged {
   parent?: Partial<ParentRow>;
   approvals: Map<string, Partial<ApprovalRow>>;
+  audit: Array<Record<string, unknown>>;
 }
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -49,6 +50,7 @@ export function createApprovalRaceStore(opts: {
   const committed = {
     parent: { ...opts.parent },
     approvals: opts.approvals.map((a) => ({ ...a })),
+    audit: [] as Array<Record<string, unknown>>,
   };
   let lockHolder: Staged | null = null;
   // Start barrier: hold every transaction at BEGIN until `barrier.size` have begun, so concurrent
@@ -112,6 +114,12 @@ export function createApprovalRaceStore(opts: {
         await tick();
         return { ...viewParent(tx), approvals: [], settings: {} };
       },
+      // Pre-transaction existence/scope probe (scope itself is mocked open by the tests).
+      findFirst: async () => {
+        await tick();
+        const row = viewParent(tx);
+        return row.deletedAt === null ? { id: row.id } : null;
+      },
       findUniqueOrThrow: async () => {
         await tick();
         return { ...viewParent(tx), approvals: [], settings: {} };
@@ -161,13 +169,25 @@ export function createApprovalRaceStore(opts: {
         await new Promise<void>((resolve) => barrier.release.push(resolve));
       }
     }
-    const tx: Staged = { approvals: new Map() };
-    const client = { [opts.parentModel]: parentFacade(tx), [opts.approvalModel]: approvalFacade(tx) };
+    const tx: Staged = { approvals: new Map(), audit: [] };
+    const client = {
+      [opts.parentModel]: parentFacade(tx),
+      [opts.approvalModel]: approvalFacade(tx),
+      // Audit rows are part of the transaction: published on commit, discarded on rollback.
+      auditLog: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          await tick();
+          tx.audit.push(data);
+          return data;
+        },
+      },
+    };
     try {
       const result = await fn(client);
       await tick(); // COMMIT is a round trip too: another transaction's statement can run first.
       if (tx.parent) committed.parent = { ...committed.parent, ...tx.parent };
       committed.approvals = committed.approvals.map((a) => ({ ...a, ...(tx.approvals.get(a.id) ?? {}) }));
+      committed.audit.push(...tx.audit);
       return result;
     } finally {
       releaseLock(tx);

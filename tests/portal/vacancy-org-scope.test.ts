@@ -56,6 +56,26 @@ describe('portal.getVacancy organization scope', () => {
 
     expect(vacancy).toBeNull();
     expect(count).not.toHaveBeenCalled();
+    // The closed-vacancy fallback is scoped to the same URL organization.
+    expect(findFirst).toHaveBeenLastCalledWith({
+      where: {
+        id: VACANCY_ID,
+        status: { in: ['closed', 'frozen'] },
+        deletedAt: null,
+        organization: { is: { slug: 'another-company' } },
+      },
+      select: { id: true },
+    });
+  });
+
+  it('reports a closed (or frozen) vacancy of this organization as closed — and nothing else about it', async () => {
+    findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: VACANCY_ID });
+
+    const caller = await makeCaller();
+    const vacancy = await caller.portal.getVacancy({ id: VACANCY_ID, orgSlug: 'tims-international' });
+
+    expect(vacancy).toEqual({ closed: true });
+    expect(count).not.toHaveBeenCalled();
   });
 
   it('returns only the public careers-page fields — never settings or other internal columns', async () => {
@@ -98,7 +118,7 @@ describe('portal.getVacancy organization scope', () => {
       createdAt: new Date('2026-10-01T00:00:00Z'),
       company: { name: 'Acme' },
       unit: { name: 'Data' },
-      organization: { name: 'TIMS' },
+      organization: { name: 'TIMS', logo: 'logo.png' },
       jobProfile: { competencies: ['SQL'], requirements: ['Excel'] },
       applicantCount: 4,
     });
