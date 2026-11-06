@@ -5,6 +5,8 @@ import type { Prisma } from '@tims/db';
 import { assertScoped } from '../../access';
 import { EDUCATION_LEVELS } from '../../services/fit-engine.service';
 import { jobProfileCompetenciesInputSchema, toStoredCompetencies } from '@tims/shared';
+import { TRPCError } from '@trpc/server';
+import { vacancyLifecycleRepository } from '../../repositories/vacancy-lifecycle.repository';
 
 // ---------------------------------------------------------------------------
 // Typed Zod schemas for JSON fields (no z.unknown)
@@ -106,7 +108,27 @@ export const vacancyJobProfileRouter = router({
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       const { vacancyId, competencies, ...rest } = input;
-      const data = { ...rest, competencies: competencies && toStoredCompetencies(competencies) };
+      // Competencies are the rubric the interview scorecard rates: they go through the SAME guarded write as
+      // vacancy.update (editable status, no pending approval, compare-and-set, audit row in one transaction),
+      // never a bare upsert — so they cannot change while an approval is pending or the vacancy is closed.
+      if (competencies !== undefined) {
+        const row = await vacancyLifecycleRepository.updateContent(
+          ctx.user.organizationId,
+          vacancyId,
+          {},
+          ['competencies'],
+          { userId: ctx.user.id, actorId: ctx.user.impersonatorId ?? ctx.user.id },
+          toStoredCompetencies(competencies) as Prisma.InputJsonValue,
+        );
+        if (!row) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message:
+              'Esta vacante no se puede editar en su estado actual. Si tiene una solicitud de aprobación en curso, retírala primero; una vacante cerrada no se edita.',
+          });
+        }
+      }
+      const data = { ...rest, competencies: undefined as Prisma.InputJsonValue | undefined };
 
       return db.jobProfile.upsert({
         where: { vacancyId },

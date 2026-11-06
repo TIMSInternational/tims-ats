@@ -267,6 +267,27 @@ describe('guide helpers', () => {
     expect(out).not.toMatch(/Dvo|recruiting123|example/);
   });
 
+  it('masks names after emoji and other astral characters (Codex round 9)', async () => {
+    expect(redactContactDetails(`${'💼'.repeat(12)} Jose Perez worked at Acme`, ['José', 'Pérez'])).toBe(
+      `${'💼'.repeat(12)} [nombre] worked at Acme`,
+    );
+    expect(redactContactDetails('𝐀 Dvořák y 😀 Ana', ['Dvořák', 'Ana'])).toBe('𝐀 [nombre] y 😀 [nombre]');
+    vi.mocked(bedrockGenerate).mockResolvedValue({
+      text: JSON.stringify({ sections: SECTIONS }),
+      inputTokens: 1,
+      outputTokens: 1,
+      model: 'haiku',
+      latencyMs: 1,
+    });
+    await generateInterviewGuide('org-1', {
+      ...BASE,
+      candidateCv: { summary: `${'💼'.repeat(12)} Jose Perez worked at Acme`, experience: [] },
+      redact: ['José', 'Pérez'],
+    });
+    const [, , userMessage] = vi.mocked(bedrockGenerate).mock.calls.at(-1)!;
+    expect(userMessage).not.toMatch(/Jose|Perez/);
+  });
+
   it('bounds the CV block', () => {
     const text = formatCandidateCv({
       summary: 'x'.repeat(5000),

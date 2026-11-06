@@ -203,12 +203,14 @@ function baseOf(ch: string): string {
 function maskName(text: string, term: string): string {
   const chars = [...text];
   let base = '';
-  const origin: number[] = []; // base index → index in chars
+  // One entry per UTF-16 code UNIT of `base` (regex indices count code units, not code points), each
+  // pointing at the code point in `chars` it came from — so emoji or other astral characters before a name
+  // can never shift the masked span.
+  const origin: number[] = [];
   chars.forEach((ch, i) => {
-    for (const b of baseOf(ch)) {
-      base += b;
-      origin.push(i);
-    }
+    const b = baseOf(ch);
+    base += b;
+    for (let unit = 0; unit < b.length; unit++) origin.push(i);
   });
   const words = term.split(' ').map((w) => [...w].map(baseOf).join('').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   if (words.every((w) => w.length === 0)) return text;
