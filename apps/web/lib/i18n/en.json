@@ -2185,6 +2185,7 @@
     "requestedVacancyUnavailable": "The requested vacancy could not be opened; another vacancy is shown.",
     "selectVacancyFirst": "Select a vacancy first",
     "checklistIncompleteWarning": "Pending from the previous stage: {items}",
+    "hiredStageHint": "Moving to “Contratado” does not record the hire: confirm it with “Authorize Hiring” on the accepted offer.",
     "checklistTitle": "Stage checklist",
     "checklistItemCompletedBy": "Completed",
     "nextAction": {

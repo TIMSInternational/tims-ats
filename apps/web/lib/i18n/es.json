@@ -2185,6 +2185,7 @@
     "requestedVacancyUnavailable": "No se pudo abrir la vacante solicitada; se muestra otra vacante.",
     "selectVacancyFirst": "Selecciona una vacante primero",
     "checklistIncompleteWarning": "Pendiente en la etapa anterior: {items}",
+    "hiredStageHint": "Mover a «Contratado» no registra la contratación: confírmala con «Autorizar Contratación» en la oferta aceptada.",
     "checklistTitle": "Checklist de la etapa",
     "checklistItemCompletedBy": "Completado",
     "nextAction": {
