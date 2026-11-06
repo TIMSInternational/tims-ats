@@ -147,21 +147,28 @@ const DIGIT_RUN = /\+?\(?\d[\d \t\u00a0\u2007\u2009\u200a\u202f().\-\u2010-\u201
 // "2019-2023" in a CV is a period, not a phone; protected before digit runs are masked.
 const YEAR_RANGE = /(?<!\d)(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}(?!\d)/g;
 const PHONE_MIN_DIGITS = 8;
-// A year range is NOT a period when the text right before it says it is a phone ("Tel: 2020-2024") or it
-// continues a digit run ("+506 2020-2024"): then it is left to the phone masking below.
-const PHONE_LABEL_BEFORE =
-  /(?:tel|tel[eé]fono|telefone|cel|celular|m[oó]vil|movil|phone|mobile|whatsapp|wa|fax|contacto|contact)\.?\s*(?:n[oº°]\.?\s*)?[:#]?\s*$/i;
-const DIGIT_RUN_BEFORE = /[\d+][ \t\u00a0\u2007\u2009\u200a\u202f.\-\u2010-\u2015\u2212]*$/;
+// A year range is kept as a period ONLY when nothing earlier in its clause points to a phone: a phone label
+// anywhere before it ("Tel: +506 (2020-2024)", "Tel: 8888-7777 (2019-2023)") or a digit run leading into
+// it ("+506 (2020-2024)"). When in doubt it is masked: losing a date costs the guide nothing, leaking a phone does.
+const PHONE_LABEL_ON_LINE =
+  /(?:^|[^\p{L}])(?:tel|tel[eé]fono|telefone|cel|celular|m[oó]vil|movil|phone|mobile|whatsapp|wa|fax|contacto|contact)(?![\p{L}])/iu;
+const DIGIT_RUN_BEFORE = /[\d+][ \t\u00a0\u2007\u2009\u200a\u202f().\-\u2010-\u2015\u2212]*$/;
 
 // Name particles never masked on their own ("de", "del" are ordinary words).
 const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
 
-/** A term and its separate words, longest first, without particles or 1-2 letter fragments. */
+/**
+ * The terms, their combined full name, and their separate words, longest first. A term supplied whole is
+ * masked whatever its length ("Li", "Wu" are complete names); only words split OUT of a longer term skip
+ * particles and 1–2 letter fragments.
+ */
 function redactionVariants(terms: readonly string[]): string[] {
   const out = new Set<string>();
-  for (const term of terms) {
-    const whole = term.normalize('NFC').replace(DANGEROUS_CHARS, '').trim().replace(/\s+/g, ' ');
-    if (whole.length >= 3) out.add(whole);
+  const clean = (t: string) => t.normalize('NFC').replace(DANGEROUS_CHARS, '').trim().replace(/\s+/g, ' ');
+  const wholes = terms.map(clean).filter((w) => w.length > 0);
+  if (wholes.length > 1) out.add(wholes.join(' '));
+  for (const whole of wholes) {
+    if (whole.length >= 2 && !NAME_PARTICLES.has(whole.toLowerCase())) out.add(whole);
     for (const part of whole.split(' ')) {
       if (part.length >= 3 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
     }
@@ -185,8 +192,10 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
   let out = text.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(EMAIL_PATTERN, '[email]');
   const kept: string[] = [];
   out = out.replace(YEAR_RANGE, (range: string, offset: number, whole: string) => {
-    const before = whole.slice(Math.max(0, offset - 32), offset).split('\n').pop() ?? '';
-    if (PHONE_LABEL_BEFORE.test(before) || DIGIT_RUN_BEFORE.test(before)) return range;
+    // The clause before it (same line, after the last ". ", ", " or "; "): a CV summary often opens with
+    // contact data, and a period in a later clause is still a period.
+    const before = (whole.slice(0, offset).split('\n').pop() ?? '').split(/[.;,]\s/).pop() ?? '';
+    if (PHONE_LABEL_ON_LINE.test(before) || DIGIT_RUN_BEFORE.test(before)) return range;
     kept.push(range);
     return placeholder(kept.length - 1);
   });

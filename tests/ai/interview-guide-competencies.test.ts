@@ -169,12 +169,12 @@ describe('generateInterviewGuide with the job profile', () => {
     });
     await generateInterviewGuide('org-1', {
       ...BASE,
-      candidateCv: { summary: 'Jo\u200bse Perez, Tel: 8888\u200b7777, móvil 2020-2024, cel 2021\u20132025, 8888\u00a06666. Ventas (2016-2024).', experience: [] },
+      candidateCv: { summary: 'Jo\u200bse Perez, Tel: 8888\u200b7777, móvil 2020-2024, cel 2021\u20132025, 8888\u00a06666.\nTel: +506 (2022-2026)\nVentas (2016-2024).', experience: [] },
       redact: ['José', 'Pérez'],
     });
     const [, , userMessage] = vi.mocked(bedrockGenerate).mock.calls.at(-1)!;
     const cv = /<candidate_cv>([\s\S]*)<\/candidate_cv>/.exec(userMessage)?.[1] ?? '';
-    expect(cv).not.toMatch(/Jose|Perez|88887777|8888|2020-2024|2021\u20132025/);
+    expect(cv).not.toMatch(/Jose|Perez|88887777|8888|2020-2024|2021\u20132025|2022|2026/);
     expect(cv).toContain('(2016-2024)');
   });
 });
@@ -243,9 +243,11 @@ describe('redactContactDetails', () => {
   // Codex review on #421 (P1): adjacent numbers pushed a greedy match above 15 digits, which was then kept,
   // and an unaccented spelling of an accented name was not masked.
   it('masks phones next to other numbers, and names spelled without their accents', () => {
-    expect(redactContactDetails('Tel: 8888-7777 (2019-2023)')).toBe('Tel: [teléfono] (2019-2023)');
+    // A phone label earlier on the line makes a following year range ambiguous: it is masked too.
+    expect(redactContactDetails('Tel: 8888-7777 (2019-2023)')).toBe('Tel: [teléfono])');
+    expect(redactContactDetails('Ventas 8 años (2019-2023)')).toBe('Ventas 8 años (2019-2023)');
     expect(redactContactDetails('Tel: +506 8888-7777 8888-6666')).toBe('Tel: [teléfono]');
-    expect(redactContactDetails('Jose Perez y JOSÉ PÉREZ', ['José', 'Pérez'])).toBe('[nombre] [nombre] y [nombre] [nombre]');
+    expect(redactContactDetails('Jose Perez y JOSÉ PÉREZ', ['José', 'Pérez'])).toBe('[nombre] y [nombre]');
     expect(redactContactDetails('Muñoz / Munoz', ['Muñoz'])).toBe('[nombre] / [nombre]');
     // A line break separates facts: two years on two lines are not a phone.
     expect(redactContactDetails('2015\n2016')).toBe('2015\n2016');
@@ -253,7 +255,7 @@ describe('redactContactDetails', () => {
 
   it('masks identifiers split by invisible characters (Codex P1 on #421)', () => {
     expect(redactContactDetails('Tel: 8888\u200b7777')).toBe('Tel: [teléfono]');
-    expect(redactContactDetails('Jo\u200bse Perez', ['José', 'Pérez'])).toBe('[nombre] [nombre]');
+    expect(redactContactDetails('Jo\u200bse Perez', ['José', 'Pérez'])).toBe('[nombre]');
   });
 
   it('masks a phone shaped like a year range, but keeps real periods (Codex P2 on #421)', () => {
@@ -262,6 +264,17 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('WhatsApp: 2020 2024')).not.toMatch(/2020/);
     expect(redactContactDetails('+506 2020-2024')).toBe('[teléfono]');
     expect(redactContactDetails('Ventas (2020-2024) y soporte 2016–2019')).toBe('Ventas (2020-2024) y soporte 2016–2019');
+  });
+
+  it('masks a parenthesized phone and short names (Codex round 4 on #421)', () => {
+    expect(redactContactDetails('Tel: +506 (2020-2024)')).not.toMatch(/2020|2024/);
+    expect(redactContactDetails('+506 (2020-2024)')).not.toMatch(/2020|2024/);
+    expect(redactContactDetails('Li Wu, especialista en ventas', ['Li', 'Wu'])).toBe('[nombre], especialista en ventas');
+    expect(redactContactDetails('Gerente: Li Wu', ['Li', 'Wu'])).not.toMatch(/\bLi\b|\bWu\b/);
+    // Short names apart from each other are masked too, not only as the combined full name.
+    expect(redactContactDetails('Li lideró ventas; luego Wu se unió', ['Li', 'Wu'])).toBe('[nombre] lideró ventas; luego [nombre] se unió');
+    // A particle supplied alone is still never masked as a word.
+    expect(redactContactDetails('Jefe de ventas', ['de'])).toBe('Jefe de ventas');
   });
 
   it('masks phones written with an en dash or a no-break space (Codex round 3 on #421)', () => {
