@@ -85,3 +85,41 @@ describe('withResolvedCurrency', () => {
     expect(mockDb.company.findFirst).not.toHaveBeenCalled();
   });
 });
+
+// Pilot call audit 2026-11-05: the salary inputs let a band through with min > max and decimals in colones
+// (an arrow-key step made CRC 1 000 000 into 1 000 000.01). The forms now refuse both (lib/money-amount.ts);
+// the server refuses the band and stores whole amounts for a zero-decimal currency.
+describe('vacancy salary band on the server', () => {
+  it('refuses min > max, with a Spanish message on max', () => {
+    const result = salarySchema.safeParse({ min: 900_000, max: 650_000, currency: 'CRC' });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ['max'],
+      message: 'El salario mínimo no puede ser mayor que el máximo',
+    });
+  });
+
+  it('accepts min = max, a single bound and no salary at all', () => {
+    expect(salarySchema.safeParse({ min: 650_000, max: 650_000 }).success).toBe(true);
+    expect(salarySchema.safeParse({ max: 650_000 }).success).toBe(true);
+    expect(salarySchema.safeParse(undefined).success).toBe(true);
+  });
+
+  it('rounds a zero-decimal currency to whole amounts once the currency is known', async () => {
+    await expect(
+      withResolvedCurrency(ORG, { min: 1_000_000.01, max: 1_200_000.5, currency: 'crc', period: 'monthly' }, {}),
+    ).resolves.toEqual({ min: 1_000_000, max: 1_200_001, currency: 'CRC', period: 'monthly' });
+    // Resolved from the organization (CRC) when omitted: rounded too.
+    await expect(withResolvedCurrency(ORG, { min: 850_000.4, period: 'monthly' }, {})).resolves.toEqual({
+      min: 850_000,
+      currency: 'CRC',
+      period: 'monthly',
+    });
+  });
+
+  it('keeps cents for a currency that has them', async () => {
+    await expect(
+      withResolvedCurrency(ORG, { min: 1500.5, max: 2500.25, currency: 'USD', period: 'yearly' }, {}),
+    ).resolves.toEqual({ min: 1500.5, max: 2500.25, currency: 'USD', period: 'yearly' });
+  });
+});

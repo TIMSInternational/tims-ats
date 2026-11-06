@@ -73,7 +73,7 @@ export function CreateOfferModal({
   const [values, setValues] = useState<FormValues>(() => {
     const first = applications[0];
     const range = parseVacancySalary(first?.vacancy.salary);
-    const salary = source ? editableSalary(source.salary, range?.period ?? 'monthly') : null;
+    const salary = source ? editableSalary(source.salary, range?.period ?? 'monthly', source.currency) : null;
     return {
       applicationId: first?.id ?? '',
       salary: salary?.amount ?? '',

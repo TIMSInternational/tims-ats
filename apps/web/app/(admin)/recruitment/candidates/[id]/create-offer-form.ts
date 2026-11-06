@@ -15,6 +15,9 @@ import {
   vacancyMidpointIn,
   type SalaryPeriod,
 } from '../../../../../lib/offer-salary';
+import { isZeroDecimalCurrency } from '@tims/shared';
+import { formatMoneyAmount, parseMoneyAmount } from '../../../../../lib/money-amount';
+import { TENANT_LOCALE } from '../../../../../lib/tenant-locale';
 
 export const REMOTE_POLICIES = ['onsite', 'remote', 'hybrid'] as const;
 export const LEGACY_CHOICE = '__legacy__';
@@ -80,16 +83,28 @@ export function termString(terms: unknown, key: string): string {
 }
 
 /**
- * The stored annual salary shown in an editable period: monthly when the vacancy is paid monthly AND the
- * monthly amount is exact to the cent (so saving untouched never shifts the annual figure), else yearly.
+ * The stored annual salary shown in an editable period, as the salary input shows amounts (grouped digits,
+ * lib/money-amount.ts): monthly when the vacancy is paid monthly AND the monthly amount is exact (to the cent;
+ * to the unit for a zero-decimal currency such as CRC), so saving untouched never shifts the annual figure;
+ * else yearly. A zero-decimal amount that is not whole (an offer stored as 12 000 000.12 before the input
+ * refused decimals) keeps its decimals here, so the input flags it instead of silently rounding it.
  */
-export function editableSalary(annual: number, preferred: SalaryPeriod): { amount: string; period: SalaryPeriod } {
+export function editableSalary(
+  annual: number,
+  preferred: SalaryPeriod,
+  currency: string,
+): { amount: string; period: SalaryPeriod } {
+  const whole = isZeroDecimalCurrency(currency);
   if (preferred === 'monthly') {
     const monthly = annualToPeriod(annual, 'monthly');
-    const rounded = Math.round(monthly * 100) / 100;
-    if (Math.abs(rounded * 12 - annual) < 1e-6) return { amount: String(rounded), period: 'monthly' };
+    const rounded = whole ? Math.round(monthly) : Math.round(monthly * 100) / 100;
+    if (Math.abs(rounded * 12 - annual) < 1e-6) return { amount: formatMoneyAmount(rounded, currency), period: 'monthly' };
   }
-  return { amount: String(annual), period: 'yearly' };
+  if (whole && !Number.isInteger(annual)) {
+    const withDecimals = new Intl.NumberFormat(TENANT_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return { amount: withDecimals.format(annual), period: 'yearly' };
+  }
+  return { amount: formatMoneyAmount(annual, currency), period: 'yearly' };
 }
 
 /** "YYYY-MM-DD" of a stored start date (the form sends local noon, so the local calendar day is the date). */
@@ -147,16 +162,18 @@ export type OfferSalaryInput = { salary: string; period: SalaryPeriod; currency:
 
 /**
  * What the salary fields show and validate. The vacancy midpoint is a reference in the VACANCY's own
- * currency: offered as the numeric placeholder only when the offer currency matches, never converted.
+ * currency: offered as the placeholder only when the offer currency matches, never converted. The amount is
+ * parsed by lib/money-amount.ts (grouping accepted, whole numbers for CRC/COP…), never Number() of the text.
  */
 export function offerSalaryState(values: OfferSalaryInput, vacancySalary: unknown) {
   const range = parseVacancySalary(vacancySalary);
   const referenceCurrency = range?.currency ?? null;
   const referenceAmount = referenceCurrency ? vacancyMidpointIn(range, values.period) : null;
   const placeholderAmount = referenceCurrency === values.currency ? referenceAmount : null;
-  const amount = Number(values.salary);
   const maxInPeriod = annualToPeriod(MAX_OFFER_ANNUAL_SALARY, values.period);
-  const isValid = values.salary.trim() !== '' && Number.isFinite(amount) && amount > 0 && amount <= maxInPeriod;
-  const annualSalary = isValid ? toAnnualSalary(amount, values.period) : null;
+  const parsed = parseMoneyAmount(values.salary, values.currency, { max: maxInPeriod });
+  const amount = parsed.kind === 'ok' && parsed.value > 0 ? parsed.value : null;
+  // To the cent: 1 234,56 / month is 14 814,72 a year, not 14814.720000000001.
+  const annualSalary = amount !== null ? Math.round(toAnnualSalary(amount, values.period) * 100) / 100 : null;
   return { referenceCurrency, referenceAmount, placeholderAmount, maxInPeriod, annualSalary };
 }

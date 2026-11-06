@@ -78,7 +78,7 @@ describe('offer form', () => {
     expect(hint.textContent).toContain(es.offers.startDate);
     expect(screen.getByText(`${es.offers.salaryAmount} *`)).toBeTruthy();
 
-    fireEvent.change(container.querySelector('input[type="number"]') as HTMLInputElement, {
+    fireEvent.change(container.querySelector('#offer-salary-amount') as HTMLInputElement, {
       target: { value: '1000000' },
     });
     const date = container.querySelector('input[type="date"]') as HTMLInputElement;
@@ -99,7 +99,7 @@ describe('offer form', () => {
     const { container } = render(
       <CreateOfferModal candidateId="cand-1" applications={applications} onClose={onClose} />,
     );
-    fireEvent.change(container.querySelector('input[type="number"]') as HTMLInputElement, {
+    fireEvent.change(container.querySelector('#offer-salary-amount') as HTMLInputElement, {
       target: { value: '1000000' },
     });
     fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
@@ -143,7 +143,8 @@ describe('offer form', () => {
       />,
     );
     expect(screen.getByText(es.offers.editDraftTitle)).toBeTruthy();
-    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe('1000000');
+    // The shared money input shows the stored amount grouped (es-CR: non-breaking spaces).
+    expect((screen.getByLabelText(/Salario base/) as HTMLInputElement).value).toBe('1\u00a0000\u00a0000');
     // A legacy free-text contract type stays selectable as itself.
     expect((screen.getByLabelText(/Tipo Contrato/) as HTMLSelectElement).selectedOptions[0]!.textContent).toBe('Test');
 

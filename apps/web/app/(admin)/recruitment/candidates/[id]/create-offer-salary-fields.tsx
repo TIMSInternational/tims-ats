@@ -3,6 +3,8 @@
 import { useI18n } from '../../../../../lib/i18n';
 import { annualToPeriod, formatMoneyCode, type SalaryPeriod } from '../../../../../lib/offer-salary';
 import { currencyOptions } from '../../../../../lib/currency-options';
+import { formatMoneyAmount } from '../../../../../lib/money-amount';
+import { MoneyInput } from '../../../../../components/money-input';
 import { offerSalaryState, type OfferSalaryInput } from './create-offer-form';
 
 const INPUT = 'mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]';
@@ -32,19 +34,22 @@ export function CreateOfferSalaryFields({
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className={LABEL}>
-          {t.offers.salaryAmount} *
-          <input
-            type="number"
-            min="1"
-            max={maxInPeriod}
-            step="0.01"
+        {/* The shared money input: grouping accepted and shown, whole numbers for CRC/COP…, nothing steps
+            the value (an arrow key once made CRC 1 000 000 / month 1 000 000.01, stored as 12 000 000.12). */}
+        <div>
+          <label htmlFor="offer-salary-amount" className={LABEL}>
+            {t.offers.salaryAmount} *
+          </label>
+          <MoneyInput
+            id="offer-salary-amount"
             value={values.salary}
-            placeholder={placeholderAmount !== null ? String(placeholderAmount) : undefined}
-            onChange={(event) => onChange({ salary: event.target.value })}
+            currency={values.currency}
+            max={maxInPeriod}
+            placeholder={placeholderAmount !== null ? formatMoneyAmount(placeholderAmount, values.currency) : undefined}
+            onChange={(text) => onChange({ salary: text })}
             className={INPUT}
           />
-        </label>
+        </div>
         <label className={LABEL}>
           {t.offers.salaryPeriod}
           <select

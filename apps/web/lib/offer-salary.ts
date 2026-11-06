@@ -8,6 +8,7 @@
  * display shows the currency CODE, a localized amount and the period.
  */
 
+import { isZeroDecimalCurrency } from '@tims/shared';
 import { TENANT_LOCALE } from './tenant-locale';
 
 export type SalaryPeriod = 'monthly' | 'yearly';
@@ -16,8 +17,6 @@ export const MONTHS_PER_YEAR = 12;
 
 /** Mirrors the API cap on `offer.create` / `offer.update` (packages/api/src/routers/offer/crud.ts). */
 export const MAX_OFFER_ANNUAL_SALARY = 1_000_000_000_000;
-
-const ZERO_DECIMAL = new Set(['COP', 'CRC', 'CLP', 'JPY', 'KRW', 'PYG', 'VND']);
 
 export interface VacancySalaryRange {
   min: number | null;
@@ -75,7 +74,8 @@ export function formatMoneyCode(amount: number, currency: string, locale = TENAN
     return raw ? `${raw} ${digitsOnly}` : digitsOnly;
   }
   const code = normalized;
-  const digits = ZERO_DECIMAL.has(code) || Number.isInteger(amount) ? 0 : 2;
+  // The zero-decimal list is shared with the salary inputs and the server (@tims/shared ZERO_DECIMAL_CURRENCIES).
+  const digits = isZeroDecimalCurrency(code) || Number.isInteger(amount) ? 0 : 2;
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: code,

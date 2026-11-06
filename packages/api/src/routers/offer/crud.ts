@@ -3,6 +3,7 @@ import { router, permissionProcedure, anyPermissionProcedure } from '../../trpc'
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { isZeroDecimalCurrency } from '@tims/shared';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { redactOfferSettings } from './offer-dto';
 import { assertNoOpenOffer, openOfferStatusWhere } from './open-offer-guard';
@@ -18,6 +19,8 @@ const currencyCode = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Moneda
 // 1e12 comfortably covers any annual salary in a zero-decimal currency such as COP.
 const MAX_OFFER_SALARY = 1_000_000_000_000;
 const offerSalary = z.number().finite().positive().max(MAX_OFFER_SALARY, 'Salario fuera de rango');
+/** A zero-decimal currency (CRC, COP…) stores whole amounts: 12 000 000.12 colones was an input-step accident. */
+const wholeIfZeroDecimal = (salary: number, currency: string) => (isZeroDecimalCurrency(currency) ? Math.round(salary) : salary);
 
 async function defaultCurrencyFor(organizationId: string, vacancyId: string): Promise<string> {
   const { orgSettings, companyCurrency } = await offerDraftRepository.currencySources(organizationId, vacancyId);
@@ -208,6 +211,7 @@ export const offerCrudRouter = router({
         await assertNoOpenOffer(tx, { organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId });
         return offerDraftRepository.createDraft(tx, {
           ...rest,
+          salary: wholeIfZeroDecimal(rest.salary, resolvedCurrency),
           currency: resolvedCurrency,
           benefits: benefits as Prisma.InputJsonValue | undefined,
           terms: terms as Prisma.InputJsonValue | undefined,
@@ -269,6 +273,7 @@ export const offerCrudRouter = router({
       // write must not let the approvers see terms other than the ones they are asked to approve.
       const applied = await offerDraftRepository.updateDraft(ctx.user.organizationId, id, {
         ...rest,
+        ...(rest.salary !== undefined && rest.currency !== undefined && { salary: wholeIfZeroDecimal(rest.salary, rest.currency) }),
         ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
         ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
       });
