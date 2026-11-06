@@ -18,6 +18,7 @@ export const interviewEmailRepository = {
           meetingUrl: true,
           cancelReason: true,
           updatedAt: true,
+          applicationId: true,
           candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
           vacancy: { select: { title: true, company: { select: { language: true, timezone: true } } } },
           evaluators: {
@@ -44,16 +45,21 @@ export const interviewEmailRepository = {
     ]);
     if (!interview || !org) return null;
     // #312: a candidate who revoked their data-processing authorization gets no further emails
-    // (evaluators still do).
-    const candidateConsentWithdrawn = await candidateConsentRepository.isRecruitmentConsentWithdrawn(
-      orgId,
-      interview.candidate.id,
-    );
-    return { interview, org, candidateConsentWithdrawn };
+    // (evaluators still do). The candidate's copy is in the language they applied in, when known.
+    const [candidateConsentWithdrawn, candidateLocale] = await Promise.all([
+      candidateConsentRepository.isRecruitmentConsentWithdrawn(orgId, interview.candidate.id),
+      candidateConsentRepository.consentLocale(orgId, {
+        applicationId: interview.applicationId,
+        candidateId: interview.candidate.id,
+      }),
+    ]);
+    return { interview, org, candidateConsentWithdrawn, candidateLocale };
   },
 };
 
 type FoundNotification = NonNullable<Awaited<ReturnType<typeof interviewEmailRepository.findForNotification>>>;
-export type InterviewNotificationData = Omit<FoundNotification, 'candidateConsentWithdrawn'> & {
+export type InterviewNotificationData = Omit<FoundNotification, 'candidateConsentWithdrawn' | 'candidateLocale'> & {
   candidateConsentWithdrawn?: boolean;
+  /** The language the candidate applied in (consent evidence); null/absent → the vacancy company's language. */
+  candidateLocale?: string | null;
 };

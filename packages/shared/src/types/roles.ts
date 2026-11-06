@@ -75,7 +75,7 @@ export const ROLE_DEFINITIONS: Record<SystemRole, RoleDefinition> = {
   hrbp: {
     slug: 'hrbp',
     name: 'HR Business Partner (HRBP)',
-    nameEs: 'HR Business Partner (HRBP)',
+    nameEs: 'Socio de negocio de RR. HH. (HRBP)',
     description: 'Access to assigned business units',
     defaultScope: 'unit',
     mfaRequired: true,

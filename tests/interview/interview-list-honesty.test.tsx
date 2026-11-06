@@ -330,13 +330,16 @@ describe('interview filter bar', () => {
   });
 });
 
-describe('schedule modal helpers (C-02 recruiter side, Costa Rica copy)', () => {
+describe('schedule modal helpers (C-02 recruiter side, country-neutral copy)', () => {
   it('offers an "En línea" type with the video flag off', () => {
     expect(availableInterviewTypes(false).map((it) => it.value)).toContain('online');
   });
 
-  it('placeholders: a San José office for on-site, a meeting link for online — no Bogotá', () => {
-    expect(es.interviews[locationPlaceholderKey('onsite')]).toContain('San José');
+  // Pilot companies are in more than one country: the on-site example names no city.
+  it('placeholders: an office and room for on-site, a meeting link for online — no city', () => {
+    expect(es.interviews[locationPlaceholderKey('onsite')]).toBe('Oficina central — Sala 3');
+    expect(en.interviews[locationPlaceholderKey('onsite')]).toBe('Head office — Room 3');
+    expect(JSON.stringify(es.interviews)).not.toMatch(/San José|Costa Rica/);
     expect(es.interviews[locationPlaceholderKey('online')]).toMatch(/Teams|Meet|Zoom/);
     expect(JSON.stringify(es.interviews)).not.toMatch(/Bogot/);
   });

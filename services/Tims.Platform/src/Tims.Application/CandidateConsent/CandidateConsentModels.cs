@@ -39,7 +39,7 @@ public static class CandidateConsentConstants
     public const string StaffListPath = "/settings/data-requests";
     public const string NotificationTitle = "Nueva solicitud de supresión de datos";
     public const string NotificationMessage =
-        "Un candidato solicitó la supresión de sus datos personales. Debe responderse dentro de 15 días hábiles.";
+        "Un candidato solicitó la supresión de sus datos personales. Revisa la fecha límite estimada y responde conforme a la legislación aplicable.";
 
     /// <summary>Channels a STAFF member may record (TS <c>CONSENT_WITHDRAWAL_CHANNELS</c>); <c>portal</c> is self-service only.</summary>
     public static readonly IReadOnlySet<string> StaffChannels =

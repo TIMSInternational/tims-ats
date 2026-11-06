@@ -979,7 +979,24 @@ describe('portal.applyToVacancy — application received email', () => {
     expect(sent.portalUrl).toMatch(/^https?:\/\/[^/]+\/careers\/acme\/dashboard$/);
   });
 
-  it('uses the English template for an English-language company', async () => {
+  // The confirmation follows the language the candidate applied in (the consent locale the form sends), not
+  // the company's: a candidate who read the portal in English gets the English email, and vice versa.
+  it('uses the English template when the candidate applied in English, even for a Spanish-language company', async () => {
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Data Analyst',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization: { name: 'Acme' },
+      company: { language: 'es' },
+    });
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy({ ...baseApplyInput, consentLocale: 'en' });
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ locale: 'en', vacancyTitle: 'Data Analyst' });
+  });
+
+  it('uses the Spanish template when the candidate applied in Spanish, even for an English-language company', async () => {
     dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
       id: VACANCY_ID,
       organizationId: ORG_ID,
@@ -989,9 +1006,9 @@ describe('portal.applyToVacancy — application received email', () => {
       company: { language: 'en-US' },
     });
     const caller = await makeCaller();
-    await caller.portal.applyToVacancy(baseApplyInput);
+    await caller.portal.applyToVacancy({ ...baseApplyInput, consentLocale: 'es' });
     await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
-    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ locale: 'en', vacancyTitle: 'Data Analyst' });
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ locale: 'es' });
   });
 
   it('a reused candidate is addressed by its STORED email + name, never the unauthenticated form values', async () => {

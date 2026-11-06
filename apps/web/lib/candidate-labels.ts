@@ -62,6 +62,7 @@ export interface CandidateSourceLabels {
   sourceUniversity: string;
   sourceInternal: string;
   sourceBulk: string;
+  sourceConsulting: string;
 }
 
 // Accessors rather than key strings: the label lookup stays type-checked against the i18n shape.
@@ -92,6 +93,12 @@ const SOURCE_LABEL: Record<CandidateSource, (l: CandidateSourceLabels) => string
   bulk: (l) => l.sourceBulk,
 };
 
+// Free-text sources found in stored data that no picker offers. Labelled only: they are NOT added to
+// CANDIDATE_SOURCES (the filter and picker lists), and the API input stays free text.
+const EXTRA_SOURCE_LABEL = {
+  consulting: (l: CandidateSourceLabels) => l.sourceConsulting,
+} as const;
+
 /** A slug nobody mapped (an org-specific source, say) still reads as words, never as `snake_case`. */
 function humanize(slug: string): string {
   const words = slug.trim().replace(/[_-]+/g, ' ');
@@ -119,5 +126,7 @@ export function candidatePoolOptionLabel(
 export function candidateSourceLabel(source: string | null | undefined, labels: CandidateSourceLabels): string {
   if (!source) return '—';
   const slug = source.trim().toLowerCase();
-  return isKey(SOURCE_LABEL, slug) ? SOURCE_LABEL[slug](labels) : humanize(source);
+  if (isKey(SOURCE_LABEL, slug)) return SOURCE_LABEL[slug](labels);
+  if (isKey(EXTRA_SOURCE_LABEL, slug)) return EXTRA_SOURCE_LABEL[slug](labels);
+  return humanize(source);
 }
