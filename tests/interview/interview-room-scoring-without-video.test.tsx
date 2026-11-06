@@ -47,6 +47,7 @@ vi.mock('@daily-co/daily-react', () => {
       h.providerMounts += 1;
       return <div data-testid="daily-provider">{children}</div>;
     },
+    DailyAudio: () => null,
     DailyVideo: () => null,
     useDaily: () => daily,
     useMeetingState: () => 'new',
@@ -60,7 +61,9 @@ vi.mock('@daily-co/daily-react', () => {
 });
 vi.mock('../../apps/web/components', () => ({ Skeleton: () => null }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: () => undefined }));
-vi.mock('../../apps/web/lib/permissions', () => ({ usePermissions: () => ({ userId: ME, roles: ['recruiter'], can: () => true }) }));
+vi.mock('../../apps/web/lib/permissions', () => ({
+  usePermissions: () => ({ userId: ME, roles: ['recruiter'], can: () => true }),
+}));
 vi.mock('../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-ai-panel', () => ({
   InterviewAiPanel: () => <div>ai-stub</div>,
 }));

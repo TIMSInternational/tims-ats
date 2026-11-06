@@ -27,6 +27,7 @@ vi.mock('@daily-co/daily-react', () => {
   };
   return {
     DailyProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+    DailyAudio: () => null,
     DailyVideo: () => null,
     useDaily: () => daily,
     useMeetingState: () => 'new',

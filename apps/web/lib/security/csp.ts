@@ -94,9 +94,17 @@ export function cvUploadCspOrigin(
  * actually receives this route's CSP instead of keeping the previous page's.
  */
 const DAILY_CALL_ROUTE_RE = /^\/recruitment\/interviews\/[^/]+\/room\/?$/;
+// The candidate's emailed join page hosts the call IN the platform only when in-app video is on
+// (NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED); otherwise it keeps redirecting to Daily and needs no relaxation.
+const CANDIDATE_JOIN_ROUTE_RE = /^\/interview\/join\/[A-Za-z0-9_-]{1,64}\/?$/;
 
-export function isDailyCallRoute(pathname: string): boolean {
-  return DAILY_CALL_ROUTE_RE.test(pathname);
+export interface CspOptions {
+  /** In-app video is on: the candidate join page creates a Daily call object too. */
+  candidateInAppVideo?: boolean;
+}
+
+export function isDailyCallRoute(pathname: string, options: CspOptions = {}): boolean {
+  return DAILY_CALL_ROUTE_RE.test(pathname) || (options.candidateInAppVideo === true && CANDIDATE_JOIN_ROUTE_RE.test(pathname));
 }
 
 // Daily's documented CSP for a custom call object with `avoidEval: true`
@@ -114,8 +122,14 @@ const DAILY_EXTRA_CONNECT_SRC =
 // bootstrap scripts via the request CSP header). Dev keeps
 // 'unsafe-inline'/'unsafe-eval' so Turbopack/HMR's inline scripts run.
 // style-src keeps 'unsafe-inline' (Tailwind/Next inject inline styles).
-export function buildCsp(nonce: string, pathname: string, origins: CspOrigins, isProd: boolean): string {
-  const daily = isDailyCallRoute(pathname);
+export function buildCsp(
+  nonce: string,
+  pathname: string,
+  origins: CspOrigins,
+  isProd: boolean,
+  options: CspOptions = {},
+): string {
+  const daily = isDailyCallRoute(pathname, options);
   const scriptSrc = [
     "script-src 'self'",
     isProd ? `'nonce-${nonce}'` : "'unsafe-inline' 'unsafe-eval'",

@@ -11,15 +11,27 @@ import {
   isSafeDailyJoinUrl,
   isValidInterviewJoinToken,
   type InterviewJoinViewResult,
+  type RecordingConsentDecision,
 } from '../../../../lib/interview-join';
+import { INTERVIEW_TRANSCRIPTION_CONSENT_VERSION, isInAppVideoEnabled } from '../../../../lib/interview-transcription';
+import { TranscriptionConsent } from './transcription-consent';
+import { CandidateCall } from './candidate-call';
 
-type ViewState = { kind: 'checking' } | { kind: 'redirecting' } | { kind: 'result'; result: InterviewJoinViewResult };
+type ViewState =
+  | { kind: 'checking' }
+  | { kind: 'redirecting' }
+  | { kind: 'consent'; saving: boolean }
+  | { kind: 'call'; joinUrl: string; attempt: number; decision: RecordingConsentDecision | null }
+  | { kind: 'result'; result: InterviewJoinViewResult };
 
-async function requestJoin(token: string): Promise<InterviewJoinViewResult> {
+async function requestJoin(token: string, decision: RecordingConsentDecision | null): Promise<InterviewJoinViewResult> {
   const response = await fetch('/api/interview-join', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token }),
+    // The decision travels with the notice version it answered; the platform records both before any room opens.
+    body: JSON.stringify(
+      decision ? { token, recordingConsent: decision, consentVersion: INTERVIEW_TRANSCRIPTION_CONSENT_VERSION } : { token },
+    ),
     cache: 'no-store',
     credentials: 'omit',
   });
@@ -43,13 +55,19 @@ function cooldownFor(result: InterviewJoinViewResult): number {
   return Math.min(Math.max(wait, JOIN_RETRY_COOLDOWN_SECONDS), JOIN_RETRY_MAX_WAIT_SECONDS);
 }
 
-/** Candidate-facing join screen: resolves the emailed link, then hands off to the Daily hosted room. */
+/**
+ * Candidate-facing join screen: resolves the emailed link, asks for the transcription decision when the platform
+ * requires it, then opens the call IN the platform (in-app video on) or hands off to the Daily hosted room.
+ */
 export function InterviewJoin({ token }: { token: string }) {
   const { t, locale } = useI18n();
   const copy = t.interviewJoin;
   const [state, setState] = useState<ViewState>({ kind: 'checking' });
   const [cooldown, setCooldown] = useState(0);
   const inFlight = useRef(false);
+  // Kept for the whole visit: a rejoin re-sends the same answer instead of asking again.
+  const decision = useRef<RecordingConsentDecision | null>(null);
+  const attempts = useRef(0);
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -64,15 +82,29 @@ export function InterviewJoin({ token }: { token: string }) {
     }
     if (inFlight.current) return;
     inFlight.current = true;
-    setState({ kind: 'checking' });
-    const result = await requestJoin(token)
+    setState((current) => (current.kind === 'consent' ? { kind: 'consent', saving: true } : { kind: 'checking' }));
+    const result = await requestJoin(token, decision.current)
       .catch((): InterviewJoinViewResult => ({ outcome: 'unavailable' }))
       .finally(() => {
         inFlight.current = false;
       });
     setCooldown(cooldownFor(result));
+    if (result.outcome === 'consent_required') {
+      // A notice version this page does not know (deploy skew) cannot be consented to honestly.
+      decision.current = null;
+      setState(
+        result.consentVersion === INTERVIEW_TRANSCRIPTION_CONSENT_VERSION
+          ? { kind: 'consent', saving: false }
+          : { kind: 'result', result: { outcome: 'unavailable' } },
+      );
+      return;
+    }
     if (result.outcome === 'ready') {
       if (isSafeDailyJoinUrl(result.joinUrl)) {
+        if (isInAppVideoEnabled()) {
+          setState({ kind: 'call', joinUrl: result.joinUrl, attempt: ++attempts.current, decision: decision.current });
+          return;
+        }
         setState({ kind: 'redirecting' });
         window.location.assign(result.joinUrl);
         return;
@@ -86,6 +118,26 @@ export function InterviewJoin({ token }: { token: string }) {
   useEffect(() => {
     void check();
   }, [check]);
+
+  const decide = (answer: RecordingConsentDecision) => {
+    decision.current = answer;
+    void check();
+  };
+
+  if (state.kind === 'consent') {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F6F6F6] px-4 py-12">
+        <TranscriptionConsent isSaving={state.saving} onDecide={decide} />
+      </main>
+    );
+  }
+  if (state.kind === 'call') {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
+        <CandidateCall key={state.attempt} joinUrl={state.joinUrl} decision={state.decision} onRejoin={() => void check()} />
+      </main>
+    );
+  }
 
   const format = (iso: string | null | undefined) => {
     if (!iso) return '';
@@ -112,6 +164,7 @@ export function InterviewJoin({ token }: { token: string }) {
       not_video: [copy.notVideoTitle, copy.notVideoText],
       unavailable: [copy.unavailableTitle, copy.unavailableText],
       ready: [copy.unavailableTitle, copy.unavailableText],
+      consent_required: [copy.unavailableTitle, copy.unavailableText],
       not_enabled: [copy.notEnabledTitle, copy.notEnabledText],
       rate_limited: [copy.rateLimitedTitle, copy.rateLimitedText],
     } as const;

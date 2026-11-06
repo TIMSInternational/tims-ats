@@ -10,6 +10,9 @@ import type {
   InterviewBiasResult,
   InterviewBiasIndicator,
 } from '../../../../../../lib/trpc-types';
+import { isTranscriptionAvailable } from '../../../../../../lib/platform-api/interview-transcription';
+import { TranscriptAiCard } from './transcript-ai-card';
+import type { ScorecardSuggestion } from './scorecard-suggestion';
 
 // ---------------------------------------------------------------------------
 // Interview AI panel — surfaces the three LIVE interview-AI endpoints
@@ -66,6 +69,8 @@ interface InterviewAiPanelProps {
    * disabled with an explanation instead of spending a click on a refusal.
    */
   isViewerBlinded?: boolean;
+  /** Copies a transcript-AI suggestion into the evaluator's scorecard draft. */
+  onApplySuggestion?: (suggestion: Omit<ScorecardSuggestion, 'id'>) => void;
 }
 
 /** The error shape a tRPC mutation hands to onError (only the fields read here). */
@@ -74,7 +79,7 @@ interface AiMutationError {
   data?: { code?: string } | null;
 }
 
-export function InterviewAiPanel({ interviewId, isViewerBlinded = false }: InterviewAiPanelProps) {
+export function InterviewAiPanel({ interviewId, isViewerBlinded = false, onApplySuggestion }: InterviewAiPanelProps) {
   const { t } = useI18n();
 
   const [guide, setGuide] = useState<InterviewGuideResult | null>(null);
@@ -112,6 +117,7 @@ export function InterviewAiPanel({ interviewId, isViewerBlinded = false }: Inter
 
   return (
     <div className="space-y-4">
+      {isTranscriptionAvailable() && <TranscriptAiCard interviewId={interviewId} onApply={onApplySuggestion} />}
       {/* Action buttons */}
       <div className="space-y-2">
         <AiActionButton

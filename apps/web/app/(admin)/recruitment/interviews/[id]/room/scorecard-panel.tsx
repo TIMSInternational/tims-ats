@@ -7,6 +7,7 @@ import type { InterviewDetail } from '../../../../../../lib/trpc-types';
 import { InterviewAiPanel } from './interview-ai-panel';
 import { ScorecardForm } from './scorecard-form';
 import { CandidateTab } from './candidate-tab';
+import type { ScorecardSuggestion } from './scorecard-suggestion';
 
 // The old "Notas" tab kept text in component state only (lost on reload) and
 // was removed: evidence now goes in the scorecard's persisted notes field.
@@ -25,6 +26,10 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
   const { userId } = usePermissions();
   const [activeTab, setActiveTab] = useState<Tab>('scorecard');
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // An AI suggestion the evaluator chose to copy into their draft (the form applies it; it never submits).
+  const [suggestion, setSuggestion] = useState<ScorecardSuggestion | null>(null);
+  const suggestionSeq = useRef(0);
+  const applySuggestion = (s: Omit<ScorecardSuggestion, 'id'>) => setSuggestion({ ...s, id: ++suggestionSeq.current });
   useEffect(() => {
     if (focusRequest === 0) return;
     // Focus only: the evaluator may be reading another tab; do not switch it.
@@ -76,7 +81,7 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
         hidden={activeTab !== 'scorecard'}
         className={`flex-1 min-h-0 flex-col ${activeTab === 'scorecard' ? 'flex' : 'hidden'}`}
       >
-        <ScorecardForm interview={interview} currentUserId={userId} />
+        <ScorecardForm interview={interview} currentUserId={userId} suggestion={suggestion} />
       </div>
       {activeTab !== 'scorecard' && (
         <div
@@ -87,7 +92,11 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
         >
           <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
             {activeTab === 'ai' ? (
-              <InterviewAiPanel interviewId={interview.id} isViewerBlinded={isViewerBlinded} />
+              <InterviewAiPanel
+                interviewId={interview.id}
+                isViewerBlinded={isViewerBlinded}
+                onApplySuggestion={applySuggestion}
+              />
             ) : (
               <CandidateTab interview={interview} candidateInitials={candidateInitials} />
             )}
