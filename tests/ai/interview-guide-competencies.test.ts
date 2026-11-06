@@ -257,6 +257,16 @@ describe('guide helpers', () => {
     expect(hyphen).toBe('Summary: [nombre] lideró ventas con [nombre]');
   });
 
+  it('masks names with any diacritics and e-mails wrapped across lines (Codex round 8)', () => {
+    expect(redactContactDetails('Dvořák lidera', ['Dvořák'])).toBe('[nombre] lidera');
+    expect(redactContactDetails('Dvorak y DVOŘÁK', ['Dvořák'])).toBe('[nombre] y [nombre]');
+    expect(redactContactDetails('Çağlar Øster', ['Çağlar', 'Øster'])).not.toMatch(/a.lar|ster/i);
+    expect(redactContactDetails('escribir a recruiting123@\nexample.com hoy')).toBe('escribir a [email] hoy');
+    expect(redactContactDetails('ana @ acme . com')).toBe('[email]');
+    const out = formatCandidateCv({ summary: 'Dvořák, recruiting123@\nexample.com', experience: [] }, ['Dvořák']);
+    expect(out).not.toMatch(/Dvo|recruiting123|example/);
+  });
+
   it('bounds the CV block', () => {
     const text = formatCandidateCv({
       summary: 'x'.repeat(5000),

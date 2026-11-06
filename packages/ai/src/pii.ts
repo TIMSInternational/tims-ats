@@ -139,7 +139,9 @@ export function wrapAsData(tag: string, content: string): string {
   return `<${tag}>\n${safe}\n</${tag}>`;
 }
 
-const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// Whitespace (incl. line breaks from PDF extraction) is allowed around "@" and the dots of the domain:
+// "recruiting123@\nexample.com", "ana @ acme . com". Over-masking a word after "x@y. " is accepted.
+const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9-]+(?:\s*\.\s*[A-Za-z0-9-]+)*\s*\.\s*[A-Za-z]{2,}/g;
 // A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
 // Separators include line breaks (PDF extraction wraps "+506 8888\n7777"), no-break/thin spaces, every
 // dash and the slash ("8888\u00a07777", "2020\u20132024", "8888/7777"). Over-masking two numbers on
@@ -184,14 +186,41 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
   // re-join a phone number or a name this function failed to recognise ("8888\u200b7777", "Jo\u200bse").
   let out = text.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(EMAIL_PATTERN, '[email]');
   out = out.replace(DIGIT_RUN, (run) => (run.replace(/\D/g, '').length >= PHONE_MIN_DIGITS ? '[teléfono]' : run));
-  for (const term of redactionVariants(terms)) {
-    const pattern = term
-      .split(' ')
-      .map((word) => fold(word.toLowerCase()))
-      .join('\\s+');
-    out = out.replace(new RegExp(`${START}${pattern}${END}`, 'giu'), '[nombre]');
-  }
+  for (const term of redactionVariants(terms)) out = maskName(out, term);
   return out;
+}
+
+/** Lower-case base letters of one character (all diacritics removed, any script): "ř" → "r", "Á" → "a". */
+function baseOf(ch: string): string {
+  return ch.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+/**
+ * Replace every whole-word occurrence of `term` in `text` with "[nombre]", ignoring case and ALL diacritics
+ * on both sides ("Dvořák" ⇔ "Dvorak", "José" ⇔ "JOSE"), any run of whitespace matching a space. Matching
+ * runs on a diacritic-free copy whose characters map back to the original, so the original text is cut.
+ */
+function maskName(text: string, term: string): string {
+  const chars = [...text];
+  let base = '';
+  const origin: number[] = []; // base index → index in chars
+  chars.forEach((ch, i) => {
+    for (const b of baseOf(ch)) {
+      base += b;
+      origin.push(i);
+    }
+  });
+  const words = term.split(' ').map((w) => [...w].map(baseOf).join('').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (words.every((w) => w.length === 0)) return text;
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${words.join('\\s+')}(?![\\p{L}\\p{N}])`, 'gu');
+  const spans: Array<[number, number]> = [];
+  for (const m of base.matchAll(re)) {
+    const start = origin[m.index!]!;
+    const end = origin[m.index! + m[0].length - 1]! + 1;
+    spans.push([start, end]);
+  }
+  for (const [start, end] of spans.reverse()) chars.splice(start, end - start, '[nombre]');
+  return chars.join('');
 }
 
 // Declared as a `type` (not `interface`) so it carries an implicit index
