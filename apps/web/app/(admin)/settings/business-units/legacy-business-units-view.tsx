@@ -7,6 +7,7 @@ import { toast } from '../../../../lib/toast';
 import { CandidateAvatar, Skeleton, ErrorState } from '../../../../components';
 import { AssignUserModal } from './assign-user-modal';
 import { UnitsTopBar } from './units-top-bar';
+import { isPilotScope } from '../../../../lib/launch-scope';
 
 /** Today's viewer (tRPC): browse units and manage unit assignees. Used while the C# org-structure flag is off. */
 export function LegacyBusinessUnitsView() {
@@ -53,20 +54,27 @@ export function LegacyBusinessUnitsView() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
+        {/* In the pilot the organization structure stays off by decision, so "ask support to enable it" would
+            send admins to a request support must refuse (D-12). */}
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-[#92400e]">
-          {t.units.managementDisabled}
+          {isPilotScope() ? t.units.managementDisabledPilot : t.units.managementDisabled}
         </p>
         {/* Selectors */}
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mb-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.units.selectCompany}</label>
+              <label htmlFor="legacy-units-company" className="block text-[12px] font-medium text-[#585858] mb-1.5">
+                {t.units.selectCompany}
+              </label>
               {companies.isLoading ? (
                 <Skeleton className="h-9 w-full rounded-lg" />
               ) : companies.isError ? (
-                <ErrorState onRetry={() => companies.refetch()} />
+                <ErrorState onRetry={() => companies.refetch()} error={companies.error} />
+              ) : (companies.data ?? []).length === 0 ? (
+                <p className="text-[12px] text-[#8B8B8B] py-2">{t.units.noCompanies}</p>
               ) : (
                 <select
+                  id="legacy-units-company"
                   value={companyId ?? ''}
                   onChange={(e) => {
                     setCompanyId(e.target.value || null);
@@ -82,11 +90,16 @@ export function LegacyBusinessUnitsView() {
               )}
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.units.selectUnit}</label>
+              <label htmlFor="legacy-units-unit" className="block text-[12px] font-medium text-[#585858] mb-1.5">
+                {t.units.selectUnit}
+              </label>
               {units.isError ? (
-                <ErrorState onRetry={() => units.refetch()} />
+                <ErrorState onRetry={() => units.refetch()} error={units.error} />
+              ) : companyId && units.data && units.data.length === 0 ? (
+                <p className="text-[12px] text-[#8B8B8B] py-2">{t.units.noUnits}</p>
               ) : (
                 <select
+                  id="legacy-units-unit"
                   value={unitId ?? ''}
                   onChange={(e) => setUnitId(e.target.value || null)}
                   disabled={!companyId || units.isLoading}

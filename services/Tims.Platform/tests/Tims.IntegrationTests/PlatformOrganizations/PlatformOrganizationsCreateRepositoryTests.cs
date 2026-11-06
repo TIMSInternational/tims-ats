@@ -81,10 +81,10 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         var orgId = Guid.Parse((await CreateAsync(repository, input)).Row!.Id);
 
         var company = Assert.Single(await fixture.ReadCompaniesAsync(orgId));
-        // The company is named after the ORGANIZATION and its country is hard-coded 'CO' regardless of the
-        // tenant. Both are real defects in the TS and both are reproduced, not fixed.
+        // The company is named after the ORGANIZATION (a TS defect reproduced, not fixed) and its country is the
+        // pilot default 'CR' (OrgProvisioningWriter.DefaultCountry == TS DEFAULT_COMPANY_COUNTRY, data-60).
         Assert.Equal("Estructura SAS", company.Name);
-        Assert.Equal("CO", company.Country);
+        Assert.Equal("CR", company.Country);
         Assert.Equal(orgId, company.OrganizationId);
         // Everything else is a DB default the TS never sends.
         Assert.Equal("USD", company.Currency);
@@ -543,7 +543,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         {
             Assert.Equal("success", n.Type);
             // Unaccented "organizacion" is what the TS actually writes.
-            Assert.Equal("Nueva organizacion creada: Notificada", n.Title);
+            Assert.Equal("Nueva organización creada: Notificada", n.Title);
             Assert.Equal("platform", n.Module);
             Assert.Equal("/platform/organizations", n.ActionUrl);
         });

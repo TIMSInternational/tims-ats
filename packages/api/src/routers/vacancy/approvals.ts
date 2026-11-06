@@ -55,7 +55,7 @@ export const vacancyApprovalsRouter = router({
         select: { id: true },
       });
       if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada o no esta en borrador' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada o no está en borrador' });
       }
 
       // Validate every approverId server-side (Codex PR #120 finding #3): without
@@ -73,7 +73,7 @@ export const vacancyApprovalsRouter = router({
         if (!approver) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Uno o mas aprobadores no son validos (inactivo, de otra organizacion, o inexistente)',
+            message: 'Uno o más aprobadores no son válidos (inactivo, de otra organización, o inexistente)',
           });
         }
         const roles = filterStaffRoleSlugs(approver.userRoles.map((ur) => ur.role.slug));
@@ -85,7 +85,7 @@ export const vacancyApprovalsRouter = router({
         if (!approverAccess.allowed) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Uno o mas aprobadores no tienen permiso para aprobar vacantes',
+            message: 'Uno o más aprobadores no tienen permiso para aprobar vacantes',
           });
         }
 
@@ -114,7 +114,7 @@ export const vacancyApprovalsRouter = router({
           if (err instanceof TRPCError && err.code === 'NOT_FOUND') {
             throw new TRPCError({
               code: 'BAD_REQUEST',
-              message: 'Uno o mas aprobadores no tienen esta vacante dentro de su alcance',
+              message: 'Uno o más aprobadores no tienen esta vacante dentro de su alcance',
             });
           }
           throw err;
@@ -137,7 +137,7 @@ export const vacancyApprovalsRouter = router({
           data: { status: 'pending_approval' },
         });
         if (moved.count !== 1) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta en borrador' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no está en borrador' });
         }
 
         await tx.vacancyApproval.createMany({
@@ -231,7 +231,7 @@ export const vacancyApprovalsRouter = router({
             where: { organizationId, vacancyId: input.id, approverId: ctx.user.id, status: 'pending' },
           });
           if (ownPending > 0) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobación pendiente para este usuario' });
         }
 
         const pendingCount = await tx.vacancyApproval.count({
@@ -244,14 +244,14 @@ export const vacancyApprovalsRouter = router({
             data: { status: 'approved' },
           });
           if (flipped.count !== 1) {
-            throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta pendiente de aprobacion' });
+            throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no está pendiente de aprobación' });
           }
         }
         return 'decided' as const;
       });
 
       if (outcome === 'conflict') {
-        throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta pendiente de aprobacion' });
+        throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no está pendiente de aprobación' });
       }
 
       return db.vacancy.findFirstOrThrow({
@@ -282,7 +282,7 @@ export const vacancyApprovalsRouter = router({
           data: { status: 'draft' },
         });
         if (moved.count !== 1) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no esta pendiente de aprobacion' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'La vacante ya no está pendiente de aprobación' });
         }
 
         const decided = await tx.vacancyApproval.updateMany({
@@ -302,7 +302,7 @@ export const vacancyApprovalsRouter = router({
             where: { organizationId, vacancyId: input.id, approverId: ctx.user.id, status: 'pending' },
           });
           if (ownPending > 0) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobación pendiente para este usuario' });
         }
 
         await tx.vacancyApproval.updateMany({

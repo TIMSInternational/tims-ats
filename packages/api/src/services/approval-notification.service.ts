@@ -15,6 +15,7 @@ import {
   type ApprovalRequestContext,
 } from '../repositories/approval-notification.repository';
 import { approvalEmailLocale, renderApprovalRequestEmail, type ApprovalKind } from './approval-email-templates';
+import { bellNotificationService } from './bell-notification.service';
 
 export type ApprovalRequestedParams = {
   orgId: string;
@@ -89,6 +90,15 @@ export const approvalNotificationService = {
         logger.warn(log, 'Approval request email skipped: item or organization not found');
         return;
       }
+      // B-26: the same approvers also get a bell notification (never throws).
+      await bellNotificationService.approvalRequested({
+        orgId: params.orgId,
+        kind: params.kind,
+        entityId: params.entityId,
+        approvers: data.approvers,
+        vacancyTitle: data.vacancyTitle,
+        candidateName: data.candidateName,
+      });
       const messages = buildApprovalRequestEmails(
         data,
         params.kind,

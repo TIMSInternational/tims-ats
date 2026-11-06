@@ -4,6 +4,7 @@ type LoginErrorCopy = {
   readonly callbackError: string;
   readonly registrationClosed: string;
   readonly noAccess: string;
+  readonly orgInactive: string;
 };
 
 type LoginNoticeCopy = {
@@ -22,6 +23,9 @@ export function loginErrorMessage(code: string | null, copy: LoginErrorCopy): st
     // active TIMS user: the session was cleared on /logout, say why instead of a silent bounce.
     case 'no_access':
       return copy.noAccess;
+    // A staff account whose organization was deactivated (platform-owner access-3).
+    case 'org_inactive':
+      return copy.orgInactive;
     default:
       return null;
   }

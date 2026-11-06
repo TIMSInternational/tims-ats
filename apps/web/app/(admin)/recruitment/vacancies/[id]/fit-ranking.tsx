@@ -69,7 +69,7 @@ export function FitRanking({ vacancyId }: { vacancyId: string }) {
       <AiSuggestionNotice className="mb-4" />
 
       {ranking.isError ? (
-        <ErrorState onRetry={() => ranking.refetch()} />
+        <ErrorState onRetry={() => ranking.refetch()} error={ranking.error} />
       ) : (
         <DataTable
           loading={ranking.isLoading}

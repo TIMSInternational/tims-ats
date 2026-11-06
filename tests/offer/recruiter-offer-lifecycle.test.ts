@@ -209,7 +209,9 @@ beforeEach(() => {
 });
 
 describe('the canonical matrix itself is unchanged (least privilege)', () => {
-  it('recruiter still holds offer:create but NOT offer:update — terms stay editable only by HR admins', () => {
+  // Draft terms are editable with offer:create (offer.update, draft-only — tests/offer/offer-edit-withdraw.test.ts);
+  // submitted, approved and sent terms stay frozen, and re-sending a live link stays offer:update.
+  it('recruiter still holds offer:create but NOT offer:update — the matrix itself is not widened', () => {
     expect(decide(['recruiter'], 'offer', 'create').allowed).toBe(true);
     expect(decide(['recruiter'], 'offer', 'update').allowed).toBe(false);
   });
@@ -353,7 +355,9 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
     }
     expect(error).toMatchObject({
       code: 'BAD_REQUEST',
-      message: 'Uno o mas aprobadores no tienen esta oferta dentro de su alcance',
+      // B-11: the message names the fix (the vacancy's hiring manager) instead of a bare scope error.
+      message:
+        'Uno de los aprobadores no tiene esta oferta dentro de su alcance. Si es el líder de la vacante, asígnalo como Responsable de la contratación en la vacante (botón Editar) o elige otro aprobador.',
     });
     expect(mockDb.offerApproval.createMany).not.toHaveBeenCalled();
     expect(mockDb.offer.update).not.toHaveBeenCalled();

@@ -21,7 +21,7 @@ export function DataRequestsTable() {
   if (requests.isError) {
     if (classifyConsentError(requests.error) === 'forbidden')
       return <EmptyState icon={null} message={m.noPermissionTitle} description={m.noPermissionMessage} />;
-    return <ErrorState message={m.loadError} onRetry={() => void requests.refetch()} />;
+    return <ErrorState message={m.loadError} onRetry={() => void requests.refetch()} error={requests.error} />;
   }
 
   const rows = requests.data?.items ?? [];

@@ -25,9 +25,29 @@ const mockTx = {
 };
 
 // The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
+// F-15 hire guards (filled vacancy): stubbed to pass here; their own tests live in hire-closure.test.ts.
+const hireGuards = vi.hoisted(() => {
+  class HireVacancyFilledError extends Error {
+    constructor(
+      readonly hires: number,
+      readonly positions: number,
+    ) {
+      super('filled');
+    }
+  }
+  return {
+    HireVacancyFilledError,
+    assertVacancyNotFilled: vi.fn(async (..._args: unknown[]) => undefined),
+    lockVacancyForHire: vi.fn(async (..._args: unknown[]) => undefined),
+  };
+});
 vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
   closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
   HireRejectedApplicationError: class HireRejectedApplicationError extends Error {},
+  HireVacancyFilledError: hireGuards.HireVacancyFilledError,
+  assertVacancyNotFilled: hireGuards.assertVacancyNotFilled,
+  lockVacancyForHire: hireGuards.lockVacancyForHire,
+  vacancyFilledMessage: (hires: number, positions: number) => `filled ${hires}/${positions}`,
 }));
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
@@ -43,6 +63,8 @@ vi.mock('@tims/db', () => ({
     user: { findFirst: vi.fn().mockResolvedValue(null) },
     role: { findFirst: vi.fn().mockResolvedValue({ id: 'employee-role-1' }) },
     hirePrediction: { findFirst: vi.fn().mockResolvedValue(null) },
+    organization: { findFirst: vi.fn().mockResolvedValue({ name: 'Org', settings: {}, billingEmail: null }) },
+    company: { findFirst: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn(async (arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => Promise<unknown>)(mockTx)
@@ -66,7 +88,11 @@ vi.mock('../../packages/api/src/services/hire-prediction.service', () => ({
 }));
 
 vi.mock('../../packages/api/src/services/staff-provisioning.service', () => ({
-  resolveStaffSupabaseUserId: vi.fn().mockResolvedValue('supabase-uid-1'),
+  provisionStaffIdentity: vi.fn().mockResolvedValue({ supabaseUserId: 'supabase-uid-1', invited: true }),
+}));
+// The access email has its own tests (tests/offer/hire-access.test.ts).
+vi.mock('../../packages/api/src/services/hire-access.service', () => ({
+  deliverHireAccess: vi.fn(async (p: { email: string }) => ({ kind: 'invitation_sent', email: p.email })),
 }));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),

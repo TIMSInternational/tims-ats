@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
+import { CANDIDATE_INTL_LOCALE } from '../../../../lib/candidate-format';
 import {
   INTERVIEW_JOIN_RELAY_ERRORS,
   JOIN_RETRY_COOLDOWN_SECONDS,
@@ -90,7 +91,7 @@ export function InterviewJoin({ token }: { token: string }) {
     if (!iso) return '';
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return '';
-    return new Intl.DateTimeFormat(locale === 'EN' ? 'en-US' : 'es-CO', {
+    return new Intl.DateTimeFormat(CANDIDATE_INTL_LOCALE[locale], {
       dateStyle: 'full',
       timeStyle: 'short',
     }).format(date);

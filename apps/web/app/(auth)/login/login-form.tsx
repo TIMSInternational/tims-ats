@@ -11,6 +11,8 @@ import { rememberPostLoginDestination } from '../../../lib/auth/post-login-desti
 import { authErrorMessage } from '../auth-error-message';
 import { loginErrorMessage, loginNoticeMessage } from './login-error-message';
 import { SsoButtons } from './sso-buttons';
+import { useAuthCaptcha } from '../../../lib/auth/use-auth-captcha';
+import { AuthCaptcha } from '../../../components/auth-captcha';
 
 // Staff login form. `showSignup` comes from the server page (SELF_SERVE_SIGNUP_ENABLED is server-only):
 // invitation-only deployments do not advertise /register.
@@ -28,17 +30,23 @@ export function LoginForm({ showSignup }: { showSignup: boolean }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // C-34: Turnstile token for Supabase Auth captcha (single-use: reset after every attempt).
+  const captcha = useAuthCaptcha();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!captcha.satisfied) return;
     setLoading(true);
     setError('');
 
+    const captchaOption = captcha.tokenOption();
+    captcha.reset();
     try {
       const supabase = createSupabaseBrowserClient();
       const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
+        ...(captchaOption.captchaToken ? { options: captchaOption } : {}),
       });
 
       if (authError) {
@@ -149,9 +157,11 @@ export function LoginForm({ showSignup }: { showSignup: boolean }) {
               </div>
             </div>
 
+            <AuthCaptcha captcha={captcha} />
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !captcha.satisfied}
               className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {loading ? t.auth.loggingIn : t.auth.loginButton}

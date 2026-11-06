@@ -290,13 +290,13 @@ describe('apply modal — submit error copy', () => {
   });
 
   it('a vacancy that closed while the form was open says so (NOT_FOUND), not "try again"', async () => {
-    const closed = Object.assign(new Error('No se encontro el recurso solicitado.'), { data: { code: 'NOT_FOUND' } });
+    const closed = Object.assign(new Error('No se encontró el recurso solicitado.'), { data: { code: 'NOT_FOUND' } });
     expect(await submitWith(closed)).toBe(p.applyVacancyClosed);
   });
 
   it('a deliberate BAD_REQUEST message (captcha) is shown as-is', async () => {
-    const captcha = Object.assign(new Error('Verificacion de seguridad fallida.'), { data: { code: 'BAD_REQUEST' } });
-    expect(await submitWith(captcha)).toBe('Verificacion de seguridad fallida.');
+    const captcha = Object.assign(new Error('Verificación de seguridad fallida.'), { data: { code: 'BAD_REQUEST' } });
+    expect(await submitWith(captcha)).toBe('Verificación de seguridad fallida.');
   });
 
   it('an internal error (e.g. a raw Prisma unique-constraint message) never reaches the toast verbatim', async () => {

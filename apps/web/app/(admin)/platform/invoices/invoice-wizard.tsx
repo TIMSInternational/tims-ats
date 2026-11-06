@@ -166,7 +166,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
                 <div className="flex-1"><p className="text-sm font-semibold text-[#333]">{orgName}</p><p className="text-xs text-[#8B8B8B]">{orgEmail || 'Sin email'}</p></div>
                 <button onClick={() => { setOrgId(''); setOrgSearch(''); setOrgName(''); }} className="text-xs text-[#1F114C] font-medium hover:underline">Cambiar</button>
               </div>}
-              {orgSearch && !orgId && orgs.isError && <ErrorState onRetry={() => orgs.refetch()} />}
+              {orgSearch && !orgId && orgs.isError && <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />}
               {orgSearch && !orgId && orgs.data && <div className="mt-1 bg-white border border-[#EDEDED] rounded-xl shadow-lg max-h-60 overflow-y-auto">
                 {orgs.data.organizations.length === 0 && <p className="px-4 py-3 text-sm text-[#8B8B8B]">{t.common.noResults}</p>}
                 {orgs.data.organizations.map((org) => (

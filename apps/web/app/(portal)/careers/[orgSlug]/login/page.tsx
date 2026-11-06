@@ -18,6 +18,10 @@ import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../../.
 import { PortalEmailStep } from './portal-email-step';
 import { PortalCodeStep } from './portal-code-step';
 import { useResendCountdown } from './use-resend-countdown';
+import { OrgLogo } from '../../../../../components/org-logo';
+import { usePortalOrgBrand } from '../_components/portal-org-brand';
+import { useOpenSession } from './use-open-session';
+import { PortalOpenSessionNotice } from './portal-open-session-notice';
 
 // Candidate portal login — passwordless. One email carries both a magic link and a 6-digit code: the link only
 // works in the browser that asked for it (PKCE), so the page also takes the code (verifyOtp, type 'email'), which
@@ -25,6 +29,8 @@ import { useResendCountdown } from './use-resend-countdown';
 // candidate (no account enumeration); access is gated downstream at /dashboard by the Candidate lookup.
 export default function PortalLoginPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
+  // The organization's logo, or its initial (C-25): never the platform's "T".
+  const brand = usePortalOrgBrand();
   const router = useRouter();
   const { t } = useI18n();
   const m = t.portalAuth;
@@ -49,7 +55,12 @@ export default function PortalLoginPage() {
   const captchaSatisfied = !turnstileSiteKey || !!captchaToken;
   // /auth/callback sends a failed magic-link exchange back here with ?error=link (expired, or opened
   // in another browser). Shown until the candidate asks for a new email.
-  const linkFailedQuery = useSearchParams().get('error') === 'link';
+  const errorQuery = useSearchParams().get('error');
+  const linkFailedQuery = errorQuery === 'link';
+  // E-19 (#410): another account signed in here is never replaced without an explicit sign-out. The callback
+  // sends an emailed link opened over a staff session back here with ?error=open_session.
+  const fromCallback = errorQuery === 'open_session';
+  const session = useOpenSession(fromCallback);
   // Supabase can also land here with the failure only in the fragment (#error=...&error_code=otp_expired),
   // which the server never sees. Read it on mount, then drop it from the address bar.
   const [linkFailedHash, setLinkFailedHash] = useState(false);
@@ -91,6 +102,10 @@ export default function PortalLoginPage() {
     if (inFlight.current) return;
     if (!ensureCanonicalAuthOrigin()) return;
     inFlight.current = true;
+    if (await session.blockedBy(address)) {
+      inFlight.current = false;
+      return;
+    }
     const resending = step === 'code';
     setBusy('send');
     setError('');
@@ -157,6 +172,10 @@ export default function PortalLoginPage() {
   const verifyCode = async (code: string) => {
     if (inFlight.current) return;
     inFlight.current = true;
+    if (await session.blockedBy(sentTo)) {
+      inFlight.current = false;
+      return;
+    }
     setBusy('verify');
     setError('');
     setNotice('');
@@ -194,14 +213,31 @@ export default function PortalLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[#F6F6F6] px-4 py-10">
       <div className="w-full max-w-[420px]">
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
-            <span className="text-white text-xl font-bold">T</span>
+          <div className="mb-4 flex justify-center">
+            <OrgLogo
+              logo={brand?.logo}
+              name={brand?.name ?? orgSlug}
+              imgClassName="h-14 w-auto max-w-[180px] object-contain"
+              fallbackClassName="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1F114C] text-xl font-bold text-white"
+            />
           </div>
           <h1 className="text-[22px] font-bold text-[#1F114C]">{m.loginTitle}</h1>
           <p className="text-[13px] text-muted mt-1">{m.loginSubtitle}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
+          {session.openSession !== null && (
+            <PortalOpenSessionNotice
+              message={(fromCallback && !submitted ? m.openSessionFromLink : m.openSession).replace(
+                '{email}',
+                session.openSession,
+              )}
+              action={m.openSessionContinue}
+              failed={session.leaveFailed ? m.openSessionFailed : null}
+              busy={session.leaving}
+              onContinue={() => void session.leave()}
+            />
+          )}
           {step === 'code' ? (
             <PortalCodeStep
               sentTo={sentTo}

@@ -57,7 +57,7 @@ describe('commitment child-path (codex)', () => {
     expect(block).toMatch(/assertScoped\('coachingSession'/);
     // codex round-2: the parent session must belong to the same employee
     expect(block).toMatch(/employeeId:\s*input\.employeeId/);
-    expect(block).toMatch(/La sesion no corresponde a este empleado/);
+    expect(block).toMatch(/La sesión no corresponde a este empleado/);
   });
   it('updateCommitment probes the commitment (was a bare update-by-id)', () => {
     const block = blockAt(src(), 'updateCommitment:');

@@ -6,6 +6,8 @@ import { getAuthRedirectUrl } from '@tims/shared';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
 import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../lib/auth/canonical-auth-origin';
+import { useAuthCaptcha } from '../../../lib/auth/use-auth-captcha';
+import { AuthCaptcha } from '../../../components/auth-captcha';
 
 type AccountType = 'candidate' | 'company';
 
@@ -20,11 +22,14 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  // C-34: Turnstile token for Supabase Auth captcha (single-use: reset after every attempt).
+  const captcha = useAuthCaptcha();
   useCanonicalAuthOrigin();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ensureCanonicalAuthOrigin()) return;
+    if (!captcha.satisfied) return;
     setError('');
 
     if (password.length < 12 || password.length > 128) {
@@ -43,6 +48,8 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
       return;
     }
     const supabase = createSupabaseBrowserClient();
+    const captchaOption = captcha.tokenOption();
+    captcha.reset();
 
     const { error: signUpError } = await supabase.auth.signUp({
       email,
@@ -55,6 +62,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
           company_name: accountType === 'company' ? companyName : undefined,
         },
         emailRedirectTo,
+        ...captchaOption,
       },
     });
 
@@ -203,7 +211,9 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
           </div>
         </div>
 
-        <button type="submit" disabled={loading} className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 disabled:cursor-not-allowed transition">
+        <AuthCaptcha captcha={captcha} />
+
+        <button type="submit" disabled={loading || !captcha.satisfied} className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 disabled:cursor-not-allowed transition">
           {loading
             ? t.auth.creatingAccount
             : accountType === 'company'

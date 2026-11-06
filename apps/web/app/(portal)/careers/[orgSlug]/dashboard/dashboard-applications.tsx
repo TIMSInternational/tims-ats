@@ -5,6 +5,7 @@ import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatCandidateDate } from '../../../../../lib/candidate-format';
 import { DashboardApplicationTimeline } from './dashboard-application-timeline';
+import { DashboardWithdrawApplication } from './dashboard-withdraw-application';
 import { candidatePhase, phaseText } from './candidate-phase';
 
 // "My Applications" section of the candidate dashboard (Wave 1 Slice 2). Lists the
@@ -12,7 +13,16 @@ import { candidatePhase, phaseText } from './candidate-phase';
 // expands each into its stage timeline. Data comes from candidatePortal.* which
 // resolves the candidate from the Supabase session — the orgSlug is the only input.
 // Dates render in the organization's time zone (UTC when it has none), never the device's locale.
-export function DashboardApplications({ orgSlug, timeZone = null }: { orgSlug: string; timeZone?: string | null }) {
+// An application still in process offers "Retirar mi postulación" (audit C-33).
+export function DashboardApplications({
+  orgSlug,
+  orgName = '',
+  timeZone = null,
+}: {
+  orgSlug: string;
+  orgName?: string;
+  timeZone?: string | null;
+}) {
   const { t, locale } = useI18n();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { data, isLoading, isError } = trpc.candidatePortal.myApplications.useQuery({ orgSlug });
@@ -96,14 +106,24 @@ export function DashboardApplications({ orgSlug, timeZone = null }: { orgSlug: s
                     </p>
                     <p className="text-[11px] text-muted">{phase.description}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedId(isOpen ? null : app.id)}
-                    aria-expanded={isOpen}
-                    className="text-[12px] font-medium text-[#1F114C] hover:underline shrink-0"
-                  >
-                    {isOpen ? t.portalDashboard.hideTimeline : t.portalDashboard.viewTimeline}
-                  </button>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isOpen ? null : app.id)}
+                      aria-expanded={isOpen}
+                      className="text-[12px] font-medium text-[#1F114C] hover:underline shrink-0"
+                    >
+                      {isOpen ? t.portalDashboard.hideTimeline : t.portalDashboard.viewTimeline}
+                    </button>
+                    {app.status === 'active' && (
+                      <DashboardWithdrawApplication
+                        orgSlug={orgSlug}
+                        orgName={orgName}
+                        applicationId={app.id}
+                        vacancyTitle={app.vacancy.title}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 {isOpen && <DashboardApplicationTimeline orgSlug={orgSlug} applicationId={app.id} timeZone={timeZone} />}

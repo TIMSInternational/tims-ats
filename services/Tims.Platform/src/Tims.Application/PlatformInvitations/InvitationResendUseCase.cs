@@ -26,9 +26,10 @@ public sealed class InvitationResendUseCase(IInvitationResendRepository reposito
         var expiresAt = Now().AddDays(7);
         var organization = string.IsNullOrEmpty(invitation.OrganizationName) ? "TIMS ATS" : invitation.OrganizationName;
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);
+        var timeZone = await InvitationTimeZone.FindAsync(repository, invitation.OrganizationId, ct);
         var accepted = await sender.SendEmailAsync(invitation.Email,
-            $"Recordatorio: Invitacion pendiente - {organization}",
-            InvitationEmail.Render(organization, null, url, expiresAt, reminder: true), ct);
+            $"Recordatorio: Invitación pendiente - {organization}",
+            InvitationEmail.Render(organization, null, url, expiresAt, reminder: true, timeZone: timeZone), ct);
         if (!accepted) return new(InvitationResendOutcome.DeliveryUnconfirmed, invitation.OrganizationId);
 
         var sentAt = Now();

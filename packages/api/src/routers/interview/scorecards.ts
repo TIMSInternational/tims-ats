@@ -94,7 +94,7 @@ export const interviewScorecardsRouter = router({
         select: { id: true },
       });
       if (!evaluator) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Solo un evaluador asignado puede enviar la evaluacion' });
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Solo un evaluador asignado puede enviar la evaluación' });
       }
 
       // Completeness is enforced HERE (not only in the room UI): submitting is what
@@ -116,18 +116,18 @@ export const interviewScorecardsRouter = router({
         if (result.reason === 'closed') {
           throw new TRPCError({
             code: 'PRECONDITION_FAILED',
-            message: 'No se puede evaluar una entrevista cancelada o en la que el candidato no se presento',
+            message: 'No se puede evaluar una entrevista cancelada o en la que el candidato no se presentó',
           });
         }
         if (result.reason === 'rescheduled') {
           throw new TRPCError({
             code: 'CONFLICT',
-            message: 'La entrevista se reprogramo mientras se evaluaba; recarga y vuelve a enviar el scorecard',
+            message: 'La entrevista se reprogramó mientras se evaluaba; recarga y vuelve a enviar el scorecard',
           });
         }
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'La evaluacion debe calificar todas las competencias de la entrevista',
+          message: 'La evaluación debe calificar todas las competencias de la entrevista',
         });
       }
       return result.scorecard;

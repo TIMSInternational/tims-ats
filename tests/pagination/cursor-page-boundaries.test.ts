@@ -77,8 +77,9 @@ vi.mock('@tims/db', () => {
     findMany: (args: FindManyArgs) => Promise.resolve(prismaFindMany(args)),
     count: () => Promise.resolve(state.rows.length),
     // The audit repository checks the cursor row is visible under its filters before paging.
-    findFirst: (args: { where: { AND: Array<{ id?: string }> } }) => {
-      const id = args.where.AND.find((clause) => clause.id)?.id;
+    // (A plain lookup without AND — e.g. onboarding.list reading the organization's zone — finds nothing.)
+    findFirst: (args: { where: { AND?: Array<{ id?: string }> } }) => {
+      const id = args.where.AND?.find((clause) => clause.id)?.id;
       const match = id !== undefined && !state.stale.has(id) && state.rows.some((row) => row.id === id);
       return Promise.resolve(match ? { id } : null);
     },

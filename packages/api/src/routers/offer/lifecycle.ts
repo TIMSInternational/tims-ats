@@ -4,12 +4,23 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
-import { assertApplicationNotRejected } from './rejected-application-guard';
-import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
+import { assertApplicationNotRejected, WITHDRAWN_APPLICATION_MESSAGE } from './rejected-application-guard';
+import { provisionStaffIdentity } from '../../services/staff-provisioning.service';
+import { deliverHireAccess, type HireAccessOutcome } from '../../services/hire-access.service';
+import { candidateContactEmail } from '../../services/candidate-contact';
+import { newStaffUserRepository } from '../../repositories/new-staff-user.repository';
 import { defaultOnboardingTasks, scheduledOnboardingCheckIns } from '../../services/onboarding-defaults';
 import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
-import { closeHireRecords, HireRejectedApplicationError } from '../../services/hire-closure.service';
+import {
+  assertVacancyNotFilled,
+  closeHireRecords,
+  HireRejectedApplicationError,
+  HireWithdrawnApplicationError,
+  HireVacancyFilledError,
+  lockVacancyForHire,
+  vacancyFilledMessage,
+} from '../../services/hire-closure.service';
 import { bumpVacancyKpiGeneration } from '../../lib/vacancy-kpi-cache';
 
 export const offerLifecycleRouter = router({
@@ -66,11 +77,12 @@ export const offerLifecycleRouter = router({
             where: { id: priorHire.userId, organizationId: ctx.user.organizationId },
             select: { id: true, email: true, firstName: true, lastName: true, jobTitle: true },
           });
-          if (priorUser) return priorUser;
+          // A retry of a finished hire: nothing new was sent, so the screen claims no email.
+          if (priorUser) return { ...priorUser, access: null as HireAccessOutcome | null };
         }
         throw new TRPCError({
           code: 'CONFLICT',
-          message: 'La oferta ya fue convertida, pero no se encontro al empleado',
+          message: 'La oferta ya fue convertida, pero no se encontró al colaborador',
         });
       }
 
@@ -85,7 +97,7 @@ export const offerLifecycleRouter = router({
         db,
         ctx.user.organizationId,
         offer.id,
-        'Esta oferta fue rechazada en su cadena de aprobacion y no se puede convertir',
+        'Esta oferta fue rechazada en su cadena de aprobación y no se puede convertir',
       );
       await assertApplicationNotRejected(
         db,
@@ -108,12 +120,26 @@ export const offerLifecycleRouter = router({
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Hay verificaciones legales pendientes' });
       }
 
+      // F-15: never hire past the vacancy's positions. Checked here, before the new hire's sign-in identity
+      // (and its invitation email) is created, and again under the vacancy lock inside the transaction.
+      try {
+        await assertVacancyNotFilled({ organizationId: ctx.user.organizationId, vacancyId: offer.vacancyId });
+      } catch (error) {
+        if (error instanceof HireVacancyFilledError) {
+          throw new TRPCError({ code: 'CONFLICT', message: vacancyFilledMessage(error.hires, error.positions) });
+        }
+        throw error;
+      }
+
       const employeeRole = await db.role.findFirst({
         where: { organizationId: ctx.user.organizationId, slug: 'employee', isActive: true },
         select: { id: true },
       });
       if (!employeeRole) {
-        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'El rol de colaborador no esta configurado' });
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'El rol Colaborador no está configurado en esta organización; pide a soporte que lo active',
+        });
       }
 
       const candidate = offer.candidate;
@@ -132,14 +158,25 @@ export const offerLifecycleRouter = router({
       if (existingUser) {
         throw new TRPCError({
           code: 'CONFLICT',
-          message: 'Ya existe un empleado con este correo electronico',
+          message: 'Ya existe un colaborador con este correo electrónico en la organización',
         });
       }
 
       // B2 invite-time linking: stamp the real Supabase identity now (reuses the
       // candidate's existing auth user if they applied via the portal). External
-      // call, so it runs before the tx.
-      const supabaseUserId = await resolveStaffSupabaseUserId(candidate.email);
+      // call, so it runs before the tx: a non-transaction query inside the interactive
+      // transaction holds a second pool connection and can pool-starve (see
+      // hirePredictionService.readFitForHire). `invited` says whether Supabase emailed an invitation.
+      // Known residual (Codex review of F-15): two hires racing for a vacancy's LAST position within
+      // this call can both pass the pre-check above, and the loser's candidate may receive the sign-in
+      // invitation although the transaction below refuses their hire. No second hire can be recorded
+      // either way.
+      // Organization name/contact for the access email, and the zone the new user is created in (F-2b:
+      // organization, then the vacancy's company, then UTC — never the America/Bogota column default).
+      // Read first: a failed read must not follow an invitation Supabase already sent.
+      const hireContext = await newStaffUserRepository.findContext(ctx.user.organizationId, offer.vacancy.companyId);
+      const identity = await provisionStaffIdentity(candidate.email);
+      const supabaseUserId = identity.supabaseUserId;
 
       // Read the candidate's current FIT prediction BEFORE the tx (a standalone
       // tenantDb read must not run nested inside the interactive transaction).
@@ -153,6 +190,16 @@ export const offerLifecycleRouter = router({
       // `tenantDb`, so the outer wrapper never composed and this multi-write hire
       // flow (user + onboarding plan + tasks + offer status) was not atomic.
       const hired = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
+        // F-15, race-safe: lock the vacancy and re-count its hires before claiming the offer.
+        try {
+          await lockVacancyForHire(tx, { organizationId: ctx.user.organizationId, vacancyId: offer.vacancyId });
+        } catch (error) {
+          if (error instanceof HireVacancyFilledError) {
+            throw new TRPCError({ code: 'CONFLICT', message: vacancyFilledMessage(error.hires, error.positions) });
+          }
+          throw error;
+        }
+
         // Claim the accepted offer before creating the employee. A concurrent
         // retry cannot create a second hire, and a later failure rolls this back.
         const claimed = await tx.offer.updateMany({
@@ -160,7 +207,7 @@ export const offerLifecycleRouter = router({
           data: { status: 'converted' },
         });
         if (claimed.count !== 1) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida o cambio de estado' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'La oferta ya fue convertida o cambió de estado' });
         }
 
         // Create the user record, linked to its Supabase identity from birth.
@@ -176,6 +223,7 @@ export const offerLifecycleRouter = router({
             jobTitle: input.jobTitle,
             companyId: offer.vacancy.companyId,
             businessUnitId: offer.vacancy.businessUnitId,
+            timezone: hireContext.timeZone,
             isActive: true,
           },
           select: { id: true, email: true, firstName: true, lastName: true, jobTitle: true },
@@ -252,6 +300,9 @@ export const offerLifecycleRouter = router({
               message: 'El candidato fue descartado en el proceso; esta oferta no se puede convertir',
             });
           }
+          if (error instanceof HireWithdrawnApplicationError) {
+            throw new TRPCError({ code: 'CONFLICT', message: WITHDRAWN_APPLICATION_MESSAGE });
+          }
           throw error;
         }
 
@@ -260,6 +311,23 @@ export const offerLifecycleRouter = router({
       // After commit: the hire may have closed the vacancy and moved the application out of the active
       // pipeline, so move the tenant's vacancy KPIs to a new cache generation before the client refetches.
       await bumpVacancyKpiGeneration(ctx.user.organizationId);
-      return hired;
+
+      // After commit (the user row exists before any link is opened): give the new employee a way in and
+      // tell the hire screen exactly what was sent (E-06 / B-07). Bounded; never fails the hire.
+      const access = await deliverHireAccess({
+        email: hired.email,
+        invited: identity.invited,
+        firstName: candidate.firstName,
+        organizationName: hireContext.organizationName,
+        jobTitle: input.jobTitle,
+        startDate: offer.startDate,
+        timeZone: hireContext.timeZone,
+        contactEmail: candidateContactEmail({
+          settings: hireContext.organizationSettings,
+          billingEmail: hireContext.billingEmail,
+        }),
+        locale: hireContext.companyLanguage?.startsWith('en') ? 'en' : 'es',
+      });
+      return { ...hired, access: access as HireAccessOutcome | null };
     }),
 });

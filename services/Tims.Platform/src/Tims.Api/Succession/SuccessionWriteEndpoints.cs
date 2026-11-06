@@ -42,7 +42,7 @@ public static class SuccessionWriteEndpoints
     private const string SubjectForbiddenMessage = "No puedes agregar este sucesor";
     private const string SuccessorConflictMessage = "Este sucesor ya está asignado a este rol";
     private const string SuccessorNotFoundMessage = "Sucesor no encontrado";
-    private const string RoleNotFoundMessage = "Rol critico no encontrado";
+    private const string RoleNotFoundMessage = "Rol crítico no encontrado";
 
     private const int MaxTitleLength = 255;
     private const int MaxPositionIdLength = 100;
@@ -124,7 +124,7 @@ public static class SuccessionWriteEndpoints
                 try
                 {
                     // (1) The parent critical role must be in the caller's grant (succession.ts:154-161).
-                    // Out-of-grant / nonexistent → ScopedNotFoundException (404, "Rol critico no encontrado").
+                    // Out-of-grant / nonexistent → ScopedNotFoundException (404, "Rol crítico no encontrado").
                     await scopedProbe.AssertScopedAsync(
                         ScopedEntity.CriticalRole, criticalRoleId, gate.Scope!.Value, anchors, orgId, callerId,
                         cancellationToken);

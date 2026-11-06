@@ -6,7 +6,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 process.env.NEXT_PUBLIC_ORG_INVITATION_CREATE_VIA_CSHARP = 'true';
 const mocks = vi.hoisted(() => ({ post: vi.fn(), legacy: vi.fn(), enabled: true, toast: vi.fn() }));
 vi.mock('../../apps/web/lib/platform-api/client', () => ({ platformPost: mocks.post, isPlatformApiEnabled: () => mocks.enabled }));
-vi.mock('../../apps/web/lib/trpc', () => ({ trpc: { platform: { createOrgInvitation: { useMutation: () => ({ mutateAsync: mocks.legacy }) } } } }));
+vi.mock('../../apps/web/lib/trpc', () => ({
+  trpc: {
+    platform: {
+      createOrgInvitation: { useMutation: () => ({ mutateAsync: mocks.legacy }) },
+      // The org modal reads existing organizations for its similar-name warning (D-15).
+      listOrganizationsMinimal: { useQuery: () => ({ data: [] }) },
+    },
+  },
+}));
 vi.mock('../../apps/web/lib/i18n', async () => {
   const { default: t } = await import('../../apps/web/lib/i18n/en.json');
   return { useI18n: () => ({ t }) };

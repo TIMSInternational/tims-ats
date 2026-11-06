@@ -27,7 +27,7 @@ public static class CompensationFxReadEndpoints
 {
     private const string EmployeeCompensationEntity = "employeeCompensation";
     private const string SubjectForbiddenMessage = "No puedes simular ajustes para este usuario";
-    private const string CompNotFoundMessage = "Compensacion no encontrada";
+    private const string CompNotFoundMessage = "Compensación no encontrada";
 
     public static void MapCompensationFxReadEndpoints(this WebApplication app)
     {

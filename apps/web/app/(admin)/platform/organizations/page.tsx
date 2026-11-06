@@ -93,7 +93,7 @@ export default function OrganizationsPage() {
           </div>
         )) : kpis.isError ? (
           <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            <ErrorState onRetry={() => kpis.refetch()} />
+            <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} />
           </div>
         ) : kpis.data ? <>
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
@@ -176,7 +176,7 @@ export default function OrganizationsPage() {
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto min-h-0">
           {orgs.isError ? (
-            <ErrorState onRetry={() => orgs.refetch()} />
+            <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
           ) : (
             <OrgTable
               organizations={organizations}

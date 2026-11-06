@@ -4,6 +4,7 @@ import type { Prisma } from '@tims/db';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { takeCursorPage } from '../lib/cursor-page';
 import { candidateAiService } from './candidate-ai.service';
+import { candidateTimelineService, rejectionAuthorsById } from './candidate-timeline.service';
 
 // ---------------------------------------------------------------------------
 // Candidate Service — business logic only, no db imports.
@@ -44,7 +45,16 @@ export const candidateService = {
     if (!candidate) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
     }
-    return candidate;
+    // Who rejected each rejected application (A-05), from the rejection's audit row; null for rejections
+    // recorded before that row existed.
+    const authors = await rejectionAuthorsById(
+      orgId,
+      candidate.applications.filter((a) => a.status === 'rejected').map((a) => a.id),
+    );
+    return {
+      ...candidate,
+      applications: candidate.applications.map((a) => ({ ...a, rejectedBy: authors.get(a.id) ?? null })),
+    };
   },
 
   async create(
@@ -116,100 +126,9 @@ export const candidateService = {
     };
   },
 
-  // Timeline
+  // Timeline — built in candidate-timeline.service.ts (split per the 300-line service cap).
   async getTimeline(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
-    const [applications, assessments, documents] = await candidateRepository.getTimelineData(
-      orgId,
-      candidateId,
-      appScopeWhere,
-    );
-
-    // `title`/`description` are a Spanish fallback; screens render the event from `type` + `params`
-    // through i18n (apps/web/lib/candidate-timeline-labels.ts), so slugs and English never show (A-04).
-    type TimelineEvent = {
-      id: string;
-      type: 'application' | 'stage_movement' | 'assessment_assigned' | 'assessment_completed' | 'document_uploaded';
-      title: string;
-      description: string | null;
-      date: Date;
-      actor: string | null;
-      params: {
-        vacancyTitle?: string;
-        source?: string;
-        fromStage?: string | null;
-        toStage?: string;
-        reason?: string | null;
-        assessmentName?: string;
-        status?: string;
-        score?: number | null;
-        fileName?: string;
-        documentType?: string;
-      };
-    };
-
-    const events: TimelineEvent[] = [];
-
-    for (const app of applications) {
-      events.push({
-        id: `app-${app.id}`,
-        type: 'application',
-        title: `Se postuló a ${app.vacancy.title}`,
-        description: `Fuente: ${app.source}`,
-        date: app.appliedAt,
-        actor: null,
-        params: { vacancyTitle: app.vacancy.title, source: app.source },
-      });
-      for (const mov of app.movements) {
-        events.push({
-          id: `mov-${mov.id}`,
-          type: 'stage_movement',
-          title: `${mov.fromStage?.name ?? 'Inicio'} → ${mov.toStage.name}`,
-          description: mov.reason,
-          date: mov.movedAt,
-          actor: mov.actor ? `${mov.actor.firstName} ${mov.actor.lastName}` : null,
-          params: { fromStage: mov.fromStage?.name ?? null, toStage: mov.toStage.name, reason: mov.reason },
-        });
-      }
-    }
-
-    for (const a of assessments) {
-      events.push({
-        id: `asn-${a.id}`,
-        type: 'assessment_assigned',
-        title: `Evaluación asignada: ${a.assessmentType.name}`,
-        description: `Estado: ${a.status}`,
-        date: a.assignedAt,
-        actor: null,
-        params: { assessmentName: a.assessmentType.name, status: a.status },
-      });
-      if (a.completedAt) {
-        const score = a.result?.normalizedScore ?? null;
-        events.push({
-          id: `asc-${a.id}`,
-          type: 'assessment_completed',
-          title: `Evaluación completada: ${a.assessmentType.name}`,
-          description: score != null ? `Puntaje: ${score}` : null,
-          date: a.completedAt,
-          actor: null,
-          params: { assessmentName: a.assessmentType.name, score: score != null ? Number(score) : null },
-        });
-      }
-    }
-
-    for (const doc of documents) {
-      events.push({
-        id: `doc-${doc.id}`,
-        type: 'document_uploaded',
-        title: `Documento subido: ${doc.fileName}`,
-        description: doc.type,
-        date: doc.uploadedAt,
-        actor: null,
-        params: { fileName: doc.fileName, documentType: doc.type },
-      });
-    }
-
-    events.sort((a, b) => b.date.getTime() - a.date.getTime());
-    return events;
+    return candidateTimelineService.getTimeline(orgId, candidateId, appScopeWhere);
   },
 
   // Apply to vacancy

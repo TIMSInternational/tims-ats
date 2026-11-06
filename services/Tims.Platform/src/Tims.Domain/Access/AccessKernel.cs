@@ -19,7 +19,7 @@ public sealed record AccessPrincipal(
 public sealed class TenantOrgRequiredException : Exception
 {
     public TenantOrgRequiredException()
-        : base("Selecciona o impersona una organizacion para operar datos de tenant") { }
+        : base("Selecciona o impersona una organización para operar datos de tenant") { }
 }
 
 /// <summary>

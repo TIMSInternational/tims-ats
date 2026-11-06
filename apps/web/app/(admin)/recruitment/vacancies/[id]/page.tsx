@@ -17,6 +17,7 @@ import { FitRanking } from './fit-ranking';
 import { RoleFamilyCard } from './role-family-card';
 import { FitRequirementsCard } from './fit-requirements-card';
 import { SubmitForApprovalCta } from './submit-for-approval-cta';
+import { VacancyLifecycleActions } from './vacancy-lifecycle-actions';
 import { vacancyStatusMap } from '../vacancy-status';
 
 export default function VacancyDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -52,7 +53,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
   if (vacancy.isError) {
     return (
       <div className="h-full flex items-center justify-center">
-        <ErrorState onRetry={() => vacancy.refetch()} />
+        <ErrorState onRetry={() => vacancy.refetch()} error={vacancy.error} />
       </div>
     );
   }
@@ -79,10 +80,11 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
           <span className="text-sm font-medium text-[#1F114C]">{v.title}</span>
           <StatusBadge status={v.status} map={statusMap} />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* A draft's next step, as the primary action (it was a small link at the bottom of the page). */}
           <SubmitForApprovalCta vacancyId={id} vacancyStatus={v.status} />
-          {/* RH-09: the "Editar" link pointed at this same page; hidden until a real edit flow ships. */}
+          {/* Editar (drawer on vacancy.update), Congelar and Reanudar. */}
+          <VacancyLifecycleActions vacancy={v} />
           <Link
             href={`/recruitment/pipeline?vacancy=${id}`}
             className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition"
@@ -94,6 +96,12 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
+        {/* A-08: say plainly what "Congelada" means and that it can be undone. */}
+        {v.status === 'frozen' && (
+          <p role="status" className="mb-4 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-[12px] text-purple-800">
+            {t.vacancies.frozenNotice}
+          </p>
+        )}
         <div className="flex flex-col md:flex-row gap-6">
           {/* Left Column 65% */}
           <div className="w-full md:flex-[65] space-y-4">

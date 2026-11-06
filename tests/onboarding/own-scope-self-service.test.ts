@@ -31,6 +31,8 @@ const h = vi.hoisted(() => ({
 vi.mock('@tims/db', () => ({
   tenantDb: {
     user: { count: vi.fn().mockResolvedValue(1) },
+    // onboarding.list reads the organization's zone for each plan's current phase (B-23).
+    organization: { findFirst: vi.fn().mockResolvedValue({ settings: {} }) },
     onboardingTask: { findFirst: h.taskFindFirst, update: h.taskUpdate },
     onboardingPlan: { update: h.planUpdate, findMany: h.planFindMany },
     onboardingCheckIn: { findFirst: h.checkInFindFirst, update: h.checkInUpdate },

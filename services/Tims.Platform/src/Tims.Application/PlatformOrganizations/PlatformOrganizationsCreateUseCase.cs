@@ -69,7 +69,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
     // Notification copy, verbatim from organizations.ts:220-226 — including the unaccented "organizacion",
     // which is what the TS actually writes. "Fixing" the spelling here would be a silent content divergence
     // in a user-visible string, exactly as recorded for the suspension copy in slice 20.
-    private const string CreatedTitlePrefix = "Nueva organizacion creada: ";
+    private const string CreatedTitlePrefix = "Nueva organización creada: ";
     private const string CreatedType = "success";
     private const string PlatformModule = "platform";
     private const string OrganizationsActionUrl = "/platform/organizations";

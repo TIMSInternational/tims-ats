@@ -24,7 +24,7 @@ async function assertOfferApprovers(organizationId: string, offerId: string, app
     if (!approver) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'Uno o mas aprobadores no son validos (inactivo, de otra organizacion, o inexistente)',
+        message: 'Uno o más aprobadores no son válidos (inactivos, de otra organización o inexistentes)',
       });
     }
     const roles = filterStaffRoleSlugs(approver.userRoles.map((ur) => ur.role.slug));
@@ -36,7 +36,7 @@ async function assertOfferApprovers(organizationId: string, offerId: string, app
     if (!access.allowed) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'Uno o mas aprobadores no tienen permiso para aprobar ofertas',
+        message: 'Uno o más aprobadores no tienen permiso para aprobar ofertas',
       });
     }
     // offer:approve can be scope-limited (leaders hold it at TEAM scope), and approve() re-checks THIS
@@ -56,7 +56,10 @@ async function assertOfferApprovers(organizationId: string, offerId: string, app
       if (err instanceof TRPCError && err.code === 'NOT_FOUND') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Uno o mas aprobadores no tienen esta oferta dentro de su alcance',
+          // B-11: say what fixes it. A team-scoped leader sees an offer through its vacancy (team they lead, or
+          // its assignee), so naming them the vacancy's hiring manager puts the offer in their scope.
+          message:
+            'Uno de los aprobadores no tiene esta oferta dentro de su alcance. Si es el líder de la vacante, asígnalo como Responsable de la contratación en la vacante (botón Editar) o elige otro aprobador.',
         });
       }
       throw err;
@@ -90,7 +93,8 @@ const OFFER_DECISION_SELECT = {
 
 export const offerApprovalsRouter = router({
   // 9.5 — Submit offer for approval. offer:create (recruiters) suffices: the body only moves a DRAFT into
-  // the approval chain and never edits terms, which stays offer:update.
+  // the approval chain. Draft terms are editable with offer:create too (crud.ts update, draft-only), since
+  // they are not approved yet; once submitted, nobody edits them.
   submitForApproval: anyPermissionProcedure('offer', ['update', 'create'])
     .input(
       z.object({
@@ -116,7 +120,7 @@ export const offerApprovalsRouter = router({
       if (offer.status !== 'draft') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Solo se pueden enviar a aprobacion ofertas en estado borrador',
+          message: 'Solo se pueden enviar a aprobación ofertas en estado borrador',
         });
       }
 
@@ -314,7 +318,7 @@ export const offerApprovalsRouter = router({
           if (ownPending > 0) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
           throw new TRPCError({
             code: 'NOT_FOUND',
-            message: 'No se encontro aprobacion pendiente para este usuario',
+            message: 'No se encontró una aprobación pendiente para este usuario',
           });
         }
 
@@ -392,7 +396,7 @@ export const offerApprovalsRouter = router({
           if (ownPending > 0) throw new TRPCError({ code: 'CONFLICT', message: STALE_APPROVAL_MESSAGE });
           throw new TRPCError({
             code: 'NOT_FOUND',
-            message: 'No se encontro aprobacion pendiente para este usuario',
+            message: 'No se encontró una aprobación pendiente para este usuario',
           });
         }
 

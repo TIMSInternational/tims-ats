@@ -27,6 +27,9 @@ vi.mock('../../apps/web/lib/trpc', () => ({
           return 'status' in input ? filteredQuery : allQuery;
         },
       },
+      getPending: {
+        useQuery: () => ({ data: [], isLoading: false, isError: false, refetch }),
+      },
     },
   },
 }));

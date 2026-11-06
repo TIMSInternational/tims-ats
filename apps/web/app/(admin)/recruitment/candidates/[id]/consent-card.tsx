@@ -33,7 +33,7 @@ export function CandidateConsentCard({ candidateId }: { candidateId: string }) {
     const kind = classifyConsentError(consent.error);
     // 403 = no org-wide access; 'unavailable' = the C# route is not mapped (web flag on, C# flag off).
     if (kind === 'forbidden' || kind === 'unavailable') return null;
-    return <ErrorState message={m.loadError} onRetry={() => void consent.refetch()} />;
+    return <ErrorState message={m.loadError} onRetry={() => void consent.refetch()} error={consent.error} />;
   }
   const view = consent.data;
   if (!view) return null;

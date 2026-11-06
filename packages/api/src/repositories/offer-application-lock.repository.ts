@@ -33,4 +33,19 @@ export const offerApplicationLockRepository = {
           FOR SHARE`;
     return rows.map((row) => row.status);
   },
+
+  /**
+   * Serializes offer creation per candidate (one open offer per candidate and vacancy): locks the candidate
+   * row FOR NO KEY UPDATE inside the caller's transaction. A concurrent create for the same candidate waits
+   * here until the first commits, and its open-offer check (a new statement) then sees the first offer.
+   * NO KEY UPDATE, not UPDATE: the offer insert's foreign key takes KEY SHARE on the same row, which this
+   * mode does not block. Returns false when the candidate is not in this organization.
+   */
+  async lockCandidate(tx: Prisma.TransactionClient, organizationId: string, candidateId: string): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM candidates
+      WHERE id = ${candidateId}::uuid AND organization_id = ${organizationId}::uuid
+      FOR NO KEY UPDATE`;
+    return rows.length === 1;
+  },
 };

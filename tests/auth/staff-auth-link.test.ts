@@ -81,7 +81,10 @@ describe('staff creation sites stamp a real Supabase id (no unclaimed sentinel)'
   });
 
   it('employee conversion links via the provisioning service, not a pending- sentinel', () => {
-    expect(OFFER_LIFECYCLE).toContain('resolveStaffSupabaseUserId');
+    // provisionStaffIdentity is the same provisioning service; it also reports whether Supabase sent an
+    // invitation, so the hire can send a set-password link when an existing identity was reused (E-06).
+    expect(OFFER_LIFECYCLE).toContain('provisionStaffIdentity(candidate.email)');
+    expect(PROVISION).toContain('return (await provisionStaffIdentity(email)).supabaseUserId;');
     expect(OFFER_LIFECYCLE).not.toMatch(/pending-/);
   });
 });
@@ -114,6 +117,18 @@ describe('every recognition site matches by supabaseUserId only (no email-join)'
     expect(EFFECTIVE_IDENTITY).toMatch(
       /!appUser\.isActive\s*\|\|\s*\(!appUser\.isPlatformOwner\s*&&\s*!appUser\.organizationId\)/,
     );
+  });
+
+  it('staff of a deactivated organization get no tRPC identity and no admin session (platform-owner access-3)', () => {
+    // Both tRPC paths and the admin SSR load the organization flag and refuse a deactivated org: the
+    // fast-path lookups (2), the full-path lookup, the owner auto-provision insert and the impersonation target.
+    expect(TRPC_ROUTE.match(/organization: \{ select: \{ isActive: true \} \}/g)?.length).toBe(5);
+    expect(TRPC_ROUTE).toMatch(/if \(belongsToInactiveOrganization\(appUser\)\) \{\s*return \{ user: null/);
+    expect(EFFECTIVE_IDENTITY).toMatch(/organization: \{ select: \{ isActive: true \} \}/);
+    expect(EFFECTIVE_IDENTITY).toMatch(
+      /if \(belongsToInactiveOrganization\(appUser\)\) \{\s*redirect\('\/logout\?reason=org_inactive'\)/,
+    );
+    expect(LOGOUT).toMatch(/FORWARDED_REASONS = new Set\(\[[^\]]*'org_inactive'/);
   });
 
   it('the effective-identity helper looks up the staff row by supabaseUserId and never email', () => {

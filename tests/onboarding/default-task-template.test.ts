@@ -80,9 +80,25 @@ describe('default onboarding task template', () => {
     const owners = new Set(DEFAULT_ONBOARDING_TASKS.map((task) => task.responsible));
     expect([...owners].sort()).toEqual(['buddy', 'employee', 'hr', 'it', 'manager']);
     const titles = DEFAULT_ONBOARDING_TASKS.map((task) => task.title.toLowerCase()).join(' | ');
-    for (const needle of ['contrato', 'accesos de ti', 'políticas', 'buddy', 'beneficios', '1:1', '30/60/90']) {
+    for (const needle of ['contrato', 'accesos de ti', 'políticas', 'compañero guía', 'beneficios', '1:1', '30/60/90']) {
       expect(titles).toContain(needle);
     }
+  });
+
+  it('is Spanish (E-09: no "buddy"/"manager") and every task says what it means (B-24)', () => {
+    for (const task of DEFAULT_ONBOARDING_TASKS) {
+      expect(task.title.toLowerCase()).not.toMatch(/\b(buddy|manager)\b/);
+      expect(task.description.trim().length).toBeGreaterThan(20);
+      expect(task.description.toLowerCase()).not.toMatch(/\b(buddy|manager)\b/);
+    }
+    // The new hire's own tasks tell them what to do, not just what the item is called.
+    for (const task of DEFAULT_ONBOARDING_TASKS.filter((t) => t.responsible === 'employee')) {
+      expect(task.description).toMatch(/marca esta tarea/i);
+    }
+    expect(defaultOnboardingTasks(new Date('2026-10-01T12:00:00.000Z'), orgId)[0]).toHaveProperty(
+      'description',
+      DEFAULT_ONBOARDING_TASKS[0]!.description,
+    );
   });
 
   it('dates every task relative to the start date and derives a matching phase', () => {

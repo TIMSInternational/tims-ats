@@ -153,7 +153,7 @@ export function AiInterviewOrgControls({ config, agentId, onMutate, isPending }:
       <div className="flex items-center gap-1 pt-0.5">
         <span className="text-[10px] text-[#8B8B8B] w-40 shrink-0">{t.aiAgents.accruedUsageLabel}</span>
         {billingPreview.isError ? (
-          <ErrorState onRetry={() => billingPreview.refetch()} />
+          <ErrorState onRetry={() => billingPreview.refetch()} error={billingPreview.error} />
         ) : (
           <span className="text-[10px] font-medium text-[#1F114C]">
             {billingPreview.isLoading

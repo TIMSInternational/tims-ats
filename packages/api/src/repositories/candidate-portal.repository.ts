@@ -11,6 +11,20 @@ const INTERVIEW_JOIN_GRACE_MS = 2 * 60 * 60 * 1000; // 2 hours
 // through `tenantDb` (RLS) AND carries explicit `organizationId` + `candidateId`
 // filters — defense in depth. The caller (service) wraps these in runWithTenant.
 
+// Offer statuses after which an offer is over for the candidate. Every OTHER status counts as in
+// progress (fail-closed for a status added later): being prepared, in approval, approved, accepted —
+// and 'sent' until its expiry.
+const OFFER_CLOSED_STATUSES = ['declined', 'rejected', 'converted', 'cancelled', 'expired', 'withdrawn'];
+
+function offerInProgress(now: Date) {
+  return {
+    OR: [
+      { status: { notIn: ['sent', ...OFFER_CLOSED_STATUSES] } },
+      { status: 'sent', OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    ],
+  };
+}
+
 export const candidatePortalRepo = {
   // Resolve an organization by its public careers slug. Returns minimal fields.
   findOrgBySlug(slug: string) {
@@ -40,13 +54,69 @@ export const candidatePortalRepo = {
     });
   },
 
-  // The candidate's display name for the portal /dashboard header. Same tenant-scoped path
-  // as everything else here — the SSR gate must NOT read candidate data on the
-  // privileged db (that would bypass RLS).
+  // The candidate's display name and the contact fields they may correct ("Mis datos") for the
+  // portal /dashboard. Same tenant-scoped path as everything else here — the SSR gate must NOT
+  // read candidate data on the privileged db (that would bypass RLS).
   findCandidateName(organizationId: string, email: string) {
     return tenantDb.candidate.findFirst({
       where: { organizationId, email, isActive: true, deletedAt: null },
-      select: { firstName: true, lastName: true },
+      select: { firstName: true, lastName: true, phone: true, location: true },
+    });
+  },
+
+  // The candidate's own correction of their name/phone/location. Conditional on the same
+  // org + id + active + not-deleted filters as every read, so a record that was deactivated or
+  // deleted meanwhile is never revived or edited. Returns null when nothing matched.
+  async updateCandidateProfile(
+    organizationId: string,
+    candidateId: string,
+    data: { firstName: string; lastName: string; phone: string | null; location: string | null },
+  ) {
+    const result = await tenantDb.candidate.updateMany({
+      where: { id: candidateId, organizationId, isActive: true, deletedAt: null },
+      data,
+    });
+    if (result.count !== 1) return null;
+    return tenantDb.candidate.findFirst({
+      where: { id: candidateId, organizationId },
+      select: { firstName: true, lastName: true, phone: true, location: true },
+    });
+  },
+
+  // The candidate withdraws ONE of their own applications. A single conditional statement: only
+  // an application of THIS candidate at THIS org that is still 'active' moves to 'withdrawn', so it
+  // can never overwrite a hire or a rejection that committed first (hire-closure and
+  // rejectApplication are conditional on 'active' the same way). It is also refused while an offer
+  // to this candidate for that vacancy (linked or not) is in progress — anything but closed: being
+  // prepared, in approval, approved, sent and not yet expired, or accepted. At that stage the
+  // candidate answers the offer or asks the organization. A sent offer past its expiry cannot be
+  // answered any more (signing refuses it), so it does not block.
+  // After a withdrawal the offer side refuses 'withdrawn' like 'rejected' (release/pilot-ux-wave2):
+  // offer.create refuses an unlinked offer when the candidate's applications for the vacancy are all closed
+  // and one was withdrawn (a linked one already needs an active application), and the
+  // send/accept guards (rejected-application-guard, locking the application FOR SHARE) and hire-closure
+  // (FOR NO KEY UPDATE) refuse to move one forward — so an offer inserted concurrently with this
+  // statement can be drafted but never sent, accepted or converted. Returns the number of rows moved (0 or 1).
+  async withdrawApplication(organizationId: string, candidateId: string, applicationId: string, now = new Date()) {
+    const result = await tenantDb.application.updateMany({
+      where: {
+        id: applicationId,
+        candidateId,
+        organizationId,
+        status: 'active',
+        vacancy: { offers: { none: { candidateId, ...offerInProgress(now) } } },
+      },
+      data: { status: 'withdrawn' },
+    });
+    return result.count;
+  },
+
+  // Why a withdrawal matched nothing: the application's current status, or null when this
+  // candidate has no such application at this org.
+  findOwnApplicationStatus(organizationId: string, candidateId: string, applicationId: string) {
+    return tenantDb.application.findFirst({
+      where: { id: applicationId, candidateId, organizationId },
+      select: { status: true },
     });
   },
 

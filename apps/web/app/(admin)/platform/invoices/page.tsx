@@ -127,7 +127,7 @@ export default function InvoicesPage() {
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.isError ? (
           <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            <ErrorState onRetry={() => kpis.refetch()} />
+            <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} />
           </div>
         ) : kpis.data ? (
           <>
@@ -208,7 +208,7 @@ export default function InvoicesPage() {
       {/* Table */}
       {invoices.isError ? (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
-          <ErrorState onRetry={() => invoices.refetch()} />
+          <ErrorState onRetry={() => invoices.refetch()} error={invoices.error} />
         </div>
       ) : (
       <DataTable

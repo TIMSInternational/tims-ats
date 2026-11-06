@@ -66,6 +66,8 @@ function pickerPurposes(source: string): Array<string | null> {
 // The mutation each picker feeds decides its purpose (services/Tims.Platform AssignablePurposes.RuleFor).
 const EXPECTED: Record<string, Array<string>> = {
   '(admin)/learning/enroll-modal.tsx': ['learning_enrollee'],
+  // B-08: the buddy of an existing plan, saved through onboarding.updatePlan (colleague directory).
+  '(admin)/people/onboarding/assign-buddy-modal.tsx': ['colleague'],
   '(admin)/people/onboarding/create-plan-modal.tsx': ['onboarding_hire', 'colleague'],
   '(admin)/people/performance/create-commitment-modal.tsx': ['performance_subject'],
   '(admin)/people/performance/create-okr-modal.tsx': ['performance_subject'],
@@ -82,6 +84,8 @@ const EXPECTED: Record<string, Array<string>> = {
   '(admin)/recruitment/offers/_components/offer-approval-actions.tsx': ['offer_approver'],
   '(admin)/recruitment/interviews/evaluators-modal.tsx': ['interview_evaluator'],
   '(admin)/recruitment/vacancies/create-modal.org-fields.tsx': ['vacancy_assignee'],
+  // The vacancy "Editar" drawer's hiring manager: written as vacancy.update's assignedTo, same directory as create.
+  '(admin)/recruitment/vacancies/[id]/edit-vacancy-fields.tsx': ['vacancy_assignee'],
   '(admin)/recruitment/vacancies/[id]/submit-approval-modal.tsx': ['vacancy_approver'],
 };
 

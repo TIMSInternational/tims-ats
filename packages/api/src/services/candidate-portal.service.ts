@@ -1,7 +1,9 @@
 import { TRPCError } from '@trpc/server';
 import { runWithTenant } from '@tims/db';
 import { answerCandidateFaq, type CandidateFaqContext } from '@tims/ai';
+import type { CandidatePortalProfileInput } from '@tims/shared';
 import { candidatePortalRepo } from '../repositories/candidate-portal.repository';
+import { candidateContactEmail, type CandidateContactSource } from './candidate-contact';
 
 // Business logic for the authenticated candidate portal. The trust anchor is the
 // Supabase session email (passed by the router from ctx.supabaseAuth) — never a
@@ -26,7 +28,7 @@ function extractSigningToken(settings: unknown): string | null {
 export async function resolveOrg(orgSlug: string) {
   const org = await candidatePortalRepo.findOrgBySlug(orgSlug);
   if (!org || !org.isActive) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Organización no encontrada' });
   }
   return org;
 }
@@ -111,6 +113,63 @@ export const candidatePortalService = {
     return runWithTenant(orgId, async () => await candidatePortalRepo.findCandidateName(orgId, email));
   },
 
+  // The mailbox this organization's candidates may write to (settings.candidateContactEmail, then
+  // billingEmail, else null — never a vendor mailbox). Shown in the dashboard's privacy panel for
+  // data requests; the same address candidate emails print and set as Reply-To.
+  getContactEmail(org: CandidateContactSource) {
+    return candidateContactEmail(org);
+  },
+
+  // The signed-in candidate corrects their own name, phone and location. Identity is the session
+  // email only; the email itself is never editable here. An empty phone/location clears it.
+  async updateMyProfile(email: string, orgSlug: string, input: CandidatePortalProfileInput) {
+    const org = await resolveOrg(orgSlug);
+    return runWithTenant(org.id, async () => {
+      const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
+      if (!candidate) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+      }
+      const updated = await candidatePortalRepo.updateCandidateProfile(org.id, candidate.id, {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone === '' ? null : input.phone,
+        location: input.location === '' ? null : input.location,
+      });
+      if (!updated) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+      }
+      return updated;
+    });
+  },
+
+  // "Retirar mi postulación": the signed-in candidate withdraws one of their OWN applications
+  // (status 'withdrawn'). NOT_FOUND unless the application belongs to this session's candidate at
+  // this org (never reveal another candidate's id); CONFLICT when it is no longer in process;
+  // PRECONDITION_FAILED while an offer for that vacancy is in progress (see the repository).
+  async withdrawMyApplication(email: string, orgSlug: string, applicationId: string) {
+    const org = await resolveOrg(orgSlug);
+    return runWithTenant(org.id, async () => {
+      const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
+      if (!candidate) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
+      }
+      const moved = await candidatePortalRepo.withdrawApplication(org.id, candidate.id, applicationId);
+      if (moved === 1) return { id: applicationId, status: 'withdrawn' as const };
+
+      const current = await candidatePortalRepo.findOwnApplicationStatus(org.id, candidate.id, applicationId);
+      if (!current) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
+      }
+      if (current.status !== 'active') {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Esta postulación ya no está en proceso.' });
+      }
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'Su postulación ya está en la etapa de oferta. Responda la oferta o comuníquese con la organización.',
+      });
+    });
+  },
+
   // A candidate's applications at one org. An authenticated email with no Candidate
   // record at this org is a valid state (they just have nothing) → empty list, not
   // an error.
@@ -167,11 +226,11 @@ export const candidatePortalService = {
     return runWithTenant(org.id, async () => {
       const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
       if (!candidate) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
       }
       const application = await candidatePortalRepo.findApplicationDetail(org.id, candidate.id, applicationId);
       if (!application) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
       }
       return application;
     });
@@ -196,7 +255,7 @@ export const candidatePortalService = {
       ]);
 
       if (applicationId && !applications.some((app) => app.id === applicationId)) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulación no encontrada' });
       }
 
       return buildCandidateFaqContext(org.name, candidate, applications, interviews, offers, applicationId);

@@ -50,14 +50,14 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.userEmail} *</label>
-            <input type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <label htmlFor="invite-user-email" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.userEmail} *</label>
+            <input id="invite-user-email" type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organization} *</label>
-            <input type="text" value={orgSearch} onChange={(e) => { setOrgSearch(e.target.value); setOrgId(''); setRoleSlug(''); }} placeholder={t.organizations.searchOrg} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+            <label htmlFor="invite-user-org" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organization} *</label>
+            <input id="invite-user-org" type="text" value={orgSearch} onChange={(e) => { setOrgSearch(e.target.value); setOrgId(''); setRoleSlug(''); }} placeholder={t.organizations.searchOrg} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
             {orgSearch && !orgId && orgs.isError && (
-              <ErrorState onRetry={() => orgs.refetch()} />
+              <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
             )}
             {orgSearch && !orgId && orgs.data && (
               <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-40 overflow-y-auto">

@@ -37,7 +37,7 @@ public sealed class ExternalValidationSubmitUseCaseTests
         var ex = await Assert.ThrowsAsync<ExternalValidationNotFoundException>(() =>
             useCase.SubmitAsync(Principal, ValidationId, Command(), CancellationToken.None));
 
-        Assert.Equal("Validacion no encontrada", ex.Message);
+        Assert.Equal("Validación no encontrada", ex.Message);
         Assert.False(repo.WriteAttempted);
         Assert.Empty(auditor.Events);
     }
@@ -53,7 +53,7 @@ public sealed class ExternalValidationSubmitUseCaseTests
         var ex = await Assert.ThrowsAsync<ExternalValidationConflictException>(() =>
             useCase.SubmitAsync(Principal, ValidationId, Command(), CancellationToken.None));
 
-        Assert.Equal("La validacion no esta abierta para envio de resultados", ex.Message);
+        Assert.Equal("La validación no está abierta para envío de resultados", ex.Message);
         Assert.True(repo.WriteAttempted);
         Assert.Empty(auditor.Events);
     }

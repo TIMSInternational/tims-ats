@@ -5,6 +5,8 @@ import { Modal } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import type { CandidateDetail } from '../../../../../lib/trpc-types';
+import { useCan } from '../../../../../lib/permissions';
+import { announceStageMove } from '../../../../../lib/pipeline-move-toast';
 
 type Application = CandidateDetail['applications'][number];
 
@@ -27,17 +29,22 @@ export function CandidateStageModal({
     { enabled: !!application },
   );
   const utils = trpc.useUtils();
+  const can = useCan();
   const move = trpc.pipeline.moveCandidate.useMutation();
 
   const handleMove = async () => {
     if (!application || !toStageId || toStageId === application.currentStage?.id) return;
     setError(null);
     try {
-      await move.mutateAsync({ applicationId, toStageId });
+      const result = await move.mutateAsync({ applicationId, toStageId });
+      // The same feedback as a move on the board (A-13): checklist warning, next step, or "Candidato movido".
+      const destination = stages.data?.find((stage) => stage.id === toStageId)?.name;
+      announceStageMove(result, destination, t.pipeline, { can, candidateId, applicationId });
       await Promise.all([
         utils.candidate.getById.invalidate({ id: candidateId }),
         utils.candidate.getTimeline.invalidate({ candidateId }),
         utils.pipeline.getBoard.invalidate({ vacancyId: application.vacancy.id }),
+        utils.pipeline.getMovementHistory.invalidate({ applicationId }),
       ]);
       onClose();
     } catch (cause) {

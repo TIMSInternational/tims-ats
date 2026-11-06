@@ -10,9 +10,21 @@ import { Step1Fields, Step2Fields, Step3Fields } from './schedule-modal.fields';
 import { useI18n } from '../../../../lib/i18n';
 import { useAssignablePeople } from '../../../../lib/platform-api/assignable-people';
 
+/**
+ * Opening the form from a candidate (pipeline card / row, Candidate 360, move toast — A-10): the candidate and
+ * the application are known, so the form starts at step 2 and books against that application.
+ */
+export interface SchedulePrefill {
+  candidateId: string;
+  candidateName: string;
+  /** The candidate's active applications; the first is preselected, the others can be picked in step 2. */
+  applications: Array<{ id: string; vacancyId: string; vacancyTitle: string }>;
+}
+
 interface ScheduleModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  prefill?: SchedulePrefill;
 }
 
 /** "YYYY-MM-DD" of tomorrow on the user's own calendar (not UTC: after 18:00 in Costa Rica UTC is
@@ -23,16 +35,25 @@ function localTomorrow(now: Date = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
+export function ScheduleModal({ onClose, onSuccess, prefill }: ScheduleModalProps) {
   const { t, locale } = useI18n();
-  const [step, setStep] = useState<Step>(1);
+  const prefilledApp = prefill?.applications[0];
+  const [step, setStep] = useState<Step>(prefilledApp ? 2 : 1);
 
   // Step 1: Who
   const [candidateSearch, setCandidateSearch] = useState('');
-  const [selectedCandidateId, setSelectedCandidateId] = useState('');
-  const [selectedCandidateName, setSelectedCandidateName] = useState('');
-  const [selectedVacancyId, setSelectedVacancyId] = useState('');
-  const [selectedVacancyTitle, setSelectedVacancyTitle] = useState('');
+  const [selectedCandidateId, setSelectedCandidateId] = useState(prefilledApp ? (prefill?.candidateId ?? '') : '');
+  const [selectedCandidateName, setSelectedCandidateName] = useState(prefilledApp ? (prefill?.candidateName ?? '') : '');
+  const [selectedVacancyId, setSelectedVacancyId] = useState(prefilledApp?.vacancyId ?? '');
+  const [selectedVacancyTitle, setSelectedVacancyTitle] = useState(prefilledApp?.vacancyTitle ?? '');
+  const [selectedApplicationId, setSelectedApplicationId] = useState(prefilledApp?.id ?? '');
+  const pickApplication = (applicationId: string) => {
+    const app = prefill?.applications.find((a) => a.id === applicationId);
+    if (!app) return;
+    setSelectedApplicationId(app.id);
+    setSelectedVacancyId(app.vacancyId);
+    setSelectedVacancyTitle(app.vacancyTitle);
+  };
 
   // Step 2: What & When
   const [interviewType, setInterviewType] = useState(() => defaultInterviewType());
@@ -99,6 +120,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
       const created = await createInterview.mutateAsync({
         candidateId: selectedCandidateId,
         vacancyId: selectedVacancyId,
+        ...(prefill && selectedApplicationId ? { applicationId: selectedApplicationId } : {}),
         type: interviewType,
         scheduledAt,
         duration,
@@ -156,6 +178,32 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
         />
       )}
 
+      {/* Prefilled from a candidate: who and for which application, instead of step 1 */}
+      {prefill && step === 2 && (
+        <div className="mb-4 rounded-lg bg-[#F6F6F6] px-3 py-2">
+          {prefill.applications.length > 1 ? (
+            <label className="block text-[12px] font-medium text-[#585858]">
+              {t.candidates.scheduleForApplication} · {prefill.candidateName}
+              <select
+                value={selectedApplicationId}
+                onChange={(e) => pickApplication(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px] text-[#333]"
+              >
+                {prefill.applications.map((app) => (
+                  <option key={app.id} value={app.id}>
+                    {app.vacancyTitle}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="text-[12px] text-[#333]">
+              {t.candidates.scheduleSummary.replace('{candidate}', prefill.candidateName).replace('{vacancy}', selectedVacancyTitle)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Step 2: Type & Schedule */}
       {step === 2 && (
         <Step2Fields
@@ -193,7 +241,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
       {/* Navigation */}
       <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#EDEDED]">
         <div>
-          {step > 1 && (
+          {step > (prefill ? 2 : 1) && (
             <button onClick={() => setStep((step - 1) as Step)} className="text-[12px] text-[#585858] hover:text-[#1F114C] transition flex items-center gap-1">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
               Anterior

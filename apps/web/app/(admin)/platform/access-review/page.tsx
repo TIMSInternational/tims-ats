@@ -61,7 +61,7 @@ export default function AccessReviewPage() {
       {/* Org selector + actions */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex items-center gap-3">
         {orgs.isError ? (
-          <ErrorState onRetry={() => orgs.refetch()} />
+          <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
         ) : (
           <select
             value={organizationId}
@@ -105,7 +105,7 @@ export default function AccessReviewPage() {
               Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
             ) : review.isError ? (
               <div className="col-span-5">
-                <ErrorState onRetry={() => review.refetch()} />
+                <ErrorState onRetry={() => review.refetch()} error={review.error} />
               </div>
             ) : (
               <>
@@ -217,7 +217,7 @@ export default function AccessReviewPage() {
             {history.isLoading ? (
               <div className="p-5 text-sm text-[#8B8B8B]">...</div>
             ) : history.isError ? (
-              <ErrorState onRetry={() => history.refetch()} />
+              <ErrorState onRetry={() => history.refetch()} error={history.error} />
             ) : attestations.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-sm text-[#8B8B8B]">{ar.historyEmpty}</p>

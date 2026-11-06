@@ -7,7 +7,7 @@ process.env.NEXT_PUBLIC_TIMS_PLATFORM_API_URL = 'https://csharp.test';
 process.env.NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP = 'true';
 
 const VACANCY = '77777777-7777-4777-8777-777777777777';
-const SERVER_400 = 'Uno o mas aprobadores no tienen esta vacante dentro de su alcance';
+const SERVER_400 = 'Uno o más aprobadores no tienen esta vacante dentro de su alcance';
 const submitMutation = vi.hoisted(() => ({
   mutate: vi.fn(),
   reset: vi.fn(),

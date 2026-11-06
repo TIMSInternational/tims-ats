@@ -35,6 +35,22 @@ export interface StaffAppUser {
   isPlatformOwner: boolean;
   lastLoginAt: Date | null;
   userRoles: Array<{ role: { slug: string } }>;
+  /** The row's organization (null for a platform owner). Its `isActive` gates sign-in. */
+  organization: { isActive: boolean } | null;
+}
+
+/**
+ * A non-owner staff row whose organization is deactivated (Pilot UX re-audit platform-owner access-3 /
+ * journeys-18): it gets no staff session and no tRPC identity, exactly like a deactivated user. Fails
+ * closed: a non-owner row without a loaded organization counts as inactive. Shared by this fast path,
+ * the full tRPC path (route.ts) and the admin SSR identity (effective-identity.ts); the C# twin is
+ * IdentityRepository.cs.
+ */
+export function belongsToInactiveOrganization(row: {
+  isPlatformOwner: boolean;
+  organization?: { isActive: boolean } | null;
+}): boolean {
+  return !row.isPlatformOwner && row.organization?.isActive !== true;
 }
 
 /** The subset of tRPC context that the fast path returns when it resolves. */
@@ -111,7 +127,8 @@ export async function resolveStaffContext(
   if (
     !appUser ||
     !appUser.isActive ||
-    (!appUser.isPlatformOwner && !appUser.organizationId)
+    (!appUser.isPlatformOwner && !appUser.organizationId) ||
+    belongsToInactiveOrganization(appUser)
   ) {
     return NEEDS_FALLBACK;
   }
@@ -153,8 +170,14 @@ export async function resolveStaffContext(
     const payload = verifyImpersonationToken(token);
     if (payload) {
       const target = await db.findUserById(payload.targetUserId);
-      // Never impersonate another platform owner or an inactive/org-less user.
-      if (target && target.isActive && target.organizationId && !target.isPlatformOwner) {
+      // Never impersonate another platform owner or an inactive/org-less user, or one whose org is deactivated.
+      if (
+        target &&
+        target.isActive &&
+        target.organizationId &&
+        !target.isPlatformOwner &&
+        !belongsToInactiveOrganization(target)
+      ) {
         return {
           user: {
             id: target.id,

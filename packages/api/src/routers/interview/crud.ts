@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { getAppUrl } from '@tims/shared';
 import { interviewEmailService } from '../../services/interview-email.service';
+import { bellNotificationService as bell } from '../../services/bell-notification.service';
 import { runAfterResponse } from '../../lib/after-response';
 import { clearedJoinTokenColumns, issueJoinToken } from '../../services/interview-join-token';
 import { scopeWhereFor, assertScoped } from '../../access';
@@ -192,7 +193,7 @@ export const interviewCrudRouter = router({
         where: { id: { in: uniqueEvaluators }, organizationId: orgId },
       });
       if (evaluatorCount !== uniqueEvaluators.length) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado en esta organizacion' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado en esta organización' });
       }
       if (input.applicationId) {
         await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
@@ -209,7 +210,7 @@ export const interviewCrudRouter = router({
         if (!bound) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'La aplicacion no corresponde al candidato y la vacante indicados',
+            message: 'La aplicación no corresponde al candidato y la vacante indicados',
           });
         }
       } else {
@@ -227,7 +228,7 @@ export const interviewCrudRouter = router({
         if (boundApp) {
           data.applicationId = boundApp.id;
         } else if (ctx.access.scope !== 'organization' && ctx.access.scope !== 'company') {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene aplicacion a esta vacante' });
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene aplicación a esta vacante' });
         }
       }
 
@@ -266,10 +267,10 @@ export const interviewCrudRouter = router({
         },
       });
 
-      // After the response (never awaited, never frozen: see lib/after-response.ts): candidate (join
-      // link) + each evaluator (staff room link), with .ics.
+      // After the response (lib/after-response.ts): candidate + evaluator emails with .ics, and the panel's bell (B-26).
       const inviteParams = { orgId, interviewId: interview.id, kind: 'invite' as const, candidateJoinToken: joinToken.token };
       runAfterResponse(ctx, () => interviewEmailService.notify(inviteParams));
+      runAfterResponse(ctx, () => bell.panelAssigned(orgId, interview.id, evaluatorIds, ctx.user.id));
 
       // #312: the mailer skips a candidate who revoked the authorization; tell staff so they know the
       // candidate was NOT notified (evaluators still are).
@@ -400,7 +401,7 @@ export const interviewCrudRouter = router({
         });
       } catch (err) {
         if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
-          throw new TRPCError({ code: 'CONFLICT', message: 'El evaluador ya esta asignado a esta entrevista' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'El evaluador ya está asignado a esta entrevista' });
         }
         throw err;
       }
@@ -413,6 +414,7 @@ export const interviewCrudRouter = router({
         onlyEvaluatorId: input.userId,
       };
       runAfterResponse(ctx, () => interviewEmailService.notify(addedParams));
+      runAfterResponse(ctx, () => bell.panelAssigned(ctx.user.organizationId, input.interviewId, [input.userId], ctx.user.id));
       return added;
     }),
 

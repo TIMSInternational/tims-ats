@@ -62,6 +62,27 @@ public sealed class IdentityResolutionTests(IdentitySchemaFixture fixture)
         Assert.Null(result.Context);
     }
 
+    // ---- Assertion 3b: active staff of a SUSPENDED org → fall back (platform-owner access-3) ----
+    [Fact]
+    public async Task StaffOfSuspendedOrg_NeedsFallback()
+    {
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
+        var repository = new IdentityRepository(db);
+
+        var row = await repository.FindBySupabaseUserIdAsync(IdentityFixture.SuspendedOrgStaffSub, CancellationToken.None);
+        Assert.NotNull(row);
+        Assert.True(row!.IsActive);
+        Assert.False(row.OrganizationIsActive);
+
+        var result = await NewResolver(db).ResolveStaffAsync(IdentityFixture.SuspendedOrgStaffSub, CancellationToken.None);
+        Assert.False(result.Resolved);
+        Assert.Null(result.Context);
+
+        // An active org's staff row still reads as active.
+        var active = await repository.FindBySupabaseUserIdAsync(IdentityFixture.ActiveStaffSub, CancellationToken.None);
+        Assert.True(active!.OrganizationIsActive);
+    }
+
     // ---- Assertion 4: unknown supabase_user_id → fall back --------------------------
     [Fact]
     public async Task UnknownSupabaseUserId_NeedsFallback()

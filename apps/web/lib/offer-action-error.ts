@@ -1,11 +1,14 @@
 /**
  * Maps a failed offer action (tRPC mutation) to a user-facing message.
  * FORBIDDEN gets a specific, actionable message instead of the raw server text.
- * Only codes whose server messages are written for users (NOT_FOUND, CONFLICT, and a plain-text
- * BAD_REQUEST such as "Solo se pueden editar ofertas en estado borrador") are shown verbatim.
+ * Only codes whose server messages are written for users (NOT_FOUND, CONFLICT, PRECONDITION_FAILED — e.g.
+ * "Hay verificaciones legales pendientes" on a hire — and a plain-text BAD_REQUEST such as "Solo se pueden
+ * editar ofertas en estado borrador") are shown, with known machine codes (`consent_withdrawn`) translated.
  * Everything else — INTERNAL_SERVER_ERROR, a BAD_REQUEST carrying serialized Zod issues, network
  * failures, unknown codes — falls back to the generic label so internals never reach the user.
  */
+
+import { localizeKnownErrorCode } from './known-error-codes';
 
 export interface OfferActionErrorLabels {
   forbidden: string;
@@ -20,7 +23,7 @@ function errorCode(cause: unknown): string | null {
   return typeof code === 'string' ? code : null;
 }
 
-const HUMAN_MESSAGE_CODES = new Set(['NOT_FOUND', 'CONFLICT', 'BAD_REQUEST']);
+const HUMAN_MESSAGE_CODES = new Set(['NOT_FOUND', 'CONFLICT', 'BAD_REQUEST', 'PRECONDITION_FAILED']);
 
 /** tRPC's default formatter puts Zod input issues in `message` as a JSON array — not user text. */
 function looksSerialized(message: string): boolean {
@@ -33,7 +36,7 @@ export function describeOfferActionError(cause: unknown, labels: OfferActionErro
   if (code === null || !HUMAN_MESSAGE_CODES.has(code)) return labels.generic;
   const message = cause instanceof Error ? cause.message.trim() : '';
   if (!message || looksSerialized(message)) return labels.generic;
-  return message;
+  return localizeKnownErrorCode(message);
 }
 
 /**

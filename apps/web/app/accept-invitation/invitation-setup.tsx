@@ -13,13 +13,18 @@ import { InvitationExistingControls } from './invitation-existing-controls';
 import { invitationField as field } from './invitation-styles';
 import { invitationUnavailable } from './invitation-setup-api';
 import { useInvitationSetup } from './use-invitation-setup';
+import { useAuthCaptcha } from '../../lib/auth/use-auth-captcha';
+import { AuthCaptcha } from '../../components/auth-captcha';
 
 export function InvitationSetup() {
   const token = useSearchParams().get('token') ?? '';
   const [locale, setLocale] = useState<'es' | 'en'>('es');
   const t = copy[locale];
-  const setup = useInvitationSetup(token, t);
+  // C-34: Turnstile for the password sign-in and the recovery email (both checked by Supabase Auth captcha).
+  const captcha = useAuthCaptcha();
+  const setup = useInvitationSetup(token, t, captcha);
   const { invitation, existing, busy, complete, sessionToken, error, notice, fields } = setup;
+  const captchaMissing = !sessionToken && !captcha.satisfied;
   // The pilot hides Google / Microsoft sign-in everywhere (one switch: isSsoSignInOffered), so invitees set a
   // password they can reuse at /login.
   const ssoEnabled = isSsoSignInOffered();
@@ -134,8 +139,9 @@ export function InvitationSetup() {
                     {notice}
                   </p>
                 )}
+                {!sessionToken && <AuthCaptcha captcha={captcha} />}
                 <button
-                  disabled={busy}
+                  disabled={busy || captchaMissing}
                   type="submit"
                   className="w-full rounded-xl bg-[#241641] px-5 py-3 font-medium text-white disabled:opacity-50"
                 >
@@ -151,7 +157,7 @@ export function InvitationSetup() {
                 </button>
                 {existing && !sessionToken && (
                   <InvitationExistingControls
-                    busy={busy}
+                    busy={busy || captchaMissing}
                     ssoEnabled={ssoEnabled}
                     help={ssoEnabled ? t.existingHelpSso : t.existingHelp}
                     forgot={t.forgot}

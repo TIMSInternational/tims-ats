@@ -5,8 +5,10 @@ import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../../lib/curs
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser } from '../../access';
-import { assertVacancyPlacement, assertVacancyUpdatePlacement } from './org-placement';
+import { assertVacancyPlacement } from './org-placement';
+import { assigneeForCreator, isNarrowScope } from './creator-scope';
 import { DEFAULT_PIPELINE_STAGES } from './default-stages';
+import { withResolvedCurrency } from './vacancy-currency';
 
 // ---------------------------------------------------------------------------
 // Shared selects — explicit field selection (CLAUDE.md: never return full records)
@@ -108,16 +110,18 @@ const vacancyMutationSelect = {
 // Shared Zod schemas
 // ---------------------------------------------------------------------------
 
-const salarySchema = z
+// Shared with the lifecycle sub-router (vacancy.update lives in ./lifecycle.ts).
+export const salarySchema = z
   .object({
     min: z.number().min(0).optional(),
     max: z.number().min(0).optional(),
-    currency: z.string().max(10).default('COP'),
+    // No blind default: an omitted currency resolves to the organization's (./vacancy-currency.ts, data-62).
+    currency: z.string().max(10).optional(),
     period: z.enum(['monthly', 'yearly']).default('monthly'),
   })
   .optional();
 
-const settingsSchema = z
+export const settingsSchema = z
   .object({
     slaTargetDays: z.number().int().min(1).max(365).optional(),
     autoPublish: z.boolean().optional(),
@@ -144,23 +148,6 @@ const createVacancyInput = z.object({
   location: z.string().max(200).optional(),
   remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).optional(),
   assignedTo: z.string().uuid().optional(),
-  settings: settingsSchema,
-});
-
-const updateVacancyInput = z.object({
-  id: z.string().uuid(),
-  title: z.string().min(1).max(200).optional(),
-  description: z.string().max(5000).optional(),
-  companyId: z.string().uuid().nullish(),
-  businessUnitId: z.string().uuid().nullish(),
-  teamId: z.string().uuid().nullish(),
-  positions: z.number().int().min(1).max(100).optional(),
-  priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-  salary: salarySchema,
-  contractType: z.string().max(100).nullish(),
-  location: z.string().max(200).nullish(),
-  remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).nullish(),
-  assignedTo: z.string().uuid().nullish(),
   settings: settingsSchema,
 });
 
@@ -252,8 +239,12 @@ export const vacancyCrudRouter = router({
   create: permissionProcedure('vacancy', 'create')
     .input(createVacancyInput)
     .mutation(async ({ ctx, input }) => {
-      const requireApproval = input.settings?.requireApproval ?? false;
-      const autoPublish = input.settings?.autoPublish ?? false;
+      // B-10: a narrow-scope creator (a leader) cannot skip approval by unticking "Requiere aprobación":
+      // their vacancy is always a draft that goes through submitForApproval/approve. Org-wide creators keep
+      // the per-vacancy choice (D-7 is still open for them).
+      const narrowCreator = isNarrowScope(ctx.access);
+      const requireApproval = narrowCreator ? true : (input.settings?.requireApproval ?? false);
+      const autoPublish = narrowCreator ? false : (input.settings?.autoPublish ?? false);
 
       // Status-resolution matrix (Codex PR #120 fix wave, finding #2):
       //   requireApproval=false, autoPublish=false -> created directly as 'approved'
@@ -274,10 +265,16 @@ export const vacancyCrudRouter = router({
       }
       await assertVacancyPlacement(ctx.user.organizationId, input);
 
+      const assignedTo = await assigneeForCreator(ctx.access, ctx.user.id, input.teamId, input.assignedTo);
+      const settings = narrowCreator ? { ...input.settings, requireApproval, autoPublish } : (input.settings ?? {});
+
       const baseData = {
         ...input,
-        salary: (input.salary ?? undefined) as Prisma.InputJsonValue | undefined,
-        settings: (input.settings ?? {}) as Prisma.InputJsonValue,
+        assignedTo,
+        salary: (await withResolvedCurrency(ctx.user.organizationId, input.salary, { companyId: input.companyId ?? null })) as
+          | Prisma.InputJsonValue
+          | undefined,
+        settings: settings as Prisma.InputJsonValue,
         organizationId: ctx.user.organizationId,
         createdBy: ctx.user.id,
         status: requireApproval ? 'draft' : 'approved',
@@ -349,25 +346,6 @@ export const vacancyCrudRouter = router({
       });
     }),
 
-  update: permissionProcedure('vacancy', 'update')
-    .input(updateVacancyInput)
-    .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
-
-      await assertScoped('vacancy', id, ctx.access, ctx.user.id, ctx.user.organizationId);
-      await assertVacancyUpdatePlacement(ctx.user.organizationId, id, data);
-
-      return db.vacancy.update({
-        where: { id },
-        data: {
-          ...data,
-          salary: (data.salary ?? undefined) as Prisma.InputJsonValue | undefined,
-          settings: (data.settings ?? undefined) as Prisma.InputJsonValue | undefined,
-        },
-        select: vacancyMutationSelect,
-      });
-    }),
-
   close: permissionProcedure('vacancy', 'update')
     .input(
       z.object({
@@ -385,18 +363,6 @@ export const vacancyCrudRouter = router({
           closedAt: new Date(),
           closedReason: input.reason,
         },
-        select: vacancyMutationSelect,
-      });
-    }),
-
-  freeze: permissionProcedure('vacancy', 'update')
-    .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
-
-      return db.vacancy.update({
-        where: { id: input.id },
-        data: { status: 'frozen' },
         select: vacancyMutationSelect,
       });
     }),
@@ -454,6 +420,8 @@ export const vacancyCrudRouter = router({
       if (!original) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
+      // B-10: the copy has no assignee, so a team-scoped caller would lose sight of it (same as create).
+      const assignedTo = await assigneeForCreator(ctx.access, ctx.user.id, original.teamId, undefined);
 
       // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — a duplicate
       // must not half-copy (vacancy without its job profile / stages).
@@ -475,6 +443,7 @@ export const vacancyCrudRouter = router({
             settings: (original.settings as Prisma.InputJsonValue) ?? {},
             status: 'draft',
             createdBy: ctx.user.id,
+            assignedTo,
           },
           select: vacancyMutationSelect,
         });

@@ -217,7 +217,7 @@ export const organizationsRouter = router({
 
       await notify({
         type: 'success',
-        title: `Nueva organizacion creada: ${org.name}`,
+        title: `Nueva organización creada: ${org.name}`,
         module: 'platform',
         actionUrl: '/platform/organizations',
         organizationId: org.id,
@@ -297,7 +297,7 @@ export const organizationsRouter = router({
       if (input.suspend) {
         await notify({
           type: 'warning',
-          title: `Organizacion suspendida: ${org.name}`,
+          title: `Organización suspendida: ${org.name}`,
           module: 'platform',
           actionUrl: '/platform/organizations',
           organizationId: org.id,

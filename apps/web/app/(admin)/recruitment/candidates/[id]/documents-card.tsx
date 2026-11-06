@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../../lib/format-utils';
+import { useCan } from '../../../../../lib/permissions';
 import { documentOpenErrorKey, openSignedUrlInNewTab, reserveNewTab } from './document-open';
+import { DocumentUploadForm } from './document-upload-form';
 
 interface Document {
   id: string;
@@ -25,6 +28,9 @@ const TYPE_ICONS: Record<string, string> = {
 
 export function DocumentsCard({ documents, candidateId }: { documents: Document[]; candidateId: string }) {
   const { t } = useI18n();
+  const can = useCan();
+  const canUpload = can('candidate', 'update');
+  const [uploading, setUploading] = useState(false);
   const getDocumentUrl = trpc.candidate.getDocumentUrl.useMutation();
 
   const openDocument = async (documentId: string) => {
@@ -41,7 +47,15 @@ export function DocumentsCard({ documents, candidateId }: { documents: Document[
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.candidates.documents}</h3>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.candidates.documents}</h3>
+        {canUpload && !uploading && (
+          <button type="button" onClick={() => setUploading(true)} className="text-[12px] font-medium text-[#1F114C] hover:underline">
+            {t.candidates.uploadDocument}
+          </button>
+        )}
+      </div>
+      {uploading && <DocumentUploadForm candidateId={candidateId} onDone={() => setUploading(false)} />}
       {documents.length === 0 ? (
         <p className="text-xs text-[#8B8B8B] py-3 text-center">{t.candidates.noDocuments}</p>
       ) : (

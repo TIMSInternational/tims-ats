@@ -9,7 +9,7 @@ import { assertScoped, scopeWhereFor } from '../../access';
 function externalMeetingLink(): TRPCError {
   return new TRPCError({
     code: 'BAD_REQUEST',
-    message: 'Esta entrevista usa un enlace de reunion externo; abralo directamente.',
+    message: 'Esta entrevista usa un enlace de reunión externo; ábralo directamente.',
   });
 }
 

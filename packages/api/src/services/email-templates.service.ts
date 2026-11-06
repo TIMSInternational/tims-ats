@@ -7,6 +7,8 @@
 // phishing vector when a recruiter opens the email. Only the static template
 // markup (<strong>, <br>, layout) is allowed to be raw HTML.
 
+import { isValidTimeZone, timeZoneLabel, UTC_TIME_ZONE } from '@tims/shared';
+
 const BRAND = { navy: '#1F114C', red: '#DD0C15', text: '#333333', secondary: '#585858', muted: '#8B8B8B', surface: '#F6F6F6', border: '#EDEDED', white: '#FFFFFF' } as const;
 const FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;";
 
@@ -42,14 +44,32 @@ function formatDate(d: Date): string {
   return new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(d);
 }
 
+/**
+ * "4 de noviembre de 2026, 4:51 p. m., hora de Costa Rica (GMT-6)": a date in the organization's zone with an
+ * explicit label (Pilot UX audit E-23). An unusable zone falls back to UTC, labelled as such.
+ */
+export function formatZonedDateTime(d: Date, timeZone: string | null | undefined): string {
+  const zone = timeZone && isValidTimeZone(timeZone) ? timeZone : UTC_TIME_ZONE;
+  const formatted = new Intl.DateTimeFormat('es-CR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: zone,
+  }).format(d);
+  const label = timeZoneLabel(zone, 'es', d);
+  return label === 'UTC' ? `${formatted} (UTC)` : `${formatted}, ${label}`;
+}
+
 function baseLayout(content: string, companyName: string, locale: 'es' | 'en' = 'es'): string {
   const company = esc(companyName);
   const en = locale === 'en';
   return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:${BRAND.surface};${FONT}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.surface};padding:32px 0;">
-<tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:${BRAND.white};border-radius:8px;overflow:hidden;border:1px solid ${BRAND.border};">
+<tr><td align="center" style="padding:0 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:${BRAND.white};border-radius:8px;overflow:hidden;border:1px solid ${BRAND.border};">
 <tr><td style="background:${BRAND.navy};padding:24px 32px;">
 <span style="color:${BRAND.white};font-size:20px;font-weight:700;${FONT}">${company}</span>
 </td></tr>
@@ -72,7 +92,7 @@ function paragraph(text: string): string {
 }
 
 function detailRow(label: string, value: string): string {
-  return `<tr><td style="padding:8px 12px;font-size:13px;color:${BRAND.muted};${FONT};border-bottom:1px solid ${BRAND.border};width:140px;">${label}</td><td style="padding:8px 12px;font-size:14px;color:${BRAND.text};${FONT};border-bottom:1px solid ${BRAND.border};font-weight:500;">${value}</td></tr>`;
+  return `<tr><td style="padding:8px 12px;font-size:13px;color:${BRAND.muted};${FONT};border-bottom:1px solid ${BRAND.border};width:32%;vertical-align:top;">${label}</td><td style="padding:8px 12px;font-size:14px;color:${BRAND.text};${FONT};border-bottom:1px solid ${BRAND.border};font-weight:500;word-break:break-word;overflow-wrap:anywhere;">${value}</td></tr>`;
 }
 
 function detailsTable(rows: string): string {
@@ -92,11 +112,11 @@ function signOff(contactEmail: string): string {
 // Builds the "Enlace" detail row with a guarded, escaped meeting URL.
 function meetingLinkRow(meetingUrl?: string): string {
   if (!meetingUrl) return '';
-  return detailRow('Enlace', `<a href="${safeUrl(meetingUrl)}" style="color:${BRAND.navy};">${esc(meetingUrl)}</a>`);
+  return detailRow('Enlace', `<a href="${safeUrl(meetingUrl)}" style="color:${BRAND.navy};word-break:break-all;">${esc(meetingUrl)}</a>`);
 }
 
 // Shared building blocks for the localized interview emails (interview-email-templates.ts).
-export const emailLayout = { esc, safeUrl, baseLayout, heading, paragraph, detailRow, detailsTable, ctaButton } as const;
+export const emailLayout = { esc, safeUrl, baseLayout, heading, paragraph, detailRow, detailsTable, ctaButton, SAFE_GREETING_NAME } as const;
 
 type InterviewParams = { candidateName: string; vacancyTitle: string; companyName: string; interviewType: string; scheduledAt: Date; duration: number; location?: string; meetingUrl?: string; contactEmail: string };
 
@@ -182,9 +202,14 @@ export const emailTemplates = {
     return { subject: en ? `Application received — ${title}` : `Postulación recibida — ${title}`, html: baseLayout(content, p.companyName, p.locale) };
   },
 
-  offerSent(p: { candidateName: string; vacancyTitle: string; companyName: string; signingUrl: string; expiresAt?: Date | null }): { subject: string; html: string } {
+  offerSent(p: { candidateName: string; vacancyTitle: string; companyName: string; signingUrl: string; expiresAt?: Date | null; timeZone?: string | null; contactEmail?: string | null }): { subject: string; html: string } {
+    // In the organization's time zone, labelled ("hora de Costa Rica (GMT-6)"), never a bare UTC slice.
     const expiry = p.expiresAt
-      ? paragraph(`<strong>Vigencia:</strong> hasta el ${esc(p.expiresAt.toISOString().slice(0, 16).replace('T', ' '))} UTC.`)
+      ? paragraph(`<strong>Vigencia:</strong> hasta el ${esc(formatZonedDateTime(p.expiresAt, p.timeZone))}.`)
+      : '';
+    // The organization's own candidate contact (services/candidate-contact.ts); omitted when it has none.
+    const contact = p.contactEmail
+      ? paragraph(`Si tiene preguntas sobre los términos, escríbanos a <a href="mailto:${esc(p.contactEmail)}" style="color:${BRAND.navy};text-decoration:underline;">${esc(p.contactEmail)}</a>.`)
       : '';
     const content = heading('¡Felicitaciones!') +
       paragraph(`Estimado/a ${esc(p.candidateName)},`) +
@@ -192,28 +217,33 @@ export const emailTemplates = {
       paragraph('Por favor revise los términos de la oferta y, de estar de acuerdo, proceda a firmarla electrónicamente.') +
       ctaButton(p.signingUrl, 'Revisar y Firmar Oferta') +
       expiry +
-      paragraph(`Si tiene preguntas sobre los términos, no dude en comunicarse con nosotros.`) +
+      contact +
       paragraph('Cordialmente,<br>Equipo de Talento Humano');
     return { subject: `Oferta laboral — ${p.vacancyTitle} en ${p.companyName}`, html: baseLayout(content, p.companyName) };
   },
 
-  offerAcceptedNotification(p: { candidateName: string; vacancyTitle: string; companyName: string; acceptedAt: Date; recipientName: string }): { subject: string; html: string } {
-    const content = heading('Oferta Aceptada') +
+  // Staff notices (B-18): sent to HR, the offer's recruiter and the hiring manager; link to the offer, where
+  // the next step is; the date in the organization's time zone (E-23).
+  offerAcceptedNotification(p: { candidateName: string; vacancyTitle: string; companyName: string; acceptedAt: Date; recipientName: string; offerUrl?: string | null; timeZone?: string | null }): { subject: string; html: string } {
+    const content = heading('Oferta aceptada') +
       paragraph(`Hola ${esc(p.recipientName)},`) +
-      paragraph(`Le informamos que <strong>${esc(p.candidateName)}</strong> ha aceptado la oferta para el cargo de <strong>${esc(p.vacancyTitle)}</strong>.`) +
-      detailsTable(detailRow('Candidato', esc(p.candidateName)) + detailRow('Cargo', esc(p.vacancyTitle)) + detailRow('Aceptada el', formatDate(p.acceptedAt))) +
-      paragraph('<strong>Próximos pasos sugeridos:</strong><br>• Iniciar proceso de onboarding<br>• Solicitar documentación de ingreso<br>• Coordinar fecha de inicio<br>• Notificar al equipo receptor') +
-      paragraph('Cordialmente,<br>Sistema TIMS ATS');
+      paragraph(`<strong>${esc(p.candidateName)}</strong> aceptó la oferta para el cargo de <strong>${esc(p.vacancyTitle)}</strong>.`) +
+      detailsTable(detailRow('Candidato', esc(p.candidateName)) + detailRow('Cargo', esc(p.vacancyTitle)) + detailRow('Aceptada el', esc(formatZonedDateTime(p.acceptedAt, p.timeZone)))) +
+      paragraph('<strong>Siguiente paso en TIMS:</strong> abre la oferta y usa «Autorizar contratación» para registrar el ingreso. Así se crean la cuenta del colaborador y su plan de onboarding.') +
+      (p.offerUrl ? ctaButton(p.offerUrl, 'Abrir la oferta en TIMS') : '') +
+      paragraph('<strong>Otros pasos sugeridos:</strong><br>• Solicitar la documentación de ingreso<br>• Confirmar la fecha de inicio con el candidato<br>• Avisar al equipo que lo recibe') +
+      paragraph('Este es un aviso automático de TIMS.');
     return { subject: `Oferta aceptada — ${p.candidateName} para ${p.vacancyTitle}`, html: baseLayout(content, p.companyName) };
   },
 
-  offerDeclinedNotification(p: { candidateName: string; vacancyTitle: string; companyName: string; declinedAt: Date; recipientName: string }): { subject: string; html: string } {
-    const content = heading('Oferta Declinada') +
+  offerDeclinedNotification(p: { candidateName: string; vacancyTitle: string; companyName: string; declinedAt: Date; recipientName: string; offerUrl?: string | null; timeZone?: string | null }): { subject: string; html: string } {
+    const content = heading('Oferta declinada') +
       paragraph(`Hola ${esc(p.recipientName)},`) +
-      paragraph(`Le informamos que <strong>${esc(p.candidateName)}</strong> ha declinado la oferta para el cargo de <strong>${esc(p.vacancyTitle)}</strong>.`) +
-      detailsTable(detailRow('Candidato', esc(p.candidateName)) + detailRow('Cargo', esc(p.vacancyTitle)) + detailRow('Declinada el', formatDate(p.declinedAt))) +
-      paragraph('<strong>Acciones sugeridas:</strong><br>• Revisar candidatos finalistas alternativos<br>• Evaluar condiciones de la oferta frente al mercado<br>• Considerar reabrir la vacante si no hay más candidatos') +
-      paragraph('Cordialmente,<br>Sistema TIMS ATS');
+      paragraph(`<strong>${esc(p.candidateName)}</strong> declinó la oferta para el cargo de <strong>${esc(p.vacancyTitle)}</strong>.`) +
+      detailsTable(detailRow('Candidato', esc(p.candidateName)) + detailRow('Cargo', esc(p.vacancyTitle)) + detailRow('Declinada el', esc(formatZonedDateTime(p.declinedAt, p.timeZone)))) +
+      (p.offerUrl ? ctaButton(p.offerUrl, 'Abrir la oferta en TIMS') : '') +
+      paragraph('<strong>Acciones sugeridas:</strong><br>• Revisar a los otros candidatos finalistas<br>• Evaluar las condiciones de la oferta frente al mercado<br>• Si ya no hay candidatos, considerar reabrir la búsqueda') +
+      paragraph('Este es un aviso automático de TIMS.');
     return { subject: `Oferta declinada — ${p.candidateName} para ${p.vacancyTitle}`, html: baseLayout(content, p.companyName) };
   },
 };

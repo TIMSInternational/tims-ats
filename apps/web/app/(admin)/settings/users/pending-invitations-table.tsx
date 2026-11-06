@@ -51,8 +51,7 @@ export function PendingInvitationsTable() {
     return (
       <ErrorState
         message={invitationErrorMessage(invitations.error, 'read', m)}
-        onRetry={() => void invitations.refetch()}
-      />
+        onRetry={() => void invitations.refetch()} error={invitations.error} />
     );
 
   const grantableRoles = new Set((roles.data ?? []).map((role) => role.slug));

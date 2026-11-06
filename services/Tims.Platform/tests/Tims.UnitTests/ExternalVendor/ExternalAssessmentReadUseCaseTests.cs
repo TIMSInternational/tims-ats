@@ -75,7 +75,7 @@ public sealed class ExternalAssessmentReadUseCaseTests
         var ex = await Assert.ThrowsAsync<ExternalAssessmentNotFoundException>(() =>
             useCase.GetOneAsync(Principal, "a9", CancellationToken.None));
 
-        Assert.Equal("Resultado de evaluacion no encontrado", ex.Message);
+        Assert.Equal("Resultado de evaluación no encontrado", ex.Message);
         Assert.Empty(auditor.Events); // no row → nothing exported → nothing audited
     }
 

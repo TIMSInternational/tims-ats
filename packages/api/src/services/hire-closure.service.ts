@@ -1,4 +1,5 @@
 import type { Prisma } from '@tims/db';
+import { vacancyHireRepository, type VacancyHireCounts } from '../repositories/vacancy-hire.repository';
 
 // Closes the recruitment records a confirmed hire leaves open. Runs INSIDE the convert-to-employee
 // transaction so the hire, the application and the vacancy commit (or roll back) together.
@@ -28,7 +29,70 @@ export class HireRejectedApplicationError extends Error {
   }
 }
 
+/** The candidate withdrew the application for this vacancy (C-33); the hire must not complete. */
+export class HireWithdrawnApplicationError extends Error {
+  constructor() {
+    super('hire refused: the candidate withdrew the application');
+    this.name = 'HireWithdrawnApplicationError';
+  }
+}
+
 export type HireClosureResult = { applicationClosed: boolean; vacancyClosed: boolean };
+
+// F-15 (pilot proof run): a hire used to be accepted on a vacancy whose positions were already covered, e.g.
+// a second candidate's accepted offer after the first hire closed the vacancy as "Vacante cubierta".
+/** Every position is covered: `hires` converted offers for `positions` openings (a vacancy has at least one). */
+export function isVacancyFilled(hires: number, positions: number): boolean {
+  return hires >= Math.max(1, positions);
+}
+
+/** The vacancy's positions are already covered by earlier hires; this hire must not complete. */
+export class HireVacancyFilledError extends Error {
+  constructor(
+    readonly hires: number,
+    readonly positions: number,
+  ) {
+    super('hire refused: every position of the vacancy is already covered');
+    this.name = 'HireVacancyFilledError';
+  }
+}
+
+/** The staff-facing explanation for a refused hire on a filled vacancy. */
+export function vacancyFilledMessage(hires: number, positions: number): string {
+  const total = Math.max(1, positions);
+  return `La vacante ya está cubierta: tiene ${hires} de ${total} ${total === 1 ? 'contratación registrada' : 'contrataciones registradas'}. No se puede registrar otra contratación para esta vacante.`;
+}
+
+/**
+ * Pre-check, outside the hire transaction and BEFORE any external side effect (the new hire's sign-in
+ * identity and its invitation email): refuse a hire for a vacancy whose positions are already covered.
+ * The transaction repeats the check under the vacancy lock (lockVacancyForHire), which settles races.
+ * `readCounts` is injectable for tests; it defaults to the repository.
+ */
+export async function assertVacancyNotFilled(
+  ref: { organizationId: string; vacancyId: string },
+  readCounts: (organizationId: string, vacancyId: string) => Promise<VacancyHireCounts | null> = vacancyHireRepository.counts,
+): Promise<void> {
+  const counts = await readCounts(ref.organizationId, ref.vacancyId);
+  if (counts && isVacancyFilled(counts.hires, counts.positions)) {
+    throw new HireVacancyFilledError(counts.hires, counts.positions);
+  }
+}
+
+/**
+ * Inside the hire transaction, before the offer is claimed: lock the vacancy row and refuse when the converted
+ * offers already cover every position. Two concurrent hires for the last position serialize on this lock; the
+ * second then counts the first one's conversion and is refused.
+ */
+export async function lockVacancyForHire(
+  tx: Prisma.TransactionClient,
+  ref: { organizationId: string; vacancyId: string },
+): Promise<void> {
+  const counts = await vacancyHireRepository.lockAndCount(tx, ref.organizationId, ref.vacancyId);
+  if (counts && isVacancyFilled(counts.hires, counts.positions)) {
+    throw new HireVacancyFilledError(counts.hires, counts.positions);
+  }
+}
 
 export async function closeHireRecords(
   tx: Prisma.TransactionClient,
@@ -54,10 +118,12 @@ export async function closeHireRecords(
         WHERE organization_id = ${organizationId}::uuid AND vacancy_id = ${vacancyId}::uuid
           AND candidate_id = ${candidateId}::uuid
         FOR NO KEY UPDATE`;
+  // Every application closed (rejected or withdrawn) refuses the hire; a withdrawal is reported as such.
   if (
     applications.length > 0 &&
-    applications.every((candidateApplication) => candidateApplication.status === 'rejected')
+    applications.every(({ status }) => status === 'rejected' || status === 'withdrawn')
   ) {
+    if (applications.some(({ status }) => status === 'withdrawn')) throw new HireWithdrawnApplicationError();
     throw new HireRejectedApplicationError();
   }
   const application = applications.find((candidateApplication) => candidateApplication.status === 'active');
@@ -81,6 +147,7 @@ export async function closeHireRecords(
         select: { status: true },
       });
       if (current?.status === 'rejected') throw new HireRejectedApplicationError();
+      if (current?.status === 'withdrawn') throw new HireWithdrawnApplicationError();
     } else {
       if (finalStage && finalStage.id !== application.currentStageId) {
         await tx.stageMovement.create({
@@ -115,7 +182,7 @@ export async function closeHireRecords(
   const vacancy = locked[0];
   if (vacancy && CLOSABLE_VACANCY_STATUSES.includes(vacancy.status)) {
     const hires = await tx.offer.count({ where: { vacancyId, organizationId, status: 'converted' } });
-    if (hires >= Math.max(1, vacancy.positions)) {
+    if (isVacancyFilled(hires, vacancy.positions)) {
       const closed = await tx.vacancy.updateMany({
         where: { id: vacancyId, organizationId, status: { in: CLOSABLE_VACANCY_STATUSES } },
         data: { status: 'closed', closedAt: new Date(), closedReason: VACANCY_FILLED_REASON },

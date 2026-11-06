@@ -108,7 +108,7 @@ export function buildNewInvoiceEmailHtml(params: {
                 </table>
                 ${memo ? `<p style="color:#585858;font-size:13px;margin:16px 0 0;"><strong>Memo:</strong> ${memo}</p>` : ''}
               </div>
-              <p style="color:#8B8B8B;font-size:12px;text-align:center;">Este es un mensaje automatico de TIMS ATS.</p>
+              <p style="color:#8B8B8B;font-size:12px;text-align:center;">Este es un mensaje automático de TIMS ATS.</p>
             </div>
           `;
 }
@@ -139,10 +139,10 @@ export function buildPaymentReminderEmailHtml(params: {
                 <tr><td style="padding: 8px 0; color: #8B8B8B;">Monto</td><td style="padding: 8px 0; font-weight: 600; color: #DD0C15;">${amountFormatted}</td></tr>
                 ${dueDate ? `<tr><td style="padding: 8px 0; color: #8B8B8B;">Vencimiento</td><td style="padding: 8px 0; font-weight: 600;">${new Intl.DateTimeFormat('es', { day: '2-digit', month: 'long', year: 'numeric' }).format(dueDate)}</td></tr>` : ''}
               </table>
-              ${description ? `<p style="color: #585858; margin: 16px 0 0;"><strong>Descripcion:</strong> ${description}</p>` : ''}
+              ${description ? `<p style="color: #585858; margin: 16px 0 0;"><strong>Descripción:</strong> ${description}</p>` : ''}
             </div>
             <p style="color: #8B8B8B; font-size: 12px; text-align: center;">
-              Este es un mensaje automatico de TIMS ATS. Por favor no responda a este correo.
+              Este es un mensaje automático de TIMS ATS. Por favor no responda a este correo.
             </p>
           </div>
         `;

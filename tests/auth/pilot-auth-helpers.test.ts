@@ -186,6 +186,7 @@ describe('authErrorMessage (E-12)', () => {
 describe('login messages', () => {
   it('explains a sign-in that found no TIMS user (E-01)', () => {
     expect(loginErrorMessage('no_access', es.auth)).toBe(es.auth.noAccess);
+    expect(loginErrorMessage('org_inactive', es.auth)).toBe(es.auth.orgInactive);
     expect(es.auth.noAccess).toMatch(/invitación/);
     expect(es.auth.noAccess).toMatch(/portal de empleo/);
     expect(loginErrorMessage('something_else', es.auth)).toBeNull();

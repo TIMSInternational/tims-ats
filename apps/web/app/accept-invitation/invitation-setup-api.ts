@@ -68,7 +68,12 @@ let isolatedClient: SupabaseClient | undefined;
  * accepted it (use-invitation-setup.ts `adopt`). Never sign this client out: it holds the session the browser
  * adopted, and a sign-out would revoke it.
  */
-export function invitationPasswordSignIn(credentials: { email: string; password: string }) {
+export function invitationPasswordSignIn(credentials: {
+  email: string;
+  password: string;
+  // C-34: the Turnstile token Supabase Auth checks once its captcha protection is enabled.
+  options?: { captchaToken?: string };
+}) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) throw new Error('Supabase is not configured');
@@ -99,10 +104,11 @@ export function invitationRecoveryRedirect(token: string) {
   return getAuthRedirectUrl('/auth/callback', { invitation: token, recovery: '1' });
 }
 
-export async function invitationRecovery(email: string, token: string) {
+export async function invitationRecovery(email: string, token: string, captcha: { captchaToken?: string } = {}) {
   // Never start the PKCE flow off the configured origin; the page is navigating there instead (#50).
   if (!ensureCanonicalAuthOrigin()) return new Promise<never>(() => {});
   return createSupabaseBrowserClient().auth.resetPasswordForEmail(email, {
     redirectTo: invitationRecoveryRedirect(token),
+    ...captcha,
   });
 }

@@ -243,7 +243,7 @@ export const performanceCoachingRouter = router({
           select: { id: true },
         });
         if (!session) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La sesion no corresponde a este empleado' });
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La sesión no corresponde a este empleado' });
         }
       }
       return db.commitment.create({

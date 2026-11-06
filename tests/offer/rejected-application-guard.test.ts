@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   assertApplicationNotRejected,
+  closedApplicationReason,
   lockAndAssertApplicationNotRejected,
   notRejectedApplication,
+  WITHDRAWN_APPLICATION_MESSAGE,
 } from '../../packages/api/src/routers/offer/rejected-application-guard';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
@@ -69,18 +71,57 @@ describe('assertApplicationNotRejected', () => {
   });
 
   it('notRejectedApplication checks linked offers by application and unlinked offers by candidate+vacancy', () => {
+    const open = { notIn: ['rejected', 'withdrawn'] };
     expect(notRejectedApplication(VAC)).toEqual({
       OR: [
-        { applicationId: { not: null }, application: { status: { not: 'rejected' } } },
+        { applicationId: { not: null }, application: { status: open } },
         { applicationId: null, candidate: { applications: { none: { vacancyId: VAC } } } },
-        { applicationId: null, candidate: { applications: { some: { vacancyId: VAC, status: { not: 'rejected' } } } } },
+        { applicationId: null, candidate: { applications: { some: { vacancyId: VAC, status: open } } } },
       ],
     });
+  });
+
+  // Codex review of release/pilot-ux-wave2 (P1): a withdrawn application (C-33) closes the offer too, and says so.
+  it('refuses when the linked application was withdrawn by the candidate, with the withdrawal message', async () => {
+    await expect(
+      assertApplicationNotRejected(client({ applicationId: APP }, ['withdrawn']) as never, ORG, OFFER, 'no'),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: WITHDRAWN_APPLICATION_MESSAGE });
+  });
+
+  it('refuses an unlinked offer when every application is closed and one was withdrawn; allows one still open', async () => {
+    await expect(
+      assertApplicationNotRejected(client({ applicationId: null }, ['rejected', 'withdrawn']) as never, ORG, OFFER, 'no'),
+    ).rejects.toMatchObject({ message: WITHDRAWN_APPLICATION_MESSAGE });
+    await expect(
+      assertApplicationNotRejected(client({ applicationId: null }, ['withdrawn', 'active']) as never, ORG, OFFER, 'no'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('closedApplicationReason: null while open or absent, withdrawn over rejected when all are closed', () => {
+    expect(closedApplicationReason([])).toBeNull();
+    expect(closedApplicationReason(['active'])).toBeNull();
+    expect(closedApplicationReason(['hired'])).toBeNull();
+    expect(closedApplicationReason(['rejected', 'active'])).toBeNull();
+    expect(closedApplicationReason(['rejected'])).toBe('rejected');
+    expect(closedApplicationReason(['withdrawn'])).toBe('withdrawn');
+    expect(closedApplicationReason(['rejected', 'withdrawn'])).toBe('withdrawn');
   });
 });
 
 describe('lockAndAssertApplicationNotRejected', () => {
   const sqlOf = (call: unknown[]) => (call[0] as TemplateStringsArray).join('?');
+
+  it('refuses a withdrawn application under the lock, with the withdrawal message', async () => {
+    const tx = { $queryRaw: vi.fn().mockResolvedValue([{ status: 'withdrawn' }]) };
+    await expect(
+      lockAndAssertApplicationNotRejected(
+        tx as never,
+        ORG,
+        { applicationId: APP, candidateId: CAND, vacancyId: VAC },
+        'no',
+      ),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: WITHDRAWN_APPLICATION_MESSAGE });
+  });
 
   it('locks the linked application FOR SHARE (tenant-scoped) and refuses when it is rejected', async () => {
     const tx = { $queryRaw: vi.fn().mockResolvedValue([{ status: 'rejected' }]) };

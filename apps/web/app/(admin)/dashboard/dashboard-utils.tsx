@@ -51,18 +51,6 @@ export function formatCurrency(value: number, compact?: boolean): string {
   }).format(value);
 }
 
-export function formatCurrencyCOP(value: number): string {
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M COP`;
-  }
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 export function timeAgo(date: Date | string | null): string {
   if (!date) return 'Never';
   const diff = Date.now() - new Date(date).getTime();

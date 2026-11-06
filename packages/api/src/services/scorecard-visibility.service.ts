@@ -96,7 +96,7 @@ export const scorecardVisibilityService = {
     if (await this.isBlinded(orgId, interviewId, viewerId)) {
       throw new TRPCError({
         code: 'FORBIDDEN',
-        message: 'Envia tu evaluacion antes de ver las evaluaciones de los demas evaluadores',
+        message: 'Envía tu evaluación antes de ver las evaluaciones de los demás evaluadores',
       });
     }
   },

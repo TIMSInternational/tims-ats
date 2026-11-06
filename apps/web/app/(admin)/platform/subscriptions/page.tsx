@@ -145,7 +145,7 @@ export default function SubscriptionsPage() {
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.isError ? (
           <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            <ErrorState onRetry={() => kpis.refetch()} />
+            <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} />
           </div>
         ) : kpis.data ? (
           <>
@@ -237,7 +237,7 @@ export default function SubscriptionsPage() {
             <div className="h-full w-full bg-gray-100 rounded" />
           </div>
         ) : mrrTrend.isError ? (
-          <ErrorState onRetry={() => mrrTrend.refetch()} />
+          <ErrorState onRetry={() => mrrTrend.refetch()} error={mrrTrend.error} />
         ) : mrrTrend.data ? (
           (() => {
             const last6 = mrrTrend.data.slice(-6);
@@ -303,7 +303,7 @@ export default function SubscriptionsPage() {
       {/* Table */}
       {subs.isError ? (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
-          <ErrorState onRetry={() => subs.refetch()} />
+          <ErrorState onRetry={() => subs.refetch()} error={subs.error} />
         </div>
       ) : (
         <SubTable

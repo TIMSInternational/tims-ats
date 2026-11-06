@@ -49,7 +49,7 @@ export async function bulkInviteUsers(organizationId: string, invitedById: strin
         const timeout = Math.min(4_000, deadline - Date.now() - 3_000);
         const delivered = timeout > 0 && await sendEmail({
           to: user.email,
-          subject: `Invitacion para unirte a ${org!.name} en TIMS ATS`,
+          subject: `Invitación para unirte a ${org!.name} en TIMS ATS`,
           html: renderInvitationEmail({ organization: org!.name, role: user.roleSlug ?? 'employee', url, expiresAt }),
           abortSignal: AbortSignal.timeout(timeout),
         });
@@ -86,7 +86,7 @@ export async function resendInvitation(id: string) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const url = `${appUrl}/accept-invitation?token=${encodeURIComponent(invitation.token)}`;
   const delivered = await sendEmail({
-    to: invitation.email, subject: `Recordatorio: Invitacion pendiente - ${invitation.organizationName || 'TIMS ATS'}`,
+    to: invitation.email, subject: `Recordatorio: Invitación pendiente - ${invitation.organizationName || 'TIMS ATS'}`,
     html: renderInvitationEmail({ organization: invitation.organizationName || 'TIMS ATS', role: invitation.roleSlug, url, expiresAt, reminder: true }),
     abortSignal: AbortSignal.timeout(4_000),
   });

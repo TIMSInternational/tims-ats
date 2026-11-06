@@ -84,6 +84,7 @@ public sealed class OrganizationInvitationCreateUseCaseTests
             Assert.Same(Snapshot, expected); Updates++; SentAt = sentAt; ExpiresAt = expiresAt;
             return Throws ? Task.FromException<bool>(new OperationCanceledException()) : Task.FromResult(Mark);
         }
+        public Task<string?> FindTimeZoneAsync(Guid organizationId, CancellationToken ct) => Task.FromResult<string?>(null);
     }
     private sealed class Sender : IEmailSender
     {

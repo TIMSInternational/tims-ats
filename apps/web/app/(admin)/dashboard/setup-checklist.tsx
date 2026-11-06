@@ -101,7 +101,7 @@ export function SetupChecklist() {
           ))}
         </div>
       ) : statusQuery.isError || !data ? (
-        <ErrorState onRetry={() => statusQuery.refetch()} />
+        <ErrorState onRetry={() => statusQuery.refetch()} error={statusQuery.error} />
       ) : (
         <div className="space-y-1">
           {rows.map((row) => (

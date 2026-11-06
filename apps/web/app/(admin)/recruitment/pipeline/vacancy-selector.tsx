@@ -55,7 +55,7 @@ export function VacancySelector({ vacancies, selectedId, onSelect, isLoading }: 
       {open && (
         <div className="absolute top-full left-0 mt-1 w-[340px] bg-white rounded-lg shadow-lg border border-[#EDEDED] z-50 max-h-[320px] overflow-y-auto py-1">
           {vacancies.length === 0 ? (
-            <div className="px-4 py-3 text-[12px] text-[#8B8B8B]">{'No hay vacantes publicadas'}</div>
+            <div className="px-4 py-3 text-[12px] text-[#8B8B8B]">{t.pipeline.noPublishedVacancies}</div>
           ) : (
             vacancies.map((v) => (
               <button

@@ -28,6 +28,9 @@ vi.mock('../../packages/auth/src/server', () => ({
 
 vi.mock('@tims/db', () => {
   const tx = {
+    // Owner provisioning now reads the allowlist inside its own locked transaction (platform-owner access-2).
+    $executeRaw: vi.fn(async () => 1),
+    platformOwnerEmail: { findUnique: vi.fn(async () => null) },
     organization: {
       create: vi.fn(async () => {
         state.orgCreates += 1;

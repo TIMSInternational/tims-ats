@@ -971,7 +971,7 @@ export const SURFACES: Record<string, Surface> = {
   // The WRITE surface is UNAFFECTED — write-surfaces.ts's nineboxSurface tests the C# endpoints
   // directly via raw SQL + HTTP and never had a tsProcedure field. `verify-write ninebox` still runs a
   // REAL check on all 5 writes, including the membership anchor (hr_admin with ninebox:update but no
-  // membership → 403 'miembro del comite').
+  // membership → 403 'miembro del comité').
   ninebox: {
     key: 'ninebox',
     flag: 'Platform__NineBoxReadEnabled',

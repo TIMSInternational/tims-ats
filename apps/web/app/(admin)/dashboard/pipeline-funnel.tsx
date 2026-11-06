@@ -102,7 +102,7 @@ export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
           ))}
         </div>
       ) : funnelQuery.isError ? (
-        <ErrorState onRetry={() => funnelQuery.refetch()} />
+        <ErrorState onRetry={() => funnelQuery.refetch()} error={funnelQuery.error} />
       ) : stages.length === 0 ? (
         <p className="text-[12px] text-muted py-6 text-center">{rd.noPipelineData}</p>
       ) : (

@@ -82,8 +82,9 @@ export default function FitWeightsPage() {
         )}
         {showForm && (
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-            <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.fitWeights.profileName}</label>
+            <label htmlFor="fit-profile-name" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.fitWeights.profileName}</label>
             <input
+              id="fit-profile-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t.fitWeights.profileNamePlaceholder}
@@ -92,8 +93,9 @@ export default function FitWeightsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
               {DIMENSIONS.map((dim) => (
                 <div key={dim}>
-                  <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{weightLabels[dim]}</label>
+                  <label htmlFor={`fit-weight-${dim}`} className="block text-[12px] font-medium text-[#585858] mb-1.5">{weightLabels[dim]}</label>
                   <input
+                    id={`fit-weight-${dim}`}
                     type="number"
                     min={0}
                     max={1}
@@ -121,7 +123,7 @@ export default function FitWeightsPage() {
         {profiles.isLoading ? (
           <Skeleton className="h-32 w-full rounded-xl" />
         ) : profiles.isError ? (
-          <ErrorState onRetry={() => profiles.refetch()} />
+          <ErrorState onRetry={() => profiles.refetch()} error={profiles.error} />
         ) : (
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 overflow-x-auto">
             <table className="w-full min-w-[560px] text-[12px]">

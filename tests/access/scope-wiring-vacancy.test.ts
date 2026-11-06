@@ -16,9 +16,14 @@ describe('vacancy module scope wiring', () => {
     expect(src).toMatch(/AND:\s*\[/);
   });
 
-  it('crud.ts: getById + update/close/freeze/duplicate are scope-probed', () => {
+  it('crud.ts: close/updateRoleFamily/duplicate are scope-probed', () => {
     const src = read('crud.ts');
-    expect((src.match(/assertScoped\('vacancy'/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect((src.match(/assertScoped\('vacancy'/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('lifecycle.ts: update/freeze/resume are scope-probed (moved out of crud.ts)', () => {
+    const src = read('lifecycle.ts');
+    expect((src.match(/assertScoped\('vacancy'/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 
   it('approvals.ts, channels.ts, job-profile.ts: by-id mutations are scope-probed', () => {
@@ -32,7 +37,7 @@ describe('vacancy module scope wiring', () => {
   });
 
   it('no file spreads a scope fragment (AND-composition, CI check 13)', () => {
-    for (const f of ['crud.ts', 'approvals.ts', 'channels.ts', 'job-profile.ts', 'stats.ts']) {
+    for (const f of ['crud.ts', 'lifecycle.ts', 'approvals.ts', 'channels.ts', 'job-profile.ts', 'stats.ts']) {
       expect(read(f)).not.toMatch(/\.\.\.(await\s+)?scopeWhere/);
     }
   });

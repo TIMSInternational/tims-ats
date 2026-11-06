@@ -10,6 +10,7 @@ const OFFER_ID = '22222222-2222-4222-8222-222222222222';
 
 const mockOffer = {
   id: OFFER_ID,
+  vacancyId: '33333333-3333-4333-8333-333333333333',
   status: 'accepted',
   startDate: new Date('2026-10-01T00:00:00.000Z'),
   validations: [],
@@ -19,9 +20,29 @@ const mockOffer = {
 };
 
 // The pilot hire-closure step has its own tests (tests/offer/hire-closure.test.ts); stub it here.
+// F-15 hire guards (filled vacancy): stubbed to pass here; their own tests live in hire-closure.test.ts.
+const hireGuards = vi.hoisted(() => {
+  class HireVacancyFilledError extends Error {
+    constructor(
+      readonly hires: number,
+      readonly positions: number,
+    ) {
+      super('filled');
+    }
+  }
+  return {
+    HireVacancyFilledError,
+    assertVacancyNotFilled: vi.fn(async (..._args: unknown[]) => undefined),
+    lockVacancyForHire: vi.fn(async (..._args: unknown[]) => undefined),
+  };
+});
 vi.mock('../../packages/api/src/services/hire-closure.service', () => ({
   closeHireRecords: vi.fn(async () => ({ applicationClosed: true, vacancyClosed: false })),
   HireRejectedApplicationError: class HireRejectedApplicationError extends Error {},
+  HireVacancyFilledError: hireGuards.HireVacancyFilledError,
+  assertVacancyNotFilled: hireGuards.assertVacancyNotFilled,
+  lockVacancyForHire: hireGuards.lockVacancyForHire,
+  vacancyFilledMessage: (hires: number, positions: number) => `filled ${hires}/${positions}`,
 }));
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
@@ -43,6 +64,14 @@ vi.mock('@tims/db', () => ({
     user: { findFirst: vi.fn().mockResolvedValue(null) },
     role: { findFirst: vi.fn().mockResolvedValue({ id: 'employee-role-1' }) },
     hirePrediction: { findFirst: vi.fn().mockResolvedValue(null) },
+    organization: {
+      findFirst: vi.fn().mockResolvedValue({
+        name: 'Org Piloto',
+        settings: { timezone: 'America/Costa_Rica', candidateContactEmail: 'talento@example.org' },
+        billingEmail: 'billing@example.org',
+      }),
+    },
+    company: { findFirst: vi.fn().mockResolvedValue({ timezone: 'America/Panama', language: 'es' }) },
     $transaction: vi.fn(async (arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => Promise<unknown>)(mockTx)
@@ -64,7 +93,15 @@ const mockTx = {
 };
 
 vi.mock('../../packages/api/src/services/staff-provisioning.service', () => ({
-  resolveStaffSupabaseUserId: vi.fn().mockResolvedValue('supabase-uid-1'),
+  provisionStaffIdentity: vi.fn().mockResolvedValue({ supabaseUserId: 'supabase-uid-1', invited: true }),
+}));
+
+// The access email itself has its own tests (tests/offer/hire-access.test.ts); here only the hand-off.
+vi.mock('../../packages/api/src/services/hire-access.service', () => ({
+  deliverHireAccess: vi.fn(async (p: { email: string; invited: boolean }) => ({
+    kind: p.invited ? 'invitation_sent' : 'setup_link_sent',
+    email: p.email,
+  })),
 }));
 
 vi.mock('../../packages/api/src/services/hire-prediction.service', () => ({
@@ -149,7 +186,7 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
 
   it('refuses to convert an accepted offer whose approval chain holds a rejection', async () => {
     const { tenantDb: db, runTenantTransaction } = await import('@tims/db');
-    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    const { provisionStaffIdentity } = await import('../../packages/api/src/services/staff-provisioning.service');
     vi.mocked(db.offerApproval.count).mockResolvedValueOnce(1 as never);
     const caller = await makeCaller();
 
@@ -159,13 +196,13 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     expect(db.offerApproval.count).toHaveBeenCalledWith({
       where: { offerId: OFFER_ID, organizationId: ORG_ID, status: 'rejected' },
     });
-    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(provisionStaffIdentity).not.toHaveBeenCalled();
     expect(runTenantTransaction).not.toHaveBeenCalled();
   });
 
   it('rejects an unpassed blocking validation before provisioning an identity', async () => {
     const { tenantDb: db, runTenantTransaction } = await import('@tims/db');
-    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    const { provisionStaffIdentity } = await import('../../packages/api/src/services/staff-provisioning.service');
     vi.mocked(db.offer.findFirst).mockResolvedValueOnce({
       ...mockOffer,
       validations: [{ status: 'pending', isBlocking: true }],
@@ -175,7 +212,7 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     await expect(
       caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
     ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
-    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(provisionStaffIdentity).not.toHaveBeenCalled();
     expect(runTenantTransaction).not.toHaveBeenCalled();
   });
 
@@ -195,14 +232,14 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
 
   it('refuses to create a roleless employee when the system role is missing', async () => {
     const { tenantDb: db } = await import('@tims/db');
-    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    const { provisionStaffIdentity } = await import('../../packages/api/src/services/staff-provisioning.service');
     vi.mocked(db.role.findFirst).mockResolvedValueOnce(null);
     const caller = await makeCaller();
 
     await expect(
       caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
     ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
-    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(provisionStaffIdentity).not.toHaveBeenCalled();
   });
 
   it('does not create a duplicate employee when another request claims the offer first', async () => {
@@ -217,9 +254,47 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
     expect(cacheInvalidatePrefix).not.toHaveBeenCalled(); // nothing committed, nothing to drop
   });
 
+  // F-15 (pilot proof run): a hire used to be accepted on a vacancy whose positions were already covered.
+  it('refuses a hire on a filled vacancy before creating the sign-in identity (F-15)', async () => {
+    const { runTenantTransaction } = await import('@tims/db');
+    const { provisionStaffIdentity } = await import('../../packages/api/src/services/staff-provisioning.service');
+    hireGuards.assertVacancyNotFilled.mockRejectedValueOnce(new hireGuards.HireVacancyFilledError(1, 1));
+    const caller = await makeCaller();
+
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'filled 1/1' });
+    expect(provisionStaffIdentity).not.toHaveBeenCalled();
+    expect(runTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it('re-checks under the vacancy lock inside the transaction, before claiming the offer (F-15)', async () => {
+    const caller = await makeCaller();
+    await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });
+
+    expect(hireGuards.lockVacancyForHire).toHaveBeenCalledWith(mockTx, {
+      organizationId: ORG_ID,
+      vacancyId: mockOffer.vacancyId,
+    });
+    expect(hireGuards.lockVacancyForHire.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockTx.offer.updateMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('rolls the hire back when a concurrent hire filled the last position first (F-15)', async () => {
+    hireGuards.lockVacancyForHire.mockRejectedValueOnce(new hireGuards.HireVacancyFilledError(1, 1));
+    const caller = await makeCaller();
+
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'filled 1/1' });
+    expect(mockTx.offer.updateMany).not.toHaveBeenCalled();
+    expect(mockTx.user.create).not.toHaveBeenCalled();
+  });
+
   it('returns the existing hire on a safe retry without creating another employee', async () => {
     const { tenantDb: db, runTenantTransaction } = await import('@tims/db');
-    const { resolveStaffSupabaseUserId } = await import('../../packages/api/src/services/staff-provisioning.service');
+    const { provisionStaffIdentity } = await import('../../packages/api/src/services/staff-provisioning.service');
     vi.mocked(db.offer.findFirst).mockResolvedValueOnce({ ...mockOffer, status: 'converted' } as never);
     vi.mocked(db.hirePrediction.findFirst).mockResolvedValueOnce({ userId: 'user-existing-1' } as never);
     vi.mocked(db.user.findFirst).mockResolvedValueOnce({
@@ -232,6 +307,70 @@ describe('offer.convertToEmployee — onboarding plan creation', () => {
 
     expect(result.id).toBe('user-existing-1');
     expect(runTenantTransaction).not.toHaveBeenCalled();
-    expect(resolveStaffSupabaseUserId).not.toHaveBeenCalled();
+    expect(provisionStaffIdentity).not.toHaveBeenCalled();
+  });
+});
+
+describe('offer.convertToEmployee — the new employee gets a way in (E-06 / B-07 / F-2b)', () => {
+  it("creates the employee in the organization's time zone, not the America/Bogota column default", async () => {
+    const caller = await makeCaller();
+    await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });
+    expect(mockTx.user.create.mock.calls[0][0].data).toMatchObject({ timezone: 'America/Costa_Rica' });
+  });
+
+  it('reports the invitation Supabase sent to a brand-new identity', async () => {
+    const { deliverHireAccess } = await import('../../packages/api/src/services/hire-access.service');
+    const caller = await makeCaller();
+    const result = await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });
+    expect(result.access).toEqual({ kind: 'invitation_sent', email: 'candidate@example.com' });
+    expect(deliverHireAccess).toHaveBeenCalledWith({
+      email: 'candidate@example.com',
+      invited: true,
+      firstName: 'Ana',
+      organizationName: 'Org Piloto',
+      jobTitle: 'Account Executive',
+      startDate: mockOffer.startDate,
+      timeZone: 'America/Costa_Rica',
+      // settings.candidateContactEmail wins over billingEmail.
+      contactEmail: 'talento@example.org',
+      locale: 'es',
+    });
+  });
+
+  it('sends the set-password email AFTER the hire commits when an existing (portal) identity is reused', async () => {
+    const { runTenantTransaction } = await import('@tims/db');
+    const { provisionStaffIdentity } = await import('../../packages/api/src/services/staff-provisioning.service');
+    const { deliverHireAccess } = await import('../../packages/api/src/services/hire-access.service');
+    vi.mocked(provisionStaffIdentity).mockResolvedValueOnce({ supabaseUserId: 'portal-uid-1', invited: false });
+    const caller = await makeCaller();
+    const result = await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });
+    expect(mockTx.user.create.mock.calls[0][0].data).toMatchObject({ supabaseUserId: 'portal-uid-1' });
+    expect(deliverHireAccess).toHaveBeenCalledWith(expect.objectContaining({ invited: false }));
+    expect(vi.mocked(runTenantTransaction).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deliverHireAccess).mock.invocationCallOrder[0]!,
+    );
+    expect(result.access).toEqual({ kind: 'setup_link_sent', email: 'candidate@example.com' });
+  });
+
+  it('sends nothing when the hire fails', async () => {
+    const { deliverHireAccess } = await import('../../packages/api/src/services/hire-access.service');
+    mockTx.offer.updateMany.mockResolvedValueOnce({ count: 0 });
+    const caller = await makeCaller();
+    await expect(
+      caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(deliverHireAccess).not.toHaveBeenCalled();
+  });
+
+  it('claims no email on a safe retry of a finished hire', async () => {
+    const { tenantDb: db } = await import('@tims/db');
+    const { deliverHireAccess } = await import('../../packages/api/src/services/hire-access.service');
+    vi.mocked(db.offer.findFirst).mockResolvedValueOnce({ ...mockOffer, status: 'converted' } as never);
+    vi.mocked(db.hirePrediction.findFirst).mockResolvedValueOnce({ userId: 'user-existing-1' } as never);
+    vi.mocked(db.user.findFirst).mockResolvedValueOnce({ id: 'user-existing-1', email: 'candidate@example.com' } as never);
+    const caller = await makeCaller();
+    const result = await caller.offer.convertToEmployee({ offerId: OFFER_ID, jobTitle: 'Account Executive' });
+    expect(result.access).toBeNull();
+    expect(deliverHireAccess).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,8 @@ interface InterviewTopBarProps {
   isCallActive: boolean;
   /** Leaves the Daily call, if one exists, before the hard exit. */
   onLeaveCall?: () => void;
+  /** "Reprogramar" (recruiter-journeys-28); omitted when the viewer may not manage the interview or it cannot move. */
+  onReschedule?: () => void;
 }
 
 export function InterviewTopBar({
@@ -20,6 +22,7 @@ export function InterviewTopBar({
   fitScore,
   isCallActive,
   onLeaveCall,
+  onReschedule,
 }: InterviewTopBarProps) {
   const { t } = useI18n();
   const [elapsed, setElapsed] = useState(0);
@@ -65,6 +68,16 @@ export function InterviewTopBar({
               {minutes}:{seconds}
             </span>
           </div>
+        )}
+
+        {onReschedule && (
+          <button
+            type="button"
+            onClick={onReschedule}
+            className="border border-white/30 text-white px-3 h-8 rounded-lg text-[12px] font-medium hover:bg-white/10 transition-colors"
+          >
+            {t.interviews.reschedule}
+          </button>
         )}
 
         {/* End button */}

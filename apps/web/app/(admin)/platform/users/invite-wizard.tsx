@@ -145,7 +145,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
           <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organizationRequired}</label>
           <input type="text" value={activeOrgSearch} onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); setRoleSlug(''); }} placeholder={t.invitations.searchOrganization} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
           {activeOrgSearch && !activeOrgId && orgs.isError && (
-            <ErrorState onRetry={() => orgs.refetch()} />
+            <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
           )}
           {activeOrgSearch && !activeOrgId && orgs.data && (
             <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-32 overflow-y-auto">

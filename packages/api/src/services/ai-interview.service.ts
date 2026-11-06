@@ -267,7 +267,7 @@ export const aiInterviewService = {
       scopeWhere,
     );
     if (!row) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de entrevista no encontrada' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesión de entrevista no encontrada' });
     }
 
     // Project only the DTO — never return the raw DB row (organizationId excluded).

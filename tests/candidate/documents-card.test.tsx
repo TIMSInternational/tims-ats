@@ -6,6 +6,10 @@ import es from '../../apps/web/lib/i18n/es.json';
 const mocks = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
   toast: vi.fn(),
+  getUploadUrl: vi.fn(),
+  record: vi.fn(),
+  invalidate: vi.fn(async () => undefined),
+  canUpdate: { value: true },
 }));
 
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -13,12 +17,20 @@ vi.mock('../../apps/web/lib/i18n', async () => {
   return { useI18n: () => ({ t, locale: 'es' }) };
 });
 vi.mock('../../apps/web/lib/toast', () => ({ toast: mocks.toast }));
+vi.mock('../../apps/web/lib/permissions', () => ({
+  useCan: () => (module: string, action?: string) => !(module === 'candidate' && action === 'update') || mocks.canUpdate.value,
+}));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({
+      candidate: { getById: { invalidate: mocks.invalidate }, getTimeline: { invalidate: mocks.invalidate } },
+    }),
     candidate: {
       getDocumentUrl: {
         useMutation: () => ({ mutateAsync: mocks.mutateAsync, isPending: false, variables: undefined }),
       },
+      getDocumentUploadUrl: { useMutation: () => ({ mutateAsync: mocks.getUploadUrl, isPending: false }) },
+      uploadDocument: { useMutation: () => ({ mutateAsync: mocks.record, isPending: false }) },
     },
   },
 }));
@@ -44,6 +56,7 @@ let openSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.canUpdate.value = true;
 });
 
 afterEach(() => {
@@ -51,9 +64,50 @@ afterEach(() => {
 });
 
 describe('DocumentsCard', () => {
-  it('has no dead "Upload document" button', () => {
-    render(<DocumentsCard documents={[DOC]} candidateId={CANDIDATE_ID} />);
+  it('offers "Subir documento" only to staff who may update the candidate (A-21)', () => {
+    mocks.canUpdate.value = false;
+    const { unmount } = render(<DocumentsCard documents={[DOC]} candidateId={CANDIDATE_ID} />);
     expect(screen.queryByText(es.candidates.uploadDocument)).toBeNull();
+    unmount();
+    mocks.canUpdate.value = true;
+    render(<DocumentsCard documents={[DOC]} candidateId={CANDIDATE_ID} />);
+    fireEvent.click(screen.getByRole('button', { name: es.candidates.uploadDocument }));
+    expect(screen.getByLabelText(es.candidates.documentTypeLabel)).toBeTruthy();
+    expect(screen.getByLabelText(es.candidates.documentFileLabel)).toBeTruthy();
+  });
+
+  it('uploads through the presigned POST, then records the stored key on the candidate', async () => {
+    mocks.getUploadUrl.mockResolvedValue({ url: 'https://bucket.example.test', fields: { key: 'k', policy: 'p' }, key: 'cv-uploads/org/new.pdf' });
+    mocks.record.mockResolvedValue({ id: 'doc-2' });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    render(<DocumentsCard documents={[]} candidateId={CANDIDATE_ID} />);
+    fireEvent.click(screen.getByRole('button', { name: es.candidates.uploadDocument }));
+    fireEvent.change(screen.getByLabelText(es.candidates.documentTypeLabel), { target: { value: 'certificate' } });
+    const file = new File(['%PDF-1.4'], 'titulo.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByLabelText(es.candidates.documentFileLabel), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: es.candidates.documentUploadSubmit }));
+
+    await waitFor(() => expect(mocks.record).toHaveBeenCalledTimes(1));
+    expect(mocks.getUploadUrl).toHaveBeenCalledWith({ candidateId: CANDIDATE_ID, contentType: 'application/pdf' });
+    expect(fetchSpy).toHaveBeenCalledWith('https://bucket.example.test', expect.objectContaining({ method: 'POST' }));
+    expect(mocks.record).toHaveBeenCalledWith({
+      candidateId: CANDIDATE_ID,
+      type: 'certificate',
+      fileName: 'titulo.pdf',
+      fileKey: 'cv-uploads/org/new.pdf',
+    });
+    expect(mocks.toast).toHaveBeenCalledWith(es.candidates.documentUploaded, { type: 'success' });
+    fetchSpy.mockRestore();
+  });
+
+  it('refuses a file that is not PDF or DOCX before asking for an upload URL', () => {
+    render(<DocumentsCard documents={[]} candidateId={CANDIDATE_ID} />);
+    fireEvent.click(screen.getByRole('button', { name: es.candidates.uploadDocument }));
+    const file = new File(['x'], 'foto.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText(es.candidates.documentFileLabel), { target: { files: [file] } });
+    expect(screen.getByRole('alert').textContent).toBe(es.candidates.documentFileInvalidType);
+    fireEvent.click(screen.getByRole('button', { name: es.candidates.documentUploadSubmit }));
+    expect(mocks.getUploadUrl).not.toHaveBeenCalled();
   });
 
   it('opens the signed link in a new tab with the opener severed', async () => {
