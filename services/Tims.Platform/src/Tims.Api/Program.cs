@@ -30,6 +30,7 @@ using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Api.Http;
 using Tims.Api.InterviewJoin;
+using Tims.Api.InterviewTranscription;
 using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
@@ -58,6 +59,7 @@ using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.InterviewJoin;
+using Tims.Application.InterviewTranscription;
 using Tims.Application.Engagement;
 using Tims.Application.Dei;
 using Tims.Application.FitEngine;
@@ -97,6 +99,7 @@ using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.InterviewJoin;
+using Tims.Infrastructure.InterviewTranscription;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
@@ -374,6 +377,18 @@ try
     builder.Services.AddScoped<ICandidateInterviewJoinRepository, CandidateInterviewJoinRepository>();
     builder.Services.AddScoped<CandidateInterviewJoin>();
     builder.Services.AddDailyVideo(builder.Configuration);
+    // Interview transcription (dark unless InterviewTranscriptionEnabled): consent ledger + transcript lifecycle in
+    // audit_logs, transcript_url on interviews, all under app_tenant. Its own lazily-built data source. The join reads
+    // the settings record to decide whether to ask for the candidate's decision first.
+    builder.Services.AddSingleton(_ => new InterviewTranscriptionDataSourceHolder(
+        Npgsql.NpgsqlDataSource.Create(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddScoped<InterviewTranscriptionRepository>();
+    builder.Services.AddScoped<IInterviewTranscriptionRepository>(sp => sp.GetRequiredService<InterviewTranscriptionRepository>());
+    builder.Services.AddScoped<IInterviewConsentLedger>(sp => sp.GetRequiredService<InterviewTranscriptionRepository>());
+    builder.Services.AddSingleton(sp => new InterviewTranscriptionSettings(
+        sp.GetRequiredService<IOptions<PlatformOptions>>().Value.InterviewTranscriptionEnabled));
+    builder.Services.AddScoped<InterviewTranscriptionUseCase>();
+    builder.Services.AddDailyTranscription(builder.Configuration);
     builder.Services.AddSingleton<IBulkInvitationWorker, BulkInvitationWorker>();
     builder.Services.AddScoped<BulkInvitationUseCase>();
     builder.Services.TryAddSingleton(TimeProvider.System);
@@ -1436,6 +1451,16 @@ try
         CandidateInterviewJoinEndpoints.WarnIfVideoUnconfigured(app.Logger,
             externalOptions.CandidateInterviewJoinEnabled,
             app.Services.GetRequiredService<IOptions<DailyOptions>>().Value);
+    }
+    if (externalOptions.InterviewTranscriptionEnabled || isOpenApiDocGeneration)
+    {
+        app.MapInterviewTranscriptionEndpoints();
+    }
+    if (!isOpenApiDocGeneration)
+    {
+        InterviewTranscriptionEndpoints.WarnIfWebhookUnconfigured(app.Logger,
+            externalOptions.InterviewTranscriptionEnabled,
+            app.Services.GetRequiredService<IOptions<DailyWebhookOptions>>().Value);
     }
     if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
     {

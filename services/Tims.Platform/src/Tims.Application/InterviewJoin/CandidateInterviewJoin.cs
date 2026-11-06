@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Tims.Application.InterviewTranscription;
 
 namespace Tims.Application.InterviewJoin;
 
@@ -9,9 +10,13 @@ namespace Tims.Application.InterviewJoin;
 /// Candidate video-interview join (WP-H). The emailed token is the ENTIRE credential: it is looked up by
 /// SHA-256 hash only, before any tenant context exists, and every later read/write is filtered by the
 /// organization resolved from that row. A <c>ready</c> join mints a short-lived NON-owner Daily token.
+/// <para>When <see cref="InterviewTranscriptionSettings.Enabled"/>, a joinable interview first answers
+/// <c>consent_required</c>; the candidate's accept/decline is recorded in the consent ledger (fail closed: no record,
+/// no room) before the token is minted. Off (the default), the flow is exactly the original one.</para>
 /// </summary>
 public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinRepository repository,
-    ICandidateVideoProvider video, TimeProvider clock)
+    ICandidateVideoProvider video, TimeProvider clock, InterviewTranscriptionSettings? transcription = null,
+    IInterviewConsentLedger? consents = null)
 {
     /// <summary>The waiting-room window: the join opens this long before the scheduled start.</summary>
     public static readonly TimeSpan EarlyJoin = TimeSpan.FromMinutes(15);
@@ -143,15 +148,26 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
         return null;
     }
 
-    public async Task<CandidateJoinResult> JoinAsync(string token, string? ipAddress, string? userAgent,
-        CancellationToken ct)
+    /// <summary>True when joinable interviews must collect the transcription decision first.</summary>
+    public bool AsksForTranscriptionConsent => transcription?.Enabled == true;
+
+    public Task<CandidateJoinResult> JoinAsync(string token, string? ipAddress, string? userAgent,
+        CancellationToken ct) => JoinAsync(token, null, ipAddress, userAgent, ct);
+
+    public async Task<CandidateJoinResult> JoinAsync(string token, CandidateRecordingDecision? decision,
+        string? ipAddress, string? userAgent, CancellationToken ct)
     {
         if (!ValidToken(token)) return new(CandidateJoinOutcomes.Invalid);
         var interview = await repository.FindByTokenHashAsync(HashToken(token), ct);
         if (interview is null) return new(CandidateJoinOutcomes.Invalid);
 
         var now = clock.GetUtcNow();
-        var result = Evaluate(interview, now.UtcDateTime) ?? await ReadyAsync(interview, now, ct);
+        var result = Evaluate(interview, now.UtcDateTime);
+        if (result is null && AsksForTranscriptionConsent)
+            result = await ConsentStepAsync(interview, decision, ipAddress, userAgent, ct);
+        result ??= await ReadyAsync(interview, now, ct);
+        if (AsksForTranscriptionConsent && result.Outcome == CandidateJoinOutcomes.Ready)
+            result = result with { ConsentVersion = InterviewTranscriptionConstants.ConsentTextVersion };
         if (result.Outcome == CandidateJoinOutcomes.Ready)
         {
             // Room creation and token minting involve an external call. A withdrawal or cancellation committed
@@ -167,6 +183,24 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
         return result.Outcome == CandidateJoinOutcomes.Ready && !recorded
             ? new(CandidateJoinOutcomes.Unavailable)
             : result;
+    }
+
+    /// <summary>
+    /// Null when the decision is on record and the join may proceed. Asks again for a missing, unknown or
+    /// out-of-date (text version) decision; a decision that cannot be recorded is <c>unavailable</c>.
+    /// </summary>
+    private async Task<CandidateJoinResult?> ConsentStepAsync(CandidateJoinInterview interview,
+        CandidateRecordingDecision? decision, string? ipAddress, string? userAgent, CancellationToken ct)
+    {
+        var current = InterviewTranscriptionConstants.ConsentTextVersion;
+        if (decision is null || !string.Equals(decision.TextVersion, current, StringComparison.Ordinal) ||
+            decision.Decision is not (InterviewTranscriptionConstants.Accepted or InterviewTranscriptionConstants.Declined))
+            return new(CandidateJoinOutcomes.ConsentRequired) { ConsentVersion = current };
+        if (consents is null) return new(CandidateJoinOutcomes.Unavailable);
+        var recorded = await consents.RecordConsentAsync(new InterviewConsentRecord(interview.Id,
+            interview.OrganizationId, InterviewTranscriptionConstants.SubjectCandidate, null, decision.Decision, current,
+            IpAddress: ipAddress, UserAgent: userAgent), ct);
+        return recorded ? null : new(CandidateJoinOutcomes.Unavailable);
     }
 
     private async Task<CandidateJoinResult> ReadyAsync(CandidateJoinInterview interview, DateTimeOffset now,

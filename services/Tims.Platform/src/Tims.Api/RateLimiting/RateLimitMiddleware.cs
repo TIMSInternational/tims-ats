@@ -33,10 +33,13 @@ public sealed class RateLimitMiddleware(RequestDelegate next)
     // that 429s is a metric that never evaluates: alerts silently stop firing for every org after the cutoff.
     // The TS/Vercel route it replaces is un-throttled, so exempting it is parity, not a relaxation. Referenced
     // as a constant, never re-typed — a literal here could drift from the route registration silently.
+    // The Daily interview-transcription webhook is exempt for the Stripe reason: anonymous, authenticated by its HMAC
+    // signature (verified before any I/O, body bounded), delivered from Daily's shared egress, idempotent per event.
     private static readonly string[] ExemptExactPaths =
     [
         "/", "/health", "/ready", "/whoami", "/external-whoami", "/billing/webhooks/stripe",
         Tims.Api.AlertMetrics.AlertMetricsEndpoints.RoutePath,
+        Tims.Api.InterviewTranscription.InterviewTranscriptionEndpoints.WebhookPath,
     ];
     private static readonly string[] ExemptPrefixes = ["/openapi"];
 

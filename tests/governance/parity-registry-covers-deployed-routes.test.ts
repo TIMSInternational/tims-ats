@@ -308,6 +308,23 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'INTERVIEW TRANSCRIPTION LANDED DARK 2026-11-06 (InterviewTranscriptionEnabled). Greenfield C#: no tRPC twin. ' +
+      'The staff routes are interview:read|create + ScopedProbe(interview); their outcome depends on per-interview ' +
+      'consent rows and a provider (Daily) the parity harness cannot fake, and the webhook is anonymous, authenticated ' +
+      'only by the Daily HMAC signature. Covered by unit tests (consent rules, signature, WebVTT pseudonymization, ' +
+      'webhook idempotency/rejection) and real-PostgreSQL endpoint tests under forced RLS (401/403/404 matrix incl. ' +
+      'own-scope non-evaluator, cross-org, consent → start → signed webhook → transcript end to end). Register the four ' +
+      'staff routes fixture-first BEFORE enabling InterviewTranscriptionEnabled in production.',
+    routes: [
+      'GET /tenant/interviews/{interviewId}/transcription',
+      'POST /tenant/interviews/{interviewId}/transcription/acknowledgement',
+      'POST /tenant/interviews/{interviewId}/transcription/start',
+      'GET /tenant/interviews/{interviewId}/transcript',
+      'POST /webhooks/daily/interview-transcription',
+    ],
+  },
+  {
+    reason:
       'INFRA / DIAGNOSTIC, not a domain surface. `/` and the two whoami routes are liveness and identity echoes; ' +
       '/require-permission and /require-org-scope (Program.cs:1225, :1265) are the permission-kernel probes the C# ' +
       'auth integration tests drive. None reads tenant data, so none carries a parity, RLS or RBAC obligation.',
@@ -605,7 +622,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         same candidate-consent group. 205 + 1 = 206.
     //         Re-derived after merging main: #331/#332/#334/#337/#339 added no deployed routes, so
     //         main 202 (after #339) + #345's +4 = 206.
-    expect(deployed.size).toBe(206);
+    //         206 → 211 (interview transcription, dark): four staff routes under
+    //         /tenant/interviews/{interviewId}/transcription* + /transcript and the Daily webhook, all in their own group.
+    expect(deployed.size).toBe(211);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -683,7 +702,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
     //   the group count below is unchanged. 109 + 1 = 110.
     //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
-    expect(allowlistNormalised.length).toBe(110);
+    // 110 → 115: the interview transcription group's five dark routes (four staff + the signed Daily webhook).
+    expect(allowlistNormalised.length).toBe(115);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -705,6 +725,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
     // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
     //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the sixteen documented gap categories').toBe(16);
+    // 16 → 17: interview transcription — consent- and provider-dependent outcomes plus a signature-authorized webhook.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the seventeen documented gap categories').toBe(17);
   });
 });

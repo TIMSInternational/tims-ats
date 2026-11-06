@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Tims.Application.InterviewJoin;
 
 /// <summary>The only outcome strings the candidate join page ever receives. Nothing finer-grained leaks.</summary>
@@ -10,6 +12,13 @@ public static class CandidateJoinOutcomes
     public const string NotVideo = "not_video";
     public const string Ready = "ready";
     public const string Unavailable = "unavailable";
+
+    /// <summary>
+    /// Only while <c>Platform:InterviewTranscriptionEnabled</c> is on: the interview is joinable, but the candidate must
+    /// first accept or decline the transcription notice (<see cref="CandidateJoinResult.ConsentVersion"/>). Nothing is
+    /// minted until a decision is on record; declining still joins the call, without transcription.
+    /// </summary>
+    public const string ConsentRequired = "consent_required";
 }
 
 /// <summary>
@@ -17,7 +26,19 @@ public static class CandidateJoinOutcomes
 /// <see cref="JoinOpensAt"/> are only set for <c>too_early</c>; <see cref="JoinUrl"/> only for <c>ready</c>.
 /// </summary>
 public sealed record CandidateJoinResult(string Outcome, DateTime? ScheduledAt = null, DateTime? JoinOpensAt = null,
-    string? JoinUrl = null);
+    string? JoinUrl = null)
+{
+    /// <summary>
+    /// The transcription notice version, on <c>consent_required</c> and on a <c>ready</c> join whose interview may be
+    /// transcribed. OMITTED (not null) otherwise, so with the flag off the response is byte-identical to before and
+    /// a strict client schema deployed earlier keeps parsing it.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ConsentVersion { get; init; }
+}
+
+/// <summary>The candidate's answer to the transcription notice, as posted with the join token.</summary>
+public sealed record CandidateRecordingDecision(string Decision, string TextVersion);
 
 /// <summary>
 /// The interview resolved by the join-token hash, before any tenant context exists.
