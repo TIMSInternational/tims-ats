@@ -245,6 +245,18 @@ describe('guide helpers', () => {
     expect(out).toContain('lidera ventas');
   });
 
+  it('masks identifiers that straddle a truncation boundary, and hyphenated name parts (Codex round 7)', () => {
+    const long = formatCandidateCv({ summary: `${'x'.repeat(1480)} contact: ana.ruiz@example.com Federico`, experience: [] }, ['Federico']);
+    expect(long).not.toMatch(/ana\.ruiz|@e|Federi/);
+    const desc = formatCandidateCv(
+      { summary: null, experience: [{ title: 'Analista', description: `${'y'.repeat(395)} Federico 8888-7777` }] },
+      ['Federico'],
+    );
+    expect(desc).not.toMatch(/Fede|8888/);
+    const hyphen = formatCandidateCv({ summary: 'Ana lideró ventas con María', experience: [] }, ['Ana-María Ruiz']);
+    expect(hyphen).toBe('Summary: [nombre] lideró ventas con [nombre]');
+  });
+
   it('bounds the CV block', () => {
     const text = formatCandidateCv({
       summary: 'x'.repeat(5000),

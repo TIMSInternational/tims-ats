@@ -163,7 +163,8 @@ function redactionVariants(terms: readonly string[]): string[] {
   if (wholes.length > 1) out.add(wholes.join(' '));
   for (const whole of wholes) {
     if (!NAME_PARTICLES.has(whole.toLowerCase())) out.add(whole);
-    for (const part of whole.split(' ')) {
+    // Components split on spaces AND hyphens ('Ana-María' → 'Ana', 'María').
+    for (const part of whole.split(/[\s\-\u2010-\u2015]+/)) {
       if (part.length > 0 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
     }
   }
