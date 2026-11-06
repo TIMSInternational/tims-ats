@@ -6,6 +6,8 @@ import { APPLICATION_CONSENT_TEXT_VERSION } from '../../packages/shared/src/cons
 // The candidate privacy notice and the staff data-requests queue cited Colombia's Ley 1581 de 2012 and the
 // SIC for EVERY organization, while pilot companies are in Costa Rica and Guatemala. Until each country's
 // counsel-approved text exists, the copy names no law, no authority and no legal deadline.
+// INTERIM: when counsel-approved per-country text replaces these keys (it will name its law on purpose),
+// replace this test with that text's own tests rather than weakening the pattern.
 const COUNTRY_LAW = /Ley\s|\bLaw\b|1581|Colombia|Superintenden|Industria y Comercio|Industry and Commerce/;
 
 describe('country-neutral legal copy', () => {
