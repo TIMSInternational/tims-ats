@@ -23,6 +23,13 @@ export interface OrgLocaleForm {
   timezone: string;
   currency: string;
   locale: string;
+  /**
+   * Which starting values were NOT stored in the organization's settings but borrowed from the primary
+   * company's columns. A borrowed value the product does not read for that key (e.g. currency: the tenant
+   * locale ignores company currency) must be WRITTEN on save even when the owner left it unchanged, or the
+   * form shows a value the product never uses.
+   */
+  borrowed?: { timezone: boolean; currency: boolean; country: boolean };
 }
 
 export const EMPTY_ORG_LOCALE_FORM: OrgLocaleForm = { choice: '', country: '', timezone: '', currency: '', locale: '' };
@@ -72,7 +79,12 @@ export function orgLocaleFormFromOrg(
   const currency = settingsValue(settings, 'currency') || (company?.currency ?? '').trim();
   const locale = settingsValue(settings, 'locale');
   const choice = !country ? '' : PRESET_COUNTRY_CODES.includes(country) ? country : OTHER_COUNTRY;
-  return { choice, country, timezone, currency, locale };
+  const borrowed = {
+    timezone: !settingsValue(settings, 'timezone') && Boolean(timezone),
+    currency: !settingsValue(settings, 'currency') && Boolean(currency),
+    country: !settingsValue(settings, 'country') && Boolean(country),
+  };
+  return { choice, country, timezone, currency, locale, borrowed };
 }
 
 /**
@@ -97,6 +109,13 @@ export function orgLocalePatch(initial: OrgLocaleForm, form: OrgLocaleForm): Org
   if (form.country !== initial.country) {
     if (!isOrgCountryCode(form.country)) return null;
     patch.country = form.country;
+  }
+  // Codex round 3 on #424: when anything is saved, a value the form showed but only borrowed from the
+  // company is written too (valid ones only), so what the owner saw is what the product will use.
+  if (Object.keys(patch).length > 0 && initial.borrowed) {
+    if (initial.borrowed.currency && patch.currency === undefined && isOrgCurrencyCode(form.currency)) patch.currency = form.currency;
+    if (initial.borrowed.timezone && patch.timezone === undefined && isOrgTimeZone(form.timezone)) patch.timezone = form.timezone;
+    if (initial.borrowed.country && patch.country === undefined && isOrgCountryCode(form.country)) patch.country = form.country;
   }
   return patch;
 }

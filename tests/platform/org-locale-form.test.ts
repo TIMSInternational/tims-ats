@@ -62,6 +62,7 @@ describe('"País y formato regional" form helpers', () => {
       timezone: 'America/Bogota',
       currency: 'USD',
       locale: '',
+      borrowed: { timezone: true, currency: true, country: true },
     });
     expect(
       orgLocaleFormFromOrg(
@@ -74,9 +75,19 @@ describe('"País y formato regional" form helpers', () => {
         },
         { country: 'CR', currency: 'USD', timezone: 'America/Bogota' },
       ),
-    ).toEqual({ choice: 'GT', country: 'GT', timezone: 'America/Guatemala', currency: 'GTQ', locale: 'es-GT' });
+    ).toEqual({
+      choice: 'GT',
+      country: 'GT',
+      timezone: 'America/Guatemala',
+      currency: 'GTQ',
+      locale: 'es-GT',
+      borrowed: { timezone: false, currency: false, country: false },
+    });
     expect(orgLocaleFormFromOrg(null, { country: 'AR' }).choice).toBe(OTHER_COUNTRY);
-    expect(orgLocaleFormFromOrg(null, null)).toEqual(EMPTY_ORG_LOCALE_FORM);
+    expect(orgLocaleFormFromOrg(null, null)).toEqual({
+      ...EMPTY_ORG_LOCALE_FORM,
+      borrowed: { timezone: false, currency: false, country: false },
+    });
   });
 
   it('the edit sends only what changed (so a rename writes no settings), and blocks an invalid change', () => {
@@ -88,9 +99,17 @@ describe('"País y formato regional" form helpers', () => {
       currency: 'GTQ',
       country: 'GT',
     });
+    // A save writes the values the form only borrowed from the company too (Codex round 3 on #424).
     expect(orgLocalePatch(initial, { ...initial, timezone: 'America/Costa_Rica' })).toEqual({
       timezone: 'America/Costa_Rica',
+      currency: 'USD',
+      country: 'CR',
     });
+    // Selecting US with the legacy company USD default: the shown USD is saved, not silently dropped.
+    expect(orgLocalePatch(initial, applyCountryChoice(initial, 'US'))).toMatchObject({ country: 'US', currency: 'USD' });
+    // Values stored in settings are only sent when changed.
+    const stored = orgLocaleFormFromOrg({ country: 'GT', timezone: 'America/Guatemala', currency: 'GTQ', locale: 'es-GT' }, null);
+    expect(orgLocalePatch(stored, { ...stored, locale: 'es-CR' })).toEqual({ locale: 'es-CR' });
     expect(orgLocalePatch(initial, { ...initial, choice: OTHER_COUNTRY, country: 'A' })).toBeNull();
   });
 
