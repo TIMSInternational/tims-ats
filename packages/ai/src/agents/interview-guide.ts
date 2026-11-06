@@ -147,21 +147,30 @@ function formatCompetencies(items: readonly GuideCompetency[]): string {
 }
 
 /** Work history as plain text, the candidate's identifiers masked, bounded. Null when there is nothing to send. */
+/** A plausible 4-digit year from the parse, or '?' — never free text inside the prompt. */
+function yearOf(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isInteger(n) && n >= 1900 && n <= 2100 ? String(n) : '?';
+}
+
 export function formatCandidateCv(cv: GuideCandidateCv | null | undefined, redact: readonly string[] = []): string | null {
   if (!cv) return null;
+  // Every free-text field is masked on its own; the structured years are added AFTER masking (they are
+  // numbers from the parse, not free text, and the masking hides every 8+ digit run such as "2019-2023").
+  const mask = (text: string) => redactContactDetails(text, redact);
   const lines: string[] = [];
   const summary = cv.summary?.trim();
-  if (summary) lines.push(`Summary: ${summary.slice(0, CV_SUMMARY_MAX)}`);
+  if (summary) lines.push(`Summary: ${mask(summary.slice(0, CV_SUMMARY_MAX))}`);
   for (const job of (cv.experience ?? []).slice(0, GUIDE_MAX_EXPERIENCE)) {
     const title = job.title?.trim();
     if (!title) continue;
-    const years = job.startYear ? ` (${job.startYear}–${job.endYear ?? 'actual'})` : '';
-    const company = job.company?.trim() ? ` — ${job.company.trim()}` : '';
-    const description = job.description?.trim() ? `: ${job.description.trim().slice(0, CV_EXPERIENCE_DESCRIPTION_MAX)}` : '';
-    lines.push(`- ${title}${company}${years}${description}`);
+    const years = job.startYear ? ` (${yearOf(job.startYear)}–${job.endYear ? yearOf(job.endYear) : 'actual'})` : '';
+    const company = job.company?.trim() ? ` — ${mask(job.company.trim())}` : '';
+    const description = job.description?.trim() ? `: ${mask(job.description.trim().slice(0, CV_EXPERIENCE_DESCRIPTION_MAX))}` : '';
+    lines.push(`- ${mask(title)}${company}${years}${description}`);
   }
   if (lines.length === 0) return null;
-  return redactContactDetails(lines.join('\n'), redact).slice(0, CV_BLOCK_MAX);
+  return lines.join('\n').slice(0, CV_BLOCK_MAX);
 }
 
 /**

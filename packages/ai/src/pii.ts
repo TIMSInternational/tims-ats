@@ -141,26 +141,19 @@ export function wrapAsData(tag: string, content: string): string {
 
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
-// Never across a line break: separate CV lines are separate facts.
-// Separators include no-break/thin spaces and every dash ("8888\u00a07777", "2020\u20132024").
-const DIGIT_RUN = /\+?\(?\d[\d \t\u00a0\u2007\u2009\u200a\u202f().\-\u2010-\u2015\u2212]*\d/g;
-// "2019-2023" in a CV is a period, not a phone; protected before digit runs are masked.
-const YEAR_RANGE = /(?<!\d)(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}(?!\d)/g;
+// Never across a line break: separate CV lines are separate facts. Separators include no-break/thin
+// spaces, every dash and the slash ("8888\u00a07777", "2020\u20132024", "8888/7777").
+const DIGIT_RUN = /\+?\(?\d[\d \t\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d/g;
+// Every run of 8+ digits is masked, year ranges included ("2019-2023"): a phone can take any shape, so no
+// digit pattern is exempt. Structured dates (e.g. a CV's start/end years) must be added AFTER redaction.
 const PHONE_MIN_DIGITS = 8;
-// A year range is kept as a period ONLY when nothing earlier in its clause points to a phone: a phone label
-// anywhere before it ("Tel: +506 (2020-2024)", "Tel: 8888-7777 (2019-2023)") or a digit run leading into
-// it ("+506 (2020-2024)"). When in doubt it is masked: losing a date costs the guide nothing, leaking a phone does.
-const PHONE_LABEL_ON_LINE =
-  /(?:^|[^\p{L}])(?:tel|tel[eé]fono|telefone|cel|celular|m[oó]vil|movil|phone|mobile|whatsapp|wa|fax|contacto|contact)(?![\p{L}])/iu;
-const DIGIT_RUN_BEFORE = /[\d+][ \t\u00a0\u2007\u2009\u200a\u202f().\-\u2010-\u2015\u2212]*$/;
 
 // Name particles never masked on their own ("de", "del" are ordinary words).
 const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
 
 /**
- * The terms, their combined full name, and their separate words, longest first. A term supplied whole is
- * masked whatever its length ("Li", "Wu" are complete names); only words split OUT of a longer term skip
- * particles and 1–2 letter fragments.
+ * The supplied names, their combined full name, and every word in them, longest first. Every component is
+ * masked whatever its length ("Li", "Wu", "王"); only the explicit particles above are never masked alone.
  */
 function redactionVariants(terms: readonly string[]): string[] {
   const out = new Set<string>();
@@ -168,41 +161,27 @@ function redactionVariants(terms: readonly string[]): string[] {
   const wholes = terms.map(clean).filter((w) => w.length > 0);
   if (wholes.length > 1) out.add(wholes.join(' '));
   for (const whole of wholes) {
-    if (whole.length >= 2 && !NAME_PARTICLES.has(whole.toLowerCase())) out.add(whole);
+    if (!NAME_PARTICLES.has(whole.toLowerCase())) out.add(whole);
     for (const part of whole.split(' ')) {
-      if (part.length >= 3 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
+      if (part.length > 0 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
     }
   }
   return [...out].sort((a, b) => b.length - a.length);
 }
 
-/** Private-use placeholder for the i-th protected span: no digits, so it can never join a digit run. */
-const placeholder = (i: number) => `\uE000${i.toString(26).replace(/\d/g, (d) => 'qrstuvwxyz'[Number(d)]!)}\uE001`;
-
 /**
  * Data minimization for free text about a candidate (e.g. a parsed CV summary) before it is sent to a
  * model that does not need to know who the person is: masks e-mail addresses, every run of 8+ digits
- * (phone numbers, alone or several in a row; year ranges such as "2019-2023" are kept) and the given
- * literal terms (the candidate's own names, whole and word by word, skipping particles such as "de"),
- * whole-word, case- and accent-insensitive. Run it BEFORE sanitizeInput / wrapAsData.
+ * (phone numbers in any format; year ranges such as "2019-2023" too — add structured dates after this),
+ * and the given names (whole, as the combined full name, and word by word at any length, skipping
+ * particles such as "de"), whole-word, case- and accent-insensitive. Invisible and control characters are
+ * removed first. Run it BEFORE sanitizeInput / wrapAsData.
  */
 export function redactContactDetails(text: string, terms: readonly string[] = []): string {
   // Invisible and control characters go FIRST: removed later (by sanitizeInput / wrapAsData) they would
   // re-join a phone number or a name this function failed to recognise ("8888\u200b7777", "Jo\u200bse").
   let out = text.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(EMAIL_PATTERN, '[email]');
-  const kept: string[] = [];
-  out = out.replace(YEAR_RANGE, (range: string, offset: number, whole: string) => {
-    // The clause before it (same line, after the last ". ", ", " or "; "): a CV summary often opens with
-    // contact data, and a period in a later clause is still a period.
-    const before = (whole.slice(0, offset).split('\n').pop() ?? '').split(/[.;,]\s/).pop() ?? '';
-    if (PHONE_LABEL_ON_LINE.test(before) || DIGIT_RUN_BEFORE.test(before)) return range;
-    kept.push(range);
-    return placeholder(kept.length - 1);
-  });
   out = out.replace(DIGIT_RUN, (run) => (run.replace(/\D/g, '').length >= PHONE_MIN_DIGITS ? '[teléfono]' : run));
-  kept.forEach((range, i) => {
-    out = out.replace(placeholder(i), range);
-  });
   for (const term of redactionVariants(terms)) {
     const pattern = term
       .split(' ')

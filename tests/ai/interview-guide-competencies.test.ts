@@ -155,7 +155,8 @@ describe('generateInterviewGuide with the job profile', () => {
     const [, , userMessage] = vi.mocked(bedrockGenerate).mock.calls[0]!;
     const cv = /<candidate_cv>([\s\S]*)<\/candidate_cv>/.exec(userMessage)?.[1] ?? '';
     expect(cv).toContain('Ejecutiva de ventas — Acme (2019–actual): Cartera de 40 clientes');
-    expect(cv).toContain('(2016-2024)');
+    // Free-text year ranges are masked like any 8+ digit run; the structured years above survive.
+    expect(cv).not.toContain('2016-2024');
     expect(cv).not.toMatch(/Ana|María|Ruiz|ana\.ruiz@mail\.com|8888/);
   });
 
@@ -175,7 +176,7 @@ describe('generateInterviewGuide with the job profile', () => {
     const [, , userMessage] = vi.mocked(bedrockGenerate).mock.calls.at(-1)!;
     const cv = /<candidate_cv>([\s\S]*)<\/candidate_cv>/.exec(userMessage)?.[1] ?? '';
     expect(cv).not.toMatch(/Jose|Perez|88887777|8888|2020-2024|2021\u20132025|2022|2026/);
-    expect(cv).toContain('(2016-2024)');
+    expect(cv).not.toContain('2016-2024');
   });
 });
 
@@ -219,6 +220,18 @@ describe('guide helpers', () => {
     expect(formatCandidateCv(null)).toBeNull();
   });
 
+  it('keeps structured work years (added after masking) while masking digit runs in free text', () => {
+    const out = formatCandidateCv(
+      {
+        summary: 'Tel 8888-7777',
+        experience: [{ title: 'Analista', company: 'Delta', startYear: 2018, endYear: 2022, description: 'de 2018-2022' }],
+      },
+      [],
+    );
+    expect(out).toContain('- Analista — Delta (2018–2022): de [teléfono]');
+    expect(out).toContain('Summary: Tel [teléfono]');
+  });
+
   it('bounds the CV block', () => {
     const text = formatCandidateCv({
       summary: 'x'.repeat(5000),
@@ -235,7 +248,7 @@ describe('redactContactDetails', () => {
       'María de la Cruz (maria@x.co, 8888-7777, +57 300 123 4567) trabajó del 2019-2023 en Delta.',
       ['María de la Cruz'],
     );
-    expect(out).toBe('[nombre] ([email], [teléfono], [teléfono]) trabajó del 2019-2023 en Delta.');
+    expect(out).toBe('[nombre] ([email], [teléfono], [teléfono]) trabajó del [teléfono] en Delta.');
     expect(redactContactDetails('Cruzó la meta con Cruz', ['Cruz'])).toBe('Cruzó la meta con [nombre]');
     expect(redactContactDetails('1.200.000 ventas', [])).toBe('1.200.000 ventas');
   });
@@ -245,7 +258,9 @@ describe('redactContactDetails', () => {
   it('masks phones next to other numbers, and names spelled without their accents', () => {
     // A phone label earlier on the line makes a following year range ambiguous: it is masked too.
     expect(redactContactDetails('Tel: 8888-7777 (2019-2023)')).toBe('Tel: [teléfono])');
-    expect(redactContactDetails('Ventas 8 años (2019-2023)')).toBe('Ventas 8 años (2019-2023)');
+    // No digit pattern is exempt: a free-text year range is masked too (structured years are added after).
+    expect(redactContactDetails('Ventas 8 años (2019-2023)')).toBe('Ventas 8 años [teléfono])');
+    expect(redactContactDetails('Ventas 8 años desde 2019')).toBe('Ventas 8 años desde 2019');
     expect(redactContactDetails('Tel: +506 8888-7777 8888-6666')).toBe('Tel: [teléfono]');
     expect(redactContactDetails('Jose Perez y JOSÉ PÉREZ', ['José', 'Pérez'])).toBe('[nombre] y [nombre]');
     expect(redactContactDetails('Muñoz / Munoz', ['Muñoz'])).toBe('[nombre] / [nombre]');
@@ -263,7 +278,7 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('Celular 2020-2024')).toBe('Celular [teléfono]');
     expect(redactContactDetails('WhatsApp: 2020 2024')).not.toMatch(/2020/);
     expect(redactContactDetails('+506 2020-2024')).toBe('[teléfono]');
-    expect(redactContactDetails('Ventas (2020-2024) y soporte 2016–2019')).toBe('Ventas (2020-2024) y soporte 2016–2019');
+    expect(redactContactDetails('Ventas (2020-2024) y soporte 2016–2019')).not.toMatch(/2016|2019|2020|2024/);
   });
 
   it('masks a parenthesized phone and short names (Codex round 4 on #421)', () => {
@@ -273,6 +288,11 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('Gerente: Li Wu', ['Li', 'Wu'])).not.toMatch(/\bLi\b|\bWu\b/);
     // Short names apart from each other are masked too, not only as the combined full name.
     expect(redactContactDetails('Li lideró ventas; luego Wu se unió', ['Li', 'Wu'])).toBe('[nombre] lideró ventas; luego [nombre] se unió');
+    // Codex round 5: abbreviated labels, slashes, and short parts of compound names.
+    expect(redactContactDetails('Tel. 2020-2024')).toBe('Tel. [teléfono]');
+    expect(redactContactDetails('Tel: 8888/7777')).toBe('Tel: [teléfono]');
+    expect(redactContactDetails('Li lideró ventas', ['Li Wei', 'Wu'])).toBe('[nombre] lideró ventas');
+    expect(redactContactDetails('Jefe: 王', ['王'])).toBe('Jefe: [nombre]');
     // A particle supplied alone is still never masked as a word.
     expect(redactContactDetails('Jefe de ventas', ['de'])).toBe('Jefe de ventas');
   });
@@ -281,6 +301,6 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('Tel: 2020\u20132024')).toBe('Tel: [teléfono]');
     expect(redactContactDetails('Tel: 8888\u00a07777')).toBe('Tel: [teléfono]');
     expect(redactContactDetails('Tel: 8888\u202f7777 o 8888\u20147777')).toBe('Tel: [teléfono] o [teléfono]');
-    expect(redactContactDetails('Soporte 2016\u20132019')).toBe('Soporte 2016\u20132019');
+    expect(redactContactDetails('Soporte 2016\u20132019')).toBe('Soporte [teléfono]');
   });
 });
