@@ -16,10 +16,11 @@ public sealed class CandidateJoinConsentStepTests
     private sealed class Repository : ICandidateInterviewJoinRepository
     {
         public List<CandidateJoinAudit> Audits { get; } = [];
+        public string? MeetingUrl { get; set; }
 
         public Task<CandidateJoinInterview?> FindByTokenHashAsync(string tokenHash, CancellationToken ct) =>
             Task.FromResult<CandidateJoinInterview?>(new(InterviewId, OrgId, "video", "scheduled", Start, 60, null,
-                Start.AddMinutes(90), null, "Ana", "Pérez"));
+                Start.AddMinutes(90), MeetingUrl, "Ana", "Pérez"));
 
         public Task<string?> ClaimMeetingUrlAsync(Guid interviewId, Guid organizationId, string roomUrl,
             CancellationToken ct) => Task.FromResult<string?>(roomUrl);
@@ -67,6 +68,32 @@ public sealed class CandidateJoinConsentStepTests
 
         public Task<IReadOnlyList<InterviewConsentRecord>> ListConsentsAsync(Guid organizationId, Guid interviewId,
             CancellationToken ct) => Task.FromResult<IReadOnlyList<InterviewConsentRecord>>(Records);
+
+        public string? LatestState { get; set; }
+
+        public Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId,
+            CancellationToken ct) => Task.FromResult(LatestState);
+    }
+
+    private sealed class Transcriber : ITranscriptionProvider
+    {
+        public bool IsConfigured => true;
+        public bool StopSucceeds { get; set; } = true;
+        public List<string> Stopped { get; } = [];
+
+        public Task<TranscriptionStartResult> StartAsync(string roomName, string language, CancellationToken ct) =>
+            Task.FromResult(TranscriptionStartResult.Started);
+
+        public Task<string?> DownloadTranscriptAsync(Guid transcriptId, CancellationToken ct) =>
+            Task.FromResult<string?>(null);
+
+        public Task<bool> DeleteTranscriptAsync(Guid transcriptId, CancellationToken ct) => Task.FromResult(true);
+
+        public Task<bool> StopAsync(string roomName, CancellationToken ct)
+        {
+            Stopped.Add(roomName);
+            return Task.FromResult(StopSucceeds);
+        }
     }
 
     private sealed class Clock(DateTime now) : TimeProvider
@@ -74,14 +101,52 @@ public sealed class CandidateJoinConsentStepTests
         public override DateTimeOffset GetUtcNow() => new(now, TimeSpan.Zero);
     }
 
+    private static readonly Transcriber SharedTranscriber = new();
+
     private static (CandidateInterviewJoin Join, Video Video, Ledger Ledger, Repository Repo) Build(bool enabled,
-        DateTime? now = null)
+        DateTime? now = null, Transcriber? transcriber = null)
     {
         var repo = new Repository();
         var video = new Video();
         var ledger = new Ledger();
         return (new CandidateInterviewJoin(repo, video, new Clock(now ?? Start.AddMinutes(-5)),
-            new InterviewTranscriptionSettings(enabled), ledger), video, ledger, repo);
+            new InterviewTranscriptionSettings(enabled), ledger, transcriber ?? SharedTranscriber), video, ledger, repo);
+    }
+
+    [Fact]
+    public async Task Declining_on_rejoin_stops_a_running_transcription_before_the_candidate_is_admitted()
+    {
+        // Codex P1: accept → staff starts → the candidate rejoins and declines → capture must stop now.
+        var transcriber = new Transcriber();
+        var (join, video, ledger, repo) = Build(enabled: true, transcriber: transcriber);
+        repo.MeetingUrl = "https://tims.daily.co/" + CandidateInterviewJoin.RoomNameFor(InterviewId);
+        ledger.LatestState = TranscriptStates.InProgress;
+        var result = await join.JoinAsync(Token, new CandidateRecordingDecision(Declined, ConsentTextVersion), null,
+            null, default);
+        Assert.Equal(CandidateJoinOutcomes.Ready, result.Outcome);
+        Assert.Equal(CandidateInterviewJoin.RoomNameFor(InterviewId), Assert.Single(transcriber.Stopped));
+
+        transcriber.StopSucceeds = false;
+        var failed = await join.JoinAsync(Token, new CandidateRecordingDecision(Declined, ConsentTextVersion), null,
+            null, default);
+        Assert.Equal(CandidateJoinOutcomes.Unavailable, failed.Outcome);
+        Assert.Equal(1, video.Mints);
+    }
+
+    [Theory]
+    [InlineData("accepted", "in_progress")]
+    [InlineData("declined", "ready")]
+    [InlineData("declined", null)]
+    public async Task Nothing_is_stopped_when_accepting_or_when_no_transcription_runs(string decision, string? state)
+    {
+        var transcriber = new Transcriber();
+        var (join, _, ledger, repo) = Build(enabled: true, transcriber: transcriber);
+        repo.MeetingUrl = "https://tims.daily.co/" + CandidateInterviewJoin.RoomNameFor(InterviewId);
+        ledger.LatestState = state;
+        var result = await join.JoinAsync(Token, new CandidateRecordingDecision(decision, ConsentTextVersion), null,
+            null, default);
+        Assert.Equal(CandidateJoinOutcomes.Ready, result.Outcome);
+        Assert.Empty(transcriber.Stopped);
     }
 
     [Fact]

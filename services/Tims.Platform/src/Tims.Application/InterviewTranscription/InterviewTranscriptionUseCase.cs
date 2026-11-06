@@ -35,9 +35,37 @@ public enum WebhookHandling
 /// (or, for the webhook, the row's) organization; the gate and the scope probe run in the endpoint before this.
 /// </summary>
 public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionRepository repository,
-    ITranscriptionProvider provider)
+    ITranscriptionProvider provider, TimeProvider? clock = null)
 {
     public const string NotFoundMessage = "Entrevista no encontrada";
+
+    /// <summary>A start authorizes a transcript that began within this window around it (when Daily gives the times).</summary>
+    public static readonly TimeSpan StartSkewBefore = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan StartSkewAfter = TimeSpan.FromMinutes(10);
+
+    /// <summary>Without timing data, a start authorizes only a transcript reported within this long after it.</summary>
+    public static readonly TimeSpan UntimedWindow = TimeSpan.FromHours(6);
+
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+
+    /// <summary>
+    /// The ONE platform start that authorizes this transcript, or null: an unconsumed <c>requested</c> event (no
+    /// earlier <c>ready</c> names it) that happened just before the transcript began — or, when Daily did not send
+    /// the timing, within <see cref="UntimedWindow"/> before now. The latest qualifying start wins.
+    /// </summary>
+    public static InterviewTranscriptionEvent? AuthorizingStart(IReadOnlyList<InterviewTranscriptionEvent> events,
+        DateTime? transcriptStartedUtc, DateTime nowUtc)
+    {
+        var consumed = events.Where(e => e.State == TranscriptStates.Ready && e.AuthorizedBy is not null)
+            .Select(e => e.AuthorizedBy!.Value).ToHashSet();
+        return events
+            .Where(e => e.State == TranscriptStates.Requested && e.Id is { } id && !consumed.Contains(id) &&
+                        e.RecordedAt is { } at && (transcriptStartedUtc is { } started
+                            ? at >= started - StartSkewAfter && at <= started + StartSkewBefore
+                            : at >= nowUtc - UntimedWindow && at <= nowUtc))
+            .OrderBy(e => e.RecordedAt)
+            .LastOrDefault();
+    }
 
     public static string? OwnRoomName(TranscriptionInterview interview) =>
         CandidateInterviewJoin.TryDailyRoom(interview.MeetingUrl, out var room) &&
@@ -180,10 +208,10 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
     }
 
     /// <summary>
-    /// A VERIFIED Daily event. Idempotent per provider event id; a <c>ready</c> transcript is kept only when this
-    /// interview's transcription was started through <see cref="StartAsync"/> and the candidate's latest decision is
-    /// still <c>accepted</c> — otherwise it is deleted at the provider and the rejection is recorded. Throws on a
-    /// storage failure so the provider retries.
+    /// A VERIFIED Daily event. Idempotent per provider event id; a <c>ready</c> transcript is kept only when ONE
+    /// unconsumed platform start (<see cref="AuthorizingStart"/>) accounts for it and the candidate's latest decision
+    /// is still <c>accepted</c> — otherwise it is deleted at the provider (confirmed) and the rejection recorded.
+    /// Throws when the deletion or any evidence write fails, so the provider retries the delivery.
     /// </summary>
     public async Task<WebhookHandling> HandleWebhookAsync(DailyWebhookEvent webhookEvent, CancellationToken ct)
     {
@@ -208,10 +236,13 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         if (webhookEvent.TranscriptId is not { } transcriptId) return WebhookHandling.Ignored;
         var consents = await repository.ListConsentsAsync(org, interviewId, ct);
         var events = await repository.ListEventsAsync(org, interviewId, ct);
-        var requested = events.Any(e => e.State == TranscriptStates.Requested);
-        if (!requested || CandidateDecision(consents).Decision != Accepted)
+        var start = AuthorizingStart(events, webhookEvent.StartedAtUtc, _clock.GetUtcNow().UtcDateTime);
+        if (start is null || CandidateDecision(consents).Decision != Accepted)
         {
-            await provider.DeleteTranscriptAsync(transcriptId, ct);
+            // Not "handled" until the provider confirms the deletion: a failure throws, nothing is recorded, and
+            // Daily's retry runs this again (the event id was never stored, so it is not a duplicate).
+            if (!await provider.DeleteTranscriptAsync(transcriptId, ct))
+                throw new InvalidOperationException("Unauthorized transcript could not be deleted at the provider");
             Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
                 TranscriptStates.Rejected, ProviderEventId: webhookEvent.EventId, TranscriptId: transcriptId), ct));
             return WebhookHandling.Rejected;
@@ -219,7 +250,8 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
 
         await repository.SetTranscriptReferenceAsync(org, interviewId, TranscriptReference(transcriptId), ct);
         Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
-            TranscriptStates.Ready, ProviderEventId: webhookEvent.EventId, TranscriptId: transcriptId), ct));
+            TranscriptStates.Ready, ProviderEventId: webhookEvent.EventId, TranscriptId: transcriptId,
+            AuthorizedBy: start.Id), ct));
         return WebhookHandling.Stored;
     }
 

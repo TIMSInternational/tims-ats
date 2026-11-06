@@ -187,6 +187,32 @@ public sealed class DailyTranscriptionProvider(HttpClient client, IOptions<Daily
         return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
 
+    /// <summary>
+    /// Stops the room's real-time transcription. A 4xx other than 401/403 is read as "nothing to stop" (Daily does
+    /// not document the status for an idle room) so a stale state can never trap a candidate who declines; auth,
+    /// 5xx and network failures are reported as failure.
+    /// </summary>
+    public async Task<bool> StopAsync(string roomName, CancellationToken ct)
+    {
+        if (!IsConfigured) return false;
+        try
+        {
+            using var request = Api(HttpMethod.Post, "/rooms/" + Uri.EscapeDataString(roomName) + "/transcription/stop",
+                new { });
+            using var response = await client.SendAsync(request, ct);
+            var status = (int)response.StatusCode;
+            if (response.IsSuccessStatusCode || (status is >= 400 and < 500 && status is not (401 or 403))) return true;
+            logger.LogWarning("Daily transcription stop failed with {Status}", status);
+            return false;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
+                                              && !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Daily transcription stop request failed");
+            return false;
+        }
+    }
+
     /// <summary>Daily's schema names the field <c>link</c>; its example uses <c>download_link</c>. Accept either.</summary>
     internal static Uri? ReadLink(string json)
     {

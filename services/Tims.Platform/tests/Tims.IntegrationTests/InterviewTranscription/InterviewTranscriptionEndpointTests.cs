@@ -54,6 +54,8 @@ public sealed class InterviewTranscriptionEndpointTests(F fixture)
             Deleted.Add(transcriptId);
             return Task.FromResult(true);
         }
+
+        public Task<bool> StopAsync(string roomName, CancellationToken ct) => Task.FromResult(true);
     }
 
     private sealed class JoinRepository(Guid interviewId) : ICandidateInterviewJoinRepository

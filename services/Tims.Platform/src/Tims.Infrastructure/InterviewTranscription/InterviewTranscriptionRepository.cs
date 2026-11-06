@@ -81,7 +81,7 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
         CancellationToken ct)
     {
         var rows = new List<InterviewConsentRecord>();
-        foreach (var (actor, meta, at) in await ReadAuditAsync(organizationId, interviewId, ConsentAction, ct))
+        foreach (var (_, actor, meta, at) in await ReadLatestConsentsAsync(organizationId, interviewId, ct))
         {
             var subject = meta.GetValueOrDefault("subject");
             var decision = meta.GetValueOrDefault("decision");
@@ -97,16 +97,24 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
         Guid interviewId, CancellationToken ct)
     {
         var rows = new List<InterviewTranscriptionEvent>();
-        foreach (var (actor, meta, at) in await ReadAuditAsync(organizationId, interviewId, EventAction, ct))
+        foreach (var (id, actor, meta, at) in await ReadRecentEventsAsync(organizationId, interviewId, ct))
         {
             var state = meta.GetValueOrDefault("state");
             if (state is not (TranscriptStates.Requested or TranscriptStates.InProgress or TranscriptStates.Ready
                 or TranscriptStates.Error or TranscriptStates.Rejected)) continue;
             Guid? transcriptId = Guid.TryParse(meta.GetValueOrDefault("transcriptId"), out var t) ? t : null;
+            Guid? authorizedBy = Guid.TryParse(meta.GetValueOrDefault("authorizedBy"), out var a) ? a : null;
             rows.Add(new InterviewTranscriptionEvent(interviewId, organizationId, state, actor, null, transcriptId,
-                meta.GetValueOrDefault("language"), at));
+                meta.GetValueOrDefault("language"), at, id, authorizedBy));
         }
         return rows;
+    }
+
+    public async Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId,
+        CancellationToken ct)
+    {
+        var events = await ListEventsAsync(organizationId, interviewId, ct);
+        return events.Count == 0 ? null : events[^1].State;
     }
 
     public async Task<bool> RecordEventAsync(InterviewTranscriptionEvent transcriptionEvent, CancellationToken ct) =>
@@ -119,6 +127,7 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
                 providerEventId = transcriptionEvent.ProviderEventId,
                 transcriptId = transcriptionEvent.TranscriptId?.ToString("D"),
                 language = transcriptionEvent.Language,
+                authorizedBy = transcriptionEvent.AuthorizedBy?.ToString("D"),
             }), null, null, ct);
 
     public async Task<bool> HasProviderEventAsync(Guid organizationId, Guid interviewId, string providerEventId,
@@ -237,30 +246,50 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
     }
 
     /// <summary>
-    /// The interview's audit rows of one action (oldest first, bounded), with their metadata's top-level STRING
-    /// properties. Rows this slice did not write are tolerated: a missing property simply reads as absent.
+    /// The LATEST consent row per (subject, staff user) — DISTINCT ON, so no amount of history (repeated joins,
+    /// acknowledgements) can push the newest candidate decision out of the result. Oldest first.
     /// </summary>
-    private async Task<List<(Guid? Actor, Dictionary<string, string> Meta, DateTime At)>> ReadAuditAsync(
-        Guid organizationId, Guid interviewId, string action, CancellationToken ct)
+    private async Task<List<(Guid Id, Guid? Actor, Dictionary<string, string> Meta, DateTime At)>>
+        ReadLatestConsentsAsync(Guid organizationId, Guid interviewId, CancellationToken ct) =>
+        await ReadAsync(organizationId, interviewId, ConsentAction, (connection, transaction) => new NpgsqlCommand("""
+            SELECT * FROM (
+              SELECT DISTINCT ON (metadata->>'subject',actor_id) id,actor_id,metadata::text AS meta,created_at
+              FROM audit_logs
+              WHERE organization_id=@org AND action=@action AND entity='interview' AND entity_id=@entity
+              ORDER BY metadata->>'subject',actor_id,created_at DESC,id DESC
+            ) latest ORDER BY created_at,id
+            """, connection, transaction), limit: null, ct);
+
+    /// <summary>The NEWEST <see cref="MaxRows"/> lifecycle events (the ones every decision needs), oldest first.</summary>
+    private async Task<List<(Guid Id, Guid? Actor, Dictionary<string, string> Meta, DateTime At)>>
+        ReadRecentEventsAsync(Guid organizationId, Guid interviewId, CancellationToken ct) =>
+        await ReadAsync(organizationId, interviewId, EventAction, (connection, transaction) => new NpgsqlCommand("""
+            SELECT * FROM (
+              SELECT id,actor_id,metadata::text AS meta,created_at FROM audit_logs
+              WHERE organization_id=@org AND action=@action AND entity='interview' AND entity_id=@entity
+              ORDER BY created_at DESC,id DESC LIMIT @limit
+            ) recent ORDER BY created_at,id
+            """, connection, transaction), limit: MaxRows, ct);
+
+    /// <summary>Runs one of the two literal queries above under the tenant scope; metadata's string properties.</summary>
+    private async Task<List<(Guid Id, Guid? Actor, Dictionary<string, string> Meta, DateTime At)>> ReadAsync(
+        Guid organizationId, Guid interviewId, string action,
+        Func<NpgsqlConnection, NpgsqlTransaction, NpgsqlCommand> query, int? limit, CancellationToken ct)
     {
         await using var connection = await source.DataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
         await ScopeAsync(connection, transaction, organizationId, ct);
-        await using var command = new NpgsqlCommand("""
-            SELECT actor_id,metadata::text,created_at FROM audit_logs
-            WHERE organization_id=@org AND action=@action AND entity='interview' AND entity_id=@entity
-            ORDER BY created_at,id LIMIT @limit
-            """, connection, transaction);
+        await using var command = query(connection, transaction);
         command.Parameters.AddWithValue("org", organizationId);
         command.Parameters.AddWithValue("action", action);
         command.Parameters.AddWithValue("entity", interviewId.ToString());
-        command.Parameters.AddWithValue("limit", MaxRows);
-        var rows = new List<(Guid?, Dictionary<string, string>, DateTime)>();
+        if (limit is { } max) command.Parameters.AddWithValue("limit", max);
+        var rows = new List<(Guid, Guid?, Dictionary<string, string>, DateTime)>();
         await using (var reader = await command.ExecuteReaderAsync(ct))
         {
             while (await reader.ReadAsync(ct))
-                rows.Add((reader.IsDBNull(0) ? null : reader.GetGuid(0),
-                    StringProperties(reader.IsDBNull(1) ? null : reader.GetString(1)), Utc(reader.GetDateTime(2))));
+                rows.Add((reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                    StringProperties(reader.IsDBNull(2) ? null : reader.GetString(2)), Utc(reader.GetDateTime(3))));
         }
         await transaction.CommitAsync(ct);
         return rows;

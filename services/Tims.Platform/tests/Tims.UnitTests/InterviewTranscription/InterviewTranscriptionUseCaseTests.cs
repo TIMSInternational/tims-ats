@@ -46,11 +46,14 @@ public sealed class InterviewTranscriptionUseCaseTests
         {
             if (Writes)
             {
-                Events.Add(transcriptionEvent with { RecordedAt = _clock = _clock.AddSeconds(1) });
+                Events.Add(transcriptionEvent with { RecordedAt = _clock = _clock.AddSeconds(1), Id = Guid.NewGuid() });
                 if (transcriptionEvent.ProviderEventId is { } id) SeenProviderEvents.Add(id);
             }
             return Task.FromResult(Writes);
         }
+
+        public Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId,
+            CancellationToken ct) => Task.FromResult(Events.Count == 0 ? null : Events[^1].State);
 
         public Task<bool> HasProviderEventAsync(Guid organizationId, Guid interviewId, string providerEventId,
             CancellationToken ct) => Task.FromResult(SeenProviderEvents.Contains(providerEventId));
@@ -78,6 +81,8 @@ public sealed class InterviewTranscriptionUseCaseTests
         public TranscriptionStartResult StartResult { get; set; } = TranscriptionStartResult.Started;
         public List<(string Room, string Language)> Starts { get; } = [];
         public List<Guid> Deleted { get; } = [];
+        public bool DeleteSucceeds { get; set; } = true;
+        public List<string> Stopped { get; } = [];
         public string? Vtt { get; set; } = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Laura Mora>¿Cómo está?</v>\n\n" +
                                            "00:00:03.000 --> 00:00:05.000\n<v Ana Pérez>Bien, gracias.</v>\n";
 
@@ -92,15 +97,29 @@ public sealed class InterviewTranscriptionUseCaseTests
         public Task<bool> DeleteTranscriptAsync(Guid transcriptId, CancellationToken ct)
         {
             Deleted.Add(transcriptId);
+            return Task.FromResult(DeleteSucceeds);
+        }
+
+        public Task<bool> StopAsync(string roomName, CancellationToken ct)
+        {
+            Stopped.Add(roomName);
             return Task.FromResult(true);
         }
     }
 
-    private static (InterviewTranscriptionUseCase UseCase, Repository Repo, Provider Provider) Build()
+    /// <summary>15:30 UTC — the fake repository records events from 15:00 on, one second apart.</summary>
+    private sealed class Clock : TimeProvider
+    {
+        public DateTime Now { get; set; } = new(2026, 11, 6, 15, 30, 0, DateTimeKind.Utc);
+
+        public override DateTimeOffset GetUtcNow() => new(Now, TimeSpan.Zero);
+    }
+
+    private static (InterviewTranscriptionUseCase UseCase, Repository Repo, Provider Provider) Build(Clock? clock = null)
     {
         var repo = new Repository();
         var provider = new Provider();
-        return (new InterviewTranscriptionUseCase(repo, provider), repo, provider);
+        return (new InterviewTranscriptionUseCase(repo, provider, clock ?? new Clock()), repo, provider);
     }
 
     private static InterviewConsentRecord Candidate(string decision, string version = ConsentTextVersion) =>
@@ -308,6 +327,66 @@ public sealed class InterviewTranscriptionUseCaseTests
                 TranscriptId), default));
         Assert.Equal(WebhookHandling.Test, await useCase.HandleWebhookAsync(new("test", null, null, null), default));
         Assert.Equal(2, repo.Events.Count);
+    }
+
+    [Fact]
+    public async Task Each_platform_start_authorizes_at_most_one_transcript()
+    {
+        // Codex P1: a historical start must not authorize a later transcript whose own start was never recorded.
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase);
+        Assert.Equal(WebhookHandling.Stored, await useCase.HandleWebhookAsync(Ready("evt-1"), default));
+        var second = Guid.NewGuid();
+        repo.Writes = false; // the second start reaches Daily but its evidence is not written
+        Assert.Equal(503, (await useCase.StartAsync(Org, Evaluator, InterviewId, "es", default)).Status);
+        repo.Writes = true;
+        Assert.Equal(WebhookHandling.Rejected, await useCase.HandleWebhookAsync(Ready("evt-2", second), default));
+        Assert.Equal(second, Assert.Single(provider.Deleted));
+        Assert.Equal(TranscriptReference(TranscriptId), repo.Reference);
+        Assert.Equal(repo.Events.Single(e => e.State == TranscriptStates.Requested).Id,
+            repo.Events.Single(e => e.State == TranscriptStates.Ready).AuthorizedBy);
+    }
+
+    [Fact]
+    public async Task A_start_only_authorizes_a_transcript_that_began_right_after_it()
+    {
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase); // requested at ~15:00:03
+        var requestedAt = repo.Events.Single().RecordedAt!.Value;
+        var lateStart = new DateTimeOffset(requestedAt.AddMinutes(40)).ToUnixTimeSeconds();
+        var late = Ready("evt-late") with { EventTimestamp = lateStart + 600, DurationSeconds = 600 };
+        Assert.Equal(WebhookHandling.Rejected, await useCase.HandleWebhookAsync(late, default));
+        var onTime = Ready("evt-on-time", Guid.NewGuid()) with
+        {
+            EventTimestamp = new DateTimeOffset(requestedAt.AddSeconds(20)).ToUnixTimeSeconds() + 1800,
+            DurationSeconds = 1800,
+        };
+        Assert.Equal(WebhookHandling.Stored, await useCase.HandleWebhookAsync(onTime, default));
+        Assert.Single(provider.Deleted);
+    }
+
+    [Fact]
+    public async Task Without_timing_a_stale_start_authorizes_nothing()
+    {
+        var clock = new Clock();
+        var (useCase, repo, _) = Build(clock);
+        await Started(repo, useCase);
+        clock.Now = clock.Now.Add(InterviewTranscriptionUseCase.UntimedWindow).AddMinutes(5);
+        Assert.Equal(WebhookHandling.Rejected, await useCase.HandleWebhookAsync(Ready(), default));
+    }
+
+    [Fact]
+    public async Task A_failed_deletion_is_not_acknowledged_and_the_redelivery_retries_it()
+    {
+        // Codex P1: a rejection is only recorded once the provider confirms the deletion.
+        var (useCase, repo, provider) = Build();
+        await Consent(repo, Accepted); // never started through the platform → must be deleted
+        provider.DeleteSucceeds = false;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => useCase.HandleWebhookAsync(Ready("evt-del"), default));
+        Assert.DoesNotContain(repo.Events, e => e.State == TranscriptStates.Rejected);
+        provider.DeleteSucceeds = true;
+        Assert.Equal(WebhookHandling.Rejected, await useCase.HandleWebhookAsync(Ready("evt-del"), default));
+        Assert.Equal(2, provider.Deleted.Count);
     }
 
     [Fact]

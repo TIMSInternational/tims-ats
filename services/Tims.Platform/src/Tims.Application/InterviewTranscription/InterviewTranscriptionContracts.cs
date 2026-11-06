@@ -62,10 +62,14 @@ public sealed record InterviewConsentRecord(Guid InterviewId, Guid OrganizationI
     string Decision, string TextVersion, DateTime? RecordedAt = null, string? IpAddress = null,
     string? UserAgent = null);
 
-/// <summary>A transcription lifecycle event (requested by staff, or reported by the provider webhook).</summary>
+/// <summary>
+/// A transcription lifecycle event (requested by staff, or reported by the provider webhook). <see cref="Id"/> is the
+/// audit row id (set on read). A <c>ready</c> event names, in <see cref="AuthorizedBy"/>, the ONE <c>requested</c>
+/// event it consumed: each platform start authorizes at most one stored transcript.
+/// </summary>
 public sealed record InterviewTranscriptionEvent(Guid InterviewId, Guid OrganizationId, string State,
     Guid? UserId = null, string? ProviderEventId = null, Guid? TranscriptId = null, string? Language = null,
-    DateTime? RecordedAt = null);
+    DateTime? RecordedAt = null, Guid? Id = null, Guid? AuthorizedBy = null);
 
 /// <summary>The consent ledger: append-only rows in audit_logs, always written under the interview's organization.</summary>
 public interface IInterviewConsentLedger
@@ -73,8 +77,15 @@ public interface IInterviewConsentLedger
     /// <summary>Returns false (never throws) when the row could not be written — callers fail closed.</summary>
     Task<bool> RecordConsentAsync(InterviewConsentRecord record, CancellationToken ct);
 
+    /// <summary>
+    /// The LATEST record per subject (the candidate) and per staff user — never truncated by history length, so a
+    /// newer decline can never hide behind older rows.
+    /// </summary>
     Task<IReadOnlyList<InterviewConsentRecord>> ListConsentsAsync(Guid organizationId, Guid interviewId,
         CancellationToken ct);
+
+    /// <summary>The state of the interview's most recent transcription event, or null when there is none.</summary>
+    Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId, CancellationToken ct);
 }
 
 /// <summary>Whether the transcription feature is on for this deployment (Platform:InterviewTranscriptionEnabled).</summary>
@@ -142,4 +153,7 @@ public interface ITranscriptionProvider
 
     /// <summary>Deletes a stored transcript at the provider. Returns false on failure (logged, never thrown).</summary>
     Task<bool> DeleteTranscriptAsync(Guid transcriptId, CancellationToken ct);
+
+    /// <summary>Stops a running transcription in the room. Returns false on failure (logged, never thrown).</summary>
+    Task<bool> StopAsync(string roomName, CancellationToken ct);
 }

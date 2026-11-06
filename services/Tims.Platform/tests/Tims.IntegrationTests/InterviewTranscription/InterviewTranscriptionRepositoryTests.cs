@@ -58,6 +58,25 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
     }
 
     [Fact]
+    public async Task The_latest_candidate_decision_is_never_hidden_by_history()
+    {
+        // Codex P1: the oldest-500 window used to drop a newer decline behind repeated rows.
+        var repo = Repository();
+        var interview = await fixture.AddInterviewAsync();
+        for (var i = 0; i < 520; i++)
+            Assert.True(await repo.RecordConsentAsync(new(interview, F.OrgA, SubjectCandidate, null, Accepted,
+                ConsentTextVersion), default));
+        Assert.True(await repo.RecordConsentAsync(new(interview, F.OrgA, SubjectStaff, F.RecruiterId, Accepted,
+            ConsentTextVersion), default));
+        Assert.True(await repo.RecordConsentAsync(new(interview, F.OrgA, SubjectCandidate, null, Declined,
+            ConsentTextVersion), default));
+        var consents = await repo.ListConsentsAsync(F.OrgA, interview, default);
+        Assert.Equal(2, consents.Count); // one per subject/user: the candidate's latest and the recruiter's
+        Assert.Equal(Declined, InterviewTranscriptionUseCase.CandidateDecision(consents).Decision);
+        Assert.True(InterviewTranscriptionUseCase.HasAcknowledged(consents, F.RecruiterId));
+    }
+
+    [Fact]
     public async Task A_write_for_an_interview_outside_the_organization_inserts_nothing()
     {
         var repo = Repository();
@@ -75,9 +94,13 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
         var transcript = Guid.NewGuid();
         Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Requested,
             UserId: F.RecruiterId, Language: "es"), default));
+        var requested = (await repo.ListEventsAsync(F.OrgA, interview, default)).Single();
+        Assert.NotNull(requested.Id);
         Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Ready,
-            ProviderEventId: "evt-1", TranscriptId: transcript), default));
+            ProviderEventId: "evt-1", TranscriptId: transcript, AuthorizedBy: requested.Id), default));
         var events = await repo.ListEventsAsync(F.OrgA, interview, default);
+        Assert.Equal(requested.Id, events[^1].AuthorizedBy);
+        Assert.Equal(TranscriptStates.Ready, await repo.LatestTranscriptionStateAsync(F.OrgA, interview, default));
         Assert.Equal([(TranscriptStates.Requested, (Guid?)F.RecruiterId, "es", (Guid?)null),
                 (TranscriptStates.Ready, null, null, transcript)],
             events.Select(e => (e.State, e.UserId, e.Language, e.TranscriptId)).ToArray());

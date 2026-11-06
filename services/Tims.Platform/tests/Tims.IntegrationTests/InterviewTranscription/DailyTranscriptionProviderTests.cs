@@ -115,6 +115,20 @@ public sealed class DailyTranscriptionProviderTests
             (handler.Requests[0].Method, handler.Requests[0].Url));
     }
 
+    [Fact]
+    public async Task Stop_reads_an_idle_room_as_stopped_but_reports_auth_and_server_failures()
+    {
+        var handler = new Handler(Json(HttpStatusCode.OK, "{}"), Json(HttpStatusCode.BadRequest, "{}"),
+            Json(HttpStatusCode.Unauthorized, "{}"), Json(HttpStatusCode.InternalServerError, "{}"));
+        var provider = Provider(handler);
+        Assert.True(await provider.StopAsync("tims-abc", default));
+        Assert.True(await provider.StopAsync("tims-abc", default));
+        Assert.False(await provider.StopAsync("tims-abc", default));
+        Assert.False(await provider.StopAsync("tims-abc", default));
+        Assert.Equal(("https://api.daily.co/v1/rooms/tims-abc/transcription/stop", "Bearer daily-test-key"),
+            (handler.Requests[0].Url, handler.Requests[0].Auth));
+    }
+
     [Theory]
     [InlineData("", false)]
     [InlineData("REPLACE_ME_OUT_OF_BAND", false)]

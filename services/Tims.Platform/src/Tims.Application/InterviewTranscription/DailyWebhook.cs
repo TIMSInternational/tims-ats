@@ -67,8 +67,15 @@ public static class DailyWebhookSignature
 }
 
 /// <summary>The fields of a Daily webhook event this surface acts on. Everything else in the payload is ignored.</summary>
-public sealed record DailyWebhookEvent(string Type, string? EventId, string? RoomName, Guid? TranscriptId)
+public sealed record DailyWebhookEvent(string Type, string? EventId, string? RoomName, Guid? TranscriptId,
+    double? EventTimestamp = null, double? DurationSeconds = null)
 {
+    /// <summary>When the transcription began (sent-at minus its duration), when Daily supplied both numbers.</summary>
+    public DateTime? StartedAtUtc => EventTimestamp is { } ts && DurationSeconds is { } duration && ts > 0 &&
+                                     duration >= 0 && duration < 86_400
+        ? DateTime.UnixEpoch.AddSeconds(ts - duration)
+        : null;
+
     public const string TranscriptStarted = "transcript.started";
     public const string TranscriptReady = "transcript.ready-to-download";
     public const string TranscriptError = "transcript.error";
@@ -101,13 +108,16 @@ public static partial class DailyWebhookEvents
             var eventId = Bounded(root, "id", 200);
             string? roomName = null;
             Guid? transcriptId = null;
+            double? duration = null;
             if (root.TryGetProperty("payload", out var payload) && payload.ValueKind == JsonValueKind.Object)
             {
                 roomName = Bounded(payload, "room_name", 128) ?? Bounded(payload, "room", 128);
                 var rawId = Bounded(payload, "id", 64) ?? Bounded(payload, "transcript_id", 64);
                 if (Guid.TryParse(rawId, out var parsed)) transcriptId = parsed;
+                duration = Number(payload, "duration");
             }
-            return new DailyWebhookEvent(type.GetString()!, eventId, roomName, transcriptId);
+            return new DailyWebhookEvent(type.GetString()!, eventId, roomName, transcriptId, Number(root, "event_ts"),
+                duration);
         }
         catch (JsonException)
         {
@@ -125,6 +135,12 @@ public static partial class DailyWebhookEvents
         var match = FullIdRoom().Match(roomName);
         return match.Success && Guid.TryParseExact(match.Groups[1].Value, "N", out var id) ? id : null;
     }
+
+    private static double? Number(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
+        value.TryGetDouble(out var number) && double.IsFinite(number)
+            ? number
+            : null;
 
     private static string? Bounded(JsonElement element, string name, int max) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&

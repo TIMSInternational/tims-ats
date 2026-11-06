@@ -183,6 +183,33 @@ describe('transcript evidence helpers', () => {
   });
 });
 
+describe('protected-inference backstop (adversarial phrasings)', () => {
+  // Codex P2 on this branch: these two passed the first version of the guard.
+  it.each([
+    'At 60, the candidate is too old to learn new systems.',
+    'The candidate seems confident and outgoing.',
+    'Es demasiado joven para liderar el equipo.',
+    'Se mostró muy segura de sí misma y carismática.',
+    'Parecía estresado y poco entusiasta.',
+    'Habló con un tono de voz tranquilo.',
+    'He is 52 years old.',
+    'Una persona con mucha seguridad en sí misma.',
+  ])('drops "%s"', (text) => {
+    expect(mentionsProtectedInference(text)).toBe(true);
+    expect(stripProtectedSentences(`Usa SQL a diario. ${text}`).text).toBe('Usa SQL a diario.');
+  });
+
+  it.each([
+    'Explicó intervalos de confianza y pruebas A/B.',
+    'Explained race conditions and how to avoid deadlocks.',
+    'Computed 95% confidence intervals for the forecast.',
+    'Describió su experiencia en el sector salud.',
+    'Lideró la migración de un data warehouse.',
+  ])('keeps job content "%s"', (text) => {
+    expect(mentionsProtectedInference(text)).toBe(false);
+  });
+});
+
 describe('analyzeInterviewTranscript', () => {
   it('routes every call through invokeAgent with the transcript wrapped as data and no names', async () => {
     respond(byPrompt(goodQuestions, goodEvidence, goodSynthesis));

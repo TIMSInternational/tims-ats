@@ -95,58 +95,34 @@ export function snapToSegment(seconds: number, segments: readonly TranscriptSegm
   return best;
 }
 
-// Statements about protected characteristics or about emotions/personality inferred from how someone
-// speaks are out of scope for an employment evaluation (EU AI Act Art. 5(1)(f) bans emotion recognition at
-// work; Ley 8968 treats several of these as sensitive data). The prompt forbids them; this is the
-// belt-and-braces check on the model's OUTPUT. Deliberately narrow (stems that describe the person, not
-// topics), so "experiencia en el sector salud" passes while "parecía nervioso" does not.
+// Statements about protected characteristics, or about emotions/personality/demeanour inferred from how someone
+// speaks, are out of scope for an employment evaluation (EU AI Act Art. 5(1)(f) bans emotion recognition at work;
+// Ley 8968 treats several of these as sensitive data). The PROMPT is the primary control (PROTECTED_ATTRIBUTES_RULE +
+// the analyst's own rules) and a human reviews every suggestion; this is only a LEXICAL BACKSTOP on the model's
+// output for common phrasings in es/en. It is NOT a guarantee: a paraphrase it does not list passes. Stems describe
+// the PERSON, not a topic, so "experiencia en el sector salud" passes while "parecía nervioso" does not.
 // Whole words only (Unicode-aware boundaries): "raza" must not match "abrazar", nor "shy" "pushy".
-const PROTECTED_INFERENCE = new RegExp(
-  '(?<![\\p{L}\\p{N}])(?:' +
-  [
-    'nervios[oa]s?',
-    'ansios[oa]s?',
-    'ansiedad',
-    'emocional(?:es|mente)?',
-    'emoci[oó]n(?:es)?',
-    'personalidad',
-    'introvertid[oa]',
-    'extrovertid[oa]',
-    'inseguridad',
-    'insegur[oa]',
-    'timidez',
-    't[ií]mid[oa]',
-    'su edad',
-    'embaraz[\\p{L}]*',
-    'religi[oó]n',
-    'religios[oa]',
-    '[eé]tnic[oa]',
-    'raza',
-    'acento',
-    'discapacidad',
-    'orientaci[oó]n sexual',
-    'estado civil',
-    'nervous',
-    'anxious',
-    'anxiety',
-    'emotional(?:ly)?',
-    'emotions?',
-    'personality',
-    'introvert(?:ed)?',
-    'extrovert(?:ed)?',
-    'insecure',
-    'shy',
-    'pregnan[\\p{L}]*',
-    'religio(?:n|us)',
-    'ethnic(?:ity)?',
-    'accent',
-    'disabilit(?:y|ies)',
-    'sexual orientation',
-    'marital status',
-  ].join('|') +
-  ')(?![\\p{L}\\p{N}])',
-  'iu',
-);
+const STEMS = [
+  // emotions / anxiety
+  'nervios[oa]s?', 'ansios[oa]s?', 'ansiedad', 'emocional(?:es|mente)?', 'emoci[oó]n(?:es)?', 'nervous(?:ness)?',
+  'anxious', 'anxiety', 'emotional(?:ly)?', 'emotions?', 'stressed', 'estresad[oa]',
+  // personality / demeanour
+  'personalidad', 'personality', 'temperament[oa]?', 'introvertid[oa]', 'extrovertid[oa]', 'introvert(?:ed)?',
+  'extrovert(?:ed)?', 'inseguridad', 'insegur[oa]', 'insecure', 'timidez', 't[ií]mid[oa]', 'shy(?:ness)?',
+  // Not bare 'confidence' or 'race': "confidence intervals" and "race conditions" are job content.
+  'confident(?:ly)?', 'self-confidence', 'self-assured', 'segur[oa] de s[ií]', '(?:confianza|seguridad) en s[ií] mism[oa]',
+  'outgoing', 'sociable', 'charismatic', 'charisma', 'carism[aá]tic[oa]', 'carisma', 'enthusiastic', 'enthusiasm',
+  'entusiasta', 'entusiasmo', 'energetic', 'en[eé]rgic[oa]', 'passionate', 'apasionad[oa]', 'calm', 'calmad[oa]',
+  'tranquil[oa]', 'friendly', 'simp[aá]tic[oa]', 'likeable', 'personable', 'humble', 'humilde', 'arrogant',
+  'arrogante', 'tone of voice', 'tono de voz',
+  // age
+  'edad', 'age', 'aged', 'too (?:old|young)', '(?:demasiado|muy) (?:joven|mayor|viej[oa])', 'years old',
+  // other protected characteristics
+  'embaraz[\\p{L}]*', 'pregnan[\\p{L}]*', 'religi[oó]n', 'religios[oa]', 'religio(?:n|us)', '[eé]tnic[oa]',
+  'ethnic(?:ity)?', 'raza', 'acento', 'accent', 'discapacidad', 'disabilit(?:y|ies)', 'disabled',
+  'orientaci[oó]n sexual', 'sexual orientation', 'estado civil', 'marital status',
+];
+const PROTECTED_INFERENCE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${STEMS.join('|')})(?![\\p{L}\\p{N}])`, 'iu');
 
 export function mentionsProtectedInference(text: string): boolean {
   return PROTECTED_INFERENCE.test(text.normalize('NFC'));

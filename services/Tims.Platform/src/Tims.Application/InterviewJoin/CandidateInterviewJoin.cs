@@ -12,11 +12,13 @@ namespace Tims.Application.InterviewJoin;
 /// organization resolved from that row. A <c>ready</c> join mints a short-lived NON-owner Daily token.
 /// <para>When <see cref="InterviewTranscriptionSettings.Enabled"/>, a joinable interview first answers
 /// <c>consent_required</c>; the candidate's accept/decline is recorded in the consent ledger (fail closed: no record,
-/// no room) before the token is minted. Off (the default), the flow is exactly the original one.</para>
+/// no room) before the token is minted. A DECLINE while a transcription is running in the room (the candidate
+/// accepted earlier and rejoined) stops it first; if it cannot be stopped the join answers <c>unavailable</c>.
+/// Off (the default), the flow is exactly the original one.</para>
 /// </summary>
 public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinRepository repository,
     ICandidateVideoProvider video, TimeProvider clock, InterviewTranscriptionSettings? transcription = null,
-    IInterviewConsentLedger? consents = null)
+    IInterviewConsentLedger? consents = null, ITranscriptionProvider? transcriptionProvider = null)
 {
     /// <summary>The waiting-room window: the join opens this long before the scheduled start.</summary>
     public static readonly TimeSpan EarlyJoin = TimeSpan.FromMinutes(15);
@@ -200,7 +202,25 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
         var recorded = await consents.RecordConsentAsync(new InterviewConsentRecord(interview.Id,
             interview.OrganizationId, InterviewTranscriptionConstants.SubjectCandidate, null, decision.Decision, current,
             IpAddress: ipAddress, UserAgent: userAgent), ct);
-        return recorded ? null : new(CandidateJoinOutcomes.Unavailable);
+        if (!recorded) return new(CandidateJoinOutcomes.Unavailable);
+        if (decision.Decision == InterviewTranscriptionConstants.Declined &&
+            !await StopRunningTranscriptionAsync(interview, consents, ct))
+            return new(CandidateJoinOutcomes.Unavailable);
+        return null;
+    }
+
+    /// <summary>
+    /// True when nothing of this interview is being transcribed after the call (or nothing was). The decline is
+    /// already recorded, so a transcript that slips through is still deleted by the webhook; this makes the
+    /// candidate's "will not be transcribed" true DURING the call too.
+    /// </summary>
+    private async Task<bool> StopRunningTranscriptionAsync(CandidateJoinInterview interview,
+        IInterviewConsentLedger ledger, CancellationToken ct)
+    {
+        var state = await ledger.LatestTranscriptionStateAsync(interview.OrganizationId, interview.Id, ct);
+        if (state is not (TranscriptStates.Requested or TranscriptStates.InProgress)) return true;
+        if (!TryDailyRoom(interview.MeetingUrl, out var room) || !IsOwnRoomName(room, interview.Id)) return true;
+        return transcriptionProvider is not null && await transcriptionProvider.StopAsync(room, ct);
     }
 
     private async Task<CandidateJoinResult> ReadyAsync(CandidateJoinInterview interview, DateTimeOffset now,
