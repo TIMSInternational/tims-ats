@@ -94,8 +94,9 @@ export async function generateVacancyDescription(
       whatsapp: { description: '' },
       competencies: [],
     }),
-    // 3 variants in one call need more headroom than the old single-variant call.
-    maxTokens: 3072,
+    // 3 variants (plus up to 10 suggested competencies) in one call need more headroom than the old
+    // single-variant call.
+    maxTokens: 3584,
   });
 
   if (!validated) {
