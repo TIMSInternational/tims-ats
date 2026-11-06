@@ -141,9 +141,10 @@ export function wrapAsData(tag: string, content: string): string {
 
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
-// Never across a line break: separate CV lines are separate facts. Separators include no-break/thin
-// spaces, every dash and the slash ("8888\u00a07777", "2020\u20132024", "8888/7777").
-const DIGIT_RUN = /\+?\(?\d[\d \t\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d/g;
+// Separators include line breaks (PDF extraction wraps "+506 8888\n7777"), no-break/thin spaces, every
+// dash and the slash ("8888\u00a07777", "2020\u20132024", "8888/7777"). Over-masking two numbers on
+// consecutive lines is accepted; leaking a wrapped phone is not.
+const DIGIT_RUN = /\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d/g;
 // Every run of 8+ digits is masked, year ranges included ("2019-2023"): a phone can take any shape, so no
 // digit pattern is exempt. Structured dates (e.g. a CV's start/end years) must be added AFTER redaction.
 const PHONE_MIN_DIGITS = 8;

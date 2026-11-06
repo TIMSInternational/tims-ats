@@ -214,8 +214,12 @@ describe('guide helpers', () => {
     expect(cv).toEqual({
       summary: 'Ventas',
       experience: [{ title: 'Ejecutiva', company: 'Acme', startYear: 2020, endYear: 2023, description: null }],
+      // The parsed name is kept ONLY as a masking term; email/phone are never read.
+      maskNames: ['Ana'],
     });
-    expect(JSON.stringify(cv)).not.toMatch(/a@b\.co|\+5068888|"name"/);
+    expect(JSON.stringify(cv)).not.toMatch(/a@b\.co|\+5068888/);
+    // ...and the masking term never reaches the prompt text.
+    expect(formatCandidateCv(cv)).not.toMatch(/Ana|maskNames/);
     expect(guideCvFromParsedDocuments([{ parsedData: { skills: ['x'] } }])).toBeNull();
     expect(formatCandidateCv(null)).toBeNull();
   });
@@ -230,6 +234,15 @@ describe('guide helpers', () => {
     );
     expect(out).toContain('- Analista — Delta (2018–2022): de [teléfono]');
     expect(out).toContain('Summary: Tel [teléfono]');
+  });
+
+  it('masks names that only the CV carries, and never sends the parsed name (Codex round 6)', () => {
+    const cv = guideCvFromParsedDocuments([
+      { parsedData: { name: 'Ana María Ruiz', summary: 'Ana María Ruiz lidera ventas', experience: [] } },
+    ]);
+    const out = formatCandidateCv(cv, ['Ana', 'Ruiz']);
+    expect(out).not.toMatch(/Ana|María|Ruiz/);
+    expect(out).toContain('lidera ventas');
   });
 
   it('bounds the CV block', () => {
@@ -264,8 +277,9 @@ describe('redactContactDetails', () => {
     expect(redactContactDetails('Tel: +506 8888-7777 8888-6666')).toBe('Tel: [teléfono]');
     expect(redactContactDetails('Jose Perez y JOSÉ PÉREZ', ['José', 'Pérez'])).toBe('[nombre] y [nombre]');
     expect(redactContactDetails('Muñoz / Munoz', ['Muñoz'])).toBe('[nombre] / [nombre]');
-    // A line break separates facts: two years on two lines are not a phone.
-    expect(redactContactDetails('2015\n2016')).toBe('2015\n2016');
+    // A line break no longer separates digit runs: PDF text wraps phones ("+506 8888\n7777", Codex round 6).
+    expect(redactContactDetails('Contacto: +506 8888\n7777')).toBe('Contacto: [teléfono]');
+    expect(redactContactDetails('Ventas\n2015 y luego')).toBe('Ventas\n2015 y luego');
   });
 
   it('masks identifiers split by invisible characters (Codex P1 on #421)', () => {

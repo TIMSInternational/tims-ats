@@ -103,7 +103,7 @@ describe('interviewAiService.generateGuide — job profile + parsed CV', () => {
       { name: 'SQL', description: 'Consultas', targetLevel: 4, targetScaleMax: 5 },
       { name: 'Excel', description: null, targetLevel: 2, targetScaleMax: 5 },
     ]);
-    expect(input.candidateCv).toEqual({ summary: 'Dev 5 años', experience: [] });
+    expect(input.candidateCv).toEqual({ summary: 'Dev 5 años', experience: [], maskNames: ['Ana Gomez'] });
     expect(JSON.stringify(input.candidateCv)).not.toContain('ana@x.co');
     expect(r.competencyQuestions).toEqual(SETS);
   });

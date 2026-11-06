@@ -85,12 +85,18 @@ export interface GuideCandidateCv {
     endYear?: number | null;
     description?: string | null;
   }>;
+  /**
+   * Names found in the CV parse itself (a middle name, legal name or former surname the account does not
+   * carry). NEVER sent to the model: used only as extra masking terms.
+   */
+  maskNames?: string[];
 }
 
 // The work-history part of a stored CV parse (cv-parser output, candidate_documents.parsed_data). Contact
-// fields (name, email, phone) are deliberately not read; a field that does not parse reads as absent.
+// fields (email, phone) are deliberately not read; the parsed `name` is read ONLY as a masking term.
 const storedCvParseSchema = z.object({
   summary: z.string().max(2000).nullish().catch(null),
+  name: z.string().max(200).nullish().catch(null),
   experience: z
     .array(
       z.object({
@@ -110,7 +116,8 @@ export function guideCvFromParsedDocuments(documents: ReadonlyArray<{ parsedData
   for (const doc of documents) {
     const parsed = storedCvParseSchema.safeParse(doc.parsedData);
     if (parsed.success && (parsed.data.summary || parsed.data.experience.length > 0)) {
-      return { summary: parsed.data.summary ?? null, experience: parsed.data.experience };
+      const maskNames = parsed.data.name?.trim() ? [parsed.data.name.trim()] : [];
+      return { summary: parsed.data.summary ?? null, experience: parsed.data.experience, maskNames };
     }
   }
   return null;
@@ -157,7 +164,8 @@ export function formatCandidateCv(cv: GuideCandidateCv | null | undefined, redac
   if (!cv) return null;
   // Every free-text field is masked on its own; the structured years are added AFTER masking (they are
   // numbers from the parse, not free text, and the masking hides every 8+ digit run such as "2019-2023").
-  const mask = (text: string) => redactContactDetails(text, redact);
+  const terms = [...redact, ...(cv.maskNames ?? [])];
+  const mask = (text: string) => redactContactDetails(text, terms);
   const lines: string[] = [];
   const summary = cv.summary?.trim();
   if (summary) lines.push(`Summary: ${mask(summary.slice(0, CV_SUMMARY_MAX))}`);
