@@ -17,6 +17,7 @@ import {
   orgSettingsLocale,
   timeZoneLabel,
 } from '@tims/shared';
+import { blockAt } from '../helpers/source-blocks';
 
 // The organization locale profile (country, time zone, currency, number locale) that "Invitar organización",
 // "Nueva organización" and the platform owner's edit write — and the pins that keep the C# twin
@@ -85,10 +86,7 @@ describe('validation rules', () => {
 
   it('parity pin: the TS currency list is exactly C# CurrencyCodes.KnownCurrencyCodes', () => {
     const cs = CS('Tims.Domain/Compensation/CurrencyCodes.cs');
-    const block = cs.slice(
-      cs.indexOf('KnownCurrencyCodes = new'),
-      cs.indexOf('};', cs.indexOf('KnownCurrencyCodes = new')),
-    );
+    const block = blockAt(cs, 'KnownCurrencyCodes = new', { minLines: 10 });
     const codes = [...block.matchAll(/"([A-Z]{3})"/g)].map((m) => m[1]);
     expect(codes.length).toBeGreaterThan(150);
     for (const code of codes) expect(isOrgCurrencyCode(code), code).toBe(true);
@@ -160,7 +158,7 @@ describe('settings writes', () => {
 describe('currencies of the pilot countries', () => {
   it('are popular (top of every currency picker) and pinned by the FX refresh from cold start', () => {
     const cs = CS('Tims.Application/Fx/RefreshFxRatesUseCase.cs');
-    const seed = cs.slice(cs.indexOf('SeedQuoteCurrencies ='), cs.indexOf('};', cs.indexOf('SeedQuoteCurrencies =')));
+    const seed = blockAt(cs, 'SeedQuoteCurrencies =', { minLines: 2 });
     for (const code of ['GTQ', 'HNL', 'NIO', 'PAB', 'DOP', 'PEN', 'CLP']) {
       expect(POPULAR_CURRENCY_CODES, code).toContain(code);
       expect(seed, code).toContain(`"${code}"`);
