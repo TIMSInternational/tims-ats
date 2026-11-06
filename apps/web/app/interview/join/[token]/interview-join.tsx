@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useI18n } from '../../../../lib/i18n';
 import { CANDIDATE_INTL_LOCALE } from '../../../../lib/candidate-format';
 import {
@@ -15,7 +16,8 @@ import {
 } from '../../../../lib/interview-join';
 import { INTERVIEW_TRANSCRIPTION_CONSENT_VERSION, isInAppVideoEnabled } from '../../../../lib/interview-transcription';
 import { TranscriptionConsent } from './transcription-consent';
-import { CandidateCall } from './candidate-call';
+// Loaded only when a call actually opens in the platform: the Daily bundle never weighs on the join page itself.
+const CandidateCall = dynamic(() => import('./candidate-call').then((m) => m.CandidateCall), { ssr: false });
 
 type ViewState =
   | { kind: 'checking' }
