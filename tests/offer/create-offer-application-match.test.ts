@@ -219,4 +219,36 @@ describe('offer salary bounds', () => {
       expect.objectContaining({ data: expect.objectContaining({ salary: saved }) }),
     );
   });
+
+  // Codex review of fix/pilot-call-flow (P2): a currency-only edit must not keep a fractional salary in CRC.
+  it('a currency-only change to a zero-decimal currency rounds the stored salary', async () => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: 'USD', salary: 12_000.12 });
+    await (await caller()).offer.update({ id: OFFER_ID, currency: 'CRC' });
+    expect(offerUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ currency: 'CRC', salary: 12_000 }) }),
+    );
+  });
+
+  it('a currency-only change that needs no rounding does not rewrite the salary', async () => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: 'USD', salary: 12_000 });
+    await (await caller()).offer.update({ id: OFFER_ID, currency: 'CRC' });
+    expect(offerUpdateMany.mock.calls[0]![0].data).toEqual({ currency: 'CRC' });
+  });
+
+  // Codex review of fix/pilot-call-flow (P2): rounding must not store a salary of 0, which offerSalary refuses.
+  it('create refuses a salary that rounds to zero in a zero-decimal currency', async () => {
+    await expect((await caller()).offer.create({ ...input, currency: 'CRC', salary: 0.4 })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+    expect(offerCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: 'a sent salary', stored: { currency: 'CRC', salary: 1_000_000 }, patch: { salary: 0.4 } },
+    { label: 'a currency-only change', stored: { currency: 'USD', salary: 0.3 }, patch: { currency: 'CRC' } },
+  ])('update refuses $label that rounds to zero', async ({ stored, patch }) => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', ...stored });
+    await expect((await caller()).offer.update({ id: OFFER_ID, ...patch })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(offerUpdateMany).not.toHaveBeenCalled();
+  });
 });
