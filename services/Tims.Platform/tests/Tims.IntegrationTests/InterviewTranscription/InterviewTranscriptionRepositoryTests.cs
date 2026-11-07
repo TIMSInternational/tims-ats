@@ -110,21 +110,125 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
         Assert.False(await repo.HasProviderEventAsync(F.OrgB, interview, "evt-1", default));
     }
 
+    private static async Task<Guid> RequestedStartAsync(InterviewTranscriptionRepository repo, Guid interview)
+    {
+        Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Requested,
+            UserId: F.RecruiterId, Language: "es"), default));
+        return (await repo.ListEventsAsync(F.OrgA, interview, default)).Single().Id!.Value;
+    }
+
+    private Task<long> ReadyRowsAsync(Guid interview, Guid start) => fixture.ScalarAsync<long>(
+        "SELECT count(*) FROM audit_logs WHERE entity_id=@e AND metadata->>'state'='ready' AND metadata->>'authorizedBy'=@s",
+        ("e", interview.ToString()), ("s", start.ToString("D")));
+
+    /// <summary>Waits until <paramref name="expected"/> backends of this database are blocked on a lock.</summary>
+    private async Task WaitForLockWaitersAsync(int expected)
+    {
+        for (var i = 0; i < 500; i++)
+        {
+            if (await fixture.ScalarAsync<long>(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'")
+                == expected) return;
+            await Task.Delay(20);
+        }
+        Assert.Fail($"Expected {expected} sessions waiting on a lock");
+    }
+
     [Fact]
     public async Task The_transcript_reference_is_written_tenant_filtered_and_idempotently()
     {
         var repo = Repository();
         var interview = await fixture.AddInterviewAsync();
-        var reference = TranscriptReference(Guid.NewGuid());
-        await repo.SetTranscriptReferenceAsync(F.OrgB, interview, reference, default);
+        var start = await RequestedStartAsync(repo, interview);
+        var transcript = Guid.NewGuid();
+        Assert.Equal(TranscriptClaim.Failed,
+            await repo.ClaimTranscriptAsync(F.OrgB, interview, transcript, start, "evt-b", default));
         Assert.Null((await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
 
-        await repo.SetTranscriptReferenceAsync(F.OrgA, interview, reference, default);
+        Assert.Equal(TranscriptClaim.Stored,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-a", default));
         var first = await fixture.ScalarAsync<DateTime>("SELECT updated_at FROM interviews WHERE id=@id", ("id", interview));
         await Task.Delay(20);
-        await repo.SetTranscriptReferenceAsync(F.OrgA, interview, reference, default);
+        Assert.Equal(TranscriptClaim.AlreadyStored,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-a2", default));
         Assert.Equal(first, await fixture.ScalarAsync<DateTime>("SELECT updated_at FROM interviews WHERE id=@id", ("id", interview)));
-        Assert.Equal(reference, (await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+        Assert.Equal(TranscriptReference(transcript), (await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+        // The start is spent: another transcript cannot be stored against it, and the stored reference stays.
+        Assert.Equal(TranscriptClaim.StartConsumed,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, Guid.NewGuid(), start, "evt-c", default));
+        Assert.Equal(TranscriptReference(transcript), (await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+        Assert.Equal(1, await ReadyRowsAsync(interview, start));
+        var ready = (await repo.ListEventsAsync(F.OrgA, interview, default))[^1];
+        Assert.Equal((TranscriptStates.Ready, (Guid?)transcript, (Guid?)start), (ready.State, ready.TranscriptId, ready.AuthorizedBy));
+    }
+
+    [Fact]
+    public async Task Two_concurrent_claims_on_one_start_store_exactly_one_transcript()
+    {
+        // Codex P1 (re-run 2). Deterministic: a held row lock stops each claim at its UPDATE, which comes AFTER its
+        // consumption check. With the interview lock the second claim waits BEFORE checking and sees the first's
+        // ready row; without it both checks pass first and both claims store.
+        var repo = Repository();
+        var interview = await fixture.AddInterviewAsync();
+        var start = await RequestedStartAsync(repo, interview);
+        await using var blocker = new NpgsqlConnection(fixture.ConnectionString);
+        await blocker.OpenAsync();
+        await using var hold = await blocker.BeginTransactionAsync();
+        await using (var row = new NpgsqlCommand("SELECT 1 FROM interviews WHERE id=@id FOR UPDATE", blocker, hold))
+        {
+            row.Parameters.AddWithValue("id", interview);
+            await row.ExecuteScalarAsync();
+        }
+
+        var transcripts = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        var claims = transcripts.Select(t => Task.Run(() =>
+            repo.ClaimTranscriptAsync(F.OrgA, interview, t, start, "evt-" + t.ToString("N"), default))).ToArray();
+        await WaitForLockWaitersAsync(2);
+        await hold.RollbackAsync();
+        var outcomes = await Task.WhenAll(claims).WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Equal([TranscriptClaim.Stored, TranscriptClaim.StartConsumed], outcomes.Order().ToArray());
+        var winner = transcripts[Array.IndexOf(outcomes, TranscriptClaim.Stored)];
+        Assert.Equal(1, await ReadyRowsAsync(interview, start));
+        Assert.Equal(TranscriptReference(winner), (await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+    }
+
+    [Fact]
+    public async Task A_claim_whose_ready_row_fails_writes_no_reference_and_leaves_the_start_unconsumed()
+    {
+        // Codex P1 (re-run 2): the reference used to commit on its own before the ready row. A trigger fails ONLY
+        // this interview's ready INSERT, after the UPDATE already ran in the claim's transaction.
+        var repo = Repository();
+        var interview = await fixture.AddInterviewAsync();
+        var start = await RequestedStartAsync(repo, interview);
+        var transcript = Guid.NewGuid();
+        var name = "fail_ready_" + interview.ToString("N");
+        await fixture.ExecuteAsync($"""
+            CREATE FUNCTION {name}() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+              IF NEW.entity_id = '{interview}' AND NEW.metadata->>'state' = 'ready' THEN
+                RAISE EXCEPTION 'injected audit failure';
+              END IF;
+              RETURN NEW;
+            END $$;
+            CREATE TRIGGER {name} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION {name}();
+            """);
+        try
+        {
+            Assert.Equal(TranscriptClaim.Failed,
+                await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-1", default));
+        }
+        finally
+        {
+            await fixture.ExecuteAsync($"DROP TRIGGER {name} ON audit_logs; DROP FUNCTION {name}();");
+        }
+        Assert.Null((await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+        Assert.Equal(0, await ReadyRowsAsync(interview, start));
+
+        // Daily's retry: the start is still there to authorize it.
+        Assert.Equal(TranscriptClaim.Stored,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-1", default));
+        Assert.Equal(TranscriptReference(transcript), (await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
     }
 
     [Fact]

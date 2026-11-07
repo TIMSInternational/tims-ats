@@ -12,13 +12,26 @@ public sealed class InterviewTranscriptionUseCaseTests
     private static readonly string OwnRoomUrl = "https://tims.daily.co/" + CandidateInterviewJoin.RoomNameFor(InterviewId);
     private static readonly Guid TranscriptId = Guid.Parse("68f65d4c-a4dc-4179-bbb1-c12432afb924");
 
+    /// <summary>
+    /// In-memory repository. Every list access is guarded (tests run deliveries concurrently), and the claim enforces
+    /// the same invariant as the real one — one <c>ready</c> per start and per transcript — under its own lock.
+    /// </summary>
     internal sealed class Repository : IInterviewTranscriptionRepository
     {
+        private readonly object _gate = new();
+        private readonly SemaphoreSlim _transcriptionLock = new(1, 1);
         public TranscriptionInterview? Interview { get; set; } = new(InterviewId, Org, Guid.NewGuid(), "video",
             "scheduled", OwnRoomUrl, null, "Ana", "Pérez", "Analista");
         public List<InterviewConsentRecord> Consents { get; } = [];
         public List<InterviewTranscriptionEvent> Events { get; } = [];
         public bool Writes { get; set; } = true;
+
+        /// <summary>The claim's write fails (as a failed ready-row INSERT does): nothing is stored.</summary>
+        public bool ClaimFails { get; set; }
+
+        /// <summary>Awaited AFTER an event read took its snapshot (lets a test line two deliveries up).</summary>
+        public Func<Task>? OnListEvents { get; set; }
+
         public string? Reference { get; private set; }
         public List<string> SeenProviderEvents { get; } = [];
         private DateTime _clock = new(2026, 11, 6, 15, 0, 0, DateTimeKind.Utc);
@@ -32,38 +45,75 @@ public sealed class InterviewTranscriptionUseCaseTests
 
         public Task<bool> RecordConsentAsync(InterviewConsentRecord record, CancellationToken ct)
         {
-            if (Writes) Consents.Add(record with { RecordedAt = _clock = _clock.AddSeconds(1) });
+            lock (_gate)
+                if (Writes) Consents.Add(record with { RecordedAt = _clock = _clock.AddSeconds(1) });
             return Task.FromResult(Writes);
         }
 
         public Task<IReadOnlyList<InterviewConsentRecord>> ListConsentsAsync(Guid organizationId, Guid interviewId,
-            CancellationToken ct) => Task.FromResult<IReadOnlyList<InterviewConsentRecord>>(Consents.ToList());
+            CancellationToken ct)
+        {
+            lock (_gate) return Task.FromResult<IReadOnlyList<InterviewConsentRecord>>(Consents.ToList());
+        }
 
-        public Task<IReadOnlyList<InterviewTranscriptionEvent>> ListEventsAsync(Guid organizationId, Guid interviewId,
-            CancellationToken ct) => Task.FromResult<IReadOnlyList<InterviewTranscriptionEvent>>(Events.ToList());
+        public async Task<IReadOnlyList<InterviewTranscriptionEvent>> ListEventsAsync(Guid organizationId,
+            Guid interviewId, CancellationToken ct)
+        {
+            List<InterviewTranscriptionEvent> snapshot;
+            lock (_gate) snapshot = Events.ToList();
+            if (OnListEvents is { } hook) await hook();
+            return snapshot;
+        }
 
         public Task<bool> RecordEventAsync(InterviewTranscriptionEvent transcriptionEvent, CancellationToken ct)
         {
-            if (Writes)
-            {
-                Events.Add(transcriptionEvent with { RecordedAt = _clock = _clock.AddSeconds(1), Id = Guid.NewGuid() });
-                if (transcriptionEvent.ProviderEventId is { } id) SeenProviderEvents.Add(id);
-            }
+            lock (_gate)
+                if (Writes) Append(transcriptionEvent);
             return Task.FromResult(Writes);
         }
 
+        private void Append(InterviewTranscriptionEvent transcriptionEvent)
+        {
+            Events.Add(transcriptionEvent with { RecordedAt = _clock = _clock.AddSeconds(1), Id = Guid.NewGuid() });
+            if (transcriptionEvent.ProviderEventId is { } id) SeenProviderEvents.Add(id);
+        }
+
         public Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId,
-            CancellationToken ct) => Task.FromResult(Events.Count == 0 ? null : Events[^1].State);
-
-        public Task<bool> HasProviderEventAsync(Guid organizationId, Guid interviewId, string providerEventId,
-            CancellationToken ct) => Task.FromResult(SeenProviderEvents.Contains(providerEventId));
-
-        public Task SetTranscriptReferenceAsync(Guid organizationId, Guid interviewId, string reference,
             CancellationToken ct)
         {
-            Reference = reference;
-            if (Interview is not null) Interview = Interview with { TranscriptUrl = reference };
-            return Task.CompletedTask;
+            lock (_gate) return Task.FromResult(Events.Count == 0 ? null : Events[^1].State);
+        }
+
+        public Task<bool> HasProviderEventAsync(Guid organizationId, Guid interviewId, string providerEventId,
+            CancellationToken ct)
+        {
+            lock (_gate) return Task.FromResult(SeenProviderEvents.Contains(providerEventId));
+        }
+
+        public async Task<TranscriptClaim> ClaimTranscriptAsync(Guid organizationId, Guid interviewId,
+            Guid transcriptId, Guid startEventId, string? providerEventId, CancellationToken ct)
+        {
+            await _transcriptionLock.WaitAsync(ct);
+            try
+            {
+                lock (_gate)
+                {
+                    if (Events.Any(e => e.State == TranscriptStates.Ready && e.TranscriptId == transcriptId))
+                        return TranscriptClaim.AlreadyStored;
+                    if (Events.Any(e => e.State == TranscriptStates.Ready && e.AuthorizedBy == startEventId))
+                        return TranscriptClaim.StartConsumed;
+                    if (!Writes || ClaimFails) return TranscriptClaim.Failed;
+                    Reference = TranscriptReference(transcriptId);
+                    if (Interview is not null) Interview = Interview with { TranscriptUrl = Reference };
+                    Append(new InterviewTranscriptionEvent(interviewId, organizationId, TranscriptStates.Ready,
+                        ProviderEventId: providerEventId, TranscriptId: transcriptId, AuthorizedBy: startEventId));
+                    return TranscriptClaim.Stored;
+                }
+            }
+            finally
+            {
+                _transcriptionLock.Release();
+            }
         }
 
         public Task<IReadOnlyList<TranscriptionStaffName>> ListStaffNamesAsync(Guid organizationId, Guid interviewId,
@@ -348,6 +398,52 @@ public sealed class InterviewTranscriptionUseCaseTests
         Assert.Equal(TranscriptReference(TranscriptId), repo.Reference);
         Assert.Equal(repo.Events.Single(e => e.State == TranscriptStates.Requested).Id,
             repo.Events.Single(e => e.State == TranscriptStates.Ready).AuthorizedBy);
+    }
+
+    [Fact]
+    public async Task Concurrent_ready_deliveries_on_one_start_store_exactly_one_transcript()
+    {
+        // Codex P1 (re-run 2): both deliveries read the start as unconsumed before either wrote; both were stored.
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase);
+        var start = repo.Events.Single().Id;
+        var arrived = 0;
+        var bothRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        repo.OnListEvents = () =>
+        {
+            var n = Interlocked.Increment(ref arrived);
+            if (n == 2) bothRead.TrySetResult();
+            return n <= 2 ? bothRead.Task : Task.CompletedTask; // only the first read of each delivery waits
+        };
+        var (first, second) = (Guid.NewGuid(), Guid.NewGuid());
+        var outcomes = await Task.WhenAll(
+                useCase.HandleWebhookAsync(Ready("evt-1", first), default),
+                useCase.HandleWebhookAsync(Ready("evt-2", second), default))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal([WebhookHandling.Stored, WebhookHandling.Rejected], outcomes.Order().ToArray());
+        var stored = outcomes[0] == WebhookHandling.Stored ? first : second;
+        var loser = stored == first ? second : first;
+        var ready = Assert.Single(repo.Events, e => e.State == TranscriptStates.Ready);
+        Assert.Equal((stored, start), (ready.TranscriptId!.Value, ready.AuthorizedBy));
+        Assert.Equal(TranscriptReference(stored), repo.Reference);
+        Assert.Equal(loser, Assert.Single(provider.Deleted)); // the loser is unauthorized, so it is deleted
+    }
+
+    [Fact]
+    public async Task A_ready_whose_write_fails_stores_no_reference_and_leaves_the_start_for_the_retry()
+    {
+        // Codex P1 (re-run 2): the reference used to commit before the ready event; a failed event write left the
+        // reference pointing at the transcript AND the start reusable by another one.
+        var (useCase, repo, _) = Build();
+        await Started(repo, useCase);
+        repo.ClaimFails = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => useCase.HandleWebhookAsync(Ready("evt-r"), default));
+        Assert.Null(repo.Reference);
+        Assert.DoesNotContain(repo.Events, e => e.State == TranscriptStates.Ready);
+        repo.ClaimFails = false;
+        Assert.Equal(WebhookHandling.Stored, await useCase.HandleWebhookAsync(Ready("evt-r"), default));
+        Assert.Equal(TranscriptReference(TranscriptId), repo.Reference);
     }
 
     [Fact]

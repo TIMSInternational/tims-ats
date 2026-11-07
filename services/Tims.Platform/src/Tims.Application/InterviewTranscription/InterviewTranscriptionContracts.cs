@@ -88,6 +88,22 @@ public interface IInterviewConsentLedger
     Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId, CancellationToken ct);
 }
 
+/// <summary>The outcome of storing a ready transcript against the platform start that authorized it.</summary>
+public enum TranscriptClaim
+{
+    /// <summary>The reference and the <c>ready</c> event were written together.</summary>
+    Stored,
+
+    /// <summary>A <c>ready</c> event already names this transcript: nothing was written.</summary>
+    AlreadyStored,
+
+    /// <summary>Another <c>ready</c> event already consumed this start: nothing was written; decide again.</summary>
+    StartConsumed,
+
+    /// <summary>The write failed (logged): nothing was written.</summary>
+    Failed,
+}
+
 /// <summary>Whether the transcription feature is on for this deployment (Platform:InterviewTranscriptionEnabled).</summary>
 public sealed record InterviewTranscriptionSettings(bool Enabled);
 
@@ -123,8 +139,15 @@ public interface IInterviewTranscriptionRepository : IInterviewConsentLedger
     Task<bool> HasProviderEventAsync(Guid organizationId, Guid interviewId, string providerEventId,
         CancellationToken ct);
 
-    /// <summary>Sets transcript_url (tenant-filtered). Idempotent: writing the stored value again is a no-op.</summary>
-    Task SetTranscriptReferenceAsync(Guid organizationId, Guid interviewId, string reference, CancellationToken ct);
+    /// <summary>
+    /// Stores a ready transcript in ONE transaction under the interview's transcription lock (a transaction-scoped
+    /// Postgres advisory lock, so concurrent deliveries serialize across App Runner instances): unless a <c>ready</c>
+    /// event already names <paramref name="transcriptId"/> or already consumed <paramref name="startEventId"/>, sets
+    /// transcript_url (tenant-filtered) AND appends the <c>ready</c> event naming the start — both or neither. Never
+    /// throws on a database failure (returns <see cref="TranscriptClaim.Failed"/>).
+    /// </summary>
+    Task<TranscriptClaim> ClaimTranscriptAsync(Guid organizationId, Guid interviewId, Guid transcriptId,
+        Guid startEventId, string? providerEventId, CancellationToken ct);
 
     Task<IReadOnlyList<TranscriptionStaffName>> ListStaffNamesAsync(Guid organizationId, Guid interviewId,
         CancellationToken ct);

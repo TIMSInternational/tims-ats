@@ -224,6 +224,8 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
     /// A VERIFIED Daily event. Idempotent per provider event id; a <c>ready</c> transcript is kept only when ONE
     /// unconsumed platform start (<see cref="AuthorizingStart"/>) accounts for it and the candidate's latest decision
     /// is still <c>accepted</c> — otherwise it is deleted at the provider (confirmed) and the rejection recorded.
+    /// Consumption is atomic (<see cref="IInterviewTranscriptionRepository.ClaimTranscriptAsync"/>): two deliveries
+    /// with different transcript ids can never both be stored against the same start.
     /// Throws when the deletion or any evidence write fails, so the provider retries the delivery.
     /// </summary>
     public async Task<WebhookHandling> HandleWebhookAsync(DailyWebhookEvent webhookEvent, CancellationToken ct)
@@ -247,30 +249,48 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         }
 
         if (webhookEvent.TranscriptId is not { } transcriptId) return WebhookHandling.Ignored;
-        var consents = await repository.ListConsentsAsync(org, interviewId, ct);
-        var events = await repository.ListEventsAsync(org, interviewId, ct);
-        // The same transcript reported again (a redelivery under another event id, or a concurrent duplicate that
-        // lost the race) is never deleted once it was accepted.
-        if (events.Any(e => e.State == TranscriptStates.Ready && e.TranscriptId == transcriptId))
-            return WebhookHandling.Duplicate;
-        var start = AuthorizingStart(events, webhookEvent.StartedAtUtc, _clock.GetUtcNow().UtcDateTime);
-        if (start is null || CandidateDecision(consents).Decision != Accepted)
+        // The decision below reads committed events; the claim re-checks it atomically under the interview's lock. A
+        // concurrent delivery that consumed the chosen start in between sends us round again with fresh events.
+        for (var attempt = 0; attempt < MaxClaimAttempts; attempt++)
         {
-            // Not "handled" until the provider confirms the deletion: a failure throws, nothing is recorded, and
-            // Daily's retry runs this again (the event id was never stored, so it is not a duplicate).
-            if (!await provider.DeleteTranscriptAsync(transcriptId, ct))
-                throw new InvalidOperationException("Unauthorized transcript could not be deleted at the provider");
-            Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
-                TranscriptStates.Rejected, ProviderEventId: webhookEvent.EventId, TranscriptId: transcriptId), ct));
-            return WebhookHandling.Rejected;
-        }
+            var consents = await repository.ListConsentsAsync(org, interviewId, ct);
+            var events = await repository.ListEventsAsync(org, interviewId, ct);
+            // The same transcript reported again (a redelivery under another event id, or a concurrent duplicate that
+            // lost the race) is never deleted once it was accepted.
+            if (events.Any(e => e.State == TranscriptStates.Ready && e.TranscriptId == transcriptId))
+                return WebhookHandling.Duplicate;
+            var start = AuthorizingStart(events, webhookEvent.StartedAtUtc, _clock.GetUtcNow().UtcDateTime);
+            if (start is null || CandidateDecision(consents).Decision != Accepted)
+            {
+                // Not "handled" until the provider confirms the deletion: a failure throws, nothing is recorded, and
+                // Daily's retry runs this again (the event id was never stored, so it is not a duplicate).
+                if (!await provider.DeleteTranscriptAsync(transcriptId, ct))
+                    throw new InvalidOperationException("Unauthorized transcript could not be deleted at the provider");
+                Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
+                    TranscriptStates.Rejected, ProviderEventId: webhookEvent.EventId, TranscriptId: transcriptId), ct));
+                return WebhookHandling.Rejected;
+            }
 
-        await repository.SetTranscriptReferenceAsync(org, interviewId, TranscriptReference(transcriptId), ct);
-        Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
-            TranscriptStates.Ready, ProviderEventId: webhookEvent.EventId, TranscriptId: transcriptId,
-            AuthorizedBy: start.Id), ct));
-        return WebhookHandling.Stored;
+            // The reference and the `ready` event that consumes the start are written together or not at all, so a
+            // failed write leaves the start unconsumed AND the reference unchanged for Daily's retry.
+            switch (await repository.ClaimTranscriptAsync(org, interviewId, transcriptId, start.Id!.Value,
+                        webhookEvent.EventId, ct))
+            {
+                case TranscriptClaim.Stored:
+                    return WebhookHandling.Stored;
+                case TranscriptClaim.AlreadyStored:
+                    return WebhookHandling.Duplicate;
+                case TranscriptClaim.StartConsumed:
+                    continue;
+                default:
+                    throw new InvalidOperationException("Transcript reference could not be recorded");
+            }
+        }
+        throw new InvalidOperationException("Transcript authorization kept losing to concurrent deliveries");
     }
+
+    /// <summary>How many times one delivery re-decides after a concurrent delivery consumed the start it chose.</summary>
+    internal const int MaxClaimAttempts = 3;
 
     private static void Require(bool recorded)
     {
