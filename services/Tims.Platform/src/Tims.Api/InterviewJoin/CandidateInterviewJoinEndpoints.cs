@@ -31,10 +31,13 @@ public static class CandidateInterviewJoinEndpoints
         {
             http.Response.Headers.CacheControl = "no-store";
             http.Response.Headers["Referrer-Policy"] = "no-referrer";
-            var body = await ReadAsync(http, ct);
+            var body = await ReadAsync(http, join.AsksForTranscriptionConsent, ct);
             if (body is null) return Results.BadRequest();
             var userAgent = http.Request.Headers.UserAgent.ToString();
-            var result = await join.JoinAsync(body.Token, http.ClientIpFor(),
+            var decision = body.RecordingConsent.Length == 0
+                ? null
+                : new CandidateRecordingDecision(body.RecordingConsent, body.ConsentVersion);
+            var result = await join.JoinAsync(body.Token, decision, http.ClientIpFor(),
                 string.IsNullOrEmpty(userAgent) ? null : userAgent, ct);
             // Outcome only: the token, the join URL and the caller's attribution are never logged.
             loggers.CreateLogger("Tims.Api.InterviewJoin").LogInformation(
@@ -58,8 +61,12 @@ public static class CandidateInterviewJoinEndpoints
         return true;
     }
 
-    /// <summary>Strict body: JSON object with exactly one string property <c>token</c>, bounded size.</summary>
-    internal static async Task<JoinBody?> ReadAsync(HttpContext http, CancellationToken ct)
+    /// <summary>
+    /// Strict body: JSON object with exactly one string property <c>token</c>, bounded size. Only while the
+    /// transcription consent step is on (<paramref name="allowConsent"/>), it may instead carry exactly
+    /// <c>token</c> + <c>recordingConsent</c> (<c>accepted</c>|<c>declined</c>) + <c>consentVersion</c> (bounded).
+    /// </summary>
+    internal static async Task<JoinBody?> ReadAsync(HttpContext http, bool allowConsent, CancellationToken ct)
     {
         if (http.Request.ContentType?.Split(';')[0].Trim() != "application/json") return null;
         var bytes = new byte[MaxBodyBytes + 1];
@@ -77,9 +84,23 @@ public static class CandidateInterviewJoinEndpoints
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return null;
             var properties = root.EnumerateObject().ToArray();
-            if (properties.Length != 1 || properties[0].Name != "token" ||
-                properties[0].Value.ValueKind != JsonValueKind.String) return null;
-            return new JoinBody { Token = properties[0].Value.GetString() ?? "" };
+            if (properties.Length == 1 && properties[0].Name == "token" &&
+                properties[0].Value.ValueKind == JsonValueKind.String)
+                return new JoinBody { Token = properties[0].Value.GetString() ?? "" };
+            if (!allowConsent || properties.Length != 3 ||
+                properties.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != 3 ||
+                properties.Any(p => p.Value.ValueKind != JsonValueKind.String)) return null;
+            string? Value(string name)
+            {
+                var match = properties.FirstOrDefault(p => p.Name == name).Value;
+                return match.ValueKind == JsonValueKind.String ? match.GetString() : null;
+            }
+            var token = Value("token");
+            var consent = Value("recordingConsent");
+            var version = Value("consentVersion");
+            if (token is null || consent is not ("accepted" or "declined") || version is not { Length: > 0 and <= 64 })
+                return null;
+            return new JoinBody { Token = token, RecordingConsent = consent, ConsentVersion = version };
         }
         catch (JsonException) { return null; }
     }
@@ -87,5 +108,11 @@ public static class CandidateInterviewJoinEndpoints
     public sealed class JoinBody
     {
         [Required, StringLength(43, MinimumLength = 43)] public string Token { get; init; } = "";
+
+        /// <summary>Only with the transcription consent step on: <c>accepted</c> or <c>declined</c>.</summary>
+        [MaxLength(8)] public string RecordingConsent { get; init; } = "";
+
+        /// <summary>The notice version the candidate answered (must equal the current one, else asked again).</summary>
+        [MaxLength(64)] public string ConsentVersion { get; init; } = "";
     }
 }

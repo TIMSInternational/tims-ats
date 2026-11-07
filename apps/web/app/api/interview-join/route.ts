@@ -3,8 +3,9 @@ import { RELAY_HEADER, signRelayAttribution } from '../../../lib/platform-api/re
 import {
   INTERVIEW_JOIN_RELAY_ERRORS,
   interviewJoinResultSchema,
-  isValidInterviewJoinToken,
+  parseInterviewJoinRequest,
   type InterviewJoinRelayError,
+  type InterviewJoinRequest,
 } from '../../../lib/interview-join';
 
 const MAX_BODY_BYTES = 1024;
@@ -50,17 +51,13 @@ export async function POST(request: Request) {
     chunks.push(part.value);
   }
   const raw = new TextDecoder().decode(Buffer.concat(chunks));
-  let token: unknown;
+  let joinRequest: InterviewJoinRequest | null;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    token =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 1
-        ? (parsed as { token?: unknown }).token
-        : undefined;
+    joinRequest = parseInterviewJoinRequest(JSON.parse(raw));
   } catch {
     return fail(400);
   }
-  if (!isValidInterviewJoinToken(token)) return fail(400);
+  if (!joinRequest) return fail(400);
 
   const headers = new Headers({ 'content-type': 'application/json' });
   try {
@@ -68,7 +65,8 @@ export async function POST(request: Request) {
     const response = await fetch(upstream, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ token }),
+      // Re-serialized from the validated shape: only the token (and the transcription decision) is forwarded.
+      body: JSON.stringify(joinRequest),
       cache: 'no-store',
       redirect: 'error',
       signal: AbortSignal.timeout(20_000),

@@ -31,8 +31,24 @@ export function isDailyRoomUrl(url: string | null | undefined): boolean {
   );
 }
 
+/**
+ * A pasted external meeting link (https, not a Daily room): Teams/Meet/Zoom. Such an interview is held THERE —
+ * even when its type is 'video' — so the room offers the link and scoring instead of a platform call that would
+ * only fail (createVideoRoom refuses a room for a foreign meeting URL).
+ */
+export function externalMeetingLink(interview: { meetingUrl?: string | null }): string | null {
+  const url = interview.meetingUrl;
+  if (!url || isDailyRoomUrl(url)) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && !parsed.username && !parsed.password ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function isVideoInterview(interview: { type: string; meetingUrl?: string | null }): boolean {
-  return interview.type === 'video' || isDailyRoomUrl(interview.meetingUrl);
+  return (interview.type === 'video' && externalMeetingLink(interview) === null) || isDailyRoomUrl(interview.meetingUrl);
 }
 
 // Mirrors the statuses the server treats as awaiting a scorecard

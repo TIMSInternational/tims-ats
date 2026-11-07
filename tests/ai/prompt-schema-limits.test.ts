@@ -38,6 +38,14 @@ import {
   PIPELINE_OPTIMIZER_SYSTEM_PROMPT,
   pipelineOptimizerOutputSchema,
 } from '../../packages/ai/src/agents/pipeline-optimizer';
+import {
+  EVIDENCE_SYSTEM_PROMPT,
+  QUESTIONS_SYSTEM_PROMPT,
+  SYNTHESIS_SYSTEM_PROMPT,
+  evidenceOutputSchema,
+  questionsOutputSchema,
+  synthesisOutputSchema,
+} from '../../packages/ai/src/agents/interview-transcript-analyst';
 import { readdirSync } from 'fs';
 import { resolve } from 'path';
 import { VACANCY_WRITER_SYSTEM_PROMPT, vacancyWriterOutputSchema } from '../../packages/ai/src/agents/vacancy-writer';
@@ -84,6 +92,10 @@ const CASES = [
   ['interview-guide', INTERVIEW_GUIDE_SYSTEM_PROMPT, interviewGuideOutputSchema],
   ['interview-summarizer', INTERVIEW_SUMMARIZER_SYSTEM_PROMPT, interviewSummarizerOutputSchema],
   ['vacancy-writer', VACANCY_WRITER_SYSTEM_PROMPT, vacancyWriterOutputSchema],
+  // One agent file, three calls: each prompt must state the limits of ITS OWN schema.
+  ['interview-transcript-analyst', QUESTIONS_SYSTEM_PROMPT, questionsOutputSchema],
+  ['interview-transcript-analyst', EVIDENCE_SYSTEM_PROMPT, evidenceOutputSchema],
+  ['interview-transcript-analyst', SYNTHESIS_SYSTEM_PROMPT, synthesisOutputSchema],
 ] as const;
 
 describe('every enforced output limit is stated in the agent prompt', () => {
@@ -92,7 +104,7 @@ describe('every enforced output limit is stated in the agent prompt', () => {
       .filter((f) => f.endsWith('.ts'))
       .map((f) => f.replace(/\.ts$/, ''))
       .sort();
-    expect(CASES.map(([slug]) => slug).sort()).toEqual(files);
+    expect([...new Set(CASES.map(([slug]) => slug))].sort()).toEqual(files);
   });
 
   it.each(CASES)('%s', (_slug, prompt, schema) => {

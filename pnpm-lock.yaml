@@ -118,6 +118,9 @@ importers:
       '@tanstack/react-table':
         specifier: ^8.21.0
         version: 8.21.3(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@tims/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@tims/api':
         specifier: workspace:*
         version: link:../../packages/api

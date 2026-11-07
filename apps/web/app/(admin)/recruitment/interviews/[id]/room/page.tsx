@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useCallback, useRef, useState, type ReactNode } from 'react';
-import { DailyProvider } from '@daily-co/daily-react';
+import { DailyAudio, DailyProvider } from '@daily-co/daily-react';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton } from '../../../../../../components';
 import { useI18n } from '../../../../../../lib/i18n';
@@ -12,7 +12,9 @@ import { ScorecardPanel } from './scorecard-panel';
 import { AutoJoin } from './auto-join';
 import { JoinErrorPanel } from './join-error-panel';
 import { interviewTypeLabel } from './interview-type-label';
-import { isVideoInterview, ROOM_STATUSES } from './interview-mode';
+import { externalMeetingLink, isVideoInterview, ROOM_STATUSES } from './interview-mode';
+import { TranscriptionNotice, useTranscriptionNotice } from './transcription-notice';
+import { TranscriptionControl } from './transcription-control';
 import { RoomLobby } from './room-lobby';
 import { ScoringStage } from './scoring-stage';
 import { ClosedStage } from './closed-stage';
@@ -72,10 +74,18 @@ export default function InterviewRoomPage({
   const [isCallActive, setIsCallActive] = useState(false);
   const leaveRef = useRef<(() => void) | null>(null);
   const handleLeaveCall = useCallback(() => leaveRef.current?.(), []);
+  // Transcription notice (dark unless the transcription UI flag is on): read before joining, recorded on join.
+  const notice = useTranscriptionNotice(id, interview.data ? isVideoInterview(interview.data) : false);
 
   // Join — creates the room + a token. The current stage stays (and the scorecard stays
   // visible) until the token arrives; a failure is shown on that same stage.
   const handleJoin = async () => {
+    // Joining from the scoring stage goes back to the lobby first while the notice is unread.
+    if (!notice.mayJoin) {
+      setChosenStage('lobby');
+      return;
+    }
+    await notice.record();
     const seq = ++joinSeq.current;
     setJoinRequestError(null);
     try {
@@ -169,6 +179,13 @@ export default function InterviewRoomPage({
         )}
         <AutoJoin key={joinAttempt} url={roomData.url} token={roomData.token} onError={handleJoinError} />
         <CallStateBridge onCallActiveChange={setIsCallActive} leaveRef={leaveRef} />
+        {/* Call-object mode plays no remote audio unless it is rendered: without this the evaluator hears nothing. */}
+        <DailyAudio />
+        {notice.enabled && !joinError && (
+          <div className="absolute top-4 right-4 z-20 max-w-[60%]">
+            <TranscriptionControl interviewId={id} />
+          </div>
+        )}
         {joinError ? (
           <JoinErrorPanel category={joinError} onRetry={handleRetryJoin} onScoreWithoutVideo={handleScoreWithoutVideo} />
         ) : (
@@ -190,6 +207,7 @@ export default function InterviewRoomPage({
         onJoinVideo={isVideo ? handleJoinVideoFromScoring : undefined}
         isJoining={videoToken.isPending}
         joinErrorMessage={joinRequestError}
+        meetingLink={externalMeetingLink(data)}
       />
     );
   } else {
@@ -202,6 +220,12 @@ export default function InterviewRoomPage({
         joinErrorMessage={joinRequestError}
         onJoin={handleJoin}
         onScoreWithoutVideo={handleScoreWithoutVideo}
+        notice={
+          notice.enabled ? (
+            <TranscriptionNotice accepted={notice.accepted} onAcceptedChange={notice.setAccepted} disabled={videoToken.isPending} />
+          ) : undefined
+        }
+        joinBlocked={!notice.mayJoin}
       />
     );
   }

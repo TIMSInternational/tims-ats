@@ -11,7 +11,13 @@ export const INTERVIEW_JOIN_OUTCOMES = [
   'not_video',
   'ready',
   'unavailable',
+  // Only while Platform:InterviewTranscriptionEnabled is on: answer the transcription notice first.
+  'consent_required',
 ] as const;
+
+/** The candidate's answer to the transcription notice, posted with the token (the platform records it). */
+export const RECORDING_CONSENT_DECISIONS = ['accepted', 'declined'] as const;
+export type RecordingConsentDecision = (typeof RECORDING_CONSENT_DECISIONS)[number];
 
 export const interviewJoinResultSchema = z
   .object({
@@ -19,6 +25,8 @@ export const interviewJoinResultSchema = z
     scheduledAt: z.string().max(40).nullable().optional(),
     joinOpensAt: z.string().max(40).nullable().optional(),
     joinUrl: z.string().max(4096).nullable().optional(),
+    // Omitted unless transcription is on (consent_required, or ready for an interview that may be transcribed).
+    consentVersion: z.string().max(64).optional(),
   })
   .strict();
 
@@ -68,4 +76,34 @@ export function isSafeDailyJoinUrl(value: unknown): value is string {
     host.endsWith('.daily.co') &&
     host.length > '.daily.co'.length
   );
+}
+
+export type InterviewJoinRequest =
+  | { token: string }
+  | { token: string; recordingConsent: RecordingConsentDecision; consentVersion: string };
+
+/**
+ * The relay's strict request body: exactly `{ token }`, or exactly `{ token, recordingConsent, consentVersion }`
+ * (the transcription decision). Anything else — extra keys, a bad token, an unknown decision — is null (400).
+ */
+export function parseInterviewJoinRequest(parsed: unknown): InterviewJoinRequest | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const body = parsed as Record<string, unknown>;
+  const keys = Object.keys(body).sort();
+  if (!isValidInterviewJoinToken(body.token)) return null;
+  if (keys.length === 1 && keys[0] === 'token') return { token: body.token };
+  if (keys.join(',') !== 'consentVersion,recordingConsent,token') return null;
+  const decision = body.recordingConsent;
+  const version = body.consentVersion;
+  if (!(RECORDING_CONSENT_DECISIONS as readonly unknown[]).includes(decision)) return null;
+  if (typeof version !== 'string' || version.length === 0 || version.length > 64) return null;
+  return { token: body.token, recordingConsent: decision as RecordingConsentDecision, consentVersion: version };
+}
+
+/** Splits a validated join URL (`https://<team>.daily.co/<room>?t=<token>`) into the room URL and its guest token. */
+export function splitJoinUrl(joinUrl: string): { url: string; token: string | null } {
+  const parsed = new URL(joinUrl);
+  const token = parsed.searchParams.get('t');
+  parsed.search = '';
+  return { url: parsed.toString(), token };
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useI18n } from '../../../../../../lib/i18n';
 
 interface RoomLobbyProps {
@@ -12,6 +13,10 @@ interface RoomLobbyProps {
   onJoin: () => void;
   /** Opens the scorecard without creating a video room or loading Daily. */
   onScoreWithoutVideo: () => void;
+  /** The transcription notice (transcription available), rendered above the join button. */
+  notice?: ReactNode;
+  /** Join stays disabled until the notice is accepted. */
+  joinBlocked?: boolean;
 }
 
 /** Pre-join lobby of a video interview: join the call, or score without video. */
@@ -23,6 +28,8 @@ export function RoomLobby({
   joinErrorMessage,
   onJoin,
   onScoreWithoutVideo,
+  notice,
+  joinBlocked = false,
 }: RoomLobbyProps) {
   const { t } = useI18n();
 
@@ -34,10 +41,11 @@ export function RoomLobby({
         </div>
         <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
         <p className="text-white/50 text-[13px] mb-6">{subtitle}</p>
+        {notice}
         <button
           type="button"
           onClick={onJoin}
-          disabled={isJoining}
+          disabled={isJoining || joinBlocked}
           className="bg-[#DD0C15] text-white px-8 py-3 rounded-xl text-[14px] font-medium shadow-[0_4px_16px_rgba(221,12,21,0.3)] hover:bg-[#c00b13] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
         >
           {isJoining ? (

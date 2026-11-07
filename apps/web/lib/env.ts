@@ -118,8 +118,14 @@ const baseEnvSchema = z.object({
   // Company self-registration (lib/self-serve-signup.ts). 'true'/'false' force it; unset = off in
   // Vercel production, on elsewhere.
   SELF_SERVE_SIGNUP_ENABLED: z.string().max(16).optional(),
-  // Video interviews (Daily.co). Only the exact string 'true' shows the 'video' type in scheduling.
+  // Video interviews (Daily.co). Only the exact string 'true' shows the 'video' type in scheduling
+  // and hosts the candidate's call in the platform (lib/interview-transcription.ts).
   NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED: z.string().max(16).optional(),
+  // Interview transcription UI (consent notice, in-call control, AI card). Exact 'true' only; needs
+  // in-app video and the C# Platform:InterviewTranscriptionEnabled.
+  NEXT_PUBLIC_INTERVIEW_TRANSCRIPTION_ENABLED: z.string().max(16).optional(),
+  // Server-only: /api/interviews/[id]/transcript-analysis answers (404 otherwise). Exact 'true' only.
+  INTERVIEW_TRANSCRIPT_AI_ENABLED: z.string().max(16).optional(),
 
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

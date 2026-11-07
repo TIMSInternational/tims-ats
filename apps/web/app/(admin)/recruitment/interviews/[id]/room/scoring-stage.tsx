@@ -12,6 +12,8 @@ interface ScoringStageProps {
   isJoining?: boolean;
   /** Message from a failed interview.createVideoRoom started from this stage. */
   joinErrorMessage?: string | null;
+  /** A pasted external meeting link (Teams/Meet/Zoom): opened in a new tab, never embedded. */
+  meetingLink?: string | null;
 }
 
 /**
@@ -27,6 +29,7 @@ export function ScoringStage({
   onJoinVideo,
   isJoining = false,
   joinErrorMessage = null,
+  meetingLink = null,
 }: ScoringStageProps) {
   const { t } = useI18n();
 
@@ -56,6 +59,16 @@ export function ScoringStage({
           >
             {isJoining ? t.interviews.roomConnecting : t.interviewRoom.joinVideoCall}
           </button>
+        )}
+        {meetingLink && (
+          <a
+            href={meetingLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-block text-white border border-white/30 px-5 py-2 rounded-lg text-[13px] font-medium hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            {t.interviewTranscription.openExternalMeeting}
+          </a>
         )}
         {joinErrorMessage && <p className="text-red-400 text-[12px] mt-3">{joinErrorMessage}</p>}
       </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
-import { buildCsp, cvUploadCspOrigin, originOf, type CspOrigins } from './lib/security/csp';
+import { buildCsp, cvUploadCspOrigin, originOf, type CspOptions, type CspOrigins } from './lib/security/csp';
 import { hasSupabaseSessionCookie, staffLoginUrl } from './lib/auth/staff-login-redirect';
 
 const PUBLIC_PATHS = [
@@ -47,6 +47,10 @@ const CSP_ORIGINS: CspOrigins = {
   cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
 };
 
+// In-app video (exact "true", the schedule wizard's own switch): the candidate join page then hosts the Daily call
+// and gets the same script/connect relaxation as the staff room. Off ⇒ the join page keeps the strict policy.
+const CSP_OPTIONS: CspOptions = { candidateInAppVideo: process.env.NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED === 'true' };
+
 // Pages whose URL carries a bearer credential (?token= or a path token): never
 // leak it via Referer, never let a shared cache store the page.
 function isBearerLinkPathname(pathname: string): boolean {
@@ -68,7 +72,7 @@ function isPublicPathname(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   // base64 nonce from a CSPRNG (Web Crypto is available in the Edge runtime).
   const nonce = btoa(crypto.randomUUID());
-  const csp = buildCsp(nonce, request.nextUrl.pathname, CSP_ORIGINS, IS_PROD);
+  const csp = buildCsp(nonce, request.nextUrl.pathname, CSP_ORIGINS, IS_PROD, CSP_OPTIONS);
 
   // Forward the nonce + CSP on the REQUEST so Next stamps its inline scripts.
   const requestHeaders = new Headers(request.headers);

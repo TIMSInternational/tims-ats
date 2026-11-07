@@ -788,6 +788,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/interviews/{interviewId}/transcription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InterviewTranscriptionStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/interviews/{interviewId}/transcription/acknowledgement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InterviewTranscriptionAcknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/interviews/{interviewId}/transcription/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InterviewTranscriptionStart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/interviews/{interviewId}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InterviewTranscriptGet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/daily/interview-transcription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DailyInterviewTranscriptionWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/platform/invitations/{id}/resend": {
         parameters: {
             query?: never;
@@ -3096,6 +3176,9 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AcknowledgementBody: {
+            consentVersion: string;
+        };
         ActionPlanAlertResponsible: {
             id: string;
             firstName: string;
@@ -3578,6 +3661,7 @@ export interface components {
             /** Format: date-time */
             joinOpensAt?: null | string;
             joinUrl?: null | string;
+            consentVersion?: null | string;
         };
         CheckoutSessionBody: {
             plan: string;
@@ -4306,6 +4390,8 @@ export interface components {
         };
         JoinBody: {
             token: string;
+            recordingConsent?: string;
+            consentVersion?: string;
         };
         JsonNode: unknown;
         JsonObject: Record<string, never>;
@@ -4860,6 +4946,9 @@ export interface components {
             result?: null | components["schemas"]["JsonObject"];
             notes?: string;
         };
+        StartBody: {
+            language: string;
+        };
         SubmitCalibrationVoteBody: {
             evaluatedUserId: string;
             quadrant: string;
@@ -5320,6 +5409,37 @@ export interface components {
             employeeCount: null | number | string;
             suppressed: boolean;
         };
+        TranscriptCompetency: {
+            name: string;
+            /** Format: int32 */
+            level: null | number | string;
+        };
+        TranscriptionStatusView: {
+            consentVersion: string;
+            candidateDecision: string;
+            candidateDecidedAt: null | string;
+            viewerAcknowledged: boolean;
+            transcriptState: string;
+            transcriptAvailable: boolean;
+            canStart: boolean;
+        };
+        TranscriptSegment: {
+            /** Format: int32 */
+            startSeconds: number | string;
+            speaker: string;
+            text: string;
+        };
+        TranscriptView: {
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            interviewId: string;
+            vacancyTitle: null | string;
+            language: string;
+            competencies: components["schemas"]["TranscriptCompetency"][];
+            segments: components["schemas"]["TranscriptSegment"][];
+            truncated: boolean;
+        };
         TrendBucket: {
             /** Format: int32 */
             year: number | string;
@@ -5458,6 +5578,9 @@ export interface components {
             /** Format: uuid */
             organizationId: string;
             roleSlug?: string;
+        };
+        WebhookAnswer: {
+            handled: string;
         };
         WebhookResult: {
             received: boolean;
@@ -7542,6 +7665,280 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InterviewTranscriptionStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionStatusView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InterviewTranscriptionAcknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgementBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionStatusView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InterviewTranscriptionStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionStatusView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InterviewTranscriptGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DailyInterviewTranscriptionWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": string;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

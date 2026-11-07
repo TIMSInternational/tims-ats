@@ -13,6 +13,30 @@ function externalMeetingLink(): TRPCError {
   });
 }
 
+/**
+ * True when a URL points at Daily (any `daily.co` host). `api.daily.co/v1/transcript/<id>` is the platform's own
+ * transcript reference, written ONLY by the verified C# webhook together with its `ready` claim; staff must never
+ * be able to write one (or any other Daily URL), or they could aim the transcript reader at another tenant's
+ * transcript id. The C# reader also refuses a reference without a matching claim; this closes the write side.
+ */
+export function isDailyUrl(value: string): boolean {
+  let host: string;
+  try {
+    host = new URL(value).hostname.toLowerCase().replace(/\.+$/, '');
+  } catch {
+    return true; // unparseable: refuse rather than guess
+  }
+  return host === 'daily.co' || host.endsWith('.daily.co');
+}
+
+const staffMediaUrl = z
+  .string()
+  .max(2048)
+  .url()
+  .refine((value) => !isDailyUrl(value), {
+    message: 'Las transcripciones de video de la plataforma se registran automáticamente.',
+  });
+
 export const interviewMediaRouter = router({
   // 8.12a — Create or reuse a Daily.co video room for an interview
   // Room name is deterministic per interview — same interview always gets same room
@@ -45,17 +69,17 @@ export const interviewMediaRouter = router({
 
       // If room already exists, reuse it — just generate a fresh token. Only THIS interview's own Daily
       // room (named from its id): a meetingUrl pointing anywhere else (an external link, or another
-      // interview's room) never gets an owner token.
+      // interview's room) never gets a token. Staff tokens are never owner tokens (see createMeetingToken).
       if (interview.meetingUrl) {
         const existingRoomName = ownDailyRoomName(interview.meetingUrl, interview.id);
         if (!existingRoomName) throw externalMeetingLink();
-        const token = await videoService.createMeetingToken(existingRoomName, userName, true);
+        const token = await videoService.createMeetingToken(existingRoomName, userName);
         return { url: interview.meetingUrl, token, roomName: existingRoomName };
       }
 
       // First time — create room, store URL, generate token
       const { url, roomName } = await videoService.createRoom(input.interviewId);
-      const token = await videoService.createMeetingToken(roomName, userName, true);
+      const token = await videoService.createMeetingToken(roomName, userName);
 
       await db.interview.update({
         where: { id: input.interviewId },
@@ -103,7 +127,7 @@ export const interviewMediaRouter = router({
         select: { firstName: true, lastName: true },
       });
       const userName = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || 'Participant';
-      const token = await videoService.createMeetingToken(roomName, userName, false);
+      const token = await videoService.createMeetingToken(roomName, userName);
 
       return { url: interview.meetingUrl, token };
     }),
@@ -113,8 +137,8 @@ export const interviewMediaRouter = router({
     .input(
       z.object({
         interviewId: z.string().uuid(),
-        transcriptUrl: z.string().url(),
-        recordingUrl: z.string().url().optional(),
+        transcriptUrl: staffMediaUrl,
+        recordingUrl: staffMediaUrl.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

@@ -672,6 +672,17 @@ public sealed class PlatformOptions
     public bool CandidateInterviewJoinEnabled { get; init; }
 
     /// <summary>
+    /// Video-interview TRANSCRIPTION (never a recording): the candidate join first asks for an explicit decision on
+    /// the transcription notice (recorded in audit_logs), evaluators acknowledge it in the room, and
+    /// <c>/tenant/interviews/{id}/transcription*</c> + <c>/tenant/interviews/{id}/transcript</c> + the Daily webhook
+    /// <c>/webhooks/daily/interview-transcription</c> are mapped. DEFAULT false (dark): nothing is mapped and the join
+    /// is byte-identical to before. Needs <c>Daily:ApiKey</c> and <c>Daily:WebhookSecret</c>; the AI analysis also
+    /// needs the web app's server flag. Independent of <see cref="CandidateInterviewJoinEnabled"/>, which must also be
+    /// on for any candidate to reach a call (and so to consent).
+    /// </summary>
+    public bool InterviewTranscriptionEnabled { get; init; }
+
+    /// <summary>
     /// #312/#313 candidate data-processing consent: <c>GET /tenant/candidates/{id}/consent</c> (candidate:read + org
     /// scope), <c>POST /tenant/candidates/{id}/consent/withdrawal</c> (candidate:update + org scope, audited) and the
     /// candidate's self-service <c>POST /portal/consent/withdrawal</c> (Supabase session with a CONFIRMED email,

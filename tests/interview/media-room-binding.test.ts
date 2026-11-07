@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Staff Daily tokens (owner on createVideoRoom) are minted only for the interview's OWN room, and no
+// Staff Daily tokens (never owner tokens) are minted only for the interview's OWN room, and no
 // media procedure returns the candidate join-token columns.
 
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
@@ -103,7 +103,41 @@ describe('interview media room binding', () => {
     m.findFirst.mockResolvedValue({ id: INTERVIEW_ID, meetingUrl: null });
     await (await caller()).interview.createVideoRoom({ interviewId: INTERVIEW_ID });
     expect(m.createRoom).toHaveBeenCalledWith(INTERVIEW_ID);
-    expect(m.createMeetingToken).toHaveBeenCalledWith(FULL, 'Eva Lu', true);
+    expect(m.createMeetingToken).toHaveBeenCalledWith(FULL, 'Eva Lu');
+  });
+
+  it.each([
+    `https://api.daily.co/v1/transcript/${'68f65d4c-a4dc-4179-bbb1-c12432afb924'}`,
+    'HTTPS://API.DAILY.CO/v1/transcript/68f65d4c-a4dc-4179-bbb1-c12432afb924',
+    'https://api.daily.co./v1/transcript/68f65d4c-a4dc-4179-bbb1-c12432afb924',
+    'https://tims.daily.co/recordings/x',
+    'https://daily.co/x',
+  ])('saveTranscript refuses a Daily URL (the platform transcript reference is webhook-only): %s', async (url) => {
+    const api = await caller();
+    await expect(
+      api.interview.saveTranscript({ interviewId: INTERVIEW_ID, transcriptUrl: url }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(
+      api.interview.saveTranscript({
+        interviewId: INTERVIEW_ID,
+        transcriptUrl: 'https://files.example/t.txt',
+        recordingUrl: url,
+      }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(m.update).not.toHaveBeenCalled();
+  });
+
+  it('saveTranscript still accepts a non-Daily URL', async () => {
+    const api = await caller();
+    await api.interview.saveTranscript({
+      interviewId: INTERVIEW_ID,
+      transcriptUrl: 'https://files.example/t.txt',
+      recordingUrl: 'https://notdaily.co.example/r.mp4',
+    });
+    expect(m.update.mock.calls[0][0].data).toEqual({
+      transcriptUrl: 'https://files.example/t.txt',
+      recordingUrl: 'https://notdaily.co.example/r.mp4',
+    });
   });
 
   it('saveTranscript and listToday never return the join-token columns', async () => {

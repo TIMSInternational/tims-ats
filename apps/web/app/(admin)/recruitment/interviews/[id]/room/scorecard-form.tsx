@@ -9,6 +9,7 @@ import type { InterviewDetail } from '../../../../../../lib/trpc-types';
 import { StarRating } from './star-rating';
 import { RecommendationPicker } from './recommendation-picker';
 import { EvaluatorComparison } from './evaluator-comparison';
+import { applySuggestion, type ScorecardSuggestion } from './scorecard-suggestion';
 import {
   OVERALL_NOTES_MAX,
   buildSubmission,
@@ -31,13 +32,15 @@ const DEFAULT_LABEL_KEYS = {
 interface ScorecardFormProps {
   interview: InterviewDetail;
   currentUserId: string | null;
+  /** An AI suggestion the evaluator chose to copy in (fills empty ratings, appends evidence; never submits). */
+  suggestion?: ScorecardSuggestion | null;
 }
 
 /**
  * The evaluator's scorecard, persisted through the existing
  * `interview.submitScorecard` procedure and re-loaded via `interview.getScorecard`.
  */
-export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) {
+export function ScorecardForm({ interview, currentUserId, suggestion = null }: ScorecardFormProps) {
   const { t, locale } = useI18n();
   const utils = trpc.useUtils();
   const existing = trpc.interview.getScorecard.useQuery({ interviewId: interview.id });
@@ -61,6 +64,18 @@ export function ScorecardForm({ interview, currentUserId }: ScorecardFormProps) 
   // "could not load the competencies" (F-10). They are the same set submitScorecard requires.
   const resolved = useMemo(() => resolveCompetencies(interview.scorecardCompetencies), [interview.scorecardCompetencies]);
   const competencies = useMemo(() => withStoredCompetencies(resolved.items, stored), [resolved.items, stored]);
+
+  const appliedSuggestion = useRef<number | null>(null);
+  useEffect(() => {
+    if (!suggestion || appliedSuggestion.current === suggestion.id) return;
+    appliedSuggestion.current = suggestion.id;
+    const result = applySuggestion(draft, suggestion, competencies.map((c) => c.key));
+    setDraft(result.draft);
+    const copy = t.interviewTranscription;
+    toast(result.notesTruncated ? copy.notesTruncated : result.ratingKept ? copy.appliedKeptRating : copy.applied, {
+      type: result.notesTruncated ? 'info' : 'success',
+    });
+  }, [suggestion, draft, competencies, t]);
 
   // BAD_REQUEST = the server's completeness check refused the card (e.g. the job profile
   // changed while the room was open); FORBIDDEN = not an assigned evaluator; CONFLICT = the interview

@@ -49,6 +49,7 @@ const nextConfig: NextConfig = {
     ],
   },
   transpilePackages: [
+    "@tims/ai",
     "@tims/api",
     "@tims/auth",
     "@tims/db",

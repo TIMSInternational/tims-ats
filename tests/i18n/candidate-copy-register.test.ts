@@ -31,6 +31,8 @@ const CANDIDATE_SECTIONS: Record<string, unknown> = {
   portal,
   portalDashboard: es.portalDashboard,
   'offers.sign*': offerSigning,
+  // The candidate's video-interview transcription notice and in-platform call.
+  interviewJoinTranscription: es.interviewJoinTranscription,
 };
 
 describe('candidate copy register (usted + postulación)', () => {
