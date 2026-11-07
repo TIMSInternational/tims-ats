@@ -215,3 +215,19 @@ describe('Codex round 13 on #421', () => {
     expect(out).toContain('Mi nombre es [nombre] [nombre]');
   });
 });
+
+describe('Codex round 14 on #421: invisible characters', () => {
+  it('a soft hyphen or zero-width mark inside a name or phone does not stop the masking (final CV block)', () => {
+    for (const mark of ['\u00ad', '\u200b', '\u2060', '\ufeff', '\u034f', '\ufe0f']) {
+      const cv = guideCvFromParsedDocuments([
+        { parsedData: { name: 'José Pérez', summary: `José Pe${mark}rez, Tel: 8888${mark}7777`, experience: [] } },
+      ]);
+      const out = formatCandidateCv(cv) ?? '';
+      expect(out).not.toMatch(/rez|7777/);
+    }
+  });
+
+  it('a soft hyphen inside a supplied masking term is ignored too', () => {
+    expect(redactContactDetails('Habló Pérez.', ['Pé\u00adrez'])).toBe('Habló [nombre].');
+  });
+});

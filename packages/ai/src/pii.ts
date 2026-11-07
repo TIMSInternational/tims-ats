@@ -184,6 +184,11 @@ function asciiDigits(text: string): string {
   });
 }
 
+// Every default-ignorable character (format controls such as the soft hyphen U+00AD and zero-width marks,
+// variation selectors, the combining grapheme joiner, Hangul fillers): invisible, so removed before matching
+// in BOTH the text and the masking terms — "Pe\u00ADrez" is "Perez", "8888\u00AD7777" one number.
+const IGNORABLE = /[\p{Cf}\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u3164\ufe00-\ufe0f\uffa0]/gu;
+
 // Name particles never masked on their own ("de", "del" are ordinary words).
 const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
 
@@ -193,7 +198,7 @@ const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da',
  */
 function redactionVariants(terms: readonly string[]): string[] {
   const out = new Set<string>();
-  const clean = (t: string) => t.normalize('NFC').replace(DANGEROUS_CHARS, '').trim().replace(/\s+/g, ' ');
+  const clean = (t: string) => t.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(IGNORABLE, '').trim().replace(/\s+/g, ' ');
   const wholes = terms.map(clean).filter((w) => w.length > 0);
   if (wholes.length > 1) out.add(wholes.join(' '));
   for (const whole of wholes) {
@@ -231,7 +236,7 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
   // Every Unicode decimal digit (Arabic-Indic "٢٠٢", full-width "２０２"…) is read as its ASCII digit.
   // Every Unicode space separator (en/em/figure/thin space…) becomes a plain space and every line/paragraph
   // separator a line break, so no pattern below has to enumerate them ("8888\u20027777" is one phone number).
-  let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, ''))
+  let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(IGNORABLE, ''))
     .replace(/\p{Zs}/gu, ' ')
     .replace(/[\u000b\u000c\u0085\u2028\u2029]/g, '\n');
   // The references section goes before any other masking: it is cut whole, whatever it holds.
