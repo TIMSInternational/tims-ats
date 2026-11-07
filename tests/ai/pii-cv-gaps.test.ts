@@ -15,7 +15,7 @@ vi.mock('../../packages/ai/src/logger', () => ({ logInvocation: vi.fn() }));
 vi.mock('../../packages/ai/src/registry', () => ({ resolveAgentId: vi.fn(), AGENT_REGISTRY: {} }));
 
 import { redactContactDetails } from '../../packages/ai/src/pii';
-import { formatCandidateCv } from '../../packages/ai/src/agents/interview-guide';
+import { formatCandidateCv, guideCvFromParsedDocuments } from '../../packages/ai/src/agents/interview-guide';
 
 describe('gap 1 — quoted e-mail local parts', () => {
   it('masks a quoted local part whole, quotes included, with straight or curly quotes', () => {
@@ -189,5 +189,23 @@ describe('formatCandidateCv — every CV field goes through the new masking', ()
       'Summary: Ventas B2B. Correo [email], Teléfono personal: [teléfono].\n[referencias omitidas]\n' +
         '- Sr. Account Executive — Acme (2019–2023): Jefe inmediato: [nombre]. Reportaba a [nombre]. Tel. de casa [teléfono]',
     );
+  });
+});
+
+describe('Codex round 13 on #421', () => {
+  it('masks a phone split by any Unicode space separator (en, em, figure, ideographic, line separator)', () => {
+    for (const sep of ['\u2002', '\u2003', '\u2007', '\u3000', '\u205f', '\u2028']) {
+      const cv = formatCandidateCv({ summary: `Teléfono: 8888${sep}7777. Contacto alterno 8888${sep}6666.` });
+      expect(cv).not.toMatch(/7777|6666/);
+    }
+  });
+
+  it('masks every part of a surname-first parsed name ("Dvorak, Ana") in the final CV block', () => {
+    const cv = guideCvFromParsedDocuments([
+      { parsedData: { name: 'Dvorak, Ana', summary: 'Mi nombre es Ana Dvorak; DVOŘÁK lideró el equipo.', experience: [] } },
+    ]);
+    const out = formatCandidateCv(cv, ['Ana', 'Ruiz']);
+    expect(out).not.toMatch(/dvo/i);
+    expect(out).toContain('Mi nombre es [nombre] [nombre]');
   });
 });

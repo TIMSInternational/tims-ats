@@ -198,8 +198,10 @@ function redactionVariants(terms: readonly string[]): string[] {
   if (wholes.length > 1) out.add(wholes.join(' '));
   for (const whole of wholes) {
     if (!NAME_PARTICLES.has(whole.toLowerCase())) out.add(whole);
-    // Components split on spaces AND hyphens ('Ana-María' → 'Ana', 'María').
-    for (const part of whole.split(/[\s\-\u2010-\u2015]+/)) {
+    // Components split on spaces, hyphens, commas and semicolons, surrounding punctuation stripped, so a
+    // surname-first parse ("Dvorak, Ana") yields "Dvorak" and "Ana", not "Dvorak,"; 'Ana-María' → 'Ana', 'María'.
+    for (const raw of whole.split(/[\s,;\-\u2010-\u2015]+/)) {
+      const part = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
       if (part.length > 0 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
     }
   }
@@ -227,7 +229,11 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
   // Invisible and control characters go FIRST: removed later (by sanitizeInput / wrapAsData) they would
   // re-join a phone number or a name this function failed to recognise ("8888\u200b7777", "Jo\u200bse").
   // Every Unicode decimal digit (Arabic-Indic "٢٠٢", full-width "２０２"…) is read as its ASCII digit.
-  let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, ''));
+  // Every Unicode space separator (en/em/figure/thin space…) becomes a plain space and every line/paragraph
+  // separator a line break, so no pattern below has to enumerate them ("8888\u20027777" is one phone number).
+  let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, ''))
+    .replace(/\p{Zs}/gu, ' ')
+    .replace(/[\u000b\u000c\u0085\u2028\u2029]/g, '\n');
   // The references section goes before any other masking: it is cut whole, whatever it holds.
   out = cutReferencesSection(out).replace(EMAIL_PATTERN, '[email]');
   // A number right after a phone label is masked from 7 digits ("Tel: 555-1234"); any other run from 8.
