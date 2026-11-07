@@ -78,7 +78,8 @@ internal static partial class ProviderResponses
             return null;
         }
 
-        return new ProviderAssignment(id, tenant, subject, instrument, version, content, status, required, missing, expiresAt);
+        return new ProviderAssignment(
+            id, tenant, subject, instrument, version, content, status, required, missing, expiresAt, Str(root, "external_ref", 128));
     }
 
     public static ProviderConsentRecord? Consent(JsonElement root) =>

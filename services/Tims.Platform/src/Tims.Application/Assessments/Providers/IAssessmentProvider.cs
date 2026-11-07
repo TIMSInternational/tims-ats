@@ -32,6 +32,12 @@ public interface IAssessmentProvider
     Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(
         ProviderAssignmentRequest request, string idempotencyKey, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <c>GET /v1/assignments/{id}</c>. Used to reconcile a webhook for an assignment the ATS created but did not get
+    /// to record (a crash between the provider's answer and the commit): its <c>external_ref</c> is the attempt id.
+    /// </summary>
+    Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken);
+
     /// <summary><c>POST /v1/subjects/{subject_id}/consents</c>: one consent purpose.</summary>
     Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken);
@@ -137,7 +143,8 @@ public sealed record ProviderAssignment(
     string Status,
     IReadOnlyList<string> RequiredConsents,
     IReadOnlyList<string> MissingConsents,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string? ExternalRef = null);
 
 public sealed record ProviderConsentRequest(
     string Purpose, string TextVersion, string Locale, DateTimeOffset GrantedAt, string HostRecordRef,

@@ -136,6 +136,17 @@ public sealed partial class AssessmentProviderRepository
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attempt.Id, cancellationToken).ConfigureAwait(false);
 
+        // Checked under the lock erasure also takes, BEFORE anything is inserted: a result fetched before a
+        // subject.erased committed must not bring the erased scores back.
+        var entity = await _db.Attempts
+            .FirstOrDefaultAsync(a => a.Id == attempt.Id && a.OrganizationId == organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (entity is null || entity.State is ProviderAttemptStates.Erased or ProviderAttemptStates.Cancelled)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
         var stored = await _db.Results
             .FirstOrDefaultAsync(r => r.OrganizationId == organizationId && r.ProviderResultId == result.ResultId,
                 cancellationToken)
@@ -185,17 +196,11 @@ public sealed partial class AssessmentProviderRepository
         stored.ScoredAt = result.ScoredAt.UtcDateTime;
         stored.UpdatedAt = timestamp;
 
-        var entity = await _db.Attempts
-            .FirstAsync(a => a.Id == attempt.Id && a.OrganizationId == organizationId, cancellationToken)
-            .ConfigureAwait(false);
-        if (entity.State is not (ProviderAttemptStates.Cancelled or ProviderAttemptStates.Erased))
-        {
-            // A newer revision decides the attempt's state: a voided result voids it, a re-published valid result (staff
-            // review overturned a void) restores it.
-            entity.State = result.ValidityStatus == ProviderValidity.Voided
-                ? ProviderAttemptStates.Voided
-                : ProviderAttemptStates.ResultReady;
-        }
+        // A newer revision decides the attempt's state: a voided result voids it, a re-published valid result (staff
+        // review overturned a void) restores it.
+        entity.State = result.ValidityStatus == ProviderValidity.Voided
+            ? ProviderAttemptStates.Voided
+            : ProviderAttemptStates.ResultReady;
 
         entity.LatestResultId = result.ResultId;
         entity.CompletedAt ??= result.CompletedAt.UtcDateTime;
@@ -219,10 +224,21 @@ public sealed partial class AssessmentProviderRepository
         Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
-        var attempts = await _db.Attempts
+        var ids = await _db.Attempts.AsNoTracking()
             .Where(a => a.OrganizationId == organizationId && a.ProviderSubjectId == providerSubjectId)
+            .OrderBy(a => a.Id)
+            .Select(a => a.Id)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        var ids = attempts.Select(a => a.Id).ToList();
+        // The same per-attempt locks result storage takes, in a fixed order (no lock-order deadlock): a result write
+        // in flight finishes first and is then deleted here, or runs after and sees the attempt erased.
+        foreach (var id in ids)
+        {
+            await LockAttemptAsync(id, cancellationToken).ConfigureAwait(false);
+        }
+
+        var attempts = await _db.Attempts
+            .Where(a => a.OrganizationId == organizationId && ids.Contains(a.Id))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
         if (ids.Count > 0)
         {
             await _db.Results.Where(r => r.OrganizationId == organizationId && ids.Contains(r.AttemptId))

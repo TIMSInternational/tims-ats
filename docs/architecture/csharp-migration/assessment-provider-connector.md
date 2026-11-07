@@ -89,6 +89,14 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - A transient failure answers 503, so the provider's 72 h retries are the queue.
   - Lifecycle events move an attempt forward only (`ProviderAttemptStates.CanTransition`).
   - A result revision never overwrites a newer one.
+  - An event for an unknown assignment is reconciled before it is ignored: `GET /v1/assignments/{id}` returns
+    `external_ref` (the attempt id), so an attempt left in `pending_create` by a crash gets its provider id and the
+    event is applied. A provider outage during that check answers 503.
+- **One lock per attempt.** Every webhook write, the launch and the subject erasure of one attempt take the same
+  `pg_advisory_xact_lock` on `assessment-provider-attempt:<id>`:
+  - a launch never rewinds a state a webhook already set;
+  - a result write checks for `erased` and `cancelled` under the lock, before inserting anything, so a result fetched
+    before a `subject.erased` committed is never stored after it.
 
 ## Tables: migration `20261107232524_assessment_providers`
 

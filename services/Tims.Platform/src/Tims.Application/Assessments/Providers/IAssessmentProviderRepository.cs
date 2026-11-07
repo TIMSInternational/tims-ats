@@ -66,6 +66,8 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid eventId, string status, string? errorCode, DateTimeOffset now,
         CancellationToken cancellationToken);
 
+    Task<AttemptRow?> FindAttemptAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
+
     Task<AttemptRow?> FindAttemptByProviderAssignmentAsync(
         Guid organizationId, Guid providerAssignmentId, CancellationToken cancellationToken);
 
@@ -74,7 +76,10 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now,
         CancellationToken cancellationToken);
 
-    /// <summary>Upserts a result (a lower or equal revision is ignored) and updates the attempt, with one audit row.</summary>
+    /// <summary>
+    /// Upserts a result and updates the attempt, with one audit row. Nothing is written when the stored revision is equal
+    /// or newer, or when the attempt is erased or cancelled (checked under the attempt lock that erasure also takes).
+    /// </summary>
     Task<bool> StoreResultAsync(
         Guid organizationId, AttemptRow attempt, ParsedProviderResult result, DateTimeOffset now,
         CancellationToken cancellationToken);

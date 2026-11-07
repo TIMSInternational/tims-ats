@@ -74,7 +74,8 @@ public static class ProviderCandidateEndpoints
                 {
                     identity = await identities.VerifyAsync(token, cancellationToken);
                 }
-                catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
+                catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or System.Text.Json.JsonException
+                    || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
                 {
                     return Results.Json(new { error = "self_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
                 }

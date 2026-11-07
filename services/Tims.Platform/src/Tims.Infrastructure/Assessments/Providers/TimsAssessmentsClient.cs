@@ -111,6 +111,10 @@ public sealed class TimsAssessmentsClient(
             ProviderResponses.Assignment, cancellationToken);
     }
 
+    public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken) =>
+        SendAsync(HttpMethod.Get, $"/v1/assignments/{assignmentId:D}", null, null, "get_assignment",
+            ProviderResponses.Assignment, cancellationToken);
+
     public Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken)
     {

@@ -56,6 +56,13 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
         int? deliveryAttempt, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var check = _provider.VerifyWebhook(signature, rawBody.Span, now);
+        if (check == WebhookSignatureCheck.NoSecretConfigured)
+        {
+            // OUR misconfiguration, not the sender's: 503 keeps the delivery in the provider's retry schedule instead
+            // of the 400 that stops it after 3 attempts.
+            return new WebhookResult(WebhookOutcome.RetryLater, "receiver_unconfigured");
+        }
+
         if (check != WebhookSignatureCheck.Valid)
         {
             return new WebhookResult(WebhookOutcome.Rejected, "signature_" + check.ToString().ToLowerInvariant());
@@ -130,7 +137,19 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             .ConfigureAwait(false);
         if (attempt is null)
         {
-            return (InboxStatuses.Ignored, "unknown_assignment", false);
+            var (reconciled, code, retry) = await ReconcileAsync(
+                organizationId, envelope.ProviderTenantId, assignmentId, now, cancellationToken).ConfigureAwait(false);
+            if (retry)
+            {
+                return (InboxStatuses.Failed, code, true);
+            }
+
+            if (reconciled is null)
+            {
+                return (InboxStatuses.Ignored, "unknown_assignment", false);
+            }
+
+            attempt = reconciled;
         }
 
         switch (envelope.EventType)
@@ -159,6 +178,41 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
         }
     }
 
+    /// <summary>
+    /// An event for an assignment no attempt records. Usually not ours (ignored), but it can be an assignment the ATS
+    /// created and then crashed before storing its id: the attempt is still <c>pending_create</c>. The provider's copy
+    /// carries <c>external_ref</c> = the attempt id, so the mapping is restored here and the event applied, instead of
+    /// being acknowledged and lost. A provider outage while checking answers retry.
+    /// </summary>
+    private async Task<(AttemptRow? Attempt, string? Code, bool Retry)> ReconcileAsync(
+        Guid organizationId, Guid providerTenantId, Guid assignmentId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var fetched = await _provider.GetAssignmentAsync(assignmentId, cancellationToken).ConfigureAwait(false);
+        if (!fetched.Ok)
+        {
+            var failure = fetched.Failure!;
+            return failure.Transient || failure.Code == ProviderFailure.Unconfigured
+                ? (null, failure.Code, true)
+                : (null, null, false);
+        }
+
+        var assignment = fetched.Value!;
+        if (assignment.AssignmentId != assignmentId || assignment.TenantId != providerTenantId
+            || !Guid.TryParseExact(assignment.ExternalRef, "D", out var attemptId))
+        {
+            return (null, null, false);
+        }
+
+        var pending = await _repository.FindAttemptAsync(organizationId, attemptId, cancellationToken).ConfigureAwait(false);
+        if (pending is null || pending.State != ProviderAttemptStates.PendingCreate || pending.Instrument != assignment.Instrument)
+        {
+            return (null, null, false);
+        }
+
+        await _repository.MarkCreatedAsync(organizationId, attemptId, assignment, now, cancellationToken).ConfigureAwait(false);
+        return (await _repository.FindAttemptAsync(organizationId, attemptId, cancellationToken).ConfigureAwait(false), null, false);
+    }
+
     private async Task<(string Status, string? Code, bool Retry)> ApplyResultAsync(
         Guid organizationId, ProviderEventEnvelope envelope, AttemptRow attempt, JsonElement data, DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -172,7 +226,7 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
         if (!fetched.Ok)
         {
             var failure = fetched.Failure!;
-            if (failure.Transient)
+            if (failure.Transient || failure.Code == ProviderFailure.Unconfigured)
             {
                 return (InboxStatuses.Failed, failure.Code, true);
             }

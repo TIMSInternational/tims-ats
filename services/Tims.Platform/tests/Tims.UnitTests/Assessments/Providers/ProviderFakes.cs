@@ -22,6 +22,10 @@ internal sealed class FakeProvider : IAssessmentProvider
 
     public Func<ProviderCall<ProviderConsentRecord>>? OnRecordConsent { get; set; }
 
+    public Func<Guid, ProviderCall<ProviderAssignment>>? OnGetAssignment { get; set; }
+
+    public string[] WebhookSecrets { get; set; } = [Secret];
+
     public Func<Guid, ProviderCall<ProviderLaunch>>? OnLaunch { get; set; }
 
     public Func<Guid, ProviderCall<ParsedProviderResult>>? OnGetResult { get; set; }
@@ -65,6 +69,13 @@ internal sealed class FakeProvider : IAssessmentProvider
         return Task.FromResult(answer);
     }
 
+    public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
+    {
+        Calls.Add("get_assignment");
+        return Task.FromResult(OnGetAssignment?.Invoke(assignmentId)
+            ?? ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])));
+    }
+
     public Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken)
     {
@@ -90,7 +101,7 @@ internal sealed class FakeProvider : IAssessmentProvider
     }
 
     public WebhookSignatureCheck VerifyWebhook(string? signatureHeader, ReadOnlySpan<byte> rawBody, DateTimeOffset now) =>
-        WebhookSignature.Verify(signatureHeader, rawBody, [Secret], now);
+        WebhookSignature.Verify(signatureHeader, rawBody, WebhookSecrets, now);
 }
 
 /// <summary>In-memory repository: the state the use cases read and the writes they make.</summary>
@@ -248,6 +259,9 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Inbox[eventId] = status;
         return Task.CompletedTask;
     }
+
+    public Task<AttemptRow?> FindAttemptAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken) =>
+        Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId));
 
     public Task<AttemptRow?> FindAttemptByProviderAssignmentAsync(
         Guid organizationId, Guid providerAssignmentId, CancellationToken cancellationToken) =>

@@ -155,6 +155,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
     {
         ArgumentNullException.ThrowIfNull(assignment);
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
@@ -180,6 +181,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
@@ -209,6 +211,16 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             .Select(a => new { a.OrganizationId, a.CandidateId })
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
         return owner is null ? null : (owner.OrganizationId, owner.CandidateId);
+    }
+
+    public async Task<AttemptRow?> FindAttemptAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var attempt = await _db.Attempts.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return attempt is null ? null : ToRow(attempt, isNew: false);
     }
 
     public async Task<LaunchContext?> LoadLaunchContextAsync(
@@ -264,11 +276,14 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
         if (attempt is not null)
         {
+            // Under the attempt lock every webhook transition also takes, so the state read here is current: a launch
+            // never rewinds an attempt a webhook already moved to in_progress, completed or voided.
             if (attempt.State == ProviderAttemptStates.Created)
             {
                 attempt.State = ProviderAttemptStates.Launched;

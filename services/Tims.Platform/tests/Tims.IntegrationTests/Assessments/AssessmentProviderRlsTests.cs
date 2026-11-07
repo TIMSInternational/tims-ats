@@ -238,4 +238,113 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         Assert.Equal(1L, await fixture.ScalarAsync(
             $"SELECT count(*) FROM audit_logs WHERE action = 'assessment_provider_assigned' AND metadata->>'candidateId' = '{candidate}'"));
     }
+
+    // ---- Lock discipline: webhook writes, launches and erasures of one attempt are serialized --------------------
+
+    private async Task<(Guid Attempt, Guid Subject)> InsertAttemptAsync(string state)
+    {
+        var attempt = Guid.NewGuid();
+        var subject = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 instrument_version, content_version, assigned_by_id)
+             VALUES ('{attempt}', '{AssessmentProviderSchemaFixture.OrgA}', '{AssessmentProviderSchemaFixture.BindingA}',
+                 '{AssessmentProviderSchemaFixture.CandidateA}', '{AssessmentProviderSchemaFixture.VacancyA}', 'lia', '{state}',
+                 'selection', 'Análisis de datos', 'es', 1, '{subject}', gen_random_uuid(), '1.0', 'content-1', gen_random_uuid())
+             """);
+        return (attempt, subject);
+    }
+
+    private static ParsedProviderResult ResultFor(Guid attemptAssignment) => new(
+        Guid.NewGuid(), "LiaResultV1", "lia", "1.0", AssessmentProviderSchemaFixture.TenantA, Guid.NewGuid(), attemptAssignment,
+        "selection", AssessmentProviderSchemaFixture.VacancyA.ToString(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 1,
+        "valid", [], "content-1", new string('c', 64), "norms-1", "scoring-1", "deterministic", 1m, "tenant_hr", "full",
+        "complete", 50, null, null, false, "{}");
+
+    private async Task<AttemptRow> RowAsync(Guid attempt)
+    {
+        await using var db = fixture.NewContext();
+        return (await new AssessmentProviderRepository(db).FindAttemptAsync(
+            AssessmentProviderSchemaFixture.OrgA, attempt, CancellationToken.None))!;
+    }
+
+    // Holds the attempt's advisory lock (the key LockAttemptAsync uses) and applies a change without committing it,
+    // the shape of a concurrent writer that is mid-transaction.
+    private async Task<(NpgsqlConnection Connection, NpgsqlTransaction Transaction)> HoldAttemptAsync(Guid attempt, string change)
+    {
+        var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        var transaction = await connection.BeginTransactionAsync();
+        await using var command = new NpgsqlCommand(
+            $"SELECT pg_advisory_xact_lock(hashtextextended('assessment-provider-attempt:' || '{attempt}', 0)); {change}",
+            connection, transaction);
+        await command.ExecuteNonQueryAsync();
+        return (connection, transaction);
+    }
+
+    [Fact]
+    public async Task A_result_fetched_before_an_erasure_is_not_stored_after_it()
+    {
+        var (attempt, subject) = await InsertAttemptAsync("completed");
+        var row = await RowAsync(attempt);
+        await using (var eraseDb = fixture.NewContext())
+        {
+            Assert.Equal(1, await new AssessmentProviderRepository(eraseDb).EraseSubjectAsync(
+                AssessmentProviderSchemaFixture.OrgA, subject, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        await using var db = fixture.NewContext();
+        var stored = await new AssessmentProviderRepository(db).StoreResultAsync(
+            AssessmentProviderSchemaFixture.OrgA, row, ResultFor(row.ProviderAssignmentId!.Value), DateTimeOffset.UtcNow,
+            CancellationToken.None);
+
+        Assert.False(stored);
+        Assert.Equal(0L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+        Assert.Equal("erased", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+    }
+
+    [Fact]
+    public async Task A_result_write_waiting_on_a_concurrent_erasure_stores_nothing()
+    {
+        var (attempt, _) = await InsertAttemptAsync("completed");
+        var row = await RowAsync(attempt);
+        var (connection, transaction) = await HoldAttemptAsync(
+            attempt, $"UPDATE assessment_provider_attempts SET state = 'erased' WHERE id = '{attempt}';");
+        await using (connection)
+        {
+            await using var db = fixture.NewContext();
+            var store = new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, row, ResultFor(row.ProviderAssignmentId!.Value), DateTimeOffset.UtcNow,
+                CancellationToken.None);
+            await Task.Delay(300);
+            await transaction.CommitAsync();
+
+            Assert.False(await store);
+        }
+
+        Assert.Equal(0L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+        Assert.Equal("erased", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+    }
+
+    [Fact]
+    public async Task A_launch_waiting_on_a_concurrent_webhook_never_rewinds_its_state()
+    {
+        var (attempt, _) = await InsertAttemptAsync("created");
+        var (connection, transaction) = await HoldAttemptAsync(
+            attempt, $"UPDATE assessment_provider_attempts SET state = 'completed' WHERE id = '{attempt}';");
+        await using (connection)
+        {
+            await using var db = fixture.NewContext();
+            var launch = new AssessmentProviderRepository(db).MarkLaunchedAsync(
+                AssessmentProviderSchemaFixture.OrgA, attempt, AssessmentProviderSchemaFixture.CandidateA, "native",
+                DateTimeOffset.UtcNow, CancellationToken.None);
+            await Task.Delay(300);
+            await transaction.CommitAsync();
+            await launch;
+        }
+
+        Assert.Equal("completed", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+    }
 }

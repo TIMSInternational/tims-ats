@@ -166,6 +166,66 @@ public sealed class ProviderWebhookUseCaseTests
         Assert.Single(_repository.StoredResults);
     }
 
+    [Fact]
+    public async Task An_event_for_an_assignment_created_just_before_a_crash_is_reconciled_not_lost()
+    {
+        // The provider created the assignment, then the ATS crashed before storing its id: the attempt is still
+        // pending_create. The provider's copy names the attempt in external_ref, so the mapping is restored.
+        var reserved = await _repository.ReserveAttemptsAsync(FakeRepository.Org, Guid.NewGuid(), _repository.Binding!,
+            FakeRepository.Candidate, FakeRepository.Vacancy, [new NewAttempt("lia", "Análisis de datos", "es", 1m, [], null)],
+            Now, CancellationToken.None);
+        var pending = Assert.Single(reserved.Attempts);
+        var providerAssignment = Guid.NewGuid();
+        _provider.OnGetAssignment = id => ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+            id, _provider.TenantId, _provider.SubjectId, "lia", "1.0", "content-1", "expired", ["assessment"], [],
+            Now, pending.Id.ToString()));
+        var (body, eventId) = Envelope("assignment.expired", new JsonObject { ["assignment_id"] = providerAssignment.ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.expired");
+
+        Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
+        Assert.Equal(["reserve", "created", "advance:expired"], _repository.Writes);
+        Assert.Equal(providerAssignment, _repository.Attempts.Single().ProviderAssignmentId);
+    }
+
+    [Fact]
+    public async Task A_provider_outage_during_reconciliation_keeps_the_event_retryable()
+    {
+        _provider.OnGetAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        var (body, eventId) = Envelope("assignment.expired", new JsonObject { ["assignment_id"] = Guid.NewGuid().ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.expired");
+
+        Assert.Equal(WebhookOutcome.RetryLater, result.Outcome);
+        Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]); // a redelivery is processed, not "duplicate"
+    }
+
+    [Fact]
+    public async Task An_assignment_that_names_no_pending_attempt_of_ours_is_ignored()
+    {
+        _provider.OnGetAssignment = id => ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+            id, _provider.TenantId, _provider.SubjectId, "lia", "1.0", "content-1", "created", ["assessment"], [], Now,
+            "another-hosts-ref"));
+        var (body, eventId) = Envelope("assignment.started", new JsonObject { ["assignment_id"] = Guid.NewGuid().ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.started");
+
+        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Empty(_repository.Writes);
+    }
+
+    [Fact]
+    public async Task With_no_signing_secret_configured_the_sender_is_told_to_retry_not_to_give_up()
+    {
+        _provider.WebhookSecrets = [];
+        var (body, eventId) = Envelope("subject.erased", new JsonObject { ["subject_id"] = Guid.NewGuid().ToString() });
+
+        var result = await Deliver(body, eventId, "subject.erased");
+
+        Assert.Equal(WebhookOutcome.RetryLater, result.Outcome);
+        Assert.Empty(_repository.Writes);
+    }
+
     [Theory]
     [InlineData("assignment.started", "in_progress")]
     [InlineData("session.completed", "completed")]
