@@ -165,11 +165,14 @@ normalized score to the same readers. **Owner decision needed before the flag is
   row. Valid iff `status = 'completed'` and no proctoring session of severity `high`/`critical`; anything else
   (e.g. `cancelled`) is needs review. Explicit `organization_id` filter on all three tables plus TenantScope.
   Adds `proctoring_sessions` to `efcoreReadOnly[]` (SELECT only).
-  - **Today both rules are inert, so every ATS result is Valid.** Nothing on main creates a `proctoring_sessions`
-    row (the TS `assessment.flagProctoring` only updates an existing session and returns NOT_FOUND without one),
-    and `assessment.cancel` only cancels an `assigned` or `in_progress` assignment while the result row is written
-    on submission, so "cancelled with a result" does not happen through the app. The rules are forward
-    compatibility.
+  - **The proctoring rule is inert today.** Nothing on main creates a `proctoring_sessions` row (the TS
+    `assessment.flagProctoring` only updates an existing session and returns NOT_FOUND without one).
+  - **"Cancelled with a result" is rare but reachable.** The result row and `completed` are written in one
+    submission transaction, and `assessment.cancel` (`packages/api/src/routers/assessment.ts`) first checks that
+    the assignment is `assigned` or `in_progress`. But it then updates by id with no status predicate, so a
+    submission that commits between the check and the update leaves a `cancelled` assignment that holds a result.
+    v2 reads that as needs review, which is the intended outcome. The TOCTOU itself is a TS bug (the update
+    should carry the status predicate); it is outside this PR (survival rule) and tracked as a follow-up.
   - **The severity a reviewer would clear never goes down.** `flagProctoring` only raises `severity` to the
     maximum seen. Once sessions exist, an attempt a person reviewed and cleared would stay `needs_review` for
     good. Before a session writer ships (the proctoring work adds `proctoring_sessions.review_status` and
@@ -191,17 +194,20 @@ normalized score to the same readers. **Owner decision needed before the flag is
      ranking first. Today they rank on a provisional number, flagged only where a reader shows `isPartial`.
   3. **The owner visibility decision** above, and the DEI / LIA-norm checks below.
   4. **A review-completion signal** read by the ATS adapter before any proctoring-session writer ships.
+  5. **The concurrent-recompute race below closed**, since it is reachable today through the cancel TOCTOU.
 - The C# compute is not called by the web app yet (no FE wrapper for the fit-engine surface; see `cutover.sh`).
   The live TS writers (`fitEngine.computeForVacancy`, `candidateAiService.screenCandidate`) still write v1
   breakdowns, and a later TS recompute overwrites a v2 row with v1.
 - **Known race (not fixed here).** Results are read before, and outside, the transaction that writes
-  `fit_scores`. Two concurrent computes that straddle a proctoring flag can end with the slower one's stale view:
-  compute A reads a clean result, HR flags it high, compute B writes `needs_review`, then A overwrites it with
-  `completed` and the counted score until the next compute. v1 has the same last-writer-wins snapshot race for
+  `fit_scores`. Two concurrent computes that straddle an integrity change can end with the slower one's stale
+  view: compute A reads a clean result, the result becomes needs review (HR flags it high, or a cancel lands on it
+  through the TOCTOU above), compute B writes `needs_review`, then A overwrites it with `completed`, the counted
+  score and `reviewPending: false` until the next compute. v1 has the same last-writer-wins snapshot race for
   every input; only consent withdrawal is re-checked under a lock (#312). Closing it needs the proctoring-flag
   writer (TS `assessment.flagProctoring`) to share a lock with compute, or the v2 read moved into the upsert
-  transaction with a re-validation. Found by the Codex review of this branch. It cannot happen with today's
-  writers (no proctoring session is ever created, see above); it becomes real when a session writer ships.
+  transaction with a re-validation. Found by the Codex review of this branch. Today only the cancel path can
+  trigger it (no proctoring session is ever created): a cancel racing a submission, and then two computes
+  racing that cancel. Rare, but reachable, so closing it is a precondition for enabling the flag.
 - Turning the flag off affects the next compute only; stored v2 rows keep their extra keys, which every v1 reader
   ignores.
 - Before gates are used on real vacancies: monitor pass and fit rates by group (DEI), and confirm the LIA norms
