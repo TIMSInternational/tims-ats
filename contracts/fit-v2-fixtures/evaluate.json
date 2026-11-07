@@ -1,7 +1,7 @@
 {
   "cases": [
     {
-      "name": "design example: LIA scored + English gate + personality advisory, all valid; the met gate does not touch languages (Spanish from the CV, English not on it → 50)",
+      "name": "design example: LIA scored + English gate + personality advisory, all valid; the met gate does not touch languages (Spanish from the CV, English not on it → 50); the advisory personality entry carries its status only (no result id, source or versions)",
       "input": {
         "fitRequirements": {
           "requiredLanguages": [
@@ -55,7 +55,9 @@
             "resultId": "r-pers",
             "source": "provider",
             "integrity": "valid",
-            "completedAt": "2026-10-01T00:00:00Z"
+            "completedAt": "2026-10-01T00:00:00Z",
+            "contentVersion": "pers-2026.1",
+            "normVersion": "pers-norms-v1"
           }
         ],
         "weights": {
@@ -123,8 +125,8 @@
             "effectiveWeight": null,
             "min": null,
             "reason": null,
-            "resultId": "r-pers",
-            "source": "provider",
+            "resultId": null,
+            "source": null,
             "contentVersion": null,
             "normVersion": null,
             "languagesEvidence": null
@@ -785,8 +787,8 @@
             "effectiveWeight": null,
             "min": null,
             "reason": null,
-            "resultId": "r-mi",
-            "source": "provider",
+            "resultId": null,
+            "source": null,
             "contentVersion": null,
             "normVersion": null,
             "languagesEvidence": null
@@ -1095,8 +1097,8 @@
             "effectiveWeight": null,
             "min": null,
             "reason": null,
-            "resultId": "r-en",
-            "source": "provider",
+            "resultId": null,
+            "source": null,
             "contentVersion": null,
             "normVersion": null,
             "languagesEvidence": "cv"

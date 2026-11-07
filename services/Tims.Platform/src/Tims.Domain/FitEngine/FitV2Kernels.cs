@@ -51,9 +51,14 @@ namespace Tims.Domain.FitEngine;
 /// GATE english entry never touches any dimension — not even languages — so a not-met gate cannot lower the
 /// overall score; HR sees its met/not_met next to the CV self-report (<c>languagesEvidence</c> = <c>cv</c>).</para>
 ///
-/// <para><b>Visibility.</b> The breakdown is readable by every fit_engine reader (leader@team included), so an
-/// entry carries the derived fit, the gate state, the requirement and the result id, never the raw result
-/// (percentile, CEFR, level) nor the internal <c>model_version</c>. Advisory entries carry status only.</para>
+/// <para><b>Visibility.</b> The breakdown is readable by every fit_engine reader (leader@team included), so a
+/// scored or gate entry carries the derived fit, the gate state, the requirement, the result id and source, and
+/// the content/norm version when the source has one, never the raw result (percentile, CEFR, level) nor the
+/// internal <c>model_version</c>. An advisory entry carries its status (and the vacancy's reason) only: no result
+/// id, source or version. The derived fit is NOT opaque below the minimum: the English and ITC-IA ladders are
+/// one-to-one there (A1..C1 → 17/33/50/67/83, levels 1..4 → 20/40/60/80) and the LIA curve inverts as
+/// <c>p = score × min / 100</c>, so a reader who also sees <c>min</c> recovers the raw level or percentile. That
+/// exposure to leader@team is an owner decision, recorded in the design doc.</para>
 /// </summary>
 public static class FitV2Kernels
 {
@@ -363,6 +368,9 @@ public static class FitV2Kernels
                 languagesEvidence = usedAssessment ? "assessment" : "cv";
             }
 
+            // An advisory entry (personality, MI, PCA) carries its status only: no result id, source or versions
+            // that would let a fit_engine reader without assessment:read locate the advisory result.
+            var shownResult = requirement.Use == FitInstrumentUses.Advisory ? null : draft.Result;
             entries.Add(new InstrumentFitEntry(
                 requirement.Instrument,
                 requirement.Use,
@@ -374,10 +382,10 @@ public static class FitV2Kernels
                 effective,
                 requirement.Min,
                 requirement.Reason,
-                draft.Result?.ResultId,
-                draft.Result?.Source,
-                draft.Result?.ContentVersion,
-                draft.Result?.NormVersion,
+                shownResult?.ResultId,
+                shownResult?.Source,
+                shownResult?.ContentVersion,
+                shownResult?.NormVersion,
                 languagesEvidence));
         }
 

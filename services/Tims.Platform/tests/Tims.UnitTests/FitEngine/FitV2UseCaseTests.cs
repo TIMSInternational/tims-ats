@@ -96,6 +96,10 @@ public sealed class FitV2UseCaseTests
         Assert.Equal(["lia", "personality"], entries.Select(e => e!["instrument"]!.GetValue<string>()).ToArray());
         Assert.Null(entries[1]!["score"]); // advisory: never scored
         Assert.Equal("advisory", entries[1]!["use"]!.GetValue<string>());
+        Assert.Equal("completed", entries[1]!["status"]!.GetValue<string>());
+        Assert.Null(entries[1]!["resultId"]); // advisory: status only
+        Assert.Null(entries[1]!["source"]);
+        Assert.Equal("r-lia", entries[0]!["resultId"]!.GetValue<string>());
     }
 
     [Fact]
