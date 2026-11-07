@@ -271,3 +271,20 @@ describe('Codex round 16 on #421', () => {
     }
   });
 });
+
+describe('Codex round 17 on #421', () => {
+  it('masks phones whose digit groups are separated by longer punctuation runs', () => {
+    for (const summary of ['Tel: +1 (202) -- 555-0123', 'Teléfono: (8888) / (7777)', 'Cel: 8888 - - - - 7777']) {
+      expect(formatCandidateCv({ summary }) ?? '').not.toMatch(/555|0123|8888|7777/);
+    }
+  });
+
+  it('masks a known surname whatever apostrophe variant the text or the term uses', () => {
+    const cv = guideCvFromParsedDocuments([
+      { parsedData: { name: "O'Neil", summary: 'Soy Ana O’Neil; O`Neil y Oʼneil lideraron ventas.', experience: [] } },
+    ]);
+    const out = formatCandidateCv(cv, ['Ana']) ?? '';
+    expect(out).not.toMatch(/neil/i);
+    expect(redactContactDetails("Habló O'Neil.", ['O’Neil'])).toBe('Habló [nombre].');
+  });
+});

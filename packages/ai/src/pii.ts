@@ -149,10 +149,12 @@ export function wrapAsData(tag: string, content: string): string {
 const EMAIL_PATTERN =
   /(?:["“”„«»](?:\\.|[^"“”„«»\n\\]){1,64}["“”„«»]|[\p{L}\p{M}\p{N}._%+'’!#$&*\/=?^`{|}~-]+)\s*@\s*[\p{L}\p{M}\p{N}-]+(?:\s*\.\s*[\p{L}\p{M}\p{N}-]+)*\s*\.\s*\p{L}[\p{L}\p{M}]+/gu;
 // A run of digits joined by separators (it may hold several numbers: "8888-7777 8888-6666"). A separator is
-// up to 4 characters of whitespace (line breaks included: PDF extraction wraps "+506 8888\n7777"), punctuation
+// up to 16 characters of whitespace (line breaks included: PDF extraction wraps "+506 8888\n7777"), punctuation
 // or symbols (any dash, slash, dot, bullet, middle dot, pipe… "202•555•0123", "8888·7777"), so no separator
 // character has to be listed. Over-masking adjacent numbers (amounts, lists) is accepted; leaking a phone is not.
-const PHONE_SEPARATOR = String.raw`[\s\p{P}\p{S}]{0,4}`;
+// The run holds no letters, so a long one only joins digits that nothing but spaces and symbols separate; the
+// bound (16) keeps matching linear on pathological input.
+const PHONE_SEPARATOR = String.raw`[\s\p{P}\p{S}]{0,16}`;
 const DIGIT_RUN = new RegExp(String.raw`\+?\(?\d(?:${PHONE_SEPARATOR}\d)*`, 'gu');
 // Every run of 8+ digits is masked, year ranges included ("2019-2023"): a phone can take any shape, so no
 // digit pattern is exempt. Structured dates (e.g. a CV's start/end years) must be added AFTER redaction.
@@ -241,7 +243,7 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
     .replace(/\p{Zs}/gu, ' ')
     .replace(/[\u000b\u000c\u0085\u2028\u2029]/g, '\n')
     // Whitespace runs collapse (a line break wins over spaces), so a phone padded with spaces or blank lines
-    // ("+506     8888     7777") is one run for the 4-character separator limit below.
+    // ("+506     8888     7777") is one run for the separator limit below.
     .replace(/\s*\n\s*/g, '\n')
     .replace(/[ \t]+/g, ' ');
   // The references section goes before any other masking: it is cut whole, whatever it holds.
@@ -259,6 +261,8 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
 
 /** Lower-case base letters of one character (all diacritics removed, any script): "ř" → "r", "Á" → "a". */
 function baseOf(ch: string): string {
+  // Every apostrophe-like character is one apostrophe ("O’Neil" ⇔ "O'Neil"); one character in, one out.
+  if (/['’‘ʼʹ`´′＇]/u.test(ch)) return "'";
   return ch.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
 
