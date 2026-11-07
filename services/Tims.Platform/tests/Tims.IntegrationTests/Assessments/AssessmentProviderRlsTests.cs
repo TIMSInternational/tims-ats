@@ -172,7 +172,8 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         var envelope = new ProviderEventEnvelope(
             Guid.NewGuid(), ProviderEventTypes.SessionCompleted, DateTimeOffset.UtcNow, AssessmentProviderSchemaFixture.TenantA, "{}");
 
-        var first = await repository.RecordInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope, 1, DateTimeOffset.UtcNow, CancellationToken.None);
+        // A delivery without TIMS-Delivery-Attempt stores NULL (the parameter must still type as integer).
+        var first = await repository.RecordInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope, null, DateTimeOffset.UtcNow, CancellationToken.None);
         var unfinished = await repository.RecordInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope, 2, DateTimeOffset.UtcNow, CancellationToken.None);
         await repository.CompleteInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope.EventId, InboxStatuses.Processed, null,
             DateTimeOffset.UtcNow, CancellationToken.None);

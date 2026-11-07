@@ -39,7 +39,7 @@ public sealed partial class AssessmentProviderRepository
                  (id, organization_id, event_id, event_type, event_version, provider_tenant_id, occurred_at,
                   delivery_attempt, status, processing_attempts, data, received_at)
              VALUES ({id}, {organizationId}, {envelope.EventId}, {envelope.EventType}, 1, {envelope.ProviderTenantId},
-                     {occurredAt}, {deliveryAttempt}, 'received', 0, CAST({data} AS jsonb), {receivedAt})
+                     {occurredAt}, CAST({deliveryAttempt} AS integer), 'received', 0, CAST({data} AS jsonb), {receivedAt})
              ON CONFLICT (organization_id, event_id) DO NOTHING
              """, cancellationToken).ConfigureAwait(false);
         if (inserted == 1)
