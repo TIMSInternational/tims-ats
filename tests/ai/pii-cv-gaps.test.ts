@@ -115,7 +115,7 @@ describe('gap 3b — person labels and phrases', () => {
     expect(redactContactDetails('reporta a la gerencia')).toBe('reporta a la gerencia');
   });
 
-  it('runs before the given names, so a given first name never shields the surname after a cue', () => {
+  it('never lets a given first name shield the surname after a cue (cue pass first; it also takes an earlier mask)', () => {
     expect(redactContactDetails('Supervisor: Ana Ruiz', ['Ana'])).toBe('Supervisor: [nombre]');
     expect(redactContactDetails('Jefe: 王', ['王'])).toBe('Jefe: [nombre]');
   });

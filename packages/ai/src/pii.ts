@@ -235,7 +235,7 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
     number.replace(/\D/g, '').length >= LABELLED_PHONE_MIN_DIGITS ? `${label}[teléfono]` : match,
   );
   out = out.replace(DIGIT_RUN, (run) => (run.replace(/\D/g, '').length >= PHONE_MIN_DIGITS ? '[teléfono]' : run));
-  // Cued names BEFORE the given ones: "Supervisor: Ana Ruiz" with "Ana" given must not leave "[nombre] Ruiz".
+  // Cued names first (their pattern also takes an earlier "[nombre]"), so "Ana" given never shields "Ruiz" after a cue.
   out = maskCuedThirdPartyNames(out);
   for (const term of redactionVariants(terms)) out = maskName(out, term);
   return out;
