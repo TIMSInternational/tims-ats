@@ -13,6 +13,8 @@ namespace Tims.UnitTests.FitEngine;
 ///   hiring guardrails — a not-met gate never moves the overall score and never skips the candidate; a
 ///     needs-review result is excluded from the assessment dimension (never read as a 0 instrument score), and
 ///     because excluding it still moves the overall number, the row is stored partial with reviewPending: true;
+///   write, then verify — a compute re-reads its results after writing and writes again when they changed
+///     (deterministic interleavings through a scripted source), bounded by MaxV2Writes;
 ///   weighting — the profile's assessment weight is split across scored instruments by their weights;
 ///   a SCORED English result verifies the languages dimension (a gate never moves a number);
 ///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
