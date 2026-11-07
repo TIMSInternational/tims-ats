@@ -84,8 +84,8 @@ async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
   await form.getByPlaceholder('María', { exact: true }).fill(cand().firstName);
   await form.getByPlaceholder('López Rodríguez').fill(cand().lastName);
   await form.getByPlaceholder('maria.lopez@gmail.com').fill(cand().email);
-  await form.getByPlaceholder('+506 8888 8888').fill('+506 8555 0101');
-  await form.getByPlaceholder('San José, Costa Rica').fill('Heredia, Costa Rica');
+  await form.getByPlaceholder('Código de país y número').fill('+506 8555 0101');
+  await form.getByPlaceholder('Ciudad, país').fill('Heredia, Costa Rica');
   await form.getByRole('button', { name: 'Siguiente' }).click();
 
   await form.getByPlaceholder('Analista de Recursos Humanos').fill('Analista de Logística');
@@ -173,7 +173,7 @@ async function scheduleInterview(page: Page): Promise<void> {
   const when = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   await wizard.locator('input[type=date]').fill(when);
   await wizard.locator('input[type=time]').fill('10:00');
-  await wizard.getByPlaceholder('Oficina central, San José — Sala 3').fill('Oficina central, San José — Sala 2');
+  await wizard.getByPlaceholder('Oficina central — Sala 3').fill('Oficina central, San José — Sala 2');
   await wizard.getByRole('button', { name: 'Siguiente' }).click();
 
   await wizard.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first().click();

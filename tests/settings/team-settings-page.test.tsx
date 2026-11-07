@@ -239,7 +239,7 @@ describe('/settings/users (Equipo)', () => {
       m.rolePlaceholder,
       'Super Administrador',
       'Administrador de RR. HH.',
-      'HR Business Partner (HRBP)',
+      'Socio de negocio de RR. HH. (HRBP)',
       'Reclutador',
       'Líder',
       'Comité de entrevista',

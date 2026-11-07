@@ -13,7 +13,7 @@ public static class RoleLabels
         {
             ["super_admin"] = ("Super Administrador", "Super Administrator"),
             ["hr_admin"] = ("Administrador de RR. HH.", "HR Administrator"),
-            ["hrbp"] = ("HR Business Partner (HRBP)", "HR Business Partner (HRBP)"),
+            ["hrbp"] = ("Socio de negocio de RR. HH. (HRBP)", "HR Business Partner (HRBP)"),
             ["recruiter"] = ("Reclutador", "Recruiter"),
             ["leader"] = ("Líder", "Leader"),
             ["committee"] = ("Comité de entrevista", "Interview committee"),

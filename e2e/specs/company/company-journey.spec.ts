@@ -188,7 +188,7 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
 
   // Step 1 — basic info
   await wizard.getByPlaceholder('Ej: Senior Software Engineer').fill(title);
-  await wizard.getByPlaceholder('San José, Costa Rica').fill('San José, Costa Rica');
+  await wizard.getByPlaceholder('Ciudad, país').fill('San José, Costa Rica');
   await wizard.getByRole('button', { name: 'Presencial' }).click();
   if (PENDING.orgStructure.merged) {
     // #310: the vacancy is placed in the team whose leader approves it.

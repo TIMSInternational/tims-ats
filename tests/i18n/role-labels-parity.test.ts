@@ -26,7 +26,7 @@ const DECIDED_ES: Record<string, string> = {
   recruiter: 'Reclutador',
   leader: 'Líder',
   committee: 'Comité de entrevista',
-  hrbp: 'HR Business Partner (HRBP)',
+  hrbp: 'Socio de negocio de RR. HH. (HRBP)',
   employee: 'Colaborador',
 };
 
