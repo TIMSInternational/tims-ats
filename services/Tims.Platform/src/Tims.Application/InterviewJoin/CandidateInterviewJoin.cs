@@ -217,13 +217,19 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
     /// already recorded, so a transcript that slips through is still deleted by the webhook; this makes the
     /// candidate's "will not be transcribed" true DURING the call too. A failed stop leaves the state as it was, so
     /// the next declining join tries again — admission waits for a stop that succeeds.
+    /// <para>The room is the one derived from the interview id (<see cref="RoomNameFor"/>), never the join's
+    /// <c>meeting_url</c> snapshot: that was read BEFORE the decision took the lock, so staff may have created the room
+    /// and started a transcription in it since (Codex P1: a null snapshot used to count as "stopped", and ReadyAsync
+    /// then adopted that same room). Platform starts only ever run in that room (StartAsync requires it, and the
+    /// webhook only resolves full-id rooms); Daily answers a room with nothing to stop (or no room) with 400/404, which
+    /// the provider counts as stopped.</para>
     /// </summary>
     private async Task<bool> StopRunningTranscriptionAsync(CandidateJoinInterview interview, string? state,
         CancellationToken ct)
     {
         if (state is not (TranscriptStates.Requested or TranscriptStates.InProgress)) return true;
-        if (!TryDailyRoom(interview.MeetingUrl, out var room) || !IsOwnRoomName(room, interview.Id)) return true;
-        return transcriptionProvider is not null && await transcriptionProvider.StopAsync(room, ct);
+        return transcriptionProvider is not null &&
+               await transcriptionProvider.StopAsync(RoomNameFor(interview.Id), ct);
     }
 
     private async Task<CandidateJoinResult> ReadyAsync(CandidateJoinInterview interview, DateTimeOffset now,

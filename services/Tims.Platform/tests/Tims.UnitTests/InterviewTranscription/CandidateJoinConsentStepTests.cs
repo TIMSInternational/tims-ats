@@ -138,6 +138,29 @@ public sealed class CandidateJoinConsentStepTests
     }
 
     [Fact]
+    public async Task A_decline_whose_snapshot_has_no_room_still_stops_the_transcription_in_the_interview_room()
+    {
+        // Codex P1 (re-run 3): the join's interview snapshot (meeting_url null) predates the decision's lock. Staff
+        // then created the room and started a transcription; the decline saw `requested` but, with no stored URL,
+        // counted it as stopped, and ReadyAsync adopted that same room and minted a token.
+        var transcriber = new Transcriber();
+        var (join, video, ledger, repo) = Build(enabled: true, transcriber: transcriber);
+        repo.MeetingUrl = null;
+        ledger.LatestState = TranscriptStates.Requested;
+        var decline = new CandidateRecordingDecision(Declined, ConsentTextVersion);
+
+        transcriber.StopSucceeds = false;
+        Assert.Equal(CandidateJoinOutcomes.Unavailable, (await join.JoinAsync(Token, decline, null, null, default)).Outcome);
+        Assert.Equal((0, 0), (video.Rooms, video.Mints)); // never admitted (nor a room adopted) while it may run
+        Assert.Equal(CandidateInterviewJoin.RoomNameFor(InterviewId), Assert.Single(transcriber.Stopped));
+
+        transcriber.StopSucceeds = true;
+        Assert.Equal(CandidateJoinOutcomes.Ready, (await join.JoinAsync(Token, decline, null, null, default)).Outcome);
+        Assert.Equal(2, transcriber.Stopped.Count);
+        Assert.Equal(1, video.Mints);
+    }
+
+    [Fact]
     public async Task A_decline_during_an_in_flight_start_waits_for_it_and_is_not_admitted_while_the_stop_fails()
     {
         // Codex P1 (re-run 2): staff passed the consent check and called Daily; the candidate declined before the
