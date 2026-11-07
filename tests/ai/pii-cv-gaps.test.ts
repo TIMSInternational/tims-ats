@@ -251,3 +251,23 @@ describe('Codex round 15 on #421: separator and invisible-character classes', ()
     expect(redactContactDetails('Lideré 12 personas en 3 países.')).toBe('Lideré 12 personas en 3 países.');
   });
 });
+
+describe('Codex round 16 on #421', () => {
+  it('masks a phone padded with long runs of spaces, tabs or blank lines', () => {
+    for (const gap of ['     ', '\t\t\t\t\t', ' \n\n\n ', '  \u2003\u2003  ']) {
+      const out = formatCandidateCv({ summary: `Tel: +506${gap}8888${gap}7777` }) ?? '';
+      expect(out).not.toMatch(/8888|7777/);
+    }
+  });
+
+  it('masks addresses whose letters carry combining marks (Devanagari, Thai, decomposed accents)', () => {
+    for (const address of [
+      'अनिता@example.com',
+      'สมชาย@example.co.th',
+      'jose\u0301@example.com',
+      'ana@exa\u0301mple.com',
+    ]) {
+      expect(redactContactDetails(`Correo ${address} hoy`)).toBe('Correo [email] hoy');
+    }
+  });
+});

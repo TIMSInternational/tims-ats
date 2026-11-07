@@ -143,11 +143,11 @@ export function wrapAsData(tag: string, content: string): string {
 
 // Whitespace (incl. line breaks from PDF extraction) is allowed around "@" and the dots of the domain:
 // "recruiting123@\nexample.com", "ana @ acme . com". Over-masking a word after "x@y. " is accepted.
-// Internationalized addresses too: any letter or digit in the local part and the domain ("josé@acmé.com"), the
+// Internationalized addresses too: any letter, combining mark (Devanagari vowel signs…) or digit in the local part and the domain ("josé@acmé.com"), the
 // RFC 5322 specials ("o'neil@…"), and a QUOTED local part, straight or curly quotes, masked quotes included
 // ('"ana ruiz"@example.com', '“ana.ruiz”@example.cr').
 const EMAIL_PATTERN =
-  /(?:["“”„«»](?:\\.|[^"“”„«»\n\\]){1,64}["“”„«»]|[\p{L}\p{N}._%+'’!#$&*\/=?^`{|}~-]+)\s*@\s*[\p{L}\p{N}-]+(?:\s*\.\s*[\p{L}\p{N}-]+)*\s*\.\s*\p{L}{2,}/gu;
+  /(?:["“”„«»](?:\\.|[^"“”„«»\n\\]){1,64}["“”„«»]|[\p{L}\p{M}\p{N}._%+'’!#$&*\/=?^`{|}~-]+)\s*@\s*[\p{L}\p{M}\p{N}-]+(?:\s*\.\s*[\p{L}\p{M}\p{N}-]+)*\s*\.\s*\p{L}[\p{L}\p{M}]+/gu;
 // A run of digits joined by separators (it may hold several numbers: "8888-7777 8888-6666"). A separator is
 // up to 4 characters of whitespace (line breaks included: PDF extraction wraps "+506 8888\n7777"), punctuation
 // or symbols (any dash, slash, dot, bullet, middle dot, pipe… "202•555•0123", "8888·7777"), so no separator
@@ -239,7 +239,11 @@ export function redactContactDetails(text: string, terms: readonly string[] = []
   // separator a line break, so no pattern below has to enumerate them ("8888\u20027777" is one phone number).
   let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(IGNORABLE, ''))
     .replace(/\p{Zs}/gu, ' ')
-    .replace(/[\u000b\u000c\u0085\u2028\u2029]/g, '\n');
+    .replace(/[\u000b\u000c\u0085\u2028\u2029]/g, '\n')
+    // Whitespace runs collapse (a line break wins over spaces), so a phone padded with spaces or blank lines
+    // ("+506     8888     7777") is one run for the 4-character separator limit below.
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/[ \t]+/g, ' ');
   // The references section goes before any other masking: it is cut whole, whatever it holds.
   out = cutReferencesSection(out).replace(EMAIL_PATTERN, '[email]');
   // A number right after a phone label is masked from 7 digits ("Tel: 555-1234"); any other run from 8.
