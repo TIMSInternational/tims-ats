@@ -201,8 +201,8 @@ public sealed class FitEngineWriteUseCase(
         var breakdown = FitV2Kernels.BuildBreakdown(rawScores, evaluation.Entries, evaluation.ReviewPending);
 
         // A scored result awaiting review is left out of the number, so the number is provisional. Store the row
-        // as partial (every reader already flags a partial score and keeps it out of the >= 80 highlight); the
-        // breakdown's reviewPending says why, so a ranking reader can hold the row apart.
+        // as partial (the vacancy ranking and the pipeline views flag a partial score; some readers do not, see the
+        // design doc); the breakdown's reviewPending says why, so a reader can hold the row apart.
         var isPartial = result.IsPartial || evaluation.ReviewPending;
 
         return await _repository.UpsertFitScoreUnlessWithdrawnAsync(

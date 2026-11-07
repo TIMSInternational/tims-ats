@@ -238,7 +238,7 @@ public sealed class FitV2UseCaseTests
     {
         // All five dimensions are present, so v1's isPartial would be false. The quiz awaiting review is left out of
         // the assessment dimension (lia alone fills it), which makes the number provisional: the row is stored as
-        // partial so no reader shows it as a complete score (or puts it in the >= 80 highlight).
+        // partial, which the vacancy ranking and the pipeline views already flag.
         const string requirements =
             """{"minYearsExperience":2,"requiredEducationLevel":"bachelor","requiredLanguages":["Spanish"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"native_quiz"}]}""";
         const string education = """[{"degree":"Bachelor of Science"}]""";

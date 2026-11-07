@@ -48,7 +48,10 @@ last wins. v1 also takes `languages` from the CV self-report only.
   per instrument wins. Only the first 32 entries are read.
 
 **No `assessments` array → v1 runs unchanged**, even with the flag on. An empty array means "this vacancy uses no
-instrument": the assessment dimension is null.
+instrument": the assessment dimension is null. A **non-empty array in which no entry survives** (a typo such as
+`native-quiz`) is treated as no array: v1 runs, so a mistake never silently drops the assessment dimension. Not yet
+reported anywhere: an array where only SOME entries are dropped, and a weight that is invalid (which forces the
+equal split). Both are silent until a C#-owned writer validates the configuration on save.
 
 ## Rules
 
@@ -65,26 +68,41 @@ instrument": the assessment dimension is null.
 - **Latest per instrument.** Results are grouped by instrument; the most recent (completedAt DESC, nulls last,
   then result id) is the one judged, even when it needs review.
 - **Integrity.** A result that is voided, flagged or awaiting review shows as `needs_review`, its gate as
-  `unknown`, and it is excluded from the score. It is never read as a low score. A valid result without the
-  judged value (e.g. a partial LIA battery with no global percentile) shows as `no_value`.
+  `unknown`, and it is excluded from the `assessment` dimension: it is never read as a low instrument score. A
+  valid result without the judged value (e.g. a partial LIA battery with no global percentile) shows as
+  `no_value`.
+- **Review pending (the overall number).** Excluding a scored result still moves the OVERALL score. The remaining
+  dimensions are renormalized exactly as for a candidate with no result (so a flagged low result can raise the
+  overall), and when nothing else is available the overall is v1's no-data value, `0` with `isPartial`. So when the
+  latest result of any SCORED instrument needs review, the breakdown carries `reviewPending: true` and the row is
+  stored with `isPartial: true`. Some web readers flag `isPartial`: the vacancy FIT ranking (its status column),
+  and the pipeline kanban card, list view and table row (a `*`; the kanban card also keeps a partial score out of
+  its >= 80 highlight). Others show the bare number: the candidate header (whose high-fit banner does not check
+  `isPartial`), the candidate table, the talent-pool table and the candidate page's breakdown and assessment
+  panels. No reader holds these rows apart from the ranking; that is a precondition for enabling the flag (see
+  Rollout). A gate awaiting review moves no number and does not set `reviewPending`.
 - **Gates never reject.** A gate entry contributes nothing to any dimension, the `languages` dimension included.
   A candidate whose gate is `not_met` is still scored and ranked; a person decides.
 - **Weighting.** The `assessment` dimension is the weighted mean of the scored instruments that have a score,
   rounded with `JsRound`. The declared weights apply when every scored entry declares a valid one; otherwise all
   scored instruments weigh the same. Equivalently, instrument _i_ carries `profile.assessment × wᵢ / Σw` over the
   instruments with a score. When none has one, the dimension is null and the five-dimension renormalization drops
-  it, exactly as v1 does for any missing dimension. `isPartial` keeps its v1 meaning.
+  it, exactly as v1 does for any missing dimension. `isPartial` keeps its v1 meaning and is also set by
+  `reviewPending` (simulateWeights recomputes it from the five dimension keys, so it can report false there).
 - **English verifies languages (scored only).** A SCORED english entry with a valid CEFR result decides whether
   "English" (also "Inglés"/"Ingles") counts as covered among `requiredLanguages`: covered iff achieved ≥ the
   entry's minimum, whatever the CV says. Other languages still come from the CV. If the CV lists no languages and
   a non-English language is also required, the dimension stays null as in v1. A scored English result therefore
-  moves two numbers (its ladder score in `assessment`, and English coverage in `languages`), by design. A GATE
-  english entry moves neither: HR sees its met / not met next to the CV self-report.
+  moves two numbers (its ladder score in `assessment`, and English coverage in `languages`). **Open, needs owner
+  sign-off with the DEI rollout checks:** a below-minimum result counts twice, and `effectiveWeight` reports only
+  its `assessment` share, not its effect on `languages`, so neither HR nor the explainer sees the combined weight.
+  The alternatives are one channel only, or a combined weight in the breakdown. A GATE english entry moves
+  neither number: HR sees its met / not met next to the CV self-report.
 - **Job-relatedness.** Results for instruments the vacancy does not list are ignored.
 
 ## Breakdown
 
-The six v1 keys first, unchanged in meaning and order, then two new keys:
+The six v1 keys first, unchanged in meaning and order, then three new keys:
 
 ```json
 {
@@ -95,6 +113,7 @@ The six v1 keys first, unchanged in meaning and order, then two new keys:
   "languages": 100,
   "llmJudgment": null,
   "fitVersion": 2,
+  "reviewPending": false,
   "assessments": [
     {
       "instrument": "lia",
@@ -121,16 +140,24 @@ The six v1 keys first, unchanged in meaning and order, then two new keys:
 only); `assessmentShare` and `effectiveWeight` (rounded to 4 dp, before the five-dimension renormalization) only
 for scored entries with a score; `languagesEvidence` (english only) is `assessment` when a scored English result
 decided English, `cv` when the CV stood (always so for a gate or advisory English entry), null when English is not
-in `requiredLanguages`.
+in `requiredLanguages`. `reviewPending` (top level) is true when a scored instrument's latest result needs review;
+see Rules.
 
 Every v1 reader keeps working: `simulateWeights` reads the five dimension keys; the web panels read the same
 five; the AI explainer (`packages/ai/src/agents/fit-explainer.ts`) now also explains the `assessments` entries.
 
 **Visibility.** The breakdown is readable by every `fit_engine:read` holder, including `leader@team`, who holds no
-`assessment:read`. So an entry carries the derived fit, the gate state, the requirement and the result id, never
-the raw result (percentile, CEFR, level) nor `assessment_results.model_version` (classified internal). Advisory
-entries carry status only. Note that a below-minimum fit score can be inverted to the raw value
-(`p = score × min / 100`); v1's `assessment` key already exposes a normalized score to the same readers.
+`assessment:read`. So a scored or gate entry carries the derived fit, the gate state, the requirement, the result
+id and source, and the content and norm version when the source has them, never the raw result (percentile, CEFR,
+level) nor `assessment_results.model_version` (classified internal). An advisory entry (personality, MI, PCA)
+carries its status and the vacancy's reason only: no result id, source or version.
+
+**The derived fit is not opaque below the minimum, and `min` sits in the same entry.** The English ladder maps
+A1..C1 to 17/33/50/67/83 and the ITC-IA ladder maps levels 1..4 to 20/40/60/80, both one-to-one, so a reader
+recovers the exact CEFR level or ITC-IA level of every candidate below the minimum. The LIA curve inverts as
+`p = score × min / 100`. At or above the minimum all three read 100. v1's `assessment` key already exposes a
+normalized score to the same readers. **Owner decision needed before the flag is enabled:** accept this for
+`leader@team`, or coarsen what the breakdown stores (e.g. met / below only).
 
 ## Result sources (`IAssessmentResultSource`)
 
@@ -138,18 +165,32 @@ entries carry status only. Note that a below-minimum fit score can be inverted t
   row. Valid iff `status = 'completed'` and no proctoring session of severity `high`/`critical`; anything else
   (e.g. `cancelled`) is needs review. Explicit `organization_id` filter on all three tables plus TenantScope.
   Adds `proctoring_sessions` to `efcoreReadOnly[]` (SELECT only).
+  - **Today both rules are inert, so every ATS result is Valid.** Nothing on main creates a `proctoring_sessions`
+    row (the TS `assessment.flagProctoring` only updates an existing session and returns NOT_FOUND without one),
+    and `assessment.cancel` only cancels an `assigned` or `in_progress` assignment while the result row is written
+    on submission, so "cancelled with a result" does not happen through the app. The rules are forward
+    compatibility.
+  - **The severity a reviewer would clear never goes down.** `flagProctoring` only raises `severity` to the
+    maximum seen. Once sessions exist, an attempt a person reviewed and cleared would stay `needs_review` for
+    good. Before a session writer ships (the proctoring work adds `proctoring_sessions.review_status` and
+    per-event severity), define the review-completion signal and read it here, so a cleared result counts again.
 - `ProviderAssessmentResultSource`: a stub that returns nothing until the TIMS Assessments connector implements
   it against the tims-interop result schemas (`LiaResultV1`, …). Its doc comment holds the intended mapping.
 - No table is created.
 
 ## Rollout notes
 
-- **There is no writer for `assessments[]` yet, and the existing editor erases it.** The only writer of
-  `fit_requirements` is the TS `vacancy.jobProfile.updateFitRequirements`
-  (`packages/api/src/routers/vacancy/job-profile.ts`), whose input schema has no `assessments` field and which
-  replaces the whole jsonb on save. Saving the requirements card after a vacancy was configured therefore drops
-  the array, and the next compute silently returns to v1. The survival rule forbids patching that router; a
-  C#-owned writer (plus the web form) must land before any vacancy is configured for v2.
+- **Preconditions for enabling `FitEngineV2Enabled`** (none is met by this PR):
+  1. **A writer for `assessments[]` that does not get erased.** The only writer of `fit_requirements` is the TS
+     `vacancy.jobProfile.updateFitRequirements` (`packages/api/src/routers/vacancy/job-profile.ts`), whose input
+     schema has no `assessments` field and which replaces the whole jsonb on save. Saving the requirements card
+     after a vacancy was configured therefore drops the array, and the next compute silently returns to v1. The
+     survival rule forbids patching that router; a C#-owned writer (merge-on-update, plus the web form) must land
+     first. It should also report dropped entries and invalid weights instead of the silent lenient parse.
+  2. **Readers that hold `reviewPending` rows apart** (or show "needs review" rather than a number), the vacancy
+     ranking first. Today they rank on a provisional number, flagged only where a reader shows `isPartial`.
+  3. **The owner visibility decision** above, and the DEI / LIA-norm checks below.
+  4. **A review-completion signal** read by the ATS adapter before any proctoring-session writer ships.
 - The C# compute is not called by the web app yet (no FE wrapper for the fit-engine surface; see `cutover.sh`).
   The live TS writers (`fitEngine.computeForVacancy`, `candidateAiService.screenCandidate`) still write v1
   breakdowns, and a later TS recompute overwrites a v2 row with v1.
@@ -159,7 +200,8 @@ entries carry status only. Note that a below-minimum fit score can be inverted t
   `completed` and the counted score until the next compute. v1 has the same last-writer-wins snapshot race for
   every input; only consent withdrawal is re-checked under a lock (#312). Closing it needs the proctoring-flag
   writer (TS `assessment.flagProctoring`) to share a lock with compute, or the v2 read moved into the upsert
-  transaction with a re-validation. Found by the Codex review of this branch.
+  transaction with a re-validation. Found by the Codex review of this branch. It cannot happen with today's
+  writers (no proctoring session is ever created, see above); it becomes real when a session writer ships.
 - Turning the flag off affects the next compute only; stored v2 rows keep their extra keys, which every v1 reader
   ignores.
 - Before gates are used on real vacancies: monitor pass and fit rates by group (DEI), and confirm the LIA norms
