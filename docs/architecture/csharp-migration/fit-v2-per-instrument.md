@@ -194,20 +194,23 @@ normalized score to the same readers. **Owner decision needed before the flag is
      ranking first. Today they rank on a provisional number, flagged only where a reader shows `isPartial`.
   3. **The owner visibility decision** above, and the DEI / LIA-norm checks below.
   4. **A review-completion signal** read by the ATS adapter before any proctoring-session writer ships.
-  5. **The concurrent-recompute race below closed**, since it is reachable today through the cancel TOCTOU.
 - The C# compute is not called by the web app yet (no FE wrapper for the fit-engine surface; see `cutover.sh`).
   The live TS writers (`fitEngine.computeForVacancy`, `candidateAiService.screenCandidate`) still write v1
   breakdowns, and a later TS recompute overwrites a v2 row with v1.
-- **Known race (not fixed here).** Results are read before, and outside, the transaction that writes
-  `fit_scores`. Two concurrent computes that straddle an integrity change can end with the slower one's stale
-  view: compute A reads a clean result, the result becomes needs review (HR flags it high, or a cancel lands on it
-  through the TOCTOU above), compute B writes `needs_review`, then A overwrites it with `completed`, the counted
-  score and `reviewPending: false` until the next compute. v1 has the same last-writer-wins snapshot race for
-  every input; only consent withdrawal is re-checked under a lock (#312). Closing it needs the proctoring-flag
-  writer (TS `assessment.flagProctoring`) to share a lock with compute, or the v2 read moved into the upsert
-  transaction with a re-validation. Found by the Codex review of this branch. Today only the cancel path can
-  trigger it (no proctoring session is ever created): a cancel racing a submission, and then two computes
-  racing that cancel. Rare, but reachable, so closing it is a precondition for enabling the flag.
+- **Concurrent recomputes: write, then verify.** Results are read before, and outside, the transaction that
+  writes `fit_scores`. Two concurrent computes that straddle an integrity change could therefore end with the
+  slower one's stale view: compute A reads a clean result, the result becomes needs review (HR flags it high, or a
+  cancel lands on it through the TOCTOU above), compute B writes `needs_review`, then A overwrites it with
+  `completed`, the counted score and `reviewPending: false`. Found by the Codex review of this branch; reachable
+  today through the cancel TOCTOU. Each v2 compute now re-reads the candidate's results AFTER its write and, when
+  they changed, evaluates and writes again (at most `MaxV2Writes` = 3 writes). The last write to land is always
+  followed by its own check, so the row ends on results at least as new as that check. What remains:
+  - a change after the last check is picked up by the next compute, as for every other input (v1 snapshot
+    semantics);
+  - under continuous churn the third write stands unchecked;
+  - only the results are re-read; the CV, interview and weight inputs keep v1's last-writer-wins snapshot;
+  - the live TS writers (v1) do not verify and can still overwrite a v2 row (see above);
+  - a process that dies between its write and its check leaves that write until the next compute.
 - Turning the flag off affects the next compute only; stored v2 rows keep their extra keys, which every v1 reader
   ignores.
 - Before gates are used on real vacancies: monitor pass and fit rates by group (DEI), and confirm the LIA norms

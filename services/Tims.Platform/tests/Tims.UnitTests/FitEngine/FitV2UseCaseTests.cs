@@ -90,7 +90,8 @@ public sealed class FitV2UseCaseTests
         Assert.Equal(2, breakdown["fitVersion"]!.GetValue<int>());
         Assert.False(breakdown["reviewPending"]!.GetValue<bool>());
         Assert.Equal(0, repo.LatestAssessmentReads);
-        Assert.Equal([(OrgId, CandidateId, VacancyId)], source.Calls);
+        Assert.Equal([(OrgId, CandidateId, VacancyId), (OrgId, CandidateId, VacancyId)], source.Calls); // read + check
+        Assert.Single(repo.FitScoreUpserts); // unchanged on the check: one write
 
         var entries = breakdown["assessments"]!.AsArray();
         Assert.Equal(["lia", "personality"], entries.Select(e => e!["instrument"]!.GetValue<string>()).ToArray());
@@ -272,6 +273,94 @@ public sealed class FitV2UseCaseTests
         Assert.False(JsonNode.Parse(counted.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
     }
 
+    // ── write, then verify (the concurrent-recompute race) ──
+    [Fact]
+    public async Task FlagOn_ResultTurnsNeedsReviewAfterTheRead_TheComputeWritesAgain_LastWriteIsPending()
+    {
+        // Deterministic interleaving: the compute reads a valid 85, and by the time its write has landed the result
+        // needs review (a cancel or a proctoring flag committed in between, possibly with another compute already
+        // having written needs_review). The stale counted score must not be the row's last word.
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", yearsExperience: 4);
+        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
+        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
+        var source = new ScriptedResultSource([valid], [flagged], [flagged]);
+
+        var computed = await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(1, computed.Computed);
+        Assert.Equal(3, source.CallCount); // read, check (changed), check (stable)
+        Assert.Equal(2, repo.FitScoreUpserts.Count);
+        Assert.False(JsonNode.Parse(repo.FitScoreUpserts[0].BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+        var last = JsonNode.Parse(repo.FitScoreUpserts[^1].BreakdownJson)!;
+        Assert.True(last["reviewPending"]!.GetValue<bool>());
+        Assert.Null(last["assessment"]);
+        Assert.Equal("needs_review", last["assessments"]![0]!["status"]!.GetValue<string>());
+        Assert.True(repo.FitScoreUpserts[^1].IsPartial);
+    }
+
+    [Fact]
+    public async Task FlagOn_StableResults_OneWrite_OneCheck_EvenWhenTheSourceReordersRows()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"native_quiz"}]}""");
+        var lia = Result(FitInstruments.Lia, "r-lia", percentile: 50);
+        var quiz = Result(FitInstruments.NativeQuiz, "a-1", score: 70);
+        var source = new ScriptedResultSource([lia, quiz], [quiz, lia]);
+
+        await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(2, source.CallCount);
+        Assert.Single(repo.FitScoreUpserts);
+    }
+
+    [Fact]
+    public async Task FlagOn_ResultsKeepChanging_StopsAfterMaxV2Writes()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
+        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
+        var source = new ScriptedResultSource([valid], [flagged], [valid], [flagged], [valid], [flagged]);
+
+        var computed = await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(1, computed.Computed);
+        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes, repo.FitScoreUpserts.Count);
+        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes + 1, source.CallCount);
+    }
+
+    [Fact]
+    public async Task FlagOn_WithdrawnBeforeTheRewrite_StopsAndStillCountsTheFirstWrite()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        repo.WithdrawnAfterWrites = 1;
+        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
+        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
+        var source = new ScriptedResultSource([valid], [flagged]);
+
+        var computed = await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(1, computed.Computed);
+        Assert.Single(repo.FitScoreUpserts);
+    }
+
+    [Fact]
+    public async Task FlagOn_WithdrawnBeforeTheFirstWrite_IsNotCounted()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        repo.WithdrawnAfterWrites = 0;
+        var source = new ScriptedResultSource([Result(FitInstruments.NativeQuiz, "a-1", score: 85)]);
+
+        var computed = await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(0, computed.Computed);
+        Assert.Empty(repo.FitScoreUpserts);
+        Assert.Equal(1, source.CallCount); // nothing written, so nothing to check
+    }
+
     // ── weighting ──
     [Fact]
     public async Task FlagOn_SplitsTheProfilesAssessmentWeight_ByInstrumentWeights()
@@ -396,6 +485,20 @@ public sealed class FitV2UseCaseTests
         }
     }
 
+    // Returns the i-th scripted response on the i-th call (the last one again once they run out).
+    private sealed class ScriptedResultSource(params InstrumentResult[][] responses) : IAssessmentResultSource
+    {
+        public int CallCount { get; private set; }
+
+        public Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            var response = responses[Math.Min(CallCount, responses.Length - 1)];
+            CallCount++;
+            return Task.FromResult<IReadOnlyList<InstrumentResult>>(response);
+        }
+    }
+
     private sealed class FakeReadRepo(params FitScoreForVacancyData[] rows) : IFitEngineReadRepository
     {
         public Task<IReadOnlyList<FitScoreForVacancyData>> GetFitScoresForVacancyAsync(
@@ -426,6 +529,9 @@ public sealed class FitV2UseCaseTests
         public WeightProfileData? DefaultProfile { get; init; }
 
         public int LatestAssessmentReads { get; private set; }
+
+        /// <summary>Simulates a consent withdrawal that commits once this many writes have landed.</summary>
+        public int? WithdrawnAfterWrites { get; set; }
 
         public List<FitScoreUpsert> FitScoreUpserts { get; } = [];
 
@@ -461,6 +567,11 @@ public sealed class FitV2UseCaseTests
             Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
             string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
         {
+            if (WithdrawnAfterWrites is { } limit && FitScoreUpserts.Count >= limit)
+            {
+                return Task.FromResult(false);
+            }
+
             FitScoreUpserts.Add(new FitScoreUpsert(overallScore, breakdownJson, weightsJson, isPartial));
             return Task.FromResult(true);
         }
