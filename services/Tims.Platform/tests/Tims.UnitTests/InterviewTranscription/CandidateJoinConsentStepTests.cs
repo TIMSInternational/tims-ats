@@ -69,13 +69,13 @@ public sealed class CandidateJoinConsentStepTests
         public Task<IReadOnlyList<InterviewConsentRecord>> ListConsentsAsync(Guid organizationId, Guid interviewId,
             CancellationToken ct) => Task.FromResult<IReadOnlyList<InterviewConsentRecord>>(Records);
 
-        public string? LatestState { get; set; }
+        public bool Running { get; set; }
 
         public Task<RecordedCandidateDecision?> RecordCandidateDecisionAsync(InterviewConsentRecord record,
             CancellationToken ct)
         {
             if (Writes) Records.Add(record);
-            return Task.FromResult(Writes ? new RecordedCandidateDecision(LatestState) : null);
+            return Task.FromResult(Writes ? new RecordedCandidateDecision(Running) : null);
         }
     }
 
@@ -124,7 +124,7 @@ public sealed class CandidateJoinConsentStepTests
         var transcriber = new Transcriber();
         var (join, video, ledger, repo) = Build(enabled: true, transcriber: transcriber);
         repo.MeetingUrl = "https://tims.daily.co/" + CandidateInterviewJoin.RoomNameFor(InterviewId);
-        ledger.LatestState = TranscriptStates.InProgress;
+        ledger.Running = true;
         var result = await join.JoinAsync(Token, new CandidateRecordingDecision(Declined, ConsentTextVersion), null,
             null, default);
         Assert.Equal(CandidateJoinOutcomes.Ready, result.Outcome);
@@ -146,7 +146,7 @@ public sealed class CandidateJoinConsentStepTests
         var transcriber = new Transcriber();
         var (join, video, ledger, repo) = Build(enabled: true, transcriber: transcriber);
         repo.MeetingUrl = null;
-        ledger.LatestState = TranscriptStates.Requested;
+        ledger.Running = true;
         var decline = new CandidateRecordingDecision(Declined, ConsentTextVersion);
 
         transcriber.StopSucceeds = false;
@@ -157,6 +157,50 @@ public sealed class CandidateJoinConsentStepTests
         transcriber.StopSucceeds = true;
         Assert.Equal(CandidateJoinOutcomes.Ready, (await join.JoinAsync(Token, decline, null, null, default)).Outcome);
         Assert.Equal(2, transcriber.Stopped.Count);
+        Assert.Equal(1, video.Mints);
+    }
+
+    [Fact]
+    public async Task A_late_error_for_an_earlier_transcript_never_hides_a_newer_running_start_from_a_decline()
+    {
+        // Codex P1 (re-run 3): transcript A becomes ready; staff starts B; a delayed `error` for A arrives (Daily documents
+        // that error and ready can both occur); the candidate declines. The join read the room's LATEST event (`error`),
+        // skipped the stop and admitted them while B kept transcribing. Real webhook handling, one shared repository.
+        var shared = new InterviewTranscriptionUseCaseTests.Repository();
+        var provider = new InterviewTranscriptionUseCaseTests.Provider();
+        var useCase = new InterviewTranscriptionUseCase(shared, provider,
+            new Clock(new DateTime(2026, 11, 6, 15, 30, 0, DateTimeKind.Utc)));
+        var staff = Guid.NewGuid();
+        var room = CandidateInterviewJoin.RoomNameFor(InterviewId);
+        var (transcriptA, transcriptB) = (Guid.NewGuid(), Guid.NewGuid());
+        DailyWebhookEvent Event(string type, string id, Guid transcript) => new(type, id, room, transcript,
+            EventTimestamp: new DateTimeOffset(shared.Events[^1].RecordedAt!.Value).ToUnixTimeSeconds());
+        await shared.RecordConsentAsync(new(InterviewId, OrgId, SubjectCandidate, null, Accepted, ConsentTextVersion), default);
+        await shared.RecordConsentAsync(new(InterviewId, OrgId, SubjectStaff, staff, Accepted, ConsentTextVersion), default);
+
+        Assert.Equal(200, (await useCase.StartAsync(OrgId, staff, InterviewId, "es", default)).Status); // start A
+        Assert.Equal(WebhookHandling.Recorded, await useCase.HandleWebhookAsync(
+            Event(DailyWebhookEvent.TranscriptStarted, "a-started", transcriptA), default));
+        Assert.Equal(WebhookHandling.Stored, await useCase.HandleWebhookAsync(
+            new(DailyWebhookEvent.TranscriptReady, "a-ready", room, transcriptA), default));
+        Assert.Equal(200, (await useCase.StartAsync(OrgId, staff, InterviewId, "es", default)).Status); // start B
+        Assert.Equal(WebhookHandling.Recorded, await useCase.HandleWebhookAsync(
+            Event(DailyWebhookEvent.TranscriptStarted, "b-started", transcriptB), default));
+        Assert.Equal(WebhookHandling.Recorded, await useCase.HandleWebhookAsync(
+            new(DailyWebhookEvent.TranscriptError, "a-error-late", room, transcriptA), default));
+        Assert.Equal(TranscriptStates.Error, shared.Events[^1].State); // the room's latest row now says "error"
+
+        var video = new Video();
+        var join = new CandidateInterviewJoin(new Repository { MeetingUrl = "https://tims.daily.co/" + room }, video,
+            new Clock(Start.AddMinutes(-5)), new InterviewTranscriptionSettings(true), shared, provider);
+        var decline = new CandidateRecordingDecision(Declined, ConsentTextVersion);
+        provider.StopSucceeds = false;
+        Assert.Equal(CandidateJoinOutcomes.Unavailable, (await join.JoinAsync(Token, decline, null, null, default)).Outcome);
+        Assert.Equal(0, video.Mints);
+        Assert.Equal(room, Assert.Single(provider.Stopped)); // B is still open, so the decline tried to stop it
+
+        provider.StopSucceeds = true;
+        Assert.Equal(CandidateJoinOutcomes.Ready, (await join.JoinAsync(Token, decline, null, null, default)).Outcome);
         Assert.Equal(1, video.Mints);
     }
 
@@ -202,15 +246,14 @@ public sealed class CandidateJoinConsentStepTests
     }
 
     [Theory]
-    [InlineData("accepted", "in_progress")]
-    [InlineData("declined", "ready")]
-    [InlineData("declined", null)]
-    public async Task Nothing_is_stopped_when_accepting_or_when_no_transcription_runs(string decision, string? state)
+    [InlineData("accepted", true)]
+    [InlineData("declined", false)]
+    public async Task Nothing_is_stopped_when_accepting_or_when_no_transcription_runs(string decision, bool running)
     {
         var transcriber = new Transcriber();
         var (join, _, ledger, repo) = Build(enabled: true, transcriber: transcriber);
         repo.MeetingUrl = "https://tims.daily.co/" + CandidateInterviewJoin.RoomNameFor(InterviewId);
-        ledger.LatestState = state;
+        ledger.Running = running;
         var result = await join.JoinAsync(Token, new CandidateRecordingDecision(decision, ConsentTextVersion), null,
             null, default);
         Assert.Equal(CandidateJoinOutcomes.Ready, result.Outcome);

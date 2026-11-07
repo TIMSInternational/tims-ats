@@ -207,7 +207,7 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
             IpAddress: ipAddress, UserAgent: userAgent), ct);
         if (recorded is null) return new(CandidateJoinOutcomes.Unavailable);
         if (decision.Decision == InterviewTranscriptionConstants.Declined &&
-            !await StopRunningTranscriptionAsync(interview, recorded.LatestTranscriptionState, ct))
+            !await StopRunningTranscriptionAsync(interview, recorded.TranscriptionMayBeRunning, ct))
             return new(CandidateJoinOutcomes.Unavailable);
         return null;
     }
@@ -224,10 +224,12 @@ public sealed partial class CandidateInterviewJoin(ICandidateInterviewJoinReposi
     /// webhook only resolves full-id rooms); Daily answers a room with nothing to stop (or no room) with 400/404, which
     /// the provider counts as stopped.</para>
     /// </summary>
-    private async Task<bool> StopRunningTranscriptionAsync(CandidateJoinInterview interview, string? state,
+    private async Task<bool> StopRunningTranscriptionAsync(CandidateJoinInterview interview, bool mayBeRunning,
         CancellationToken ct)
     {
-        if (state is not (TranscriptStates.Requested or TranscriptStates.InProgress)) return true;
+        // Per platform start, not the room's latest event (Codex P1: a delayed `error` for an older transcript hid a
+        // newer start that was still running).
+        if (!mayBeRunning) return true;
         return transcriptionProvider is not null &&
                await transcriptionProvider.StopAsync(RoomNameFor(interview.Id), ct);
     }

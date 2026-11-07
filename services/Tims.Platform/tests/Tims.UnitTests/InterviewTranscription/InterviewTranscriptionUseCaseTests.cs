@@ -120,7 +120,7 @@ public sealed class InterviewTranscriptionUseCaseTests
                 {
                     if (!Writes) return null;
                     Consents.Add(record with { RecordedAt = _clock = _clock.AddSeconds(1) });
-                    return new RecordedCandidateDecision(Events.Count == 0 ? null : Events[^1].State);
+                    return new RecordedCandidateDecision(InterviewTranscriptionUseCase.AnyOpenStart(Events));
                 }
             }
             finally

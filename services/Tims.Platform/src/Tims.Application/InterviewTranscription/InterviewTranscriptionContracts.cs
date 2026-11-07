@@ -71,9 +71,14 @@ public sealed record InterviewTranscriptionEvent(Guid InterviewId, Guid Organiza
     Guid? UserId = null, string? ProviderEventId = null, Guid? TranscriptId = null, string? Language = null,
     DateTime? RecordedAt = null, Guid? Id = null, Guid? AuthorizedBy = null);
 
-/// <summary>A candidate decision that is on record, and the interview's transcription state read right after it.</summary>
-/// <param name="LatestTranscriptionState">The state of the most recent transcription event, or null when none.</param>
-public sealed record RecordedCandidateDecision(string? LatestTranscriptionState);
+/// <summary>A candidate decision that is on record, and whether a transcription may be running, read right after it.</summary>
+/// <param name="TranscriptionMayBeRunning">
+/// True when ANY platform start (<c>requested</c>) has not been consumed by a <c>ready</c> claim naming that same start
+/// (<see cref="InterviewTranscriptionEvent.AuthorizedBy"/>) — see <see cref="InterviewTranscriptionUseCase.AnyOpenStart"/>.
+/// Deliberately NOT the latest event's state: <c>error</c>, <c>rejected</c> and stray <c>ready</c> rows name no start (or
+/// another one), so a delayed event for an older transcript can never make a newer, still-running start look finished.
+/// </param>
+public sealed record RecordedCandidateDecision(bool TranscriptionMayBeRunning);
 
 /// <summary>The consent ledger: append-only rows in audit_logs, always written under the interview's organization.</summary>
 public interface IInterviewConsentLedger
@@ -82,7 +87,7 @@ public interface IInterviewConsentLedger
     Task<bool> RecordConsentAsync(InterviewConsentRecord record, CancellationToken ct);
 
     /// <summary>
-    /// Records the CANDIDATE's decision and reads the interview's latest transcription state in ONE transaction under
+    /// Records the CANDIDATE's decision and reads whether any platform start is still open in ONE transaction under
     /// the interview's transcription lock — the lock a staff start holds from its consent read until its
     /// <c>requested</c> event is written (<see cref="IInterviewTranscriptionRepository.WithTranscriptionLockAsync{T}"/>).
     /// So a decline either commits before a start reads consent (the start is refused) or reads a start that is

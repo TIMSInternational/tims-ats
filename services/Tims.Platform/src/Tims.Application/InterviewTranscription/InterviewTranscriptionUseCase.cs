@@ -70,6 +70,21 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
             .LastOrDefault();
     }
 
+    /// <summary>
+    /// True when some platform start (<c>requested</c>) has no <c>ready</c> claim that consumed THAT start. Per start, not
+    /// per room: the latest row cannot be trusted as the room's state, because Daily's webhooks for an earlier transcript
+    /// (a late <c>error</c>, a <c>ready</c>) can arrive after a newer start. Only a <c>ready</c> names its start, so
+    /// nothing else closes one; a start that ended in <c>error</c> (or was stopped) stays open, which costs a later
+    /// declining join one idempotent stop call and never admits a candidate into a running transcription. The
+    /// repository's locked SQL (RecordCandidateDecisionAsync) applies this same rule.
+    /// </summary>
+    public static bool AnyOpenStart(IReadOnlyList<InterviewTranscriptionEvent> events)
+    {
+        var consumed = events.Where(e => e.State == TranscriptStates.Ready && e.AuthorizedBy is not null)
+            .Select(e => e.AuthorizedBy!.Value).ToHashSet();
+        return events.Any(e => e.State == TranscriptStates.Requested && (e.Id is not { } id || !consumed.Contains(id)));
+    }
+
     public static string? OwnRoomName(TranscriptionInterview interview) =>
         CandidateInterviewJoin.TryDailyRoom(interview.MeetingUrl, out var room) &&
         string.Equals(room, CandidateInterviewJoin.RoomNameFor(interview.Id), StringComparison.Ordinal)

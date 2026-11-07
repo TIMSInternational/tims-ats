@@ -102,22 +102,29 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
             if (await InsertRowAsync(connection, transaction, record.OrganizationId, record.InterviewId, ConsentAction,
                     record.UserId, ConsentMetadata(record), record.IpAddress, record.UserAgent, ct) != 1)
                 return null;
-            string? state;
+            // InterviewTranscriptionUseCase.AnyOpenStart, in SQL: a platform start that no `ready` claim consumed.
+            // Never the latest row's state — a late `error`/`ready` for an older transcript must not hide a newer start.
+            bool open;
             await using (var command = new NpgsqlCommand("""
-                SELECT metadata->>'state' FROM audit_logs
-                WHERE organization_id=@org AND action=@action AND entity='interview' AND entity_id=@entity
-                  AND metadata->>'state' = ANY(@states)
-                ORDER BY created_at DESC,id DESC LIMIT 1
+                SELECT EXISTS(
+                  SELECT 1 FROM audit_logs s
+                  WHERE s.organization_id=@org AND s.action=@action AND s.entity='interview' AND s.entity_id=@entity
+                    AND s.metadata->>'state'=@requested
+                    AND NOT EXISTS(SELECT 1 FROM audit_logs r
+                      WHERE r.organization_id=@org AND r.action=@action AND r.entity='interview'
+                        AND r.entity_id=@entity AND r.metadata->>'state'=@ready
+                        AND r.metadata->>'authorizedBy'=s.id::text))
                 """, connection, transaction))
             {
                 command.Parameters.AddWithValue("org", record.OrganizationId);
                 command.Parameters.AddWithValue("action", EventAction);
                 command.Parameters.AddWithValue("entity", record.InterviewId.ToString());
-                command.Parameters.AddWithValue("states", EventStates);
-                state = await command.ExecuteScalarAsync(ct) as string;
+                command.Parameters.AddWithValue("requested", TranscriptStates.Requested);
+                command.Parameters.AddWithValue("ready", TranscriptStates.Ready);
+                open = await command.ExecuteScalarAsync(ct) is true;
             }
             await transaction.CommitAsync(ct);
-            return new RecordedCandidateDecision(state);
+            return new RecordedCandidateDecision(open);
         }
         catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
         {

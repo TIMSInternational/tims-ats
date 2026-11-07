@@ -101,9 +101,9 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
             ProviderEventId: "evt-1", TranscriptId: transcript, AuthorizedBy: requested.Id), default));
         var events = await repo.ListEventsAsync(F.OrgA, interview, default);
         Assert.Equal(requested.Id, events[^1].AuthorizedBy);
-        // The join reads the same latest state, together with the decision it records.
-        Assert.Equal(TranscriptStates.Ready, (await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA,
-            SubjectCandidate, null, Declined, ConsentTextVersion), default))!.LatestTranscriptionState);
+        // The join reads, with the decision it records, that the only start was consumed by its `ready`.
+        Assert.False((await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA,
+            SubjectCandidate, null, Declined, ConsentTextVersion), default))!.TranscriptionMayBeRunning);
         Assert.Equal([(TranscriptStates.Requested, (Guid?)F.RecruiterId, "es", (Guid?)null),
                 (TranscriptStates.Ready, null, null, transcript)],
             events.Select(e => (e.State, e.UserId, e.Language, e.TranscriptId)).ToArray());
@@ -292,13 +292,45 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
             return true;
         }, default);
         var recorded = await decision!.WaitAsync(TimeSpan.FromSeconds(30));
-        Assert.Equal(TranscriptStates.Requested, recorded!.LatestTranscriptionState);
+        Assert.True(recorded!.TranscriptionMayBeRunning);
         Assert.Equal(Declined, InterviewTranscriptionUseCase.CandidateDecision(
             await repo.ListConsentsAsync(F.OrgA, interview, default)).Decision);
         // An interview outside the organization records nothing (null: the join fails closed).
         Assert.Null(await repo.RecordCandidateDecisionAsync(new(F.OrgBInterview, F.OrgA, SubjectCandidate, null,
             Declined, ConsentTextVersion), default));
         Assert.Equal(0, await fixture.CountAuditAsync(F.OrgBInterview, ConsentAction));
+    }
+
+    [Fact]
+    public async Task A_decision_sees_a_newer_running_start_even_when_a_late_event_for_an_older_transcript_is_latest()
+    {
+        // Codex P1 (re-run 3): the decision used to read the LATEST lifecycle row. Transcript A ready, start B running,
+        // then a delayed `error` for A: the latest row said `error` and the decline skipped stopping B.
+        var repo = Repository();
+        var interview = await fixture.AddInterviewAsync();
+        var (transcriptA, transcriptB) = (Guid.NewGuid(), Guid.NewGuid());
+        var startA = await RequestedStartAsync(repo, interview);
+        Assert.Equal(TranscriptClaim.Stored,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcriptA, startA, "a-ready", default));
+        Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Requested,
+            UserId: F.RecruiterId, Language: "es"), default)); // start B
+        var startB = (await repo.ListEventsAsync(F.OrgA, interview, default))
+            .Single(e => e.State == TranscriptStates.Requested && e.Id != startA).Id!.Value;
+        Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.InProgress,
+            ProviderEventId: "b-started", TranscriptId: transcriptB), default));
+        Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Error,
+            ProviderEventId: "a-error-late", TranscriptId: transcriptA), default));
+        Assert.Equal(TranscriptStates.Error, InterviewTranscriptionUseCase.StateOf(
+            await repo.ListEventsAsync(F.OrgA, interview, default)));
+
+        Assert.True((await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null, Declined,
+            ConsentTextVersion), default))!.TranscriptionMayBeRunning);
+
+        // B's own `ready` (recorded directly: the claim would now refuse the declined candidate) closes it.
+        Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Ready,
+            ProviderEventId: "b-ready", TranscriptId: transcriptB, AuthorizedBy: startB), default));
+        Assert.False((await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null, Declined,
+            ConsentTextVersion), default))!.TranscriptionMayBeRunning);
     }
 
     [Fact]
@@ -311,7 +343,7 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
         var recorded = await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null,
             Accepted, ConsentTextVersion), default).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.NotNull(recorded);
-        Assert.Null(recorded!.LatestTranscriptionState);
+        Assert.False(recorded!.TranscriptionMayBeRunning);
     }
 
     [Fact]
