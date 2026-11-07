@@ -170,7 +170,7 @@ describe('members table (access-3 / ideal-78)', () => {
     fireEvent.click(within(row('rita@x.test')).getByRole('button', { name: 'Cambiar rol' }));
     const select = screen.getByLabelText('Rol') as HTMLSelectElement;
     const values = Array.from(select.options).map((o) => o.value);
-    expect(values).not.toContain('leader');
+    expect(values).toContain('leader'); // offered in the pilot since 2026-11-06
     expect(values).not.toContain('hrbp');
     fireEvent.change(select, { target: { value: 'committee' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar rol' }));

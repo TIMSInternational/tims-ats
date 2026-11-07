@@ -2186,6 +2186,7 @@
     "requestedVacancyUnavailable": "No se pudo abrir la vacante solicitada; se muestra otra vacante.",
     "selectVacancyFirst": "Selecciona una vacante primero",
     "checklistIncompleteWarning": "Pendiente en la etapa anterior: {items}",
+    "hiredStageHint": "Mover a «Contratado» no registra la contratación: confírmala con «Autorizar Contratación» en la oferta aceptada.",
     "checklistTitle": "Checklist de la etapa",
     "checklistItemCompletedBy": "Completado",
     "nextAction": {
@@ -2246,7 +2247,6 @@
     "editNoChanges": "Sin cambios por guardar",
     "editFailed": "No se pudieron guardar los cambios",
     "editTitleRequired": "El título del cargo es obligatorio.",
-    "editSalaryInvalid": "Escribe el salario sin separadores de miles (por ejemplo 850000); se admiten hasta dos decimales.",
     "editSalaryRange": "El salario mínimo no puede ser mayor que el máximo.",
     "editDescriptionHint": "Admite formato sencillo: **negrita**, listas con guiones y títulos con ##.",
     "editHiringManagerHint": "Si es el líder que aprobará la oferta, debe ser el responsable de la contratación: así ve los candidatos y las ofertas de esta vacante.",
@@ -4985,5 +4985,12 @@
       "NO_SHOW": "No se presentó",
       "OTHER": "Otro motivo"
     }
+  },
+  "money": {
+    "invalid": "Escribe solo el monto, en números. Puedes separar los miles con punto, coma o espacio (por ejemplo 1.000.000).",
+    "decimals": "{currency} se usa sin decimales: escribe un número entero.",
+    "tooLarge": "El monto es demasiado alto.",
+    "wideRange": "El mínimo es menos de la décima parte del máximo. Revisa que no falte ni sobre un cero.",
+    "confirmWideRange": "Sí, el rango es correcto"
   }
 }

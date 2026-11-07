@@ -38,6 +38,18 @@ const FALLBACK_CURRENCY_CODES = [
 
 export type CurrencyCode = string;
 
+/**
+ * Currencies whose salaries are typed, stored and shown as WHOLE numbers in this product (no minor unit):
+ * the Costa Rican colón, the Colombian and Chilean pesos, the yen, the won, the guaraní and the đồng. The salary
+ * inputs refuse decimals for them and the server rounds a stored vacancy salary to an integer. A demo offer of
+ * CRC 1 000 000 / month was stored as 12 000 000.12 when an arrow-key step turned it into 1 000 000.01.
+ */
+export const ZERO_DECIMAL_CURRENCIES: readonly string[] = ['COP', 'CRC', 'CLP', 'JPY', 'KRW', 'PYG', 'VND'];
+
+export function isZeroDecimalCurrency(code: string | null | undefined): boolean {
+  return ZERO_DECIMAL_CURRENCIES.includes((code ?? '').trim().toUpperCase());
+}
+
 export function normalizeCurrencyCode(code: string | null | undefined, fallback = DEFAULT_CURRENCY): CurrencyCode {
   const normalized = (code ?? '').trim().toUpperCase();
   return isCurrencyCode(normalized) ? normalized : fallback;

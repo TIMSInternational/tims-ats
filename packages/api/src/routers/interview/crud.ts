@@ -16,6 +16,7 @@ import { interviewScorecardRepository } from '../../repositories/interview-score
 import { interviewSchedulingRepository } from '../../repositories/interview-scheduling.repository';
 import { interviewStatusFilterWhere, OPEN_INTERVIEW_STATUSES } from '../../repositories/interview-status-filter';
 import { interviewManageRepository } from '../../repositories/interview-manage.repository';
+import { assertEvaluatorsCanAct, assertPanelCanAct } from '../../services/interview-evaluator-eligibility.service';
 
 export const interviewCrudRouter = router({
   // 8.1 — List interviews with filters
@@ -181,20 +182,15 @@ export const interviewCrudRouter = router({
 
       // Probe parent vacancy and candidate through scope — ensures the scheduling
       // user can reach those resources under their current scope, not just org-wide.
-      // Evaluator count check uses plain org check (users are not scope-filtered).
-      const uniqueEvaluators = [...new Set(evaluatorIds)];
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, orgId);
       // Codex re-review: the candidate must ALSO be scope-probed — an org-only
       // check let a narrow-scoped scheduler pull any org candidate's PII into
       // the interview + invitation email. A candidate applying to the probed
       // vacancy has an in-scope application, so legit flows pass.
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, orgId);
-      const evaluatorCount = await db.user.count({
-        where: { id: { in: uniqueEvaluators }, organizationId: orgId },
-      });
-      if (evaluatorCount !== uniqueEvaluators.length) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado en esta organización' });
-      }
+      // Every evaluator must be a user of this org (users are not scope-filtered) who can open the room and
+      // submit a scorecard: a Colaborador got the room link and then FORBIDDEN (evaluator eligibility service).
+      await assertEvaluatorsCanAct(orgId, evaluatorIds);
       if (input.applicationId) {
         await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
         // Integrity: the application must bind the SAME candidate and vacancy.
@@ -327,6 +323,8 @@ export const interviewCrudRouter = router({
       // Validate the link origin BEFORE the write: the update below revokes the old join link, so a
       // misconfiguration discovered only in the fire-and-forget email would strand the candidate.
       getAppUrl();
+      // The update re-sends the room link to the whole panel: refuse while it holds someone who cannot act.
+      await assertPanelCanAct(ctx.user.organizationId, id);
 
       // New link on every reschedule: overwriting the hash revokes the old one.
       const joinToken = issueJoinToken(existing.type, data.scheduledAt, data.duration ?? existing.duration, {
@@ -383,6 +381,7 @@ export const interviewCrudRouter = router({
       // the panel arm, but only whoever manages the VACANCY may change the panel
       // (interview-management.service.ts).
       await assertInterviewManageable(ctx.access, ctx.user.id, ctx.user.organizationId, input.interviewId);
+      await assertEvaluatorsCanAct(ctx.user.organizationId, [input.userId]); // can open the room + submit
       let added: { id: string };
       try {
         // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — the

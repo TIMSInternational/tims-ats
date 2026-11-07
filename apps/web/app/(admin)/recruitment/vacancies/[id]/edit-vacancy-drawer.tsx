@@ -5,6 +5,7 @@ import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { Drawer } from '../../../../../components';
+import { salaryBandStatus } from '../../../../../lib/money-amount';
 import { EditVacancyFields } from './edit-vacancy-fields';
 import {
   buildVacancyPatch,
@@ -46,16 +47,14 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
     },
   });
 
-  const error = validateEditForm(initial, form);
+  // The band the person confirmed as correct although its minimum is below a tenth of its maximum.
+  const [confirmedRangeKey, setConfirmedRangeKey] = useState<string | null>(null);
+  const salaryStatus = salaryBandStatus(form.salaryMin, form.salaryMax, form.currency);
+  const error = validateEditForm(initial, form, confirmedRangeKey);
   const patch = error === null ? buildVacancyPatch(initial, form) : null;
-  const errorText =
-    error === 'titleRequired'
-      ? t.vacancies.editTitleRequired
-      : error === 'salaryInvalid'
-        ? t.vacancies.editSalaryInvalid
-        : error === 'salaryRange'
-          ? t.vacancies.editSalaryRange
-          : null;
+  // The salary band explains its own errors next to the amounts (SalaryBandFields / MoneyInput); this summary
+  // only adds what is not shown there.
+  const errorText = error === 'titleRequired' ? t.vacancies.editTitleRequired : null;
 
   const save = () => {
     if (error !== null || patch === null) return;
@@ -74,6 +73,9 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
         form={form}
         onChange={(next) => setForm((prev) => ({ ...prev, ...next }))}
         disabled={update.isPending}
+        salaryStatus={salaryStatus}
+        wideConfirmed={confirmedRangeKey === salaryStatus.rangeKey}
+        onConfirmWide={(confirmed) => setConfirmedRangeKey(confirmed ? salaryStatus.rangeKey : null)}
       />
 
       {errorText && (

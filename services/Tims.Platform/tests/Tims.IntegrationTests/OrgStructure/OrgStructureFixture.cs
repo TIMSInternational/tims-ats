@@ -137,7 +137,7 @@ public sealed class OrgStructureFixture : IAsyncLifetime
     //   super_admin  NO rows (PermissionService/the directory short-circuit it, so that branch is what grants it)
     //   hr_admin     organization:read, user CRUD, vacancy CRUD + approve        @organization  (NOT organization:create/update)
     //   recruiter    vacancy read/create/update                                    @organization
-    //   leader       vacancy read/create/approve                                   @team
+    //   leader       vacancy read/create/update/approve                            @team
     //   hrbp         vacancy read/create/update                                    @unit          (+ DIVERGENCE 1)
     //   employee     nothing
     // Deliberate divergences, each load-bearing and each the ONLY way to reach a branch MATRIX cannot:
@@ -191,6 +191,7 @@ public sealed class OrgStructureFixture : IAsyncLifetime
           ('f1000000-0000-0000-0000-000000000021', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000006', 'team'),
           ('f1000000-0000-0000-0000-000000000022', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000004', 'team'),
           ('f1000000-0000-0000-0000-000000000023', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000005', 'team'),
+          ('f1000000-0000-0000-0000-000000000024', 'a1000000-0000-0000-0000-000000000004', 'e1000000-0000-0000-0000-000000000007', 'team'),
           -- hrbp (MATRIX) + DIVERGENCE 1
           ('f1000000-0000-0000-0000-000000000031', 'a1000000-0000-0000-0000-000000000005', 'e1000000-0000-0000-0000-000000000006', 'unit'),
           ('f1000000-0000-0000-0000-000000000032', 'a1000000-0000-0000-0000-000000000005', 'e1000000-0000-0000-0000-000000000004', 'unit'),

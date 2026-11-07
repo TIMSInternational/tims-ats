@@ -43,10 +43,18 @@ describe('offer form vocabularies (B-15)', () => {
 });
 
 describe('editing a stored annual salary', () => {
-  it('shows a monthly amount only when it is exact to the cent, so an untouched save never shifts it', () => {
-    expect(editableSalary(12_000_000, 'monthly')).toEqual({ amount: '1000000', period: 'monthly' });
-    expect(editableSalary(1_000_000, 'monthly')).toEqual({ amount: '1000000', period: 'yearly' });
-    expect(editableSalary(96_000, 'yearly')).toEqual({ amount: '96000', period: 'yearly' });
+  // Amounts come back as the shared money input shows them: grouped with es-CR non-breaking spaces.
+  const g = (text: string) => text.replace(/ /g, '\u00a0');
+  it('shows a monthly amount only when it is exact, so an untouched save never shifts it', () => {
+    expect(editableSalary(12_000_000, 'monthly', 'CRC')).toEqual({ amount: g('1 000 000'), period: 'monthly' });
+    expect(editableSalary(1_000_000, 'monthly', 'CRC')).toEqual({ amount: g('1 000 000'), period: 'yearly' });
+    expect(editableSalary(96_000, 'yearly', 'USD')).toEqual({ amount: g('96 000'), period: 'yearly' });
+    // Exact to the cent in a currency with cents.
+    expect(editableSalary(14_814.72, 'monthly', 'USD')).toEqual({ amount: g('1 234,56'), period: 'monthly' });
+  });
+
+  it('keeps the decimals of a zero-decimal amount that is not whole, so the input flags it (12 000 000.12 CRC)', () => {
+    expect(editableSalary(12_000_000.12, 'monthly', 'CRC')).toEqual({ amount: g('12 000 000,12'), period: 'yearly' });
   });
 });
 

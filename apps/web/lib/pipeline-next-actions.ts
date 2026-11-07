@@ -64,6 +64,11 @@ export function getNextActionForStage(stageName: string, _stageType?: string | n
   return null;
 }
 
+/** The final "Contratado" stage of the default pipeline (any case or accents). */
+export function isHiredStageName(stageName: string): boolean {
+  return normalizeStageName(stageName) === 'contratado';
+}
+
 export interface NextActionContext {
   /** The viewer's permission check. When given, an action whose destination module the viewer cannot
    *  read is dropped (e.g. "Iniciar el onboarding" for a recruiter without onboarding access). */

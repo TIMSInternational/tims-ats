@@ -60,19 +60,11 @@ public sealed class AssignablePeopleRepository(
 
         if (rule.EligibilityModule is { } module && rule.EligibilityAction is { } action)
         {
-            query = query.Where(user => db.UserRoles.Any(userRole => userRole.UserId == user.Id
-                && db.Roles.Any(role => role.Id == userRole.RoleId
-                    && role.OrganizationId == organizationId
-                    // A deactivated role grants nothing here. NOTE: the authorization kernels (TS
-                    // buildAccessForUser, C# IdentityRepository/PermissionService) do NOT read roles.is_active,
-                    // so this is stricter than submit/approve — it only ever hides a person, never adds one.
-                    && role.IsActive
-                    && staffSlugs.Contains(role.Slug)
-                    && (role.Slug == PrivilegedRole
-                        || db.RolePermissions.Any(grant => grant.RoleId == role.Id
-                            && db.Permissions.Any(permission => permission.Id == grant.PermissionId
-                                && permission.Module == module
-                                && permission.Action == action))))));
+            query = HoldingPermission(query, organizationId, staffSlugs, module, action);
+            // A second action of the same module (interview evaluator: create AND read). Held through ANY of the
+            // person's roles, as the authorization kernels union every role's grants.
+            if (rule.EligibilityAlsoAction is { } alsoAction)
+                query = HoldingPermission(query, organizationId, staffSlugs, module, alsoAction);
 
             if (vacancy is not null)
             {
@@ -105,6 +97,24 @@ public sealed class AssignablePeopleRepository(
             person.Id, person.FirstName, person.LastName, person.Email,
             string.IsNullOrEmpty(person.Avatar) ? null : person.Avatar)).ToList();
     }
+
+    /// <summary>People holding <paramref name="module"/>:<paramref name="action"/> through an active staff role of this
+    /// organization (super_admin is privileged and holds everything).</summary>
+    private IQueryable<DirectoryUser> HoldingPermission(
+        IQueryable<DirectoryUser> query, Guid organizationId, List<string> staffSlugs, string module, string action) =>
+        query.Where(user => db.UserRoles.Any(userRole => userRole.UserId == user.Id
+            && db.Roles.Any(role => role.Id == userRole.RoleId
+                && role.OrganizationId == organizationId
+                // A deactivated role grants nothing here. NOTE: the authorization kernels (TS
+                // buildAccessForUser, C# IdentityRepository/PermissionService) do NOT read roles.is_active,
+                // so this is stricter than submit/approve — it only ever hides a person, never adds one.
+                && role.IsActive
+                && staffSlugs.Contains(role.Slug)
+                && (role.Slug == PrivilegedRole
+                    || db.RolePermissions.Any(grant => grant.RoleId == role.Id
+                        && db.Permissions.Any(permission => permission.Id == grant.PermissionId
+                            && permission.Module == module
+                            && permission.Action == action))))));
 
     /// <summary>
     /// For <c>?vacancyId</c>: <c>null</c> when the vacancy is not a non-deleted vacancy of the organization, or the

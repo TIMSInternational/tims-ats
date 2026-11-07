@@ -3,23 +3,33 @@
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { UserPicker } from '../../../../../components';
-import { currencyOptions } from '../../../../../lib/currency-options';
+import type { SalaryBandStatus } from '../../../../../lib/money-amount';
 import { CONTRACT_TYPES, inputCls, labelCls, textareaCls } from '../create-modal.helpers';
-import type { EditVacancyForm, Priority, RemotePolicy, SalaryPeriod } from './edit-vacancy-form';
+import { SalaryBandFields } from '../salary-band-fields';
+import type { EditVacancyForm, Priority, RemotePolicy } from './edit-vacancy-form';
 
 interface EditVacancyFieldsProps {
   form: EditVacancyForm;
   onChange: (patch: Partial<EditVacancyForm>) => void;
   disabled: boolean;
+  salaryStatus: SalaryBandStatus;
+  wideConfirmed: boolean;
+  onConfirmWide: (confirmed: boolean) => void;
 }
 
 const hintCls = 'text-[11px] text-[#8B8B8B] mt-1';
 
 /** The editable fields of the vacancy "Editar" drawer, laid out for the drawer's single column. */
-export function EditVacancyFields({ form, onChange, disabled }: EditVacancyFieldsProps) {
+export function EditVacancyFields({
+  form,
+  onChange,
+  disabled,
+  salaryStatus,
+  wideConfirmed,
+  onConfirmWide,
+}: EditVacancyFieldsProps) {
   const { t } = useI18n();
   const [pickingManager, setPickingManager] = useState(false);
-  const currencies = currencyOptions();
   // A legacy contract type outside today's list stays selectable, so an unrelated edit never drops it.
   const contractTypes: string[] = [...CONTRACT_TYPES];
   if (form.contractType && !contractTypes.includes(form.contractType)) contractTypes.push(form.contractType);
@@ -140,70 +150,18 @@ export function EditVacancyFields({ form, onChange, disabled }: EditVacancyField
 
       <div className="border-t border-[#EDEDED] pt-4">
         <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.vacancies.salaryRange}</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="edit-vacancy-salary-min" className={labelCls}>
-              {t.vacancies.salaryMin}
-            </label>
-            <input
-              id="edit-vacancy-salary-min"
-              type="number"
-              min={0}
-              value={form.salaryMin}
-              className={inputCls}
-              placeholder={t.vacancies.salaryMinPlaceholder}
-              onChange={(e) => onChange({ salaryMin: e.target.value })}
-            />
-          </div>
-          <div>
-            <label htmlFor="edit-vacancy-salary-max" className={labelCls}>
-              {t.vacancies.salaryMax}
-            </label>
-            <input
-              id="edit-vacancy-salary-max"
-              type="number"
-              min={0}
-              value={form.salaryMax}
-              className={inputCls}
-              placeholder={t.vacancies.salaryMaxPlaceholder}
-              onChange={(e) => onChange({ salaryMax: e.target.value })}
-            />
-          </div>
-          <div>
-            <label htmlFor="edit-vacancy-currency" className={labelCls}>
-              {t.vacancies.currency}
-            </label>
-            <select
-              id="edit-vacancy-currency"
-              value={form.currency}
-              className={`${inputCls} bg-white`}
-              onChange={(e) => onChange({ currency: e.target.value })}
-            >
-              {!currencies.some((c) => c.code === form.currency) && (
-                <option value={form.currency}>{form.currency}</option>
-              )}
-              {currencies.map((opt) => (
-                <option key={opt.code} value={opt.code}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="edit-vacancy-period" className={labelCls}>
-              {t.vacancies.period}
-            </label>
-            <select
-              id="edit-vacancy-period"
-              value={form.salaryPeriod}
-              className={`${inputCls} bg-white`}
-              onChange={(e) => onChange({ salaryPeriod: e.target.value as SalaryPeriod })}
-            >
-              <option value="monthly">{t.vacancies.monthly}</option>
-              <option value="yearly">{t.vacancies.yearly}</option>
-            </select>
-          </div>
-        </div>
+        <SalaryBandFields
+          idPrefix="edit-vacancy"
+          salaryMin={form.salaryMin}
+          salaryMax={form.salaryMax}
+          currency={form.currency}
+          salaryPeriod={form.salaryPeriod}
+          onChange={onChange}
+          status={salaryStatus}
+          wideConfirmed={wideConfirmed}
+          onConfirmWide={onConfirmWide}
+          gridClassName="grid grid-cols-2 gap-3"
+        />
       </div>
 
       <div className="border-t border-[#EDEDED] pt-4">
