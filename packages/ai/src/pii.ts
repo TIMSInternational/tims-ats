@@ -18,6 +18,8 @@
 // scale-trigger per coding rule #9 — this is the pragmatic first layer.
 // ---------------------------------------------------------------------------
 
+import { cutReferencesSection, maskCuedThirdPartyNames } from './pii-third-party';
+
 const DEFAULT_MAX_LENGTH = 8000;
 
 // Control chars (C0 except \t \n \r, plus DEL and C1), zero-width, and bidi
@@ -141,8 +143,11 @@ export function wrapAsData(tag: string, content: string): string {
 
 // Whitespace (incl. line breaks from PDF extraction) is allowed around "@" and the dots of the domain:
 // "recruiting123@\nexample.com", "ana @ acme . com". Over-masking a word after "x@y. " is accepted.
-// Internationalized addresses too: any letter or digit in the local part and the domain ("josé@acmé.com").
-const EMAIL_PATTERN = /[\p{L}\p{N}._%+-]+\s*@\s*[\p{L}\p{N}-]+(?:\s*\.\s*[\p{L}\p{N}-]+)*\s*\.\s*\p{L}{2,}/gu;
+// Internationalized addresses too: any letter or digit in the local part and the domain ("josé@acmé.com"), the
+// RFC 5322 specials ("o'neil@…"), and a QUOTED local part, straight or curly quotes, masked quotes included
+// ('"ana ruiz"@example.com', '“ana.ruiz”@example.cr').
+const EMAIL_PATTERN =
+  /(?:["“”„«»](?:\\.|[^"“”„«»\n\\]){1,64}["“”„«»]|[\p{L}\p{N}._%+'’!#$&*\/=?^`{|}~-]+)\s*@\s*[\p{L}\p{N}-]+(?:\s*\.\s*[\p{L}\p{N}-]+)*\s*\.\s*\p{L}{2,}/gu;
 // A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
 // Separators include line breaks (PDF extraction wraps "+506 8888\n7777"), no-break/thin spaces, every
 // dash and the slash ("8888\u00a07777", "2020\u20132024", "8888/7777"). Over-masking two numbers on
@@ -152,9 +157,15 @@ const DIGIT_RUN = /\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-
 // digit pattern is exempt. Structured dates (e.g. a CV's start/end years) must be added AFTER redaction.
 const PHONE_MIN_DIGITS = 8;
 const LABELLED_PHONE_MIN_DIGITS = 7;
-// A phone label followed by a number of 7+ digits (the label is kept, the number masked).
-const LABELLED_PHONE =
-  /((?:tel|tel[eé]fono|telefone|cel|celular|m[oó]vil|phone|mobile|whatsapp|fax|contacto|contact)\.?\s*(?:n[oº°]\.?\s*)?[:#]?\s*)(\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d)/giu;
+// A phone label followed by a number of 7+ digits (the label is kept, the number masked). Up to 4 digit-free
+// tokens may sit between them — qualifier words, parenthesised or slashed ones, "n°", ":" or "#" ("Teléfono
+// personal:", "Celular (oficina):", "Tel. de casa", "Móvil / WhatsApp:", "Número de teléfono:").
+const PHONE_LABEL =
+  '(?:telefone|tel[eé]fono|telephone|tel[eé]f|telf|tlfn|tlf|tfno|tel|cellphone|celular|cell|cel|m[oó]vil|telem[oó]vel' +
+  '|mobile|mob|phone|whatsapp|fax|fono|contacto|contato|contact|n[uú]mero|n[uú]m|nro)';
+const PHONE_GAP = String.raw`(?:\s*[:#]|\s*n[oº°]\.?|\s*\([\p{L}\s/.\-]{1,30}\)|\s*\/\s*\p{L}{1,15}(?!\p{L})\.?|\s+\p{L}{1,15}(?!\p{L})\.?){0,4}\s*`;
+const PHONE_NUMBER = String.raw`\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d`;
+const LABELLED_PHONE = new RegExp(`(${PHONE_LABEL}\\.?${PHONE_GAP})(${PHONE_NUMBER})`, 'giu');
 
 /** Every Unicode decimal digit (\p{Nd}) as its ASCII digit, so the digit patterns see all scripts. */
 function asciiDigits(text: string): string {
@@ -196,23 +207,36 @@ function redactionVariants(terms: readonly string[]): string[] {
 }
 
 /**
- * Data minimization for free text about a candidate (e.g. a parsed CV summary) before it is sent to a
- * model that does not need to know who the person is: masks e-mail addresses, every run of 8+ digits
- * (phone numbers in any format; year ranges such as "2019-2023" too — add structured dates after this),
- * and the given names (whole, as the combined full name, and word by word at any length, skipping
- * particles such as "de"), whole-word, case- and accent-insensitive. Invisible and control characters are
- * removed first. Run it BEFORE sanitizeInput / wrapAsData.
+ * Data minimization for free text about a candidate (e.g. one parsed CV field) before it is sent to a model that does
+ * not need to know who the person is. Invisible/control characters are removed and digits read as ASCII first; then:
+ *  1. a references section ("Referencias", "Referencias laborales", "References", "Referees"… followed by ":" or a
+ *     line break) is cut, everything after it included → "[referencias omitidas]";
+ *  2. e-mail addresses, quoted local parts included ('"ana ruiz"@example.com') → "[email]";
+ *  3. a 7+ digit number after a phone label, up to 4 digit-free tokens between them ("Teléfono personal:", "Tel. de
+ *     casa"; the label is kept), and any other run of 8+ digits (year ranges such as "2019-2023" too — add structured
+ *     dates after this) → "[teléfono]";
+ *  4. the 1–4 capitalised words after a cue — an honorific ("Sr.", "Lic."), a person label with ":" ("Jefe
+ *     inmediato:", "Contacto:") or a phrase ("reporta a") — see pii-third-party.ts → "[nombre]";
+ *  5. the given names (whole, combined, and word by word at any length, skipping particles such as "de"),
+ *     whole-word, case- and accent-insensitive → "[nombre]".
+ * Run it BEFORE sanitizeInput / wrapAsData. Known limits: a person with no cue ("trabajé con Ana Ruiz") is masked only
+ * if given (there is no NER); a cued name's 5th+ capitalised word is kept; a 7-digit number with no phone label is
+ * kept. Over-masking after a cue ("Supervisor: Ventas", "a cargo de Logística") is accepted.
  */
 export function redactContactDetails(text: string, terms: readonly string[] = []): string {
   // Invisible and control characters go FIRST: removed later (by sanitizeInput / wrapAsData) they would
   // re-join a phone number or a name this function failed to recognise ("8888\u200b7777", "Jo\u200bse").
   // Every Unicode decimal digit (Arabic-Indic "٢٠٢", full-width "２０２"…) is read as its ASCII digit.
-  let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, '')).replace(EMAIL_PATTERN, '[email]');
+  let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, ''));
+  // The references section goes before any other masking: it is cut whole, whatever it holds.
+  out = cutReferencesSection(out).replace(EMAIL_PATTERN, '[email]');
   // A number right after a phone label is masked from 7 digits ("Tel: 555-1234"); any other run from 8.
   out = out.replace(LABELLED_PHONE, (match: string, label: string, number: string) =>
     number.replace(/\D/g, '').length >= LABELLED_PHONE_MIN_DIGITS ? `${label}[teléfono]` : match,
   );
   out = out.replace(DIGIT_RUN, (run) => (run.replace(/\D/g, '').length >= PHONE_MIN_DIGITS ? '[teléfono]' : run));
+  // Cued names BEFORE the given ones: "Supervisor: Ana Ruiz" with "Ana" given must not leave "[nombre] Ruiz".
+  out = maskCuedThirdPartyNames(out);
   for (const term of redactionVariants(terms)) out = maskName(out, term);
   return out;
 }
