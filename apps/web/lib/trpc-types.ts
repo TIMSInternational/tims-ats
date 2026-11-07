@@ -33,7 +33,9 @@ export type VacancyListItem = RouterOutput['vacancy']['list']['items'][number];
 export type VacancyDetail = RouterOutput['vacancy']['getById'];
 export type VacancyDashboardKpis = RouterOutput['vacancy']['getDashboardKpis'];
 export type VacancyStats = RouterOutput['vacancy']['getStats'];
-export type VacancyDescriptionVariants = RouterOutput['vacancy']['generateDescription'];
+// generateDescription answers either the description variants ("Generar con IA") or, with mode
+// 'competencies', only suggested competencies ("Sugerir competencias").
+export type VacancyDescriptionVariants = Extract<RouterOutput['vacancy']['generateDescription'], { kind: 'variants' }>;
 export type InclusiveLanguageResult = RouterOutput['vacancy']['checkInclusiveLanguage'];
 
 // Candidate

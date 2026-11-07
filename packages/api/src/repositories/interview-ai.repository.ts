@@ -1,4 +1,4 @@
-import { tenantDb as db } from '@tims/db';
+import { Prisma, tenantDb as db } from '@tims/db';
 
 // ---------------------------------------------------------------------------
 // Interview AI repository — minimal projections for the interview AI agents.
@@ -14,8 +14,25 @@ export const interviewAiRepository = {
         id: true,
         type: true,
         duration: true,
-        candidate: { select: { firstName: true, lastName: true, currentTitle: true, skills: true } },
-        vacancy: { select: { title: true, description: true } },
+        candidate: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            currentTitle: true,
+            skills: true,
+            // The latest PARSED CVs (parsed_data holds the structured parse, not the file); the service
+            // picks the newest usable one. Unparsed uploads are filtered out before the limit, so pending
+            // or failed uploads can never hide an older CV that did parse.
+            documents: {
+              where: { organizationId: orgId, type: 'cv', parsedData: { not: Prisma.AnyNull } },
+              orderBy: { uploadedAt: 'desc' },
+              take: 3,
+              select: { parsedData: true },
+            },
+          },
+        },
+        vacancy: { select: { title: true, description: true, jobProfile: { select: { competencies: true } } } },
         scorecards: {
           select: {
             ratings: true,

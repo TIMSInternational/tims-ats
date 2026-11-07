@@ -148,7 +148,7 @@ describe('interview room scorecard', () => {
     expect(screen.getByRole('radiogroup', { name: 'Storytelling' })).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup', { name: en.interviewRoom.defaultCompetencyLeadership })).toBeNull();
     expect(screen.getByTestId('competency-source')).toHaveTextContent(en.interviewRoom.competenciesSourceVacancy);
-    expect(screen.getByText(en.interviewRoom.targetLevel.replace('{n}', '4'))).toBeInTheDocument();
+    expect(screen.getByText(en.interviewRoom.targetLevel.replace('{n}', '4').replace('{max}', '5'))).toBeInTheDocument();
   });
 
   it('falls back to the generic list only when the profile has none, and says so', () => {

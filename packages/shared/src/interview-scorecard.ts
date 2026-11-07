@@ -30,8 +30,12 @@ export interface ScorecardCompetency {
   key: string;
   /** Display label (vacancy competency name), or null → label comes from i18n. */
   label: string | null;
-  /** Target level from the job profile (1..5), when defined. */
+  /** Target level from the job profile, on the 1..targetScaleMax scale, when defined. */
   targetLevel: number | null;
+  /** The scale the target level is expressed on (DEFAULT_COMPETENCY_SCALE_MAX for rows stored without one). */
+  targetScaleMax: number;
+  /** Short description from the job profile (what the evaluator should look for), when defined. */
+  description: string | null;
 }
 
 export type CompetencySource = 'vacancy' | 'default';
@@ -41,38 +45,94 @@ export interface ResolvedCompetencies {
   items: ScorecardCompetency[];
 }
 
-// Job profile competencies are written by vacancy.updateJobProfile as
-// Array<{ name: string(max 100); level: int 1..5 }>, but the column is Json
-// with a `{}` default — so anything else is treated as "none defined".
+/** The scale a target level is on when the stored row names none: the 1-5 the scorecard stars use. */
+export const DEFAULT_COMPETENCY_SCALE_MAX = 5;
+/** Widest target scale any catalog may use (a 1-4 framework fits without migrating stored rows). */
+export const COMPETENCY_SCALE_MAX_LIMIT = 10;
+/** Upper bound on a stored competency description (the writer contract in job-profile.ts enforces it too). */
+export const COMPETENCY_DESCRIPTION_MAX = 300;
+/** Upper bound on a catalog reference (an opaque, provider-namespaced code such as "builtin:leadership"). */
+export const COMPETENCY_CODE_MAX = 64;
+
+// Job profile competencies are written by vacancy.create / vacancy.update / vacancy.updateJobProfile as
+// Array<{ name; level; scaleMax; code?; description? }> (job-profile.ts), but the column is Json with a `{}`
+// default — so anything else is treated as "none defined". Rows written before scaleMax/code existed hold
+// { name, level } on the 1-5 scale.
 const jobProfileCompetencySchema = z.object({
   name: z.string().trim().min(1).max(100),
-  level: z.number().int().min(1).max(5).optional(),
+  level: z.number().int().min(1).max(COMPETENCY_SCALE_MAX_LIMIT).optional(),
+  // Metadata and display-only fields. A malformed one must never drop the competency itself (that would
+  // change the set a submitted card has to cover), so it reads as absent instead of failing the item.
+  scaleMax: z.number().int().min(2).max(COMPETENCY_SCALE_MAX_LIMIT).optional().catch(undefined),
+  code: z.string().trim().min(1).max(COMPETENCY_CODE_MAX).optional().catch(undefined),
+  description: z.string().optional().catch(undefined),
 });
 
-export function resolveCompetencies(jobProfileCompetencies: unknown): ResolvedCompetencies {
-  const items: ScorecardCompetency[] = [];
+/** One job-profile competency as stored, read once for every consumer (scorecard, guide, gap analysis). */
+export interface ParsedProfileCompetency {
+  key: string;
+  name: string;
+  /** null for a row stored without a level, or with one above its own scale. */
+  level: number | null;
+  scaleMax: number;
+  /** Catalog reference, or null for a custom competency. */
+  code: string | null;
+  description: string | null;
+}
+
+/**
+ * The job profile's competencies in stored order: unreadable items skipped, names deduped (full name),
+ * at most MAX_COMPETENCIES. THE parser behind resolveCompetencies and readJobProfile (job-profile.ts).
+ */
+export function parseProfileCompetencies(jobProfileCompetencies: unknown): ParsedProfileCompetency[] {
+  const items: ParsedProfileCompetency[] = [];
+  if (!Array.isArray(jobProfileCompetencies)) return items;
   const seenNames = new Set<string>();
   const usedKeys = new Set<string>();
-  if (Array.isArray(jobProfileCompetencies)) {
-    for (const raw of jobProfileCompetencies.slice(0, MAX_COMPETENCIES)) {
-      const parsed = jobProfileCompetencySchema.safeParse(raw);
-      if (!parsed.success) continue;
-      // Dedupe on the FULL name: two profile names (max 100) can share their first
-      // RATING_KEY_MAX (80) characters and are still different competencies.
-      if (seenNames.has(parsed.data.name)) continue;
-      seenNames.add(parsed.data.name);
-      const key = ratingKeyFor(parsed.data.name);
-      // Only reachable on a 32-bit hash collision between two >80-char names that also
-      // share their first 70 characters; keep the first rather than merge two ratings.
-      if (usedKeys.has(key)) continue;
-      usedKeys.add(key);
-      items.push({ key, label: parsed.data.name, targetLevel: parsed.data.level ?? null });
-    }
+  for (const raw of jobProfileCompetencies.slice(0, MAX_COMPETENCIES)) {
+    const parsed = jobProfileCompetencySchema.safeParse(raw);
+    if (!parsed.success) continue;
+    // Dedupe on the FULL name: two profile names (max 100) can share their first
+    // RATING_KEY_MAX (80) characters and are still different competencies.
+    if (seenNames.has(parsed.data.name)) continue;
+    seenNames.add(parsed.data.name);
+    const key = ratingKeyFor(parsed.data.name);
+    // Only reachable on a 32-bit hash collision between two >80-char names that also
+    // share their first 70 characters; keep the first rather than merge two ratings.
+    if (usedKeys.has(key)) continue;
+    usedKeys.add(key);
+    const scaleMax = parsed.data.scaleMax ?? DEFAULT_COMPETENCY_SCALE_MAX;
+    const level = parsed.data.level !== undefined && parsed.data.level <= scaleMax ? parsed.data.level : null;
+    items.push({
+      key,
+      name: parsed.data.name,
+      level,
+      scaleMax,
+      code: parsed.data.code ?? null,
+      description: parsed.data.description?.trim().slice(0, COMPETENCY_DESCRIPTION_MAX) || null,
+    });
   }
+  return items;
+}
+
+export function resolveCompetencies(jobProfileCompetencies: unknown): ResolvedCompetencies {
+  const items: ScorecardCompetency[] = parseProfileCompetencies(jobProfileCompetencies).map((c) => ({
+    key: c.key,
+    label: c.name,
+    targetLevel: c.level,
+    targetScaleMax: c.scaleMax,
+    description: c.description,
+  }));
   if (items.length > 0) return { source: 'vacancy', items };
   return {
     source: 'default',
-    items: DEFAULT_COMPETENCY_IDS.map((id) => ({ key: id, label: null, targetLevel: null })),
+    items: DEFAULT_COMPETENCY_IDS.map((id) => ({
+      key: id,
+      label: null,
+      targetLevel: null,
+      targetScaleMax: DEFAULT_COMPETENCY_SCALE_MAX,
+      description: null,
+    })),
   };
 }
 

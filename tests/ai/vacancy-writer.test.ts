@@ -112,6 +112,8 @@ describe('generateVacancyDescription (vacancy-writer agent)', () => {
     expect(vi.mocked(getCached).mock.calls[0]?.[2]).toEqual({
       title: 'Backend Engineer',
       context: null,
+      // #421's competency-suggestion output version is part of the key too.
+      outputVersion: 2,
       promptRevision: VACANCY_WRITER_PROMPT_REVISION,
     });
   });

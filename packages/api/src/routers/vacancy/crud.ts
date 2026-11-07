@@ -9,6 +9,7 @@ import { assertVacancyPlacement } from './org-placement';
 import { assigneeForCreator, isNarrowScope } from './creator-scope';
 import { DEFAULT_PIPELINE_STAGES } from './default-stages';
 import { withResolvedCurrency } from './vacancy-currency';
+import { jobProfileCompetenciesInputSchema, toStoredCompetencies } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // Shared selects — explicit field selection (CLAUDE.md: never return full records)
@@ -154,6 +155,9 @@ const createVacancyInput = z.object({
   remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).optional(),
   assignedTo: z.string().uuid().optional(),
   settings: settingsSchema,
+  // "Competencias del puesto" (wizard, step 2): the job profile the interview scorecard rates. Optional — a
+  // vacancy without them keeps the generic scorecard set. Written in the same insert as the vacancy.
+  competencies: jobProfileCompetenciesInputSchema.optional(),
 });
 
 const paginationInput = z.object({
@@ -272,9 +276,11 @@ export const vacancyCrudRouter = router({
 
       const assignedTo = await assigneeForCreator(ctx.access, ctx.user.id, input.teamId, input.assignedTo);
       const settings = narrowCreator ? { ...input.settings, requireApproval, autoPublish } : (input.settings ?? {});
+      // Not a vacancy column: it becomes the vacancy's job profile, created with it (nested write, one insert).
+      const { competencies, ...vacancyInput } = input;
 
       const baseData = {
-        ...input,
+        ...vacancyInput,
         assignedTo,
         salary: (await withResolvedCurrency(ctx.user.organizationId, input.salary, { companyId: input.companyId ?? null })) as
           | Prisma.InputJsonValue
@@ -292,6 +298,16 @@ export const vacancyCrudRouter = router({
             isDefault: order === 0,
           })),
         },
+        ...(competencies && competencies.length > 0
+          ? {
+              jobProfile: {
+                create: {
+                  organizationId: ctx.user.organizationId,
+                  competencies: toStoredCompetencies(competencies) as Prisma.InputJsonValue,
+                },
+              },
+            }
+          : {}),
       };
 
       if (autoPublish) {

@@ -10,6 +10,7 @@ import type {
   InterviewBiasResult,
   InterviewBiasIndicator,
 } from '../../../../../../lib/trpc-types';
+import { GuideCompetencyQuestions } from './guide-competency-questions';
 
 // ---------------------------------------------------------------------------
 // Interview AI panel — surfaces the three LIVE interview-AI endpoints
@@ -221,6 +222,7 @@ function GuideCard({ guide }: { guide: InterviewGuideResult }) {
             </ul>
           </div>
         ))}
+        <GuideCompetencyQuestions sets={guide.competencyQuestions} />
       </div>
     </ResultCard>
   );

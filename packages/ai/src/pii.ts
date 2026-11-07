@@ -18,6 +18,8 @@
 // scale-trigger per coding rule #9 — this is the pragmatic first layer.
 // ---------------------------------------------------------------------------
 
+import { cutReferencesSection, maskCuedThirdPartyNames } from './pii-third-party';
+
 const DEFAULT_MAX_LENGTH = 8000;
 
 // Control chars (C0 except \t \n \r, plus DEL and C1), zero-width, and bidi
@@ -137,6 +139,161 @@ export function wrapAsData(tag: string, content: string): string {
   const delimiter = new RegExp(`</?\\s*${tag}\\b[^>]*>`, 'gi');
   const safe = sanitizeInput(content).replace(delimiter, '[delimiter]');
   return `<${tag}>\n${safe}\n</${tag}>`;
+}
+
+// Whitespace (incl. line breaks from PDF extraction) is allowed around "@" and the dots of the domain:
+// "recruiting123@\nexample.com", "ana @ acme . com". Over-masking a word after "x@y. " is accepted.
+// Internationalized addresses too: any letter, combining mark (Devanagari vowel signs…) or digit in the local part and the domain ("josé@acmé.com"), the
+// RFC 5322 specials ("o'neil@…"), and a QUOTED local part, straight or curly quotes, masked quotes included
+// ('"ana ruiz"@example.com', '“ana.ruiz”@example.cr').
+const EMAIL_PATTERN =
+  /(?:["“”„«»](?:\\.|[^"“”„«»\n\\]){1,64}["“”„«»]|[\p{L}\p{M}\p{N}._%+'’!#$&*\/=?^`{|}~-]+)\s*@\s*[\p{L}\p{M}\p{N}-]+(?:\s*\.\s*[\p{L}\p{M}\p{N}-]+)*\s*\.\s*\p{L}[\p{L}\p{M}]+/gu;
+// A run of digits joined by separators (it may hold several numbers: "8888-7777 8888-6666"). A separator is
+// up to 16 characters of whitespace (line breaks included: PDF extraction wraps "+506 8888\n7777"), punctuation
+// or symbols (any dash, slash, dot, bullet, middle dot, pipe… "202•555•0123", "8888·7777"), so no separator
+// character has to be listed. Over-masking adjacent numbers (amounts, lists) is accepted; leaking a phone is not.
+// The run holds no letters, so a long one only joins digits that nothing but spaces and symbols separate; the
+// bound (16) keeps matching linear on pathological input.
+const PHONE_SEPARATOR = String.raw`[\s\p{P}\p{S}]{0,16}`;
+const DIGIT_RUN = new RegExp(String.raw`\+?\(?\d(?:${PHONE_SEPARATOR}\d)*`, 'gu');
+// Every run of 8+ digits is masked, year ranges included ("2019-2023"): a phone can take any shape, so no
+// digit pattern is exempt. Structured dates (e.g. a CV's start/end years) must be added AFTER redaction.
+const PHONE_MIN_DIGITS = 8;
+const LABELLED_PHONE_MIN_DIGITS = 7;
+// A phone label followed by a number of 7+ digits (the label is kept, the number masked). Up to 4 digit-free
+// tokens may sit between them — qualifier words, parenthesised or slashed ones, "n°", ":" or "#" ("Teléfono
+// personal:", "Celular (oficina):", "Tel. de casa", "Móvil / WhatsApp:", "Número de teléfono:").
+const PHONE_LABEL =
+  '(?:telefone|tel[eé]fono|telephone|tel[eé]f|telf|tlfn|tlf|tfno|tel|cellphone|celular|cell|cel|m[oó]vil|telem[oó]vel' +
+  '|mobile|mob|phone|whatsapp|fax|fono|contacto|contato|contact|n[uú]mero|n[uú]m|nro)';
+const PHONE_GAP = String.raw`(?:\s*[:#]|\s*n[oº°]\.?|\s*\([\p{L}\s/.\-]{1,30}\)|\s*\/\s*\p{L}{1,15}(?!\p{L})\.?|\s+\p{L}{1,15}(?!\p{L})\.?){0,4}\s*`;
+const PHONE_NUMBER = String.raw`\+?\(?\d(?:${PHONE_SEPARATOR}\d)*`;
+const LABELLED_PHONE = new RegExp(`(${PHONE_LABEL}\\.?${PHONE_GAP})(${PHONE_NUMBER})`, 'giu');
+
+/** Every Unicode decimal digit (\p{Nd}) as its ASCII digit, so the digit patterns see all scripts. */
+function asciiDigits(text: string): string {
+  return text.replace(/\p{Nd}/gu, (d) => {
+    if (d >= '0' && d <= '9') return d;
+    const cp = d.codePointAt(0)!;
+    // Mathematical digits (U+1D7CE–U+1D7FF) are five 0–9 blocks back to back.
+    if (cp >= 0x1d7ce && cp <= 0x1d7ff) return String((cp - 0x1d7ce) % 10);
+    // Unicode lays out every decimal-digit block as 10 consecutive code points starting at its zero.
+    for (let zero = cp; zero > cp - 10; zero--) {
+      if (/\p{Nd}/u.test(String.fromCodePoint(zero)) && !/\p{Nd}/u.test(String.fromCodePoint(zero - 1))) {
+        return String(cp - zero);
+      }
+    }
+    return d;
+  });
+}
+
+// Every Unicode Default_Ignorable_Code_Point (soft hyphen U+00AD, zero-width marks, all variation selectors
+// incl. U+E0100–U+E01EF, the combining grapheme joiner, Hangul fillers, tags) and every format control: invisible, so removed before matching
+// in BOTH the text and the masking terms — "Pe\u00ADrez" is "Perez", "8888\u00AD7777" one number.
+const IGNORABLE = /[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu;
+
+// Name particles never masked on their own ("de", "del" are ordinary words).
+const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
+
+/**
+ * The supplied names, their combined full name, and every word in them, longest first. Every component is
+ * masked whatever its length ("Li", "Wu", "王"); only the explicit particles above are never masked alone.
+ */
+function redactionVariants(terms: readonly string[]): string[] {
+  const out = new Set<string>();
+  const clean = (t: string) => t.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(IGNORABLE, '').trim().replace(/\s+/g, ' ');
+  const wholes = terms.map(clean).filter((w) => w.length > 0);
+  if (wholes.length > 1) out.add(wholes.join(' '));
+  for (const whole of wholes) {
+    if (!NAME_PARTICLES.has(whole.toLowerCase())) out.add(whole);
+    // Components split on spaces, hyphens, commas and semicolons, surrounding punctuation stripped, so a
+    // surname-first parse ("Dvorak, Ana") yields "Dvorak" and "Ana", not "Dvorak,"; 'Ana-María' → 'Ana', 'María'.
+    for (const raw of whole.split(/[\s,;\-\u2010-\u2015]+/)) {
+      const part = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+      if (part.length > 0 && !NAME_PARTICLES.has(part.toLowerCase())) out.add(part);
+    }
+  }
+  return [...out].sort((a, b) => b.length - a.length);
+}
+
+/**
+ * Data minimization for free text about a candidate (e.g. one parsed CV field) before it is sent to a model that does
+ * not need to know who the person is. Invisible/control characters are removed and digits read as ASCII first; then:
+ *  1. a references section ("Referencias", "Referencias laborales", "References", "Referees"… followed by ":" or a
+ *     line break) is cut, everything after it included → "[referencias omitidas]";
+ *  2. e-mail addresses, quoted local parts included ('"ana ruiz"@example.com') → "[email]";
+ *  3. a 7+ digit number after a phone label, up to 4 digit-free tokens between them ("Teléfono personal:", "Tel. de
+ *     casa"; the label is kept), and any other run of 8+ digits (year ranges such as "2019-2023" too — add structured
+ *     dates after this) → "[teléfono]";
+ *  4. the 1–4 capitalised words after a cue — an honorific ("Sr.", "Lic."), a person label with ":" ("Jefe
+ *     inmediato:", "Contacto:") or a phrase ("reporta a") — see pii-third-party.ts → "[nombre]";
+ *  5. the given names (whole, combined, and word by word at any length, skipping particles such as "de"),
+ *     whole-word, case- and accent-insensitive → "[nombre]".
+ * Run it BEFORE sanitizeInput / wrapAsData. Known limits: a person with no cue ("trabajé con Ana Ruiz") is masked only
+ * if given (there is no NER); a cued name's 5th+ capitalised word is kept; a 7-digit number with no phone label is
+ * kept. Over-masking after a cue ("Supervisor: Ventas", "a cargo de Logística") is accepted.
+ */
+export function redactContactDetails(text: string, terms: readonly string[] = []): string {
+  // Invisible and control characters go FIRST: removed later (by sanitizeInput / wrapAsData) they would
+  // re-join a phone number or a name this function failed to recognise ("8888\u200b7777", "Jo\u200bse").
+  // Every Unicode decimal digit (Arabic-Indic "٢٠٢", full-width "２０２"…) is read as its ASCII digit.
+  // Every Unicode space separator (en/em/figure/thin space…) becomes a plain space and every line/paragraph
+  // separator a line break, so no pattern below has to enumerate them ("8888\u20027777" is one phone number).
+  let out = asciiDigits(text.normalize('NFC').replace(DANGEROUS_CHARS, '').replace(IGNORABLE, ''))
+    .replace(/\p{Zs}/gu, ' ')
+    .replace(/[\u000b\u000c\u0085\u2028\u2029]/g, '\n')
+    // Whitespace runs collapse (a line break wins over spaces), so a phone padded with spaces or blank lines
+    // ("+506     8888     7777") is one run for the separator limit below.
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/[ \t]+/g, ' ');
+  // The references section goes before any other masking: it is cut whole, whatever it holds.
+  out = cutReferencesSection(out).replace(EMAIL_PATTERN, '[email]');
+  // A number right after a phone label is masked from 7 digits ("Tel: 555-1234"); any other run from 8.
+  out = out.replace(LABELLED_PHONE, (match: string, label: string, number: string) =>
+    number.replace(/\D/g, '').length >= LABELLED_PHONE_MIN_DIGITS ? `${label}[teléfono]` : match,
+  );
+  out = out.replace(DIGIT_RUN, (run) => (run.replace(/\D/g, '').length >= PHONE_MIN_DIGITS ? '[teléfono]' : run));
+  // Cued names first (their pattern also takes an earlier "[nombre]"), so "Ana" given never shields "Ruiz" after a cue.
+  out = maskCuedThirdPartyNames(out);
+  for (const term of redactionVariants(terms)) out = maskName(out, term);
+  return out;
+}
+
+/** Lower-case base letters of one character (all diacritics removed, any script): "ř" → "r", "Á" → "a". */
+function baseOf(ch: string): string {
+  // Every apostrophe-like character is one apostrophe ("O’Neil" ⇔ "O'Neil"); one character in, one out.
+  if (/['’‘ʼʹ`´′＇]/u.test(ch)) return "'";
+  return ch.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+/**
+ * Replace every whole-word occurrence of `term` in `text` with "[nombre]", ignoring case and ALL diacritics
+ * on both sides ("Dvořák" ⇔ "Dvorak", "José" ⇔ "JOSE"), any run of whitespace matching a space. Matching
+ * runs on a diacritic-free copy whose characters map back to the original, so the original text is cut.
+ */
+function maskName(text: string, term: string): string {
+  const chars = [...text];
+  let base = '';
+  // One entry per UTF-16 code UNIT of `base` (regex indices count code units, not code points), each
+  // pointing at the code point in `chars` it came from — so emoji or other astral characters before a name
+  // can never shift the masked span.
+  const origin: number[] = [];
+  chars.forEach((ch, i) => {
+    const b = baseOf(ch);
+    base += b;
+    for (let unit = 0; unit < b.length; unit++) origin.push(i);
+  });
+  const words = term.split(' ').map((w) => [...w].map(baseOf).join('').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (words.every((w) => w.length === 0)) return text;
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${words.join('\\s+')}(?![\\p{L}\\p{N}])`, 'gu');
+  const spans: Array<[number, number]> = [];
+  for (const m of base.matchAll(re)) {
+    const start = origin[m.index!]!;
+    const end = origin[m.index! + m[0].length - 1]! + 1;
+    spans.push([start, end]);
+  }
+  for (const [start, end] of spans.reverse()) chars.splice(start, end - start, '[nombre]');
+  return chars.join('');
 }
 
 // Declared as a `type` (not `interface`) so it carries an implicit index

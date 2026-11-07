@@ -6,6 +6,7 @@ import { assertScoped } from '../../access';
 import { assertVacancyUpdatePlacement } from './org-placement';
 import { salarySchema, settingsSchema } from './crud';
 import { withResolvedCurrency } from './vacancy-currency';
+import { jobProfileCompetenciesInputSchema, toStoredCompetencies } from '@tims/shared';
 import {
   vacancyLifecycleRepository,
   type VacancyLifecycleActor,
@@ -31,6 +32,9 @@ const updateVacancyInput = z.object({
   remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).nullish(),
   assignedTo: z.string().uuid().nullish(),
   settings: settingsSchema,
+  // The job profile's "Competencias del puesto", replaced as a whole (an empty list clears them: the
+  // scorecard falls back to the generic set).
+  competencies: jobProfileCompetenciesInputSchema.optional(),
 });
 
 const NOT_EDITABLE_MESSAGE =
@@ -53,13 +57,13 @@ export const vacancyLifecycleRouter = router({
   update: permissionProcedure('vacancy', 'update')
     .input(updateVacancyInput)
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, competencies, ...data } = input;
       const organizationId = ctx.user.organizationId;
 
       await assertScoped('vacancy', id, ctx.access, ctx.user.id, organizationId);
       await assertVacancyUpdatePlacement(organizationId, id, data);
 
-      const fields = Object.entries(data)
+      const fields = Object.entries({ ...data, competencies })
         .filter(([, value]) => value !== undefined)
         .map(([key]) => key)
         .sort();
@@ -80,6 +84,7 @@ export const vacancyLifecycleRouter = router({
         },
         fields,
         actorOf(ctx.user),
+        competencies === undefined ? undefined : (toStoredCompetencies(competencies) as Prisma.InputJsonValue),
       );
       if (!row) throw new TRPCError({ code: 'CONFLICT', message: NOT_EDITABLE_MESSAGE });
       return row;

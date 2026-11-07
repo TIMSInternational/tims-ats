@@ -119,7 +119,8 @@ describe('portal.getVacancy organization scope', () => {
       company: { name: 'Acme' },
       unit: { name: 'Data' },
       organization: { name: 'TIMS', logo: 'logo.png' },
-      jobProfile: { competencies: ['SQL'], requirements: ['Excel'] },
+      // Names only (publicCompetencyNames): a legacy string row becomes { name }.
+      jobProfile: { competencies: [{ name: 'SQL' }], requirements: ['Excel'] },
       applicantCount: 4,
     });
     expect(JSON.stringify(vacancy)).not.toContain('do-not-leak');
