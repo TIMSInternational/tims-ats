@@ -3755,7 +3755,6 @@
     "intTypeOnline": "En línea",
     "intTypeOther": "Entrevista",
     "intTypeOnlineSuffix": "en línea",
-    "tzCostaRica": "hora de Costa Rica",
     "offerLoading": "Cargando su oferta…",
     "offerError": "No se pudo cargar su oferta.",
     "offerEmpty": "Aún no tiene ofertas.",
@@ -4060,6 +4059,21 @@
     "candidateContactBilling": "Los correos a candidatos usan el correo de facturación de la organización. Pide a soporte que configure un correo de contacto propio.",
     "fromCompany": "Tomado de la empresa {company}.",
     "notConfigured": "No configurado"
+  },
+  "orgLocale": {
+    "legend": "País y formato regional",
+    "country": "País",
+    "countryPlaceholder": "Selecciona un país",
+    "countryOther": "Otro país",
+    "countryCode": "Código del país (ISO, 2 letras)",
+    "countryCodePlaceholder": "AR",
+    "timeZone": "Zona horaria",
+    "currency": "Moneda",
+    "locale": "Formato de números y montos",
+    "hint": "Al elegir el país se completan la zona horaria, la moneda y el formato. Puedes cambiarlos.",
+    "editHint": "Solo se guardan los valores que cambies; los demás ajustes de la organización (como el correo de contacto para candidatos) se conservan.",
+    "sample": "Ejemplo: {sample}",
+    "invalid": "Revisa el país, la zona horaria, la moneda y el formato."
   },
   "committee": {
     "committeeTitle": "Comité de Calibración",

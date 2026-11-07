@@ -5,6 +5,8 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { sanitizeSlugInput, slugify } from '../../../../lib/slugify';
+import { EMPTY_ORG_LOCALE_FORM, orgLocaleFormToProfile } from '../../../../lib/org-locale-form';
+import { OrgLocaleFields } from './org-locale-fields';
 
 export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
@@ -12,6 +14,8 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
   const [formSlug, setFormSlug] = useState('');
   const [formPlan, setFormPlan] = useState('trial');
   const [formEmail, setFormEmail] = useState('');
+  const [localeForm, setLocaleForm] = useState(EMPTY_ORG_LOCALE_FORM);
+  const localeProfile = orgLocaleFormToProfile(localeForm);
 
   const createOrg = trpc.platform.createOrganization.useMutation({
     onSuccess: () => {
@@ -25,18 +29,20 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!localeProfile) return;
     createOrg.mutate({
       name: formName,
       slug: formSlug,
       plan: formPlan as 'trial' | 'starter' | 'professional' | 'enterprise',
       adminEmail: formEmail,
+      localeProfile,
     });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-semibold text-[#333]">{t.organizations.newOrg}</h2>
           <button
@@ -82,8 +88,9 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">Plan</label>
+            <label htmlFor="create-org-plan" className="block text-xs font-medium text-[#585858] mb-1.5">Plan</label>
             <select
+              id="create-org-plan"
               value={formPlan}
               onChange={(e) => setFormPlan(e.target.value)}
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm bg-white focus:outline-none focus:border-[#1F114C]"
@@ -115,6 +122,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
               {t.organizations.billingEmailHint}
             </p>
           </div>
+          <OrgLocaleFields idPrefix="create-org" value={localeForm} onChange={setLocaleForm} />
           {createOrg.error && (
             <div className="p-2.5 rounded-lg bg-red-50 text-xs text-[#DD0C15] font-medium">
               Error: {createOrg.error.message}
@@ -130,7 +138,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
             </button>
             <button
               type="submit"
-              disabled={createOrg.isPending}
+              disabled={createOrg.isPending || !localeProfile}
               className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition disabled:opacity-60"
             >
               {createOrg.isPending ? t.common.loading : t.common.create}

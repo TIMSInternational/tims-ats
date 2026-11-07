@@ -110,7 +110,7 @@ public static class PlatformOrganizationsWriteEndpoints
                         return Results.StatusCode(StatusCodes.Status401Unauthorized);
                     }
 
-                    // `suspend` is a REQUIRED boolean (organizations.ts:292) — absent is a 400, not a default.
+                    // `suspend` is a REQUIRED boolean (organizations.ts:302) — absent is a 400, not a default.
                     // Defaulting it either way would silently pick a destructive direction.
                     var (readOk, node) = await TryReadJsonAsync(httpContext, cancellationToken);
                     if (!readOk || !TryReadSuspendFlag(node, out var suspend))
@@ -186,14 +186,29 @@ public static class PlatformOrganizationsWriteEndpoints
             return false;
         }
 
-        if (!TryReadOptionalString(nested, "locale", out var locale)
-            || !TryReadOptionalString(nested, "timezone", out var timezone)
-            || !TryReadOptionalString(nested, "currency", out var currency))
+        // `.strict()` (orgLocaleSettingsPatchSchema): a key other than the four is rejected, not stripped.
+        // Enumerating materialises the object, so a duplicate key surfaces here — as a 400, not a 500.
+        try
+        {
+            if (nested.Any(member => member.Key is not ("locale" or "timezone" or "currency" or "country")))
+            {
+                return false;
+            }
+        }
+        catch (ArgumentException)
         {
             return false;
         }
 
-        settings = new PlatformOrganizationSettingsInput(locale, timezone, currency);
+        if (!TryReadOptionalString(nested, "locale", out var locale)
+            || !TryReadOptionalString(nested, "timezone", out var timezone)
+            || !TryReadOptionalString(nested, "currency", out var currency)
+            || !TryReadOptionalString(nested, "country", out var country))
+        {
+            return false;
+        }
+
+        settings = new PlatformOrganizationSettingsInput(locale, timezone, currency, country);
         return true;
     }
 
@@ -328,7 +343,7 @@ public static class PlatformOrganizationsWriteEndpoints
 
         public bool IsActive { get; init; }
 
-        /// <summary>REPLACES the stored settings object; it is not merged into it.</summary>
+        /// <summary>MERGED into the stored settings object (#201): keys it does not name are kept.</summary>
         public UpdateOrganizationSettingsBody Settings { get; init; } = new();
     }
 
@@ -342,9 +357,13 @@ public static class PlatformOrganizationsWriteEndpoints
 
         [MaxLength(PlatformOrganizationsWriteUseCase.MaxCurrencyLength)]
         public string Currency { get; init; } = string.Empty;
+
+        /// <summary>ISO 3166-1 alpha-2, upper case.</summary>
+        [RegularExpression("^[A-Z]{2}$")]
+        public string Country { get; init; } = string.Empty;
     }
 
-    /// <summary><c>suspend</c> genuinely IS required (<c>organizations.ts:292</c>) — absent is a 400, which
+    /// <summary><c>suspend</c> genuinely IS required (<c>organizations.ts:302</c>) — absent is a 400, which
     /// is why this one carries <see cref="RequiredAttribute"/> while none of the update fields does.</summary>
     public sealed class SuspendOrganizationBody
     {

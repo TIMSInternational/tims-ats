@@ -26,7 +26,7 @@ public sealed class OrganizationInvitationCreateRepository(PlatformOrganizations
         try
         {
             await OrganizationBundleWriter.CreateAsync(db, organizationId, input.OrganizationName,
-                input.OrganizationSlug, input.OrganizationPlan, input.Email, now, ct);
+                input.OrganizationSlug, input.OrganizationPlan, input.Email, now, ct, input.LocaleProfile);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO platform_invitations
                     (id, email, type, organization_id, organization_name, organization_slug, organization_plan,

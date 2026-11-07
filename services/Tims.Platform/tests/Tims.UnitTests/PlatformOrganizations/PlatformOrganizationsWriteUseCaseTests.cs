@@ -4,7 +4,7 @@ namespace Tims.UnitTests.PlatformOrganizations;
 
 /// <summary>
 /// Phase-5 slice 20 (issue #76) — the pure rules of the platform organizations WRITE surface, pinned
-/// against the TS they port (<c>routers/platform/organizations.ts:244-322</c>).
+/// against the TS they port (<c>routers/platform/organizations.ts:250-332</c>).
 ///
 /// <para>The centre of gravity here is <c>audit_logs.changes</c>. TS writes
 /// <c>JSON.stringify(rest)</c> into a Prisma <c>Json?</c> field, which stores a jsonb STRING SCALAR whose
@@ -71,10 +71,23 @@ public class PlatformOrganizationsWriteUseCaseTests
     }
 
     [Fact]
+    public void BuildUpdateChangesJson_appends_country_after_the_three_older_members()
+    {
+        // orgLocaleSettingsPatchSchema declares locale, timezone, currency, country — Zod rebuilds the parsed
+        // object in that order, so JSON.stringify(rest) writes country last.
+        var json = PlatformOrganizationsWriteUseCase.BuildUpdateChangesJson(Input(
+            settings: new PlatformOrganizationSettingsInput("es-GT", "America/Guatemala", "GTQ", "GT")));
+
+        Assert.Equal(
+            """{"settings":{"locale":"es-GT","timezone":"America/Guatemala","currency":"GTQ","country":"GT"}}""",
+            json);
+    }
+
+    [Fact]
     public void BuildUpdateChangesJson_keeps_an_explicitly_empty_settings_object()
     {
-        // `settings: {}` is PRESENT — Prisma replaces the column with {} rather than leaving it alone.
-        // Collapsing this to "absent" would silently preserve settings TS would have wiped.
+        // `settings: {}` is PRESENT and appears in the audit payload exactly as TS records it. On the column
+        // it is a no-op merge (nothing to overwrite) — see BuildSettingsColumnJson.
         var json = PlatformOrganizationsWriteUseCase.BuildUpdateChangesJson(Input(
             settings: new PlatformOrganizationSettingsInput(null, null, null)));
 
@@ -125,15 +138,18 @@ public class PlatformOrganizationsWriteUseCaseTests
     [Fact]
     public void BuildSettingsColumnJson_writes_only_the_present_members()
     {
-        // Prisma REPLACES a Json column rather than merging, so an org that had a timezone loses it here.
-        // Destructive and surprising — and faithfully reproduced, because narrowing it during a port makes
-        // a step-5 parity diff unreadable.
+        // This is the PATCH merged into the column (`settings || patch`, #201): only the members sent, so
+        // every key it does not name — timezone, currency, candidateContactEmail — is kept by the merge.
         Assert.Equal(
             """{"locale":"es"}""",
             PlatformOrganizationsWriteUseCase.BuildSettingsColumnJson(new PlatformOrganizationSettingsInput("es", null, null)));
+        Assert.Equal(
+            """{"timezone":"America/Guatemala","country":"GT"}""",
+            PlatformOrganizationsWriteUseCase.BuildSettingsColumnJson(
+                new PlatformOrganizationSettingsInput(null, "America/Guatemala", null, "GT")));
     }
 
-    // ── Zod bounds (organizations.ts:244-258) ────────────────────────────────────────────────────
+    // ── Zod bounds (organizations.ts:250-259) ────────────────────────────────────────────────────
 
     [Fact]
     public void IsValidUpdateInput_accepts_a_name_at_the_limit_and_rejects_one_past_it()
@@ -162,18 +178,31 @@ public class PlatformOrganizationsWriteUseCaseTests
     }
 
     [Fact]
-    public void IsValidUpdateInput_enforces_each_settings_member_bound()
+    public void IsValidUpdateInput_accepts_a_valid_locale_profile_patch()
     {
         Assert.True(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(
-            settings: new PlatformOrganizationSettingsInput(new string('a', 10), new string('b', 50), new string('c', 10)))));
-
-        Assert.False(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(
-            settings: new PlatformOrganizationSettingsInput(new string('a', 11), null, null))));
-        Assert.False(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(
-            settings: new PlatformOrganizationSettingsInput(null, new string('b', 51), null))));
-        Assert.False(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(
-            settings: new PlatformOrganizationSettingsInput(null, null, new string('c', 11)))));
+            settings: new PlatformOrganizationSettingsInput("es-GT", "America/Guatemala", "GTQ", "GT"))));
+        Assert.True(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(
+            settings: new PlatformOrganizationSettingsInput("es", null, null))));
+        Assert.True(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(
+            settings: new PlatformOrganizationSettingsInput(null, null, null))));
     }
+
+    [Theory]
+    [InlineData("aaaaaaaaaa", null, null, null)] // within the old length bound, not a locale tag
+    [InlineData("es_GT", null, null, null)]
+    [InlineData("es-gt", null, null, null)]
+    [InlineData(null, "Mars/Olympus", null, null)]
+    [InlineData(null, "", null, null)]
+    [InlineData(null, null, "XYZ", null)] // well-formed but not an ISO 4217 code
+    [InlineData(null, null, "gtq", null)]
+    [InlineData(null, null, null, "Guatemala")]
+    [InlineData(null, null, null, "gt")]
+    [InlineData(null, null, null, "GT\n")] // .NET `$` would accept this; the TS /^…$/ does not
+    public void IsValidUpdateInput_rejects_each_invalid_settings_member(
+        string? locale, string? timezone, string? currency, string? country) =>
+        Assert.False(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(
+            settings: new PlatformOrganizationSettingsInput(locale, timezone, currency, country))));
 
     [Fact]
     public void IsValidUpdateInput_accepts_an_empty_name_because_Zod_does()
@@ -183,7 +212,7 @@ public class PlatformOrganizationsWriteUseCaseTests
         Assert.True(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(name: string.Empty)));
     }
 
-    // ── the notification payload (organizations.ts:300-306) ──────────────────────────────────────
+    // ── the notification payload (organizations.ts:310-316) ──────────────────────────────────────
 
     [Fact]
     public void BuildSuspensionNotification_reproduces_the_TS_copy_verbatim()
@@ -215,7 +244,7 @@ public class PlatformOrganizationsWriteUseCaseTests
         Assert.Single(repository.Notifications);
 
         await useCase.SuspendAsync(Guid.NewGuid(), suspend: false, Guid.NewGuid(), CancellationToken.None);
-        // organizations.ts:299 — `if (input.suspend)`. Un-suspending notifies nobody.
+        // organizations.ts:309 — `if (input.suspend)`. Un-suspending notifies nobody.
         Assert.Single(repository.Notifications);
     }
 

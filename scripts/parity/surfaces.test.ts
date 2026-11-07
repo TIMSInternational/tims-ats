@@ -531,7 +531,7 @@ describe('SURFACES', () => {
     // endpoint must be a deliberate edit here, with its own line, naming the gate it is served by.
     //   organization/detail — GET /platform/organizations/{id}. platformProcedure / PlatformOwnerGate
     //     over the unscoped db; a platform owner reading org B is the FEATURE, and it 404s on an
-    //     unknown org (organizations.ts:145), so the access-review fixed-non-existent-id trick cannot
+    //     unknown org (organizations.ts:147), so the access-review fixed-non-existent-id trick cannot
     //     apply and a real seeded id is required.
     expect(seen).toBe(1);
   });

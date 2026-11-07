@@ -3,6 +3,7 @@
 import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatMoneyCode } from '../../../../../lib/offer-salary';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
 interface OfferKpisProps {
   activeCount: number | null;
@@ -28,6 +29,7 @@ export function OfferKpis({
   onRetry,
 }: OfferKpisProps) {
   const { t } = useI18n();
+  const { intlLocale } = useTenantLocale();
 
   if (loading) {
     return (
@@ -79,7 +81,7 @@ export function OfferKpis({
         value={
           avgSalary === null || avgSalaryCurrency === null
             ? t.offers.notAvailable
-            : `${formatMoneyCode(avgSalary, avgSalaryCurrency)} / ${t.offers.perYear}`
+            : `${formatMoneyCode(avgSalary, avgSalaryCurrency, intlLocale)} / ${t.offers.perYear}`
         }
         subtitle={complete ? t.offers.avgOfAccepted : t.offers.kpiIncomplete}
         icon={

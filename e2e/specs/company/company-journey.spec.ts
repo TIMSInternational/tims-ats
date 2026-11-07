@@ -75,7 +75,9 @@ test('platform owner creates the company', async () => {
   const form = page.locator('form').filter({ has: page.getByPlaceholder('constructora-bolivar') });
   await form.getByPlaceholder(/constructora bol[ií]var/i).fill(j.orgName);
   await form.getByPlaceholder('constructora-bolivar').fill(j.orgSlug);
-  await form.locator('select').selectOption('professional');
+  await form.getByLabel('Plan', { exact: true }).selectOption('professional');
+  // The country is required; its preset fills the time zone, currency and number locale.
+  await form.getByLabel(/^país/i).selectOption('CR');
   // #307: this field is the billing email only; the admin is invited separately (next test).
   await form.getByLabel('Email de Facturación').fill(j.admin.email);
   await form.getByRole('button', { name: 'Crear', exact: true }).click();

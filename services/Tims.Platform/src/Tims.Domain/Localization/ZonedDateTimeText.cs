@@ -28,6 +28,7 @@ public static class ZonedDateTimeText
             ["America/Bogota"] = ("Colombia", "Colombia"),
             ["America/Lima"] = ("Perú", "Peru"),
             ["America/Santo_Domingo"] = ("República Dominicana", "Dominican Republic"),
+            ["America/Santiago"] = ("Chile", "Chile"),
         };
 
     private static readonly HashSet<string> UtcAliases =

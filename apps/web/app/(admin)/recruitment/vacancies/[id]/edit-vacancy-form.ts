@@ -75,7 +75,17 @@ function amountText(value: unknown, currency: string): string {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? formatMoneyAmount(value, currency) : '';
 }
 
-export function initialEditForm(v: EditableVacancy): EditVacancyForm {
+/** The form with `tenantCurrency` where no currency is stored or chosen yet (an explicit one is kept). */
+export function withDefaultCurrency(form: EditVacancyForm, tenantCurrency: string): EditVacancyForm {
+  return form.currency ? form : { ...form, currency: tenantCurrency };
+}
+
+/**
+ * `tenantCurrency` (the organization's, lib/tenant-locale-context.tsx) fills a vacancy saved without one. The
+ * drawer passes '' and applies the tenant's at render with `withDefaultCurrency`, so a profile that loads
+ * after the drawer opened is still used.
+ */
+export function initialEditForm(v: EditableVacancy, tenantCurrency: string = DEFAULT_TENANT_CURRENCY): EditVacancyForm {
   const salary = asRecord(v.salary);
   const currency =
     typeof salary.currency === 'string' && salary.currency.trim() ? salary.currency.trim().toUpperCase() : '';
@@ -87,9 +97,9 @@ export function initialEditForm(v: EditableVacancy): EditVacancyForm {
     contractType: v.contractType ?? '',
     positions: v.positions,
     priority: PRIORITIES.includes(v.priority) ? (v.priority as Priority) : 'medium',
-    salaryMin: amountText(salary.min, currency || DEFAULT_TENANT_CURRENCY),
-    salaryMax: amountText(salary.max, currency || DEFAULT_TENANT_CURRENCY),
-    currency: currency || DEFAULT_TENANT_CURRENCY,
+    salaryMin: amountText(salary.min, currency || tenantCurrency),
+    salaryMax: amountText(salary.max, currency || tenantCurrency),
+    currency: currency || tenantCurrency,
     salaryPeriod: salary.period === 'yearly' || salary.period === 'annual' ? 'yearly' : 'monthly',
     hiringManager: v.assignee
       ? { id: v.assignee.id, firstName: v.assignee.firstName, lastName: v.assignee.lastName }

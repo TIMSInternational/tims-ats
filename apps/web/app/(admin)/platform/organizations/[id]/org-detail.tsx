@@ -9,6 +9,7 @@ import { useI18n } from '../../../../../lib/i18n';
 import { getInitials, getAvatarColor } from '../../../../../lib/format-utils';
 import { Skeleton, Modal } from '../../../../../components';
 import { isPilotScope } from '../../../../../lib/launch-scope';
+import { orgLocaleFormFromOrg } from '../../../../../lib/org-locale-form';
 
 function planBadge(plan: string) {
   const styles: Record<string, string> = {
@@ -144,6 +145,10 @@ export function OrgDetail({ id }: { id: string }) {
   }
 
   const plan = org.plan || org.subscription?.plan || 'trial';
+  // The primary company (oldest active): the fallback the product uses where settings name no value.
+  const primaryCompany = org.companies
+    .filter((company) => company.isActive)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -223,6 +228,7 @@ export function OrgDetail({ id }: { id: string }) {
       {showEdit && (
         <EditOrgModal
           org={org as any}
+          localeInitial={orgLocaleFormFromOrg(org.settings, primaryCompany)}
           onClose={() => setShowEdit(false)}
           onSuccess={() => {
             setShowEdit(false);

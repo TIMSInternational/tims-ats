@@ -1,8 +1,16 @@
 export const DEFAULT_CURRENCY = 'USD';
 export const PLATFORM_BILLING_CURRENCY = 'USD';
 
+// The pilot countries' currencies first (Costa Rica, Guatemala, Honduras, Nicaragua, Panama, Dominican
+// Republic), then the rest of the Americas and the common reserve currencies. Every code here is also in
+// the FX refresh seed (C# RefreshFxRatesUseCase.SeedQuoteCurrencies) so conversions work from day one.
 export const POPULAR_CURRENCY_CODES = [
   'CRC',
+  'GTQ',
+  'HNL',
+  'NIO',
+  'PAB',
+  'DOP',
   'COP',
   'USD',
   'EUR',
@@ -70,6 +78,16 @@ export function supportedCurrencyCodes(): CurrencyCode[] {
       if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       return a.localeCompare(b);
     });
+}
+
+const LISTED_CURRENCY_CODES: ReadonlySet<string> = new Set(FALLBACK_CURRENCY_CODES);
+
+/**
+ * True only for a code on the platform's ISO 4217 list (the same list as C# CurrencyCodes). Stricter than
+ * isCurrencyCode, which accepts any well-formed code Intl will format (Intl does not reject "XYZ").
+ */
+export function isListedCurrencyCode(code: string | null | undefined): code is CurrencyCode {
+  return typeof code === 'string' && LISTED_CURRENCY_CODES.has(code);
 }
 
 export function isCurrencyCode(code: string | null | undefined): code is CurrencyCode {

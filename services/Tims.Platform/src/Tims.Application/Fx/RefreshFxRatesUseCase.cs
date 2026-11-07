@@ -19,8 +19,11 @@ public sealed class RefreshFxRatesUseCase(IFxRateGateway gateway, IFxRateWriteRe
     private const string Source = "exchangerate-api";
 
     // A small seed set so cold-start still pins the common currencies even before any comp/company/band row
-    // references them (COP + CRC = the live TIMS/INVU currencies; EUR/MXN common). Unioned with the discovered set.
-    private static readonly string[] SeedQuoteCurrencies = { "COP", "CRC", "EUR", "MXN" };
+    // references them (COP + CRC = the live TIMS/INVU currencies; EUR/MXN common; GTQ/HNL/NIO/PAB/DOP/PEN/CLP
+    // = the pilot countries' presets, packages/shared org-locale-profile.ts — all served by ExchangeRate-API's
+    // open tier, verified against v6/latest/USD on 2026-11-06). Unioned with the discovered set.
+    private static readonly string[] SeedQuoteCurrencies =
+        { "CLP", "COP", "CRC", "DOP", "EUR", "GTQ", "HNL", "MXN", "NIO", "PAB", "PEN" };
 
     private readonly IFxRateGateway _gateway = gateway;
     private readonly IFxRateWriteRepository _repository = repository;

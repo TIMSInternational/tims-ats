@@ -6,6 +6,7 @@ import { currencyOptions } from '../../../../../lib/currency-options';
 import { formatMoneyAmount } from '../../../../../lib/money-amount';
 import { MoneyInput } from '../../../../../components/money-input';
 import { offerSalaryState, type OfferSalaryInput } from './create-offer-form';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
 const INPUT = 'mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]';
 const LABEL = 'block text-[12px] font-medium text-[#585858]';
@@ -21,6 +22,7 @@ export function CreateOfferSalaryFields({
   onChange: (patch: Partial<OfferSalaryInput>) => void;
 }) {
   const { t } = useI18n();
+  const { intlLocale } = useTenantLocale();
   const { referenceCurrency, referenceAmount, placeholderAmount, maxInPeriod, annualSalary } = offerSalaryState(
     values,
     vacancySalary,
@@ -80,14 +82,14 @@ export function CreateOfferSalaryFields({
       </div>
       {referenceAmount !== null && referenceCurrency !== null && (
         <p data-testid="offer-salary-reference" className="text-[11px] text-[#8B8B8B]">
-          {t.offers.salaryPlaceholderHint.replace('{amount}', formatMoneyCode(referenceAmount, referenceCurrency))}
+          {t.offers.salaryPlaceholderHint.replace('{amount}', formatMoneyCode(referenceAmount, referenceCurrency, intlLocale))}
         </p>
       )}
       {annualSalary !== null && (
         <p data-testid="offer-salary-equivalents" className="text-[12px] font-medium text-[#1F114C]">
           {t.offers.salaryEquivalents
-            .replace('{annual}', formatMoneyCode(annualSalary, values.currency))
-            .replace('{monthly}', formatMoneyCode(annualToPeriod(annualSalary, 'monthly'), values.currency))}
+            .replace('{annual}', formatMoneyCode(annualSalary, values.currency, intlLocale))
+            .replace('{monthly}', formatMoneyCode(annualToPeriod(annualSalary, 'monthly'), values.currency, intlLocale))}
         </p>
       )}
     </>

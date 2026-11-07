@@ -68,8 +68,15 @@ it.each(['accepted', 'unconfirmed', 'changed', 'state_unconfirmed'])('modal repo
   fireEvent.change(fields[0], { target: { value: input.email } });
   fireEvent.change(fields[1], { target: { value: input.organizationName } });
   fireEvent.change(fields[2], { target: { value: input.organizationSlug } });
+  // Country is required; the preset fills time zone, currency and locale, which are what C# receives.
+  expect(view.getByRole('button', { name: en.invitations.createAndSend })).toBeDisabled();
+  fireEvent.change(view.getByLabelText(/^Country/), { target: { value: 'GT' } });
   fireEvent.click(view.getByRole('button', { name: en.invitations.createAndSend }));
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  expect(mocks.post).toHaveBeenCalledWith('/platform/invitations/organizations', {
+    ...input,
+    localeProfile: { country: 'GT', timezone: 'America/Guatemala', currency: 'GTQ', locale: 'es-GT' },
+  });
   expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(
     delivery === 'accepted' ? en.invitations.orgInviteSent : en.invitations.orgInviteDeliveryUnconfirmed,
     { type: delivery === 'accepted' ? 'success' : 'warning' },
