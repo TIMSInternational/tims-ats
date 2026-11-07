@@ -102,6 +102,12 @@ locals {
     # Q0b slice 2 (#172): the cross-org alert-metric surface. Enabling it WITHOUT populating the
     # alert_metrics_cron secret above is inert, not open — the gate refuses everything.
     Platform__AlertMetricsCronReadEnabled = tostring(var.feature_flags.alert_metrics_cron_read)
+    # AS-5: the TIMS Assessments provider connector (four routes). Inert, not open, until the out-of-band
+    # AssessmentProviders__* client credentials and webhook secret are set AND migration
+    # 20261107232524_assessment_providers is applied: an unconfigured client answers provider_unconfigured and an
+    # unsigned webhook is refused. Those secrets are deliberately NOT in base_secrets here (see the README's
+    # placeholder-secret note); the options class treats REPLACE_ME_OUT_OF_BAND as unset.
+    Platform__AssessmentProvidersEnabled = tostring(var.feature_flags.assessment_providers)
     # #173. A STRING, not a bool: Tims.Domain.Identity.MfaGate.IsEnforced treats ONLY the exact "true" as
     # enabling, so a garbled value fails OPEN and cannot lock privileged operators out. Also never wired
     # when it shipped. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one

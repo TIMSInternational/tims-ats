@@ -429,6 +429,18 @@ public sealed class PlatformOptions
     public bool AssessmentTypeWriteEnabled { get; init; }
 
     /// <summary>
+    /// AS-5: when true, the TIMS Assessments provider connector is mapped — POST /assessments/provider-assignments
+    /// (assessment:create + vacancy scope), POST /portal/assessment-attempts/{id}/launch (the candidate, by confirmed
+    /// email), POST /webhooks/tims-assessments (signature-verified, anonymous) and
+    /// POST /platform/assessment-providers/bindings (platform owner). Every instrument is a REMOTE provider behind the
+    /// TIMS Assessments API v1; the ATS holds no items, keys, timing or scoring. Needs the four EF-owned tables of
+    /// migration 20261107232524_assessment_providers (NOT applied by this change) and the AssessmentProviders:* client
+    /// credentials and webhook secret; without them every call answers provider_unconfigured. DEFAULT false (dark) —
+    /// enable with <c>Platform__AssessmentProvidersEnabled=true</c>.
+    /// </summary>
+    public bool AssessmentProvidersEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 16 (efcoreStranglerWrite): when true, the C# engagement WRITE surface is mapped and live — the
     /// 5 writes <c>POST /engagement/surveys</c> (createSurvey), <c>POST /engagement/surveys/{id}/activate</c>
     /// (activateSurvey), <c>POST /engagement/surveys/{id}/responses</c> (submitSurveyResponse), <c>POST

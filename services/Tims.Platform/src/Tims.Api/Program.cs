@@ -15,11 +15,13 @@ using Amazon;
 using Amazon.DynamoDBv2;
 using Tims.Api.AccessReview;
 using Tims.Api.AssessmentTypes;
+using Tims.Api.Assessments;
 using Tims.Api.CandidateConsent;
 using Tims.Application.CandidateConsent;
 using Tims.Infrastructure.CandidateConsent;
 using Tims.Application.AssessmentTypes;
 using Tims.Infrastructure.AssessmentTypes;
+using Tims.Infrastructure.Assessments.Providers;
 using Tims.Api.Fx;
 using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
@@ -592,6 +594,12 @@ try
     builder.Services.AddDbContext<AssessmentTypeWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IAssessmentTypeWriteRepository, AssessmentTypeWriteRepository>();
     builder.Services.AddScoped<AssessmentTypeWriteUseCase>();
+
+    // AS-5: the TIMS Assessments provider connector (every instrument is a REMOTE provider behind the headless API
+    // v1). EF-OWNED assessment_provider_* tables (migration 20261107232524, NOT applied by the PR that added it),
+    // the typed /v1 client with its client-credentials token cache, and the use cases. Inert registration: routes are
+    // mapped only when AssessmentProvidersEnabled is on, and an unconfigured client answers provider_unconfigured.
+    builder.Services.AddAssessmentProviders(builder.Configuration, databaseConnectionString);
 
     // #312/#313: candidate data-processing consent (status + evidence read, staff and self-service withdrawal).
     // data_consents + data_subject_requests (efcoreStranglerWrite) and audit_logs in ONE context so a withdrawal and
@@ -1590,6 +1598,14 @@ try
     if (externalOptions.AssessmentTypeWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapAssessmentTypeWriteEndpoints();
+    }
+
+    // AS-5: TIMS Assessments provider connector — staff assign (assessment:create + vacancy scope), platform-owner
+    // binding, the candidate's launch (confirmed email; consent gate incl. #312) and the signed webhook. Dark unless on.
+    if (externalOptions.AssessmentProvidersEnabled || isOpenApiDocGeneration)
+    {
+        app.MapProviderAssignmentEndpoints();
+        app.MapProviderCandidateEndpoints();
     }
 
     // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service

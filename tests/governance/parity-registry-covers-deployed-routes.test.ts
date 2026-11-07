@@ -523,6 +523,24 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'POST /tenant-invitations/{id}/revoke',
     ],
   },
+  {
+    reason:
+      'AS-5 TIMS ASSESSMENTS PROVIDER CONNECTOR LANDED DARK (Platform:AssessmentProvidersEnabled). Every route depends ' +
+      'on a REMOTE provider (the headless TIMS Assessments API v1) that does not exist yet, so a live probe would ' +
+      'measure the provider, not tenant isolation. The four routes are also four different principals the by-role ' +
+      'harness cannot express together: the staff assign needs a vacancy that lists the instrument plus a provider ' +
+      'binding; the binding is platform-owner only; the launch is authorized by a CONFIRMED candidate email, not a ' +
+      'role; the webhook is anonymous and authenticated only by its HMAC signature. Covered instead by ' +
+      'Tims.UnitTests Assessments/Providers (signature + replay window, consent gate, #312 withdrawal at assign and ' +
+      'launch, idempotency, result mapping) and Tims.IntegrationTests Assessments (two-tenant RLS on the four tables, ' +
+      'the typed client and its token cache over a fake HTTP handler).',
+    routes: [
+      'POST /assessments/provider-assignments',
+      'POST /platform/assessment-providers/bindings',
+      'POST /portal/assessment-attempts/{attemptId}/launch',
+      'POST /webhooks/tims-assessments',
+    ],
+  },
 ];
 
 const allowlistNormalised = UNREGISTERED_ALLOWLIST.flatMap((g) =>
@@ -605,7 +623,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         same candidate-consent group. 205 + 1 = 206.
     //         Re-derived after merging main: #331/#332/#334/#337/#339 added no deployed routes, so
     //         main 202 (after #339) + #345's +4 = 206.
-    expect(deployed.size).toBe(206);
+    //         206 → 210 (AS-5): the dark TIMS Assessments provider connector — staff assign, platform-owner
+    //         binding, the candidate launch and the signed webhook — all allowlisted in their own group above.
+    expect(deployed.size).toBe(210);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -683,7 +703,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
     //   the group count below is unchanged. 109 + 1 = 110.
     //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
-    expect(allowlistNormalised.length).toBe(110);
+    // 110 → 114 (AS-5): the provider connector's four dark routes, in their own group.
+    expect(allowlistNormalised.length).toBe(114);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -705,6 +726,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
     // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
     //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the sixteen documented gap categories').toBe(16);
+    // 16 → 17 (AS-5): the provider connector — every route depends on a remote provider that does not exist yet,
+    //   and its four routes are four principals (staff grant, platform owner, confirmed candidate, HMAC) at once.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the seventeen documented gap categories').toBe(17);
   });
 });

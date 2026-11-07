@@ -63,6 +63,9 @@ feature_flags = {
   # first or the apply silently darkens it — the same drift class as team_intel_read above.
   monitoring_read         = false # #100, Q0b slice 1 — the six monitoring READ endpoints
   alert_metrics_cron_read = false # #172, Q0b slice 2 — GET /internal/alert-metrics (cron cross-org read)
+
+  # --- AS-5: TIMS Assessments provider connector (new, never enabled anywhere) ---
+  assessment_providers = false
 }
 
 # #173 MFA step-up on the platform service. ⚠️ Also previously absent from main.tf, so the same
