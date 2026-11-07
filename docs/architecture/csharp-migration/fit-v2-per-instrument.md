@@ -153,6 +153,13 @@ entries carry status only. Note that a below-minimum fit score can be inverted t
 - The C# compute is not called by the web app yet (no FE wrapper for the fit-engine surface; see `cutover.sh`).
   The live TS writers (`fitEngine.computeForVacancy`, `candidateAiService.screenCandidate`) still write v1
   breakdowns, and a later TS recompute overwrites a v2 row with v1.
+- **Known race (not fixed here).** Results are read before, and outside, the transaction that writes
+  `fit_scores`. Two concurrent computes that straddle a proctoring flag can end with the slower one's stale view:
+  compute A reads a clean result, HR flags it high, compute B writes `needs_review`, then A overwrites it with
+  `completed` and the counted score until the next compute. v1 has the same last-writer-wins snapshot race for
+  every input; only consent withdrawal is re-checked under a lock (#312). Closing it needs the proctoring-flag
+  writer (TS `assessment.flagProctoring`) to share a lock with compute, or the v2 read moved into the upsert
+  transaction with a re-validation. Found by the Codex review of this branch.
 - Turning the flag off affects the next compute only; stored v2 rows keep their extra keys, which every v1 reader
   ignores.
 - Before gates are used on real vacancies: monitor pass and fit rates by group (DEI), and confirm the LIA norms
