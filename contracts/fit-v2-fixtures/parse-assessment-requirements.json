@@ -1,0 +1,760 @@
+{
+  "cases": [
+    {
+      "name": "null fit_requirements → null (v1 path)",
+      "input": {
+        "raw": null
+      },
+      "expected": null
+    },
+    {
+      "name": "object without an assessments key → null (v1 path)",
+      "input": {
+        "raw": {
+          "minYearsExperience": 3
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "assessments not an array → null (v1 path)",
+      "input": {
+        "raw": {
+          "assessments": {
+            "instrument": "lia"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "non-object fit_requirements → null",
+      "input": {
+        "raw": [
+          {
+            "instrument": "lia"
+          }
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "empty array → empty list (v2 with no instruments)",
+      "input": {
+        "raw": {
+          "assessments": []
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "the design-doc example",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "use": "scored",
+              "min": {
+                "globalPercentile": 40
+              },
+              "weight": 0.25,
+              "reason": "análisis de datos"
+            },
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "B2"
+              }
+            },
+            {
+              "instrument": "personality",
+              "use": "advisory"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "lia",
+          "use": "scored",
+          "min": {
+            "globalPercentile": 40
+          },
+          "weight": 0.25,
+          "reason": "análisis de datos"
+        },
+        {
+          "instrument": "english",
+          "use": "gate",
+          "min": {
+            "cefr": "B2"
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "personality",
+          "use": "advisory",
+          "min": null,
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "use absent → per-instrument default (lia/itcia/native_quiz scored, english gate, mi/pca advisory)",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 50
+              }
+            },
+            {
+              "instrument": "english",
+              "min": {
+                "cefr": "b1"
+              }
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 3
+              }
+            },
+            {
+              "instrument": "native_quiz"
+            },
+            {
+              "instrument": "mi"
+            },
+            {
+              "instrument": "pca"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "lia",
+          "use": "scored",
+          "min": {
+            "globalPercentile": 50
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "english",
+          "use": "gate",
+          "min": {
+            "cefr": "B1"
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "itcia",
+          "use": "scored",
+          "min": {
+            "level": 3
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "native_quiz",
+          "use": "scored",
+          "min": null,
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "mi",
+          "use": "advisory",
+          "min": null,
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "pca",
+          "use": "advisory",
+          "min": null,
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "use null → per-instrument default",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": null,
+              "min": {
+                "cefr": "A2"
+              }
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "english",
+          "use": "gate",
+          "min": {
+            "cefr": "A2"
+          },
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "personality/mi/pca are coerced to advisory: no min, no weight",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "personality",
+              "use": "scored",
+              "min": {
+                "globalPercentile": 50
+              },
+              "weight": 0.5
+            },
+            {
+              "instrument": "mi",
+              "use": "gate",
+              "min": {
+                "cefr": "B2"
+              }
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "personality",
+          "use": "advisory",
+          "min": null,
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "mi",
+          "use": "advisory",
+          "min": null,
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "bad entries are dropped, never an error",
+      "input": {
+        "raw": {
+          "assessments": [
+            42,
+            "lia",
+            null,
+            [],
+            {
+              "instrument": "unknown"
+            },
+            {
+              "instrument": 5
+            },
+            {
+              "use": "scored"
+            },
+            {
+              "instrument": "lia",
+              "use": "ranked",
+              "min": {
+                "globalPercentile": 40
+              }
+            },
+            {
+              "instrument": "lia",
+              "use": 5,
+              "min": {
+                "globalPercentile": 40
+              }
+            },
+            {
+              "instrument": "itcia",
+              "use": "scored"
+            },
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "D1"
+              }
+            },
+            {
+              "instrument": "native_quiz",
+              "use": "gate"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "an invalid minimum drops a scored/gate entry",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 101
+              }
+            },
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": "40"
+              }
+            },
+            {
+              "instrument": "lia",
+              "min": 40
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 2.5
+              }
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 6
+              }
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 0
+              }
+            },
+            {
+              "instrument": "english",
+              "min": {
+                "cefr": 3
+              }
+            },
+            {
+              "instrument": "native_quiz",
+              "use": "gate",
+              "min": {
+                "score": -1
+              }
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "boundary minimums are kept; CEFR is trimmed and upper-cased",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 0
+              }
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 5
+              }
+            },
+            {
+              "instrument": "native_quiz",
+              "use": "gate",
+              "min": {
+                "score": 100
+              }
+            },
+            {
+              "instrument": "english",
+              "use": "scored",
+              "min": {
+                "cefr": " c2 "
+              }
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "lia",
+          "use": "scored",
+          "min": {
+            "globalPercentile": 0
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "itcia",
+          "use": "scored",
+          "min": {
+            "level": 5
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "native_quiz",
+          "use": "gate",
+          "min": {
+            "score": 100
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "english",
+          "use": "scored",
+          "min": {
+            "cefr": "C2"
+          },
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "a scored native_quiz may carry a min.score",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "native_quiz",
+              "min": {
+                "score": 70
+              }
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "native_quiz",
+          "use": "scored",
+          "min": {
+            "score": 70
+          },
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "instrument/use are trimmed and case-insensitive; the first VALID entry per instrument wins",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "use": "scored",
+              "min": {
+                "globalPercentile": "x"
+              }
+            },
+            {
+              "instrument": " LIA ",
+              "use": "Gate",
+              "min": {
+                "globalPercentile": 30
+              }
+            },
+            {
+              "instrument": "lia",
+              "use": "scored",
+              "min": {
+                "globalPercentile": 60
+              }
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "lia",
+          "use": "gate",
+          "min": {
+            "globalPercentile": 30
+          },
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "weight: only a JSON number in (0, 100] on a scored entry; reason: only a non-blank string",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              },
+              "weight": 0
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 2
+              },
+              "weight": "0.5",
+              "reason": "   "
+            },
+            {
+              "instrument": "native_quiz",
+              "weight": 101,
+              "reason": 5
+            },
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "B2"
+              },
+              "weight": 0.5,
+              "reason": "  atención al cliente  "
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "lia",
+          "use": "scored",
+          "min": {
+            "globalPercentile": 40
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "itcia",
+          "use": "scored",
+          "min": {
+            "level": 2
+          },
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "native_quiz",
+          "use": "scored",
+          "min": null,
+          "weight": null,
+          "reason": null
+        },
+        {
+          "instrument": "english",
+          "use": "gate",
+          "min": {
+            "cefr": "B2"
+          },
+          "weight": null,
+          "reason": "atención al cliente"
+        }
+      ]
+    },
+    {
+      "name": "weight 100 is the largest accepted",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "native_quiz",
+              "weight": 100
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "native_quiz",
+          "use": "scored",
+          "min": null,
+          "weight": 100,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "a 500-character reason is kept, 501 is dropped",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              },
+              "reason": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 2
+              },
+              "reason": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "lia",
+          "use": "scored",
+          "min": {
+            "globalPercentile": 40
+          },
+          "weight": null,
+          "reason": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+        },
+        {
+          "instrument": "itcia",
+          "use": "scored",
+          "min": {
+            "level": 2
+          },
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "only the first 32 entries are read",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "nope"
+            },
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              }
+            }
+          ]
+        }
+      },
+      "expected": []
+    }
+  ]
+}

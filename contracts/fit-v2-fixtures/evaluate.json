@@ -1,0 +1,1156 @@
+{
+  "cases": [
+    {
+      "name": "design example: LIA scored + English gate + personality advisory, all valid",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "English",
+            "Spanish"
+          ],
+          "assessments": [
+            {
+              "instrument": "lia",
+              "use": "scored",
+              "min": {
+                "globalPercentile": 40
+              },
+              "weight": 0.25,
+              "reason": "análisis de datos"
+            },
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "B2"
+              }
+            },
+            {
+              "instrument": "personality",
+              "use": "advisory"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 55,
+            "contentVersion": "lia-2026.1",
+            "normVersion": "norms-v1"
+          },
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "C1"
+          },
+          {
+            "instrument": "personality",
+            "resultId": "r-pers",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": [
+          "Spanish"
+        ]
+      },
+      "expected": {
+        "assessment": 100,
+        "languages": 100,
+        "entries": [
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "completed",
+            "score": 100,
+            "gate": null,
+            "weight": 0.25,
+            "assessmentShare": 1,
+            "effectiveWeight": 0.4,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": "análisis de datos",
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": "lia-2026.1",
+            "normVersion": "norms-v1",
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "english",
+            "use": "gate",
+            "status": "completed",
+            "score": null,
+            "gate": "met",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "cefr": "B2"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": "assessment"
+          },
+          {
+            "instrument": "personality",
+            "use": "advisory",
+            "status": "completed",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": null,
+            "resultId": "r-pers",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "declared weights split the dimension (1:3); a not-met gate never moves the number",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 50
+              },
+              "weight": 1
+            },
+            {
+              "instrument": "native_quiz",
+              "weight": 3
+            },
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "C1"
+              }
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 25
+          },
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-1",
+            "source": "ats",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "normalizedScore": 80
+          },
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "B1"
+          }
+        ],
+        "weights": {
+          "assessment": 0.5,
+          "interview": 0.5
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": 73,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "completed",
+            "score": 50,
+            "gate": null,
+            "weight": 1,
+            "assessmentShare": 0.25,
+            "effectiveWeight": 0.125,
+            "min": {
+              "globalPercentile": 50
+            },
+            "reason": null,
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "native_quiz",
+            "use": "scored",
+            "status": "completed",
+            "score": 80,
+            "gate": null,
+            "weight": 3,
+            "assessmentShare": 0.75,
+            "effectiveWeight": 0.375,
+            "min": null,
+            "reason": null,
+            "resultId": "a-1",
+            "source": "ats",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "english",
+            "use": "gate",
+            "status": "completed",
+            "score": null,
+            "gate": "not_met",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "cefr": "C1"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "equal split when any scored entry lacks a weight; a missing instrument renormalizes within the dimension",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              },
+              "weight": 0.7
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 4
+              }
+            },
+            {
+              "instrument": "native_quiz",
+              "min": {
+                "score": 60
+              }
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "itcia",
+            "resultId": "r-it",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "level": 2
+          },
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-1",
+            "source": "ats",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "normalizedScore": 45
+          }
+        ],
+        "weights": {
+          "assessment": 0.3
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": 58,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "no_result",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": null,
+            "source": null,
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "itcia",
+            "use": "scored",
+            "status": "completed",
+            "score": 40,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 0.5,
+            "effectiveWeight": 0.15,
+            "min": {
+              "level": 4
+            },
+            "reason": null,
+            "resultId": "r-it",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "native_quiz",
+            "use": "scored",
+            "status": "completed",
+            "score": 75,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 0.5,
+            "effectiveWeight": 0.15,
+            "min": {
+              "score": 60
+            },
+            "reason": null,
+            "resultId": "a-1",
+            "source": "ats",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "needs review and no value are excluded, never read as low scores; their gates go unknown",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "English"
+          ],
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              }
+            },
+            {
+              "instrument": "native_quiz"
+            },
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "B2"
+              }
+            },
+            {
+              "instrument": "itcia",
+              "use": "gate",
+              "min": {
+                "level": 3
+              }
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": null
+          },
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-1",
+            "source": "ats",
+            "integrity": "needs_review",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "normalizedScore": 10
+          },
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "needs_review",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "A1"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": [
+          "English (C1)"
+        ]
+      },
+      "expected": {
+        "assessment": null,
+        "languages": 100,
+        "entries": [
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "no_value",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "native_quiz",
+            "use": "scored",
+            "status": "needs_review",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": null,
+            "resultId": "a-1",
+            "source": "ats",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "english",
+            "use": "gate",
+            "status": "needs_review",
+            "score": null,
+            "gate": "unknown",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "cefr": "B2"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": "cv"
+          },
+          {
+            "instrument": "itcia",
+            "use": "gate",
+            "status": "no_result",
+            "score": null,
+            "gate": "unknown",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "level": 3
+            },
+            "reason": null,
+            "resultId": null,
+            "source": null,
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "the latest result per instrument wins even when it needs review; null completedAt sorts last; unlisted instruments are ignored",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "native_quiz"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-old",
+            "source": "ats",
+            "integrity": "valid",
+            "completedAt": "2026-01-01T00:00:00Z",
+            "normalizedScore": 90
+          },
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-new",
+            "source": "ats",
+            "integrity": "needs_review",
+            "completedAt": "2026-03-01T00:00:00Z",
+            "normalizedScore": 95
+          },
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-null",
+            "source": "ats",
+            "integrity": "valid",
+            "completedAt": null,
+            "normalizedScore": 99
+          },
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 99
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "native_quiz",
+            "use": "scored",
+            "status": "needs_review",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": null,
+            "resultId": "a-new",
+            "source": "ats",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a completedAt tie is broken by resultId (ordinal ascending)",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "native_quiz"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-b",
+            "source": "ats",
+            "integrity": "valid",
+            "completedAt": "2026-02-01T00:00:00Z",
+            "normalizedScore": 60
+          },
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-a",
+            "source": "ats",
+            "integrity": "valid",
+            "completedAt": "2026-02-01T00:00:00Z",
+            "normalizedScore": 70
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": 70,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "native_quiz",
+            "use": "scored",
+            "status": "completed",
+            "score": 70,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 1,
+            "effectiveWeight": 0.4,
+            "min": null,
+            "reason": null,
+            "resultId": "a-a",
+            "source": "ats",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a native quiz without a minimum keeps its stored score; the dimension rounds",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "native_quiz"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "native_quiz",
+            "resultId": "a-1",
+            "source": "ats",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "normalizedScore": 83.35
+          }
+        ],
+        "weights": {
+          "assessment": 0.2
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": 83,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "native_quiz",
+            "use": "scored",
+            "status": "completed",
+            "score": 83.35,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 1,
+            "effectiveWeight": 0.2,
+            "min": null,
+            "reason": null,
+            "resultId": "a-1",
+            "source": "ats",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "no scored instrument → assessment null; English not in requiredLanguages → no languages evidence",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "Spanish"
+          ],
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "B1"
+              }
+            },
+            {
+              "instrument": "mi"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "B1"
+          },
+          {
+            "instrument": "mi",
+            "resultId": "r-mi",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z"
+          }
+        ],
+        "weights": {},
+        "languages": [
+          "Spanish"
+        ]
+      },
+      "expected": {
+        "assessment": null,
+        "languages": 100,
+        "entries": [
+          {
+            "instrument": "english",
+            "use": "gate",
+            "status": "completed",
+            "score": null,
+            "gate": "met",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "cefr": "B1"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "mi",
+            "use": "advisory",
+            "status": "completed",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": null,
+            "resultId": "r-mi",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a profile without an assessment weight → effectiveWeight 0",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              }
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 60
+          }
+        ],
+        "weights": {
+          "interview": 1
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": 100,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "completed",
+            "score": 100,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 1,
+            "effectiveWeight": 0,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "an empty assessments array → nothing configured, results ignored",
+      "input": {
+        "fitRequirements": {
+          "assessments": []
+        },
+        "results": [
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 60
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "entries": []
+      }
+    },
+    {
+      "name": "English scored below the requirement: ladder score, and the test overrides the CV claim in languages",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "English"
+          ],
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "scored",
+              "min": {
+                "cefr": "B2"
+              },
+              "weight": 2
+            },
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              },
+              "weight": 2
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "B1"
+          },
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 40
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": [
+          "English (C2)"
+        ]
+      },
+      "expected": {
+        "assessment": 75,
+        "languages": 0,
+        "entries": [
+          {
+            "instrument": "english",
+            "use": "scored",
+            "status": "completed",
+            "score": 50,
+            "gate": null,
+            "weight": 2,
+            "assessmentShare": 0.5,
+            "effectiveWeight": 0.2,
+            "min": {
+              "cefr": "B2"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": "assessment"
+          },
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "completed",
+            "score": 100,
+            "gate": null,
+            "weight": 2,
+            "assessmentShare": 0.5,
+            "effectiveWeight": 0.2,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "an advisory English entry never verifies languages",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "English"
+          ],
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "advisory"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "C2"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": []
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "english",
+            "use": "advisory",
+            "status": "completed",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": "cv"
+          }
+        ]
+      }
+    },
+    {
+      "name": "an out-of-range or unknown result value is no_value, not a score",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              }
+            },
+            {
+              "instrument": "itcia",
+              "min": {
+                "level": 2
+              }
+            },
+            {
+              "instrument": "english",
+              "use": "scored",
+              "min": {
+                "cefr": "B1"
+              }
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 140
+          },
+          {
+            "instrument": "itcia",
+            "resultId": "r-it",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "level": 9
+          },
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "native"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "entries": [
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "no_value",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "itcia",
+            "use": "scored",
+            "status": "no_value",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "level": 2
+            },
+            "reason": null,
+            "resultId": "r-it",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "english",
+            "use": "scored",
+            "status": "no_value",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "cefr": "B1"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    }
+  ]
+}

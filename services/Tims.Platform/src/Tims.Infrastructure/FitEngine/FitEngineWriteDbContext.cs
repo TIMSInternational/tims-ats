@@ -10,7 +10,9 @@ namespace Tims.Infrastructure.FitEngine;
 /// TenantScope connection/transaction, so <c>fit_scores</c> carries NO EF map (it is still registered in the
 /// ownership ledger — the strangler writes it). "Dumb" about tenancy: every op runs UNDER
 /// <see cref="TenantScope"/>. #312/#313 adds a SELECT-only <c>data_consents</c> subset map (+ <c>candidates.email</c>)
-/// for the withdrawn-consent guard. RLS isolates the org and WITH CHECK passes on every INSERT/UPDATE. No native enums
+/// for the withdrawn-consent guard. FIT v2 adds <c>assessment_assignments.status</c>,
+/// <c>assessment_results.organization_id</c> and a SELECT-only <c>proctoring_sessions</c> subset (assignment_id +
+/// severity) for the native-quiz result adapter. RLS isolates the org and WITH CHECK passes on every INSERT/UPDATE. No native enums
 /// mapped (TRAP 3 N/A); timestamps pinned <c>timestamp</c>; jsonb pinned <c>jsonb</c> as string.
 /// </summary>
 public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbContext> options)
@@ -33,6 +35,8 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
     public DbSet<WeightProfileReadEntity> WeightProfiles => Set<WeightProfileReadEntity>();
 
     public DbSet<FitDataConsentReadEntity> DataConsents => Set<FitDataConsentReadEntity>();
+
+    public DbSet<FitProctoringSessionReadEntity> ProctoringSessions => Set<FitProctoringSessionReadEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -76,6 +80,7 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
             entity.Property(a => a.OrganizationId).HasColumnName("organization_id");
             entity.Property(a => a.CandidateId).HasColumnName("candidate_id");
             entity.Property(a => a.VacancyId).HasColumnName("vacancy_id");
+            entity.Property(a => a.Status).HasColumnName("status");
             entity.Property(a => a.CompletedAt).HasColumnName("completed_at").HasColumnType("timestamp");
         });
 
@@ -84,8 +89,19 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
             entity.ToTable("assessment_results");
             entity.HasKey(r => r.Id);
             entity.Property(r => r.Id).HasColumnName("id");
+            entity.Property(r => r.OrganizationId).HasColumnName("organization_id");
             entity.Property(r => r.AssignmentId).HasColumnName("assignment_id");
             entity.Property(r => r.NormalizedScore).HasColumnName("normalized_score");
+        });
+
+        modelBuilder.Entity<FitProctoringSessionReadEntity>(entity =>
+        {
+            entity.ToTable("proctoring_sessions");
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Id).HasColumnName("id");
+            entity.Property(p => p.OrganizationId).HasColumnName("organization_id");
+            entity.Property(p => p.AssignmentId).HasColumnName("assignment_id");
+            entity.Property(p => p.Severity).HasColumnName("severity");
         });
 
         modelBuilder.Entity<FitAiInterviewSessionWriteEntity>(entity =>

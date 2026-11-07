@@ -81,6 +81,18 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid CandLateAlias = Guid.Parse("ca000000-0000-0000-0000-0000000000cd");   // 'late2@fit.test'
     public static readonly Guid CandLateAliasSource = Guid.Parse("ca000000-0000-0000-0000-0000000000ce"); // ' LATE2@Fit.Test ' withdraws MID-RUN
 
+    // FIT v2 (per-instrument) — VacFitV2 is touched ONLY by the FitV2 tests (see FitV2SeedSql).
+    public static readonly Guid VacFitV2 = Guid.Parse("7ac00000-0000-0000-0000-00000000000a");
+    public static readonly Guid CandV2Flagged = Guid.Parse("ca000000-0000-0000-0000-0000000000f1"); // latest attempt proctoring 'high'
+    public static readonly Guid CandV2Valid = Guid.Parse("ca000000-0000-0000-0000-0000000000f2");   // valid 75, plus noise rows
+    public static readonly Guid CandV2None = Guid.Parse("ca000000-0000-0000-0000-0000000000f3");    // no assignments at all
+    public static readonly Guid AsgV2FlaggedOld = Guid.Parse("aa000000-0000-0000-0000-0000000000f1");
+    public static readonly Guid AsgV2FlaggedNew = Guid.Parse("aa000000-0000-0000-0000-0000000000f2");
+    public static readonly Guid AsgV2Valid = Guid.Parse("aa000000-0000-0000-0000-0000000000f3");
+    public static readonly Guid AsgV2NoResult = Guid.Parse("aa000000-0000-0000-0000-0000000000f4");
+    public static readonly Guid AsgV2Cancelled = Guid.Parse("aa000000-0000-0000-0000-0000000000f5");
+    public static readonly Guid AsgV2OtherOrg = Guid.Parse("aa000000-0000-0000-0000-0000000000f6");
+
     // fit_scores seed rows (READ endpoints)
     public static readonly Guid FsCandFull = Guid.Parse("f5000000-0000-0000-0000-000000000001");  // overall 85
     public static readonly Guid FsCandEmpty = Guid.Parse("f5000000-0000-0000-0000-000000000002"); // overall 40, partial
@@ -118,7 +130,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
             await role.ExecuteNonQueryAsync();
         }
 
-        foreach (var sql in new[] { SchemaSql, RlsSql, IdentitySeedSql, FitEngineSeedSql })
+        foreach (var sql in new[] { SchemaSql, RlsSql, IdentitySeedSql, FitEngineSeedSql, FitV2SeedSql })
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
@@ -270,6 +282,10 @@ public sealed class FitEngineFixture : IAsyncLifetime
         CREATE TABLE assessment_results (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, assignment_id uuid NOT NULL UNIQUE,
             normalized_score double precision NULL);
+        -- FIT v2: the native-quiz adapter reads severity (max of the staff-flagged events) per assignment.
+        CREATE TABLE proctoring_sessions (
+            id uuid PRIMARY KEY, organization_id uuid NOT NULL, assignment_id uuid NOT NULL UNIQUE,
+            started_at timestamp(3) NOT NULL, flag_count int NOT NULL DEFAULT 0, severity text NULL);
         CREATE TABLE ai_interview_sessions (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, candidate_id uuid NOT NULL, vacancy_id uuid NOT NULL,
             fit_score int NULL, created_at timestamp(3) NOT NULL);
@@ -302,7 +318,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
         """
         GRANT SELECT ON users, teams, user_teams, user_business_units, business_units,
             vacancies, candidates, applications, job_profiles, assessment_assignments, assessment_results,
-            ai_interview_sessions, data_consents TO app_tenant;
+            ai_interview_sessions, data_consents, proctoring_sessions TO app_tenant;
         GRANT SELECT, INSERT, UPDATE, DELETE ON fit_scores, role_family_weight_profiles TO app_tenant;
 
         ALTER TABLE users ENABLE ROW LEVEL SECURITY;                 ALTER TABLE users FORCE ROW LEVEL SECURITY;
@@ -320,6 +336,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
         ALTER TABLE fit_scores ENABLE ROW LEVEL SECURITY;            ALTER TABLE fit_scores FORCE ROW LEVEL SECURITY;
         ALTER TABLE role_family_weight_profiles ENABLE ROW LEVEL SECURITY; ALTER TABLE role_family_weight_profiles FORCE ROW LEVEL SECURITY;
         ALTER TABLE data_consents ENABLE ROW LEVEL SECURITY;         ALTER TABLE data_consents FORCE ROW LEVEL SECURITY;
+        ALTER TABLE proctoring_sessions ENABLE ROW LEVEL SECURITY;   ALTER TABLE proctoring_sessions FORCE ROW LEVEL SECURITY;
 
         CREATE POLICY tenant_isolation ON users                 USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON teams                 USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
@@ -335,6 +352,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
         CREATE POLICY tenant_isolation ON fit_scores            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON role_family_weight_profiles USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON data_consents         USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        CREATE POLICY tenant_isolation ON proctoring_sessions   USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON user_teams            USING (EXISTS (SELECT 1 FROM teams t WHERE t.id = user_teams.team_id));
         """;
 
@@ -523,5 +541,50 @@ public sealed class FitEngineFixture : IAsyncLifetime
           ('3e000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Default',     '{"assessment":0.2,"interview":0.2,"experience":0.2,"education":0.2,"languages":0.2}', '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
           ('3e000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Engineering', '{"assessment":0.5,"interview":0.3,"experience":0.1,"education":0.05,"languages":0.05}', '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
           ('3e000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'Marketing',   '{"assessment":0.4,"interview":0.3,"experience":0.1,"education":0.1,"languages":0.1}', '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+        """;
+
+    // FIT v2 seed (OrgA, VacFitV2 — no team, Default profile 0.2 × 5). Requirements: min 2 years, English
+    // required in languages, native_quiz SCORED with min.score 50, lia as a GATE (min percentile 40 — no
+    // provider results exist, so it is always unknown). Assignments:
+    //   CandV2Flagged — f1 completed 2026-02-01 → 40 (no proctoring, valid); f2 completed 2026-03-01 → 90 with a
+    //     'high' proctoring session → the LATEST is needs-review (v1 would read 90).
+    //   CandV2Valid — f3 completed 2026-02-01 → 75 with a 'low' session (valid); f4 'assigned' WITHOUT a result
+    //     (excluded by the join); f5 'cancelled', completed_at NULL → 99 (needs review; v1's NULLS FIRST would
+    //     read 99); f6 an OrgB-stamped assignment for the same candidate/vacancy ids → 10 (tenant filter).
+    private const string FitV2SeedSql =
+        """
+        INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+          ('7ac00000-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'FIT v2 Role', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+
+        INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
+          ('9f000000-0000-0000-0000-0000000000f1', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-00000000000a', '{"minYearsExperience":2,"requiredLanguages":["English"],"assessments":[{"instrument":"native_quiz","use":"scored","min":{"score":50},"reason":"quiz técnico"},{"instrument":"lia","use":"gate","min":{"globalPercentile":40}}]}');
+
+        INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+          ('ca000000-0000-0000-0000-0000000000f1', '11111111-1111-1111-1111-111111111111', 'v2flag@fit.test',  'Flor',  'Flagged', 4, NULL, '["English (B2)"]', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000f2', '11111111-1111-1111-1111-111111111111', 'v2valid@fit.test', 'Vera',  'Valid',   1, NULL, '["English (B2)"]', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('ca000000-0000-0000-0000-0000000000f3', '11111111-1111-1111-1111-111111111111', 'v2none@fit.test',  'Nico',  'None',    NULL, NULL, NULL,           NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+
+        INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
+          ('ab000000-0000-0000-0000-0000000000f1', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f1', '7ac00000-0000-0000-0000-00000000000a', 'active'),
+          ('ab000000-0000-0000-0000-0000000000f2', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f2', '7ac00000-0000-0000-0000-00000000000a', 'active');
+
+        INSERT INTO assessment_assignments (id, organization_id, candidate_id, vacancy_id, status, completed_at) VALUES
+          ('aa000000-0000-0000-0000-0000000000f1', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f1', '7ac00000-0000-0000-0000-00000000000a', 'completed', '2026-02-01 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000f2', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f1', '7ac00000-0000-0000-0000-00000000000a', 'completed', '2026-03-01 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000f3', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f2', '7ac00000-0000-0000-0000-00000000000a', 'completed', '2026-02-01 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000f4', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f2', '7ac00000-0000-0000-0000-00000000000a', 'assigned',  '2026-04-01 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000f5', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f2', '7ac00000-0000-0000-0000-00000000000a', 'cancelled', NULL),
+          ('aa000000-0000-0000-0000-0000000000f6', '22222222-2222-2222-2222-222222222222', 'ca000000-0000-0000-0000-0000000000f2', '7ac00000-0000-0000-0000-00000000000a', 'completed', '2026-05-01 00:00:00');
+
+        INSERT INTO assessment_results (id, organization_id, assignment_id, normalized_score) VALUES
+          ('ae000000-0000-0000-0000-0000000000f1', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f1', 40),
+          ('ae000000-0000-0000-0000-0000000000f2', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f2', 90),
+          ('ae000000-0000-0000-0000-0000000000f3', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f3', 75),
+          ('ae000000-0000-0000-0000-0000000000f5', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f5', 99),
+          ('ae000000-0000-0000-0000-0000000000f6', '22222222-2222-2222-2222-222222222222', 'aa000000-0000-0000-0000-0000000000f6', 10);
+
+        INSERT INTO proctoring_sessions (id, organization_id, assignment_id, started_at, flag_count, severity) VALUES
+          ('ad000000-0000-0000-0000-0000000000f2', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f2', '2026-03-01 00:00:00', 2, 'high'),
+          ('ad000000-0000-0000-0000-0000000000f3', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f3', '2026-02-01 00:00:00', 1, 'low');
         """;
 }

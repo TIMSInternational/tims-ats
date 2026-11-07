@@ -60,6 +60,9 @@ public sealed class FitAssessmentAssignmentWriteEntity
 
     public Guid VacancyId { get; set; }
 
+    /// <summary>Read ONLY by the FIT v2 native-quiz adapter (integrity: anything but 'completed' needs review).</summary>
+    public string Status { get; set; } = null!;
+
     public DateTime? CompletedAt { get; set; }
 }
 
@@ -68,9 +71,27 @@ public sealed class FitAssessmentResultWriteEntity
 {
     public Guid Id { get; set; }
 
+    /// <summary>Read ONLY by the FIT v2 native-quiz adapter's explicit tenant filter.</summary>
+    public Guid OrganizationId { get; set; }
+
     public Guid AssignmentId { get; set; }
 
     public double? NormalizedScore { get; set; }
+}
+
+/// <summary>
+/// proctoring_sessions — FIT v2 reads only <c>severity</c> (max of the staff-flagged events: low/medium/high/
+/// critical), 1-1 on assignment_id. A high or critical session makes the result "needs review".
+/// </summary>
+public sealed class FitProctoringSessionReadEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public Guid AssignmentId { get; set; }
+
+    public string? Severity { get; set; }
 }
 
 /// <summary>ai_interview_sessions — fitScore + createdAt only (status, a native enum, deliberately unmapped).</summary>

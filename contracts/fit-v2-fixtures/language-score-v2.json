@@ -1,0 +1,217 @@
+{
+  "cases": [
+    {
+      "name": "englishCovered null → exactly v1",
+      "input": {
+        "languages": [
+          "English (B2)",
+          "Spanish"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "Spanish"
+          ]
+        },
+        "englishCovered": null
+      },
+      "expected": {
+        "score": 100,
+        "usedAssessment": false
+      }
+    },
+    {
+      "name": "no English among requiredLanguages → v1 even with a result",
+      "input": {
+        "languages": [
+          "Spanish"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "Spanish",
+            "Portuguese"
+          ]
+        },
+        "englishCovered": true
+      },
+      "expected": {
+        "score": 50,
+        "usedAssessment": false
+      }
+    },
+    {
+      "name": "a not-covered result overrides the CV claim for English only",
+      "input": {
+        "languages": [
+          "English (C2)",
+          "Spanish"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "Spanish"
+          ]
+        },
+        "englishCovered": false
+      },
+      "expected": {
+        "score": 50,
+        "usedAssessment": true
+      }
+    },
+    {
+      "name": "a covered result counts English the CV omits or spells differently",
+      "input": {
+        "languages": [
+          "Spanish"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "Inglés",
+            "Spanish"
+          ]
+        },
+        "englishCovered": true
+      },
+      "expected": {
+        "score": 100,
+        "usedAssessment": true
+      }
+    },
+    {
+      "name": "CV absent, English the only requirement → the test decides (covered)",
+      "input": {
+        "languages": null,
+        "requirements": {
+          "requiredLanguages": [
+            "English"
+          ]
+        },
+        "englishCovered": true
+      },
+      "expected": {
+        "score": 100,
+        "usedAssessment": true
+      }
+    },
+    {
+      "name": "CV absent, English the only requirement → the test decides (not covered)",
+      "input": {
+        "languages": null,
+        "requirements": {
+          "requiredLanguages": [
+            "English"
+          ]
+        },
+        "englishCovered": false
+      },
+      "expected": {
+        "score": 0,
+        "usedAssessment": true
+      }
+    },
+    {
+      "name": "CV absent and a non-English language required → v1 null (a parser gap is not a missing language)",
+      "input": {
+        "languages": null,
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "Spanish"
+          ]
+        },
+        "englishCovered": true
+      },
+      "expected": {
+        "score": null,
+        "usedAssessment": false
+      }
+    },
+    {
+      "name": "CV empty array is the same as absent",
+      "input": {
+        "languages": [],
+        "requirements": {
+          "requiredLanguages": [
+            "English"
+          ]
+        },
+        "englishCovered": false
+      },
+      "expected": {
+        "score": 0,
+        "usedAssessment": true
+      }
+    },
+    {
+      "name": "a duplicated English requirement counts every time (v1 filter semantics), covered",
+      "input": {
+        "languages": [
+          "Spanish"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "English",
+            "Spanish"
+          ]
+        },
+        "englishCovered": true
+      },
+      "expected": {
+        "score": 100,
+        "usedAssessment": true
+      }
+    },
+    {
+      "name": "a duplicated English requirement counts every time, not covered → 1/3 = 33",
+      "input": {
+        "languages": [
+          "Spanish"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "English",
+            "Spanish"
+          ]
+        },
+        "englishCovered": false
+      },
+      "expected": {
+        "score": 33,
+        "usedAssessment": true
+      }
+    },
+    {
+      "name": "requiredLanguages empty → null",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": []
+        },
+        "englishCovered": true
+      },
+      "expected": {
+        "score": null,
+        "usedAssessment": false
+      }
+    },
+    {
+      "name": "requiredLanguages absent → null",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {},
+        "englishCovered": true
+      },
+      "expected": {
+        "score": null,
+        "usedAssessment": false
+      }
+    }
+  ]
+}

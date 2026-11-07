@@ -1,0 +1,228 @@
+{
+  "cases": [
+    {
+      "name": "meetOrExceed above the minimum caps at 100",
+      "input": {
+        "kernel": "meetOrExceed",
+        "value": 55,
+        "minimum": 40
+      },
+      "expected": 100
+    },
+    {
+      "name": "meetOrExceed half of the minimum → 50",
+      "input": {
+        "kernel": "meetOrExceed",
+        "value": 20,
+        "minimum": 40
+      },
+      "expected": 50
+    },
+    {
+      "name": "meetOrExceed 30/45 = 66.67 → 67",
+      "input": {
+        "kernel": "meetOrExceed",
+        "value": 30,
+        "minimum": 45
+      },
+      "expected": 67
+    },
+    {
+      "name": "meetOrExceed 1/8 = 12.5 rounds half up → 13",
+      "input": {
+        "kernel": "meetOrExceed",
+        "value": 1,
+        "minimum": 8
+      },
+      "expected": 13
+    },
+    {
+      "name": "meetOrExceed zero value → 0",
+      "input": {
+        "kernel": "meetOrExceed",
+        "value": 0,
+        "minimum": 40
+      },
+      "expected": 0
+    },
+    {
+      "name": "meetOrExceed minimum 0 → 100",
+      "input": {
+        "kernel": "meetOrExceed",
+        "value": 10,
+        "minimum": 0
+      },
+      "expected": 100
+    },
+    {
+      "name": "meetOrExceed exactly at the minimum → 100",
+      "input": {
+        "kernel": "meetOrExceed",
+        "value": 40,
+        "minimum": 40
+      },
+      "expected": 100
+    },
+    {
+      "name": "cefrLadder one level below B2 → (2+1)/6 = 50",
+      "input": {
+        "kernel": "cefrLadder",
+        "achieved": "B1",
+        "required": "B2"
+      },
+      "expected": 50
+    },
+    {
+      "name": "cefrLadder A1 vs C2 → 1/6 = 16.67 → 17",
+      "input": {
+        "kernel": "cefrLadder",
+        "achieved": "A1",
+        "required": "C2"
+      },
+      "expected": 17
+    },
+    {
+      "name": "cefrLadder A2 vs C1 → 2/6 = 33.33 → 33",
+      "input": {
+        "kernel": "cefrLadder",
+        "achieved": "A2",
+        "required": "C1"
+      },
+      "expected": 33
+    },
+    {
+      "name": "cefrLadder above → 100",
+      "input": {
+        "kernel": "cefrLadder",
+        "achieved": "C1",
+        "required": "B2"
+      },
+      "expected": 100
+    },
+    {
+      "name": "cefrLadder equal → 100",
+      "input": {
+        "kernel": "cefrLadder",
+        "achieved": "B2",
+        "required": "B2"
+      },
+      "expected": 100
+    },
+    {
+      "name": "itciaLadder 2 vs 4 → 2/5 = 40",
+      "input": {
+        "kernel": "itciaLadder",
+        "achieved": 2,
+        "required": 4
+      },
+      "expected": 40
+    },
+    {
+      "name": "itciaLadder 1 vs 5 → 20",
+      "input": {
+        "kernel": "itciaLadder",
+        "achieved": 1,
+        "required": 5
+      },
+      "expected": 20
+    },
+    {
+      "name": "itciaLadder equal → 100",
+      "input": {
+        "kernel": "itciaLadder",
+        "achieved": 3,
+        "required": 3
+      },
+      "expected": 100
+    },
+    {
+      "name": "itciaLadder above → 100",
+      "input": {
+        "kernel": "itciaLadder",
+        "achieved": 5,
+        "required": 2
+      },
+      "expected": 100
+    },
+    {
+      "name": "cefrOrdinal lower-case a1 → 0",
+      "input": {
+        "kernel": "cefrOrdinal",
+        "label": "a1"
+      },
+      "expected": 0
+    },
+    {
+      "name": "cefrOrdinal padded C2 → 5",
+      "input": {
+        "kernel": "cefrOrdinal",
+        "label": " C2 "
+      },
+      "expected": 5
+    },
+    {
+      "name": "cefrOrdinal B3 → null",
+      "input": {
+        "kernel": "cefrOrdinal",
+        "label": "B3"
+      },
+      "expected": null
+    },
+    {
+      "name": "cefrOrdinal empty → null",
+      "input": {
+        "kernel": "cefrOrdinal",
+        "label": ""
+      },
+      "expected": null
+    },
+    {
+      "name": "isEnglish strips the parenthetical",
+      "input": {
+        "kernel": "isEnglish",
+        "label": "English (C1)"
+      },
+      "expected": true
+    },
+    {
+      "name": "isEnglish Inglés",
+      "input": {
+        "kernel": "isEnglish",
+        "label": "Inglés"
+      },
+      "expected": true
+    },
+    {
+      "name": "isEnglish INGLÉS upper-case",
+      "input": {
+        "kernel": "isEnglish",
+        "label": "INGLÉS"
+      },
+      "expected": true
+    },
+    {
+      "name": "isEnglish ingles without accent",
+      "input": {
+        "kernel": "isEnglish",
+        "label": "ingles"
+      },
+      "expected": true
+    },
+    {
+      "name": "isEnglish Spanish → false",
+      "input": {
+        "kernel": "isEnglish",
+        "label": "Spanish"
+      },
+      "expected": false
+    },
+    {
+      "name": "isEnglish a longer label is not English",
+      "input": {
+        "kernel": "isEnglish",
+        "label": "English as a second language"
+      },
+      "expected": false
+    }
+  ]
+}

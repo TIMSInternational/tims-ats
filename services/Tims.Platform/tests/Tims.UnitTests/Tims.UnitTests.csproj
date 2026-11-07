@@ -68,6 +68,11 @@
       <Link>fit-engine-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- FIT v2 per-instrument kernels golden (C#-only: no TS oracle, expectations derived by hand). -->
+    <Content Include="..\..\..\..\contracts\fit-v2-fixtures\*.json">
+      <Link>fit-v2-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- Phase-5 Slice 1 external-vendor v1 mapper golden fixtures (shared with the TS vitest suite). -->
     <Content Include="..\..\..\..\contracts\external-fixtures\*.json">
       <Link>external-fixtures\%(Filename)%(Extension)</Link>

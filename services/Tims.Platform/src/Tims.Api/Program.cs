@@ -649,6 +649,15 @@ try
     builder.Services.AddScoped<FitEngineReadUseCase>();
     builder.Services.AddDbContext<FitEngineWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IFitEngineWriteRepository, FitEngineWriteRepository>();
+    // FIT v2 result port: the ATS native-quiz tables first, then the provider stub (returns nothing until the
+    // TIMS Assessments connector exists). Read only when Platform:FitEngineV2Enabled is on.
+    builder.Services.AddScoped<AtsAssessmentResultSource>();
+    builder.Services.AddScoped<ProviderAssessmentResultSource>();
+    builder.Services.AddScoped<IAssessmentResultSource>(sp => new CompositeAssessmentResultSource(
+    [
+        sp.GetRequiredService<AtsAssessmentResultSource>(),
+        sp.GetRequiredService<ProviderAssessmentResultSource>(),
+    ]));
     builder.Services.AddScoped<FitEngineWriteUseCase>();
 
     // Phase-5 Slice 25 / #98 — notification. ONE DbContext for both sides: the read and write flags cover the
