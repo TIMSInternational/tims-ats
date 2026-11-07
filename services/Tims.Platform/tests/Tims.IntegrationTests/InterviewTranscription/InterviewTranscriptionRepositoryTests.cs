@@ -112,8 +112,11 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
         Assert.False(await repo.HasProviderEventAsync(F.OrgB, interview, "evt-1", default));
     }
 
+    /// <summary>The candidate's acceptance, then a platform start: everything a claim needs. Returns the start id.</summary>
     private static async Task<Guid> RequestedStartAsync(InterviewTranscriptionRepository repo, Guid interview)
     {
+        Assert.NotNull(await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null, Accepted,
+            ConsentTextVersion), default));
         Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Requested,
             UserId: F.RecruiterId, Language: "es"), default));
         return (await repo.ListEventsAsync(F.OrgA, interview, default)).Single().Id!.Value;
@@ -162,6 +165,43 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
         Assert.Equal(1, await ReadyRowsAsync(interview, start));
         var ready = (await repo.ListEventsAsync(F.OrgA, interview, default))[^1];
         Assert.Equal((TranscriptStates.Ready, (Guid?)transcript, (Guid?)start), (ready.State, ready.TranscriptId, ready.AuthorizedBy));
+    }
+
+    [Fact]
+    public async Task A_claim_re_reads_the_candidates_decision_under_the_lock_and_stores_nothing_after_a_decline()
+    {
+        // Codex P1: the webhook read `accepted`, then the candidate's decline committed, then the claim — which only
+        // checked consumption — wrote transcript_url and `ready`. The claim must see the decline itself.
+        var repo = Repository();
+        var interview = await fixture.AddInterviewAsync();
+        var start = await RequestedStartAsync(repo, interview);
+        Assert.Equal(Accepted, InterviewTranscriptionUseCase.CandidateDecision(
+            await repo.ListConsentsAsync(F.OrgA, interview, default)).Decision); // what the webhook read
+        Assert.NotNull(await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null,
+            Declined, ConsentTextVersion), default)); // committed after that read
+
+        var transcript = Guid.NewGuid();
+        Assert.Equal(TranscriptClaim.ConsentWithdrawn,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-1", default));
+        Assert.Null((await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+        Assert.Equal(0, await ReadyRowsAsync(interview, start));
+
+        // Only the LATEST candidate row counts, and only on the current text version.
+        Assert.NotNull(await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null,
+            Accepted, "an-older-notice"), default));
+        Assert.Equal(TranscriptClaim.ConsentWithdrawn,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-2", default));
+        // A staff acknowledgement is not the candidate's decision.
+        Assert.True(await repo.RecordConsentAsync(new(interview, F.OrgA, SubjectStaff, F.RecruiterId, Accepted,
+            ConsentTextVersion), default));
+        Assert.Equal(TranscriptClaim.ConsentWithdrawn,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-3", default));
+        Assert.Null((await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+
+        Assert.NotNull(await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null,
+            Accepted, ConsentTextVersion), default));
+        Assert.Equal(TranscriptClaim.Stored,
+            await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-4", default));
     }
 
     [Fact]

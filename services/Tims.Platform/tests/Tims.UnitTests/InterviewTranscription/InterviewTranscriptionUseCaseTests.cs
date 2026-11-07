@@ -145,6 +145,8 @@ public sealed class InterviewTranscriptionUseCaseTests
                 {
                     if (Events.Any(e => e.State == TranscriptStates.Ready && e.TranscriptId == transcriptId))
                         return TranscriptClaim.AlreadyStored;
+                    if (InterviewTranscriptionUseCase.CandidateDecision(Consents).Decision != Accepted)
+                        return TranscriptClaim.ConsentWithdrawn;
                     if (Events.Any(e => e.State == TranscriptStates.Ready && e.AuthorizedBy == startEventId))
                         return TranscriptClaim.StartConsumed;
                     if (!Writes || ClaimFails) return TranscriptClaim.Failed;
@@ -480,6 +482,51 @@ public sealed class InterviewTranscriptionUseCaseTests
         Assert.Equal((stored, start), (ready.TranscriptId!.Value, ready.AuthorizedBy));
         Assert.Equal(TranscriptReference(stored), repo.Reference);
         Assert.Equal(loser, Assert.Single(provider.Deleted)); // the loser is unauthorized, so it is deleted
+    }
+
+    [Fact]
+    public async Task A_decline_committed_after_the_webhooks_consent_read_deletes_the_transcript_instead_of_storing_it()
+    {
+        // Codex P1: the webhook read `accepted`, the candidate's decline then committed, and the claim (which only
+        // checked consumption) still wrote transcript_url + `ready`; later deliveries answered duplicate and the
+        // transcript stayed at Daily. The decline lands exactly between the consent read and the claim here.
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase);
+        var declined = false;
+        repo.OnListEvents = async () => // the use case reads consents, THEN events, then claims
+        {
+            if (declined) return;
+            declined = true;
+            Assert.NotNull(await repo.RecordCandidateDecisionAsync(Candidate(Declined), default));
+        };
+        Assert.Equal(WebhookHandling.Rejected, await useCase.HandleWebhookAsync(Ready("evt-race"), default));
+        Assert.True(declined);
+        Assert.Null(repo.Reference);
+        Assert.Null(repo.Interview!.TranscriptUrl);
+        Assert.DoesNotContain(repo.Events, e => e.State == TranscriptStates.Ready);
+        Assert.Equal(TranscriptId, Assert.Single(provider.Deleted));
+        Assert.Equal(TranscriptStates.Rejected, repo.Events[^1].State);
+        // A redelivery is a recorded duplicate, and it never resurrects the transcript.
+        Assert.Equal(WebhookHandling.Duplicate, await useCase.HandleWebhookAsync(Ready("evt-race"), default));
+        Assert.Null(repo.Reference);
+    }
+
+    [Fact]
+    public async Task A_decline_racing_the_claim_whose_deletion_fails_is_retried_not_acknowledged()
+    {
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase);
+        var declined = false;
+        repo.OnListEvents = async () =>
+        {
+            if (declined) return;
+            declined = true;
+            await repo.RecordCandidateDecisionAsync(Candidate(Declined), default);
+        };
+        provider.DeleteSucceeds = false;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => useCase.HandleWebhookAsync(Ready("evt-r2"), default));
+        Assert.Null(repo.Reference);
+        Assert.DoesNotContain(repo.Events, e => e.State is TranscriptStates.Ready or TranscriptStates.Rejected);
     }
 
     [Fact]

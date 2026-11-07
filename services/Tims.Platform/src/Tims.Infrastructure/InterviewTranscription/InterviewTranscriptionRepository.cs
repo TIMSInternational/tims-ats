@@ -216,13 +216,21 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
             // section, so two deliveries can never both see the start unconsumed.
             await LockAsync(connection, transaction, interviewId, ct);
             await ScopeAsync(connection, transaction, organizationId, ct);
-            bool transcriptStored, startConsumed;
+            bool interviewInOrg, transcriptStored, startConsumed, consentHeld;
+            // The candidate's consent is re-read HERE, under the lock their decision is recorded under
+            // (RecordCandidateDecisionAsync): a decline that committed after the webhook's own consent read is seen.
+            // Same rule as CandidateDecision: the LATEST candidate row, and only an `accepted` on the current version.
             await using (var check = new NpgsqlCommand("""
                 SELECT
                   EXISTS(SELECT 1 FROM audit_logs WHERE organization_id=@org AND action=@action AND entity='interview'
                     AND entity_id=@entity AND metadata->>'state'=@ready AND metadata->>'transcriptId'=@transcript),
                   EXISTS(SELECT 1 FROM audit_logs WHERE organization_id=@org AND action=@action AND entity='interview'
-                    AND entity_id=@entity AND metadata->>'state'=@ready AND metadata->>'authorizedBy'=@start)
+                    AND entity_id=@entity AND metadata->>'state'=@ready AND metadata->>'authorizedBy'=@start),
+                  COALESCE((SELECT metadata->>'decision'=@accepted AND metadata->>'textVersion'=@version
+                    FROM audit_logs WHERE organization_id=@org AND action=@consent AND entity='interview'
+                      AND entity_id=@entity AND metadata->>'subject'=@candidate
+                    ORDER BY created_at DESC,id DESC LIMIT 1), false),
+                  EXISTS(SELECT 1 FROM interviews WHERE id=@interview AND organization_id=@org)
                 """, connection, transaction))
             {
                 check.Parameters.AddWithValue("org", organizationId);
@@ -231,11 +239,20 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
                 check.Parameters.AddWithValue("ready", TranscriptStates.Ready);
                 check.Parameters.AddWithValue("transcript", transcriptId.ToString("D"));
                 check.Parameters.AddWithValue("start", startEventId.ToString("D"));
+                check.Parameters.AddWithValue("consent", ConsentAction);
+                check.Parameters.AddWithValue("candidate", SubjectCandidate);
+                check.Parameters.AddWithValue("accepted", Accepted);
+                check.Parameters.AddWithValue("version", ConsentTextVersion);
+                check.Parameters.AddWithValue("interview", interviewId);
                 await using var reader = await check.ExecuteReaderAsync(ct);
                 await reader.ReadAsync(ct);
-                (transcriptStored, startConsumed) = (reader.GetBoolean(0), reader.GetBoolean(1));
+                (transcriptStored, startConsumed, consentHeld, interviewInOrg) =
+                    (reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2), reader.GetBoolean(3));
             }
+            // Not in this organization: nothing to decide about (and never a reason to delete anything).
+            if (!interviewInOrg) return TranscriptClaim.Failed;
             if (transcriptStored) return TranscriptClaim.AlreadyStored;
+            if (!consentHeld) return TranscriptClaim.ConsentWithdrawn;
             if (startConsumed) return TranscriptClaim.StartConsumed;
 
             await using (var update = new NpgsqlCommand("""

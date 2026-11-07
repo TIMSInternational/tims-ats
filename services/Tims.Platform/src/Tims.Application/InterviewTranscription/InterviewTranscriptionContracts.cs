@@ -111,6 +111,12 @@ public enum TranscriptClaim
     /// <summary>Another <c>ready</c> event already consumed this start: nothing was written; decide again.</summary>
     StartConsumed,
 
+    /// <summary>
+    /// The candidate's latest decision, re-read under the lock, is no longer <c>accepted</c> (a decline committed
+    /// after the caller's own consent read): nothing was written; the transcript must be deleted at the provider.
+    /// </summary>
+    ConsentWithdrawn,
+
     /// <summary>The write failed (logged): nothing was written.</summary>
     Failed,
 }
@@ -163,7 +169,8 @@ public interface IInterviewTranscriptionRepository : IInterviewConsentLedger
     /// <summary>
     /// Stores a ready transcript in ONE transaction under the interview's transcription lock (a transaction-scoped
     /// Postgres advisory lock, so concurrent deliveries serialize across App Runner instances): unless a <c>ready</c>
-    /// event already names <paramref name="transcriptId"/> or already consumed <paramref name="startEventId"/>, sets
+    /// event already names <paramref name="transcriptId"/> or already consumed <paramref name="startEventId"/>, or the
+    /// candidate's latest decision (re-read under the same lock) is no longer <c>accepted</c>, sets
     /// transcript_url (tenant-filtered) AND appends the <c>ready</c> event naming the start — both or neither. Never
     /// throws on a database failure (returns <see cref="TranscriptClaim.Failed"/>).
     /// </summary>

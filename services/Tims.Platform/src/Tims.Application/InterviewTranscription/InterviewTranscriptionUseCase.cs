@@ -293,15 +293,7 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
                 return WebhookHandling.Duplicate;
             var start = AuthorizingStart(events, webhookEvent.StartedAtUtc, _clock.GetUtcNow().UtcDateTime);
             if (start is null || CandidateDecision(consents).Decision != Accepted)
-            {
-                // Not "handled" until the provider confirms the deletion: a failure throws, nothing is recorded, and
-                // Daily's retry runs this again (the event id was never stored, so it is not a duplicate).
-                if (!await provider.DeleteTranscriptAsync(transcriptId, ct))
-                    throw new InvalidOperationException("Unauthorized transcript could not be deleted at the provider");
-                Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
-                    TranscriptStates.Rejected, ProviderEventId: webhookEvent.EventId, TranscriptId: transcriptId), ct));
-                return WebhookHandling.Rejected;
-            }
+                return await RejectTranscriptAsync(org, interviewId, transcriptId, webhookEvent.EventId, ct);
 
             // The reference and the `ready` event that consumes the start are written together or not at all, so a
             // failed write leaves the start unconsumed AND the reference unchanged for Daily's retry.
@@ -314,11 +306,29 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
                     return WebhookHandling.Duplicate;
                 case TranscriptClaim.StartConsumed:
                     continue;
+                case TranscriptClaim.ConsentWithdrawn:
+                    // A decline committed after the consent read above: deleted like any unauthorized transcript.
+                    return await RejectTranscriptAsync(org, interviewId, transcriptId, webhookEvent.EventId, ct);
                 default:
                     throw new InvalidOperationException("Transcript reference could not be recorded");
             }
         }
         throw new InvalidOperationException("Transcript authorization kept losing to concurrent deliveries");
+    }
+
+    /// <summary>
+    /// Deletes an unauthorized transcript at the provider, then records the rejection. Not "handled" until the provider
+    /// confirms the deletion: a failure throws, nothing is recorded, and Daily's retry runs the delivery again (the
+    /// event id was never stored, so it is not a duplicate).
+    /// </summary>
+    private async Task<WebhookHandling> RejectTranscriptAsync(Guid org, Guid interviewId, Guid transcriptId,
+        string? providerEventId, CancellationToken ct)
+    {
+        if (!await provider.DeleteTranscriptAsync(transcriptId, ct))
+            throw new InvalidOperationException("Unauthorized transcript could not be deleted at the provider");
+        Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
+            TranscriptStates.Rejected, ProviderEventId: providerEventId, TranscriptId: transcriptId), ct));
+        return WebhookHandling.Rejected;
     }
 
     /// <summary>How many times one delivery re-decides after a concurrent delivery consumed the start it chose.</summary>
