@@ -3,7 +3,7 @@
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { isSafeDailyJoinUrl } from '../../../../../lib/interview-join';
-import { formatCandidateDateTime } from '../../../../../lib/candidate-format';
+import { candidateTimeZone, formatCandidateDateTime } from '../../../../../lib/candidate-format';
 
 // "My Interviews" section of the candidate dashboard (Wave 1 Slice 3). Lists the
 // signed-in candidate's UPCOMING interviews (scheduled/confirmed) with a join link
@@ -71,7 +71,8 @@ function isSameLink(location: string | null, url: string | null): boolean {
   }
 }
 
-// Times render in the organization's time zone with an explicit zone label (UTC when it has none).
+// Times render in the zone the interview email used — the organization's, else the interview's vacancy
+// company's, else UTC — with an explicit zone label.
 export function DashboardInterviews({ orgSlug, timeZone = null }: { orgSlug: string; timeZone?: string | null }) {
   const { t, locale } = useI18n();
   const { data, isLoading, isError } = trpc.candidatePortal.myInterviews.useQuery({ orgSlug });
@@ -128,7 +129,7 @@ export function DashboardInterviews({ orgSlug, timeZone = null }: { orgSlug: str
                     <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
                     <p className="text-[12px] text-[#585858] mt-0.5">{candidateInterviewTypeLabel(t, iv.type, joinUrl)}</p>
                     <p className="text-[11px] text-muted mt-1">
-                      {formatCandidateDateTime(iv.scheduledAt, locale, timeZone, t.portalDashboard)}
+                      {formatCandidateDateTime(iv.scheduledAt, locale, candidateTimeZone(timeZone, iv.vacancy.company?.timezone))}
                       {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
                     </p>
                     {iv.location && !isSameLink(iv.location, joinUrl) && (

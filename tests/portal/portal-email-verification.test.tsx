@@ -41,7 +41,7 @@ const params = Promise.resolve({ orgSlug: 'acme' });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  m.findOrg.mockResolvedValue({ id: 'org-1', name: 'Acme', isActive: true });
+  m.findOrg.mockResolvedValue({ id: 'org-1', name: 'Acme', isActive: true, companies: [] });
   m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G' });
   m.getContactEmail.mockReturnValue(null);
 });
@@ -66,7 +66,7 @@ describe('candidate dashboard requires a confirmed email', () => {
 
   it('passes the candidate\'s own details and the organization contact to the dashboard (C-33)', async () => {
     m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
-    const org = { id: 'org-1', name: 'Acme', isActive: true, settings: {}, billingEmail: 'rrhh@acme.test' };
+    const org = { id: 'org-1', name: 'Acme', isActive: true, settings: {}, billingEmail: 'rrhh@acme.test', companies: [] };
     m.findOrg.mockResolvedValue(org);
     m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G', phone: '+506 8888 8888', location: null });
     m.getContactEmail.mockReturnValue('rrhh@acme.test');
@@ -103,6 +103,20 @@ describe('candidate dashboard requires a confirmed email', () => {
     const element = (await PortalDashboardPage({ params })) as { props: { consentWithdrawnAt: string | null } };
     expect(element.props.consentWithdrawnAt).toBe('2026-10-01T10:00:00.000Z');
     expect(withdrawnAt).toHaveBeenCalledWith('org-1', 'ana@example.com');
+  });
+
+  it("passes the organization's own zone; the per-item company fallback is the lists' job, as in the emails", async () => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    const render = async (org: Record<string, unknown>) => {
+      m.findOrg.mockResolvedValueOnce({ id: 'org-1', name: 'Acme', isActive: true, billingEmail: null, ...org });
+      return ((await PortalDashboardPage({ params })) as { props: { timeZone: string | null } }).props.timeZone;
+    };
+    expect(await render({ settings: { timezone: 'America/Guatemala' } })).toBe('America/Guatemala');
+    expect(await render({ settings: { timezone: 'Mars/Olympus' } })).toBeNull();
+    expect(await render({ settings: {} })).toBeNull();
+    // Codex review of #424 (P2): no primary-company zone for the whole page — an interview's email uses ITS
+    // vacancy company, which may be another company or none (UTC).
+    expect(JSON.stringify(m.findOrg.mock.calls[0]?.[0])).not.toContain('companies');
   });
 
   it('no session still goes to login', async () => {

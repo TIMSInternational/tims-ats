@@ -71,6 +71,26 @@ describe('provisionOrgDefaults', () => {
     expect(ts).not.toMatch(/country:\s*['"]CO['"]/);
   });
 
+  it('with a locale profile, the Company takes its country, currency and time zone', async () => {
+    await provisionOrgDefaults(tx as never, ORG_ID, 'Maquila GT', {
+      country: 'GT',
+      timezone: 'America/Guatemala',
+      currency: 'GTQ',
+      locale: 'es-GT',
+    });
+
+    expect(tx.company.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: ORG_ID,
+        name: 'Maquila GT',
+        country: 'GT',
+        currency: 'GTQ',
+        timezone: 'America/Guatemala',
+      },
+      select: { id: true },
+    });
+  });
+
   it('creates a BusinessUnit scoped to the just-created Company', async () => {
     await provisionOrgDefaults(tx as never, ORG_ID, 'Acme Corp');
 

@@ -24,6 +24,11 @@ const m = vi.hoisted(() => ({
   update: vi.fn(),
   findInterview: vi.fn(),
   userCount: vi.fn(),
+  // The evaluator guard: every proposed evaluator is an active recruiter (access is mocked allowed below).
+  userFindMany: vi.fn(async (args: { where: { id: { in: string[] } } }) =>
+    args.where.id.in.map((id) => ({ id, firstName: 'Eva', lastName: 'Lu', isActive: true, userRoles: [{ role: { slug: 'recruiter' } }] })),
+  ),
+  panelFindMany: vi.fn(async () => [] as Array<{ userId: string }>),
   findApp: vi.fn(),
   findForNotification: vi.fn(),
   sendRaw: vi.fn(),
@@ -43,7 +48,9 @@ const m = vi.hoisted(() => ({
 vi.mock('@tims/db', () => ({
   tenantDb: {
     interview: { create: m.create, update: m.update, findFirst: m.findInterview },
-    user: { count: m.userCount },
+    user: { count: m.userCount, findMany: m.userFindMany },
+    // The panel the reschedule guard reads (services/interview-evaluator-eligibility.service.ts).
+    interviewEvaluator: { findMany: m.panelFindMany },
     application: { findFirst: m.findApp },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),

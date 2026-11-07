@@ -5,7 +5,10 @@ using Tims.Domain.Identity;
 
 namespace Tims.Application.PlatformInvitations;
 
-public sealed record OrganizationInvitationInput(string Email, string OrganizationName, string OrganizationSlug, string OrganizationPlan = "trial");
+/// <param name="LocaleProfile">Country, time zone, currency and number locale ("Invitar organización" always
+/// sends it). Null = the pre-profile behaviour: empty settings and a CR company on the column defaults.</param>
+public sealed record OrganizationInvitationInput(string Email, string OrganizationName, string OrganizationSlug,
+    string OrganizationPlan = "trial", OrgLocaleProfile? LocaleProfile = null);
 public sealed record OrganizationInvitationResponse(Guid Id, Guid OrganizationId, string Delivery);
 public sealed record OrganizationInvitationPending(InvitationResendSnapshot Snapshot, DateTime ExpiresAt);
 public interface IOrganizationInvitationCreateRepository
@@ -22,7 +25,8 @@ public sealed class OrganizationInvitationCreateUseCase(IOrganizationInvitationC
         input.OrganizationSlug.Length is >= 2 and <= 63 &&
         input.OrganizationSlug.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-') &&
         PlatformOrganizationsCreateUseCase.Plans.Contains(input.OrganizationPlan, StringComparer.Ordinal) &&
-        PlatformOrganizationsCreateUseCase.IsValidEmail(input.Email);
+        PlatformOrganizationsCreateUseCase.IsValidEmail(input.Email) &&
+        (input.LocaleProfile is null || OrgLocaleProfileRules.IsValid(input.LocaleProfile));
 
     public async Task<OrganizationInvitationResponse?> ExecuteAsync(OrganizationInvitationInput input,
         Guid actorId, Uri appOrigin, CancellationToken ct)

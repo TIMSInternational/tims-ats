@@ -26,15 +26,21 @@ export function contractTypeLabel(slug: string): string {
   return CONTRACT_TYPE_LABELS_ES[slug] ?? slug;
 }
 
-/** "CRC 850 000" in es-CR; a non-ISO stored value is shown verbatim next to plain digits. */
-export function formatOfferMoney(amount: number, currency: string): string {
+/** The number locale when the organization has none (the pilot tenant's). */
+export const DEFAULT_OFFER_MONEY_LOCALE = 'es-CR';
+
+/**
+ * "CRC 850 000" in es-CR — or in the organization's own locale ("GTQ 8,500" in es-GT); a non-ISO stored
+ * value is shown verbatim next to plain digits.
+ */
+export function formatOfferMoney(amount: number, currency: string, locale: string = DEFAULT_OFFER_MONEY_LOCALE): string {
   const code = currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(code)) {
-    const digits = new Intl.NumberFormat('es-CR', { maximumFractionDigits: 2 }).format(amount);
+    const digits = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(amount);
     return currency.trim() ? `${currency.trim()} ${digits}` : digits;
   }
   const fraction = ZERO_DECIMAL.has(code) || Number.isInteger(amount) ? 0 : 2;
-  return new Intl.NumberFormat('es-CR', {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: code,
     currencyDisplay: 'code',
@@ -57,6 +63,8 @@ export type OfferAcceptedCopyInput = {
   timeZone: string | null;
   /** The organization's candidate contact (services/candidate-contact.ts); the line is omitted without one. */
   contactEmail: string | null;
+  /** The organization's number locale (settings.locale); es-CR when it has none. */
+  locale?: string | null;
 };
 
 function formatStartDate(d: Date): string {
@@ -66,7 +74,8 @@ function formatStartDate(d: Date): string {
 
 export function renderOfferAcceptedCopy(p: OfferAcceptedCopyInput): { subject: string; html: string } {
   const monthly = p.annualSalary / 12;
-  const salary = `${formatOfferMoney(monthly, p.currency)} al mes (${formatOfferMoney(p.annualSalary, p.currency)} al año)`;
+  const moneyLocale = p.locale ?? DEFAULT_OFFER_MONEY_LOCALE;
+  const salary = `${formatOfferMoney(monthly, p.currency, moneyLocale)} al mes (${formatOfferMoney(p.annualSalary, p.currency, moneyLocale)} al año)`;
   const contact = p.contactEmail
     ? paragraph(
         `Si tiene preguntas, escríbanos a <a href="mailto:${esc(p.contactEmail)}" style="color:#1F114C;text-decoration:underline;">${esc(p.contactEmail)}</a>.`,

@@ -75,6 +75,15 @@ describe('offerDraftRepository', () => {
     });
   });
 
+  it('an edit of the pay is also a compare-and-set on the salary and currency it was computed from', async () => {
+    mockDb.offer.updateMany.mockResolvedValueOnce({ count: 1 });
+    await offerDraftRepository.updateDraft(ORG, OFFER, { currency: 'CRC' }, { salary: 12_000, currency: 'USD' });
+    expect(mockDb.offer.updateMany).toHaveBeenCalledWith({
+      where: { id: OFFER, organizationId: ORG, status: 'draft', salary: 12_000, currency: 'USD' },
+      data: { currency: 'CRC' },
+    });
+  });
+
   it('reads back the edited terms without settings (the signing token lives there)', async () => {
     mockDb.offer.findFirstOrThrow.mockResolvedValue({ id: OFFER });
     await offerDraftRepository.findEdited(ORG, OFFER);

@@ -5,7 +5,8 @@ import { CONTRACT_TYPES, withoutCopiedSections, inputCls, labelCls, positionCoun
 import { useI18n } from '../../../../lib/i18n';
 import { enumLabel, formatPortalSalary, parsePortalSalary } from '../../../(portal)/careers/[orgSlug]/_lib/vacancy-display';
 import { AiGeneratePanel, InclusiveCheckPanel } from './create-modal.ai-panel';
-import { currencyOptions } from '../../../../lib/currency-options';
+import type { SalaryBandStatus } from '../../../../lib/money-amount';
+import { SalaryBandFields, type SalaryBandPatch } from './salary-band-fields';
 
 interface Step1Props {
   title: string;
@@ -158,13 +159,13 @@ export function Step2Description({
 
 interface Step3Props {
   salaryMin: string;
-  setSalaryMin: (v: string) => void;
   salaryMax: string;
-  setSalaryMax: (v: string) => void;
   currency: string;
-  setCurrency: (v: string) => void;
   salaryPeriod: 'monthly' | 'yearly';
-  setSalaryPeriod: (v: 'monthly' | 'yearly') => void;
+  onSalaryChange: (patch: SalaryBandPatch) => void;
+  salaryStatus: SalaryBandStatus;
+  wideConfirmed: boolean;
+  onConfirmWide: (confirmed: boolean) => void;
   slaTargetDays: string;
   setSlaTargetDays: (v: string) => void;
   autoPublish: boolean;
@@ -179,20 +180,15 @@ interface Step3Props {
 }
 
 export function Step3Compensation({
-  salaryMin, setSalaryMin, salaryMax, setSalaryMax, currency, setCurrency,
-  salaryPeriod, setSalaryPeriod, slaTargetDays, setSlaTargetDays,
+  salaryMin, salaryMax, currency, salaryPeriod, onSalaryChange, salaryStatus, wideConfirmed, onConfirmWide,
+  slaTargetDays, setSlaTargetDays,
   autoPublish, setAutoPublish, requireApproval, setRequireApproval,
   title, location, remotePolicy, contractType, positions,
 }: Step3Props) {
   const { t, locale } = useI18n();
-  const currencies = currencyOptions();
   // Same formatter as the vacancy detail and the careers portal: currency code + period, locale grouping.
-  const salary = parsePortalSalary({
-    min: salaryMin ? Number(salaryMin) : undefined,
-    max: salaryMax ? Number(salaryMax) : undefined,
-    currency,
-    period: salaryPeriod,
-  });
+  // The amounts are what the band parsed (lib/money-amount.ts), never Number() of the typed text.
+  const salary = parsePortalSalary({ min: salaryStatus.min, max: salaryStatus.max, currency, period: salaryPeriod });
   const salaryText = salary ? formatPortalSalary(salary, locale, t.portal) : null;
   const remoteLabel = enumLabel(remotePolicy, t.portal.remotePolicies);
   const contractLabel = enumLabel(contractType, t.portal.contractTypes);
@@ -200,31 +196,18 @@ export function Step3Compensation({
     <div className="space-y-5">
       <div>
         <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.vacancies.salaryRange}</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div>
-            <label className={labelCls}>{t.vacancies.salaryMin}</label>
-            <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder={t.vacancies.salaryMinPlaceholder} className={inputCls} />
-          </div>
-          <div>
-            <label className={labelCls}>{t.vacancies.salaryMax}</label>
-            <input type="number" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)} placeholder={t.vacancies.salaryMaxPlaceholder} className={inputCls} />
-          </div>
-          <div>
-            <label className={labelCls}>{t.vacancies.currency}</label>
-            <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={`${inputCls} bg-white`}>
-              {currencies.map((opt) => (
-                <option key={opt.code} value={opt.code}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>{t.vacancies.period}</label>
-            <select value={salaryPeriod} onChange={(e) => setSalaryPeriod(e.target.value as 'monthly' | 'yearly')} className={`${inputCls} bg-white`}>
-              <option value="monthly">{t.vacancies.monthly}</option>
-              <option value="yearly">{t.vacancies.yearly}</option>
-            </select>
-          </div>
-        </div>
+        <SalaryBandFields
+          idPrefix="create-vacancy"
+          salaryMin={salaryMin}
+          salaryMax={salaryMax}
+          currency={currency}
+          salaryPeriod={salaryPeriod}
+          onChange={onSalaryChange}
+          status={salaryStatus}
+          wideConfirmed={wideConfirmed}
+          onConfirmWide={onConfirmWide}
+          gridClassName="grid grid-cols-2 md:grid-cols-4 gap-3"
+        />
         {salaryText && <p className="text-[11px] text-[#8B8B8B] mt-2">{salaryText}</p>}
       </div>
 

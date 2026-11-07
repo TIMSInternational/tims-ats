@@ -46,7 +46,7 @@ public sealed class PlatformOrganizationEntity
 
     /// <summary>
     /// Mapped, and since #211 also SERIALIZED — the TS <c>include</c> returns it. Still NOT filtered on:
-    /// the TS reads do not filter it either (<c>organizations.ts:79,115</c>) and nothing in the codebase
+    /// the TS reads do not filter it either (<c>organizations.ts:81,117</c>) and nothing in the codebase
     /// writes it — <c>suspendOrganization</c> uses <c>is_active</c>. Reproducing the absence of the filter
     /// is deliberate parity; see the slice doc's "latent trap" note.
     /// </summary>
@@ -128,7 +128,7 @@ public sealed class PlatformOrganizationVacancyEntity
 /// <summary>
 /// The FULL <c>companies</c> row. The TS reaches this relation through a bare
 /// <c>companies: { include: { businessUnits: { include: { teams: true } } } }</c>
-/// (<c>organizations.ts:118</c>), which returns every scalar of all three tables — so every scalar is
+/// (<c>organizations.ts:120</c>), which returns every scalar of all three tables — so every scalar is
 /// mapped here too (#211). Narrowing belongs in both stacks at once, not on this side alone.
 /// </summary>
 public sealed class PlatformOrganizationCompanyEntity
@@ -255,7 +255,7 @@ public sealed class PlatformOrganizationBillingProfileEntity
 }
 
 /// <summary>
-/// Counted only, and only in <c>pending</c>/<c>sent</c> status (<c>organizations.ts:135-142</c>).
+/// Counted only, and only in <c>pending</c>/<c>sent</c> status (<c>organizations.ts:137-144</c>).
 /// <c>organization_id</c> is nullable in prod — a platform invitation can precede the org it creates.
 /// </summary>
 public sealed class PlatformOrganizationInvitationEntity

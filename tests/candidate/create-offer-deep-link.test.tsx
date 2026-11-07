@@ -35,7 +35,7 @@ describe('create offer from the 360', () => {
     m.mutateAsync.mockResolvedValue({ id: 'offer-9' });
     const onClose = vi.fn();
     const { container } = render(<CreateOfferModal candidateId="cand-1" applications={applications} onClose={onClose} />);
-    fireEvent.change(container.querySelector('input[type="number"]') as HTMLInputElement, { target: { value: '800000' } });
+    fireEvent.change(container.querySelector('#offer-salary-amount') as HTMLInputElement, { target: { value: '800000' } });
     const startDate = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
     fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, { target: { value: startDate } });
     fireEvent.change(screen.getByLabelText(/Tipo Contrato|Contract Type/), { target: { value: 'indefinido' } });

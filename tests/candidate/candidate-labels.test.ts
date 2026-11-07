@@ -63,6 +63,22 @@ describe('candidate source and pool labels', () => {
     }
   });
 
+  // Pilot copy: "Manual" alone read as a document; "consulting" is a free-text source in stored data that no
+  // picker offers — it gets a label without becoming a filter or picker option.
+  it('labels manual entry and the free-text "consulting" source, without adding a picker option', () => {
+    expect(candidateSourceLabel('manual', es.candidates)).toBe('Registro manual');
+    expect(candidateSourceLabel('consulting', es.candidates)).toBe('Consultora / headhunter');
+    expect(candidateSourceLabel(' Consulting ', es.candidates)).toBe('Consultora / headhunter');
+    expect(candidateSourceLabel('consulting', en.candidates)).toBe('Consulting firm / headhunter');
+    expect(CANDIDATE_SOURCES as readonly string[]).not.toContain('consulting');
+  });
+
+  it('names the silver-medalist pool in plain Spanish', () => {
+    expect(candidatePoolLabel('silver_medalist', es.candidates)).toBe('Finalista anterior');
+    expect(es.candidates.poolType).toBe('Tipo de candidato');
+    expect(es.candidates.addToPool).toBe('Agregar al banco de talento');
+  });
+
   it('never prints a raw snake_case slug for an unknown value, and a dash for none', () => {
     expect(candidateSourceLabel('feria_de_empleo', es.candidates)).toBe('Feria de empleo');
     expect(candidatePoolLabel(null, es.candidates)).toBe('—');

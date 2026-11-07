@@ -2,6 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
+import { orgLocaleProfileSchema } from '@tims/shared';
 import { trpc } from '../trpc';
 import { useI18n } from '../i18n';
 import { isPlatformApiEnabled, platformPost } from './client';
@@ -11,6 +12,7 @@ const inputSchema = z.object({
   organizationName: z.string().min(2).max(100).regex(/^[^\u0000-\u001f\u007f-\u009f]*$/),
   organizationSlug: z.string().min(2).max(63).regex(/^[a-z0-9-]+$/),
   organizationPlan: z.enum(['trial', 'starter', 'professional', 'enterprise']).default('trial'),
+  localeProfile: orgLocaleProfileSchema.optional(),
 }).strict();
 const responseSchema = z.object({
   id: z.string().uuid(),

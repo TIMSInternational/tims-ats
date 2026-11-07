@@ -51,7 +51,7 @@ public sealed record PlatformOrganizationRow(
     [property: JsonConverter(typeof(NodeIsoNullableDateTimeConverter))] DateTime? DeletedAt);
 
 /// <summary>
-/// Validated input for <c>updateOrganization</c> (<c>organizations.ts:244-258</c>).
+/// Validated input for <c>updateOrganization</c> (<c>organizations.ts:250-259</c>).
 ///
 /// <para><b>null means ABSENT, not "clear it".</b> Every UPDATABLE field on the Zod schema is
 /// <c>.optional()</c> — which rejects an explicit <c>null</c> — and the TS body only copies a field into
@@ -59,9 +59,9 @@ public sealed record PlatformOrganizationRow(
 /// untouched; there is no input that can null a column here, and adding one would be a divergence.</para>
 ///
 /// <para><see cref="Settings"/> distinguishes the two cases that matter: <c>null</c> = the key was absent
-/// (the <c>settings</c> column is not written at all), a non-null instance with three null members =
-/// <c>"settings": {}</c> was sent (the column IS written, to an empty object — Prisma REPLACES the jsonb,
-/// it does not merge).</para>
+/// (the <c>settings</c> column is not touched at all), a non-null instance = its present members are MERGED
+/// into the stored object (#201) — every key it does not name, <c>candidateContactEmail</c> included, is kept.
+/// <c>"settings": {}</c> is therefore a no-op on the column (it still appears in the audit payload).</para>
 /// </summary>
 public sealed record PlatformOrganizationUpdateInput(
     string? Name,
@@ -70,11 +70,13 @@ public sealed record PlatformOrganizationUpdateInput(
     PlatformOrganizationSettingsInput? Settings);
 
 /// <summary>
-/// The <c>settings</c> sub-object (<c>organizations.ts:251-257</c>). Each member is
-/// <c>.optional()</c> with a max length, so <c>null</c> = absent here too and an absent member is omitted
-/// from the written JSON entirely (Zod strips unknown keys; <c>JSON.stringify</c> drops <c>undefined</c>).
+/// The <c>settings</c> sub-object: the locale-profile keys of <c>orgLocaleSettingsPatchSchema</c>
+/// (<c>packages/shared/src/org-locale-profile.ts</c>). Each member is <c>.optional()</c> and validated by
+/// <see cref="OrgLocaleProfileRules"/>, so <c>null</c> = absent here too and an absent member is omitted from
+/// the merged JSON entirely (<c>JSON.stringify</c> drops <c>undefined</c>). <see cref="Country"/> is last, in
+/// the Zod declaration order the audit <c>changes</c> bytes follow.
 /// </summary>
-public sealed record PlatformOrganizationSettingsInput(string? Locale, string? Timezone, string? Currency);
+public sealed record PlatformOrganizationSettingsInput(string? Locale, string? Timezone, string? Currency, string? Country = null);
 
 /// <summary>
 /// One <c>notifications</c> row as the TS <c>notify()</c> helper builds it (<c>lib/notify.ts:16-41</c>),

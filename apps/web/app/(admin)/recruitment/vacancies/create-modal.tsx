@@ -14,7 +14,9 @@ import {
   type CompetencyDraft,
   type CompetencySuggestion,
 } from './competencies-model';
-import { DEFAULT_TENANT_CURRENCY } from '../../../../lib/tenant-locale';
+import { isSalaryBandBlocked, salaryBandStatus } from '../../../../lib/money-amount';
+import type { SalaryBandPatch } from './salary-band-fields';
+import { useTenantLocale } from '../../../../lib/tenant-locale-context';
 
 interface CreateModalProps {
   onConfirm: (data: VacancyFormData) => void;
@@ -56,8 +58,22 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   // Step 3: Compensation & settings
   const [salaryMin, setSalaryMin] = useState('');
   const [salaryMax, setSalaryMax] = useState('');
-  const [currency, setCurrency] = useState<string>(DEFAULT_TENANT_CURRENCY);
+  // The organization's currency until the recruiter picks one (null = not chosen yet, so a profile that
+  // loads after the wizard opened still becomes the default).
+  const tenant = useTenantLocale();
+  const [chosenCurrency, setCurrency] = useState<string | null>(null);
+  const currency = chosenCurrency ?? tenant.currency;
   const [salaryPeriod, setSalaryPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  // The band the person confirmed as correct although its minimum is below a tenth of its maximum.
+  const [confirmedRangeKey, setConfirmedRangeKey] = useState<string | null>(null);
+  const salaryStatus = salaryBandStatus(salaryMin, salaryMax, currency);
+  const isSalaryBlocked = isSalaryBandBlocked(salaryStatus, confirmedRangeKey);
+  const changeSalary = (patch: SalaryBandPatch) => {
+    if (patch.salaryMin !== undefined) setSalaryMin(patch.salaryMin);
+    if (patch.salaryMax !== undefined) setSalaryMax(patch.salaryMax);
+    if (patch.currency !== undefined) setCurrency(patch.currency);
+    if (patch.salaryPeriod !== undefined) setSalaryPeriod(patch.salaryPeriod);
+  };
   const [slaTargetDays, setSlaTargetDays] = useState('30');
   const [autoPublish, setAutoPublish] = useState(false);
   const [requireApproval, setRequireApprovalState] = useState(true);
@@ -82,13 +98,10 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   };
 
   const handleSubmit = () => {
-    if (!isStep1Valid || !isStep2Valid) return;
-    const salary = (salaryMin || salaryMax) ? {
-      min: salaryMin ? parseInt(salaryMin) : undefined,
-      max: salaryMax ? parseInt(salaryMax) : undefined,
-      currency,
-      period: salaryPeriod,
-    } : undefined;
+    if (!isStep1Valid || !isStep2Valid || isSalaryBlocked) return;
+    // The parsed amounts (grouping accepted, whole numbers for CRC/COP…), never parseInt of the typed text.
+    const { min, max } = salaryStatus;
+    const salary = min !== undefined || max !== undefined ? { min, max, currency, period: salaryPeriod } : undefined;
 
     onConfirm({
       title: title.trim(),
@@ -183,10 +196,11 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
 
       {step === 3 && (
         <Step3Compensation
-          salaryMin={salaryMin} setSalaryMin={setSalaryMin}
-          salaryMax={salaryMax} setSalaryMax={setSalaryMax}
-          currency={currency} setCurrency={setCurrency}
-          salaryPeriod={salaryPeriod} setSalaryPeriod={setSalaryPeriod}
+          salaryMin={salaryMin} salaryMax={salaryMax} currency={currency} salaryPeriod={salaryPeriod}
+          onSalaryChange={changeSalary}
+          salaryStatus={salaryStatus}
+          wideConfirmed={confirmedRangeKey === salaryStatus.rangeKey}
+          onConfirmWide={(confirmed) => setConfirmedRangeKey(confirmed ? salaryStatus.rangeKey : null)}
           slaTargetDays={slaTargetDays} setSlaTargetDays={setSlaTargetDays}
           autoPublish={autoPublish} setAutoPublish={setAutoPublish}
           requireApproval={requireApproval} setRequireApproval={setRequireApproval}
@@ -227,7 +241,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={!isStep1Valid || !isStep2Valid || isPending}
+              disabled={!isStep1Valid || !isStep2Valid || isPending || isSalaryBlocked}
               className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
             >
               {isPending ? t.vacancies.creatingVacancy : t.vacancies.createVacancySubmit}

@@ -134,4 +134,24 @@ describe('rejectionEmailService.send', () => {
     m.findForNotification.mockRejectedValue(new Error('boom'));
     await expect(rejectionEmailService.send(ORG, APP)).resolves.toBe(false);
   });
+
+  // The notice is in the language the candidate applied in (consent evidence), else the company's.
+  it('writes in the language the candidate applied in, over the company language', async () => {
+    m.findForNotification.mockResolvedValue(notification({ candidateLocale: 'en' }));
+    await rejectionEmailService.send(ORG, APP);
+    const args = m.sendEmail.mock.calls[0]![0] as { subject: string };
+    expect(args.subject).toBe('An update on your application — Analista Financiero');
+  });
+
+  it('falls back to the company language when the candidate locale is unknown', async () => {
+    const english = { ...notification().application, vacancy: { title: 'Analista Financiero', company: { language: 'en-US' } } };
+    m.findForNotification.mockResolvedValue(notification({ application: english, candidateLocale: null }));
+    await rejectionEmailService.send(ORG, APP);
+    expect((m.sendEmail.mock.calls[0]![0] as { subject: string }).subject).toMatch(/^An update on your application/);
+
+    m.sendEmail.mockClear();
+    m.findForNotification.mockResolvedValue(notification({ candidateLocale: null }));
+    await rejectionEmailService.send(ORG, APP);
+    expect((m.sendEmail.mock.calls[0]![0] as { subject: string }).subject).toMatch(/^Actualización de su postulación/);
+  });
 });

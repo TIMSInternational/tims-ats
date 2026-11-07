@@ -32,6 +32,7 @@ const m = vi.hoisted(() => ({
   txOutcome: [] as string[],
   evaluatorDeleteMany: vi.fn(),
   evaluatorFindMany: vi.fn(),
+  userFindMany: vi.fn(),
   orgFindFirst: vi.fn(),
   vacancyFindFirst: vi.fn(),
   jobProfileFindFirst: vi.fn(),
@@ -51,6 +52,8 @@ vi.mock('@tims/db', () => ({
       update: m.interviewUpdate,
     },
     interviewEvaluator: { deleteMany: m.evaluatorDeleteMany, findMany: m.evaluatorFindMany },
+    // The evaluator guard (services/interview-evaluator-eligibility.service.ts); the panel is empty by default.
+    user: { findMany: m.userFindMany },
     organization: { findFirst: m.orgFindFirst },
     vacancy: { findFirst: m.vacancyFindFirst },
     jobProfile: { findFirst: m.jobProfileFindFirst },
@@ -119,6 +122,8 @@ beforeEach(() => {
   m.txCardCount.mockResolvedValue(0);
   m.txOutcome.length = 0;
   m.evaluatorDeleteMany.mockResolvedValue({ count: 1 });
+  m.evaluatorFindMany.mockResolvedValue([]);
+  m.userFindMany.mockResolvedValue([]);
   m.txUserFind.mockResolvedValue({ id: OTHER_ID });
   m.txEvaluatorCreate.mockResolvedValue({ id: 'ie-1' });
   m.notify.mockResolvedValue(undefined);

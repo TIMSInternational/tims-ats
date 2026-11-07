@@ -69,22 +69,42 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
     }
 
     [Fact]
-    public async Task UpdateAsync_replaces_the_settings_column_rather_than_merging_it()
+    public async Task UpdateAsync_merges_the_settings_patch_and_keeps_every_other_key()
     {
-        var org = await SeedOrganizationAsync("Settings Target", "trial", """{"locale":"es","timezone":"America/Bogota"}""");
+        // #201, inverted: the edit used to REPLACE the column, wiping candidateContactEmail and any other key.
+        var org = await SeedOrganizationAsync("Settings Target", "trial",
+            """{"locale":"es-CR","timezone":"America/Costa_Rica","candidateContactEmail":"talento@example.test","custom":{"k":1}}""");
         await using var db = fixture.NewContext(fixture.ConnectionString);
         var repository = new PlatformOrganizationsWriteRepository(db);
 
-        var input = new PlatformOrganizationUpdateInput(null, null, null, new PlatformOrganizationSettingsInput("en", null, null));
+        var input = new PlatformOrganizationUpdateInput(null, null, null,
+            new PlatformOrganizationSettingsInput(null, "America/Guatemala", "GTQ", "GT"));
         await repository.UpdateAsync(
             org, input, PlatformOrganizationsWriteUseCase.BuildUpdateChangesJson(input),
             PlatformOrganizationsWriteFixture.Actor, Now, CancellationToken.None);
 
-        // Prisma REPLACES a Json column; the pre-existing timezone is gone. Destructive and surprising, and
-        // reproduced deliberately — narrowing it during a port makes a step-5 parity diff uninterpretable.
-        // Tracked as #201; THIS ASSERTION INVERTS when that lands.
         var stored = await fixture.ReadOrganizationAsync(org);
-        Assert.Equal("""{"locale": "en"}""", stored!.Settings);
+        Assert.Equal(
+            """{"custom": {"k": 1}, "locale": "es-CR", "country": "GT", "currency": "GTQ", "timezone": "America/Guatemala", "candidateContactEmail": "talento@example.test"}""",
+            stored!.Settings);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_treats_a_non_object_settings_value_as_empty_when_merging()
+    {
+        // Never written by the product; the TS mergeOrgSettings does the same (a jsonb `array || object` would
+        // otherwise APPEND the patch to the array).
+        var org = await SeedOrganizationAsync("Array Settings", "trial", """["legacy"]""");
+        await using var db = fixture.NewContext(fixture.ConnectionString);
+        var repository = new PlatformOrganizationsWriteRepository(db);
+
+        var input = new PlatformOrganizationUpdateInput(null, null, null, new PlatformOrganizationSettingsInput("es-GT", null, null));
+        await repository.UpdateAsync(
+            org, input, PlatformOrganizationsWriteUseCase.BuildUpdateChangesJson(input),
+            PlatformOrganizationsWriteFixture.Actor, Now, CancellationToken.None);
+
+        var stored = await fixture.ReadOrganizationAsync(org);
+        Assert.Equal("""{"locale": "es-GT"}""", stored!.Settings);
     }
 
     [Fact]
@@ -127,7 +147,7 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
 
         var audit = Assert.Single(await fixture.ReadAuditRowsAsync(org));
         Assert.Equal(expectedAction, audit.Action);
-        // organizations.ts:309-319 sets NO `changes` key for this audit — the action carries the direction.
+        // organizations.ts:319-329 sets NO `changes` key for this audit — the action carries the direction.
         Assert.Null(audit.ChangesType);
     }
 

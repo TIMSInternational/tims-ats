@@ -12,6 +12,7 @@ import {
   type OfferStatusLabels,
 } from '../../../../../lib/offer-status';
 import { displayOfferStatus } from '@tims/shared';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
 // Badge colours per status; labels come from i18n (lib/offer-status.ts), so no status prints raw (B-03).
 const STATUS_CLASSES: Record<string, string> = {
@@ -68,6 +69,7 @@ export function OfferTable({
   showMinePendingFilter = false,
 }: OfferTableProps) {
   const { t } = useI18n();
+  const { intlLocale } = useTenantLocale();
   const map = statusMap(t.offers);
 
   const columns = [
@@ -156,7 +158,7 @@ export function OfferTable({
               </td>
               <td className="px-4 py-3">
                 <span className="text-[13px] font-medium text-[#333]">
-                  {formatMoneyCode(offer.salary, offer.currency)} / {t.offers.perYear}
+                  {formatMoneyCode(offer.salary, offer.currency, intlLocale)} / {t.offers.perYear}
                 </span>
               </td>
               <td className="px-4 py-3">

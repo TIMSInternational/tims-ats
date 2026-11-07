@@ -1,5 +1,5 @@
 import { runWithTenant } from '@tims/db';
-import { logger, orgSettingsTimeZone, resolveInterviewTimeZone } from '@tims/shared';
+import { logger, orgSettingsLocale, orgSettingsTimeZone, resolveInterviewTimeZone } from '@tims/shared';
 import { sendEmail } from '../lib/ses';
 import { sesOfferCircuit } from '../lib/circuit-breaker';
 import { offerAcceptedCopyRepository } from '../repositories/offer-accepted-copy.repository';
@@ -43,6 +43,7 @@ export async function sendOfferAcceptedCopy(
       acceptedAt: offer.respondedAt ?? acceptance.at,
       timeZone: resolveInterviewTimeZone(orgSettingsTimeZone(organization.settings), offer.vacancy?.company?.timezone),
       contactEmail,
+      locale: orgSettingsLocale(organization.settings),
     });
     const sent = await sendEmail({
       to,

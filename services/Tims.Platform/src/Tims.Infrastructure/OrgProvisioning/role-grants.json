@@ -1215,6 +1215,11 @@
         },
         {
           "module": "vacancy",
+          "action": "update",
+          "scope": "team"
+        },
+        {
+          "module": "vacancy",
           "action": "approve",
           "scope": "team"
         },

@@ -20,7 +20,11 @@ vi.mock('../../packages/ai/src/registry', () => ({
   },
 }));
 
-import { generateVacancyDescription } from '../../packages/ai/src/agents/vacancy-writer';
+import {
+  VACANCY_WRITER_PROMPT_REVISION,
+  VACANCY_WRITER_SYSTEM_PROMPT,
+  generateVacancyDescription,
+} from '../../packages/ai/src/agents/vacancy-writer';
 import { bedrockGenerate, BedrockTimeoutError } from '../../packages/ai/src/client';
 import { checkBudget } from '../../packages/ai/src/budget';
 import { getCached } from '../../packages/ai/src/cache';
@@ -84,6 +88,34 @@ describe('generateVacancyDescription (vacancy-writer agent)', () => {
     expect(systemPrompt).toMatch(/whatsapp/i);
     expect(userMessage).toContain('Backend Engineer');
     expect(userMessage).toContain('Remote, fintech');
+  });
+
+  // Pilot companies are in more than one country (Costa Rica first, then Guatemala): the writer must not
+  // target one country's Spanish, and descriptions cached under the old Colombia-targeted prompt must miss.
+  it('asks for neutral Latin American Spanish, never one country', () => {
+    expect(VACANCY_WRITER_SYSTEM_PROMPT).toMatch(/neutral Latin American Spanish/);
+    expect(VACANCY_WRITER_SYSTEM_PROMPT).not.toMatch(/Colombia|Costa Rica|Guatemala/);
+  });
+
+  it('keys the cache on the prompt revision so entries from the previous prompt are never served', async () => {
+    vi.mocked(bedrockGenerate).mockResolvedValue({
+      text: JSON.stringify(VALID_PAYLOAD),
+      inputTokens: 1,
+      outputTokens: 1,
+      model: 'haiku',
+      latencyMs: 1,
+    });
+
+    await generateVacancyDescription('org-1', 'Backend Engineer');
+
+    expect(VACANCY_WRITER_PROMPT_REVISION).toBeGreaterThanOrEqual(2);
+    expect(vi.mocked(getCached).mock.calls[0]?.[2]).toEqual({
+      title: 'Backend Engineer',
+      context: null,
+      // #421's competency-suggestion output version is part of the key too.
+      outputVersion: 2,
+      promptRevision: VACANCY_WRITER_PROMPT_REVISION,
+    });
   });
 
   it('throws instead of offering raw text when Bedrock returns unparseable output', async () => {

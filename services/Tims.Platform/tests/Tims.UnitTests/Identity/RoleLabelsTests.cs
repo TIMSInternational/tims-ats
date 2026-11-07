@@ -8,7 +8,7 @@ public sealed class RoleLabelsTests
     [Theory]
     [InlineData("super_admin", "Super Administrador", "Super Administrator")]
     [InlineData("hr_admin", "Administrador de RR. HH.", "HR Administrator")]
-    [InlineData("hrbp", "HR Business Partner (HRBP)", "HR Business Partner (HRBP)")]
+    [InlineData("hrbp", "Socio de negocio de RR. HH. (HRBP)", "HR Business Partner (HRBP)")]
     [InlineData("recruiter", "Reclutador", "Recruiter")]
     [InlineData("leader", "Líder", "Leader")]
     [InlineData("committee", "Comité de entrevista", "Interview committee")]

@@ -166,7 +166,8 @@ export const candidatePortalRepo = {
         duration: true,
         location: true,
         meetingUrl: true,
-        vacancy: { select: { title: true } },
+        // The company zone is the fallback the interview email uses (resolveInterviewTimeZone).
+        vacancy: { select: { title: true, company: { select: { timezone: true } } } },
       },
       orderBy: { scheduledAt: 'asc' },
     });

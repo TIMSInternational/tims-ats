@@ -22,6 +22,10 @@ const countRejected = vi.fn();
 const sendOffer = vi.fn();
 
 // The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+// The send also moves the candidate to the "Oferta" stage; that is tested in tests/offer/offer-sent-stage-advance.test.ts.
+vi.mock('../../packages/api/src/services/offer-stage-advance.service', () => ({
+  prepareOfferStageAdvance: vi.fn(async () => ({ advance: vi.fn(async () => 'moved') })),
+}));
 vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
   assertApplicationNotRejected: vi.fn(async () => undefined),

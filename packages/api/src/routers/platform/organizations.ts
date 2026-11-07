@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { router } from '../../trpc';
 import { db, SubscriptionStatus, OrgPlan, InvitationStatus, InvoiceStatus } from '@tims/db';
+import type { Prisma } from '@tims/db';
+import { mergeOrgSettings, orgLocaleProfileSchema, orgLocaleSettings, orgLocaleSettingsPatchSchema } from '@tims/shared';
 import { TRPCError } from '@trpc/server';
 import { notify } from '../../lib/notify';
 import { platformProcedure } from './_common';
@@ -178,6 +180,9 @@ export const organizationsRouter = router({
         // bound".
         adminEmail: z.string().email().max(254),
         billingEmail: z.string().email().max(254).optional(),
+        // Country, time zone, currency and number locale ("Nueva organización" always sends it). Absent =
+        // the pre-profile behaviour: empty settings and a CR company on the column defaults.
+        localeProfile: orgLocaleProfileSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -188,6 +193,7 @@ export const organizationsRouter = router({
             slug: input.slug,
             plan: input.plan,
             billingEmail: input.billingEmail || input.adminEmail,
+            ...(input.localeProfile ? { settings: orgLocaleSettings(input.localeProfile) } : {}),
           },
         });
 
@@ -198,7 +204,7 @@ export const organizationsRouter = router({
         // precedent as INVU's `provisionInvu` (professional plan, full ats-base
         // bundle) — this is a sane starter default, fully operator-editable
         // afterward via the platform entitlements admin UI.
-        await provisionOrgDefaults(tx, org.id, input.name);
+        await provisionOrgDefaults(tx, org.id, input.name, input.localeProfile);
         await provisionOrgEntitlements(tx, org.id);
 
         await provisionOrgRoles(tx, org.id);
@@ -246,13 +252,8 @@ export const organizationsRouter = router({
         name: z.string().max(100).optional(),
         plan: z.nativeEnum(OrgPlan).optional(),
         isActive: z.boolean().optional(),
-        settings: z
-          .object({
-            locale: z.string().max(10).optional(),
-            timezone: z.string().max(50).optional(),
-            currency: z.string().max(10).optional(),
-          })
-          .optional(),
+        // The locale profile keys (locale, timezone, currency, country), each validated (#201).
+        settings: orgLocaleSettingsPatchSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -261,14 +262,23 @@ export const organizationsRouter = router({
         name?: string;
         plan?: OrgPlan;
         isActive?: boolean;
-        settings?: { locale?: string; timezone?: string; currency?: string };
+        settings?: Prisma.InputJsonObject;
       } = {};
       if (rest.name !== undefined) updateData.name = rest.name;
       if (rest.plan !== undefined) updateData.plan = rest.plan;
       if (rest.isActive !== undefined) updateData.isActive = rest.isActive;
-      if (rest.settings !== undefined) updateData.settings = rest.settings;
 
-      const org = await db.organization.update({ where: { id }, data: updateData });
+      // `settings` is MERGED into the stored object, never replaced (#201): keys the patch does not name
+      // (candidateContactEmail and any other) survive. The row is locked first so a concurrent writer cannot
+      // slip between the read and the write. C# does the same with `settings || patch` in one UPDATE.
+      const org = await db.$transaction(async (tx) => {
+        if (rest.settings !== undefined) {
+          const rows = await tx.$queryRaw<{ settings: unknown }[]>`
+            SELECT settings FROM organizations WHERE id = ${id}::uuid FOR UPDATE`;
+          updateData.settings = mergeOrgSettings(rows[0]?.settings, rest.settings) as Prisma.InputJsonObject;
+        }
+        return tx.organization.update({ where: { id }, data: updateData });
+      });
 
       await db.auditLog
         .create({

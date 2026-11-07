@@ -53,10 +53,20 @@ export const offerDraftRepository = {
   /**
    * Compare-and-set on `draft`: writes only while the offer is still a draft, so a submission for approval that
    * lands between the caller's status check and this write cannot change the terms approvers are asked to
-   * approve. Returns whether the write applied.
+   * approve. `unchanged` (an edit of the pay) also requires the salary and currency the caller computed its write
+   * from to still be stored, so two concurrent edits cannot interleave into a pair neither produced (USD 12 000,
+   * then "CRC" and "24 000.12" = a fractional colón salary) or overwrite each other's amount. Returns whether the
+   * write applied.
    */
-  async updateDraft(organizationId: string, id: string, data: Prisma.OfferUpdateManyMutationInput): Promise<boolean> {
-    const updated = await tenantDb.offer.updateMany({ where: { id, organizationId, status: 'draft' }, data });
+  async updateDraft(
+    organizationId: string,
+    id: string,
+    data: Prisma.OfferUpdateManyMutationInput,
+    unchanged?: { salary: number; currency: string },
+  ): Promise<boolean> {
+    const where: Prisma.OfferWhereInput = { id, organizationId, status: 'draft' };
+    if (unchanged) Object.assign(where, { salary: unchanged.salary, currency: unchanged.currency });
+    const updated = await tenantDb.offer.updateMany({ where, data });
     return updated.count === 1;
   },
 

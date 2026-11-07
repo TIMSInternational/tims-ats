@@ -1,4 +1,5 @@
-// lib/role-labels.ts: labels from the shared map, and the pilot role list (decision D-HRBP = drop-v1).
+// lib/role-labels.ts: labels from the shared map, and the pilot role list (decision D-HRBP = drop-v1; Líder
+// offered since the owner decision of 2026-11-06).
 import { describe, expect, it } from 'vitest';
 import es from '../../apps/web/lib/i18n/es.json';
 import {
@@ -32,19 +33,20 @@ describe('role labels', () => {
 });
 
 describe('pilot role list (D-HRBP drop-v1)', () => {
-  it('hides exactly hrbp and leader, behind one constant', () => {
-    expect([...PILOT_HIDDEN_ROLE_SLUGS].sort()).toEqual(['hrbp', 'leader']);
-    expect(isRoleOfferedInScope('leader', 'pilot')).toBe(false);
+  it('hides exactly hrbp, behind one constant; leader is offered in the pilot', () => {
+    expect([...PILOT_HIDDEN_ROLE_SLUGS].sort()).toEqual(['hrbp']);
+    expect(isRoleOfferedInScope('leader', 'pilot')).toBe(true);
     expect(isRoleOfferedInScope('hrbp', 'pilot')).toBe(false);
     expect(isRoleOfferedInScope('committee', 'pilot')).toBe(true);
     expect(isRoleOfferedInScope('leader', 'full')).toBe(true);
   });
 
-  it('pilot: offers the five pilot roles, labelled and in catalogue order (not DB-name order)', () => {
+  it('pilot: offers the six pilot roles, labelled and in catalogue order (not DB-name order)', () => {
     expect(roleOptions(DB_ROLES, es.roles, { scope: 'pilot' })).toEqual([
       { slug: 'super_admin', label: 'Super Administrador' },
       { slug: 'hr_admin', label: 'Administrador de RR. HH.' },
       { slug: 'recruiter', label: 'Reclutador' },
+      { slug: 'leader', label: 'Líder' },
       { slug: 'committee', label: 'Comité de entrevista' },
       { slug: 'employee', label: 'Colaborador' },
     ]);
@@ -68,9 +70,9 @@ describe('pilot role list (D-HRBP drop-v1)', () => {
   });
 
   it('keeps a current value visible even when the pilot hides it', () => {
-    const slugs = staffRoleOptions(es.roles, { scope: 'pilot', keep: 'leader' }).map((r) => r.slug);
-    expect(slugs).toContain('leader');
-    expect(slugs).not.toContain('hrbp');
+    const slugs = staffRoleOptions(es.roles, { scope: 'pilot', keep: 'hrbp' }).map((r) => r.slug);
+    expect(slugs).toContain('hrbp');
+    expect(staffRoleOptions(es.roles, { scope: 'pilot' }).map((r) => r.slug)).not.toContain('hrbp');
   });
 
   it('reads NEXT_PUBLIC_LAUNCH_SCOPE when no scope is passed', () => {
@@ -81,6 +83,7 @@ describe('pilot role list (D-HRBP drop-v1)', () => {
         'super_admin',
         'hr_admin',
         'recruiter',
+        'leader',
         'committee',
         'employee',
       ]);

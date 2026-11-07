@@ -120,6 +120,11 @@ export const salarySchema = z
     currency: z.string().max(10).optional(),
     period: z.enum(['monthly', 'yearly']).default('monthly'),
   })
+  // Pilot call audit 2026-11-05: the wizard sent any band; the forms now refuse it too (lib/money-amount.ts).
+  .refine((salary) => salary.min === undefined || salary.max === undefined || salary.min <= salary.max, {
+    message: 'El salario mínimo no puede ser mayor que el máximo',
+    path: ['max'],
+  })
   .optional();
 
 export const settingsSchema = z

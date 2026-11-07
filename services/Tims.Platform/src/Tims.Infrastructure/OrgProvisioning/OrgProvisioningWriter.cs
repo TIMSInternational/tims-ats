@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tims.Application.PlatformOrganizations;
 
 namespace Tims.Infrastructure.OrgProvisioning;
 
@@ -46,9 +47,9 @@ public sealed record OrgDefaultsIds(Guid CompanyId, Guid BusinessUnitId, Guid Te
 public static class OrgProvisioningWriter
 {
     /// <summary>
-    /// <c>DEFAULT_COMPANY_COUNTRY</c> (<c>org-provisioning.ts</c>): the pilot tenant's country, Costa Rica. It was
-    /// a hard-coded <c>'CO'</c> in both stacks (Pilot UX re-audit company-admin data-60); no creation input
-    /// carries a country yet, so the default lives in one named place per stack and the two are pinned equal.
+    /// <c>DEFAULT_COMPANY_COUNTRY</c> (<c>org-provisioning.ts</c>): the pilot tenant's country, Costa Rica, used
+    /// when the creation input carries no locale profile (it was a hard-coded <c>'CO'</c> in both stacks, Pilot
+    /// UX re-audit company-admin data-60). One named place per stack; the two are pinned equal.
     /// </summary>
     public const string DefaultCountry = "CR";
 
@@ -72,11 +73,12 @@ public static class OrgProvisioningWriter
     /// <c>provisionOrgDefaults</c> (<c>org-provisioning.ts:13-34</c>): one <c>companies</c> row, one
     /// <c>business_units</c> row under it, one <c>teams</c> row under that.
     ///
-    /// <para>Strictly sequential with a <c>SaveChanges</c> per row, because each FKs the previous one. Every
-    /// other column is left to its DB default (<c>currency 'USD'</c>, <c>timezone 'America/Bogota'</c>,
-    /// <c>language 'es'</c>, <c>settings '{}'</c>, <c>is_active true</c>, <c>created_at</c>) or to NULL
-    /// (<c>legal_name</c>, <c>tax_id</c>, <c>code</c>, <c>parent_id</c>, <c>leader_id</c>), matching the TS
-    /// <c>create</c> payloads exactly.</para>
+    /// <para>Strictly sequential with a <c>SaveChanges</c> per row, because each FKs the previous one. With a
+    /// <paramref name="profile"/> the company takes its country, currency and time zone; without one the
+    /// country is <see cref="DefaultCountry"/> and <c>currency</c>/<c>timezone</c> stay the DB defaults. Every
+    /// other column is left to its DB default (<c>language 'es'</c>, <c>settings '{}'</c>, <c>is_active
+    /// true</c>, <c>created_at</c>) or to NULL (<c>legal_name</c>, <c>tax_id</c>, <c>code</c>,
+    /// <c>parent_id</c>, <c>leader_id</c>), matching the TS <c>create</c> payloads exactly.</para>
     /// </summary>
     /// <param name="companyName">
     /// Kept as a parameter even though all three TS callers pass the organization's own name: it IS a
@@ -89,7 +91,8 @@ public static class OrgProvisioningWriter
         Guid organizationId,
         string companyName,
         DateTime now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OrgLocaleProfile? profile = null)
     {
         EnsureCallerTransaction(db);
         now = ToPostgresTimestamp(now);
@@ -99,7 +102,9 @@ public static class OrgProvisioningWriter
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             Name = companyName,
-            Country = DefaultCountry,
+            Country = profile?.Country ?? DefaultCountry,
+            Currency = profile?.Currency,
+            Timezone = profile?.Timezone,
             UpdatedAt = now,
         };
 

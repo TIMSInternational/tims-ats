@@ -34,7 +34,7 @@ Output format: a single JSON object with this exact structure:
 }
 
 Rules:
-- Write in professional Spanish appropriate for Colombia/LATAM
+- Write in professional, neutral Latin American Spanish that reads naturally in any Spanish-speaking Latin American country; do not use vocabulary, slang, currencies, laws or place names specific to one country unless the input provides them
 - Use gender-neutral language (use "persona candidata" instead of "candidato")
 - Include specific, measurable responsibilities in the "formal" variant
 - "formal" should be concise but comprehensive; "social" must be noticeably shorter than "formal"; "whatsapp" must be the shortest and use plain text only (no markdown, no bullet symbols)
@@ -44,6 +44,11 @@ Rules:
 - "competencies" are suggestions for the interview scorecard (never part of the published text)
 
 ${COMPETENCY_SUGGESTION_RULES}`;
+
+// Part of the cache key (invokeAgent caches by `input`): bump it whenever the system prompt changes what a
+// generated description should read like, so an entry written under the old prompt (30-day TTL) is never served.
+// 2: the regional target went from "Colombia/LATAM" to neutral Latin American Spanish.
+export const VACANCY_WRITER_PROMPT_REVISION = 2;
 
 export const vacancyWriterOutputSchema = z.object({
   formal: z.object({
@@ -78,7 +83,12 @@ export async function generateVacancyDescription(
   const { data, model, inputTokens, outputTokens, validated } = await invokeAgent({
     slug: 'vacancy-writer',
     orgId,
-    input: { title, context: context ?? null, outputVersion: OUTPUT_VERSION },
+    input: {
+      title,
+      context: context ?? null,
+      outputVersion: OUTPUT_VERSION,
+      promptRevision: VACANCY_WRITER_PROMPT_REVISION,
+    },
     systemPrompt: VACANCY_WRITER_SYSTEM_PROMPT,
     buildUserMessage: ({ title, context }) => {
       const body = `Title: ${title}${context ? `\nAdditional context: ${context}` : ''}`;

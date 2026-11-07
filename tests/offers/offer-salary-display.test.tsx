@@ -186,9 +186,9 @@ describe('create offer form', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
     expect(amount.value).toBe('');
-    expect(amount.placeholder).toBe('8000000');
+    expect(amount.placeholder).toBe(money('8 000 000'));
     const selects = container.querySelectorAll('select');
     expect((selects[1] as HTMLSelectElement).value).toBe('monthly');
 
@@ -225,7 +225,7 @@ describe('create offer form', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications: twoVacancies, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
     fireEvent.change(amount, { target: { value: '8000000' } });
     expect(amount.value).toBe('8000000');
 
@@ -235,14 +235,14 @@ describe('create offer form', () => {
     expect((selects[2] as HTMLSelectElement).value).toBe('USD');
     expect(amount.value).toBe('');
     expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
-    expect(amount.placeholder).toBe('120000');
+    expect(amount.placeholder).toBe(money('120 000'));
   });
 
   it('keeps the vacancy reference in the vacancy currency and drops the placeholder when currencies differ', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
     expect(screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent).toContain(money('COP 8 000 000'));
 
     const selects = container.querySelectorAll('select');
@@ -404,6 +404,32 @@ describe('candidate-facing salary rendering', () => {
     expect(text).not.toContain('$');
   });
 
+  it("candidate portal offer card dates use the organization's own zone only, like the signing page", () => {
+    // Codex review of #424, round 2 (P2): a vacancy-company fallback here moved the start day away from the
+    // signing page's. 03:00 UTC on 1 December is still 30 November in Guatemala (GMT-6).
+    const offer = (company: { name: string; timezone?: string } | null) => ({
+      id: 'o1',
+      status: 'sent',
+      salary: 96_000_000,
+      currency: 'GTQ',
+      startDate: '2026-12-01T03:00:00Z',
+      contractType: 'indefinido',
+      expiresAt: null,
+      signingToken: null,
+      vacancy: { title: 'Analista', company },
+    });
+    const startText = (company: { name: string; timezone?: string } | null, timeZone: string | null = null) => {
+      portalOffers.mockReturnValue({ isLoading: false, isError: false, data: [offer(company)] });
+      const view = render(createElement(DashboardOffer, { orgSlug: 'acme', timeZone }));
+      const text = view.container.textContent ?? '';
+      view.unmount();
+      return text;
+    };
+    expect(startText({ name: 'GT Co', timezone: 'America/Guatemala' })).toContain('1 de diciembre de 2026');
+    expect(startText(null)).toContain('1 de diciembre de 2026');
+    expect(startText({ name: 'GT Co' }, 'America/Guatemala')).toContain('30 de noviembre de 2026');
+  });
+
   it('offer table labels the stored amount as annual with the ISO code', () => {
     const { container } = render(
       createElement(OfferTable, {
@@ -465,11 +491,74 @@ describe('create offer form — vacancy switching and bounds', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications: withBareVacancy, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
-    expect(amount.max).toBe('1000000000000');
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    // A text input: nothing (wheel, arrow keys) can step the amount, and the cap is enforced by the parser.
+    expect(amount.type).toBe('text');
+    expect(amount.inputMode).toBe('decimal');
     fireEvent.change(amount, { target: { value: '1000000000001' } });
     expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
     fireEvent.change(amount, { target: { value: '120000' } });
     expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain(money('USD 120 000'));
+  });
+});
+
+// Pilot call audit 2026-11-05: a demo offer of CRC 1 000 000 / month was stored as 12 000 000.12 a year (an
+// arrow-key step on <input type="number" step="0.01"> made it 1 000 000.01).
+describe('create offer form — the shared money input', () => {
+  beforeEach(() => mutateAsync.mockReset());
+  const crcMonthly = [
+    {
+      id: 'app-crc',
+      vacancy: { id: 'vac-crc', title: 'Analista', status: 'published', salary: { min: 900_000, max: 1_100_000, currency: 'CRC', period: 'monthly' } },
+    },
+  ] as unknown as Parameters<typeof CreateOfferModal>[0]['applications'];
+  const fillRest = (container: HTMLElement) => {
+    fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
+      target: { value: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) },
+    });
+    fireEvent.change(screen.getByLabelText(/Tipo Contrato|Contract Type/), { target: { value: 'indefinido' } });
+  };
+
+  it('accepts digit grouping, shows the amount grouped on blur and stores exactly 12 times the month', async () => {
+    mutateAsync.mockResolvedValue({ id: 'offer-1' });
+    const { container } = render(createElement(CreateOfferModal, { candidateId: 'cand-1', applications: crcMonthly, onClose: vi.fn() }));
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    fireEvent.focus(amount);
+    fireEvent.change(amount, { target: { value: '1.000.000' } });
+    fireEvent.blur(amount);
+    expect(amount.value).toBe(money('1 000 000'));
+    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain(money('CRC 12 000 000'));
+    fillRest(container);
+    const buttons = screen.getAllByRole('button');
+    fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    expect(mutateAsync.mock.calls[0]?.[0]).toMatchObject({ salary: 12_000_000, currency: 'CRC' });
+  });
+
+  it('refuses decimals in colones with a Spanish error, and nothing can be created', () => {
+    const { container } = render(createElement(CreateOfferModal, { candidateId: 'cand-1', applications: crcMonthly, onClose: vi.fn() }));
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '1000000,01' } });
+    expect(screen.getByRole('alert').textContent).toBe('CRC se usa sin decimales: escribe un número entero.');
+    expect(amount.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
+    fillRest(container);
+    const buttons = screen.getAllByRole('button');
+    expect((buttons[buttons.length - 1] as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('"Editar borrador" of an offer stored as 12 000 000.12 flags the decimals instead of rounding them away', () => {
+    const { container } = render(
+      createElement(CreateOfferModal, {
+        candidateId: 'cand-1',
+        applications: crcMonthly,
+        onClose: vi.fn(),
+        mode: 'edit',
+        source: { id: 'offer-1', salary: 12_000_000.12, currency: 'CRC', startDate: null, contractType: null },
+      }),
+    );
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    expect(amount.value).toBe(money('12 000 000,12'));
+    expect(screen.getByRole('alert').textContent).toContain('CRC se usa sin decimales');
   });
 });

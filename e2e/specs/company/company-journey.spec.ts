@@ -75,7 +75,9 @@ test('platform owner creates the company', async () => {
   const form = page.locator('form').filter({ has: page.getByPlaceholder('constructora-bolivar') });
   await form.getByPlaceholder(/constructora bol[ií]var/i).fill(j.orgName);
   await form.getByPlaceholder('constructora-bolivar').fill(j.orgSlug);
-  await form.locator('select').selectOption('professional');
+  await form.getByLabel('Plan', { exact: true }).selectOption('professional');
+  // The country is required; its preset fills the time zone, currency and number locale.
+  await form.getByLabel(/^país/i).selectOption('CR');
   // #307: this field is the billing email only; the admin is invited separately (next test).
   await form.getByLabel('Email de Facturación').fill(j.admin.email);
   await form.getByRole('button', { name: 'Crear', exact: true }).click();
@@ -107,8 +109,8 @@ test('company admin invites the recruiter and the hiring leader from the team pa
   needs('tenantInvitations');
   // Written against #307's Equipo page (settings/users/invite-form.tsx on feat/tenant-team-invitations).
   // Option labels come from the shared role map (`roles.*` in apps/web/lib/i18n/es.json), not the seeded,
-  // unaccented DB `roles.name`. The E2E stack runs the full launch scope, so `leader` is offered here; under
-  // NEXT_PUBLIC_LAUNCH_SCOPE=pilot it is not (PILOT_HIDDEN_ROLE_SLUGS in apps/web/lib/role-labels.ts).
+  // unaccented DB `roles.name`. `leader` is offered in the full launch scope the E2E stack runs and, since
+  // 2026-11-06, under NEXT_PUBLIC_LAUNCH_SCOPE=pilot too (only hrbp is in PILOT_HIDDEN_ROLE_SLUGS).
   const { page } = admin;
   await page.goto('/settings/users');
   for (const [who, role] of [
@@ -188,7 +190,7 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
 
   // Step 1 — basic info
   await wizard.getByPlaceholder('Ej: Senior Software Engineer').fill(title);
-  await wizard.getByPlaceholder('San José, Costa Rica').fill('San José, Costa Rica');
+  await wizard.getByPlaceholder('Ciudad, país').fill('San José, Costa Rica');
   await wizard.getByRole('button', { name: 'Presencial' }).click();
   if (PENDING.orgStructure.merged) {
     // #310: the vacancy is placed in the team whose leader approves it.

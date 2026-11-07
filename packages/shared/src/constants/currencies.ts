@@ -1,8 +1,16 @@
 export const DEFAULT_CURRENCY = 'USD';
 export const PLATFORM_BILLING_CURRENCY = 'USD';
 
+// The pilot countries' currencies first (Costa Rica, Guatemala, Honduras, Nicaragua, Panama, Dominican
+// Republic), then the rest of the Americas and the common reserve currencies. Every code here is also in
+// the FX refresh seed (C# RefreshFxRatesUseCase.SeedQuoteCurrencies) so conversions work from day one.
 export const POPULAR_CURRENCY_CODES = [
   'CRC',
+  'GTQ',
+  'HNL',
+  'NIO',
+  'PAB',
+  'DOP',
   'COP',
   'USD',
   'EUR',
@@ -38,6 +46,18 @@ const FALLBACK_CURRENCY_CODES = [
 
 export type CurrencyCode = string;
 
+/**
+ * Currencies whose salaries are typed, stored and shown as WHOLE numbers in this product (no minor unit):
+ * the Costa Rican colón, the Colombian and Chilean pesos, the yen, the won, the guaraní and the đồng. The salary
+ * inputs refuse decimals for them and the server rounds a stored vacancy salary to an integer. A demo offer of
+ * CRC 1 000 000 / month was stored as 12 000 000.12 when an arrow-key step turned it into 1 000 000.01.
+ */
+export const ZERO_DECIMAL_CURRENCIES: readonly string[] = ['COP', 'CRC', 'CLP', 'JPY', 'KRW', 'PYG', 'VND'];
+
+export function isZeroDecimalCurrency(code: string | null | undefined): boolean {
+  return ZERO_DECIMAL_CURRENCIES.includes((code ?? '').trim().toUpperCase());
+}
+
 export function normalizeCurrencyCode(code: string | null | undefined, fallback = DEFAULT_CURRENCY): CurrencyCode {
   const normalized = (code ?? '').trim().toUpperCase();
   return isCurrencyCode(normalized) ? normalized : fallback;
@@ -58,6 +78,16 @@ export function supportedCurrencyCodes(): CurrencyCode[] {
       if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       return a.localeCompare(b);
     });
+}
+
+const LISTED_CURRENCY_CODES: ReadonlySet<string> = new Set(FALLBACK_CURRENCY_CODES);
+
+/**
+ * True only for a code on the platform's ISO 4217 list (the same list as C# CurrencyCodes). Stricter than
+ * isCurrencyCode, which accepts any well-formed code Intl will format (Intl does not reject "XYZ").
+ */
+export function isListedCurrencyCode(code: string | null | undefined): code is CurrencyCode {
+  return typeof code === 'string' && LISTED_CURRENCY_CODES.has(code);
 }
 
 export function isCurrencyCode(code: string | null | undefined): code is CurrencyCode {

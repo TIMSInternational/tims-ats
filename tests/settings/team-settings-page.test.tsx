@@ -205,7 +205,8 @@ describe('/settings/users (Equipo)', () => {
   });
 
   // D-02 / D-09 / E-17: the picker showed the seeded DB names ("Lider", "Miembro de Comite", "HR Business
-  // Partner") in DB-name order, and offered hrbp/leader although the pilot decision (D-HRBP) drops them.
+  // Partner") in DB-name order, and offered hrbp although the pilot decision (D-HRBP) drops it. Líder is
+  // offered in the pilot since the owner decision of 2026-11-06.
   const DB_ROLES = [
     { slug: 'hr_admin', name: 'Administrador RRHH' },
     { slug: 'employee', name: 'Colaborador' },
@@ -227,6 +228,7 @@ describe('/settings/users (Equipo)', () => {
       'Super Administrador',
       'Administrador de RR. HH.',
       'Reclutador',
+      'Líder',
       'Comité de entrevista',
       'Colaborador',
     ]);
@@ -239,7 +241,7 @@ describe('/settings/users (Equipo)', () => {
       m.rolePlaceholder,
       'Super Administrador',
       'Administrador de RR. HH.',
-      'HR Business Partner (HRBP)',
+      'Socio de negocio de RR. HH. (HRBP)',
       'Reclutador',
       'Líder',
       'Comité de entrevista',
