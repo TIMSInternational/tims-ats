@@ -202,7 +202,13 @@ describe('Codex round 13 on #421', () => {
 
   it('masks every part of a surname-first parsed name ("Dvorak, Ana") in the final CV block', () => {
     const cv = guideCvFromParsedDocuments([
-      { parsedData: { name: 'Dvorak, Ana', summary: 'Mi nombre es Ana Dvorak; DVOŘÁK lideró el equipo.', experience: [] } },
+      {
+        parsedData: {
+          name: 'Dvorak, Ana',
+          summary: 'Mi nombre es Ana Dvorak; DVOŘÁK lideró el equipo.',
+          experience: [],
+        },
+      },
     ]);
     const out = formatCandidateCv(cv, ['Ana', 'Ruiz']);
     expect(out).not.toMatch(/dvo/i);
