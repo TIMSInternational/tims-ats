@@ -97,6 +97,7 @@ describe('organization.getCurrent (D-20 + D-11)', () => {
       timeZone: 'America/Costa_Rica',
       timeZoneSource: 'organization',
       locale: 'es-CR',
+      localeSource: 'organization',
       candidateContactEmail: 'rrhh@pilot.test',
       candidateContactSource: 'organization',
       companyName: 'Pilot Co',
@@ -125,6 +126,7 @@ describe('projectOrganizationProfile', () => {
       timeZone: 'America/Costa_Rica',
       timeZoneSource: 'company',
       locale: 'es',
+      localeSource: 'company',
     });
     // Codex round 2: the billing fallback is reported as a SOURCE only; the billing address never leaves.
     expect(p.candidateContactEmail).toBeNull();
@@ -142,6 +144,7 @@ describe('projectOrganizationProfile', () => {
       timeZone: null,
       timeZoneSource: null,
       locale: null,
+      localeSource: null,
     });
   });
 });

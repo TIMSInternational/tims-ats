@@ -3,6 +3,7 @@ import { router, permissionProcedure, anyPermissionProcedure } from '../../trpc'
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { isZeroDecimalCurrency } from '@tims/shared';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { redactOfferSettings } from './offer-dto';
 import { assertNoOpenOffer, openOfferStatusWhere } from './open-offer-guard';
@@ -18,6 +19,17 @@ const currencyCode = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Moneda
 // 1e12 comfortably covers any annual salary in a zero-decimal currency such as COP.
 const MAX_OFFER_SALARY = 1_000_000_000_000;
 const offerSalary = z.number().finite().positive().max(MAX_OFFER_SALARY, 'Salario fuera de rango');
+/**
+ * The salary as stored in `currency`: a zero-decimal currency (CRC, COP…) stores whole amounts (12 000 000.12 colones
+ * was an input-step accident). Rounding must not turn a positive salary into 0, which offerSalary refuses.
+ */
+function storedOfferSalary(salary: number, currency: string): number {
+  const stored = isZeroDecimalCurrency(currency) ? Math.round(salary) : salary;
+  if (stored <= 0) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: `El salario en ${currency} debe ser un monto entero mayor que cero` });
+  }
+  return stored;
+}
 
 async function defaultCurrencyFor(organizationId: string, vacancyId: string): Promise<string> {
   const { orgSettings, companyCurrency } = await offerDraftRepository.currencySources(organizationId, vacancyId);
@@ -202,12 +214,14 @@ export const offerCrudRouter = router({
 
       const { benefits, terms, currency, ...rest } = input;
       const resolvedCurrency = currency ?? (await defaultCurrencyFor(orgId, input.vacancyId));
+      const salary = storedOfferSalary(rest.salary, resolvedCurrency);
       // One open offer per candidate and vacancy (B-04): checked under a lock on the candidate row, in the
       // same transaction as the insert, so two concurrent creates cannot both pass.
       const created = await offerApplicationLockRepository.inTransaction(orgId, async (tx) => {
         await assertNoOpenOffer(tx, { organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId });
         return offerDraftRepository.createDraft(tx, {
           ...rest,
+          salary,
           currency: resolvedCurrency,
           benefits: benefits as Prisma.InputJsonValue | undefined,
           terms: terms as Prisma.InputJsonValue | undefined,
@@ -250,7 +264,7 @@ export const offerCrudRouter = router({
             scopeWhere as Prisma.OfferWhereInput,
           ],
         },
-        select: { id: true, status: true },
+        select: { id: true, status: true, currency: true, salary: true },
       });
 
       if (!existing) {
@@ -265,17 +279,25 @@ export const offerCrudRouter = router({
       }
 
       const { benefits, terms, ...rest } = data;
+      // The salary/currency pair as it will be stored: a salary sent alone is in the stored currency, and a
+      // currency change alone re-checks the stored salary (USD 12 000.12 → CRC), written only when rounding changes it.
+      // Both are computed from `existing`, so an edit of the pay is also a compare-and-set on that salary and currency.
+      const salaryAfter = rest.salary ?? (rest.currency !== undefined ? existing.salary : undefined);
+      const storedSalary = salaryAfter === undefined ? undefined : storedOfferSalary(salaryAfter, rest.currency ?? existing.currency);
+      const salaryPatch = rest.salary !== undefined || storedSalary !== existing.salary ? storedSalary : undefined;
+      const editsPay = rest.salary !== undefined || rest.currency !== undefined;
       // Compare-and-set on draft: a submission for approval that lands between the check above and this
       // write must not let the approvers see terms other than the ones they are asked to approve.
       const applied = await offerDraftRepository.updateDraft(ctx.user.organizationId, id, {
         ...rest,
+        ...(salaryPatch !== undefined && { salary: salaryPatch }),
         ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
         ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
-      });
+      }, editsPay ? { salary: existing.salary, currency: existing.currency } : undefined);
       if (!applied) {
         throw new TRPCError({
           code: 'CONFLICT',
-          message: 'La oferta ya no está en borrador; recarga la página para ver su estado actual',
+          message: 'La oferta cambió o ya no está en borrador; recarga la página para ver su estado actual',
         });
       }
       return offerDraftRepository.findEdited(ctx.user.organizationId, id);

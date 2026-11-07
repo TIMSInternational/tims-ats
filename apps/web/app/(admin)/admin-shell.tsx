@@ -11,6 +11,7 @@ import { ImpersonationBanner } from './impersonation-banner';
 import { TRPCProvider } from '../../lib/trpc-provider';
 import { I18nProvider } from '../../lib/i18n';
 import { PermissionsProvider, RouteAccessGuard } from '../../lib/permissions';
+import { TenantLocaleProvider } from '../../lib/tenant-locale-context';
 
 const SIDEBAR_KEY = 'tims-sidebar-expanded';
 
@@ -69,6 +70,7 @@ export function AdminShell({
     <I18nProvider>
     <TRPCProvider>
       <PermissionsProvider isPlatformOwner={isPlatformOwner}>
+      <TenantLocaleProvider enabled={!isPlatformOwner}>
       <div className="flex h-screen overflow-hidden bg-[var(--chrome-bg)]">
         {/* Mobile backdrop */}
         {mobileOpen && (
@@ -111,6 +113,7 @@ export function AdminShell({
           </main>
         </div>
       </div>
+      </TenantLocaleProvider>
       </PermissionsProvider>
     </TRPCProvider>
     </I18nProvider>

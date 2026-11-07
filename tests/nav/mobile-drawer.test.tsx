@@ -21,6 +21,7 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard', useRouter: 
 vi.mock('../../apps/web/lib/i18n', () => ({ I18nProvider: pass, useI18n: () => ({ t: es, locale: 'ES' }) }));
 vi.mock('../../apps/web/lib/trpc-provider', () => ({ TRPCProvider: pass }));
 vi.mock('../../apps/web/lib/permissions', () => ({ PermissionsProvider: pass, RouteAccessGuard: pass }));
+vi.mock('../../apps/web/lib/tenant-locale-context', () => ({ TenantLocaleProvider: pass }));
 vi.mock('../../apps/web/app/(admin)/sidebar', () => ({ Sidebar: FakeSidebar }));
 vi.mock('../../apps/web/app/(admin)/participant-sidebar', () => ({ ParticipantSidebar: FakeSidebar }));
 vi.mock('../../apps/web/app/(admin)/platform-sidebar', () => ({ PlatformSidebar: FakeSidebar }));

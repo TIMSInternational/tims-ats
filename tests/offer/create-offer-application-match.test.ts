@@ -37,6 +37,11 @@ vi.mock('@tims/db', () => {
     runTenantTransaction: async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(tenantDb),
   };
 });
+// This file makes more mutations than the in-memory per-user limit allows in a minute; the limiter is not under test.
+vi.mock('../../packages/api/src/middleware/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue(undefined),
+  getRateLimitCategory: vi.fn().mockReturnValue('standard'),
+}));
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
   createAnchorLoader: vi.fn().mockReturnValue(null),
@@ -189,5 +194,94 @@ describe('offer salary bounds', () => {
         data: expect.objectContaining({ salary: 96_000_000 }),
       }),
     );
+  });
+
+  // Pilot call audit 2026-11-05: a zero-decimal currency (CRC, COP…) stores whole amounts (crud.ts wholeIfZeroDecimal).
+  it('create rounds a zero-decimal salary and keeps the cents of any other currency', async () => {
+    await (await caller()).offer.create({ ...input, currency: 'CRC', salary: 12_000_000.12 });
+    expect(offerCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ salary: 12_000_000, currency: 'CRC' }) }),
+    );
+    await (await caller()).offer.create({ ...input, currency: 'USD', salary: 4_500.5 });
+    expect(offerCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ salary: 4_500.5, currency: 'USD' }) }),
+    );
+  });
+
+  it.each([
+    { label: 'the sent currency', stored: 'USD', sent: 'CRC' as string | undefined, salary: 12_000_000.12, saved: 12_000_000 },
+    { label: 'the stored currency when none is sent', stored: 'CRC', sent: undefined, salary: 12_000_000.12, saved: 12_000_000 },
+    { label: 'a currency with cents', stored: 'CRC', sent: 'USD', salary: 4_500.5, saved: 4_500.5 },
+  ])('update rounds a zero-decimal salary by $label', async ({ stored, sent, salary, saved }) => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: stored });
+    await (await caller()).offer.update({ id: OFFER_ID, salary, ...(sent && { currency: sent }) });
+    expect(offerUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ salary: saved }) }),
+    );
+  });
+
+  // Codex review of fix/pilot-call-flow (P2): a currency-only edit must not keep a fractional salary in CRC.
+  it('a currency-only change to a zero-decimal currency rounds the stored salary', async () => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: 'USD', salary: 12_000.12 });
+    await (await caller()).offer.update({ id: OFFER_ID, currency: 'CRC' });
+    expect(offerUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ currency: 'CRC', salary: 12_000 }) }),
+    );
+  });
+
+  it('a currency-only change that needs no rounding does not rewrite the salary', async () => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: 'USD', salary: 12_000 });
+    await (await caller()).offer.update({ id: OFFER_ID, currency: 'CRC' });
+    expect(offerUpdateMany.mock.calls[0]![0].data).toEqual({ currency: 'CRC' });
+  });
+
+  // Codex review of fix/pilot-call-flow (P2): rounding must not store a salary of 0, which offerSalary refuses.
+  it('create refuses a salary that rounds to zero in a zero-decimal currency', async () => {
+    await expect((await caller()).offer.create({ ...input, currency: 'CRC', salary: 0.4 })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+    expect(offerCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: 'a sent salary', stored: { currency: 'CRC', salary: 1_000_000 }, patch: { salary: 0.4 } },
+    { label: 'a currency-only change', stored: { currency: 'USD', salary: 0.3 }, patch: { currency: 'CRC' } },
+  ])('update refuses $label that rounds to zero', async ({ stored, patch }) => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', ...stored });
+    await expect((await caller()).offer.update({ id: OFFER_ID, ...patch })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(offerUpdateMany).not.toHaveBeenCalled();
+  });
+
+  // Codex review of fix/pilot-call-flow, run 2 (P2): two edits of one draft's pay that read the same snapshot must
+  // not both write. Both reads happen before either write; the stored row only changes through updateMany's where.
+  it('two concurrent edits of the pay: one applies, the other is a CONFLICT, and no fractional colón is stored', async () => {
+    const row: Record<string, unknown> = { id: OFFER_ID, organizationId: ORG_ID, status: 'draft', currency: 'USD', salary: 12_000 };
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => (release = resolve));
+    let reads = 0;
+    offerFindFirst.mockImplementation(async () => {
+      const snapshot = { id: OFFER_ID, status: row.status, currency: row.currency, salary: row.salary };
+      if (++reads === 2) release();
+      await bothRead;
+      return snapshot;
+    });
+    offerUpdateMany.mockImplementation(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      if (!Object.entries(where).every(([key, value]) => row[key] === value)) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    });
+    const results = await Promise.allSettled([
+      (await caller()).offer.update({ id: OFFER_ID, currency: 'CRC' }),
+      (await caller()).offer.update({ id: OFFER_ID, salary: 24_000.12 }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { code: 'CONFLICT' } });
+    expect(row.currency === 'CRC' ? Number.isInteger(row.salary) : true).toBe(true);
+  });
+
+  it('an edit that does not touch the pay is not compared on it', async () => {
+    offerFindFirst.mockResolvedValue({ id: OFFER_ID, status: 'draft', currency: 'USD', salary: 12_000 });
+    await (await caller()).offer.update({ id: OFFER_ID, contractType: 'Indefinido' });
+    expect(offerUpdateMany.mock.calls[0]![0].where).toEqual({ id: OFFER_ID, organizationId: ORG_ID, status: 'draft' });
   });
 });

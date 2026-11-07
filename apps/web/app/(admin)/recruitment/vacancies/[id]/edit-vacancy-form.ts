@@ -1,4 +1,5 @@
 import { DEFAULT_TENANT_CURRENCY } from '../../../../../lib/tenant-locale';
+import { formatMoneyAmount, isSalaryBandBlocked, salaryBandStatus } from '../../../../../lib/money-amount';
 
 /**
  * Pure state helpers for the vacancy "Editar" drawer: the form is seeded from the vacancy detail, and only the
@@ -69,11 +70,22 @@ function asRecord(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 }
 
-function amountText(value: unknown): string {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? String(value) : '';
+/** A stored amount as the band input shows it: grouped digits in the tenant locale ("850 000"). */
+function amountText(value: unknown, currency: string): string {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? formatMoneyAmount(value, currency) : '';
 }
 
-export function initialEditForm(v: EditableVacancy): EditVacancyForm {
+/** The form with `tenantCurrency` where no currency is stored or chosen yet (an explicit one is kept). */
+export function withDefaultCurrency(form: EditVacancyForm, tenantCurrency: string): EditVacancyForm {
+  return form.currency ? form : { ...form, currency: tenantCurrency };
+}
+
+/**
+ * `tenantCurrency` (the organization's, lib/tenant-locale-context.tsx) fills a vacancy saved without one. The
+ * drawer passes '' and applies the tenant's at render with `withDefaultCurrency`, so a profile that loads
+ * after the drawer opened is still used.
+ */
+export function initialEditForm(v: EditableVacancy, tenantCurrency: string = DEFAULT_TENANT_CURRENCY): EditVacancyForm {
   const salary = asRecord(v.salary);
   const currency =
     typeof salary.currency === 'string' && salary.currency.trim() ? salary.currency.trim().toUpperCase() : '';
@@ -85,9 +97,9 @@ export function initialEditForm(v: EditableVacancy): EditVacancyForm {
     contractType: v.contractType ?? '',
     positions: v.positions,
     priority: PRIORITIES.includes(v.priority) ? (v.priority as Priority) : 'medium',
-    salaryMin: amountText(salary.min),
-    salaryMax: amountText(salary.max),
-    currency: currency || DEFAULT_TENANT_CURRENCY,
+    salaryMin: amountText(salary.min, currency || tenantCurrency),
+    salaryMax: amountText(salary.max, currency || tenantCurrency),
+    currency: currency || tenantCurrency,
     salaryPeriod: salary.period === 'yearly' || salary.period === 'annual' ? 'yearly' : 'monthly',
     hiringManager: v.assignee
       ? { id: v.assignee.id, firstName: v.assignee.firstName, lastName: v.assignee.lastName }
@@ -96,35 +108,35 @@ export function initialEditForm(v: EditableVacancy): EditVacancyForm {
 }
 
 /**
- * Non-negative amounts with at most two decimals (the API accepts any non-negative number); '' is "not set".
- * "1.200.000" or "1.200" (thousands separators) are refused rather than read as 1.2.
+ * Amounts are parsed by lib/money-amount.ts, the same parser as the creation wizard and the offer form: digit
+ * grouping is accepted ("1.200.000", "1,200,000", "1 200 000"), and a zero-decimal currency (CRC, COP…) takes
+ * whole numbers only. A typed amount equal to the stored one is not a change (re-grouping is not an edit).
  */
-function parseAmount(text: string): number | undefined | 'invalid' {
-  const trimmed = text.trim();
-  if (!trimmed) return undefined;
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return 'invalid';
-  return Number(trimmed);
-}
-
 function salaryChanged(initial: EditVacancyForm, form: EditVacancyForm): boolean {
-  return (
-    form.salaryMin.trim() !== initial.salaryMin ||
-    form.salaryMax.trim() !== initial.salaryMax ||
-    form.currency !== initial.currency ||
-    form.salaryPeriod !== initial.salaryPeriod
-  );
+  if (form.currency !== initial.currency || form.salaryPeriod !== initial.salaryPeriod) return true;
+  const before = salaryBandStatus(initial.salaryMin, initial.salaryMax, initial.currency);
+  const after = salaryBandStatus(form.salaryMin, form.salaryMax, form.currency);
+  if (after.invalid) return true;
+  return after.min !== before.min || after.max !== before.max;
 }
 
-export type EditFormError = 'titleRequired' | 'salaryInvalid' | 'salaryRange' | null;
+export type EditFormError = 'titleRequired' | 'salaryInvalid' | 'salaryRange' | 'salaryWide' | null;
 
-/** The salary band is only validated when it was touched: a stored value never blocks an unrelated edit. */
-export function validateEditForm(initial: EditVacancyForm, form: EditVacancyForm): EditFormError {
+/**
+ * The salary band is only validated when it was touched: a stored value never blocks an unrelated edit.
+ * `confirmedRangeKey` is the band the person confirmed although its minimum is below a tenth of its maximum.
+ */
+export function validateEditForm(
+  initial: EditVacancyForm,
+  form: EditVacancyForm,
+  confirmedRangeKey: string | null = null,
+): EditFormError {
   if (!form.title.trim()) return 'titleRequired';
   if (!salaryChanged(initial, form)) return null;
-  const min = parseAmount(form.salaryMin);
-  const max = parseAmount(form.salaryMax);
-  if (min === 'invalid' || max === 'invalid') return 'salaryInvalid';
-  if (min !== undefined && max !== undefined && min > max) return 'salaryRange';
+  const status = salaryBandStatus(form.salaryMin, form.salaryMax, form.currency);
+  if (status.invalid) return 'salaryInvalid';
+  if (status.range.error) return 'salaryRange';
+  if (isSalaryBandBlocked(status, confirmedRangeKey)) return 'salaryWide';
   return null;
 }
 
@@ -145,11 +157,10 @@ export function buildVacancyPatch(initial: EditVacancyForm, form: EditVacancyFor
   if (form.priority !== initial.priority) patch.priority = form.priority;
 
   if (salaryChanged(initial, form)) {
-    const min = parseAmount(form.salaryMin);
-    const max = parseAmount(form.salaryMax);
+    const { min, max } = salaryBandStatus(form.salaryMin, form.salaryMax, form.currency);
     patch.salary = {
-      ...(typeof min === 'number' ? { min } : {}),
-      ...(typeof max === 'number' ? { max } : {}),
+      ...(min !== undefined ? { min } : {}),
+      ...(max !== undefined ? { max } : {}),
       currency: form.currency,
       period: form.salaryPeriod,
     };

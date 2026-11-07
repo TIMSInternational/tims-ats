@@ -316,7 +316,7 @@ public sealed class PlatformDashboardAccountsUseCaseTests
     /// <para>Added because the panel found the precedence entirely unpinned: every fixture organization
     /// carries an <c>organizations.plan</c> equal to its own subscription's, and every unit row used the
     /// equal defaults — so reversing the operands to <c>OrgPlan ?? SubscriptionPlan</c> was a
-    /// green-suite change. The drift is reachable in production: <c>platform/organizations.ts:269</c>
+    /// green-suite change. The drift is reachable in production: <c>platform/organizations.ts:280</c>
     /// updates <c>organizations.plan</c> without touching <c>subscriptions.plan</c>.</para>
     ///
     /// <para>Reversed operands would score this org against the professional→enterprise rule (20 users,

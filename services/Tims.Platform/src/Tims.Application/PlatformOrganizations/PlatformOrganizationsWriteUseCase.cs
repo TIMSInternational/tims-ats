@@ -17,17 +17,17 @@ public sealed class PlatformOrganizationsWriteUseCase(
     IPlatformOrganizationsWriteRepository repository,
     TimeProvider timeProvider)
 {
-    /// <summary>Zod bounds from <c>organizations.ts:244-258</c>, reproduced exactly.</summary>
+    /// <summary>Zod bounds from <c>organizations.ts:250-259</c>, reproduced exactly.</summary>
     public const int MaxNameLength = 100;
 
     public const int MaxLocaleLength = 10;
-    public const int MaxTimezoneLength = 50;
+    public const int MaxTimezoneLength = OrgLocaleProfileRules.MaxTimeZoneLength;
     public const int MaxCurrencyLength = 10;
 
     /// <summary>The four <c>OrgPlan</c> enum members (<c>organization.prisma:23-28</c>).</summary>
     public static readonly string[] Plans = ["trial", "starter", "professional", "enterprise"];
 
-    // Notification copy, verbatim from organizations.ts:300-306 — including the unaccented "Organizacion",
+    // Notification copy, verbatim from organizations.ts:310-316 — including the unaccented "Organizacion",
     // which is what the TS actually writes. "Fixing" the spelling here would be a silent content divergence
     // in a user-visible string.
     private const string SuspendedTitlePrefix = "Organización suspendida: ";
@@ -76,7 +76,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
 
     /// <summary>
     /// <c>suspendOrganization</c>. The notification fan-out runs only when SUSPENDING
-    /// (<c>organizations.ts:299</c>) and only AFTER the update+audit transaction has committed — see
+    /// (<c>organizations.ts:309</c>) and only AFTER the update+audit transaction has committed — see
     /// <see cref="IPlatformOrganizationsWriteRepository.NotifyPlatformOwnersAsync"/> for why it must not
     /// join that transaction.
     ///
@@ -111,7 +111,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
         return row;
     }
 
-    /// <summary>The <c>notify()</c> payload for a suspension (<c>organizations.ts:301-306</c>).</summary>
+    /// <summary>The <c>notify()</c> payload for a suspension (<c>organizations.ts:311-316</c>).</summary>
     public static PlatformOwnerNotification BuildSuspensionNotification(PlatformOrganizationRow row) =>
         new(
             Guid.Parse(row.Id),
@@ -126,7 +126,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
     /// <summary>
     /// Builds the exact value TS writes to <c>audit_logs.changes</c>:
     /// <c>JSON.stringify(rest)</c>, where <c>rest</c> is the Zod-parsed input MINUS <c>id</c>
-    /// (<c>organizations.ts:283</c>).
+    /// (<c>organizations.ts:293</c>).
     ///
     /// <para><b>Why the bytes matter, and are not normalized away.</b> <c>changes</c> is a Prisma
     /// <c>Json?</c> field being handed a STRING, so the stored jsonb is a string SCALAR whose content is
@@ -177,12 +177,11 @@ public sealed class PlatformOrganizationsWriteUseCase(
     }
 
     /// <summary>
-    /// The <c>settings</c> jsonb value Prisma writes to the COLUMN — <c>null</c> when the key was absent,
-    /// otherwise the object of present members. Prisma REPLACES a <c>Json</c> column, it does not merge, so
-    /// sending <c>settings: { locale }</c> drops any <c>timezone</c>/<c>currency</c> the org already had.
-    /// That is destructive and surprising, and it is faithfully reproduced: narrowing it here would make a
-    /// step-5 parity diff unreadable. Filed as <b>#201</b> instead — to be done after step 5, together with
-    /// the FE.
+    /// The <c>settings</c> PATCH merged into the COLUMN — <c>null</c> when the key was absent, otherwise the
+    /// object of present members. The repository writes <c>settings || patch</c> (jsonb concatenation), so
+    /// sending <c>settings: { locale }</c> changes the locale and keeps every other key — timezone, currency,
+    /// <c>candidateContactEmail</c>. It used to REPLACE the column, faithfully copying the TS (#201); both
+    /// stacks now merge (TS: <c>mergeOrgSettings</c> under a row lock).
     /// </summary>
     public static string? BuildSettingsColumnJson(PlatformOrganizationSettingsInput? settings) =>
         settings is null ? null : BuildSettingsJson(settings).ToJsonString(ChangesEncoding);
@@ -204,6 +203,11 @@ public sealed class PlatformOrganizationsWriteUseCase(
         if (settings.Currency is not null)
         {
             node["currency"] = JsonValue.Create(settings.Currency);
+        }
+
+        if (settings.Country is not null)
+        {
+            node["country"] = JsonValue.Create(settings.Country);
         }
 
         return node;
@@ -228,9 +232,17 @@ public sealed class PlatformOrganizationsWriteUseCase(
         return input.Settings is null || IsValidSettings(input.Settings);
     }
 
-    /// <summary>Per-member bounds of the <c>settings</c> sub-object (<c>organizations.ts:251-257</c>).</summary>
+    /// <summary>
+    /// Per-member rules of the <c>settings</c> sub-object (<c>orgLocaleSettingsPatchSchema</c>): each PRESENT
+    /// member must be a valid locale tag / IANA zone / listed ISO 4217 code / ISO country code. The length
+    /// bounds stay as the published contract's outer limit; the rules are stricter than every one of them.
+    /// </summary>
     public static bool IsValidSettings(PlatformOrganizationSettingsInput settings) =>
         settings.Locale is not { Length: > MaxLocaleLength }
         && settings.Timezone is not { Length: > MaxTimezoneLength }
-        && settings.Currency is not { Length: > MaxCurrencyLength };
+        && settings.Currency is not { Length: > MaxCurrencyLength }
+        && (settings.Locale is null || OrgLocaleProfileRules.IsLocale(settings.Locale))
+        && (settings.Timezone is null || OrgLocaleProfileRules.IsTimeZone(settings.Timezone))
+        && (settings.Currency is null || OrgLocaleProfileRules.IsCurrency(settings.Currency))
+        && (settings.Country is null || OrgLocaleProfileRules.IsCountry(settings.Country));
 }

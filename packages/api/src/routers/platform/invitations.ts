@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSIGNABLE_STAFF_ROLES, csvRow, getAppUrl } from '@tims/shared';
+import { ASSIGNABLE_STAFF_ROLES, csvRow, getAppUrl, orgLocaleProfileSchema, orgLocaleSettings } from '@tims/shared';
 import { router, publicProcedure } from '../../trpc';
 import { db, InvitationType, InvitationStatus } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -126,6 +126,9 @@ export const invitationsRouter = router({
           .max(63)
           .regex(/^[a-z0-9-]+$/),
         organizationPlan: z.enum(['trial', 'starter', 'professional', 'enterprise']).default('trial'),
+        // Country, time zone, currency and number locale (the "Invitar organización" form always sends it).
+        // Absent = the pre-profile behaviour: empty settings and a CR company on the column defaults.
+        localeProfile: orgLocaleProfileSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -142,6 +145,7 @@ export const invitationsRouter = router({
             slug: input.organizationSlug,
             plan: input.organizationPlan,
             billingEmail: input.email,
+            ...(input.localeProfile ? { settings: orgLocaleSettings(input.localeProfile) } : {}),
           },
         });
 
@@ -152,7 +156,7 @@ export const invitationsRouter = router({
         // the invitee ever accepts), so it needs the same default Company/
         // BusinessUnit/Team + starter entitlements bundle or it's an empty
         // shell exactly like the two paths this sprint fixed.
-        await provisionOrgDefaults(tx, org.id, input.organizationName);
+        await provisionOrgDefaults(tx, org.id, input.organizationName, input.localeProfile);
         await provisionOrgEntitlements(tx, org.id);
 
         await provisionOrgRoles(tx, org.id);

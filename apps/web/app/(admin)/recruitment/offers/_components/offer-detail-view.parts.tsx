@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate } from '../../../../../lib/format-utils';
 import { formatAnnualOfferSalary } from '../../../../../lib/offer-salary';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
 /* ── Candidate Header subcomponent ── */
 
@@ -165,6 +166,7 @@ interface OfferCardProps {
 
 export function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardProps) {
   const { t } = useI18n();
+  const { intlLocale } = useTenantLocale();
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
@@ -188,7 +190,7 @@ export function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardPr
           <div>
             <p className="text-[11px] text-[#8B8B8B]">{t.offers.baseSalary}</p>
             <p className="text-[15px] font-bold text-[#1F114C]">
-              {formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}
+              {formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth }, intlLocale)}
             </p>
           </div>
           {terms?.bonus && (

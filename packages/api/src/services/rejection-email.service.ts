@@ -46,7 +46,7 @@ export const rejectionEmailService = {
     try {
       const data = await rejectionEmailRepository.findForNotification(orgId, applicationId);
       if (!data) return false;
-      const { application, org, candidateConsentWithdrawn } = data;
+      const { application, org, candidateConsentWithdrawn, candidateLocale } = data;
       // Re-checked at send time: only a still-rejected application, a live candidate record with an address,
       // and a candidate who did not revoke the authorization.
       if (
@@ -63,7 +63,8 @@ export const rejectionEmailService = {
         candidateName: application.candidate.firstName,
         vacancyTitle: application.vacancy.title,
         companyName: org.name,
-        locale: toLocale(application.vacancy.company?.language),
+        // The language the candidate applied in (consent evidence), else the vacancy company's.
+        locale: toLocale(candidateLocale ?? application.vacancy.company?.language),
         contactEmail,
       });
       const sent = await sendEmail({

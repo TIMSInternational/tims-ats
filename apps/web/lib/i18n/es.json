@@ -25,7 +25,7 @@
     "platform_owner": "Dueño de plataforma",
     "super_admin": "Super Administrador",
     "hr_admin": "Administrador de RR. HH.",
-    "hrbp": "HR Business Partner (HRBP)",
+    "hrbp": "Socio de negocio de RR. HH. (HRBP)",
     "recruiter": "Reclutador",
     "leader": "Líder",
     "committee": "Comité de entrevista",
@@ -87,7 +87,7 @@
     "interviews": "Entrevistas",
     "offers": "Ofertas",
     "talentPool": "Banco de talento",
-    "analytics": "Analytics",
+    "analytics": "Analítica",
     "people": "Personas",
     "onboarding": "Onboarding",
     "performance": "Performance",
@@ -133,7 +133,7 @@
     "system": "Sistema",
     "systemHealth": "Salud del Sistema",
     "featureFlags": "Feature Flags",
-    "analytics": "Analytics",
+    "analytics": "Analítica",
     "aiAgents": "Agentes IA",
     "support": "Soporte",
     "notifications": "Notificaciones",
@@ -175,7 +175,7 @@
     },
     "/platform/analytics": {
       "parent": "Sistema",
-      "label": "Analytics"
+      "label": "Analítica"
     },
     "/platform/ai-agents": {
       "parent": "Sistema",
@@ -230,11 +230,11 @@
     },
     "/recruitment/talent-pools": {
       "parent": "Reclutamiento",
-      "label": "Talent Pool"
+      "label": "Banco de talento"
     },
     "/recruitment/analytics": {
       "parent": "Reclutamiento",
-      "label": "Analytics"
+      "label": "Analítica"
     },
     "/people": {
       "label": "Personas"
@@ -273,7 +273,7 @@
     },
     "/engagement/dei": {
       "parent": "Organización",
-      "label": "DEI Analytics"
+      "label": "Analítica DEI"
     },
     "/compensation": {
       "parent": "Organización",
@@ -342,7 +342,7 @@
       "assessments": "Evaluaciones",
       "performance": "Performance",
       "nineBox": "Nine Box",
-      "analytics": "Analytics"
+      "analytics": "Analítica"
     },
     "checkInboxAt": "Revisa tu bandeja de entrada en",
     "followInstructions": "y sigue las instrucciones.",
@@ -1243,7 +1243,7 @@
     "delete": "Eliminar"
   },
   "analytics": {
-    "title": "Analytics",
+    "title": "Analítica",
     "newOrgs": "Nuevas Orgs",
     "newUsers": "Nuevos Usuarios",
     "churnRate": "Tasa de Churn",
@@ -1273,11 +1273,11 @@
     "estimatedMrr": "MRR Estimado",
     "arpuLabel": "ARPU",
     "orgsTotalActive": "Total activas",
-    "noData": "No hay datos de analytics disponibles",
+    "noData": "No hay datos de analítica disponibles",
     "noGeoData": "Sin datos geográficos"
   },
   "recruitAnalytics": {
-    "title": "Analytics & Quality of Hire",
+    "title": "Analítica y calidad de contratación",
     "breadcrumb": "Reclutamiento",
     "export": "Exportar",
     "errLoading": "No se pudieron cargar los datos",
@@ -1322,7 +1322,7 @@
   "talentPool": {
     "title": "Banco de talento",
     "noCandidatesFound": "No se encontraron candidatos",
-    "candidateAdded": "Candidato agregado al pool",
+    "candidateAdded": "Candidato agregado al banco de talento",
     "candidateCreateError": "Error al crear candidato",
     "exportStarted": "Exportación iniciada",
     "exportTruncated": "Exportación limitada a {count} filas",
@@ -1330,11 +1330,11 @@
     "contactStarted": "Contacto iniciado",
     "export": "Exportar",
     "recontactCampaign": "Campaña Recontacto",
-    "addToPool": "Agregar al Pool",
+    "addToPool": "Agregar al banco de talento",
     "filters": "Filtros",
     "clearFilters": "Limpiar",
     "searchCandidate": "Buscar candidato...",
-    "poolType": "Tipo de Pool",
+    "poolType": "Tipo de candidato",
     "activeCandidates": "Candidatos activos",
     "passiveCandidates": "Candidatos pasivos",
     "historicFinalists": "Finalistas históricos",
@@ -1368,7 +1368,7 @@
     "sortExperience": "Experiencia",
     "aiRecommendations": "Recomendaciones IA para Vacantes Abiertas",
     "forVacancy": "Para:",
-    "poolMatch": "candidatos del pool coinciden con FIT 70+",
+    "poolMatch": "candidatos del banco de talento coinciden con FIT 70+",
     "recontactable": "ex-candidatos recontactables",
     "internalEligible": "candidatos internos elegibles",
     "viewCandidates": "Ver candidatos",
@@ -1694,7 +1694,7 @@
   },
   "succession": {
     "title": "Mapa de Talento & Sucesión",
-    "breadcrumb": "Talent",
+    "breadcrumb": "Talento",
     "kpiCriticalRoles": "Roles Críticos",
     "kpiCovered": "Cubiertos",
     "kpiUncovered": "Sin Sucesor",
@@ -1798,7 +1798,7 @@
   },
   "teamIntel": {
     "title": "Inteligencia de Equipo",
-    "breadcrumb": "Talent",
+    "breadcrumb": "Talento",
     "kpiTeamSize": "Tamaño del Equipo",
     "kpiAvgTenure": "Antigüedad Promedio",
     "kpiPcaBalance": "Balance PCA",
@@ -1860,8 +1860,8 @@
     "formFirstName": "Nombre *",
     "formLastName": "Apellido *",
     "formLastNamePlaceholder": "López Rodríguez",
-    "formLocationPlaceholder": "San José, Costa Rica",
-    "formPhonePlaceholder": "+506 8888 8888",
+    "formLocationPlaceholder": "Ciudad, país",
+    "formPhonePlaceholder": "Código de país y número",
     "formCurrentTitleLabel": "Cargo actual",
     "formCurrentTitlePlaceholder": "Ej: Ingeniero de Software Senior",
     "formCurrentCompanyLabel": "Empresa actual",
@@ -1886,7 +1886,7 @@
     "poolApplicant": "Postulante",
     "poolReferral": "Referido",
     "poolSourced": "Búsqueda directa",
-    "poolSilverMedalist": "Plata",
+    "poolSilverMedalist": "Finalista anterior",
     "poolPassive": "Pasivo",
     "poolActive": "Activo",
     "poolActiveHint": "busca empleo activamente",
@@ -1896,7 +1896,8 @@
     "sourceLinkedin": "LinkedIn",
     "sourcePortal": "Portal de empleo",
     "sourceReferral": "Referido",
-    "sourceManual": "Manual",
+    "sourceManual": "Registro manual",
+    "sourceConsulting": "Consultora / headhunter",
     "sourceBulk": "Carga masiva",
     "sourceJobBoard": "Bolsa de empleo",
     "sourceUniversity": "Universidad",
@@ -1915,7 +1916,7 @@
     "noCandidatesDesc": "Crea el primer candidato para comenzar",
     "newCandidate": "Nuevo Candidato",
     "viewProfile": "Ver Perfil",
-    "addToPool": "Agregar a Pool",
+    "addToPool": "Agregar al banco de talento",
     "tag": "Etiquetar",
     "export": "Exportar",
     "createTitle": "Crear Candidato",
@@ -1924,7 +1925,7 @@
     "email": "Email",
     "phone": "Teléfono",
     "source": "Fuente",
-    "poolType": "Tipo de Pool",
+    "poolType": "Tipo de candidato",
     "location": "Ubicación",
     "currentTitle": "Cargo Actual",
     "currentCompany": "Empresa Actual",
@@ -2185,6 +2186,7 @@
     "requestedVacancyUnavailable": "No se pudo abrir la vacante solicitada; se muestra otra vacante.",
     "selectVacancyFirst": "Selecciona una vacante primero",
     "checklistIncompleteWarning": "Pendiente en la etapa anterior: {items}",
+    "hiredStageHint": "Mover a «Contratado» no registra la contratación: confírmala con «Autorizar Contratación» en la oferta aceptada.",
     "checklistTitle": "Checklist de la etapa",
     "checklistItemCompletedBy": "Completado",
     "nextAction": {
@@ -2245,7 +2247,6 @@
     "editNoChanges": "Sin cambios por guardar",
     "editFailed": "No se pudieron guardar los cambios",
     "editTitleRequired": "El título del cargo es obligatorio.",
-    "editSalaryInvalid": "Escribe el salario sin separadores de miles (por ejemplo 850000); se admiten hasta dos decimales.",
     "editSalaryRange": "El salario mínimo no puede ser mayor que el máximo.",
     "editDescriptionHint": "Admite formato sencillo: **negrita**, listas con guiones y títulos con ##.",
     "editHiringManagerHint": "Si es el líder que aprobará la oferta, debe ser el responsable de la contratación: así ve los candidatos y las ofertas de esta vacante.",
@@ -2402,7 +2403,7 @@
     "daysAvg": "días prom.",
     "naSalary": "No definido",
     "titleField": "Título del cargo *",
-    "locationPlaceholder": "San José, Costa Rica",
+    "locationPlaceholder": "Ciudad, país",
     "workModality": "Modalidad de trabajo",
     "contractTypeLabel": "Tipo de contrato",
     "aboutRole": "Sobre el cargo",
@@ -2729,7 +2730,7 @@
     "lastName": "Apellidos",
     "jobTitle": "Cargo",
     "phone": "Teléfono",
-    "phonePlaceholder": "+506 8888 8888",
+    "phonePlaceholder": "Código de país y número",
     "email": "Correo",
     "emailHint": "Para cambiar tu correo, escribe a soporte.",
     "role": "Rol",
@@ -2846,7 +2847,7 @@
     "kpiScheduled": "Programadas",
     "kpiCompleted": "Completadas",
     "kpiCancelled": "Canceladas",
-    "kpiAvgScore": "Score Promedio",
+    "kpiAvgScore": "Puntaje promedio",
     "kpiTotal": "Total",
     "pageResults": "en esta página",
     "filteredTotal": "según los filtros",
@@ -2888,7 +2889,7 @@
     "colDate": "Fecha",
     "colEvaluators": "Evaluadores",
     "colStatus": "Estado",
-    "colScore": "Score",
+    "colScore": "Puntaje",
     "colActions": "Acciones",
     "noInterviews": "No hay entrevistas programadas",
     "noInterviewsDesc": "Las entrevistas aparecen cuando se programan desde el pipeline",
@@ -2997,7 +2998,7 @@
     "scheduleTimeZoneHint": "Zona horaria: {zone}",
     "scheduleTimeZoneUtcWarning": "La organización no tiene zona horaria configurada: la hora se guarda y se envía en UTC.",
     "scheduleLocationPlaceholderVideo": "Se generará automáticamente con Daily.co",
-    "scheduleLocationPlaceholderOnsite": "Oficina central, San José — Sala 3",
+    "scheduleLocationPlaceholderOnsite": "Oficina central — Sala 3",
     "scheduleLocationPlaceholderOnline": "Pega el enlace de Teams, Meet o Zoom",
     "scheduleLocationPlaceholderOther": "Número de teléfono o enlace de reunión",
     "scheduleFieldVideoAutoRoom": "La sala de video se creará automáticamente al unirse",
@@ -3256,7 +3257,7 @@
     "sendByEmail": "Enviar por Email"
   },
   "dei": {
-    "breadcrumbParent": "Analytics",
+    "breadcrumbParent": "Analítica",
     "generateReport": "Generar Reporte",
     "errKpis": "No se pudieron cargar los indicadores DEI.",
     "kpiGenderRatio": "Ratio de Género",
@@ -3754,7 +3755,6 @@
     "intTypeOnline": "En línea",
     "intTypeOther": "Entrevista",
     "intTypeOnlineSuffix": "en línea",
-    "tzCostaRica": "hora de Costa Rica",
     "offerLoading": "Cargando su oferta…",
     "offerError": "No se pudo cargar su oferta.",
     "offerEmpty": "Aún no tiene ofertas.",
@@ -4060,6 +4060,21 @@
     "fromCompany": "Tomado de la empresa {company}.",
     "notConfigured": "No configurado"
   },
+  "orgLocale": {
+    "legend": "País y formato regional",
+    "country": "País",
+    "countryPlaceholder": "Selecciona un país",
+    "countryOther": "Otro país",
+    "countryCode": "Código del país (ISO, 2 letras)",
+    "countryCodePlaceholder": "AR",
+    "timeZone": "Zona horaria",
+    "currency": "Moneda",
+    "locale": "Formato de números y montos",
+    "hint": "Al elegir el país se completan la zona horaria, la moneda y el formato. Puedes cambiarlos.",
+    "editHint": "Solo se guardan los valores que cambies; los demás ajustes de la organización (como el correo de contacto para candidatos) se conservan.",
+    "sample": "Ejemplo: {sample}",
+    "invalid": "Revisa el país, la zona horaria, la moneda y el formato."
+  },
   "committee": {
     "committeeTitle": "Comité de Calibración",
     "startCalibration": "Iniciar Calibración",
@@ -4273,7 +4288,7 @@
     "lastNamePlaceholder": "López Rodríguez",
     "emailLabel": "Email *",
     "emailInvalid": "Revise su correo electrónico: debe tener el formato nombre@dominio.com.",
-    "cityCountryPlaceholder": "San José, Costa Rica",
+    "cityCountryPlaceholder": "Ciudad, país",
     "currentTitleLabel": "Cargo actual",
     "currentTitlePlaceholder": "Analista de Recursos Humanos",
     "currentCompanyLabel": "Empresa actual",
@@ -4377,7 +4392,7 @@
     "workModeLabel": "Modalidad",
     "locationLabel": "Ubicación",
     "phoneLabel": "Teléfono",
-    "phonePlaceholder": "+506 8888 8888",
+    "phonePlaceholder": "Código de país y número",
     "salaryLabel": "Salario",
     "departmentLabel": "Departamento",
     "applyTitlePrefix": "Postularse a",
@@ -4430,15 +4445,15 @@
     "title": "Política de tratamiento de datos personales",
     "subtitle": "Aviso de privacidad para candidatos",
     "controllerHeading": "Responsable del tratamiento",
-    "controllerBody": "es responsable del tratamiento de los datos personales que entregas al postularte a sus vacantes. TIMS ATS es la plataforma tecnológica que la organización usa para gestionar sus procesos de selección y actúa como encargado del tratamiento por cuenta de ella.",
+    "controllerBody": "es responsable del tratamiento de los datos personales que usted entrega al postularse a sus vacantes. TIMS ATS es la plataforma tecnológica que la organización usa para gestionar sus procesos de selección y actúa como encargado del tratamiento por cuenta de ella.",
     "dataHeading": "Datos que tratamos",
-    "dataBody": "Datos de identificación y contacto (nombre, email, teléfono, ubicación), información profesional (cargo, empresa, experiencia, perfil de LinkedIn), tu mensaje de presentación y, si la adjuntas, tu hoja de vida.",
+    "dataBody": "Datos de identificación y contacto (nombre, email, teléfono, ubicación), información profesional (cargo, empresa, experiencia, perfil de LinkedIn), su mensaje de presentación y, si la adjunta, su hoja de vida.",
     "purposeHeading": "Finalidad",
-    "purposeBody": "Gestionar tu participación en los procesos de selección de personal de la organización: evaluar tu perfil, contactarte sobre el proceso y conservar tu postulación como evidencia del mismo.",
-    "rightsHeading": "Tus derechos",
-    "rightsBody": "Conforme a la Ley 1581 de 2012, puedes conocer, actualizar y rectificar tus datos, solicitar prueba de la autorización otorgada, ser informado sobre el uso de tus datos, presentar quejas ante la Superintendencia de Industria y Comercio, revocar la autorización y solicitar la supresión de tus datos, y acceder gratuitamente a ellos.",
-    "exerciseHeading": "Cómo ejercer tus derechos",
-    "exerciseBody": "Comunícate con la organización a través de sus canales oficiales de contacto indicando tu nombre, el email con el que te postulaste y tu solicitud.",
+    "purposeBody": "Gestionar su participación en los procesos de selección de personal de la organización: evaluar su perfil, contactarle sobre el proceso y conservar su postulación como evidencia del mismo.",
+    "rightsHeading": "Sus derechos",
+    "rightsBody": "Conforme a la legislación de protección de datos aplicable, usted puede solicitar el acceso a sus datos personales, su rectificación o actualización y su supresión, así como retirar en cualquier momento la autorización otorgada. Para ejercer estos derechos, comuníquese con la organización.",
+    "exerciseHeading": "Cómo ejercer sus derechos",
+    "exerciseBody": "Comuníquese con la organización a través de sus canales oficiales de contacto e indique su nombre, el email con el que se postuló y su solicitud.",
     "baseNotice": "Este aviso es la política base de la plataforma. La organización puede tener una política propia de tratamiento de datos que lo complementa.",
     "back": "Volver a vacantes"
   },
@@ -4922,11 +4937,11 @@
     "navLabel": "Solicitudes de titulares",
     "unnamedCandidate": "Candidato sin nombre",
     "title": "Solicitudes de supresión de datos",
-    "subtitle": "Solicitudes de supresión de datos personales presentadas por los titulares, conforme a la Ley 1581 de 2012.",
-    "dueDateNote": "La fecha límite se calcula sumando 15 días hábiles (lunes a viernes) a la fecha de recepción, sin descontar los días festivos. El plazo legal puede ser posterior; verifíquelo antes de responder al titular.",
+    "subtitle": "Solicitudes de supresión de datos personales presentadas por los titulares. Respóndelas conforme a la legislación de protección de datos aplicable.",
+    "dueDateNote": "La fecha límite es una estimación: se calcula sumando 15 días hábiles (lunes a viernes) a la fecha de recepción, sin descontar los días festivos. No es un plazo legal; el plazo aplicable puede ser distinto, así que verifícalo antes de responder al titular.",
     "unavailableTitle": "Esta función no está disponible",
-    "unavailableMessage": "La gestión de solicitudes de titulares aún no está habilitada para su organización.",
-    "noPermissionTitle": "No tiene permiso para ver esta sección",
+    "unavailableMessage": "La gestión de solicitudes de titulares aún no está habilitada para tu organización.",
+    "noPermissionTitle": "No tienes permiso para ver esta sección",
     "noPermissionMessage": "Se requiere permiso para actualizar candidatos de toda la organización.",
     "colCandidate": "Titular",
     "colRequestType": "Tipo de solicitud",
@@ -4941,7 +4956,7 @@
     "overdue": "Vencida",
     "emptyTitle": "No hay solicitudes pendientes",
     "emptyDescription": "Cuando un titular solicite la supresión de sus datos, la solicitud aparecerá aquí.",
-    "loadError": "No fue posible cargar las solicitudes. Inténtelo de nuevo."
+    "loadError": "No fue posible cargar las solicitudes. Inténtalo de nuevo."
   },
   "rejectCandidateModal": {
     "title": "Rechazar candidato",
@@ -4984,5 +4999,12 @@
       "NO_SHOW": "No se presentó",
       "OTHER": "Otro motivo"
     }
+  },
+  "money": {
+    "invalid": "Escribe solo el monto, en números. Puedes separar los miles con punto, coma o espacio (por ejemplo 1.000.000).",
+    "decimals": "{currency} se usa sin decimales: escribe un número entero.",
+    "tooLarge": "El monto es demasiado alto.",
+    "wideRange": "El mínimo es menos de la décima parte del máximo. Revisa que no falte ni sobre un cero.",
+    "confirmWideRange": "Sí, el rango es correcto"
   }
 }

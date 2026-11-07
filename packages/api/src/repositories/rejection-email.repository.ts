@@ -19,11 +19,12 @@ export const rejectionEmailRepository = {
       }),
     ]);
     if (!application || !org) return null;
-    const candidateConsentWithdrawn = await candidateConsentRepository.isRecruitmentConsentWithdrawn(
-      orgId,
-      application.candidate.id,
-    );
-    return { application, org, candidateConsentWithdrawn };
+    // The notice is in the language the candidate applied in, when known (else the company's).
+    const [candidateConsentWithdrawn, candidateLocale] = await Promise.all([
+      candidateConsentRepository.isRecruitmentConsentWithdrawn(orgId, application.candidate.id),
+      candidateConsentRepository.consentLocale(orgId, { applicationId, candidateId: application.candidate.id }),
+    ]);
+    return { application, org, candidateConsentWithdrawn, candidateLocale };
   },
 
   async isConsentWithdrawn(orgId: string, candidateId: string): Promise<boolean> {

@@ -4,7 +4,8 @@ import { tenantDb as db } from '@tims/db';
 import { offerApplicationLockRepository } from '../../repositories/offer-application-lock.repository';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import { getAppUrl, OFFER_LINK_VALIDITY_DAYS, orgSettingsTimeZone, resolveInterviewTimeZone } from '@tims/shared';
+import { getAppUrl, orgSettingsTimeZone, resolveInterviewTimeZone } from '@tims/shared';
+import { defaultSigningExpiry, normaliseRecipient } from './signing-link';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
 import { candidateContactEmail } from '../../services/candidate-contact';
@@ -16,21 +17,12 @@ import { scopeWhereFor, buildAccessForUser } from '../../access';
 import { runUnscopedLogged } from '../../lib/unscoped';
 import { assertNoRejectedApproval } from './rejected-approval-guard';
 import { orgTimeZone } from '../../services/interview-email.service';
+import { prepareOfferStageAdvance } from '../../services/offer-stage-advance.service';
 import {
   assertApplicationNotRejected,
   lockAndAssertApplicationNotRejected,
   notRejectedApplication,
 } from './rejected-application-guard';
-
-// The address a signing token was issued to, compared on re-send (see generateSigningLink).
-function normaliseRecipient(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-/** The expiry a first send stamps on an offer that has none (B-04: an emailed link used to live forever). */
-export function defaultSigningExpiry(now: Date = new Date()): Date {
-  return new Date(now.getTime() + OFFER_LINK_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
-}
 
 // Public signing-token procedures run with NO tenant in scope (the candidate has no
 // session and the org is unknown until the token resolves an offer), and `db` here is
@@ -179,15 +171,17 @@ export const offerSigningRouter = router({
       const expiresAt = reusableToken ? offer.expiresAt : (offer.expiresAt ?? defaultSigningExpiry());
 
       if (!reusableToken) {
-        // In one transaction: lock the candidate's application(s) FOR SHARE and re-check, then write.
+        // In one transaction: lock the candidate's application(s) (FOR NO KEY UPDATE first: the send also moves
+        // it to the "Oferta" stage), re-check FOR SHARE, then write.
         const transition = await offerApplicationLockRepository.inTransaction(ctx.user.organizationId, async (tx) => {
+          const stage = await prepareOfferStageAdvance(tx, ctx.user.organizationId, offer);
           await lockAndAssertApplicationNotRejected(
             tx,
             ctx.user.organizationId,
             offer,
             'El candidato fue descartado en el proceso; esta oferta no se puede enviar',
           );
-          return tx.offer.updateMany({
+          const sent = await tx.offer.updateMany({
             where: {
               id: offer.id,
               organizationId: ctx.user.organizationId,
@@ -204,6 +198,8 @@ export const offerSigningRouter = router({
               settings: { ...existingSettings, signingToken, signingTokenRecipient: recipient },
             },
           });
+          if (sent.count === 1) await stage.advance(ctx.user.id); // only a send that happened moves the stage
+          return sent;
         });
         if (transition.count !== 1) {
           throw new TRPCError({

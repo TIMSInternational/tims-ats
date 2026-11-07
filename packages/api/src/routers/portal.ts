@@ -290,7 +290,6 @@ export const portalRouter = router({
         include: {
           stages: { where: { isDefault: true }, take: 1 },
           organization: { select: { name: true, slug: true, settings: true, billingEmail: true } },
-          company: { select: { language: true } },
         },
       });
 
@@ -522,7 +521,8 @@ export const portalRouter = router({
           candidateName: outcome.recipient.firstName,
           vacancyTitle: vacancy.title,
           companyName: vacancy.organization?.name ?? '',
-          locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
+          // The language the candidate applied in (the consent text locale the form sent), not the company's.
+          locale: input.consentLocale,
           contactEmail: candidateContactEmail(vacancy.organization),
           ...(portalUrl ? { portalUrl } : {}),
         };

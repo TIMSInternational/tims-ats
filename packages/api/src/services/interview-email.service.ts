@@ -183,7 +183,7 @@ export function buildInterviewEmails(
     build(
       'candidate',
       { name: candidateName, email: interview.candidate.email },
-      toLocale(interview.vacancy.company?.language),
+      toLocale(data.candidateLocale ?? interview.vacancy.company?.language),
       joinUrl,
     );
   }

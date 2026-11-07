@@ -12,7 +12,7 @@ namespace Tims.Api.PlatformOrganizations;
 
 /// <summary>
 /// The platform-owner organization CREATE endpoint (Phase-5 slice 21, issue #76) — the C# port of
-/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>).
+/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:151-248</c>).
 ///
 /// <para><b>Gate: <see cref="PlatformOwnerGate"/>, reused not re-implemented</b> — identical disposition to
 /// slices 19 and 20, including the impersonation case (an impersonated owner resolves to
@@ -41,7 +41,7 @@ namespace Tims.Api.PlatformOrganizations;
 /// that way.</para>
 ///
 /// <para><b>What is NOT a divergence and must not be "fixed" at step 5: a notify failure is a 500 after a
-/// committed create.</b> <c>organizations.ts:220</c> awaits <c>notify</c> with no <c>try</c> and no
+/// committed create.</b> <c>organizations.ts:226</c> awaits <c>notify</c> with no <c>try</c> and no
 /// <c>.catch</c>, so the TS behaves identically. See
 /// <see cref="PlatformOrganizationsCreateUseCase.CreateAsync"/>.</para>
 ///
@@ -112,7 +112,7 @@ public static class PlatformOrganizationsCreateEndpoints
     }
 
     /// <summary>
-    /// Reads the Zod-shaped body (<c>organizations.ts:150-182</c>), distinguishing ABSENT from present.
+    /// Reads the Zod-shaped body (<c>organizations.ts:152-187</c>), distinguishing ABSENT from present.
     ///
     /// <para>Hand-parsed for the same reason the update body is: <c>billingEmail</c> is
     /// <c>.optional()</c>, which REJECTS an explicit <c>null</c>, and a bound DTO collapses absent and null
@@ -140,12 +140,13 @@ public static class PlatformOrganizationsCreateEndpoints
             || !TryReadRequiredString(body, "slug", out var slug)
             || !TryReadRequiredString(body, "plan", out var plan)
             || !TryReadRequiredString(body, "adminEmail", out var adminEmail)
-            || !TryReadOptionalString(body, "billingEmail", out var billingEmail))
+            || !TryReadOptionalString(body, "billingEmail", out var billingEmail)
+            || !OrgLocaleProfileJson.TryRead(body, out var localeProfile))
         {
             return false;
         }
 
-        input = new PlatformOrganizationCreateInput(name, slug, plan, adminEmail, billingEmail);
+        input = new PlatformOrganizationCreateInput(name, slug, plan, adminEmail, billingEmail, localeProfile);
         return true;
     }
 
@@ -248,7 +249,7 @@ public static class PlatformOrganizationsCreateEndpoints
     /// assumed.</para>
     ///
     /// <para><b>Both emails now carry <c>[MaxLength(254)]</c> (#207, 2026-08-11).</b> They deliberately did
-    /// not before, because Zod bounded neither. Zod now does (<c>organizations.ts:179-180</c>), so the
+    /// not before, because Zod bounded neither. Zod now does (<c>organizations.ts:181-182</c>), so the
     /// contract may advertise it — but note that this attribute is DOCUMENTATION ONLY, like every other
     /// attribute on this type. What actually rejects a 255-character address is
     /// <see cref="PlatformOrganizationsCreateUseCase.IsValidEmail"/>; adding the attribute alone would have
@@ -309,5 +310,10 @@ public static class PlatformOrganizationsCreateEndpoints
         /// (<c>input.billingEmail || input.adminEmail</c>). Bounded at 254 (#207).</summary>
         [MaxLength(PlatformOrganizationsCreateUseCase.MaxEmailLength)]
         public string BillingEmail { get; init; } = string.Empty;
+
+        /// <summary>Optional. Country, time zone, currency and number locale ("Nueva organización" always
+        /// sends it): written to <c>settings</c> and the default company. Absent = empty settings and a CR
+        /// company on the column defaults. All four members are required when it is present.</summary>
+        public OrgLocaleProfileBody LocaleProfile { get; init; } = new();
     }
 }

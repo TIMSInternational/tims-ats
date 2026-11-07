@@ -5,14 +5,17 @@ import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { Drawer } from '../../../../../components';
+import { salaryBandStatus } from '../../../../../lib/money-amount';
 import { EditVacancyFields } from './edit-vacancy-fields';
 import {
   buildVacancyPatch,
   initialEditForm,
+  withDefaultCurrency,
   validateEditForm,
   type EditableVacancy,
   type EditVacancyForm,
 } from './edit-vacancy-form';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
 interface EditVacancyDrawerProps {
   vacancyId: string;
@@ -29,8 +32,13 @@ interface EditVacancyDrawerProps {
 export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }: EditVacancyDrawerProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
-  const [initial] = useState<EditVacancyForm>(() => initialEditForm(vacancy));
-  const [form, setForm] = useState<EditVacancyForm>(initial);
+  const tenant = useTenantLocale();
+  // A vacancy saved without a currency keeps '' in state; the tenant's currency is applied at render, never
+  // frozen at mount — the admin shell's one organization.getCurrent can resolve after the drawer opened.
+  const [storedInitial] = useState<EditVacancyForm>(() => initialEditForm(vacancy, ''));
+  const [storedForm, setForm] = useState<EditVacancyForm>(storedInitial);
+  const initial = withDefaultCurrency(storedInitial, tenant.currency);
+  const form = withDefaultCurrency(storedForm, tenant.currency);
 
   const update = trpc.vacancy.update.useMutation({
     onSuccess: () => {
@@ -46,16 +54,14 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
     },
   });
 
-  const error = validateEditForm(initial, form);
+  // The band the person confirmed as correct although its minimum is below a tenth of its maximum.
+  const [confirmedRangeKey, setConfirmedRangeKey] = useState<string | null>(null);
+  const salaryStatus = salaryBandStatus(form.salaryMin, form.salaryMax, form.currency);
+  const error = validateEditForm(initial, form, confirmedRangeKey);
   const patch = error === null ? buildVacancyPatch(initial, form) : null;
-  const errorText =
-    error === 'titleRequired'
-      ? t.vacancies.editTitleRequired
-      : error === 'salaryInvalid'
-        ? t.vacancies.editSalaryInvalid
-        : error === 'salaryRange'
-          ? t.vacancies.editSalaryRange
-          : null;
+  // The salary band explains its own errors next to the amounts (SalaryBandFields / MoneyInput); this summary
+  // only adds what is not shown there.
+  const errorText = error === 'titleRequired' ? t.vacancies.editTitleRequired : null;
 
   const save = () => {
     if (error !== null || patch === null) return;
@@ -74,6 +80,9 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
         form={form}
         onChange={(next) => setForm((prev) => ({ ...prev, ...next }))}
         disabled={update.isPending}
+        salaryStatus={salaryStatus}
+        wideConfirmed={confirmedRangeKey === salaryStatus.rangeKey}
+        onConfirmWide={(confirmed) => setConfirmedRangeKey(confirmed ? salaryStatus.rangeKey : null)}
       />
 
       {errorText && (

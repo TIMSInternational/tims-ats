@@ -17,11 +17,12 @@ export type RoleOption = { slug: string; label: string };
 
 /**
  * Decision D-HRBP (drop-v1): while NEXT_PUBLIC_LAUNCH_SCOPE=pilot, no invite or role picker offers these
- * roles. HRBP is unit-scoped and the organization structure is off in the pilot; leader is not part of
- * pilot v1. To offer them again, remove them from this list. UX only: the API still decides what a caller
- * may grant.
+ * roles. HRBP is unit-scoped and the organization structure is off in the pilot. Líder IS offered (owner
+ * decision 2026-11-06): team-scoped, it works on the vacancies assigned to it as hiring manager, and holds
+ * vacancy:update @team so it can send its own drafts for approval. To offer HRBP again, remove it from this
+ * list. UX only: the API still decides what a caller may grant.
  */
-export const PILOT_HIDDEN_ROLE_SLUGS: readonly string[] = ['hrbp', 'leader'];
+export const PILOT_HIDDEN_ROLE_SLUGS: readonly string[] = ['hrbp'];
 
 export function roleLabelsFor(locale: 'es' | 'en'): RoleLabels {
   return locale === 'en' ? en.roles : es.roles;

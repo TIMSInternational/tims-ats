@@ -2,7 +2,7 @@
 // The organization's locale profile, as an admin should see it (pure)
 // ---------------------------------------------------------------------------
 // Country, currency, time zone and language live in two places: `organizations.settings` (jsonb keys
-// `currency`, `timezone`, `locale`, `candidateContactEmail`) and the organization's companies (`country`,
+// `country`, `currency`, `timezone`, `locale`, `candidateContactEmail`) and the organization's companies (`country`,
 // `currency`, `timezone`, `language`). Interview emails resolve the zone organization → company → UTC
 // (packages/shared/src/time-zone.ts); this projection follows the same order so the "Datos de la
 // organización" card shows the values the product actually uses (audit finding D-11). Every value is
@@ -35,6 +35,11 @@ export interface OrganizationProfile {
   timeZone: string | null;
   timeZoneSource: ProfileSource;
   locale: string | null;
+  /**
+   * 'organization' = `settings.locale`; 'company' = the primary company's `language` column (a column default,
+   * "es", on every organization provisioned before the locale profile existed).
+   */
+  localeSource: ProfileSource;
   /** Only an EXPLICITLY configured candidate mailbox (settings.candidateContactEmail). */
   candidateContactEmail: string | null;
   /**
@@ -67,7 +72,8 @@ export function projectOrganizationProfile(org: OrganizationProfileInput): Organ
   const companyCurrency = matching(company?.currency, CURRENCY);
   const orgTimeZone = orgSettingsTimeZone(org.settings);
   const companyTimeZone = isValidTimeZone(company?.timezone) ? (company?.timezone ?? null) : null;
-  const locale = matching(settingsString(org.settings, 'locale'), LOCALE) ?? matching(company?.language, LOCALE);
+  const orgLocale = matching(settingsString(org.settings, 'locale'), LOCALE);
+  const companyLocale = matching(company?.language, LOCALE);
   const configuredContact = candidateContactEmail({ settings: org.settings });
 
   return {
@@ -75,12 +81,15 @@ export function projectOrganizationProfile(org: OrganizationProfileInput): Organ
     name: org.name,
     slug: org.slug,
     logo: org.logo,
-    country: matching(company?.country, COUNTRY),
+    // The organization's own country (set by the creation form or the platform owner's edit), then the
+    // primary company's.
+    country: matching(settingsString(org.settings, 'country'), COUNTRY) ?? matching(company?.country, COUNTRY),
     currency: orgCurrency ?? companyCurrency,
     currencySource: orgCurrency ? 'organization' : companyCurrency ? 'company' : null,
     timeZone: orgTimeZone ?? companyTimeZone,
     timeZoneSource: orgTimeZone ? 'organization' : companyTimeZone ? 'company' : null,
-    locale,
+    locale: orgLocale ?? companyLocale,
+    localeSource: orgLocale ? 'organization' : companyLocale ? 'company' : null,
     candidateContactEmail: configuredContact,
     candidateContactSource: configuredContact
       ? 'organization'

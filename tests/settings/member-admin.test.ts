@@ -328,9 +328,9 @@ describe('members table helpers (web)', () => {
     );
   });
 
-  it('offers only grantable roles, without hrbp/leader in the pilot, labelled in Spanish', () => {
+  it('offers only grantable roles, without hrbp in the pilot (leader offered since 2026-11-06), labelled in Spanish', () => {
     const pilot = memberRoleOptions(['super_admin'], es.roles, 'recruiter', 'pilot');
-    expect(pilot.map((o) => o.slug)).toEqual(['super_admin', 'hr_admin', 'recruiter', 'committee', 'employee']);
+    expect(pilot.map((o) => o.slug)).toEqual(['super_admin', 'hr_admin', 'recruiter', 'leader', 'committee', 'employee']);
     expect(pilot.find((o) => o.slug === 'committee')?.label).toBe('Comité de entrevista');
     const hr = memberRoleOptions(['hr_admin'], es.roles, 'recruiter', 'full');
     expect(hr.map((o) => o.slug)).not.toContain('super_admin');

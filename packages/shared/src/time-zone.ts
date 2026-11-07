@@ -24,6 +24,7 @@ const ZONE_PLACES: Readonly<Record<string, { es: string; en: string }>> = {
   'America/Bogota': { es: 'Colombia', en: 'Colombia' },
   'America/Lima': { es: 'Perú', en: 'Peru' },
   'America/Santo_Domingo': { es: 'República Dominicana', en: 'Dominican Republic' },
+  'America/Santiago': { es: 'Chile', en: 'Chile' },
 };
 
 const UTC_ALIASES: ReadonlySet<string> = new Set(['UTC', 'Etc/UTC', 'Etc/GMT', 'GMT', 'Etc/Universal', 'Universal']);

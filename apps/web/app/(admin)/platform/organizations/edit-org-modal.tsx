@@ -6,13 +6,32 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { Modal } from '../../../../components';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
+import { orgLocalePatch, type OrgLocaleForm } from '../../../../lib/org-locale-form';
+import { OrgLocaleFields } from './org-locale-fields';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
 const PLAN_ORDER: Record<string, number> = { trial: 0, starter: 1, professional: 2, enterprise: 3 };
 
-export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationListItem; onClose: () => void; onSuccess: () => void }) {
+/**
+ * `localeInitial` (the organization detail page passes it) adds the country / time zone / currency / locale
+ * fields. Only the values the owner changes are sent, and the server MERGES them into settings, so every
+ * other key (candidateContactEmail, ...) is kept. The list page passes none and edits name and plan only.
+ */
+export function EditOrgModal({
+  org,
+  localeInitial,
+  onClose,
+  onSuccess,
+}: {
+  org: OrganizationListItem;
+  localeInitial?: OrgLocaleForm;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const { t } = useI18n();
   const [editName, setEditName] = useState(org.name);
+  const [localeForm, setLocaleForm] = useState<OrgLocaleForm | null>(localeInitial ?? null);
+  const settingsPatch = localeInitial && localeForm ? orgLocalePatch(localeInitial, localeForm) : {};
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
   const currentPlan = org.plan || org.subscription?.plan || 'trial';
   const [editPlan, setEditPlan] = useState(currentPlan);
@@ -22,6 +41,7 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
     onSuccess: () => {
       utils.platform.listOrganizations.invalidate();
       utils.platform.getOrganizationKpis.invalidate();
+      utils.platform.getOrganization.invalidate({ id: org.id });
       toast(t.organizations.updated, { type: 'success' });
       onSuccess();
     },
@@ -40,17 +60,19 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
 
   const handleEdit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (settingsPatch === null) return;
     updateOrg.mutate({
       id: org.id,
       name: editName,
       plan: editPlan,
+      ...(Object.keys(settingsPatch).length > 0 ? { settings: settingsPatch } : {}),
     });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-semibold text-[#333]">{t.organizations.edit} {t.organizations.title}</h2>
           <button aria-label={t.common.close} onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
@@ -120,6 +142,18 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
               </button>
             </div>
           </div>
+          {localeForm && (
+            <OrgLocaleFields
+              idPrefix="edit-org"
+              required={false}
+              value={localeForm}
+              onChange={setLocaleForm}
+              hint={t.orgLocale.editHint}
+            />
+          )}
+          {settingsPatch === null && (
+            <div role="alert" className="p-2.5 rounded-lg bg-amber-50 text-xs text-amber-800 font-medium">{t.orgLocale.invalid}</div>
+          )}
           {updateOrg.error && (
             <div className="p-2.5 rounded-lg bg-red-50 text-xs text-[#DD0C15] font-medium">
               Error: {updateOrg.error.message}
@@ -135,7 +169,7 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
             </button>
             <button
               type="submit"
-              disabled={updateOrg.isPending}
+              disabled={updateOrg.isPending || settingsPatch === null}
               className="flex-1 h-9 rounded-lg bg-[#1F114C] text-sm text-white font-medium hover:bg-[#1F114C]/90 transition disabled:opacity-60"
             >
               {updateOrg.isPending ? t.common.saving : t.common.save}

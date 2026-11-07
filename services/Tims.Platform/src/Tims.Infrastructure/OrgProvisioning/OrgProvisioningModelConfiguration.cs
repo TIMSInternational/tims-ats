@@ -33,6 +33,10 @@ public static class OrgProvisioningModelConfiguration
             entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
             entity.Property(c => c.Name).HasColumnName("name");
             entity.Property(c => c.Country).HasColumnName("country");
+            // Sent only when a locale profile set them; a null leaves the column default in force (EF omits a
+            // store-generated property whose value is the CLR default and reads the generated value back).
+            entity.Property(c => c.Currency).HasColumnName("currency").ValueGeneratedOnAdd();
+            entity.Property(c => c.Timezone).HasColumnName("timezone").ValueGeneratedOnAdd();
             // Prisma writes `timestamp(3) without time zone` with NO DB default (@updatedAt is client-side),
             // so this column MUST be sent or the INSERT fails 23502.
             entity.Property(c => c.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");

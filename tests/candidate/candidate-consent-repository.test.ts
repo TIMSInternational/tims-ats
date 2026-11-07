@@ -1,16 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // #312: the consent repository's org-wide withdrawn set and the bounded-chunk lookup.
-const { queryRaw, candFindMany, consentFindMany } = vi.hoisted(() => ({
+const { queryRaw, candFindMany, consentFindMany, evidenceFindFirst } = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   candFindMany: vi.fn(),
   consentFindMany: vi.fn(),
+  evidenceFindFirst: vi.fn(),
 }));
 vi.mock('@tims/db', () => ({
   db: {
     $queryRaw: queryRaw,
     candidate: { findMany: candFindMany },
     dataConsent: { findMany: consentFindMany },
+    applicationConsentEvidence: { findFirst: evidenceFindFirst },
   },
 }));
 
@@ -51,5 +53,32 @@ describe('candidateConsentRepository.withdrawnCandidateIds — more than 500 ids
 
     expect([...result]).toEqual(['c-500']);
     expect(consentFindMany).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Candidate emails follow the language the candidate applied in: the consent evidence's locale.
+describe('candidateConsentRepository.consentLocale', () => {
+  const where = (call: number) => (evidenceFindFirst.mock.calls[call]?.[0] as { where: Record<string, unknown> }).where;
+
+  it("uses that application's evidence first, org-scoped, selecting only the locale", async () => {
+    evidenceFindFirst.mockResolvedValueOnce({ locale: 'en' });
+    expect(await candidateConsentRepository.consentLocale('org-1', { applicationId: 'app-1', candidateId: 'c-1' })).toBe('en');
+    expect(evidenceFindFirst).toHaveBeenCalledTimes(1);
+    expect(where(0)).toMatchObject({ organizationId: 'org-1', applicationId: 'app-1', locale: { not: null } });
+    expect((evidenceFindFirst.mock.calls[0]?.[0] as { select: unknown }).select).toEqual({ locale: true });
+  });
+
+  it("falls back to the candidate's most recent evidence (a staff-added application has none)", async () => {
+    evidenceFindFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ locale: 'en' });
+    expect(await candidateConsentRepository.consentLocale('org-1', { applicationId: 'app-2', candidateId: 'c-1' })).toBe('en');
+    expect(where(1)).toMatchObject({ organizationId: 'org-1', candidateId: 'c-1' });
+    expect((evidenceFindFirst.mock.calls[1]?.[0] as { orderBy: unknown }).orderBy).toEqual({ agreedAt: 'desc' });
+  });
+
+  it('is null when there is no evidence, and never throws (a language must never block an email)', async () => {
+    evidenceFindFirst.mockResolvedValue(null);
+    expect(await candidateConsentRepository.consentLocale('org-1', { candidateId: 'c-1' })).toBeNull();
+    evidenceFindFirst.mockRejectedValue(new Error('relation does not exist'));
+    expect(await candidateConsentRepository.consentLocale('org-1', { applicationId: 'a', candidateId: 'c-1' })).toBeNull();
   });
 });

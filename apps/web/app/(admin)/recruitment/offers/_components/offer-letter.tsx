@@ -3,6 +3,7 @@
 import { formatDate } from '../../../../../lib/format-utils';
 import { formatAnnualOfferSalary } from '../../../../../lib/offer-salary';
 import { useI18n } from '../../../../../lib/i18n';
+import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
 interface OfferLetterProps {
   offer: {
@@ -24,6 +25,7 @@ export function OfferLetter({
   companyName,
 }: OfferLetterProps) {
   const { t } = useI18n();
+  const { intlLocale } = useTenantLocale();
   const benefits = offer.benefits ? Object.values(offer.benefits) : [];
   const terms = offer.terms as Record<string, string> | null;
   const candidateName = `${offer.candidate.firstName} ${offer.candidate.lastName}`;
@@ -88,7 +90,7 @@ export function OfferLetter({
             <tr className="border-b border-[#F6F6F6]">
               <td className="py-2 text-[#8B8B8B] w-40 font-sans">{t.offers.annualBaseSalary}</td>
               <td className="py-2 font-semibold text-[#1F114C]">
-                {formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth })}
+                {formatAnnualOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth }, intlLocale)}
               </td>
             </tr>
             <tr className="border-b border-[#F6F6F6]">

@@ -7,6 +7,7 @@ import { I18nProvider } from '../../apps/web/lib/i18n';
 import { GeneralInfo } from '../../apps/web/app/(admin)/recruitment/vacancies/[id]/general-info';
 import { Step3Compensation } from '../../apps/web/app/(admin)/recruitment/vacancies/create-modal.fields';
 import type { VacancyDetail } from '../../apps/web/lib/trpc-types';
+import { salaryBandStatus } from '../../apps/web/lib/money-amount';
 
 // #311: the staff vacancy detail rendered raw markdown, invented "/ mes" for salaries with no stored period,
 // and the create modal's summary was hardcoded Spanish.
@@ -102,13 +103,13 @@ describe('create-vacancy summary (#311)', () => {
   const step3 = (
     <Step3Compensation
       salaryMin="8000000"
-      setSalaryMin={noop}
       salaryMax="14000000"
-      setSalaryMax={noop}
       currency="COP"
-      setCurrency={noop}
       salaryPeriod="yearly"
-      setSalaryPeriod={noop}
+      onSalaryChange={noop}
+      salaryStatus={salaryBandStatus('8000000', '14000000', 'COP')}
+      wideConfirmed={false}
+      onConfirmWide={noop}
       slaTargetDays="30"
       setSlaTargetDays={noop}
       autoPublish={false}

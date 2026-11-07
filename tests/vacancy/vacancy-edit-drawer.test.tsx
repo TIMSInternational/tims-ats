@@ -121,11 +121,19 @@ describe('edit form helpers', () => {
   it('validates the title and the salary band', () => {
     const initial = initialEditForm(editable);
     expect(validateEditForm(initial, { ...initial, title: ' ' })).toBe('titleRequired');
-    expect(validateEditForm(initial, { ...initial, salaryMin: '1.200.000' })).toBe('salaryInvalid');
-    expect(validateEditForm(initial, { ...initial, salaryMin: '1.200' })).toBe('salaryInvalid');
+    // Digit grouping is accepted (the shared parser, lib/money-amount.ts); CRC takes whole numbers only.
+    expect(validateEditForm(initial, { ...initial, salaryMin: '1.000.000' })).toBeNull();
+    expect(validateEditForm(initial, { ...initial, salaryMin: '900 000' })).toBeNull();
+    expect(validateEditForm(initial, { ...initial, salaryMin: '850000.50' })).toBe('salaryInvalid');
+    expect(validateEditForm(initial, { ...initial, salaryMin: '1..200' })).toBe('salaryInvalid');
     expect(validateEditForm(initial, { ...initial, salaryMin: '2000000' })).toBe('salaryRange');
-    expect(validateEditForm(initial, { ...initial, salaryMin: '850000.50' })).toBeNull();
+    // A minimum below a tenth of the maximum needs the person to confirm THIS band.
+    expect(validateEditForm(initial, { ...initial, salaryMin: '85000' })).toBe('salaryWide');
+    expect(validateEditForm(initial, { ...initial, salaryMin: '85000' }, '85000-1200000')).toBeNull();
+    expect(validateEditForm(initial, { ...initial, salaryMin: '85000' }, '86000-1200000')).toBe('salaryWide');
     expect(validateEditForm(initial, initial)).toBeNull();
+    // Re-grouping the stored amount is not an edit.
+    expect(buildVacancyPatch(initial, { ...initial, salaryMin: '850000' })).toBeNull();
   });
 
   // Codex P2: a stored decimal (the API accepts any non-negative number) must not block a title-only edit.
