@@ -8,6 +8,7 @@ import {
 } from '@tims/ai';
 import { readJobProfile } from '@tims/shared';
 import { interviewAiRepository } from '../repositories/interview-ai.repository';
+import { consentGuard } from './consent-guard.service';
 
 /** Coerce an unknown JSON value into a clean string[] (skills can be Json/null). */
 function toStringArray(value: unknown): string[] {
@@ -40,6 +41,9 @@ export const interviewAiService = {
   async generateGuide(orgId: string, interviewId: string) {
     const interview = await interviewAiRepository.findInterviewForAi(orgId, interviewId);
     if (!interview) throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
+    // #312: the guide sends the candidate's profile and parsed CV to the model, which is recruitment
+    // processing, so a candidate who withdrew consent gets none (checked before any AI spend).
+    await consentGuard.assertActive(orgId, interview.candidate.id);
 
     const { result, model } = await generateInterviewGuide(orgId, {
       vacancyTitle: interview.vacancy.title,

@@ -16,6 +16,7 @@ export const interviewAiRepository = {
         duration: true,
         candidate: {
           select: {
+            id: true,
             firstName: true,
             lastName: true,
             currentTitle: true,

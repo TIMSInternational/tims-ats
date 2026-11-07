@@ -13,23 +13,31 @@ vi.mock('../../packages/ai/src/index', async () => {
     guideCvFromParsedDocuments: guide.guideCvFromParsedDocuments,
   };
 });
+vi.mock('../../packages/api/src/services/consent-guard.service', () => ({
+  consentGuard: { assertActive: vi.fn() },
+}));
 vi.mock('../../packages/api/src/repositories/interview-ai.repository', () => ({
   interviewAiRepository: { findInterviewForAi: vi.fn(), upsertSummary: vi.fn() },
 }));
 
 import { interviewAiService } from '../../packages/api/src/services/interview-ai.service';
-import {
-  summarizeInterview,
-  generateInterviewGuide,
-  detectScorecardBias,
-} from '../../packages/ai/src/index';
+import { summarizeInterview, generateInterviewGuide, detectScorecardBias } from '../../packages/ai/src/index';
 import { interviewAiRepository } from '../../packages/api/src/repositories/interview-ai.repository';
+import { consentGuard } from '../../packages/api/src/services/consent-guard.service';
+import { TRPCError } from '@trpc/server';
 
 const INTERVIEW = {
   id: 'i1',
   type: 'technical',
   duration: 60,
-  candidate: { firstName: 'Ana', lastName: 'Gomez', currentTitle: 'Dev', skills: ['ts', 'react'], documents: [] },
+  candidate: {
+    id: 'c1',
+    firstName: 'Ana',
+    lastName: 'Gomez',
+    currentTitle: 'Dev',
+    skills: ['ts', 'react'],
+    documents: [],
+  },
   vacancy: { title: 'Senior Dev', description: 'Build things', jobProfile: null },
   scorecards: [
     {
@@ -91,11 +99,19 @@ describe('interviewAiService.generateGuide — job profile + parsed CV', () => {
       },
       vacancy: {
         ...INTERVIEW.vacancy,
-        jobProfile: { competencies: [{ name: 'SQL', level: 4, scaleMax: 5, description: 'Consultas' }, { name: 'Excel', level: 2 }] },
+        jobProfile: {
+          competencies: [
+            { name: 'SQL', level: 4, scaleMax: 5, description: 'Consultas' },
+            { name: 'Excel', level: 2 },
+          ],
+        },
       },
     } as never);
     const SETS = [{ competency: 'SQL', targetLevel: 4, targetScaleMax: 5, questions: ['q'] }];
-    vi.mocked(generateInterviewGuide).mockResolvedValue({ result: { sections: [], competencyQuestions: SETS }, model: 'haiku' } as never);
+    vi.mocked(generateInterviewGuide).mockResolvedValue({
+      result: { sections: [], competencyQuestions: SETS },
+      model: 'haiku',
+    } as never);
 
     const r = await interviewAiService.generateGuide('org-1', 'i1');
     const input = vi.mocked(generateInterviewGuide).mock.calls[0]![1];
@@ -168,5 +184,18 @@ describe('interviewAiService.detectBias', () => {
     expect(r.scorecardsAnalyzed).toBe(1);
     expect(r.overallRisk).toBe('unknown'); // degraded fallback — never a fake "low"
     expect(r.recommendations).toEqual(['revision manual']);
+  });
+});
+
+describe('interviewAiService.generateGuide — consent withdrawal (#312, Codex on #421)', () => {
+  it('checks the candidate consent and sends nothing to the model when it was withdrawn', async () => {
+    vi.mocked(consentGuard.assertActive).mockRejectedValueOnce(
+      new TRPCError({ code: 'PRECONDITION_FAILED', message: 'consent_withdrawn' }),
+    );
+    await expect(interviewAiService.generateGuide('org-1', 'i1')).rejects.toMatchObject({
+      message: 'consent_withdrawn',
+    });
+    expect(consentGuard.assertActive).toHaveBeenCalledWith('org-1', 'c1');
+    expect(generateInterviewGuide).not.toHaveBeenCalled();
   });
 });
