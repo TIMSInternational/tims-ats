@@ -170,7 +170,11 @@ describe('generateInterviewGuide with the job profile', () => {
     });
     await generateInterviewGuide('org-1', {
       ...BASE,
-      candidateCv: { summary: 'Jo\u200bse Perez, Tel: 8888\u200b7777, móvil 2020-2024, cel 2021\u20132025, 8888\u00a06666.\nTel: +506 (2022-2026)\nVentas (2016-2024).', experience: [] },
+      candidateCv: {
+        summary:
+          'Jo\u200bse Perez, Tel: 8888\u200b7777, móvil 2020-2024, cel 2021\u20132025, 8888\u00a06666.\nTel: +506 (2022-2026)\nVentas (2016-2024).',
+        experience: [],
+      },
       redact: ['José', 'Pérez'],
     });
     const [, , userMessage] = vi.mocked(bedrockGenerate).mock.calls.at(-1)!;
@@ -228,7 +232,9 @@ describe('guide helpers', () => {
     const out = formatCandidateCv(
       {
         summary: 'Tel 8888-7777',
-        experience: [{ title: 'Analista', company: 'Delta', startYear: 2018, endYear: 2022, description: 'de 2018-2022' }],
+        experience: [
+          { title: 'Analista', company: 'Delta', startYear: 2018, endYear: 2022, description: 'de 2018-2022' },
+        ],
       },
       [],
     );
@@ -246,7 +252,10 @@ describe('guide helpers', () => {
   });
 
   it('masks identifiers that straddle a truncation boundary, and hyphenated name parts (Codex round 7)', () => {
-    const long = formatCandidateCv({ summary: `${'x'.repeat(1480)} contact: ana.ruiz@example.com Federico`, experience: [] }, ['Federico']);
+    const long = formatCandidateCv(
+      { summary: `${'x'.repeat(1480)} contact: ana.ruiz@example.com Federico`, experience: [] },
+      ['Federico'],
+    );
     expect(long).not.toMatch(/ana\.ruiz|@e|Federi/);
     const desc = formatCandidateCv(
       { summary: null, experience: [{ title: 'Analista', description: `${'y'.repeat(395)} Federico 8888-7777` }] },
@@ -322,7 +331,10 @@ describe('redactContactDetails', () => {
       'María de la Cruz (maria@x.co, 8888-7777, +57 300 123 4567) trabajó del 2019-2023 en Delta.',
       ['María de la Cruz'],
     );
-    expect(out).toBe('[nombre] ([email], [teléfono], [teléfono]) trabajó del [teléfono] en Delta.');
+    expect(out).toBe(
+      // Two phones separated by ", " are one masked run since separators are any punctuation (Codex round 15).
+      '[nombre] ([email], [teléfono]) trabajó del [teléfono] en Delta.',
+    );
     expect(redactContactDetails('Cruzó la meta con Cruz', ['Cruz'])).toBe('Cruzó la meta con [nombre]');
     expect(redactContactDetails('1.200.000 ventas', [])).toBe('1.200.000 ventas');
   });
@@ -359,10 +371,14 @@ describe('redactContactDetails', () => {
   it('masks a parenthesized phone and short names (Codex round 4 on #421)', () => {
     expect(redactContactDetails('Tel: +506 (2020-2024)')).not.toMatch(/2020|2024/);
     expect(redactContactDetails('+506 (2020-2024)')).not.toMatch(/2020|2024/);
-    expect(redactContactDetails('Li Wu, especialista en ventas', ['Li', 'Wu'])).toBe('[nombre], especialista en ventas');
+    expect(redactContactDetails('Li Wu, especialista en ventas', ['Li', 'Wu'])).toBe(
+      '[nombre], especialista en ventas',
+    );
     expect(redactContactDetails('Gerente: Li Wu', ['Li', 'Wu'])).not.toMatch(/\bLi\b|\bWu\b/);
     // Short names apart from each other are masked too, not only as the combined full name.
-    expect(redactContactDetails('Li lideró ventas; luego Wu se unió', ['Li', 'Wu'])).toBe('[nombre] lideró ventas; luego [nombre] se unió');
+    expect(redactContactDetails('Li lideró ventas; luego Wu se unió', ['Li', 'Wu'])).toBe(
+      '[nombre] lideró ventas; luego [nombre] se unió',
+    );
     // Codex round 5: abbreviated labels, slashes, and short parts of compound names.
     expect(redactContactDetails('Tel. 2020-2024')).toBe('Tel. [teléfono]');
     expect(redactContactDetails('Tel: 8888/7777')).toBe('Tel: [teléfono]');

@@ -231,3 +231,23 @@ describe('Codex round 14 on #421: invisible characters', () => {
     expect(redactContactDetails('Habló Pérez.', ['Pé\u00adrez'])).toBe('Habló [nombre].');
   });
 });
+
+describe('Codex round 15 on #421: separator and invisible-character classes', () => {
+  it('removes every default-ignorable code point, supplementary variation selectors included', () => {
+    for (const mark of ['\u{E0100}', '\u{E01EF}', '\u{E0020}', '\u115f']) {
+      const out = formatCandidateCv({ summary: `Tel: 8888${mark}7777 y 8888${mark}6666` }) ?? '';
+      expect(out).not.toMatch(/7777|6666/);
+    }
+  });
+
+  it('joins digit groups split by any punctuation or symbol, not a fixed list', () => {
+    for (const sep of ['•', '·', '|', '~', '_', '*', '∙', '‧', '◦', ':', ', ', ' • ']) {
+      const out = formatCandidateCv({ summary: `Contact: +1 202${sep}555${sep}0123` }) ?? '';
+      expect(out).not.toMatch(/555|0123/);
+    }
+  });
+
+  it('still keeps a short number in prose', () => {
+    expect(redactContactDetails('Lideré 12 personas en 3 países.')).toBe('Lideré 12 personas en 3 países.');
+  });
+});

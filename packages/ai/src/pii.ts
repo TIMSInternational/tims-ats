@@ -148,11 +148,12 @@ export function wrapAsData(tag: string, content: string): string {
 // ('"ana ruiz"@example.com', '“ana.ruiz”@example.cr').
 const EMAIL_PATTERN =
   /(?:["“”„«»](?:\\.|[^"“”„«»\n\\]){1,64}["“”„«»]|[\p{L}\p{N}._%+'’!#$&*\/=?^`{|}~-]+)\s*@\s*[\p{L}\p{N}-]+(?:\s*\.\s*[\p{L}\p{N}-]+)*\s*\.\s*\p{L}{2,}/gu;
-// A run of digits with phone-style separators (it may hold several numbers: "8888-7777 8888-6666").
-// Separators include line breaks (PDF extraction wraps "+506 8888\n7777"), no-break/thin spaces, every
-// dash and the slash ("8888\u00a07777", "2020\u20132024", "8888/7777"). Over-masking two numbers on
-// consecutive lines is accepted; leaking a wrapped phone is not.
-const DIGIT_RUN = /\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d/g;
+// A run of digits joined by separators (it may hold several numbers: "8888-7777 8888-6666"). A separator is
+// up to 4 characters of whitespace (line breaks included: PDF extraction wraps "+506 8888\n7777"), punctuation
+// or symbols (any dash, slash, dot, bullet, middle dot, pipe… "202•555•0123", "8888·7777"), so no separator
+// character has to be listed. Over-masking adjacent numbers (amounts, lists) is accepted; leaking a phone is not.
+const PHONE_SEPARATOR = String.raw`[\s\p{P}\p{S}]{0,4}`;
+const DIGIT_RUN = new RegExp(String.raw`\+?\(?\d(?:${PHONE_SEPARATOR}\d)*`, 'gu');
 // Every run of 8+ digits is masked, year ranges included ("2019-2023"): a phone can take any shape, so no
 // digit pattern is exempt. Structured dates (e.g. a CV's start/end years) must be added AFTER redaction.
 const PHONE_MIN_DIGITS = 8;
@@ -164,7 +165,7 @@ const PHONE_LABEL =
   '(?:telefone|tel[eé]fono|telephone|tel[eé]f|telf|tlfn|tlf|tfno|tel|cellphone|celular|cell|cel|m[oó]vil|telem[oó]vel' +
   '|mobile|mob|phone|whatsapp|fax|fono|contacto|contato|contact|n[uú]mero|n[uú]m|nro)';
 const PHONE_GAP = String.raw`(?:\s*[:#]|\s*n[oº°]\.?|\s*\([\p{L}\s/.\-]{1,30}\)|\s*\/\s*\p{L}{1,15}(?!\p{L})\.?|\s+\p{L}{1,15}(?!\p{L})\.?){0,4}\s*`;
-const PHONE_NUMBER = String.raw`\+?\(?\d[\d \t\r\n\u00a0\u2007\u2009\u200a\u202f()./\-\u2010-\u2015\u2212]*\d`;
+const PHONE_NUMBER = String.raw`\+?\(?\d(?:${PHONE_SEPARATOR}\d)*`;
 const LABELLED_PHONE = new RegExp(`(${PHONE_LABEL}\\.?${PHONE_GAP})(${PHONE_NUMBER})`, 'giu');
 
 /** Every Unicode decimal digit (\p{Nd}) as its ASCII digit, so the digit patterns see all scripts. */
@@ -184,10 +185,10 @@ function asciiDigits(text: string): string {
   });
 }
 
-// Every default-ignorable character (format controls such as the soft hyphen U+00AD and zero-width marks,
-// variation selectors, the combining grapheme joiner, Hangul fillers): invisible, so removed before matching
+// Every Unicode Default_Ignorable_Code_Point (soft hyphen U+00AD, zero-width marks, all variation selectors
+// incl. U+E0100–U+E01EF, the combining grapheme joiner, Hangul fillers, tags) and every format control: invisible, so removed before matching
 // in BOTH the text and the masking terms — "Pe\u00ADrez" is "Perez", "8888\u00AD7777" one number.
-const IGNORABLE = /[\p{Cf}\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u3164\ufe00-\ufe0f\uffa0]/gu;
+const IGNORABLE = /[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu;
 
 // Name particles never masked on their own ("de", "del" are ordinary words).
 const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'van', 'von', 'di', 'le']);
