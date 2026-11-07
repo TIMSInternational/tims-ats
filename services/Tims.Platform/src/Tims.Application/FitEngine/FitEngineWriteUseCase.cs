@@ -13,8 +13,8 @@ namespace Tims.Application.FitEngine;
 ///
 /// <para>FIT v2 (<c>Platform:FitEngineV2Enabled</c>, default off): when the flag is on AND the vacancy's
 /// <c>fit_requirements</c> carries an <c>assessments</c> array, the <c>assessment</c> dimension is built per
-/// instrument from <see cref="IAssessmentResultSource"/> (<see cref="FitV2Kernels"/>), English results verify the
-/// <c>languages</c> dimension, and the breakdown gains <c>fitVersion</c> + <c>assessments</c> after the six v1 keys.
+/// instrument from <see cref="IAssessmentResultSource"/> (<see cref="FitV2Kernels"/>), a scored English result
+/// verifies the <c>languages</c> dimension, and the breakdown gains <c>fitVersion</c> + <c>assessments</c> after the six v1 keys.
 /// In every other case the v1 code below runs unchanged — same reads, same breakdown bytes.</para>
 /// </summary>
 public sealed class FitEngineWriteUseCase(

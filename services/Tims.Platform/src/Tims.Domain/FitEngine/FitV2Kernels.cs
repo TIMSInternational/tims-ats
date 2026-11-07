@@ -37,12 +37,13 @@ namespace Tims.Domain.FitEngine;
 /// dimension. Gate and advisory entries weigh nothing. <c>isPartial</c> keeps its v1 meaning (one of the five
 /// dimensions is null) so ranking and simulateWeights agree.</para>
 ///
-/// <para><b>English and the languages dimension.</b> When a scored or gate english entry has a valid CEFR result,
-/// that result decides whether "English" counts as covered among <c>requiredLanguages</c> (achieved ≥ the
-/// entry's minimum), overriding the CV self-report for English only. Other languages still come from the CV. If
-/// the CV lists no languages and the vacancy also requires a non-English language, the dimension stays null as
-/// in v1 (a parser gap is not a missing language); if English is the only required language, the test alone
-/// decides.</para>
+/// <para><b>English and the languages dimension.</b> When a SCORED english entry has a valid CEFR result, that
+/// result decides whether "English" counts as covered among <c>requiredLanguages</c> (achieved ≥ the entry's
+/// minimum), overriding the CV self-report for English only. Other languages still come from the CV. If the CV
+/// lists no languages and the vacancy also requires a non-English language, the dimension stays null as in v1 (a
+/// parser gap is not a missing language); if English is the only required language, the test alone decides. A
+/// GATE english entry never touches any dimension — not even languages — so a not-met gate cannot lower the
+/// overall score; HR sees its met/not_met next to the CV self-report (<c>languagesEvidence</c> = <c>cv</c>).</para>
 ///
 /// <para><b>Visibility.</b> The breakdown is readable by every fit_engine reader (leader@team included), so an
 /// entry carries the derived fit, the gate state, the requirement and the result id, never the raw result
@@ -310,11 +311,11 @@ public static class FitV2Kernels
 
         double? assessment = weightSum > 0 ? FitEngineKernels.JsRound(weighted / weightSum) : null;
 
-        // English → languages.
+        // English → languages: only a SCORED english entry may move a number (a gate never does).
         bool? englishCovered = null;
         var englishDraft = drafts.FirstOrDefault(d => d.Requirement.Instrument == FitInstruments.English);
         if (englishDraft is not null
-            && englishDraft.Requirement.Use != FitInstrumentUses.Advisory
+            && englishDraft.Requirement.Use == FitInstrumentUses.Scored
             && englishDraft.Status == FitInstrumentStatuses.Completed
             && CefrOrdinal(englishDraft.Result!.Cefr) is { } achieved
             && CefrOrdinal(englishDraft.Requirement.Min?.Cefr) is { } required)

@@ -67,17 +67,19 @@ instrument": the assessment dimension is null.
 - **Integrity.** A result that is voided, flagged or awaiting review shows as `needs_review`, its gate as
   `unknown`, and it is excluded from the score. It is never read as a low score. A valid result without the
   judged value (e.g. a partial LIA battery with no global percentile) shows as `no_value`.
-- **Gates never reject.** A gate entry contributes nothing to any dimension. A candidate whose gate is `not_met`
-  is still scored and ranked; a person decides.
+- **Gates never reject.** A gate entry contributes nothing to any dimension, the `languages` dimension included.
+  A candidate whose gate is `not_met` is still scored and ranked; a person decides.
 - **Weighting.** The `assessment` dimension is the weighted mean of the scored instruments that have a score,
   rounded with `JsRound`. The declared weights apply when every scored entry declares a valid one; otherwise all
   scored instruments weigh the same. Equivalently, instrument _i_ carries `profile.assessment × wᵢ / Σw` over the
   instruments with a score. When none has one, the dimension is null and the five-dimension renormalization drops
   it, exactly as v1 does for any missing dimension. `isPartial` keeps its v1 meaning.
-- **English verifies languages.** A scored or gate english entry with a valid CEFR result decides whether
+- **English verifies languages (scored only).** A SCORED english entry with a valid CEFR result decides whether
   "English" (also "Inglés"/"Ingles") counts as covered among `requiredLanguages`: covered iff achieved ≥ the
   entry's minimum, whatever the CV says. Other languages still come from the CV. If the CV lists no languages and
-  a non-English language is also required, the dimension stays null as in v1.
+  a non-English language is also required, the dimension stays null as in v1. A scored English result therefore
+  moves two numbers (its ladder score in `assessment`, and English coverage in `languages`), by design. A GATE
+  english entry moves neither: HR sees its met / not met next to the CV self-report.
 - **Job-relatedness.** Results for instruments the vacancy does not list are ignored.
 
 ## Breakdown
@@ -117,8 +119,9 @@ The six v1 keys first, unchanged in meaning and order, then two new keys:
 
 `status` ∈ `completed | no_result | needs_review | no_value`; `gate` ∈ `met | not_met | unknown` (gate entries
 only); `assessmentShare` and `effectiveWeight` (rounded to 4 dp, before the five-dimension renormalization) only
-for scored entries with a score; `languagesEvidence` (english only) is `assessment` when the test decided
-English, `cv` when the CV stood, null when English is not in `requiredLanguages`.
+for scored entries with a score; `languagesEvidence` (english only) is `assessment` when a scored English result
+decided English, `cv` when the CV stood (always so for a gate or advisory English entry), null when English is not
+in `requiredLanguages`.
 
 Every v1 reader keeps working: `simulateWeights` reads the five dimension keys; the web panels read the same
 five; the AI explainer (`packages/ai/src/agents/fit-explainer.ts`) now also explains the `assessments` entries.
@@ -141,6 +144,12 @@ entries carry status only. Note that a below-minimum fit score can be inverted t
 
 ## Rollout notes
 
+- **There is no writer for `assessments[]` yet, and the existing editor erases it.** The only writer of
+  `fit_requirements` is the TS `vacancy.jobProfile.updateFitRequirements`
+  (`packages/api/src/routers/vacancy/job-profile.ts`), whose input schema has no `assessments` field and which
+  replaces the whole jsonb on save. Saving the requirements card after a vacancy was configured therefore drops
+  the array, and the next compute silently returns to v1. The survival rule forbids patching that router; a
+  C#-owned writer (plus the web form) must land before any vacancy is configured for v2.
 - The C# compute is not called by the web app yet (no FE wrapper for the fit-engine surface; see `cutover.sh`).
   The live TS writers (`fitEngine.computeForVacancy`, `candidateAiService.screenCandidate`) still write v1
   breakdowns, and a later TS recompute overwrites a v2 row with v1.

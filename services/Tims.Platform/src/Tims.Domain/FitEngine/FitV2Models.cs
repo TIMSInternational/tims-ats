@@ -121,9 +121,9 @@ public sealed record InstrumentResult(
 /// renormalization (scored + scored only).
 /// </param>
 /// <param name="LanguagesEvidence">
-/// English only: <c>assessment</c> when the CEFR result decided English in the <c>languages</c> dimension,
-/// <c>cv</c> when the CV self-report stood, null when the vacancy does not require English in
-/// <c>requiredLanguages</c>.
+/// English only: <c>assessment</c> when a scored English result decided English in the <c>languages</c>
+/// dimension, <c>cv</c> when the CV self-report stood (always so for a gate or advisory English entry), null when
+/// the vacancy does not require English in <c>requiredLanguages</c>.
 /// </param>
 public sealed record InstrumentFitEntry(
     string Instrument,

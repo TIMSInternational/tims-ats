@@ -13,7 +13,7 @@ namespace Tims.UnitTests.FitEngine;
 ///   hiring guardrails — a not-met gate never moves the overall score and never skips the candidate; a
 ///     needs-review result is excluded (renormalized away), never read as 0;
 ///   weighting — the profile's assessment weight is split across scored instruments by their weights;
-///   English verifies the languages dimension;
+///   a SCORED English result verifies the languages dimension (a gate never moves a number);
 ///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
 ///   the composite source's order. (The ATS adapter and the provider stub live in Tims.Infrastructure and are
 ///   pinned in Tims.IntegrationTests/FitEngine/FitV2AssessmentResultSourceTests.)
@@ -116,10 +116,16 @@ public sealed class FitV2UseCaseTests
     [Fact]
     public async Task FlagOn_GateNotMet_NeverChangesTheOverallScore_AndNeverSkipsTheCandidate()
     {
+        // English is ALSO required in languages and the CV claims it: a not-met English GATE must not override that
+        // claim (only a scored English entry may move a number), so both rows score the same.
         var withGate = Repo(
-            """{"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"english","use":"gate","min":{"cefr":"C1"}}]}""",
-            interview: 30);
-        var withoutGate = Repo("""{"assessments":[{"instrument":"lia","min":{"globalPercentile":40}}]}""", interview: 30);
+            """{"requiredLanguages":["English"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"english","use":"gate","min":{"cefr":"C1"}}]}""",
+            interview: 30,
+            languages: """["English (C2)"]""");
+        var withoutGate = Repo(
+            """{"requiredLanguages":["English"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}}]}""",
+            interview: 30,
+            languages: """["English (C2)"]""");
         var source = new FakeResultSource(
             Result(FitInstruments.Lia, "r-lia", percentile: 60),
             Result(FitInstruments.English, "r-en", cefr: "A2"));
@@ -132,10 +138,13 @@ public sealed class FitV2UseCaseTests
         var gated = Assert.Single(withGate.FitScoreUpserts);
         var plain = Assert.Single(withoutGate.FitScoreUpserts);
         Assert.Equal(plain.OverallScore, gated.OverallScore);
-        Assert.Equal(65, gated.OverallScore); // (100 × 0.2 + 30 × 0.2) / 0.4
-        var english = JsonNode.Parse(gated.BreakdownJson)!["assessments"]![1]!;
+        Assert.Equal(77, gated.OverallScore); // (100 + 30 + 100) × 0.2 / 0.6 = 76.67
+        var breakdown = JsonNode.Parse(gated.BreakdownJson)!;
+        Assert.Equal(100, breakdown["languages"]!.GetValue<double>());
+        var english = breakdown["assessments"]![1]!;
         Assert.Equal("not_met", english["gate"]!.GetValue<string>());
         Assert.Null(english["score"]);
+        Assert.Equal("cv", english["languagesEvidence"]!.GetValue<string>());
     }
 
     [Fact]
@@ -184,18 +193,19 @@ public sealed class FitV2UseCaseTests
         Assert.Equal(0.375, breakdown["assessments"]![1]!["effectiveWeight"]!.GetValue<double>());
     }
 
-    // ── English verifies languages ──
+    // ── a scored English result verifies languages ──
     [Fact]
-    public async Task FlagOn_EnglishBelowTheGate_OverridesTheCvClaimInLanguages()
+    public async Task FlagOn_ScoredEnglishBelowTheMinimum_OverridesTheCvClaimInLanguages()
     {
         const string requirements =
-            """{"requiredLanguages":["English"],"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"}}]}""";
+            """{"requiredLanguages":["English"],"assessments":[{"instrument":"english","use":"scored","min":{"cefr":"B2"}}]}""";
         var repo = Repo(requirements, languages: """["English (C2)"]""");
 
         await new FitEngineWriteUseCase(repo, new FakeResultSource(Result(FitInstruments.English, "r-en", cefr: "B1")))
             .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
 
         var breakdown = SingleBreakdown(repo);
+        Assert.Equal(50, breakdown["assessment"]!.GetValue<double>()); // B1 vs B2 on the ladder: (2 + 1) / 6
         Assert.Equal(0, breakdown["languages"]!.GetValue<double>());
         Assert.Equal("assessment", breakdown["assessments"]![0]!["languagesEvidence"]!.GetValue<string>());
     }

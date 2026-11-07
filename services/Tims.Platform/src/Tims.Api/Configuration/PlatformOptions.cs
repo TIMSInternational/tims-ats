@@ -489,7 +489,7 @@ public sealed class PlatformOptions
     /// <c>job_profiles.fit_requirements</c> carries an <c>assessments</c> array per instrument
     /// (<c>Tims.Domain.FitEngine.FitV2Kernels</c>): scored instruments split the profile's assessment weight, gates
     /// are shown as met / not met / unknown and never reject, advisory instruments are never scored, needs-review
-    /// results are excluded, and an English result verifies the languages dimension. A vacancy WITHOUT an
+    /// results are excluded, and a scored English result verifies the languages dimension. A vacancy WITHOUT an
     /// <c>assessments</c> array keeps the v1 computation byte-for-byte, so turning this on changes nothing until HR
     /// configures a vacancy. INERT unless <see cref="FitEngineWriteEnabled"/> is also on (it maps the route).
     /// DEFAULT false (dark) — enable with <c>Platform__FitEngineV2Enabled=true</c>. Turning it off again only

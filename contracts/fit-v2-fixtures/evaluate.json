@@ -1,7 +1,7 @@
 {
   "cases": [
     {
-      "name": "design example: LIA scored + English gate + personality advisory, all valid",
+      "name": "design example: LIA scored + English gate + personality advisory, all valid; the met gate does not touch languages (Spanish from the CV, English not on it → 50)",
       "input": {
         "fitRequirements": {
           "requiredLanguages": [
@@ -71,7 +71,7 @@
       },
       "expected": {
         "assessment": 100,
-        "languages": 100,
+        "languages": 50,
         "entries": [
           {
             "instrument": "lia",
@@ -109,7 +109,7 @@
             "source": "provider",
             "contentVersion": null,
             "normVersion": null,
-            "languagesEvidence": "assessment"
+            "languagesEvidence": "cv"
           },
           {
             "instrument": "personality",
@@ -966,6 +966,70 @@
             "contentVersion": null,
             "normVersion": null,
             "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a not-met English gate moves no number: languages stays with the CV claim (gates never lower the score)",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "English"
+          ],
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "B2"
+              }
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "A2"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": [
+          "English (C2)"
+        ]
+      },
+      "expected": {
+        "assessment": null,
+        "languages": 100,
+        "entries": [
+          {
+            "instrument": "english",
+            "use": "gate",
+            "status": "completed",
+            "score": null,
+            "gate": "not_met",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "cefr": "B2"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": "cv"
           }
         ]
       }
