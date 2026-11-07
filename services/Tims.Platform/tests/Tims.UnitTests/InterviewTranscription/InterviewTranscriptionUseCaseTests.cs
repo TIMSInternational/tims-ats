@@ -78,10 +78,55 @@ public sealed class InterviewTranscriptionUseCaseTests
             if (transcriptionEvent.ProviderEventId is { } id) SeenProviderEvents.Add(id);
         }
 
-        public Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId,
+        /// <summary>Callers currently blocked on the interview's transcription lock.</summary>
+        public int LockWaiters => Volatile.Read(ref _lockWaiters);
+
+        private int _lockWaiters;
+
+        private async Task EnterLockAsync(CancellationToken ct)
+        {
+            Interlocked.Increment(ref _lockWaiters);
+            try
+            {
+                await _transcriptionLock.WaitAsync(ct);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _lockWaiters);
+            }
+        }
+
+        public async Task<T> WithTranscriptionLockAsync<T>(Guid organizationId, Guid interviewId,
+            Func<Task<T>> body, CancellationToken ct)
+        {
+            await EnterLockAsync(ct);
+            try
+            {
+                return await body();
+            }
+            finally
+            {
+                _transcriptionLock.Release();
+            }
+        }
+
+        public async Task<RecordedCandidateDecision?> RecordCandidateDecisionAsync(InterviewConsentRecord record,
             CancellationToken ct)
         {
-            lock (_gate) return Task.FromResult(Events.Count == 0 ? null : Events[^1].State);
+            await EnterLockAsync(ct);
+            try
+            {
+                lock (_gate)
+                {
+                    if (!Writes) return null;
+                    Consents.Add(record with { RecordedAt = _clock = _clock.AddSeconds(1) });
+                    return new RecordedCandidateDecision(Events.Count == 0 ? null : Events[^1].State);
+                }
+            }
+            finally
+            {
+                _transcriptionLock.Release();
+            }
         }
 
         public Task<bool> HasProviderEventAsync(Guid organizationId, Guid interviewId, string providerEventId,
@@ -93,7 +138,7 @@ public sealed class InterviewTranscriptionUseCaseTests
         public async Task<TranscriptClaim> ClaimTranscriptAsync(Guid organizationId, Guid interviewId,
             Guid transcriptId, Guid startEventId, string? providerEventId, CancellationToken ct)
         {
-            await _transcriptionLock.WaitAsync(ct);
+            await EnterLockAsync(ct);
             try
             {
                 lock (_gate)
@@ -133,6 +178,7 @@ public sealed class InterviewTranscriptionUseCaseTests
         public List<Guid> Deleted { get; } = [];
         public bool DeleteSucceeds { get; set; } = true;
         public List<string> Stopped { get; } = [];
+        public bool StopSucceeds { get; set; } = true;
         public string? Vtt { get; set; } = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Laura Mora>¿Cómo está?</v>\n\n" +
                                            "00:00:03.000 --> 00:00:05.000\n<v Ana Pérez>Bien, gracias.</v>\n";
 
@@ -155,8 +201,8 @@ public sealed class InterviewTranscriptionUseCaseTests
 
         public Task<bool> StopAsync(string roomName, CancellationToken ct)
         {
-            Stopped.Add(roomName);
-            return Task.FromResult(true);
+            lock (Stopped) Stopped.Add(roomName);
+            return Task.FromResult(StopSucceeds);
         }
     }
 
@@ -467,6 +513,23 @@ public sealed class InterviewTranscriptionUseCaseTests
         Assert.Equal((409, "candidate_consent_missing"),
             Pick(await useCase.StartAsync(Org, Evaluator, InterviewId, "es", default)));
         Assert.Single(provider.Stopped);
+    }
+
+    [Fact]
+    public async Task A_decline_that_raced_the_start_and_cannot_be_stopped_is_reported_and_stays_on_record()
+    {
+        // Codex P1 (re-run 2): the stop result here used to be ignored, so a failed stop still answered a plain 409
+        // while the transcription kept running.
+        var (useCase, repo, provider) = Build();
+        await Consent(repo, Accepted);
+        repo.Consents.Add(Staff(Evaluator));
+        provider.StopSucceeds = false;
+        provider.OnStart = () => repo.RecordConsentAsync(Candidate(Declined), default); // recorded without the lock
+        Assert.Equal((503, "transcription_not_stopped"),
+            Pick(await useCase.StartAsync(Org, Evaluator, InterviewId, "es", default)));
+        Assert.Single(provider.Stopped);
+        // `requested` stays the latest state: every declining join retries the stop and refuses admission meanwhile.
+        Assert.Equal(TranscriptStates.Requested, repo.Events[^1].State);
     }
 
     [Fact]

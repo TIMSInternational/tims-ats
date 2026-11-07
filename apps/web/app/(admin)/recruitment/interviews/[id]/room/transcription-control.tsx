@@ -28,6 +28,8 @@ const ERROR_KEYS: Record<
   'errorCandidateConsent' | 'errorAcknowledgement' | 'errorNoRoom' | 'errorClosed' | 'errorProvider'
 > = {
   candidate_consent_missing: 'errorCandidateConsent',
+  // The candidate declined while the start ran and the stop failed: still "the candidate did not agree".
+  transcription_not_stopped: 'errorCandidateConsent',
   acknowledgement_missing: 'errorAcknowledgement',
   no_platform_room: 'errorNoRoom',
   interview_closed: 'errorClosed',

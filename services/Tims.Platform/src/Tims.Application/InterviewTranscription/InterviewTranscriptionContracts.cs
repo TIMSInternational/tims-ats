@@ -71,6 +71,10 @@ public sealed record InterviewTranscriptionEvent(Guid InterviewId, Guid Organiza
     Guid? UserId = null, string? ProviderEventId = null, Guid? TranscriptId = null, string? Language = null,
     DateTime? RecordedAt = null, Guid? Id = null, Guid? AuthorizedBy = null);
 
+/// <summary>A candidate decision that is on record, and the interview's transcription state read right after it.</summary>
+/// <param name="LatestTranscriptionState">The state of the most recent transcription event, or null when none.</param>
+public sealed record RecordedCandidateDecision(string? LatestTranscriptionState);
+
 /// <summary>The consent ledger: append-only rows in audit_logs, always written under the interview's organization.</summary>
 public interface IInterviewConsentLedger
 {
@@ -78,14 +82,21 @@ public interface IInterviewConsentLedger
     Task<bool> RecordConsentAsync(InterviewConsentRecord record, CancellationToken ct);
 
     /// <summary>
+    /// Records the CANDIDATE's decision and reads the interview's latest transcription state in ONE transaction under
+    /// the interview's transcription lock — the lock a staff start holds from its consent read until its
+    /// <c>requested</c> event is written (<see cref="IInterviewTranscriptionRepository.WithTranscriptionLockAsync{T}"/>).
+    /// So a decline either commits before a start reads consent (the start is refused) or reads a start that is
+    /// already on record (and the join stops it before admitting the candidate) — never the gap between the two.
+    /// Null (never throws) when the decision could not be recorded — callers fail closed.
+    /// </summary>
+    Task<RecordedCandidateDecision?> RecordCandidateDecisionAsync(InterviewConsentRecord record, CancellationToken ct);
+
+    /// <summary>
     /// The LATEST record per subject (the candidate) and per staff user — never truncated by history length, so a
     /// newer decline can never hide behind older rows.
     /// </summary>
     Task<IReadOnlyList<InterviewConsentRecord>> ListConsentsAsync(Guid organizationId, Guid interviewId,
         CancellationToken ct);
-
-    /// <summary>The state of the interview's most recent transcription event, or null when there is none.</summary>
-    Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId, CancellationToken ct);
 }
 
 /// <summary>The outcome of storing a ready transcript against the platform start that authorized it.</summary>
@@ -137,6 +148,16 @@ public interface IInterviewTranscriptionRepository : IInterviewConsentLedger
 
     /// <summary>True when an event with this provider id was already recorded for the interview (redelivery).</summary>
     Task<bool> HasProviderEventAsync(Guid organizationId, Guid interviewId, string providerEventId,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Runs <paramref name="body"/> while holding the interview's transcription lock (a transaction-scoped Postgres
+    /// advisory lock held on its own connection, so it serializes across App Runner instances). <paramref name="body"/>
+    /// may call the other methods here — they use their own connections and commit on their own — but must not call a
+    /// LOCK-TAKING one (<see cref="IInterviewConsentLedger.RecordCandidateDecisionAsync"/>,
+    /// <see cref="ClaimTranscriptAsync"/>): it would wait on itself.
+    /// </summary>
+    Task<T> WithTranscriptionLockAsync<T>(Guid organizationId, Guid interviewId, Func<Task<T>> body,
         CancellationToken ct);
 
     /// <summary>

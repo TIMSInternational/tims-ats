@@ -101,7 +101,9 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
             ProviderEventId: "evt-1", TranscriptId: transcript, AuthorizedBy: requested.Id), default));
         var events = await repo.ListEventsAsync(F.OrgA, interview, default);
         Assert.Equal(requested.Id, events[^1].AuthorizedBy);
-        Assert.Equal(TranscriptStates.Ready, await repo.LatestTranscriptionStateAsync(F.OrgA, interview, default));
+        // The join reads the same latest state, together with the decision it records.
+        Assert.Equal(TranscriptStates.Ready, (await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA,
+            SubjectCandidate, null, Declined, ConsentTextVersion), default))!.LatestTranscriptionState);
         Assert.Equal([(TranscriptStates.Requested, (Guid?)F.RecruiterId, "es", (Guid?)null),
                 (TranscriptStates.Ready, null, null, transcript)],
             events.Select(e => (e.State, e.UserId, e.Language, e.TranscriptId)).ToArray());
@@ -229,6 +231,47 @@ public sealed class InterviewTranscriptionRepositoryTests(F fixture)
         Assert.Equal(TranscriptClaim.Stored,
             await repo.ClaimTranscriptAsync(F.OrgA, interview, transcript, start, "evt-1", default));
         Assert.Equal(TranscriptReference(transcript), (await repo.FindAsync(F.OrgA, interview, default))!.TranscriptUrl);
+    }
+
+    [Fact]
+    public async Task A_candidate_decision_waits_for_a_start_holding_the_lock_and_reads_its_requested_event()
+    {
+        // Codex P1 (re-run 2): a decline that ran while a start sat between its consent read and its `requested`
+        // record saw no transcription and was admitted. The decision now takes the lock the start holds.
+        var repo = Repository();
+        var interview = await fixture.AddInterviewAsync();
+        Task<RecordedCandidateDecision?>? decision = null;
+        await repo.WithTranscriptionLockAsync(F.OrgA, interview, async () =>
+        {
+            decision = Task.Run(() => repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null,
+                Declined, ConsentTextVersion), default));
+            await WaitForLockWaitersAsync(1); // blocked on the lock…
+            Assert.Equal(0, await fixture.CountAuditAsync(interview, ConsentAction)); // …before writing anything
+            Assert.True(await repo.RecordEventAsync(new(interview, F.OrgA, TranscriptStates.Requested,
+                UserId: F.RecruiterId, Language: "es"), default));
+            return true;
+        }, default);
+        var recorded = await decision!.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(TranscriptStates.Requested, recorded!.LatestTranscriptionState);
+        Assert.Equal(Declined, InterviewTranscriptionUseCase.CandidateDecision(
+            await repo.ListConsentsAsync(F.OrgA, interview, default)).Decision);
+        // An interview outside the organization records nothing (null: the join fails closed).
+        Assert.Null(await repo.RecordCandidateDecisionAsync(new(F.OrgBInterview, F.OrgA, SubjectCandidate, null,
+            Declined, ConsentTextVersion), default));
+        Assert.Equal(0, await fixture.CountAuditAsync(F.OrgBInterview, ConsentAction));
+    }
+
+    [Fact]
+    public async Task The_transcription_lock_is_released_when_the_body_throws()
+    {
+        var repo = Repository();
+        var interview = await fixture.AddInterviewAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => repo.WithTranscriptionLockAsync<bool>(F.OrgA,
+            interview, () => throw new InvalidOperationException("boom"), default));
+        var recorded = await repo.RecordCandidateDecisionAsync(new(interview, F.OrgA, SubjectCandidate, null,
+            Accepted, ConsentTextVersion), default).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.NotNull(recorded);
+        Assert.Null(recorded!.LatestTranscriptionState);
     }
 
     [Fact]

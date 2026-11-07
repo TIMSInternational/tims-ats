@@ -71,8 +71,12 @@ public sealed class CandidateJoinConsentStepTests
 
         public string? LatestState { get; set; }
 
-        public Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId,
-            CancellationToken ct) => Task.FromResult(LatestState);
+        public Task<RecordedCandidateDecision?> RecordCandidateDecisionAsync(InterviewConsentRecord record,
+            CancellationToken ct)
+        {
+            if (Writes) Records.Add(record);
+            return Task.FromResult(Writes ? new RecordedCandidateDecision(LatestState) : null);
+        }
     }
 
     private sealed class Transcriber : ITranscriptionProvider
@@ -130,6 +134,47 @@ public sealed class CandidateJoinConsentStepTests
         var failed = await join.JoinAsync(Token, new CandidateRecordingDecision(Declined, ConsentTextVersion), null,
             null, default);
         Assert.Equal(CandidateJoinOutcomes.Unavailable, failed.Outcome);
+        Assert.Equal(1, video.Mints);
+    }
+
+    [Fact]
+    public async Task A_decline_during_an_in_flight_start_waits_for_it_and_is_not_admitted_while_the_stop_fails()
+    {
+        // Codex P1 (re-run 2): staff passed the consent check and called Daily; the candidate declined before the
+        // start's `requested` event was written, saw no transcription and was admitted; the start then finished and
+        // its stop failed, so a declined candidate sat in a transcribed call. The staff start and this join share
+        // ONE repository (and its transcription lock), as in production.
+        var shared = new InterviewTranscriptionUseCaseTests.Repository();
+        var provider = new InterviewTranscriptionUseCaseTests.Provider { StopSucceeds = false };
+        var useCase = new InterviewTranscriptionUseCase(shared, provider);
+        var staff = Guid.NewGuid();
+        await shared.RecordConsentAsync(new(InterviewId, OrgId, SubjectCandidate, null, Accepted, ConsentTextVersion), default);
+        await shared.RecordConsentAsync(new(InterviewId, OrgId, SubjectStaff, staff, Accepted, ConsentTextVersion), default);
+        var room = CandidateInterviewJoin.RoomNameFor(InterviewId);
+        var video = new Video();
+        var join = new CandidateInterviewJoin(new Repository { MeetingUrl = "https://tims.daily.co/" + room }, video,
+            new Clock(Start.AddMinutes(-5)), new InterviewTranscriptionSettings(true), shared, provider);
+        var decline = new CandidateRecordingDecision(Declined, ConsentTextVersion);
+
+        Task<CandidateJoinResult>? declining = null;
+        provider.OnStart = async () =>
+        {
+            // The candidate declines while Daily is starting the transcription.
+            declining = Task.Run(() => join.JoinAsync(Token, decline, null, null, default));
+            for (var i = 0; i < 500 && shared.LockWaiters == 0 && !declining.IsCompleted; i++) await Task.Delay(10);
+        };
+        var started = await useCase.StartAsync(OrgId, staff, InterviewId, "es", default);
+        var joined = await declining!.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(CandidateJoinOutcomes.Unavailable, joined.Outcome); // never admitted into the transcribed call
+        Assert.Equal(0, video.Mints);
+        Assert.Equal(room, Assert.Single(provider.Stopped)); // the join saw the start and tried to stop it
+        Assert.Equal(200, started.Status); // the candidate had accepted when the start read consent
+
+        // The failed stop is not forgotten: the start is still the latest state, so the next join stops it first.
+        provider.StopSucceeds = true;
+        Assert.Equal(CandidateJoinOutcomes.Ready, (await join.JoinAsync(Token, decline, null, null, default)).Outcome);
+        Assert.Equal(2, provider.Stopped.Count);
         Assert.Equal(1, video.Mints);
     }
 

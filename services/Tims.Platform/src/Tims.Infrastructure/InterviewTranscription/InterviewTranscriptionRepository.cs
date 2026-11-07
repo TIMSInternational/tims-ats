@@ -22,12 +22,19 @@ public sealed class InterviewTranscriptionDataSourceHolder(NpgsqlDataSource data
 /// organization AND repeats <c>organization_id = @org</c> in its WHERE clause. Consent and lifecycle evidence is
 /// INSERT-only into <c>audit_logs</c> (entity <c>interview</c>); the only UPDATE is <c>interviews.transcript_url</c>,
 /// written in the SAME transaction as the <c>ready</c> event that consumes its start, under the interview's
-/// transcription lock (<see cref="LockAsync"/>).
+/// transcription lock (<see cref="LockAsync"/>) — the lock a staff start and the candidate's decision also take.
 /// </summary>
 public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataSourceHolder source,
     ILogger<InterviewTranscriptionRepository> logger) : IInterviewTranscriptionRepository
 {
     private const int MaxRows = 500;
+
+    /// <summary>The lifecycle states a transcription event row may carry; any other row is ignored on read.</summary>
+    private static readonly string[] EventStates =
+    [
+        TranscriptStates.Requested, TranscriptStates.InProgress, TranscriptStates.Ready, TranscriptStates.Error,
+        TranscriptStates.Rejected,
+    ];
 
     public async Task<TranscriptionInterview?> FindAsync(Guid organizationId, Guid interviewId, CancellationToken ct)
     {
@@ -71,13 +78,66 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
 
     public async Task<bool> RecordConsentAsync(InterviewConsentRecord record, CancellationToken ct) =>
         await InsertAsync(record.OrganizationId, record.InterviewId, ConsentAction, record.UserId,
-            JsonSerializer.Serialize(new
+            ConsentMetadata(record), record.IpAddress, record.UserAgent, ct);
+
+    private static string ConsentMetadata(InterviewConsentRecord record) =>
+        JsonSerializer.Serialize(new
+        {
+            subject = record.Subject,
+            decision = record.Decision,
+            textVersion = record.TextVersion,
+            channel = record.Subject == SubjectCandidate ? "candidate_join_link" : "interview_room",
+        });
+
+    public async Task<RecordedCandidateDecision?> RecordCandidateDecisionAsync(InterviewConsentRecord record,
+        CancellationToken ct)
+    {
+        try
+        {
+            await using var connection = await source.DataSource.OpenConnectionAsync(ct);
+            await using var transaction = await connection.BeginTransactionAsync(ct);
+            // Waits for a staff start in flight (it holds this lock until its `requested` event is written).
+            await LockAsync(connection, transaction, record.InterviewId, ct);
+            await ScopeAsync(connection, transaction, record.OrganizationId, ct);
+            if (await InsertRowAsync(connection, transaction, record.OrganizationId, record.InterviewId, ConsentAction,
+                    record.UserId, ConsentMetadata(record), record.IpAddress, record.UserAgent, ct) != 1)
+                return null;
+            string? state;
+            await using (var command = new NpgsqlCommand("""
+                SELECT metadata->>'state' FROM audit_logs
+                WHERE organization_id=@org AND action=@action AND entity='interview' AND entity_id=@entity
+                  AND metadata->>'state' = ANY(@states)
+                ORDER BY created_at DESC,id DESC LIMIT 1
+                """, connection, transaction))
             {
-                subject = record.Subject,
-                decision = record.Decision,
-                textVersion = record.TextVersion,
-                channel = record.Subject == SubjectCandidate ? "candidate_join_link" : "interview_room",
-            }), record.IpAddress, record.UserAgent, ct);
+                command.Parameters.AddWithValue("org", record.OrganizationId);
+                command.Parameters.AddWithValue("action", EventAction);
+                command.Parameters.AddWithValue("entity", record.InterviewId.ToString());
+                command.Parameters.AddWithValue("states", EventStates);
+                state = await command.ExecuteScalarAsync(ct) as string;
+            }
+            await transaction.CommitAsync(ct);
+            return new RecordedCandidateDecision(state);
+        }
+        catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+        {
+            // Interview id only: never the decision, attribution or anything the candidate sent.
+            logger.LogError(exception, "Interview candidate decision failed for {InterviewId}", record.InterviewId);
+            return null;
+        }
+    }
+
+    public async Task<T> WithTranscriptionLockAsync<T>(Guid organizationId, Guid interviewId, Func<Task<T>> body,
+        CancellationToken ct)
+    {
+        await using var connection = await source.DataSource.OpenConnectionAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+        await LockAsync(connection, transaction, interviewId, ct);
+        await ScopeAsync(connection, transaction, organizationId, ct);
+        // Nothing is written on THIS connection: body's reads and writes use their own and commit on their own.
+        // Ending this transaction (rollback when disposed, also on an exception) only releases the lock.
+        return await body();
+    }
 
     public async Task<IReadOnlyList<InterviewConsentRecord>> ListConsentsAsync(Guid organizationId, Guid interviewId,
         CancellationToken ct)
@@ -102,21 +162,13 @@ public sealed class InterviewTranscriptionRepository(InterviewTranscriptionDataS
         foreach (var (id, actor, meta, at) in await ReadRecentEventsAsync(organizationId, interviewId, ct))
         {
             var state = meta.GetValueOrDefault("state");
-            if (state is not (TranscriptStates.Requested or TranscriptStates.InProgress or TranscriptStates.Ready
-                or TranscriptStates.Error or TranscriptStates.Rejected)) continue;
+            if (state is null || !EventStates.Contains(state)) continue;
             Guid? transcriptId = Guid.TryParse(meta.GetValueOrDefault("transcriptId"), out var t) ? t : null;
             Guid? authorizedBy = Guid.TryParse(meta.GetValueOrDefault("authorizedBy"), out var a) ? a : null;
             rows.Add(new InterviewTranscriptionEvent(interviewId, organizationId, state, actor, null, transcriptId,
                 meta.GetValueOrDefault("language"), at, id, authorizedBy));
         }
         return rows;
-    }
-
-    public async Task<string?> LatestTranscriptionStateAsync(Guid organizationId, Guid interviewId,
-        CancellationToken ct)
-    {
-        var events = await ListEventsAsync(organizationId, interviewId, ct);
-        return events.Count == 0 ? null : events[^1].State;
     }
 
     public async Task<bool> RecordEventAsync(InterviewTranscriptionEvent transcriptionEvent, CancellationToken ct) =>

@@ -153,6 +153,20 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         if (room is null)
             return TranscriptionResult<TranscriptionStatusView>.Fail(409, "no_platform_room",
                 "La transcripción solo funciona en la sala de video de la plataforma.");
+        // From the consent read to the `requested` record, under the interview's transcription lock — which the
+        // candidate's join also takes to record a decision and read the transcription state. A decline therefore
+        // either commits before this reads consent (refused below) or reads the `requested` written here (and the
+        // join stops the transcription before admitting the candidate). It can no longer land in between, where it
+        // saw no transcription, was admitted, and the start then began transcribing a declined candidate.
+        var refused = await repository.WithTranscriptionLockAsync(organizationId, interviewId,
+            () => StartUnderLockAsync(organizationId, userId, interviewId, room, language, ct), ct);
+        return refused ?? await GetStatusAsync(organizationId, userId, interviewId, ct);
+    }
+
+    /// <summary>The start itself, run under the interview's transcription lock; null when it started and is on record.</summary>
+    private async Task<TranscriptionResult<TranscriptionStatusView>?> StartUnderLockAsync(Guid organizationId,
+        Guid userId, Guid interviewId, string room, string language, CancellationToken ct)
+    {
         var consents = await repository.ListConsentsAsync(organizationId, interviewId, ct);
         if (CandidateDecision(consents).Decision != Accepted)
             return TranscriptionResult<TranscriptionStatusView>.Fail(409, "candidate_consent_missing",
@@ -177,16 +191,18 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
             return TranscriptionResult<TranscriptionStatusView>.Fail(503, "event_not_recorded",
                 "No se pudo registrar el inicio; la transcripción se detuvo. Inténtalo de nuevo.");
         }
-        // A decline committed while the provider call ran: the candidate's join records the decline THEN reads the
-        // transcription state; this records the start THEN re-reads the decision — one of the two always sees the
-        // other, so a declined candidate is never transcribed by a start that raced the decline.
+        // Defense in depth: a decline recorded WITHOUT the lock (no such path exists today) still surfaces here. Its
+        // stop result is not ignored: when the stop fails, `requested` stays the latest state, so every declining
+        // join retries the stop and refuses admission until it succeeds, and the webhook deletes the transcript.
         if (CandidateDecision(await repository.ListConsentsAsync(organizationId, interviewId, ct)).Decision != Accepted)
         {
-            await provider.StopAsync(room, ct);
-            return TranscriptionResult<TranscriptionStatusView>.Fail(409, "candidate_consent_missing",
-                "El candidato no ha aceptado la transcripción. La entrevista puede continuar sin ella.");
+            return await provider.StopAsync(room, ct)
+                ? TranscriptionResult<TranscriptionStatusView>.Fail(409, "candidate_consent_missing",
+                    "El candidato no ha aceptado la transcripción. La entrevista puede continuar sin ella.")
+                : TranscriptionResult<TranscriptionStatusView>.Fail(503, "transcription_not_stopped",
+                    "El candidato rechazó la transcripción y no se pudo detener. Finaliza la llamada; la transcripción no se conservará.");
         }
-        return await GetStatusAsync(organizationId, userId, interviewId, ct);
+        return null;
     }
 
     /// <summary>
