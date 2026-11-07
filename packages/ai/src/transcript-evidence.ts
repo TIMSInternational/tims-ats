@@ -62,30 +62,100 @@ export function chunkTranscript(segments: readonly TranscriptSegment[]): {
   return { chunks, truncated: false };
 }
 
+/** The longest verified quote returned (the analysis result's own bound on a quote). */
+export const MAX_QUOTE_CHARS = 200;
+
 /**
- * Lowercase, NFC, whitespace collapsed, and ONLY sentence punctuation and quote marks ignored — so a quote matches
- * despite commas, line breaks or « » vs " ". Signs, symbols and digits are kept: "+20%" must never verify against a
- * candidate who said "-20%" (Codex P1). Hyphens/dashes stay too, for the same reason.
+ * A token is a run of anything but whitespace, sentence punctuation and quote marks — except that a '.' or ',' BETWEEN
+ * two digits belongs to the number ("3.5%", "1,200,000"): splitting there would let "5%" verify against "3.5%".
+ * Signs, symbols and hyphens stay inside their token, so "-20%" and "20%" are different tokens.
  */
-export function normalizeForMatch(text: string): string {
-  return text
-    .normalize('NFC')
-    .toLowerCase()
-    .replace(/[.,;:!?¡¿…"'“”‘’«»()[\]{}]+/gu, ' ')
-    .replace(/\s+/gu, ' ')
-    .trim();
+const TOKEN = /(?:[^\s.,;:!?¡¿…"'“”‘’«»()[\]{}]|(?<=\p{N})[.,](?=\p{N}))+/gu;
+
+interface Token {
+  /** Lowercased, for comparison. */
+  text: string;
+  /** Offsets into the NFC text the token was read from (so the source can be quoted exactly). */
+  start: number;
+  end: number;
+}
+
+function tokenize(nfcText: string): Token[] {
+  return [...nfcText.matchAll(TOKEN)].map((m) => ({
+    text: m[0].toLowerCase(),
+    start: m.index,
+    end: m.index + m[0].length,
+  }));
 }
 
 /**
- * The CANDIDATE segment that contains `quote` verbatim (after normalization), or null. Evidence about a
- * candidate's competency must be the candidate's own words; anything the model cannot point to is dropped.
+ * Lowercase, NFC, whitespace collapsed, and ONLY sentence punctuation and quote marks ignored — so a quote matches
+ * despite commas, line breaks or « » vs " ". Signs, symbols and digits are kept: "+20%" must never verify against a
+ * candidate who said "-20%" (Codex P1). Hyphens/dashes stay too, for the same reason; so do decimal and thousands
+ * separators inside a number.
  */
-export function locateCandidateQuote(quote: string, segments: readonly TranscriptSegment[]): TranscriptSegment | null {
-  const needle = normalizeForMatch(quote);
-  if (needle.length < MIN_QUOTE_CHARS) return null;
+export function normalizeForMatch(text: string): string {
+  return tokenize(text.normalize('NFC'))
+    .map((t) => t.text)
+    .join(' ');
+}
+
+const LONE_SIGN = /^[+\-−±]$/u;
+const STARTS_NUMERIC = /^[\p{N}%‰]/u;
+const ENDS_NUMERIC = /\p{N}$/u;
+
+/**
+ * True when tokens `from..to` of `source` do not cut a number written with spaces: a match that starts with a digit
+ * must not follow a lone sign ("- 20%") or a digit group ("1 200 000"), and one that ends with a digit must not be
+ * followed by another digit group or a percent sign ("20 %"). Only a whitespace gap joins them; punctuation separates.
+ */
+function keepsNumbersWhole(source: string, tokens: readonly Token[], from: number, to: number): boolean {
+  const first = tokens[from]!;
+  const before = tokens[from - 1];
+  if (
+    before &&
+    /^\s*$/u.test(source.slice(before.end, first.start)) &&
+    /^\p{N}/u.test(first.text) &&
+    (ENDS_NUMERIC.test(before.text) || LONE_SIGN.test(before.text))
+  )
+    return false;
+  const last = tokens[to]!;
+  const after = tokens[to + 1];
+  return !(
+    after &&
+    /^\s*$/u.test(source.slice(last.end, after.start)) &&
+    ENDS_NUMERIC.test(last.text) &&
+    STARTS_NUMERIC.test(after.text)
+  );
+}
+
+/** A verified quote: the candidate segment it is in, and the transcript's OWN text for it (never the model's). */
+export interface LocatedQuote {
+  segment: TranscriptSegment;
+  text: string;
+}
+
+/**
+ * The CANDIDATE segment that contains `quote` as a run of WHOLE tokens (after normalization), with the exact source
+ * text of that run — or null. Substring matching is not enough: "20% revenue growth" is inside "120% revenue growth"
+ * and "20% year over year" inside "-20% year over year" (Codex P1). Evidence about a candidate's competency must be
+ * the candidate's own words; anything the model cannot point to is dropped, and what is kept is quoted from the
+ * transcript, so the model's punctuation or casing never reaches a reviewer.
+ */
+export function locateCandidateQuote(quote: string, segments: readonly TranscriptSegment[]): LocatedQuote | null {
+  const needle = tokenize(quote.normalize('NFC'));
+  if (needle.map((t) => t.text).join(' ').length < MIN_QUOTE_CHARS) return null;
   for (const segment of segments) {
     if (segment.speaker !== CANDIDATE_SPEAKER) continue;
-    if (normalizeForMatch(segment.text).includes(needle)) return segment;
+    const source = segment.text.normalize('NFC');
+    const tokens = tokenize(source);
+    for (let i = 0; i + needle.length <= tokens.length; i++) {
+      if (!needle.every((t, k) => tokens[i + k]!.text === t.text)) continue;
+      const to = i + needle.length - 1;
+      if (!keepsNumbersWhole(source, tokens, i, to)) continue;
+      const text = source.slice(tokens[i]!.start, tokens[to]!.end);
+      if (text.length <= MAX_QUOTE_CHARS) return { segment, text };
+    }
   }
   return null;
 }
@@ -109,23 +179,90 @@ export function snapToSegment(seconds: number, segments: readonly TranscriptSegm
 // Whole words only (Unicode-aware boundaries): "raza" must not match "abrazar", nor "shy" "pushy".
 const STEMS = [
   // emotions / anxiety
-  'nervios[oa]s?', 'ansios[oa]s?', 'ansiedad', 'emocional(?:es|mente)?', 'emoci[oó]n(?:es)?', 'nervous(?:ness)?',
-  'anxious', 'anxiety', 'emotional(?:ly)?', 'emotions?', 'stressed', 'estresad[oa]',
+  'nervios[oa]s?',
+  'ansios[oa]s?',
+  'ansiedad',
+  'emocional(?:es|mente)?',
+  'emoci[oó]n(?:es)?',
+  'nervous(?:ness)?',
+  'anxious',
+  'anxiety',
+  'emotional(?:ly)?',
+  'emotions?',
+  'stressed',
+  'estresad[oa]',
   // personality / demeanour
-  'personalidad', 'personality', 'temperament[oa]?', 'introvertid[oa]', 'extrovertid[oa]', 'introvert(?:ed)?',
-  'extrovert(?:ed)?', 'inseguridad', 'insegur[oa]', 'insecure', 'timidez', 't[ií]mid[oa]', 'shy(?:ness)?',
+  'personalidad',
+  'personality',
+  'temperament[oa]?',
+  'introvertid[oa]',
+  'extrovertid[oa]',
+  'introvert(?:ed)?',
+  'extrovert(?:ed)?',
+  'inseguridad',
+  'insegur[oa]',
+  'insecure',
+  'timidez',
+  't[ií]mid[oa]',
+  'shy(?:ness)?',
   // Not bare 'confidence' or 'race': "confidence intervals" and "race conditions" are job content.
-  'confident(?:ly)?', 'self-confidence', 'self-assured', 'segur[oa] de s[ií]', '(?:confianza|seguridad) en s[ií] mism[oa]',
-  'outgoing', 'sociable', 'charismatic', 'charisma', 'carism[aá]tic[oa]', 'carisma', 'enthusiastic', 'enthusiasm',
-  'entusiasta', 'entusiasmo', 'energetic', 'en[eé]rgic[oa]', 'passionate', 'apasionad[oa]', 'calm', 'calmad[oa]',
-  'tranquil[oa]', 'friendly', 'simp[aá]tic[oa]', 'likeable', 'personable', 'humble', 'humilde', 'arrogant',
-  'arrogante', 'tone of voice', 'tono de voz',
+  'confident(?:ly)?',
+  'self-confidence',
+  'self-assured',
+  'segur[oa] de s[ií]',
+  '(?:confianza|seguridad) en s[ií] mism[oa]',
+  'outgoing',
+  'sociable',
+  'charismatic',
+  'charisma',
+  'carism[aá]tic[oa]',
+  'carisma',
+  'enthusiastic',
+  'enthusiasm',
+  'entusiasta',
+  'entusiasmo',
+  'energetic',
+  'en[eé]rgic[oa]',
+  'passionate',
+  'apasionad[oa]',
+  'calm',
+  'calmad[oa]',
+  'tranquil[oa]',
+  'friendly',
+  'simp[aá]tic[oa]',
+  'likeable',
+  'personable',
+  'humble',
+  'humilde',
+  'arrogant',
+  'arrogante',
+  'tone of voice',
+  'tono de voz',
   // age
-  'edad', 'age', 'aged', 'too (?:old|young)', '(?:demasiado|muy) (?:joven|mayor|viej[oa])', 'years old',
+  'edad',
+  'age',
+  'aged',
+  'too (?:old|young)',
+  '(?:demasiado|muy) (?:joven|mayor|viej[oa])',
+  'years old',
   // other protected characteristics
-  'embaraz[\\p{L}]*', 'pregnan[\\p{L}]*', 'religi[oó]n', 'religios[oa]', 'religio(?:n|us)', '[eé]tnic[oa]',
-  'ethnic(?:ity)?', 'raza', 'acento', 'accent', 'discapacidad', 'disabilit(?:y|ies)', 'disabled',
-  'orientaci[oó]n sexual', 'sexual orientation', 'estado civil', 'marital status',
+  'embaraz[\\p{L}]*',
+  'pregnan[\\p{L}]*',
+  'religi[oó]n',
+  'religios[oa]',
+  'religio(?:n|us)',
+  '[eé]tnic[oa]',
+  'ethnic(?:ity)?',
+  'raza',
+  'acento',
+  'accent',
+  'discapacidad',
+  'disabilit(?:y|ies)',
+  'disabled',
+  'orientaci[oó]n sexual',
+  'sexual orientation',
+  'estado civil',
+  'marital status',
 ];
 const PROTECTED_INFERENCE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${STEMS.join('|')})(?![\\p{L}\\p{N}])`, 'iu');
 

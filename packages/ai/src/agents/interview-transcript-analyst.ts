@@ -254,7 +254,8 @@ export async function analyzeInterviewTranscript(
     for (const item of q.data.questions) {
       const answer = stripProtectedSentences(item.answerSummary);
       stripped ||= answer.stripped;
-      const quote = locateCandidateQuote(item.answerQuote, chunk) ? item.answerQuote.trim() : null;
+      // The transcript's own words for a verified quote, never the model's rendering of them.
+      const quote = locateCandidateQuote(item.answerQuote, chunk)?.text ?? null;
       questions.push({
         question: item.question.trim(),
         askedAtSeconds: snapToSegment(parseTimestamp(item.askedAt), chunk),
@@ -266,9 +267,9 @@ export async function analyzeInterviewTranscript(
       if (!allowed.has(item.key)) continue;
       const list = evidence.get(item.key) ?? [];
       for (const piece of item.evidence) {
-        const segment = locateCandidateQuote(piece.quote, chunk);
-        if (!segment || list.some((x) => x.quote === piece.quote.trim()) || list.length >= 4) continue;
-        list.push({ quote: piece.quote.trim(), atSeconds: segment.startSeconds });
+        const located = locateCandidateQuote(piece.quote, chunk);
+        if (!located || list.some((x) => x.quote === located.text) || list.length >= 4) continue;
+        list.push({ quote: located.text, atSeconds: located.segment.startSeconds });
       }
       if (list.length > 0) evidence.set(item.key, list);
     }

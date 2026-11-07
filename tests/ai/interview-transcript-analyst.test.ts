@@ -130,7 +130,7 @@ describe('transcript evidence helpers', () => {
   });
 
   it('locates a quote only in CANDIDATE lines, ignoring punctuation and case', () => {
-    expect(locateCandidateQuote('PRIMERO escucho; luego propongo', segments)?.startSeconds).toBe(12);
+    expect(locateCandidateQuote('PRIMERO escucho; luego propongo', segments)?.segment.startSeconds).toBe(12);
     expect(locateCandidateQuote('Cómo maneja un conflicto con un cliente', segments)).toBeNull(); // interviewer line
     expect(locateCandidateQuote('Uso SQL', segments)).toBeNull(); // too short to prove anything
     expect(locateCandidateQuote('Uso Rust a diario y Power BI', segments)).toBeNull();
@@ -194,8 +194,101 @@ describe('quote verification keeps meaning-bearing symbols', () => {
     expect(locateCandidateQuote('in Q3 (€ 2 M)', said)).toBeNull();
   });
   it('still tolerates case, spacing, quote marks and sentence punctuation', () => {
-    expect(locateCandidateQuote('«i changed revenue by -20% last year»', said)?.startSeconds).toBe(9);
-    expect(locateCandidateQuote('revenue by -20%  last year in Q3', said)?.startSeconds).toBe(9);
+    expect(locateCandidateQuote('«i changed revenue by -20% last year»', said)?.segment.startSeconds).toBe(9);
+    expect(locateCandidateQuote('revenue by -20%  last year in Q3', said)?.segment.startSeconds).toBe(9);
+  });
+});
+
+describe('quote verification matches whole tokens only (Codex P1, re-run 2)', () => {
+  const one = (text: string): TranscriptSegment[] => [{ startSeconds: 4, speaker: 'candidate', text }];
+
+  it.each([
+    // The two false positives Codex reproduced: the quote began INSIDE a signed or longer number.
+    ['20% year over year', 'Revenue changed by -20% year over year.'],
+    ['20% revenue growth', 'I achieved 120% revenue growth.'],
+    // Decimal and thousands separators belong to the number, so the quote cannot start after one.
+    ['5% growth every year', 'We had 3.5% growth every year.'],
+    ['200,000 dollars in sales', 'I closed 1,200,000 dollars in sales.'],
+    ['500 dollars per unit', 'Margins were 2,500 dollars per unit.'],
+    // Numbers written with spaces: a lone sign or a digit group before, a digit group or "%" after.
+    ['20% year over year', 'Revenue changed by - 20% year over year.'],
+    ['200 000 units sold', 'We moved 1 200 000 units sold that year.'],
+    ['I grew revenue by 20', 'I grew revenue by 20 % in one year.'],
+    ['I grew revenue by 20', 'I grew revenue by 20 000 in one year.'],
+    // Word fragments are not tokens either.
+    ['evenue grew strongly', 'Revenue grew strongly.'],
+    ['revenue grew strong', 'Revenue grew strongly.'],
+  ])('rejects %j inside %j', (quote, text) => {
+    expect(locateCandidateQuote(quote, one(text))).toBeNull();
+  });
+
+  it.each([
+    ['-20% year over year', 'Revenue changed by -20% year over year.', '-20% year over year'],
+    ['120% revenue growth', 'I achieved 120% revenue growth.', '120% revenue growth'],
+    ['3.5% growth every year', 'We had 3.5% growth every year.', '3.5% growth every year'],
+    ['1,200,000 dollars in sales', 'I closed 1,200,000 dollars in sales.', '1,200,000 dollars in sales'],
+    // A punctuation gap is not a number: "2019, 3 projects" is two numbers.
+    ['3 projects at the same time', 'In 2019, 3 projects at the same time.', '3 projects at the same time'],
+  ])('accepts %j and returns the transcript text', (quote, text, expected) => {
+    expect(locateCandidateQuote(quote, one(text))?.text).toBe(expected);
+  });
+
+  it("returns the transcript's own words, not the model's punctuation or casing", () => {
+    const located = locateCandidateQuote('«primero escucho luego PROPONGO dos opciones»', segments);
+    expect(located?.text).toBe('Primero escucho, luego propongo dos opciones');
+    expect(located?.segment.startSeconds).toBe(12);
+  });
+
+  it('drops a match whose source text would exceed the result bound', () => {
+    const words = Array.from({ length: 20 }, (_, i) => `palabra${i}`);
+    const quote = words.join(' ');
+    expect(quote.length).toBeLessThanOrEqual(200); // a quote the model's schema allows…
+    expect(words.join(', ').length).toBeGreaterThan(200); // …whose transcript wording is longer
+    expect(locateCandidateQuote(quote, one(words.join(', ')))).toBeNull();
+    expect(locateCandidateQuote(words.slice(0, 10).join(' '), one(words.join(', ')))?.text).toBe(
+      words.slice(0, 10).join(', '),
+    );
+  });
+
+  it('the analysis returns verified quotes in the transcript wording and rejects a shifted number', async () => {
+    respond(
+      byPrompt(
+        {
+          partSummary: 'Habló de ventas.',
+          questions: [
+            {
+              question: '¿Resultados?',
+              askedAt: '00:04',
+              answerSummary: 'Creció ventas.',
+              answerQuote: '20% revenue growth',
+            },
+          ],
+        },
+        {
+          competencies: [
+            {
+              key: 'communication',
+              evidence: [
+                { quote: '20% revenue growth', at: '00:04' },
+                { quote: 'i ACHIEVED 120% revenue growth', at: '00:04' },
+              ],
+            },
+          ],
+        },
+        goodSynthesis,
+      ),
+    );
+    const { result } = await analyzeInterviewTranscript('org-1', {
+      ...input,
+      segments: [
+        { startSeconds: 2, speaker: 'interviewer_1', text: '¿Resultados?' },
+        { startSeconds: 4, speaker: 'candidate', text: 'I achieved 120% revenue growth.' },
+      ],
+    });
+    expect(result.questions[0]?.answerQuote).toBeNull();
+    expect(result.competencies.find((c) => c.key === 'communication')?.evidence).toEqual([
+      { quote: 'I achieved 120% revenue growth', atSeconds: 4 },
+    ]);
   });
 });
 
