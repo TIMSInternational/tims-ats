@@ -142,6 +142,7 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         Assert.Null(flagged["assessment"]); // the flagged latest attempt is excluded, NOT read as 0 and NOT 90
         Assert.Equal(100, v2Flagged.OverallScore); // experience 100 + languages 100, renormalized
         Assert.True(v2Flagged.IsPartial);
+        Assert.True(flagged["reviewPending"]!.GetValue<bool>()); // the number is provisional until a person reviews
         var flaggedQuiz = flagged["assessments"]![0]!;
         Assert.Equal("needs_review", flaggedQuiz["status"]!.GetValue<string>());
         Assert.Equal(FitEngineFixture.AsgV2FlaggedNew.ToString(), flaggedQuiz["resultId"]!.GetValue<string>());
@@ -153,6 +154,7 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         var valid = JsonNode.Parse(v2Valid.Breakdown)!;
         Assert.Equal(100, valid["assessment"]!.GetValue<double>()); // 75 vs min 50 → capped 100 (not the cancelled 99)
         Assert.Equal(83, v2Valid.OverallScore); // (100 + 50 + 100) × 0.2 / 0.6 = 83.33
+        Assert.False(valid["reviewPending"]!.GetValue<bool>()); // the cancelled attempt has no completedAt: not judged
         Assert.Equal(FitEngineFixture.AsgV2Valid.ToString(), valid["assessments"]![0]!["resultId"]!.GetValue<string>());
         Assert.Equal(v1Valid.Id, v2Valid.Id); // the same row, updated
 

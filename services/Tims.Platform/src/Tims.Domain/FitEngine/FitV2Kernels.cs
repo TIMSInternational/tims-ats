@@ -24,9 +24,14 @@ namespace Tims.Domain.FitEngine;
 /// never feeds the score and never rejects or zeroes a candidate.</para>
 ///
 /// <para><b>Integrity.</b> A result marked <see cref="ResultIntegrity.NeedsReview"/> (voided, flagged, awaiting
-/// review) shows as <c>needs_review</c>, its gate as unknown, and is excluded from the score. It is never read
-/// as a low score. Only the most recent result per instrument is considered (completedAt DESC, nulls last, then
-/// resultId ordinal ascending); an older valid attempt does not stand in for a newer one under review.</para>
+/// review) shows as <c>needs_review</c>, its gate as unknown, and is excluded from the <c>assessment</c>
+/// dimension: it is never read as a low instrument score. Excluding it still moves the OVERALL number (the
+/// remaining dimensions are renormalized exactly as for a candidate with no result, and when nothing else is
+/// available the overall is v1's 0/partial no-data value), so a scored result awaiting review sets
+/// <see cref="FitV2Evaluation.ReviewPending"/>: the row is stored as partial and the breakdown carries
+/// <c>reviewPending: true</c> for readers to hold it apart. Only the most recent result per instrument is
+/// considered (completedAt DESC, nulls last, then resultId ordinal ascending); an older valid attempt does not
+/// stand in for a newer one under review.</para>
 ///
 /// <para><b>Weighting rule.</b> The <c>assessment</c> dimension is the weighted mean of the scored instruments
 /// that have a score, rounded with JsRound. The weights are the declared <c>weight</c>s when EVERY scored entry
@@ -35,7 +40,8 @@ namespace Tims.Domain.FitEngine;
 /// instrument i carries <c>profile.assessment × wᵢ / Σ w</c> over the instruments with a score. When none has a
 /// score the dimension is null and the five-dimension renormalization removes it, as v1 does for any missing
 /// dimension. Gate and advisory entries weigh nothing. <c>isPartial</c> keeps its v1 meaning (one of the five
-/// dimensions is null) so ranking and simulateWeights agree.</para>
+/// dimensions is null), and is also set when <see cref="FitV2Evaluation.ReviewPending"/> is (simulateWeights
+/// recomputes it from the five dimension keys only, so for such a row it can report false).</para>
 ///
 /// <para><b>English and the languages dimension.</b> When a SCORED english entry has a valid CEFR result, that
 /// result decides whether "English" counts as covered among <c>requiredLanguages</c> (achieved ≥ the entry's
@@ -311,6 +317,10 @@ public static class FitV2Kernels
 
         double? assessment = weightSum > 0 ? FitEngineKernels.JsRound(weighted / weightSum) : null;
 
+        // A scored result awaiting review is left out above; the overall number is then provisional.
+        var reviewPending = drafts.Any(d =>
+            d.Requirement.Use == FitInstrumentUses.Scored && d.Status == FitInstrumentStatuses.NeedsReview);
+
         // English → languages: only a SCORED english entry may move a number (a gate never does).
         bool? englishCovered = null;
         var englishDraft = drafts.FirstOrDefault(d => d.Requirement.Instrument == FitInstruments.English);
@@ -368,7 +378,7 @@ public static class FitV2Kernels
                 languagesEvidence));
         }
 
-        return new FitV2Evaluation(assessment, languages, entries);
+        return new FitV2Evaluation(assessment, languages, entries, reviewPending);
     }
 
     /// <summary>
@@ -414,10 +424,11 @@ public static class FitV2Kernels
     /// <summary>
     /// The v2 breakdown: the v1 keys first, in the v1 order (<c>assessment, interview, experience, education,
     /// languages, llmJudgment</c>, so every v1 reader — simulateWeights, the web panels, the AI explainer — keeps
-    /// working), then <c>fitVersion</c> and <c>assessments</c> (one entry per configured instrument).
+    /// working), then <c>fitVersion</c>, <c>reviewPending</c> (see <see cref="FitV2Evaluation.ReviewPending"/>) and
+    /// <c>assessments</c> (one entry per configured instrument).
     /// </summary>
     public static JsonObject BuildBreakdown(
-        IReadOnlyDictionary<string, double?> rawScores, IReadOnlyList<InstrumentFitEntry> entries)
+        IReadOnlyDictionary<string, double?> rawScores, IReadOnlyList<InstrumentFitEntry> entries, bool reviewPending)
     {
         var breakdown = new JsonObject();
         foreach (var dim in FitEngineKernels.FitDimensions)
@@ -429,6 +440,7 @@ public static class FitV2Kernels
 
         breakdown["llmJudgment"] = null;
         breakdown["fitVersion"] = FitVersion;
+        breakdown["reviewPending"] = reviewPending;
         var array = new JsonArray();
         foreach (var entry in entries)
         {

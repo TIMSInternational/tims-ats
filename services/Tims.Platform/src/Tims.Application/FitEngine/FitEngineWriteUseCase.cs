@@ -14,7 +14,8 @@ namespace Tims.Application.FitEngine;
 /// <para>FIT v2 (<c>Platform:FitEngineV2Enabled</c>, default off): when the flag is on AND the vacancy's
 /// <c>fit_requirements</c> carries an <c>assessments</c> array, the <c>assessment</c> dimension is built per
 /// instrument from <see cref="IAssessmentResultSource"/> (<see cref="FitV2Kernels"/>), a scored English result
-/// verifies the <c>languages</c> dimension, and the breakdown gains <c>fitVersion</c> + <c>assessments</c> after the six v1 keys.
+/// verifies the <c>languages</c> dimension, and the breakdown gains <c>fitVersion</c>, <c>reviewPending</c> and
+/// <c>assessments</c> after the six v1 keys.
 /// In every other case the v1 code below runs unchanged — same reads, same breakdown bytes.</para>
 /// </summary>
 public sealed class FitEngineWriteUseCase(
@@ -197,11 +198,16 @@ public sealed class FitEngineWriteUseCase(
         };
 
         var result = FitEngineKernels.ComputeWeightedScore(rawScores, weights);
-        var breakdown = FitV2Kernels.BuildBreakdown(rawScores, evaluation.Entries);
+        var breakdown = FitV2Kernels.BuildBreakdown(rawScores, evaluation.Entries, evaluation.ReviewPending);
+
+        // A scored result awaiting review is left out of the number, so the number is provisional. Store the row
+        // as partial (every reader already flags a partial score and keeps it out of the >= 80 highlight); the
+        // breakdown's reviewPending says why, so a ranking reader can hold the row apart.
+        var isPartial = result.IsPartial || evaluation.ReviewPending;
 
         return await _repository.UpsertFitScoreUnlessWithdrawnAsync(
                 organizationId, candidateId, vacancyId, result.OverallScore, breakdown.ToJsonString(), weightsJson,
-                result.IsPartial, now, cancellationToken)
+                isPartial, now, cancellationToken)
             .ConfigureAwait(false);
     }
 

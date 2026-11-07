@@ -142,8 +142,19 @@ public sealed record InstrumentFitEntry(
     string? NormVersion,
     string? LanguagesEvidence);
 
-/// <summary>The FIT v2 result: the two dimensions it changes, plus the per-instrument entries.</summary>
+/// <summary>
+/// The FIT v2 result: the two dimensions it changes, the per-instrument entries, and whether a scored result
+/// awaits review.
+/// </summary>
+/// <param name="ReviewPending">
+/// True when the latest result of at least one SCORED instrument needs review. That instrument is left out of
+/// <c>AssessmentScore</c> (and a scored English result awaiting review does not verify <c>languages</c>), so the
+/// overall score is provisional until a person reviews it. The use case stores such a row as partial and the
+/// breakdown carries <c>reviewPending: true</c>, so a reader can hold the row apart instead of ranking it on a
+/// number the review may change. A gate awaiting review moves no number and does not set it.
+/// </param>
 public sealed record FitV2Evaluation(
     double? AssessmentScore,
     double? LanguagesScore,
-    IReadOnlyList<InstrumentFitEntry> Entries);
+    IReadOnlyList<InstrumentFitEntry> Entries,
+    bool ReviewPending);

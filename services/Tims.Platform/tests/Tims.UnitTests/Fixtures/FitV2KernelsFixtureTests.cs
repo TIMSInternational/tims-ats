@@ -102,6 +102,7 @@ public sealed class FitV2KernelsFixtureTests
             {
                 ["assessment"] = evaluation.AssessmentScore is { } a ? JsonValue.Create(a) : null,
                 ["languages"] = evaluation.LanguagesScore is { } l ? JsonValue.Create(l) : null,
+                ["reviewPending"] = evaluation.ReviewPending,
                 ["entries"] = new JsonArray(evaluation.Entries.Select(e => (JsonNode)FitV2Kernels.EntryToJson(e)).ToArray()),
             };
             AssertCase("evaluate.json", c, actual);

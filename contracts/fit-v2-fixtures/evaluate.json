@@ -72,6 +72,7 @@
       "expected": {
         "assessment": 100,
         "languages": 50,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "lia",
@@ -191,6 +192,7 @@
       "expected": {
         "assessment": 73,
         "languages": null,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "lia",
@@ -302,6 +304,7 @@
       "expected": {
         "assessment": 58,
         "languages": null,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "lia",
@@ -436,6 +439,7 @@
       "expected": {
         "assessment": null,
         "languages": 100,
+        "reviewPending": true,
         "entries": [
           {
             "instrument": "lia",
@@ -570,6 +574,7 @@
       "expected": {
         "assessment": null,
         "languages": null,
+        "reviewPending": true,
         "entries": [
           {
             "instrument": "native_quiz",
@@ -631,6 +636,7 @@
       "expected": {
         "assessment": 70,
         "languages": null,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "native_quiz",
@@ -680,6 +686,7 @@
       "expected": {
         "assessment": 83,
         "languages": null,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "native_quiz",
@@ -746,6 +753,7 @@
       "expected": {
         "assessment": null,
         "languages": 100,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "english",
@@ -817,6 +825,7 @@
       "expected": {
         "assessment": 100,
         "languages": null,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "lia",
@@ -868,6 +877,7 @@
       "expected": {
         "assessment": null,
         "languages": null,
+        "reviewPending": false,
         "entries": []
       }
     },
@@ -928,6 +938,7 @@
       "expected": {
         "assessment": 75,
         "languages": 0,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "english",
@@ -1011,6 +1022,7 @@
       "expected": {
         "assessment": null,
         "languages": 100,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "english",
@@ -1070,6 +1082,7 @@
       "expected": {
         "assessment": null,
         "languages": null,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "english",
@@ -1155,6 +1168,7 @@
       "expected": {
         "assessment": null,
         "languages": null,
+        "reviewPending": false,
         "entries": [
           {
             "instrument": "lia",
@@ -1205,6 +1219,99 @@
             "effectiveWeight": null,
             "min": {
               "cefr": "B1"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a gate awaiting review moves no number and does not set reviewPending (only a scored result awaiting review makes the overall provisional); lia 50 vs 40 → 125 → capped 100",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              }
+            },
+            {
+              "instrument": "english",
+              "use": "gate",
+              "min": {
+                "cefr": "B2"
+              }
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 50
+          },
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "needs_review",
+            "completedAt": "2026-10-02T00:00:00Z",
+            "cefr": "C1"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": null
+      },
+      "expected": {
+        "assessment": 100,
+        "languages": null,
+        "reviewPending": false,
+        "entries": [
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "completed",
+            "score": 100,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 1,
+            "effectiveWeight": 0.4,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          },
+          {
+            "instrument": "english",
+            "use": "gate",
+            "status": "needs_review",
+            "score": null,
+            "gate": "unknown",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "cefr": "B2"
             },
             "reason": null,
             "resultId": "r-en",

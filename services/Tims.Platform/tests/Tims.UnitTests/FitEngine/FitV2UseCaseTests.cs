@@ -11,12 +11,13 @@ namespace Tims.UnitTests.FitEngine;
 ///     <c>assessments</c> array is byte-identical to flag OFF; flag ON + array takes the v2 path, which REPLACES
 ///     the latest-of-any-type read and keeps the six v1 keys first;
 ///   hiring guardrails — a not-met gate never moves the overall score and never skips the candidate; a
-///     needs-review result is excluded (renormalized away), never read as 0;
+///     needs-review result is excluded from the assessment dimension (never read as a 0 instrument score), and
+///     because excluding it still moves the overall number, the row is stored partial with reviewPending: true;
 ///   weighting — the profile's assessment weight is split across scored instruments by their weights;
 ///   a SCORED English result verifies the languages dimension (a gate never moves a number);
 ///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
 ///   the composite source's order. (The ATS adapter and the provider stub live in Tims.Infrastructure and are
-///   pinned in Tims.IntegrationTests/FitEngine/FitV2AssessmentResultSourceTests.)
+///   pinned in Tims.IntegrationTests/FitEngine/FitV2Tests.)
 /// </summary>
 public sealed class FitV2UseCaseTests
 {
@@ -83,10 +84,11 @@ public sealed class FitV2UseCaseTests
 
         var breakdown = SingleBreakdown(repo);
         Assert.Equal(
-            ["assessment", "interview", "experience", "education", "languages", "llmJudgment", "fitVersion", "assessments"],
+            ["assessment", "interview", "experience", "education", "languages", "llmJudgment", "fitVersion", "reviewPending", "assessments"],
             breakdown.Select(p => p.Key).ToArray());
         Assert.Equal(50, breakdown["assessment"]!.GetValue<double>()); // 20 / 40 → 50, NOT the latest-of-any-type 12
         Assert.Equal(2, breakdown["fitVersion"]!.GetValue<int>());
+        Assert.False(breakdown["reviewPending"]!.GetValue<bool>());
         Assert.Equal(0, repo.LatestAssessmentReads);
         Assert.Equal([(OrgId, CandidateId, VacancyId)], source.Calls);
 
@@ -168,6 +170,81 @@ public sealed class FitV2UseCaseTests
         var entry = JsonNode.Parse(excluded.BreakdownJson)!["assessments"]![0]!;
         Assert.Equal("needs_review", entry["status"]!.GetValue<string>());
         Assert.Null(JsonNode.Parse(excluded.BreakdownJson)!["assessment"]);
+        Assert.True(JsonNode.Parse(excluded.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+        Assert.True(excluded.IsPartial);
+        Assert.False(JsonNode.Parse(scoredZero.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task FlagOn_NeedsReview_WhenAssessmentIsTheOnlyDimension_IsTheNoDataValue_MarkedPending()
+    {
+        // No CV data, no interview: the assessment is the only dimension that could exist. A result awaiting review
+        // leaves NO dimension, so the overall is v1's no-data value (0, partial), exactly what a candidate who never
+        // took the test gets: the flag does not rank the candidate below one with no result. It is not a score:
+        // reviewPending says the number is provisional, and a ranking reader must hold the row apart.
+        const string requirements = """{"assessments":[{"instrument":"native_quiz"}]}""";
+        var review = Repo(requirements);
+        var none = Repo(requirements);
+        var low = Repo(requirements);
+
+        await new FitEngineWriteUseCase(
+                review,
+                new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(none, new FakeResultSource())
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(low, new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 10)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var pending = Assert.Single(review.FitScoreUpserts);
+        var noResult = Assert.Single(none.FitScoreUpserts);
+        var scoredLow = Assert.Single(low.FitScoreUpserts);
+        Assert.Equal(noResult.OverallScore, pending.OverallScore);
+        Assert.Equal(0, pending.OverallScore);
+        Assert.True(pending.IsPartial);
+        Assert.True(JsonNode.Parse(pending.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+        Assert.False(JsonNode.Parse(noResult.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+        Assert.Equal(10, scoredLow.OverallScore);
+        Assert.False(JsonNode.Parse(scoredLow.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task FlagOn_OneScoredInstrumentNeedsReview_RowIsPartial_EvenWithEveryDimensionPresent()
+    {
+        // All five dimensions are present, so v1's isPartial would be false. The quiz awaiting review is left out of
+        // the assessment dimension (lia alone fills it), which makes the number provisional: the row is stored as
+        // partial so no reader shows it as a complete score (or puts it in the >= 80 highlight).
+        const string requirements =
+            """{"minYearsExperience":2,"requiredEducationLevel":"bachelor","requiredLanguages":["Spanish"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"native_quiz"}]}""";
+        const string education = """[{"degree":"Bachelor of Science"}]""";
+        var review = Repo(requirements, interview: 80, yearsExperience: 4, languages: """["Spanish"]""", education: education);
+        var valid = Repo(requirements, interview: 80, yearsExperience: 4, languages: """["Spanish"]""", education: education);
+
+        await new FitEngineWriteUseCase(
+                review,
+                new FakeResultSource(
+                    Result(FitInstruments.Lia, "r-lia", percentile: 40),
+                    Result(FitInstruments.NativeQuiz, "a-1", score: 30, integrity: ResultIntegrity.NeedsReview)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(
+                valid,
+                new FakeResultSource(
+                    Result(FitInstruments.Lia, "r-lia", percentile: 40),
+                    Result(FitInstruments.NativeQuiz, "a-1", score: 30)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var pending = Assert.Single(review.FitScoreUpserts);
+        var counted = Assert.Single(valid.FitScoreUpserts);
+        var pendingBreakdown = JsonNode.Parse(pending.BreakdownJson)!;
+        Assert.Equal(100, pendingBreakdown["assessment"]!.GetValue<double>()); // lia only: 40 vs 40
+        Assert.Equal(96, pending.OverallScore); // (100 + 80 + 100 + 100 + 100) / 5
+        Assert.True(pending.IsPartial);
+        Assert.True(pendingBreakdown["reviewPending"]!.GetValue<bool>());
+
+        Assert.Equal(65, JsonNode.Parse(counted.BreakdownJson)!["assessment"]!.GetValue<double>()); // (100 + 30) / 2
+        Assert.Equal(89, counted.OverallScore); // (65 + 80 + 100 + 100 + 100) / 5
+        Assert.False(counted.IsPartial);
+        Assert.False(JsonNode.Parse(counted.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
     }
 
     // ── weighting ──
@@ -258,12 +335,13 @@ public sealed class FitV2UseCaseTests
         int? interview = null,
         int? yearsExperience = null,
         string? languages = null,
-        string profileWeights = DefaultWeights) =>
+        string profileWeights = DefaultWeights,
+        string? education = null) =>
         new()
         {
             PipelineCandidateIds = [CandidateId],
             Vacancy = new VacancyForFitData(null, fitRequirements),
-            Candidate = new CandidateForFitData(yearsExperience, null, languages),
+            Candidate = new CandidateForFitData(yearsExperience, education, languages),
             AssessmentScore = assessmentScore,
             InterviewScore = interview,
             DefaultProfile = new WeightProfileData(Guid.NewGuid(), "Default", profileWeights),
