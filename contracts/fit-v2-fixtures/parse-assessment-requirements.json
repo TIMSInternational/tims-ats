@@ -48,6 +48,25 @@
       "expected": []
     },
     {
+      "name": "a non-empty array in which nothing parses (a typo) → null (v1 path), never a silently dropped assessment dimension",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "native-quiz"
+            },
+            {
+              "instrument": "LIA ",
+              "min": {
+                "globalPercentile": "40"
+              }
+            }
+          ]
+        }
+      },
+      "expected": null
+    },
+    {
       "name": "the design-doc example",
       "input": {
         "raw": {
@@ -257,7 +276,7 @@
       ]
     },
     {
-      "name": "bad entries are dropped, never an error",
+      "name": "bad entries are dropped, never an error; none survives here, so the non-empty array → null (v1 path)",
       "input": {
         "raw": {
           "assessments": [
@@ -306,10 +325,10 @@
           ]
         }
       },
-      "expected": []
+      "expected": null
     },
     {
-      "name": "an invalid minimum drops a scored/gate entry",
+      "name": "an invalid minimum drops a scored/gate entry; none survives here, so the non-empty array → null (v1 path)",
       "input": {
         "raw": {
           "assessments": [
@@ -363,7 +382,7 @@
           ]
         }
       },
-      "expected": []
+      "expected": null
     },
     {
       "name": "boundary minimums are kept; CEFR is trimmed and upper-cased",
@@ -645,7 +664,7 @@
       ]
     },
     {
-      "name": "only the first 32 entries are read",
+      "name": "only the first 32 entries are read; none of them is valid, so → null (v1 path) although the 33rd is",
       "input": {
         "raw": {
           "assessments": [
@@ -754,7 +773,7 @@
           ]
         }
       },
-      "expected": []
+      "expected": null
     }
   ]
 }

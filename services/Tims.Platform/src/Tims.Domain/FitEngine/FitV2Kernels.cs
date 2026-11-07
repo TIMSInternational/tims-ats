@@ -80,9 +80,10 @@ public static class FitV2Kernels
     // ───────────────────────────── requirements ─────────────────────────────
 
     /// <summary>
-    /// <c>fit_requirements.assessments[]</c>, parsed leniently. Returns null when the jsonb is not an object or has
-    /// no <c>assessments</c> array (the v1 path then runs). Otherwise returns the valid entries in order; a bad
-    /// entry is dropped, never an error:
+    /// <c>fit_requirements.assessments[]</c>, parsed leniently. Returns null when the jsonb is not an object, has
+    /// no <c>assessments</c> array, or has a non-empty array in which no entry survives (the v1 path then runs, so a
+    /// typo never silently drops the assessment dimension). An empty array returns an empty list. Otherwise returns
+    /// the valid entries in order; a bad entry is dropped, never an error:
     /// <list type="bullet">
     /// <item>not an object, or <c>instrument</c> not one of <see cref="FitInstruments.All"/> (trimmed,
     /// case-insensitive) → dropped;</item>
@@ -116,7 +117,9 @@ public static class FitV2Kernels
             }
         }
 
-        return parsed;
+        // An explicit [] is a decision ("no instrument"); a non-empty array in which nothing parses is a mistake
+        // (e.g. "native-quiz"), and must not silently drop the assessment dimension: v1 runs instead.
+        return parsed.Count == 0 && entries.Count > 0 ? null : parsed;
     }
 
     private static AssessmentRequirement? TryParseRequirement(JsonNode? entry)

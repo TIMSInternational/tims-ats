@@ -114,6 +114,27 @@ public sealed class FitV2UseCaseTests
         Assert.True(upsert.IsPartial);
     }
 
+    [Fact]
+    public async Task FlagOn_NonEmptyArrayWhereNothingParses_IsV1_NotADroppedAssessmentDimension()
+    {
+        // A typo ("native-quiz") must not take the v2 path with no instrument, which would drop the quiz score v1
+        // uses for every candidate without a word to HR: the vacancy behaves as if it were not configured.
+        const string requirements = """{"assessments":[{"instrument":"native-quiz"}]}""";
+        var off = Repo(requirements, assessmentScore: 90);
+        var on = Repo(requirements, assessmentScore: 90);
+        var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 90));
+
+        await new FitEngineWriteUseCase(off, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: false, CancellationToken.None);
+        await new FitEngineWriteUseCase(on, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(Assert.Single(off.FitScoreUpserts), Assert.Single(on.FitScoreUpserts));
+        Assert.Equal(90, SingleBreakdown(on)["assessment"]!.GetValue<double>());
+        Assert.Equal(1, on.LatestAssessmentReads);
+        Assert.Empty(source.Calls);
+    }
+
     // ── hiring guardrails ──
     [Fact]
     public async Task FlagOn_GateNotMet_NeverChangesTheOverallScore_AndNeverSkipsTheCandidate()
