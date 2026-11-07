@@ -69,17 +69,17 @@ export const interviewMediaRouter = router({
 
       // If room already exists, reuse it — just generate a fresh token. Only THIS interview's own Daily
       // room (named from its id): a meetingUrl pointing anywhere else (an external link, or another
-      // interview's room) never gets an owner token.
+      // interview's room) never gets a token. Staff tokens are never owner tokens (see createMeetingToken).
       if (interview.meetingUrl) {
         const existingRoomName = ownDailyRoomName(interview.meetingUrl, interview.id);
         if (!existingRoomName) throw externalMeetingLink();
-        const token = await videoService.createMeetingToken(existingRoomName, userName, true);
+        const token = await videoService.createMeetingToken(existingRoomName, userName);
         return { url: interview.meetingUrl, token, roomName: existingRoomName };
       }
 
       // First time — create room, store URL, generate token
       const { url, roomName } = await videoService.createRoom(input.interviewId);
-      const token = await videoService.createMeetingToken(roomName, userName, true);
+      const token = await videoService.createMeetingToken(roomName, userName);
 
       await db.interview.update({
         where: { id: input.interviewId },
@@ -127,7 +127,7 @@ export const interviewMediaRouter = router({
         select: { firstName: true, lastName: true },
       });
       const userName = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || 'Participant';
-      const token = await videoService.createMeetingToken(roomName, userName, false);
+      const token = await videoService.createMeetingToken(roomName, userName);
 
       return { url: interview.meetingUrl, token };
     }),

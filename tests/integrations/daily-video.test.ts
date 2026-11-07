@@ -129,15 +129,29 @@ describe('videoService Daily.co runtime config', () => {
 
     const { videoService } = await import('../../packages/api/src/services/video.service');
 
-    await expect(videoService.createMeetingToken('room-1', 'Laura Garcia', true)).resolves.toBe('meeting-token');
+    await expect(videoService.createMeetingToken('room-1', 'Laura Garcia')).resolves.toBe('meeting-token');
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
       properties: {
         room_name: 'room-1',
         user_name: 'Laura Garcia',
-        is_owner: true,
       },
     });
     expect(typeof body.properties.exp).toBe('number');
+  });
+
+  it('never mints an owner token or any admin permission (owners can start transcription client-side)', async () => {
+    // Codex P1 on #422: Daily owners ALWAYS hold `transcription` admin, so a staff owner token let an evaluator call
+    // startTranscription() directly after the candidate declined, bypassing the server's consent gate.
+    vi.stubEnv('DAILY_API_KEY', 'daily_test_key');
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { token: 'meeting-token' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { videoService } = await import('../../packages/api/src/services/video.service');
+
+    await videoService.createMeetingToken('room-1', 'Laura Garcia');
+    const { properties } = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(properties.is_owner).toBe(false);
+    expect(properties.permissions).toEqual({ canAdmin: false });
+    expect(JSON.stringify(properties)).not.toMatch(/transcription/);
   });
 });

@@ -28,6 +28,9 @@ public enum WebhookHandling
     Recorded,
     Stored,
     Rejected,
+
+    /// <summary>A transcription the platform did not start (or the candidate no longer accepts) was stopped at Daily.</summary>
+    Stopped,
 }
 
 /// <summary>
@@ -270,13 +273,18 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         if (webhookEvent.EventId is { } eventId && await repository.HasProviderEventAsync(org, interviewId, eventId, ct))
             return WebhookHandling.Duplicate;
 
+        if (webhookEvent.Type == DailyWebhookEvent.TranscriptStarted)
+        {
+            // Under the interview's transcription lock: a staff start holds it from its consent read until its
+            // `requested` event is written, so a `started` for a legitimate start always finds that event here.
+            return await repository.WithTranscriptionLockAsync(org, interviewId,
+                () => HandleStartedUnderLockAsync(org, interviewId, webhookEvent, ct), ct);
+        }
         if (webhookEvent.Type != DailyWebhookEvent.TranscriptReady)
         {
-            var state = webhookEvent.Type == DailyWebhookEvent.TranscriptStarted
-                ? TranscriptStates.InProgress
-                : TranscriptStates.Error;
-            Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org, state,
-                ProviderEventId: webhookEvent.EventId, TranscriptId: webhookEvent.TranscriptId), ct));
+            Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
+                TranscriptStates.Error, ProviderEventId: webhookEvent.EventId, TranscriptId: webhookEvent.TranscriptId),
+                ct));
             return WebhookHandling.Recorded;
         }
 
@@ -314,6 +322,37 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
             }
         }
         throw new InvalidOperationException("Transcript authorization kept losing to concurrent deliveries");
+    }
+
+    /// <summary>
+    /// A transcription began in the interview's room. It is only recorded as running when a platform start accounts for
+    /// it (<see cref="AuthorizingStart"/>, timed from when it began) AND the candidate's latest decision is still
+    /// <c>accepted</c>. Anything else — e.g. a participant holding transcription-admin rights calling Daily's
+    /// startTranscription() directly, bypassing the consent and acknowledgement checks — is STOPPED through the REST
+    /// API at once, not merely recorded; deleting the stored transcript later could not undo live transcription.
+    /// A failed stop throws, nothing is recorded, and Daily retries the delivery (Daily answers an already-stopped
+    /// room with 400/404, which the provider counts as stopped, so the retries end).
+    /// </summary>
+    private async Task<WebhookHandling> HandleStartedUnderLockAsync(Guid org, Guid interviewId,
+        DailyWebhookEvent webhookEvent, CancellationToken ct)
+    {
+        var consents = await repository.ListConsentsAsync(org, interviewId, ct);
+        var events = await repository.ListEventsAsync(org, interviewId, ct);
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var began = webhookEvent.StartedAtUtc ?? webhookEvent.SentAtUtc ?? now;
+        if (AuthorizingStart(events, began, now) is null || CandidateDecision(consents).Decision != Accepted)
+        {
+            if (!await provider.StopAsync(CandidateInterviewJoin.RoomNameFor(interviewId), ct))
+                throw new InvalidOperationException("Unauthorized transcription could not be stopped at the provider");
+            Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
+                TranscriptStates.Rejected, ProviderEventId: webhookEvent.EventId, TranscriptId: webhookEvent.TranscriptId),
+                ct));
+            return WebhookHandling.Stopped;
+        }
+        Require(await repository.RecordEventAsync(new InterviewTranscriptionEvent(interviewId, org,
+            TranscriptStates.InProgress, ProviderEventId: webhookEvent.EventId, TranscriptId: webhookEvent.TranscriptId),
+            ct));
+        return WebhookHandling.Recorded;
     }
 
     /// <summary>

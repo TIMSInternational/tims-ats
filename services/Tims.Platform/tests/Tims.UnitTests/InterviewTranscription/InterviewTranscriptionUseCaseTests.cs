@@ -414,14 +414,16 @@ public sealed class InterviewTranscriptionUseCaseTests
         Assert.Single(provider.Deleted);
     }
 
+    /// <summary>A <c>transcript.started</c> Daily sent at <paramref name="sentAt"/> (no duration: it just began).</summary>
+    private static DailyWebhookEvent StartedEvent(string eventId, DateTime sentAt) =>
+        new(DailyWebhookEvent.TranscriptStarted, eventId, CandidateInterviewJoin.RoomNameFor(InterviewId), TranscriptId,
+            EventTimestamp: new DateTimeOffset(sentAt).ToUnixTimeSeconds());
+
     [Fact]
-    public async Task Started_and_error_events_are_recorded_and_other_events_ignored()
+    public async Task Error_events_are_recorded_and_other_events_ignored()
     {
         var (useCase, repo, _) = Build();
         var room = CandidateInterviewJoin.RoomNameFor(InterviewId);
-        Assert.Equal(WebhookHandling.Recorded, await useCase.HandleWebhookAsync(
-            new(DailyWebhookEvent.TranscriptStarted, "evt-1", room, TranscriptId), default));
-        Assert.Equal(TranscriptStates.InProgress, repo.Events[^1].State);
         Assert.Equal(WebhookHandling.Recorded, await useCase.HandleWebhookAsync(
             new(DailyWebhookEvent.TranscriptError, "evt-2", room, TranscriptId), default));
         Assert.Equal(TranscriptStates.Error, repo.Events[^1].State);
@@ -433,7 +435,96 @@ public sealed class InterviewTranscriptionUseCaseTests
             new(DailyWebhookEvent.TranscriptReady, "evt-5", CandidateInterviewJoin.RoomNameFor(Guid.NewGuid()),
                 TranscriptId), default));
         Assert.Equal(WebhookHandling.Test, await useCase.HandleWebhookAsync(new("test", null, null, null), default));
-        Assert.Equal(2, repo.Events.Count);
+        Assert.Single(repo.Events);
+    }
+
+    [Fact]
+    public async Task A_transcription_started_outside_the_platform_is_stopped_not_just_recorded()
+    {
+        // Codex P1: an evaluator joined with an OWNER token (Daily owners always hold transcription admin) and called
+        // startTranscription() directly — no platform start, no consent/acknowledgement check. The started webhook
+        // used to record it as in_progress and let it run. It must be stopped through the REST API.
+        var (useCase, repo, provider) = Build();
+        await Consent(repo, Accepted); // even WITH consent: the platform did not start it
+        Assert.Equal(WebhookHandling.Stopped,
+            await useCase.HandleWebhookAsync(StartedEvent("evt-rogue", new DateTime(2026, 11, 6, 15, 20, 0, DateTimeKind.Utc)), default));
+        Assert.Equal(CandidateInterviewJoin.RoomNameFor(InterviewId), Assert.Single(provider.Stopped));
+        Assert.Equal(TranscriptStates.Rejected, Assert.Single(repo.Events).State);
+        Assert.DoesNotContain(repo.Events, e => e.State == TranscriptStates.InProgress);
+        Assert.Equal(WebhookHandling.Duplicate,
+            await useCase.HandleWebhookAsync(StartedEvent("evt-rogue", new DateTime(2026, 11, 6, 15, 20, 0, DateTimeKind.Utc)), default));
+    }
+
+    [Fact]
+    public async Task A_transcription_started_after_the_candidate_declined_is_stopped_even_with_an_earlier_platform_start()
+    {
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase); // a legitimate start at ~15:00:03
+        var requestedAt = repo.Events.Single().RecordedAt!.Value;
+        await Consent(repo, Declined); // the candidate withdrew; an owner-token participant restarts it by hand
+        Assert.Equal(WebhookHandling.Stopped,
+            await useCase.HandleWebhookAsync(StartedEvent("evt-after-decline", requestedAt.AddSeconds(30)), default));
+        Assert.Single(provider.Stopped);
+        Assert.Equal(TranscriptStates.Rejected, repo.Events[^1].State);
+    }
+
+    [Fact]
+    public async Task A_start_long_after_the_platform_start_is_not_covered_by_it()
+    {
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase);
+        var requestedAt = repo.Events.Single().RecordedAt!.Value;
+        Assert.Equal(WebhookHandling.Stopped,
+            await useCase.HandleWebhookAsync(StartedEvent("evt-late", requestedAt.AddMinutes(25)), default));
+        Assert.Single(provider.Stopped);
+    }
+
+    [Fact]
+    public async Task A_platform_started_transcription_is_recorded_as_running_and_never_stopped()
+    {
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase);
+        var requestedAt = repo.Events.Single().RecordedAt!.Value;
+        Assert.Equal(WebhookHandling.Recorded,
+            await useCase.HandleWebhookAsync(StartedEvent("evt-ok", requestedAt.AddSeconds(-3)), default));
+        Assert.Equal(TranscriptStates.InProgress, repo.Events[^1].State);
+        Assert.Empty(provider.Stopped);
+    }
+
+    [Fact]
+    public async Task A_started_webhook_racing_its_own_platform_start_waits_for_the_requested_record()
+    {
+        // Daily can deliver `started` before StartAsync has written `requested`. The webhook takes the same lock the
+        // start holds until that write, so it never stops a legitimate transcription.
+        var (useCase, repo, provider) = Build();
+        await Consent(repo, Accepted);
+        repo.Consents.Add(Staff(Evaluator));
+        Task<WebhookHandling>? webhook = null;
+        provider.OnStart = async () =>
+        {
+            webhook = Task.Run(() => useCase.HandleWebhookAsync(
+                StartedEvent("evt-early", new DateTime(2026, 11, 6, 15, 0, 2, DateTimeKind.Utc)), default));
+            for (var i = 0; i < 500 && repo.LockWaiters == 0; i++) await Task.Delay(5);
+            Assert.Equal(1, repo.LockWaiters); // parked on the lock while the start is still in flight
+        };
+        Assert.Equal(200, (await useCase.StartAsync(Org, Evaluator, InterviewId, "es", default)).Status);
+        Assert.Equal(WebhookHandling.Recorded, await webhook!.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Empty(provider.Stopped);
+        Assert.Equal(TranscriptStates.InProgress, repo.Events[^1].State);
+    }
+
+    [Fact]
+    public async Task An_unauthorized_start_whose_stop_fails_is_retried_not_acknowledged()
+    {
+        var (useCase, repo, provider) = Build();
+        await Consent(repo, Accepted);
+        provider.StopSucceeds = false;
+        var rogue = StartedEvent("evt-stop-fails", new DateTime(2026, 11, 6, 15, 20, 0, DateTimeKind.Utc));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => useCase.HandleWebhookAsync(rogue, default));
+        Assert.Empty(repo.Events); // not recorded: Daily's retry is not a duplicate
+        provider.StopSucceeds = true;
+        Assert.Equal(WebhookHandling.Stopped, await useCase.HandleWebhookAsync(rogue, default));
+        Assert.Equal(2, provider.Stopped.Count);
     }
 
     [Fact]

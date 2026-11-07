@@ -195,19 +195,22 @@ export const videoService = {
   },
 
   /**
-   * Create a scoped meeting token for a user to join a room.
-   * Token expires 2 hours from creation.
+   * Create a scoped STAFF meeting token for a user to join a room. Token expires 2 hours from creation.
+   *
+   * Never an owner token, and no admin permission at all. Daily documents that meeting owners ALWAYS hold the
+   * `transcription` admin permission (docs.daily.co/docs/guides/features/transcription), so an owner could call
+   * startTranscription() from the browser and bypass the server's consent/acknowledgement gate. Transcription is
+   * started only by the C# API with the REST key. `canAdmin: false` (rather than ['participants']) because a
+   * participant admin may update other participants' permissions, and the room UI uses no admin action (only
+   * local camera/mic/screen-share/leave). Explicit, so neither a room nor a domain default can widen it.
    */
-  async createMeetingToken(
-    roomName: string,
-    userName: string,
-    isOwner: boolean,
-  ): Promise<string> {
+  async createMeetingToken(roomName: string, userName: string): Promise<string> {
     const data = await dailyFetch<DailyTokenResponse>('/meeting-tokens', {
       properties: {
         room_name: roomName,
         user_name: userName,
-        is_owner: isOwner,
+        is_owner: false,
+        permissions: { canAdmin: false },
         exp: twoHoursFromNow(),
       },
     });

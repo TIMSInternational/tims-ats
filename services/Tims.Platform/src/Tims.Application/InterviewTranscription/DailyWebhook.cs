@@ -76,6 +76,11 @@ public sealed record DailyWebhookEvent(string Type, string? EventId, string? Roo
         ? DateTime.UnixEpoch.AddSeconds(ts - duration)
         : null;
 
+    /// <summary>When Daily sent the event (<c>event_ts</c>), when it supplied one.</summary>
+    public DateTime? SentAtUtc => EventTimestamp is { } ts && ts > 0 && ts < 253_402_300_800
+        ? DateTime.UnixEpoch.AddSeconds(ts)
+        : null;
+
     public const string TranscriptStarted = "transcript.started";
     public const string TranscriptReady = "transcript.ready-to-download";
     public const string TranscriptError = "transcript.error";

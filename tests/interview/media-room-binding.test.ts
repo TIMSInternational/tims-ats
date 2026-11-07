@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Staff Daily tokens (owner on createVideoRoom) are minted only for the interview's OWN room, and no
+// Staff Daily tokens (never owner tokens) are minted only for the interview's OWN room, and no
 // media procedure returns the candidate join-token columns.
 
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
@@ -103,7 +103,7 @@ describe('interview media room binding', () => {
     m.findFirst.mockResolvedValue({ id: INTERVIEW_ID, meetingUrl: null });
     await (await caller()).interview.createVideoRoom({ interviewId: INTERVIEW_ID });
     expect(m.createRoom).toHaveBeenCalledWith(INTERVIEW_ID);
-    expect(m.createMeetingToken).toHaveBeenCalledWith(FULL, 'Eva Lu', true);
+    expect(m.createMeetingToken).toHaveBeenCalledWith(FULL, 'Eva Lu');
   });
 
   it.each([
