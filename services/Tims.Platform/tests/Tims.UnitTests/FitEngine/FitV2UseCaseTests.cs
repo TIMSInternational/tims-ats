@@ -220,7 +220,11 @@ public sealed class FitV2UseCaseTests
             new FitScoreForVacancyData(Guid.NewGuid(), 75, v2Breakdown, true, Now, CandidateId, "Ana", "Ruiz"));
         var weights = new Dictionary<string, double>(StringComparer.Ordinal)
         {
-            ["assessment"] = 0.25, ["interview"] = 0.75, ["experience"] = 0, ["education"] = 0, ["languages"] = 0,
+            ["assessment"] = 0.25,
+            ["interview"] = 0.75,
+            ["experience"] = 0,
+            ["education"] = 0,
+            ["languages"] = 0,
         };
 
         var rows = await new FitEngineReadUseCase(read).SimulateWeightsAsync(OrgId, VacancyId, weights, CancellationToken.None);
