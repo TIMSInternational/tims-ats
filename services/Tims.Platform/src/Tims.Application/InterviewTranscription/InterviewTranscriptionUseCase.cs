@@ -87,12 +87,27 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         consents.Any(c => c.Subject == SubjectStaff && c.UserId == userId && c.Decision == Accepted &&
                           c.TextVersion == ConsentTextVersion);
 
-    public static string StateOf(IReadOnlyList<InterviewTranscriptionEvent> events, string? transcriptUrl)
-    {
-        var latest = events.OrderBy(e => e.RecordedAt ?? DateTime.MinValue).LastOrDefault();
-        if (latest is not null) return latest.State;
-        return TranscriptIdOf(transcriptUrl) is not null ? TranscriptStates.Ready : TranscriptStates.None;
-    }
+    /// <summary>
+    /// The latest lifecycle state. A transcript reference with no lifecycle evidence is NOT "ready": the column is
+    /// also writable by staff (legacy saveTranscript), so it proves nothing on its own (see <see cref="ClaimedTranscriptId"/>).
+    /// </summary>
+    public static string StateOf(IReadOnlyList<InterviewTranscriptionEvent> events) =>
+        events.OrderBy(e => e.RecordedAt ?? DateTime.MinValue).LastOrDefault()?.State ?? TranscriptStates.None;
+
+    /// <summary>
+    /// The Daily transcript id the interview's reference names, ONLY when this interview's own tenant-scoped
+    /// lifecycle evidence holds a <c>ready</c> claim for exactly that id (written by the verified webhook, which
+    /// resolves the interview from its own room name, together with the reference, consuming a platform start).
+    /// Otherwise null: <c>interviews.transcript_url</c> alone is never trusted, because staff could point it at
+    /// another tenant's transcript id and the download uses the deployment-wide Daily key.
+    /// </summary>
+    public static Guid? ClaimedTranscriptId(TranscriptionInterview interview,
+        IReadOnlyList<InterviewTranscriptionEvent> events) =>
+        TranscriptIdOf(interview.TranscriptUrl) is { } id &&
+        events.Any(e => e.State == TranscriptStates.Ready && e.TranscriptId == id && e.AuthorizedBy is not null &&
+                        e.InterviewId == interview.Id && e.OrganizationId == interview.OrganizationId)
+            ? id
+            : null;
 
     public async Task<TranscriptionResult<TranscriptionStatusView>> GetStatusAsync(Guid organizationId, Guid userId,
         Guid interviewId, CancellationToken ct)
@@ -109,12 +124,12 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
     {
         var (decision, at) = CandidateDecision(consents);
         var acknowledged = HasAcknowledged(consents, userId);
-        var state = StateOf(events, interview.TranscriptUrl);
+        var state = StateOf(events);
         var canStart = provider.IsConfigured && LiveStatuses.Contains(interview.Status) &&
                        OwnRoomName(interview) is not null && decision == Accepted && acknowledged &&
                        state != TranscriptStates.InProgress;
         return new(ConsentTextVersion, decision, at?.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-            acknowledged, state, TranscriptIdOf(interview.TranscriptUrl) is not null, canStart);
+            acknowledged, state, ClaimedTranscriptId(interview, events) is not null, canStart);
     }
 
     /// <summary>The evaluator's acknowledgement of the transcription notice (employees: notice, not consent).</summary>
@@ -214,7 +229,9 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
     {
         var interview = await repository.FindAsync(organizationId, interviewId, ct);
         if (interview is null) return TranscriptionResult<TranscriptView>.Fail(404, "not_found", NotFoundMessage);
-        var transcriptId = TranscriptIdOf(interview.TranscriptUrl);
+        // Ownership before anything reaches the provider: only a transcript this interview's own `ready` claim names.
+        var events = await repository.ListEventsAsync(organizationId, interviewId, ct);
+        var transcriptId = ClaimedTranscriptId(interview, events);
         if (transcriptId is null)
             return TranscriptionResult<TranscriptView>.Fail(409, "transcript_not_ready",
                 "La transcripción todavía no está disponible.");
@@ -229,7 +246,6 @@ public sealed class InterviewTranscriptionUseCase(IInterviewTranscriptionReposit
         var staff = await repository.ListStaffNamesAsync(organizationId, interviewId, ct);
         var parsed = WebVttTranscript.Parse(vtt, interview.CandidateFirstName, interview.CandidateLastName, staff);
         var competencies = await repository.ListCompetenciesAsync(organizationId, interview.VacancyId, ct);
-        var events = await repository.ListEventsAsync(organizationId, interviewId, ct);
         var language = events.Where(e => e.State == TranscriptStates.Requested && e.Language is not null)
             .OrderBy(e => e.RecordedAt ?? DateTime.MinValue).LastOrDefault()?.Language ?? "es";
         return TranscriptionResult<TranscriptView>.Ok(new TranscriptView(organizationId, interviewId,

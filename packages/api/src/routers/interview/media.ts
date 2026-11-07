@@ -13,6 +13,30 @@ function externalMeetingLink(): TRPCError {
   });
 }
 
+/**
+ * True when a URL points at Daily (any `daily.co` host). `api.daily.co/v1/transcript/<id>` is the platform's own
+ * transcript reference, written ONLY by the verified C# webhook together with its `ready` claim; staff must never
+ * be able to write one (or any other Daily URL), or they could aim the transcript reader at another tenant's
+ * transcript id. The C# reader also refuses a reference without a matching claim; this closes the write side.
+ */
+export function isDailyUrl(value: string): boolean {
+  let host: string;
+  try {
+    host = new URL(value).hostname.toLowerCase().replace(/\.+$/, '');
+  } catch {
+    return true; // unparseable: refuse rather than guess
+  }
+  return host === 'daily.co' || host.endsWith('.daily.co');
+}
+
+const staffMediaUrl = z
+  .string()
+  .max(2048)
+  .url()
+  .refine((value) => !isDailyUrl(value), {
+    message: 'Las transcripciones de video de la plataforma se registran automáticamente.',
+  });
+
 export const interviewMediaRouter = router({
   // 8.12a — Create or reuse a Daily.co video room for an interview
   // Room name is deterministic per interview — same interview always gets same room
@@ -113,8 +137,8 @@ export const interviewMediaRouter = router({
     .input(
       z.object({
         interviewId: z.string().uuid(),
-        transcriptUrl: z.string().url(),
-        recordingUrl: z.string().url().optional(),
+        transcriptUrl: staffMediaUrl,
+        recordingUrl: staffMediaUrl.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

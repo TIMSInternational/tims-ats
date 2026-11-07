@@ -191,7 +191,13 @@ public sealed class InterviewTranscriptionUseCaseTests
             return StartResult;
         }
 
-        public Task<string?> DownloadTranscriptAsync(Guid transcriptId, CancellationToken ct) => Task.FromResult(Vtt);
+        public List<Guid> Downloaded { get; } = [];
+
+        public Task<string?> DownloadTranscriptAsync(Guid transcriptId, CancellationToken ct)
+        {
+            Downloaded.Add(transcriptId);
+            return Task.FromResult(Vtt);
+        }
 
         public Task<bool> DeleteTranscriptAsync(Guid transcriptId, CancellationToken ct)
         {
@@ -613,6 +619,34 @@ public sealed class InterviewTranscriptionUseCaseTests
         await Consent(repo, Accepted);
         provider.Vtt = null;
         Assert.Equal((502, "provider_failed"), Pick(await useCase.GetTranscriptAsync(Org, InterviewId, default)));
+    }
+
+    [Fact]
+    public async Task A_staff_set_reference_without_this_interviews_ready_claim_is_never_downloaded()
+    {
+        // Codex P1: the legacy saveTranscript lets staff write any URL into transcript_url. Pointing it at another
+        // tenant's Daily transcript id must not make the reader fetch that transcript with the shared Daily key.
+        var (useCase, repo, provider) = Build();
+        await Started(repo, useCase); // consent accepted, a platform start on record — everything but the claim
+        var foreign = Guid.NewGuid();
+        repo.Interview = repo.Interview! with { TranscriptUrl = TranscriptReference(foreign) };
+        Assert.Equal((409, "transcript_not_ready"), Pick(await useCase.GetTranscriptAsync(Org, InterviewId, default)));
+
+        // Evidence that merely MENTIONS the id is not a claim: a rejection, or a ready row that consumed no start.
+        repo.Events.Add(new(InterviewId, Org, TranscriptStates.Rejected, TranscriptId: foreign,
+            RecordedAt: DateTime.UtcNow, Id: Guid.NewGuid()));
+        repo.Events.Add(new(InterviewId, Org, TranscriptStates.Ready, TranscriptId: foreign,
+            RecordedAt: DateTime.UtcNow, Id: Guid.NewGuid()));
+        Assert.Equal((409, "transcript_not_ready"), Pick(await useCase.GetTranscriptAsync(Org, InterviewId, default)));
+        Assert.Empty(provider.Downloaded);
+        Assert.False((await useCase.GetStatusAsync(Org, Evaluator, InterviewId, default)).Value!.TranscriptAvailable);
+
+        // A real claim for THIS transcript, then staff swap the reference: still only the claimed id is ever served.
+        Assert.Equal(WebhookHandling.Stored, await useCase.HandleWebhookAsync(Ready(), default));
+        Assert.Equal(200, (await useCase.GetTranscriptAsync(Org, InterviewId, default)).Status);
+        repo.Interview = repo.Interview! with { TranscriptUrl = TranscriptReference(foreign) };
+        Assert.Equal((409, "transcript_not_ready"), Pick(await useCase.GetTranscriptAsync(Org, InterviewId, default)));
+        Assert.Equal([TranscriptId], provider.Downloaded);
     }
 
     private static (int, string?) Pick<T>(TranscriptionResult<T> result) => (result.Status, result.Code);

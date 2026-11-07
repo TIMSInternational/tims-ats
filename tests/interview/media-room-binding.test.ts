@@ -106,6 +106,40 @@ describe('interview media room binding', () => {
     expect(m.createMeetingToken).toHaveBeenCalledWith(FULL, 'Eva Lu', true);
   });
 
+  it.each([
+    `https://api.daily.co/v1/transcript/${'68f65d4c-a4dc-4179-bbb1-c12432afb924'}`,
+    'HTTPS://API.DAILY.CO/v1/transcript/68f65d4c-a4dc-4179-bbb1-c12432afb924',
+    'https://api.daily.co./v1/transcript/68f65d4c-a4dc-4179-bbb1-c12432afb924',
+    'https://tims.daily.co/recordings/x',
+    'https://daily.co/x',
+  ])('saveTranscript refuses a Daily URL (the platform transcript reference is webhook-only): %s', async (url) => {
+    const api = await caller();
+    await expect(
+      api.interview.saveTranscript({ interviewId: INTERVIEW_ID, transcriptUrl: url }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(
+      api.interview.saveTranscript({
+        interviewId: INTERVIEW_ID,
+        transcriptUrl: 'https://files.example/t.txt',
+        recordingUrl: url,
+      }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(m.update).not.toHaveBeenCalled();
+  });
+
+  it('saveTranscript still accepts a non-Daily URL', async () => {
+    const api = await caller();
+    await api.interview.saveTranscript({
+      interviewId: INTERVIEW_ID,
+      transcriptUrl: 'https://files.example/t.txt',
+      recordingUrl: 'https://notdaily.co.example/r.mp4',
+    });
+    expect(m.update.mock.calls[0][0].data).toEqual({
+      transcriptUrl: 'https://files.example/t.txt',
+      recordingUrl: 'https://notdaily.co.example/r.mp4',
+    });
+  });
+
   it('saveTranscript and listToday never return the join-token columns', async () => {
     const api = await caller();
     await api.interview.saveTranscript({ interviewId: INTERVIEW_ID, transcriptUrl: 'https://files.example/t.txt' });
