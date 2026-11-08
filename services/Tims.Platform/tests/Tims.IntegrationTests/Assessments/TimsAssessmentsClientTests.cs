@@ -232,6 +232,67 @@ public sealed class TimsAssessmentsClientTests
         Assert.Empty(_handler.Requests);
     }
 
+    // Owner default D18: the suite serves /v1 under /api (publicBaseUrl https://www.timssuite.com/api), so the base URL
+    // carries a path and every call path is joined RELATIVE to it. An absolute "/v1/…" join dropped the base path and
+    // sent every call to https://host/v1/… (a 404).
+    [Theory]
+    [InlineData("https://suite.test/api", "https://suite.test/api/v1/")]
+    [InlineData("https://suite.test/api/", "https://suite.test/api/v1/")]
+    [InlineData("https://suite.test/partners/api", "https://suite.test/partners/api/v1/")]
+    [InlineData("https://assessments.test", "https://assessments.test/v1/")]
+    [InlineData("https://assessments.test/", "https://assessments.test/v1/")]
+    public async Task Every_call_path_is_joined_relative_to_the_base_url_and_keeps_its_path(string baseUrl, string prefix)
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, """{"data":[]}"""));
+        var options = Configured();
+        var client = Client(new AssessmentProviderOptions
+        {
+            BaseUrl = baseUrl,
+            TokenUrl = options.TokenUrl,
+            ClientId = options.ClientId,
+            ClientSecret = options.ClientSecret,
+            WebhookSigningSecret = options.WebhookSigningSecret,
+        });
+
+        await client.ListInstrumentsAsync(CancellationToken.None);
+        await client.ListConsentsAsync(subject, CancellationToken.None);
+        await client.FindAssignmentByExternalRefAsync(Guid.Parse(Tenant), "attempt-1", CancellationToken.None);
+
+        var sent = _handler.Requests.Where(r => r.Uri != TokenUrl).Select(r => r.Uri).ToList();
+        Assert.Equal(
+            [
+                prefix + "catalog/instruments",
+                prefix + $"subjects/{subject}/consents",
+                prefix + $"assignments?tenant_id={Tenant}&external_ref=attempt-1",
+            ],
+            sent);
+    }
+
+    [Theory]
+    [InlineData("https://suite.test/api", true)]
+    [InlineData("https://suite.test/api/", true)]
+    [InlineData("https://suite.test", true)]
+    [InlineData("http://suite.test/api", false)]
+    [InlineData("https://suite.test/api?x=1", false)]
+    [InlineData("https://suite.test/api#v1", false)]
+    [InlineData("https://user:pw@suite.test/api", false)]
+    [InlineData("suite.test/api", false)]
+    public void A_base_url_is_an_https_origin_or_base_path_without_credentials_query_or_fragment(string baseUrl, bool valid)
+    {
+        var options = new AssessmentProviderOptions
+        {
+            BaseUrl = baseUrl,
+            TokenUrl = TokenUrl,
+            ClientId = "tims-ats",
+            ClientSecret = "client-secret",
+            WebhookSigningSecret = "whsec_current",
+        };
+
+        Assert.Equal(valid, options.IsValid());
+        Assert.Equal(valid, options.IsConfigured);
+    }
+
     [Fact]
     public async Task A_token_endpoint_failure_is_a_transient_token_failure()
     {

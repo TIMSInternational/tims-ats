@@ -18,7 +18,7 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddOptions<AssessmentProviderOptions>()
             .Bind(configuration.GetSection(AssessmentProviderOptions.SectionName))
             .Validate(o => o.IsValid(),
-                "AssessmentProviders: BaseUrl must be an https origin, TokenUrl an https URL (no credentials, query or " +
+                "AssessmentProviders: BaseUrl must be an https origin or base path, TokenUrl an https URL (no credentials, query or " +
                 "fragment), RequestTimeoutSeconds 1..30")
             .ValidateOnStart();
 

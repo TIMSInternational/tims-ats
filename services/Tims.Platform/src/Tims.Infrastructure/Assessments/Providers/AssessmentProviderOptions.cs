@@ -15,7 +15,11 @@ public sealed class AssessmentProviderOptions
 
     public const string DefaultScopes = "catalog:read assignments:write subjects:write results:read";
 
-    /// <summary>The API origin, e.g. <c>https://assessments.example.com</c> (paths are under <c>/v1</c>).</summary>
+    /// <summary>
+    /// The API base URL: an https origin or an https base path, e.g. <c>https://www.timssuite.com/api</c> (owner default
+    /// D18: <c>/v1</c> stays mounted at <c>/api/v1</c>). Every call path (<c>v1/…</c>) is joined RELATIVE to it, so a
+    /// base path is kept; a trailing slash is optional. Credentials, a query or a fragment make it invalid.
+    /// </summary>
     public string? BaseUrl { get; init; }
 
     /// <summary>The OAuth 2.0 token endpoint (client credentials).</summary>
@@ -37,7 +41,7 @@ public sealed class AssessmentProviderOptions
     public int RequestTimeoutSeconds { get; init; } = 6;
 
     public bool IsConfigured =>
-        IsHttpsOrigin(BaseUrl) && IsHttpsUrl(TokenUrl) && IsUsable(ClientId) && IsUsable(ClientSecret)
+        IsHttpsUrl(BaseUrl) && IsHttpsUrl(TokenUrl) && IsUsable(ClientId) && IsUsable(ClientSecret)
         && IsUsable(WebhookSigningSecret) && RequestTimeoutSeconds is >= 1 and <= 30;
 
     /// <summary>The usable signing secrets, current first. Placeholders and blanks are dropped.</summary>
@@ -46,7 +50,7 @@ public sealed class AssessmentProviderOptions
 
     /// <summary>Set values must be well-formed even while unused, so a typo surfaces at startup, not at first use.</summary>
     public bool IsValid() =>
-        (string.IsNullOrWhiteSpace(BaseUrl) || IsHttpsOrigin(BaseUrl))
+        (string.IsNullOrWhiteSpace(BaseUrl) || IsHttpsUrl(BaseUrl))
         && (string.IsNullOrWhiteSpace(TokenUrl) || IsHttpsUrl(TokenUrl))
         && RequestTimeoutSeconds is >= 1 and <= 30
         && Scopes.Length <= 200;
@@ -58,5 +62,18 @@ public sealed class AssessmentProviderOptions
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
         && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0;
 
-    private static bool IsHttpsOrigin(string? value) => IsHttpsUrl(value) && new Uri(value!).AbsolutePath == "/";
+    /// <summary>
+    /// <see cref="BaseUrl"/> with exactly one trailing slash, so <c>new Uri(ResolvedBaseUri, "v1/…")</c> keeps its path:
+    /// <c>https://host/api</c> and <c>https://host/api/</c> both resolve <c>v1/assignments</c> to
+    /// <c>https://host/api/v1/assignments</c>, and an origin to <c>https://host/v1/assignments</c>. Only valid when
+    /// <see cref="IsConfigured"/>.
+    /// </summary>
+    public Uri ResolvedBaseUri
+    {
+        get
+        {
+            var trimmed = BaseUrl!.Trim();
+            return new Uri(trimmed.EndsWith('/') ? trimmed : trimmed + "/", UriKind.Absolute);
+        }
+    }
 }

@@ -39,7 +39,7 @@ public sealed class TimsAssessmentsClient(
 
     public Task<ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>> ListInstrumentsAsync(CancellationToken cancellationToken) =>
         SendAsync<IReadOnlyList<ProviderCatalogInstrument>>(
-            HttpMethod.Get, "/v1/catalog/instruments", null, null, "list_instruments", ProviderResponses.Catalog,
+            HttpMethod.Get, "v1/catalog/instruments", null, null, "list_instruments", ProviderResponses.Catalog,
             cancellationToken);
 
     public Task<ProviderCall<ProviderTenant>> EnsureTenantAsync(
@@ -52,7 +52,7 @@ public sealed class TimsAssessmentsClient(
             ["display_name"] = request.DisplayName,
             ["default_locale"] = request.DefaultLocale,
         };
-        return SendAsync(HttpMethod.Post, "/v1/tenants", body, idempotencyKey, "create_tenant", ProviderResponses.Tenant,
+        return SendAsync(HttpMethod.Post, "v1/tenants", body, idempotencyKey, "create_tenant", ProviderResponses.Tenant,
             cancellationToken);
     }
 
@@ -69,7 +69,7 @@ public sealed class TimsAssessmentsClient(
         AddIfPresent(body, "family_name", request.FamilyName);
         AddIfPresent(body, "email", request.Email);
         AddIfPresent(body, "preferred_locale", request.PreferredLocale);
-        return SendAsync(HttpMethod.Post, "/v1/subjects", body, idempotencyKey, "create_subject", ProviderResponses.Subject,
+        return SendAsync(HttpMethod.Post, "v1/subjects", body, idempotencyKey, "create_subject", ProviderResponses.Subject,
             cancellationToken);
     }
 
@@ -83,24 +83,24 @@ public sealed class TimsAssessmentsClient(
             ["family_name"] = update.FamilyName,
             ["email"] = update.Email,
         };
-        return SendAsync(HttpMethod.Patch, $"/v1/subjects/{subjectId:D}", body, null, "update_subject",
+        return SendAsync(HttpMethod.Patch, $"v1/subjects/{subjectId:D}", body, null, "update_subject",
             root => ProviderResponses.Subject(root) is { } subject && subject.SubjectId == subjectId ? subject : null,
             cancellationToken);
     }
 
     public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Delete, $"/v1/subjects/{subjectId:D}", null, null, "erase_subject",
+        SendAsync(HttpMethod.Delete, $"v1/subjects/{subjectId:D}", null, null, "erase_subject",
             root => ProviderResponses.ErasureReceipt(root) is { } receipt && receipt.SubjectId == subjectId ? receipt : null,
             cancellationToken);
 
     public Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(
         Guid subjectId, CancellationToken cancellationToken) =>
-        SendAsync<IReadOnlyList<ProviderConsentRecord>>(HttpMethod.Get, $"/v1/subjects/{subjectId:D}/consents", null, null,
+        SendAsync<IReadOnlyList<ProviderConsentRecord>>(HttpMethod.Get, $"v1/subjects/{subjectId:D}/consents", null, null,
             "list_consents", ProviderResponses.ConsentList, cancellationToken);
 
     public Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
         Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Post, $"/v1/subjects/{subjectId:D}/consents/{consentId:D}/withdrawal",
+        SendAsync(HttpMethod.Post, $"v1/subjects/{subjectId:D}/consents/{consentId:D}/withdrawal",
             new JsonObject { ["withdrawn_at"] = FormatTimestamp(withdrawnAt) }, null, "withdraw_consent",
             root => ProviderResponses.Consent(root) is { } consent && consent.ConsentId == consentId ? consent : null,
             cancellationToken);
@@ -109,7 +109,7 @@ public sealed class TimsAssessmentsClient(
         Guid tenantId, string externalRef, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(externalRef);
-        var query = $"/v1/assignments?tenant_id={tenantId:D}&external_ref={Uri.EscapeDataString(externalRef)}";
+        var query = $"v1/assignments?tenant_id={tenantId:D}&external_ref={Uri.EscapeDataString(externalRef)}";
         return SendAsync(HttpMethod.Get, query, null, null, "find_assignment",
             root => ProviderResponses.AssignmentLookup(root, tenantId, externalRef), cancellationToken);
     }
@@ -148,16 +148,16 @@ public sealed class TimsAssessmentsClient(
             body["expires_at"] = FormatTimestamp(expiresAt);
         }
 
-        return SendAsync(HttpMethod.Post, "/v1/assignments", body, idempotencyKey, "create_assignment",
+        return SendAsync(HttpMethod.Post, "v1/assignments", body, idempotencyKey, "create_assignment",
             ProviderResponses.Assignment, cancellationToken);
     }
 
     public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Get, $"/v1/assignments/{assignmentId:D}", null, null, "get_assignment",
+        SendAsync(HttpMethod.Get, $"v1/assignments/{assignmentId:D}", null, null, "get_assignment",
             ProviderResponses.Assignment, cancellationToken);
 
     public Task<ProviderCall<ProviderAssignment>> CancelAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Post, $"/v1/assignments/{assignmentId:D}/cancel", null, null, "cancel_assignment",
+        SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/cancel", null, null, "cancel_assignment",
             root => ProviderResponses.Assignment(root) is { } cancelled && cancelled.AssignmentId == assignmentId ? cancelled : null,
             cancellationToken);
 
@@ -175,16 +175,16 @@ public sealed class TimsAssessmentsClient(
             ["host_record_ref"] = request.HostRecordRef,
             ["scope"] = new JsonObject { ["external_vacancy_ref"] = request.ExternalVacancyRef },
         };
-        return SendAsync(HttpMethod.Post, $"/v1/subjects/{subjectId:D}/consents", body, idempotencyKey, "record_consent",
+        return SendAsync(HttpMethod.Post, $"v1/subjects/{subjectId:D}/consents", body, idempotencyKey, "record_consent",
             ProviderResponses.Consent, cancellationToken);
     }
 
     public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Post, $"/v1/assignments/{assignmentId:D}/launch", new JsonObject { ["mode"] = "headless" },
+        SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/launch", new JsonObject { ["mode"] = "headless" },
             null, "launch", root => ProviderResponses.Launch(root, assignmentId), cancellationToken);
 
     public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Get, $"/v1/results/{resultId:D}?audience=tenant_hr", null, null, "get_result",
+        SendAsync(HttpMethod.Get, $"v1/results/{resultId:D}?audience=tenant_hr", null, null, "get_result",
             root => ProviderResultParser.TryParse(root, out var parsed, out _) ? parsed : null, cancellationToken);
 
     public WebhookSignatureCheck VerifyWebhook(string? signatureHeader, ReadOnlySpan<byte> rawBody, DateTimeOffset now) =>
@@ -200,7 +200,8 @@ public sealed class TimsAssessmentsClient(
             return ProviderCall<T>.Fail(ProviderFailure.Local(ProviderFailure.Unconfigured, transient: false));
         }
 
-        var uri = new Uri(new Uri(_options.BaseUrl!), pathAndQuery);
+        // Relative join (D18): a base path such as https://www.timssuite.com/api is kept, never replaced by /v1.
+        var uri = new Uri(_options.ResolvedBaseUri, pathAndQuery);
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var token = await tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
