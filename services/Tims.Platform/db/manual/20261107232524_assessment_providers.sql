@@ -83,6 +83,8 @@ BEGIN
         last_launched_at timestamp with time zone,
         latest_result_id uuid,
         last_error_code text,
+        withdrawal_state text,
+        provider_erasure_requested_at timestamp with time zone,
         assigned_by_id uuid NOT NULL,
         created_at timestamp with time zone NOT NULL DEFAULT (now()),
         updated_at timestamp with time zone NOT NULL DEFAULT (now()),
@@ -96,6 +98,7 @@ BEGIN
         CONSTRAINT ck_assessment_provider_attempts_locale CHECK (locale ~ '^[a-z]{2}(-[A-Z]{2})?$'),
         CONSTRAINT ck_assessment_provider_attempts_purpose CHECK (purpose = 'selection'),
         CONSTRAINT ck_assessment_provider_attempts_reason CHECK (char_length(job_relatedness_reason) BETWEEN 3 AND 500),
+        CONSTRAINT ck_assessment_provider_attempts_withdrawal_state CHECK (withdrawal_state IS NULL OR withdrawal_state IN ('pending', 'done')),
         CONSTRAINT ck_assessment_provider_attempts_required_consents CHECK (required_consents <@ ARRAY['assessment', 'biometric', 'voice', 'ai_scoring']::text[]),
         CONSTRAINT ck_assessment_provider_attempts_state CHECK (state IN ('pending_create', 'created', 'launched', 'in_progress', 'completed', 'result_ready', 'voided', 'expired', 'cancelled', 'erased')),
         CONSTRAINT ck_assessment_provider_attempts_time_multiplier CHECK (time_multiplier BETWEEN 1 AND 3),
@@ -174,6 +177,13 @@ DO $EF$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261107232524_assessment_providers') THEN
     CREATE INDEX ix_assessment_provider_attempts_subject ON assessment_provider_attempts (organization_id, provider_subject_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261107232524_assessment_providers') THEN
+    CREATE INDEX ix_assessment_provider_attempts_withdrawal_pending ON assessment_provider_attempts (organization_id, candidate_id) WHERE withdrawal_state = 'pending';
     END IF;
 END $EF$;
 

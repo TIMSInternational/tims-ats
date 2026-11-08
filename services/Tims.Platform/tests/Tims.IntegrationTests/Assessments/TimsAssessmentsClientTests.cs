@@ -73,7 +73,7 @@ public sealed class TimsAssessmentsClientTests
         var tokenRequest = Assert.Single(tokenRequests);
         Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("tims-ats:client-secret")), tokenRequest.Authorization);
         Assert.Contains("grant_type=client_credentials", tokenRequest.Body);
-        Assert.Contains("scope=catalog%3Aread+assignments%3Awrite+results%3Aread", tokenRequest.Body);
+        Assert.Contains("scope=catalog%3Aread+assignments%3Awrite+subjects%3Awrite+results%3Aread", tokenRequest.Body);
         Assert.All(_handler.Requests.Where(r => r.Uri != TokenUrl), r => Assert.Equal("Bearer access-token-1", r.Authorization));
     }
 
@@ -275,6 +275,89 @@ public sealed class TimsAssessmentsClientTests
     }
 
     private sealed record SentRequest(string Uri, string? Authorization, string? IdempotencyKey, string Body);
+
+    // ---- D11 lookup, subject enrichment, consent withdrawal and erasure -------------------------------------------
+
+    private const string Tenant = "3f1d2c4b-8a6e-4f2a-9c1d-5b7e8a9f0c12";
+
+    [Fact]
+    public async Task A_lookup_by_external_ref_returns_the_one_assignment_or_none_and_never_another_one()
+    {
+        var id = Guid.NewGuid();
+        var found = AssignmentJson(id).Replace("\"result_id\":null", "\"result_id\":null,\"external_ref\":\"attempt-1\"", StringComparison.Ordinal);
+        var page = "{\"data\":[" + found + "],\"next_cursor\":null}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, page));
+        var client = Client();
+
+        var hit = await client.FindAssignmentByExternalRefAsync(Guid.Parse(Tenant), "attempt-1", CancellationToken.None);
+        var other = await client.FindAssignmentByExternalRefAsync(Guid.Parse(Tenant), "attempt-2", CancellationToken.None);
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, """{"data":[],"next_cursor":null}"""));
+        var none = await client.FindAssignmentByExternalRefAsync(Guid.Parse(Tenant), "attempt-1", CancellationToken.None);
+
+        Assert.Equal(id, hit.Value!.Assignment!.AssignmentId);
+        Assert.Equal($"https://assessments.test/v1/assignments?tenant_id={Tenant}&external_ref=attempt-1",
+            _handler.Requests.First(r => r.Uri != TokenUrl).Uri);
+        Assert.False(other.Ok); // the page named another external_ref: off contract, never taken as ours
+        Assert.Equal(ProviderFailure.ContractViolation, other.Failure!.Code);
+        Assert.Null(none.Value!.Assignment);
+    }
+
+    [Fact]
+    public async Task Subject_enrichment_patches_names_and_email_without_an_idempotency_key()
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        HttpMethod? method = null;
+        _handler.Respond(r =>
+        {
+            if (r.RequestUri!.ToString() == TokenUrl)
+            {
+                return Token();
+            }
+
+            method = r.Method;
+            return Json(HttpStatusCode.OK, $$"""{"subject_id":"{{subject}}","tenant_id":"{{Tenant}}","external_ref":"c-1","status":"active","given_name":"Ana","family_name":"Pérez","email":"ana@example.com","created_at":"2026-11-09T12:00:00Z"}""");
+        });
+
+        var result = await Client().UpdateSubjectAsync(subject, new ProviderSubjectUpdate("Ana", "Pérez", "ana@example.com"), CancellationToken.None);
+
+        Assert.True(result.Value!.HasNamesAndEmail);
+        Assert.Equal(HttpMethod.Patch, method);
+        var sent = _handler.Requests.Single(r => r.Uri != TokenUrl);
+        Assert.Equal($"https://assessments.test/v1/subjects/{subject}", sent.Uri);
+        Assert.Null(sent.IdempotencyKey);
+        Assert.Equal("Ana", JsonNode.Parse(sent.Body)!["given_name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Erasure_deletes_the_subject_and_a_consent_withdrawal_posts_its_timestamp()
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        var consent = Guid.NewGuid();
+        var methods = new List<HttpMethod>();
+        _handler.Respond(r =>
+        {
+            if (r.RequestUri!.ToString() == TokenUrl)
+            {
+                return Token();
+            }
+
+            methods.Add(r.Method);
+            return r.Method == HttpMethod.Delete
+                ? Json(HttpStatusCode.Accepted, $$"""{"erasure_id":"{{Guid.NewGuid()}}","subject_id":"{{subject}}","status":"accepted","requested_at":"2026-11-09T12:00:00Z"}""")
+                : Json(HttpStatusCode.OK, $$"""{"consent_id":"{{consent}}","subject_id":"{{subject}}","tenant_id":"{{Tenant}}","purpose":"assessment","text_version":"v1","locale":"es","status":"withdrawn","granted_at":"2026-11-09T12:00:00Z","recorded_at":"2026-11-09T12:00:00Z","withdrawn_at":"2026-11-09T12:00:00Z","capture_method":"host_ui"}""");
+        });
+        var client = Client();
+
+        var erased = await client.EraseSubjectAsync(subject, CancellationToken.None);
+        var withdrawn = await client.WithdrawConsentAsync(subject, consent, _clock.GetUtcNow(), CancellationToken.None);
+
+        Assert.Equal("accepted", erased.Value!.Status);
+        Assert.Equal("withdrawn", withdrawn.Value!.Status);
+        Assert.Equal([HttpMethod.Delete, HttpMethod.Post], methods);
+        var sent = _handler.Requests.Where(r => r.Uri != TokenUrl).ToList();
+        Assert.Equal($"https://assessments.test/v1/subjects/{subject}/consents/{consent}/withdrawal", sent[1].Uri);
+        Assert.Equal("2026-11-09T12:00:00Z", JsonNode.Parse(sent[1].Body)!["withdrawn_at"]!.GetValue<string>());
+    }
 
     private sealed class StubHandler : HttpMessageHandler
     {

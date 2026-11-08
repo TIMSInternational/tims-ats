@@ -13,7 +13,7 @@ public sealed class AssessmentProviderOptions
     /// <summary>The value terraform seeds into every secret until it is set out of band. It is NOT a secret.</summary>
     public const string TerraformPlaceholder = "REPLACE_ME_OUT_OF_BAND";
 
-    public const string DefaultScopes = "catalog:read assignments:write results:read";
+    public const string DefaultScopes = "catalog:read assignments:write subjects:write results:read";
 
     /// <summary>The API origin, e.g. <c>https://assessments.example.com</c> (paths are under <c>/v1</c>).</summary>
     public string? BaseUrl { get; init; }
