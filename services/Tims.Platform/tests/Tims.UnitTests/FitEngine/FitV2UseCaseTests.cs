@@ -575,6 +575,16 @@ public sealed class FitV2UseCaseTests
             return Task.FromResult(true);
         }
 
+        public List<(string Json, bool Replace)> RequirementWrites { get; } = [];
+
+        public Task<string?> UpsertFitRequirementsAsync(
+            Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            RequirementWrites.Add((fitRequirementsJson, replaceAssessments));
+            return Task.FromResult<string?>(fitRequirementsJson);
+        }
+
         public List<string> Events { get; } = [];
 
         public Action? OnLockTaken { get; set; }

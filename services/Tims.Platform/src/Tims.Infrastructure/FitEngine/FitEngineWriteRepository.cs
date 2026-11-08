@@ -244,6 +244,44 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         return true;
     }
 
+    public async Task<string?> UpsertFitRequirementsAsync(
+        Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        // The merge happens in the statement itself: a concurrent writer can never make this drop an array it did not
+        // see. disc_targets/competencies are NOT NULL with a '{}' Prisma default (client-side), so the insert sets them.
+        const string sql =
+            "INSERT INTO job_profiles (id, organization_id, vacancy_id, disc_targets, competencies, fit_requirements, "
+            + "created_at, updated_at) "
+            + "VALUES (@id, @org, @vac, '{}'::jsonb, '{}'::jsonb, @fit, @now, @now) "
+            + "ON CONFLICT (vacancy_id) DO UPDATE SET "
+            + "fit_requirements = CASE WHEN @replace THEN EXCLUDED.fit_requirements "
+            + "ELSE EXCLUDED.fit_requirements || CASE "
+            + "WHEN jsonb_typeof(job_profiles.fit_requirements) = 'object' AND job_profiles.fit_requirements ? 'assessments' "
+            + "THEN jsonb_build_object('assessments', job_profiles.fit_requirements -> 'assessments') "
+            + "ELSE '{}'::jsonb END END, "
+            + "updated_at = EXCLUDED.updated_at "
+            + "WHERE job_profiles.organization_id = @org "
+            + "RETURNING fit_requirements::text";
+
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var transaction = (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = Guid.NewGuid() });
+        command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+        command.Parameters.Add(new NpgsqlParameter("vac", NpgsqlDbType.Uuid) { Value = vacancyId });
+        command.Parameters.Add(new NpgsqlParameter("fit", NpgsqlDbType.Jsonb) { Value = fitRequirementsJson });
+        command.Parameters.Add(new NpgsqlParameter("replace", NpgsqlDbType.Boolean) { Value = replaceAssessments });
+        command.Parameters.Add(new NpgsqlParameter("now", NpgsqlDbType.Timestamp) { Value = ToTimestamp(now) });
+
+        var stored = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return stored;
+    }
+
     /// <summary>The FIT v2 per-(organization, candidate, vacancy) advisory-lock key text.</summary>
     public static string FitV2LockKey(Guid organizationId, Guid candidateId, Guid vacancyId) =>
         $"fit_v2:{organizationId}:{candidateId}:{vacancyId}";

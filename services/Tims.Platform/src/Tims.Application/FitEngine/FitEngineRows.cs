@@ -1,3 +1,6 @@
+using System.Text.Json.Nodes;
+using Tims.Domain.FitEngine;
+
 namespace Tims.Application.FitEngine;
 
 /// <summary>
@@ -39,6 +42,9 @@ public sealed record CandidateForFitData(int? YearsExperience, string? Education
 /// (null when the vacancy has no job profile OR the profile has no fitRequirements — the TS optional chain).
 /// </summary>
 public sealed record VacancyForFitData(string? RoleFamily, string? FitRequirements);
+
+/// <summary>The stored <c>fit_requirements</c> after a write, and what the writer dropped or changed.</summary>
+public sealed record FitRequirementsSaved(JsonNode? FitRequirements, IReadOnlyList<FitRequirementIssue> Issues);
 
 /// <summary>
 /// What a FIT v2 compute writes for one candidate, built INSIDE the write transaction from an in-lock read of the

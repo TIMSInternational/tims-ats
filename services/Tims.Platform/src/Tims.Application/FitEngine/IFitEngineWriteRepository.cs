@@ -62,6 +62,16 @@ public interface IFitEngineWriteRepository
         Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
         Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The C#-owned <c>job_profiles.fit_requirements</c> write, one atomic <c>INSERT … ON CONFLICT DO UPDATE</c> on the
+    /// vacancy's profile. <paramref name="replaceAssessments"/> false MERGES: the stored <c>assessments</c> key, if
+    /// any, is carried over inside the same statement (no read-then-write). Returns the stored jsonb, or null when the
+    /// profile row belongs to another organization (nothing written).
+    /// </summary>
+    Task<string?> UpsertFitRequirementsAsync(
+        Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+        CancellationToken cancellationToken);
+
     /// <summary><c>getPipelineCandidateIds</c>: candidate ids of the vacancy's <c>status = 'active'</c> applications.</summary>
     Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
         Guid organizationId, Guid vacancyId, CancellationToken cancellationToken);

@@ -1662,6 +1662,14 @@ try
         app.MapFitEngineWriteEndpoints();
     }
 
+    // FIT v2: the C#-owned fit_requirements writer (merges assessments[], reports dropped entries). Only with the
+    // compute route AND the v2 flag, so the flag-on deploy has one writer that knows the key (apps/web switches the
+    // requirements card to it under NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP).
+    if ((externalOptions.FitEngineWriteEnabled && externalOptions.FitEngineV2Enabled) || isOpenApiDocGeneration)
+    {
+        app.MapFitRequirementsEndpoints();
+    }
+
     // Phase-5 Slice 25 / #98 (efcoreReadOnly + efcoreStranglerWrite): the notification READ surface (3 reads) —
     // GET /notifications (list, Prisma cursor paging), /notifications/unread-count and
     // /notifications/preferences. All three are protectedProcedure, so SelfServiceGate authorizes on IDENTITY

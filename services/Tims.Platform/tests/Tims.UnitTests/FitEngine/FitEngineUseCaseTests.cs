@@ -469,6 +469,11 @@ public sealed class FitEngineUseCaseTests
             Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("the v1 tests never reach the FIT v2 write");
 
+        public Task<string?> UpsertFitRequirementsAsync(
+            Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the v1 tests never write fit_requirements");
+
         public Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
             Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
             Task.FromResult(PipelineCandidateIds);

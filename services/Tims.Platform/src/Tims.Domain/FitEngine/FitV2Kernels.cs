@@ -131,16 +131,29 @@ public static class FitV2Kernels
         return parsed.Count == 0 && entries.Count > 0 ? null : parsed;
     }
 
-    private static AssessmentRequirement? TryParseRequirement(JsonNode? entry)
+    /// <summary>
+    /// One entry, parsed by the rules of <see cref="ParseAssessmentRequirements"/>. When <paramref name="issues"/> is
+    /// given, every reason the entry was dropped or changed is added to it as a stable code (see
+    /// <see cref="FitRequirementIssueCodes"/>); the parse result is the same either way.
+    /// </summary>
+    internal static AssessmentRequirement? TryParseRequirement(JsonNode? entry, List<string>? issues = null)
     {
-        if (entry is not JsonObject e || !TryGetString(e, "instrument", out var rawInstrument))
+        if (entry is not JsonObject e)
         {
+            issues?.Add(FitRequirementIssueCodes.NotAnObject);
+            return null;
+        }
+
+        if (!TryGetString(e, "instrument", out var rawInstrument))
+        {
+            issues?.Add(FitRequirementIssueCodes.UnknownInstrument);
             return null;
         }
 
         var instrument = rawInstrument.Trim().ToLowerInvariant();
         if (!FitInstruments.All.Contains(instrument))
         {
+            issues?.Add(FitRequirementIssueCodes.UnknownInstrument);
             return null;
         }
 
@@ -149,12 +162,14 @@ public static class FitV2Kernels
         {
             if (useNode is not JsonValue useValue || !useValue.TryGetValue<string>(out var rawUse))
             {
+                issues?.Add(FitRequirementIssueCodes.InvalidUse);
                 return null;
             }
 
             use = rawUse.Trim().ToLowerInvariant();
             if (use is not (FitInstrumentUses.Scored or FitInstrumentUses.Gate or FitInstrumentUses.Advisory))
             {
+                issues?.Add(FitRequirementIssueCodes.InvalidUse);
                 return null;
             }
         }
@@ -165,6 +180,11 @@ public static class FitV2Kernels
 
         if (FitInstruments.IsAdvisoryOnly(instrument))
         {
+            if (use != FitInstrumentUses.Advisory)
+            {
+                issues?.Add(FitRequirementIssueCodes.UseCoercedToAdvisory);
+            }
+
             use = FitInstrumentUses.Advisory;
         }
 
@@ -175,19 +195,33 @@ public static class FitV2Kernels
             var minRequired = instrument != FitInstruments.NativeQuiz || use == FitInstrumentUses.Gate;
             if (min is null && minRequired)
             {
+                issues?.Add(FitRequirementIssueCodes.InvalidMinimum);
                 return null;
             }
         }
 
         double? weight = null;
+        var hasWeight = e.TryGetPropertyValue("weight", out var weightNode) && weightNode is not null;
         if (use == FitInstrumentUses.Scored
-            && e.TryGetPropertyValue("weight", out var weightNode)
+            && hasWeight
             && weightNode is JsonValue weightValue
             && TryGetFiniteNumber(weightValue, out var w)
             && w > 0
             && w <= MaxWeight)
         {
             weight = w;
+        }
+        else if (hasWeight)
+        {
+            // A weight only counts on a scored entry, and never on English (owner default D3: languages only).
+            issues?.Add(use == FitInstrumentUses.Scored
+                ? FitRequirementIssueCodes.InvalidWeight
+                : FitRequirementIssueCodes.WeightIgnored);
+        }
+
+        if (weight is not null && instrument == FitInstruments.English)
+        {
+            issues?.Add(FitRequirementIssueCodes.WeightIgnored);
         }
 
         string? reason = null;
@@ -197,6 +231,10 @@ public static class FitV2Kernels
             if (trimmed.Length is > 0 and <= MaxReasonLength)
             {
                 reason = trimmed;
+            }
+            else
+            {
+                issues?.Add(FitRequirementIssueCodes.ReasonDropped);
             }
         }
 
@@ -659,16 +697,38 @@ public static class FitV2Kernels
         return false;
     }
 
-    // A JSON-number-kind value that is finite (a string "5", a bool, NaN or ±∞ must NOT parse).
+    // A JSON-number-kind value that is finite (a string "5", a bool, NaN or ±∞ must NOT parse). Accepts a parsed
+    // number and an in-memory one of any numeric CLR type (GetValue<double> throws on a boxed int, e.g. the level
+    // MinimumToJson writes, so the writer's stored entries could not be re-parsed in memory).
     private static bool TryGetFiniteNumber(JsonValue value, out double number)
     {
-        if (value.GetValueKind() == JsonValueKind.Number)
+        number = 0;
+        if (value.GetValueKind() != JsonValueKind.Number)
         {
-            number = value.GetValue<double>();
-            return double.IsFinite(number);
+            return false;
         }
 
-        number = 0;
-        return false;
+        if (value.TryGetValue<double>(out var d))
+        {
+            number = d;
+        }
+        else if (value.TryGetValue<int>(out var i))
+        {
+            number = i;
+        }
+        else if (value.TryGetValue<long>(out var l))
+        {
+            number = l;
+        }
+        else if (value.TryGetValue<decimal>(out var m))
+        {
+            number = (double)m;
+        }
+        else
+        {
+            return false;
+        }
+
+        return double.IsFinite(number);
     }
 }

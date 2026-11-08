@@ -51,6 +51,30 @@ public sealed class FitEngineWriteUseCase(
     }
 
     /// <summary>
+    /// The C#-owned <c>fit_requirements</c> write (FIT v2): validates the body by <see cref="FitRequirementsInput"/>,
+    /// then merges it atomically. Returns null (with <paramref name="error"/>) for an invalid body; the stored
+    /// requirements plus every dropped or changed <c>assessments[]</c> entry otherwise.
+    /// </summary>
+    public async Task<FitRequirementsSaved?> UpdateFitRequirementsAsync(
+        Guid organizationId, Guid vacancyId, JsonNode? body, DateTimeOffset now, CancellationToken cancellationToken,
+        Action<string, IReadOnlyList<FitRequirementIssue>>? onInvalid = null)
+    {
+        if (FitRequirementsInput.Validate(body, out var error, out var issues) is not { } write)
+        {
+            onInvalid?.Invoke(error!, issues);
+            return null;
+        }
+
+        var stored = await _repository.UpsertFitRequirementsAsync(
+                organizationId, vacancyId, write.FitRequirements.ToJsonString(), write.ReplacesAssessments, now,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return stored is null
+            ? null
+            : new FitRequirementsSaved(JsonNode.Parse(stored), write.Issues);
+    }
+
+    /// <summary>
     /// <c>computeForVacancy</c> — score every active-pipeline candidate whose recruitment consent is NOT withdrawn;
     /// response is the count actually scored. A withdrawn candidate (#312/#313 — matched on itself or on any
     /// same-org candidate row with the same normalized email) is SKIPPED: no reads, no score computed, no

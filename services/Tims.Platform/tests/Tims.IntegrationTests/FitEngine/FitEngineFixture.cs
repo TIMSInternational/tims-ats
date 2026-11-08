@@ -100,6 +100,10 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid CandV2Race = Guid.Parse("ca000000-0000-0000-0000-0000000000f5");
     public static readonly Guid AsgV2Race = Guid.Parse("aa000000-0000-0000-0000-0000000000f8");
 
+    // fit_requirements writer — no team, no applications; touched only by FitRequirementsWriterTests.
+    public static readonly Guid VacFitReq = Guid.Parse("7ac00000-0000-0000-0000-00000000000c");    // has a profile with assessments
+    public static readonly Guid VacFitReqNew = Guid.Parse("7ac00000-0000-0000-0000-00000000000d"); // no profile yet
+
     // fit_scores seed rows (READ endpoints)
     public static readonly Guid FsCandFull = Guid.Parse("f5000000-0000-0000-0000-000000000001");  // overall 85
     public static readonly Guid FsCandEmpty = Guid.Parse("f5000000-0000-0000-0000-000000000002"); // overall 40, partial
@@ -178,6 +182,11 @@ public sealed class FitEngineFixture : IAsyncLifetime
             reader.GetGuid(0), reader.GetDouble(1), reader.GetString(2), reader.GetString(3), reader.GetBoolean(4),
             reader.GetDateTime(5), reader.GetDateTime(6), reader.GetDateTime(7), reader.GetGuid(8));
     }
+
+    /// <summary>The vacancy's stored fit_requirements via superuser, or null (no profile).</summary>
+    public async Task<string?> GetFitRequirementsAsync(Guid vacancyId) =>
+        await ExecuteScalarAsync(
+            "SELECT fit_requirements::text FROM job_profiles WHERE vacancy_id = @v", ("v", vacancyId)) as string;
 
     /// <summary>Runs one statement as the superuser (bypasses RLS) and returns its scalar, or null.</summary>
     public async Task<object?> ExecuteScalarAsync(string sql, params (string Name, object Value)[] parameters)
@@ -295,9 +304,12 @@ public sealed class FitEngineFixture : IAsyncLifetime
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, candidate_id uuid NOT NULL, vacancy_id uuid NOT NULL,
             status text NOT NULL DEFAULT 'active',
             CONSTRAINT applications_candidate_id_vacancy_id_key UNIQUE (candidate_id, vacancy_id));
+        -- The Prisma columns the C# fit_requirements writer touches (NOT NULL + client-side defaults, as in prod).
         CREATE TABLE job_profiles (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, vacancy_id uuid NOT NULL UNIQUE,
-            fit_requirements jsonb NULL);
+            disc_targets jsonb NOT NULL DEFAULT '{}', competencies jsonb NOT NULL DEFAULT '{}',
+            fit_requirements jsonb NULL,
+            created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE assessment_assignments (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, candidate_id uuid NOT NULL, vacancy_id uuid NOT NULL,
             status text NOT NULL DEFAULT 'assigned', completed_at timestamp(3) NULL);
@@ -341,9 +353,9 @@ public sealed class FitEngineFixture : IAsyncLifetime
     private const string RlsSql =
         """
         GRANT SELECT ON users, teams, user_teams, user_business_units, business_units,
-            vacancies, candidates, applications, job_profiles, assessment_assignments, assessment_results,
+            vacancies, candidates, applications, assessment_assignments, assessment_results,
             ai_interview_sessions, data_consents, proctoring_sessions TO app_tenant;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON fit_scores, role_family_weight_profiles TO app_tenant;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON fit_scores, role_family_weight_profiles, job_profiles TO app_tenant;
 
         ALTER TABLE users ENABLE ROW LEVEL SECURITY;                 ALTER TABLE users FORCE ROW LEVEL SECURITY;
         ALTER TABLE teams ENABLE ROW LEVEL SECURITY;                 ALTER TABLE teams FORCE ROW LEVEL SECURITY;
@@ -369,7 +381,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
         CREATE POLICY tenant_isolation ON vacancies             USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON candidates            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON applications          USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
-        CREATE POLICY tenant_isolation ON job_profiles          USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        CREATE POLICY tenant_isolation ON job_profiles          USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid) WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON assessment_assignments USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON assessment_results    USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         CREATE POLICY tenant_isolation ON ai_interview_sessions USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
@@ -396,7 +408,8 @@ public sealed class FitEngineFixture : IAsyncLifetime
         INSERT INTO permissions (id, module, action) VALUES
           ('b0000000-0000-0000-0000-000000000001', 'fit_engine', 'read'),
           ('b0000000-0000-0000-0000-000000000002', 'fit_engine', 'create'),
-          ('b0000000-0000-0000-0000-000000000003', 'fit_engine', 'update');
+          ('b0000000-0000-0000-0000-000000000003', 'fit_engine', 'update'),
+          ('b0000000-0000-0000-0000-000000000004', 'vacancy', 'update');
 
         -- hr_admin @ organization (read+create+update); leader @ team (read+create — narrow, the probe bites);
         -- ReaderOnly rides the REAL 'employee' slug (an invented slug is dropped by RoleSlugs.FilterStaffRoleSlugs
@@ -409,6 +422,9 @@ public sealed class FitEngineFixture : IAsyncLifetime
           ('90000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000001', 'team'),
           ('90000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', 'team'),
           ('90000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000001', 'organization'),
+          ('90000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000004', 'organization'),
+          ('90000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000004', 'team'),
+          ('90000000-0000-0000-0000-0000000000b4', 'a0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-000000000004', 'organization'),
           ('90000000-0000-0000-0000-0000000000b1', 'a0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-000000000001', 'organization'),
           ('90000000-0000-0000-0000-0000000000b2', 'a0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-000000000002', 'organization'),
           ('90000000-0000-0000-0000-0000000000b3', 'a0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-000000000003', 'organization');
@@ -630,5 +646,11 @@ public sealed class FitEngineFixture : IAsyncLifetime
           ('aa000000-0000-0000-0000-0000000000f8', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f5', '7ac00000-0000-0000-0000-00000000000b', 'completed', '2026-03-01 00:00:00');
         INSERT INTO assessment_results (id, organization_id, assignment_id, normalized_score, breakdown) VALUES
           ('ae000000-0000-0000-0000-0000000000f8', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f8', 80, '{"autoScored":4,"pendingManual":[]}');
+
+        INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+          ('7ac00000-0000-0000-0000-00000000000c', '11111111-1111-1111-1111-111111111111', 'FIT Req', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+          ('7ac00000-0000-0000-0000-00000000000d', '11111111-1111-1111-1111-111111111111', 'FIT Req New', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+        INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
+          ('9f000000-0000-0000-0000-0000000000f3', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-00000000000c', '{"minYearsExperience":3,"assessments":[{"instrument":"lia","use":"scored","min":{"globalPercentile":40}}]}');
         """;
 }
