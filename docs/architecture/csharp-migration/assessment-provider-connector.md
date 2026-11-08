@@ -117,6 +117,11 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - The inbox row is unique on (org, event_id).
   - A transient failure answers 503, so the provider's 72 h retries are the queue.
   - Lifecycle events move an attempt forward only (`ProviderAttemptStates.CanTransition`).
+  - Once a result is stored, its revisions alone decide validity: a `session.voided` never moves an attempt out of
+    `result_ready`, nor lands on any attempt that holds a stored result (checked on the fresh read under the attempt
+    lock that result storage also takes). The provider finalizes a sitting once (voided XOR completed with a result)
+    and re-publishes a later void as a new result revision, so such a `session.voided` is a reordered delivery;
+    applying it would undo a corrected revision that no re-fetch could restore.
   - A result revision never overwrites a newer one. A corrected (non-voided) revision for a voided or expired attempt
     restores it, unless a newer attempt that was not cancelled exists (HR re-assigned the instrument, whatever became
     of the replacement since): then the revision is kept and the attempt is not reopened. This is FIT's rule for the
@@ -124,8 +129,11 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - An event for an unknown assignment is reconciled before it is ignored: `GET /v1/assignments/{id}` returns
     `external_ref` (the attempt id), so an attempt left in `pending_create` by a crash gets its provider id and the
     event is applied. An attempt the assign request mapped to this very assignment meanwhile is applied too. A
-    cancelled attempt with no provider ids means the assignment is an orphan, and it is cancelled at the provider. A
-    provider outage during that check answers 503.
+    cancelled attempt with no provider ids means the assignment is an orphan: it is first recorded on the attempt (ids
+    - `provider_cancel_pending`, under the attempt lock), then cancelled at the provider through the same cleanup as
+      a recorded orphan, so a failed cancel stays retryable by the staff cancel route and later events. A refusal a
+      redelivery would not change is acknowledged and recorded as failed in the inbox; the marker stays. A provider
+      outage during reconciliation or the cancel answers 503.
 - **Locks, fresh reads, and the erasure tombstone.**
   - Every webhook write, the launch and the subject erasure of one attempt take the same
     `pg_advisory_xact_lock` on `assessment-provider-attempt:<id>`. Mapping (`MarkCreatedAsync`), result storage and
