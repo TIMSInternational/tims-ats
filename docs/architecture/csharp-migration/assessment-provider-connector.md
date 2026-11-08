@@ -257,8 +257,8 @@ completed, and a launch cancelled (or failing) after the provider stored a conse
    (listing after the capture landed) withdraws the consent.
 
 The post-capture #312 re-check stays: it keeps a withdrawn candidate from getting a token and drives the cascade at
-once. What remains is liveness, not correctness: without a sweeper, a pending attempt waits for its next webhook or
-the org's next withdrawal (see Known gaps).
+once. A pending attempt is retried by the scheduled sweep (see Known gaps) without waiting for its next webhook or
+the org's next withdrawal.
 
 ## ITC-IA review flag
 
@@ -267,10 +267,14 @@ it too. A present non-boolean value is off contract and the result is refused.
 
 ## Known gaps (not done here)
 
-- The withdrawal cascade has no scheduled sweeper: a pass runs after each withdrawal and on every webhook for an
-  attempt in the cascade. An attempt whose provider never sends another event, and whose org sees no further
-  withdrawal, stays `pending` (results stay stopped; the provider-side withdrawal is not sent) until one of those
-  happens. A worker that runs `PropagateAsync` per org would close it.
+- The withdrawal cascade's scheduled retry (`ProviderWithdrawalSweepHostedService`, registered only with the connector
+  on) sweeps every 10 minutes: it lists, pre-tenant, the organizations holding pending attempts and propagates each
+  under its own tenant scope, several passes while they make progress, so an attempt left pending by an outage, an
+  unconfirmed 404 or a capture in flight completes without a webhook or another withdrawal. Every App Runner instance
+  runs its own loop (duplicate provider calls are idempotent; every write is conditional). The first sweep runs one
+  interval after start. A sweep handles at most 200 organizations and 20 passes of 50 attempts per organization; more
+  waits for the next sweep. Attempts blocked at the head of an organization's queue (provider still failing) hold the
+  rest of that organization's queue until they clear.
 - The launch's #312 check runs outside the candidate lock. A launch that records consent re-checks #312 after the
   provider recorded it, also when a capture failed (a failed capture may have been stored, and an earlier one in the
   same launch was): a withdrawal seen then re-opens the attempt's cascade, which withdraws that consent, and

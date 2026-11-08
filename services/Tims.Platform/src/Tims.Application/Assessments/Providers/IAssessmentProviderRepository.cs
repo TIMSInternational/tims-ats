@@ -140,6 +140,13 @@ public interface IAssessmentProviderRepository
     Task<int> StageConsentWithdrawalAsync(
         Guid organizationId, Guid candidateId, DateTimeOffset now, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// PRE-TENANT (privileged connection): the organizations that hold at least one attempt whose provider-side withdrawal
+    /// is not confirmed yet, at most <paramref name="max"/>. Only organization ids leave this query; each is then
+    /// propagated under its own tenant scope.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListOrganizationsWithPendingWithdrawalsAsync(int max, CancellationToken cancellationToken);
+
     /// <summary>The org's attempts whose provider-side withdrawal is not confirmed yet, oldest first, at most <paramref name="max"/>.</summary>
     Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(
         Guid organizationId, int max, CancellationToken cancellationToken);

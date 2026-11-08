@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
@@ -100,6 +101,19 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         }
 
         Assert.Equal("unknown", Entry(scored.Breakdown, "english")["gate"]!.GetValue<string>());
+    }
+
+    // The #312 cascade's scheduled retry is registered with the connector and only with it (its tables exist only then).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_withdrawal_sweep_is_registered_only_with_the_connector_on(bool providers)
+    {
+        await using var factory = Factory(providers);
+
+        var hosted = factory.Services.GetServices<IHostedService>();
+
+        Assert.Equal(providers, hosted.Any(h => h is Tims.Api.Assessments.ProviderWithdrawalSweepHostedService));
     }
 
     private static JsonNode Entry(JsonNode breakdown, string instrument) =>

@@ -572,9 +572,32 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult(staged);
     }
 
-    public Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(Guid organizationId, int max, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<AttemptRow>>(
-            Attempts.Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending).Take(max).ToList());
+    /// <summary>Extra organizations the pre-tenant listing reports (for multi-organization sweeps).</summary>
+    public List<Guid> ExtraPendingOrganizations { get; } = [];
+
+    /// <summary>An organization whose pending-attempt listing throws (a failing pass).</summary>
+    public Guid? FailingOrganization { get; set; }
+
+    public int PendingListings { get; private set; }
+
+    public Task<IReadOnlyList<Guid>> ListOrganizationsWithPendingWithdrawalsAsync(int max, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>>(
+            ExtraPendingOrganizations
+                .Concat(Attempts.Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending).Select(a => a.OrganizationId))
+                .Distinct().Take(max).ToList());
+
+    public Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(Guid organizationId, int max, CancellationToken cancellationToken)
+    {
+        PendingListings++;
+        if (organizationId == FailingOrganization)
+        {
+            throw new InvalidOperationException("listing failed");
+        }
+
+        return Task.FromResult<IReadOnlyList<AttemptRow>>(
+            Attempts.Where(a => a.OrganizationId == organizationId && a.WithdrawalState == ProviderWithdrawalStates.Pending)
+                .Take(max).ToList());
+    }
 
     /// <summary>Consent-capture fence state per attempt (mirrors the three attempt columns).</summary>
     public Dictionary<Guid, (int Generation, int InFlight, DateTimeOffset? StartedAt)> Captures { get; } = [];

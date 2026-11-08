@@ -35,6 +35,19 @@ public sealed partial class AssessmentProviderRepository
         return staged;
     }
 
+    public async Task<IReadOnlyList<Guid>> ListOrganizationsWithPendingWithdrawalsAsync(int max, CancellationToken cancellationToken)
+    {
+        // PRE-TENANT on the privileged connection (no TenantScope), like FindAttemptOwnerAsync: only org ids leave it,
+        // served by the partial index ix_assessment_provider_attempts_withdrawal_pending.
+        return await _db.Attempts.AsNoTracking()
+            .Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending)
+            .Select(a => a.OrganizationId)
+            .Distinct()
+            .OrderBy(id => id)
+            .Take(max)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(
         Guid organizationId, int max, CancellationToken cancellationToken)
     {

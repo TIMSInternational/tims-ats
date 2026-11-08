@@ -24,8 +24,9 @@ public sealed record WithdrawalPropagation(int Confirmed, int StillPending);
 /// left behind by a completed cascade.</item>
 /// </list>
 /// Anything that fails stays pending and is retried by the next pass: every webhook for such an attempt runs one (and
-/// answers 503 while it is still pending, so the provider's 72 h redelivery is the retry queue), and so does the next
-/// withdrawal in the org. Never throws for a provider-side outcome.
+/// answers 503 while it is still pending, so the provider's 72 h redelivery is the retry queue), so does the next
+/// withdrawal in the org, and so does the scheduled sweep (<see cref="ProviderWithdrawalSweepUseCase"/>, every 10
+/// minutes) without any trigger. Never throws for a provider-side outcome.
 /// </summary>
 public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
 {

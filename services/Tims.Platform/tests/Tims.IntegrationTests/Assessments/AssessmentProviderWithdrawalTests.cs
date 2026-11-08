@@ -345,6 +345,40 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         Assert.Equal(1, await repository.MarkWithdrawalDoneAsync(Org, [next], DateTimeOffset.UtcNow, CancellationToken.None));
     }
 
+    // Codex release review, round 3 [P1]: the sweep's pre-tenant listing sees every organization with pending work.
+    [Fact]
+    public async Task The_sweep_lists_every_organization_holding_a_pending_withdrawal_and_no_other()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: true);
+        var (attempt, _) = await AttemptAsync(candidate, "result_ready");
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET withdrawal_state = 'pending' WHERE id = '{AssessmentProviderSchemaFixture.AttemptB}'");
+        try
+        {
+            await repository.StageConsentWithdrawalAsync(Org, candidate, DateTimeOffset.UtcNow, CancellationToken.None);
+
+            var organizations = await repository.ListOrganizationsWithPendingWithdrawalsAsync(10, CancellationToken.None);
+
+            Assert.Contains(AssessmentProviderSchemaFixture.OrgA, organizations);
+            Assert.Contains(AssessmentProviderSchemaFixture.OrgB, organizations); // pre-tenant: across organizations
+            Assert.Equal(organizations.Distinct().Count(), organizations.Count);
+
+            var fence = Assert.Single(await repository.ReadWithdrawalFencesAsync(Org, [attempt], CancellationToken.None));
+            await repository.MarkWithdrawalDoneAsync(Org, [fence], DateTimeOffset.UtcNow, CancellationToken.None);
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_attempts SET withdrawal_state = 'done' WHERE organization_id = '{Org}' AND withdrawal_state = 'pending'");
+            Assert.DoesNotContain(AssessmentProviderSchemaFixture.OrgA,
+                await repository.ListOrganizationsWithPendingWithdrawalsAsync(10, CancellationToken.None));
+        }
+        finally
+        {
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_attempts SET withdrawal_state = NULL WHERE id = '{AssessmentProviderSchemaFixture.AttemptB}'");
+        }
+    }
+
     [Fact]
     public async Task The_capture_counters_cannot_go_negative()
     {

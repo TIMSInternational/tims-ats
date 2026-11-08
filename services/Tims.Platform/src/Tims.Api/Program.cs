@@ -613,6 +613,9 @@ try
     {
         builder.Services.AddScoped<IConsentWithdrawalCascade, ProviderConsentWithdrawalCascade>();
         builder.Services.AddScoped<IConsentWithdrawalPropagator, ProviderConsentWithdrawalPropagator>();
+        // The cascade's durable retry: an attempt left pending (outage, unconfirmed 404, capture in flight) is retried
+        // every 10 minutes without waiting for a webhook or another withdrawal.
+        builder.Services.AddHostedService<ProviderWithdrawalSweepHostedService>();
     }
     else
     {
