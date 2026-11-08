@@ -167,8 +167,10 @@ public sealed class ProviderResultParserTests
         Assert.Null(Parse(Result("english", "EnglishResultV1", scores, Summary())).Cefr);
     }
 
+    // ItciaResultV1 puts requires_human_review at the TOP LEVEL, not under scores (tims-interop
+    // results/itcia-result.v1.schema.json), so a summary projection, which has no scores, carries it too.
     [Fact]
-    public void Itcia_reads_the_level_and_the_human_review_flag()
+    public void Itcia_reads_the_level_and_the_top_level_human_review_flag()
     {
         var scores = new JsonObject
         {
@@ -176,14 +178,49 @@ public sealed class ProviderResultParserTests
             ["global_level"] = Level("itcia.level", "autonomo", 3),
             ["core_score"] = null,
             ["categories"] = new JsonArray(),
-            ["requires_human_review"] = true,
         };
-        var parsed = Parse(Result("itcia", "ItciaResultV1", scores, Summary(Level("itcia.level", "autonomo", 3)),
-            validity: "needs_review", reasons: ["human_review_required"]));
+        var json = Result("itcia", "ItciaResultV1", scores, Summary(Level("itcia.level", "autonomo", 3)),
+            validity: "needs_review", reasons: ["human_review_required"]);
+        json["requires_human_review"] = true;
+
+        var parsed = Parse(json);
 
         Assert.Equal(3, parsed.Level);
         Assert.True(parsed.RequiresHumanReview);
         Assert.Equal("needs_review", parsed.ValidityStatus);
+    }
+
+    [Fact]
+    public void Itcia_summary_projection_carries_the_top_level_human_review_flag()
+    {
+        var json = Result("itcia", "ItciaResultV1", null, Summary(Level("itcia.level", "autonomo", 3)),
+            validity: "needs_review", reasons: ["human_review_required"], renderedLevel: "summary");
+        json["requires_human_review"] = true;
+
+        var parsed = Parse(json);
+
+        Assert.True(parsed.RequiresHumanReview);
+        Assert.Equal(3, parsed.Level);
+    }
+
+    [Fact]
+    public void Itcia_without_the_flag_or_with_false_does_not_require_review()
+    {
+        var absent = Result("itcia", "ItciaResultV1", null, Summary(Level("itcia.level", "autonomo", 4)), renderedLevel: "summary");
+        var explicitFalse = Result("itcia", "ItciaResultV1", null, Summary(Level("itcia.level", "autonomo", 4)), renderedLevel: "summary");
+        explicitFalse["requires_human_review"] = false;
+
+        Assert.False(Parse(absent).RequiresHumanReview);
+        Assert.False(Parse(explicitFalse).RequiresHumanReview);
+    }
+
+    [Fact]
+    public void Itcia_with_a_non_boolean_human_review_flag_is_off_contract()
+    {
+        var json = Result("itcia", "ItciaResultV1", null, Summary(Level("itcia.level", "autonomo", 3)), renderedLevel: "summary");
+        json["requires_human_review"] = "true";
+
+        Assert.Equal("invalid_requires_human_review", Refusal(json));
     }
 
     [Theory]

@@ -197,7 +197,7 @@ public static class ProviderResultParser
             }
         }
 
-        var (percentile, cefr, level, humanReview) = ExtractFitValue(instrument, summary, scores);
+        var (percentile, cefr, level, humanReview) = ExtractFitValue(instrument, root, summary, scores);
 
         return new ParsedProviderResult(
             RequireGuid(root, "result_id"),
@@ -234,10 +234,12 @@ public static class ProviderResultParser
     /// The value FIT v2 judges each instrument on, from the full <c>scores</c> when present, else from the generic
     /// <c>summary</c> headline (the contract guarantees the scale id, so a mismatched scale is ignored, not guessed):
     /// LIA's global percentile (null on a partial battery), English's overall CEFR, ITC-IA's global level (1..5).
-    /// Personality, MI and PCA are advisory: no value is read.
+    /// Personality, MI and PCA are advisory: no value is read. ITC-IA's <c>requires_human_review</c> is a TOP-LEVEL
+    /// field of <c>ItciaResultV1</c>, not part of <c>scores</c>, so a summary projection carries it too; a present
+    /// value that is not a boolean is off contract.
     /// </summary>
     private static (double? Percentile, string? Cefr, int? Level, bool HumanReview) ExtractFitValue(
-        string instrument, JsonElement summary, JsonElement? scores)
+        string instrument, JsonElement root, JsonElement summary, JsonElement? scores)
     {
         switch (instrument)
         {
@@ -294,11 +296,19 @@ public static class ProviderResultParser
             case ProviderInstruments.Itcia:
                 {
                     var humanReview = false;
+                    if (root.TryGetProperty("requires_human_review", out var hr))
+                    {
+                        humanReview = hr.ValueKind switch
+                        {
+                            JsonValueKind.True => true,
+                            JsonValueKind.False => false,
+                            _ => throw new ProviderResultFormatException("invalid_requires_human_review"),
+                        };
+                    }
+
                     JsonElement? level = null;
                     if (scores is { } itciaScores)
                     {
-                        humanReview = itciaScores.TryGetProperty("requires_human_review", out var hr)
-                            && hr.ValueKind == JsonValueKind.True;
                         if (itciaScores.TryGetProperty("global_level", out var gl) && gl.ValueKind == JsonValueKind.Object)
                         {
                             level = gl;
