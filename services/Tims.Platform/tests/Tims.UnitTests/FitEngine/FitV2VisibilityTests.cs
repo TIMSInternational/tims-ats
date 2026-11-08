@@ -108,7 +108,11 @@ public sealed class FitV2VisibilityTests
         var useCase = new FitEngineReadUseCase(repo);
         var allOnAssessment = new Dictionary<string, double>
         {
-            ["assessment"] = 1, ["interview"] = 0, ["experience"] = 0, ["education"] = 0, ["languages"] = 0,
+            ["assessment"] = 1,
+            ["interview"] = 0,
+            ["experience"] = 0,
+            ["education"] = 0,
+            ["languages"] = 0,
         };
 
         var hr = await useCase.SimulateWeightsAsync(OrgId, VacancyId, allOnAssessment, false, CancellationToken.None);

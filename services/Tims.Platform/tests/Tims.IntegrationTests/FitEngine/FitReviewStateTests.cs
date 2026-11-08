@@ -108,7 +108,7 @@ public sealed class FitReviewStateTests(FitEngineFixture fixture)
         {
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
             builder.UseSetting("Platform:FitEngineReadEnabled", "true");
-                        builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
+            builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
 
             var publicJwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(
