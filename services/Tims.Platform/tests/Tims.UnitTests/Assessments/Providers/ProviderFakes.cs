@@ -210,8 +210,19 @@ internal sealed class FakeProvider : IAssessmentProvider
     {
         Calls.Add("consent:" + request.Purpose);
         Consents.Add((subjectId, request, idempotencyKey));
-        return Task.FromResult(OnRecordConsent?.Invoke()
-            ?? ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active")));
+        if (OnRecordConsent is { } hook)
+        {
+            return Task.FromResult(hook());
+        }
+
+        var record = new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active");
+        if (!SubjectConsents.TryGetValue(subjectId, out var list))
+        {
+            SubjectConsents[subjectId] = list = [];
+        }
+
+        list.Add(record);
+        return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(record));
     }
 
     public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken)
@@ -400,10 +411,23 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             ? ((Guid, Guid)?)(a.OrganizationId, a.CandidateId)
             : null);
 
-    public Task<LaunchContext?> LoadLaunchContextAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken) =>
-        Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId) is { } a
+    /// <summary>Runs before every launch-context read (a withdrawal committing between two reads).</summary>
+    public Action? BeforeLoadLaunchContext { get; set; }
+
+    public Task<LaunchContext?> LoadLaunchContextAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    {
+        BeforeLoadLaunchContext?.Invoke();
+        return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId) is { } a
             ? new LaunchContext(a, CandidateEmail, CandidateActive, LaunchWithdrawn, "Ana", "Pérez")
             : null);
+    }
+
+    public Task ReopenWithdrawalAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Writes.Add("withdrawal_reopened");
+        Replace(attemptId, a => a.WithdrawalState == ProviderWithdrawalStates.Done ? a with { WithdrawalState = ProviderWithdrawalStates.Pending } : a);
+        return Task.CompletedTask;
+    }
 
     public Task AuditConsentCapturedAsync(
         Guid organizationId, Guid auditId, Guid candidateId, Guid attemptId, string purpose, string textVersion, string locale,
@@ -564,18 +588,20 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken) =>
         Task.FromResult<ProviderSubjectExport?>(new ProviderSubjectExport([], []));
 
-    public Task<IReadOnlyList<Guid>?> ListProviderSubjectsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Guid>?>(candidateId != Candidate
+    public Task<ProviderCandidateSubjects?> ListProviderSubjectsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
+        Task.FromResult(candidateId != Candidate
             ? null
-            : Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)
-                .Select(a => a.ProviderSubjectId!.Value).Distinct().ToList());
+            : new ProviderCandidateSubjects(
+                Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)
+                    .Select(a => a.ProviderSubjectId!.Value).Distinct().ToList(),
+                Attempts.Any(a => a.CandidateId == candidateId)));
 
     public Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         Writes.Add("erasure_requested:" + receiptStatus);
-        foreach (var attempt in Attempts.Where(a => a.ProviderSubjectId == providerSubjectId).ToList())
+        foreach (var attempt in Attempts.Where(a => a.ProviderSubjectId == providerSubjectId || a.ProviderSubjectId is null).ToList())
         {
             Replace(attempt.Id, a => a with { ErasureRequestedAt = now });
         }

@@ -115,9 +115,28 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
 
         var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 
-        Assert.Equal(new ProviderErasureResult(ProviderErasureOutcome.Requested, 2, 2), result);
-        Assert.Equal([first.ProviderSubjectId!.Value, second.ProviderSubjectId!.Value], _provider.ErasedSubjects);
+        // Two recorded subjects plus the one the provider holds for (tenant, candidate id), resolved idempotently.
+        Assert.Equal(new ProviderErasureResult(ProviderErasureOutcome.Requested, 3, 3), result);
+        Assert.Equal([first.ProviderSubjectId!.Value, second.ProviderSubjectId!.Value, _provider.SubjectId], _provider.ErasedSubjects);
         Assert.All(_repository.Attempts, a => Assert.Equal(Now, a.ErasureRequestedAt));
+    }
+
+    [Fact]
+    public async Task A_subject_created_by_a_failed_assignment_is_still_found_and_erased()
+    {
+        // The provider created the subject (with names and email: the org enables PCA), then the create failed: no
+        // attempt records the subject.
+        _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        await new AssignProviderInstrumentsUseCase(_repository, _provider).AssignAsync(FakeRepository.Org, Guid.NewGuid(),
+            new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
+                [new AssignInstrumentItem("lia", null)], null, 1m, [], null), Now, CancellationToken.None);
+        Assert.Null(_repository.Attempts.Single().ProviderSubjectId);
+
+        var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Requested, result.Outcome);
+        Assert.Equal([_provider.SubjectId], _provider.ErasedSubjects);
+        Assert.Equal(Now, _repository.Attempts.Single().ErasureRequestedAt);
     }
 
     [Fact]

@@ -128,6 +128,24 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             }
         }
 
+        if (consents.Count > 0)
+        {
+            // A withdrawal may have run its whole provider cascade between the #312 check above and these consent
+            // writes, so a consent just recorded would stay active. Re-checked AFTER the provider recorded it: a
+            // withdrawal seen now re-opens this attempt's cascade (which withdraws every active consent again); one
+            // committed later lists consents after this one exists, so its own cascade withdraws it.
+            var recheck = await _repository.LoadLaunchContextAsync(found.OrganizationId, attemptId, cancellationToken)
+                .ConfigureAwait(false);
+            if (recheck is null || recheck.ConsentWithdrawn || recheck.Attempt.WithdrawalState is not null)
+            {
+                await _repository.ReopenWithdrawalAsync(found.OrganizationId, attemptId, now, cancellationToken)
+                    .ConfigureAwait(false);
+                await new ProviderConsentWithdrawalUseCase(_repository, _provider).StageAndPropagateAsync(
+                    found.OrganizationId, attempt.CandidateId, now, cancellationToken).ConfigureAwait(false);
+                return LaunchResult.Fail(LaunchOutcome.ConsentWithdrawn);
+            }
+        }
+
         var launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId.Value, cancellationToken).ConfigureAwait(false);
         if (!launched.Ok && launched.Failure!.Code == ProviderFailure.SubjectDataRequired
             && AssignProviderInstrumentsUseCase.SubjectUpdateFor(new AssignmentContext(

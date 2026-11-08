@@ -63,6 +63,36 @@ public sealed class LaunchProviderAttemptUseCaseTests
     }
 
     [Fact]
+    public async Task A_consent_recorded_after_the_withdrawal_cascade_finished_is_withdrawn_and_nothing_is_launched()
+    {
+        // The launch passes the #312 check; then the withdrawal commits and its whole cascade completes ("done");
+        // then the launch records a fresh consent at the provider.
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed) with { State = ProviderAttemptStates.Created };
+        _repository.Attempts[0] = attempt;
+        var reads = 0;
+        _repository.BeforeLoadLaunchContext = () =>
+        {
+            if (++reads == 2)
+            {
+                _repository.LaunchWithdrawn = true;
+                _repository.Attempts[0] = _repository.Attempts[0] with
+                {
+                    State = ProviderAttemptStates.Cancelled,
+                    WithdrawalState = ProviderWithdrawalStates.Done,
+                };
+            }
+        };
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.ConsentWithdrawn, result.Outcome);
+        var recorded = Assert.Single(_provider.SubjectConsents[attempt.ProviderSubjectId!.Value]);
+        Assert.Equal("withdrawn", recorded.Status);
+        Assert.DoesNotContain("launch", _provider.Calls);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    [Fact]
     public async Task An_attempt_already_in_the_withdrawal_cascade_cannot_be_launched()
     {
         var attempt = _repository.AddCreatedAttempt("lia");

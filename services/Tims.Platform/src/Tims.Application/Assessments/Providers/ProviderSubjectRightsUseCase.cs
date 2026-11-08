@@ -36,16 +36,42 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     public async Task<ProviderErasureResult> EraseAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var subjects = await _repository.ListProviderSubjectsAsync(organizationId, candidateId, cancellationToken)
+        var known = await _repository.ListProviderSubjectsAsync(organizationId, candidateId, cancellationToken)
             .ConfigureAwait(false);
-        if (subjects is null)
+        if (known is null)
         {
             return new ProviderErasureResult(ProviderErasureOutcome.CandidateNotFound, 0, 0);
         }
 
-        if (subjects.Count > 0 && !_provider.IsConfigured)
+        if (known.HasAttempts && !_provider.IsConfigured)
         {
-            return new ProviderErasureResult(ProviderErasureOutcome.ProviderUnconfigured, subjects.Count, 0);
+            return new ProviderErasureResult(ProviderErasureOutcome.ProviderUnconfigured, known.Subjects.Count, 0);
+        }
+
+        var subjects = known.Subjects.ToList();
+        if (known.HasAttempts)
+        {
+            // The subject is created BEFORE its assignment and recorded only with it, so a failed or crashed create can
+            // leave a provider subject (possibly with names and email) no attempt names. Subjects are idempotent on
+            // (tenant, external_ref = candidate id): resolve it that way, never trusting the local record alone.
+            var binding = await _repository.GetActiveBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
+            if (binding is null)
+            {
+                return new ProviderErasureResult(ProviderErasureOutcome.Incomplete, subjects.Count, 0);
+            }
+
+            var request = new ProviderSubjectRequest(binding.ProviderTenantId, candidateId.ToString(), null, null, null, null);
+            var resolved = await _provider.EnsureSubjectAsync(
+                request, IdempotencyKeys.Subject(organizationId, request), cancellationToken).ConfigureAwait(false);
+            if (!resolved.Ok)
+            {
+                return new ProviderErasureResult(ProviderErasureOutcome.Incomplete, subjects.Count, 0);
+            }
+
+            if (!subjects.Contains(resolved.Value!.SubjectId))
+            {
+                subjects.Add(resolved.Value.SubjectId);
+            }
         }
 
         var requested = 0;

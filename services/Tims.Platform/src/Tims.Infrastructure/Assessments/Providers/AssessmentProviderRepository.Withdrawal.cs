@@ -124,25 +124,47 @@ public sealed partial class AssessmentProviderRepository
                 ToOffset(r.CompletedAt)!.Value, ToOffset(r.ScoredAt)!.Value)).ToList());
     }
 
-    public async Task<IReadOnlyList<Guid>?> ListProviderSubjectsAsync(
+    public async Task<ProviderCandidateSubjects?> ListProviderSubjectsAsync(
         Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         var exists = await _db.Candidates.AsNoTracking()
             .AnyAsync(c => c.Id == candidateId && c.OrganizationId == organizationId, cancellationToken).ConfigureAwait(false);
-        List<Guid>? subjects = null;
+        ProviderCandidateSubjects? result = null;
         if (exists)
         {
-            subjects = await _db.Attempts.AsNoTracking()
+            var subjects = await _db.Attempts.AsNoTracking()
                 .Where(a => a.OrganizationId == organizationId && a.CandidateId == candidateId && a.ProviderSubjectId != null)
                 .Select(a => a.ProviderSubjectId!.Value)
                 .Distinct()
                 .OrderBy(id => id)
                 .ToListAsync(cancellationToken).ConfigureAwait(false);
+            var hasAttempts = await _db.Attempts.AsNoTracking()
+                .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId, cancellationToken)
+                .ConfigureAwait(false);
+            result = new ProviderCandidateSubjects(subjects, hasAttempts);
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return subjects;
+        return result;
+    }
+
+    public async Task ReopenWithdrawalAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var timestamp = now.UtcDateTime;
+        var reopened = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts SET withdrawal_state = 'pending', updated_at = {timestamp}
+              WHERE organization_id = {organizationId} AND id = {attemptId} AND withdrawal_state = 'done'
+             """, cancellationToken).ConfigureAwait(false);
+        if (reopened > 0)
+        {
+            AddAudit(organizationId, null, "assessment_provider_withdrawal_reopened", attemptId, []);
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task MarkErasureRequestedAsync(
@@ -158,7 +180,7 @@ public sealed partial class AssessmentProviderRepository
                 SET provider_erasure_requested_at = COALESCE(provider_erasure_requested_at, {timestamp}),
                     updated_at = {timestamp}
               WHERE organization_id = {organizationId} AND candidate_id = {candidateId}
-                AND provider_subject_id = {providerSubjectId}
+                AND (provider_subject_id = {providerSubjectId} OR provider_subject_id IS NULL)
              """, cancellationToken).ConfigureAwait(false);
         AddAudit(organizationId, actorId, "assessment_provider_erasure_requested", candidateId, new Dictionary<string, object?>
         {

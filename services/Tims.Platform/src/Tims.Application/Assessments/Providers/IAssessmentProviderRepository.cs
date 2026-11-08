@@ -158,15 +158,29 @@ public interface IAssessmentProviderRepository
     Task<ProviderSubjectExport?> ExportCandidateAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken);
 
-    /// <summary>The distinct provider subject ids of one candidate's attempts (null when the candidate is not in the org).</summary>
-    Task<IReadOnlyList<Guid>?> ListProviderSubjectsAsync(
+    /// <summary>
+    /// The distinct provider subject ids recorded on one candidate's attempts, and whether any attempt exists at all
+    /// (one may have no recorded subject although the provider holds one). Null when the candidate is not in the org.
+    /// </summary>
+    Task<ProviderCandidateSubjects?> ListProviderSubjectsAsync(
         Guid organizationId, Guid candidateId, CancellationToken cancellationToken);
 
-    /// <summary>Records an accepted ATS-initiated erasure of one provider subject on its attempts, with an audit row.</summary>
+    /// <summary>
+    /// Re-opens the withdrawal cascade of one attempt (<c>done</c> back to <c>pending</c>, conditional): a consent was
+    /// recorded at the provider by a launch that raced the withdrawal, after the cascade had withdrawn the others.
+    /// </summary>
+    Task ReopenWithdrawalAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records an accepted ATS-initiated erasure of one provider subject on the candidate's attempts that carry it or
+    /// no subject at all, with an audit row.
+    /// </summary>
     Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
         CancellationToken cancellationToken);
 }
+
+public sealed record ProviderCandidateSubjects(IReadOnlyList<Guid> Subjects, bool HasAttempts);
 
 public sealed record ProviderSubjectExport(
     IReadOnlyList<ProviderExportAttempt> Attempts, IReadOnlyList<ProviderExportResult> Results);
