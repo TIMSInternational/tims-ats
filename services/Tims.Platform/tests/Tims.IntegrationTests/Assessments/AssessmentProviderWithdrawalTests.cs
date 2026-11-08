@@ -149,6 +149,34 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         Assert.Equal(0L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
     }
 
+    [Fact]
+    public async Task D12_a_void_after_publication_arrives_as_a_new_revision_and_voids_the_attempt()
+    {
+        // Owner default D12: the provider never sends session.voided for a published result; it re-publishes the
+        // result with validity voided. CanTransition(result_ready, voided) stays false; the revision does the voiding.
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: false);
+        var (attempt, _) = await AttemptAsync(candidate, "completed");
+        var row = await FindAsync(attempt);
+        var first = ResultFor(row);
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(Org, row, first, DateTimeOffset.UtcNow,
+                CancellationToken.None));
+        }
+
+        Assert.Equal("result_ready||", await RowAsync(attempt));
+        var voidedRevision = first with { ResultRevision = 2, ValidityStatus = ProviderValidity.Voided };
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(Org, await FindAsync(attempt), voidedRevision,
+                DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("voided||", await RowAsync(attempt));
+        Assert.Equal("voided|2", await fixture.ScalarAsync(
+            $"SELECT validity_status || '|' || result_revision FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+    }
+
     // ---- The subject advisory lock: erasure and mapping of one provider subject interleave safely --------------------
 
     private static string SubjectLock(Guid subject) =>
