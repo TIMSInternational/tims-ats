@@ -17,7 +17,8 @@ namespace Tims.Api.FitEngine;
 ///   GET  /fit-engine/assignments/{id}/essays — <c>assessment:read</c>; the essays still pending (prompt, answer,
 ///        max points);
 ///   POST /fit-engine/assignments/{id}/essays/{questionId}/grade — <c>assessment:update</c>; body <c>{ points }</c>,
-///        0..the question's points. 200 { remainingPending, normalizedScore } / 400 / 404 / 409 (already graded).
+///        0..the question's points. 200 { remainingPending, normalizedScore } / 400 / 404 / 409 (already graded, or a question's points
+///        were edited below an awarded score, so no honest score can be computed).
 /// Both run the assignment's vacancy scope probe (assignments are scoped via their vacancy, as in TS). Mapped only
 /// with <see cref="PlatformOptions.FitEngineV2Enabled"/> (or at OpenAPI generation). A FIT score is not recomputed
 /// here: the next compute reads the graded result.
@@ -122,6 +123,7 @@ public static class EssayGradingEndpoints
                         new EssayGradedResponse(outcome.RemainingPending, outcome.NormalizedScore)),
                     EssayGradeStatus.PointsOutOfRange => Results.BadRequest(new { error = "invalid_points" }),
                     EssayGradeStatus.NotPending => Results.Conflict(new { error = "not_pending" }),
+                    EssayGradeStatus.QuestionsChanged => Results.Conflict(new { error = "questions_changed" }),
                     _ => Results.NotFound(new { message = "Asignación no encontrada" }),
                 };
             })

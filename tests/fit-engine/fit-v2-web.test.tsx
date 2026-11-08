@@ -10,6 +10,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 const mocks = vi.hoisted(() => ({
   v2: true,
   pending: new Set<string>(),
+  reviewError: false,
   trpcMutate: vi.fn(),
   v2Mutate: vi.fn(),
   gradeMutate: vi.fn(),
@@ -44,7 +45,8 @@ vi.mock('../../apps/web/lib/platform-api/fit-engine', async (importOriginal) => 
   return {
     ...actual,
     isFitEngineV2Enabled: () => mocks.v2,
-    useReviewPendingFitScores: () => ({ data: mocks.pending }),
+    useReviewPendingFitScores: () =>
+      mocks.reviewError ? { data: undefined, isError: true } : { data: mocks.pending, isError: false },
     useUpdateFitRequirementsViaCsharp: () => ({ mutate: mocks.v2Mutate, isPending: false }),
     usePendingEssays: (_id: string, enabled: boolean) => ({ data: enabled ? mocks.essays : undefined }),
     useGradeEssay: () => ({ mutate: mocks.gradeMutate, isPending: false }),
@@ -88,6 +90,7 @@ const listCandidate = (id: string, fitScoreId: string, score: number) => ({
 beforeEach(() => {
   mocks.v2 = true;
   mocks.pending = new Set();
+  mocks.reviewError = false;
   mocks.essays = [];
   mocks.canGrade = true;
   vi.clearAllMocks();
@@ -147,6 +150,16 @@ describe('list tables', () => {
     const badges = screen.getAllByTestId('fit-review-pending');
     expect(badges).toHaveLength(1);
     expect(badges[0].closest('tr')?.textContent).toContain('Fb');
+  });
+
+  it('a failed review-state read marks every score "unknown", never final (both tables)', () => {
+    mocks.reviewError = true;
+    const rows = [listCandidate('a', FS1, 70), listCandidate('b', FS2, 85)] as never;
+    const { unmount } = render(<CandidateTable candidates={rows} isLoading={false} />);
+    expect(screen.getAllByTestId('fit-review-unknown')).toHaveLength(2);
+    unmount();
+    render(<TalentPoolTable candidates={rows} isLoading={false} onNextPage={() => undefined} onPrevPage={() => undefined} />);
+    expect(screen.getAllByTestId('fit-review-unknown')).toHaveLength(2);
   });
 
   it('talent-pool table marks only the provisional score', () => {

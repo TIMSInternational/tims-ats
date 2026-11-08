@@ -73,10 +73,13 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
         const string lockSql =
             "SELECT (jsonb_typeof(r.breakdown -> 'pendingManual') = 'array' "
             + "AND (r.breakdown -> 'pendingManual') ? @q::text), "
-            + "(SELECT q.points FROM assessment_questions q WHERE q.id = @q AND q.organization_id = @org) "
+            + "(SELECT q.points FROM assessment_questions q WHERE q.id = @q AND q.organization_id = @org), "
+            + "EXISTS (SELECT 1 FROM assessment_responses resp JOIN assessment_questions q ON q.id = resp.question_id "
+            + "WHERE resp.assignment_id = @a AND resp.organization_id = @org AND resp.points_awarded > q.points) "
             + "FROM assessment_results r WHERE r.assignment_id = @a AND r.organization_id = @org FOR UPDATE OF r";
         bool pending;
         double? maxPoints;
+        bool questionsChanged;
         await using (var command = Command(lockSql))
         {
             AddIds(command, organizationId, assignmentId, questionId);
@@ -88,6 +91,15 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
 
             pending = !reader.IsDBNull(0) && reader.GetBoolean(0);
             maxPoints = reader.IsDBNull(1) ? null : Convert.ToDouble(reader.GetValue(1));
+            questionsChanged = reader.GetBoolean(2);
+        }
+
+        // The score is recomputed against the questions' CURRENT points. If a question was edited after submission
+        // so that an awarded score now exceeds it, no honest score can be computed (it could pass 100): refuse, and
+        // leave the result as it is (still needs review).
+        if (questionsChanged)
+        {
+            return new EssayGradeOutcome(EssayGradeStatus.QuestionsChanged, 0, null);
         }
 
         if (!pending || maxPoints is null)

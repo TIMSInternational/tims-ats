@@ -2047,6 +2047,8 @@
     "fitDimensionUnavailable": "Sin datos disponibles",
     "fitReviewPending": "Provisional: un resultado que cuenta en esta puntuación está pendiente de revisión",
     "fitReviewPendingShort": "En revisión",
+    "fitReviewUnknown": "Estado de revisión no disponible: esta puntuación puede ser provisional",
+    "fitReviewUnknownShort": "Estado desconocido",
     "essayGradingTitle": "Respuestas abiertas pendientes de calificar",
     "essayPointsLabel": "Puntos (de 0 a {max})",
     "essayGradeButton": "Calificar",

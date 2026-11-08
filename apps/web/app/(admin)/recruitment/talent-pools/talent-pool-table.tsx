@@ -112,9 +112,11 @@ export function TalentPoolTable({
   const { t } = useI18n();
   const tp = t.talentPool;
   // FIT v2: which shown scores are provisional (from C#; candidate.list carries the id, not the breakdown).
-  const pendingFit = useReviewPendingFitScores(
+  // A failed read is shown as "unknown", never as final.
+  const reviewState = useReviewPendingFitScores(
     candidates.flatMap((c) => (c.fitScores[0]?.id ? [c.fitScores[0].id] : [])),
-  ).data;
+  );
+  const pendingFit = reviewState.data;
 
   if (isError) {
     return (
@@ -184,7 +186,11 @@ export function TalentPoolTable({
                       <span className={`${getFitColor(fitScore)} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
                         {Math.round(fitScore)}
                       </span>
-                      {pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />}
+                      {reviewState.isError ? (
+                        <FitReviewPendingBadge compact unknown />
+                      ) : (
+                        pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />
+                      )}
                     </span>
                   )}
                 </div>

@@ -2047,6 +2047,8 @@
     "fitDimensionUnavailable": "No data available",
     "fitReviewPending": "Provisional: a result this score counts on awaits review",
     "fitReviewPendingShort": "Under review",
+    "fitReviewUnknown": "Review status unavailable: this score may be provisional",
+    "fitReviewUnknownShort": "Status unknown",
     "essayGradingTitle": "Essays awaiting a grade",
     "essayPointsLabel": "Points (0 to {max})",
     "essayGradeButton": "Grade",

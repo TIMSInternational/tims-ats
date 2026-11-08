@@ -69,6 +69,23 @@ public sealed class FitRequirementsInputTests
     }
 
     [Fact]
+    public void AnInvalidOptionalMinimum_DropsTheEntry_AndIsReported_NeverSilentlyScoredOnTheRawScore()
+    {
+        // Codex round 8 [P2]: {"min":{"score":"60"}} on a scored native quiz used to parse as "no minimum".
+        Assert.Null(FitRequirementsInput.Validate(
+            JsonNode.Parse("""{"assessments":[{"instrument":"native_quiz","min":{"score":"60"}}]}"""), out var error, out var issues));
+        Assert.Equal("no_valid_assessment", error);
+        var issue = Assert.Single(issues);
+        Assert.Equal((FitRequirementIssueCodes.InvalidMinimum, true), (issue.Code, issue.Dropped));
+
+        var none = FitRequirementsInput.Validate(
+            JsonNode.Parse("""{"assessments":[{"instrument":"native_quiz"},{"instrument":"lia","min":{"globalPercentile":40}}]}"""),
+            out _, out var noIssues)!;
+        Assert.Empty(noIssues); // an ABSENT optional minimum is still fine
+        Assert.Equal(2, none.FitRequirements["assessments"]!.AsArray().Count);
+    }
+
+    [Fact]
     public void StoredEntries_ParseBackToTheSameRequirements()
     {
         var raw = JsonNode.Parse("""

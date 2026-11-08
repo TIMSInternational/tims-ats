@@ -36,6 +36,9 @@ public enum EssayGradeStatus
     NotFound,
     NotPending,
     PointsOutOfRange,
+
+    /// <summary>An awarded score exceeds its question's current points (edited after submission): not graded.</summary>
+    QuestionsChanged,
 }
 
 /// <summary>The outcome, and after a grade the essays still pending and the new normalized score.</summary>

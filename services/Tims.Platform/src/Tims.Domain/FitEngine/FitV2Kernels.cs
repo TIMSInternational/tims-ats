@@ -102,7 +102,8 @@ public static class FitV2Kernels
     /// coerced to advisory whatever was configured;</item>
     /// <item>lia/english/itcia used as scored or gate need a valid <c>min</c> (globalPercentile 0..100 / cefr
     /// A1..C2 / integer level 1..5), else dropped; native_quiz used as a gate needs <c>min.score</c> 0..100, as
-    /// scored it is optional; advisory entries keep no minimum;</item>
+    /// scored it is optional, but one that is supplied and invalid drops the entry; advisory entries keep no
+    /// minimum;</item>
     /// <item><c>weight</c> is kept only on scored entries and only as a JSON number in (0, 100];
     /// <c>reason</c> only as a string of 1..500 characters after trimming;</item>
     /// <item>a second entry for an instrument already kept is dropped (the first valid entry wins).</item>
@@ -192,9 +193,13 @@ public static class FitV2Kernels
         InstrumentMinimum? min = null;
         if (use != FitInstrumentUses.Advisory)
         {
-            min = ParseMinimum(instrument, e.TryGetPropertyValue("min", out var minNode) ? minNode : null);
+            var minSupplied = e.TryGetPropertyValue("min", out var minNode) && minNode is not null;
+            min = ParseMinimum(instrument, minSupplied ? minNode : null);
             var minRequired = instrument != FitInstruments.NativeQuiz || use == FitInstrumentUses.Gate;
-            if (min is null && minRequired)
+
+            // A minimum that was SUPPLIED but is invalid drops the entry even where a minimum is optional (a scored
+            // native quiz): silently scoring it on the raw score would ignore what the vacancy asked for.
+            if (min is null && (minRequired || minSupplied))
             {
                 issues?.Add(FitRequirementIssueCodes.InvalidMinimum);
                 return null;

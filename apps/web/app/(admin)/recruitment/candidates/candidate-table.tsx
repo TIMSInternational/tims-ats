@@ -28,9 +28,11 @@ const POOL_STYLES: Record<string, string> = {
 export function CandidateTable({ candidates, isLoading, isError, onRetry }: CandidateTableProps) {
   const { t } = useI18n();
   // FIT v2: which shown scores are provisional (from C#; candidate.list carries the id, not the breakdown).
-  const pendingFit = useReviewPendingFitScores(
+  // A failed read is shown as "unknown", never as final.
+  const reviewState = useReviewPendingFitScores(
     candidates.flatMap((c) => (c.fitScores?.[0]?.id ? [c.fitScores[0].id] : [])),
-  ).data;
+  );
+  const pendingFit = reviewState.data;
 
   if (isError) {
     return (
@@ -91,7 +93,11 @@ export function CandidateTable({ candidates, isLoading, isError, onRetry }: Cand
               {fitScore != null ? (
                 <div className="flex flex-col items-center gap-1">
                   <FitScoreBadge score={fitScore} size="sm" />
-                  {pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />}
+                  {reviewState.isError ? (
+                    <FitReviewPendingBadge compact unknown />
+                  ) : (
+                    pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />
+                  )}
                 </div>
               ) : (
                 <span className="text-[11px] text-[#CDCDCD]">—</span>

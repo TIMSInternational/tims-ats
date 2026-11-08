@@ -86,6 +86,33 @@ public sealed class EssayGradingTests(FitEngineFixture fixture)
         Assert.Equal($"[\"{FitEngineFixture.QEssay3}\"]", pending);
     }
 
+    [Fact]
+    public async Task AQuestionEditedBelowAnAwardedScore_RefusesTheGrade_NeverStoresAScoreAbove100()
+    {
+        // Codex round 8 [P1]: the choice question (1/1 awarded) is edited down to 0 points after submission. A grade
+        // would recompute (1 + 2) / (0 + 2) × 100 = 150. It is refused, and the result stays needs review.
+        await _fixture.ResetGradingAsync();
+        await _fixture.ExecuteScalarAsync(
+            "UPDATE assessment_questions SET points = 0 WHERE id = @q", ("q", FitEngineFixture.QChoice));
+        try
+        {
+            var (status, body) = await GradeAsync(FitEngineFixture.QEssay2, "2");
+
+            Assert.Equal(HttpStatusCode.Conflict, status);
+            Assert.Equal("questions_changed", body!["error"]!.GetValue<string>());
+            Assert.Equal(100d, (double)(await _fixture.ExecuteScalarAsync(
+                "SELECT normalized_score FROM assessment_results WHERE assignment_id = @a", ("a", FitEngineFixture.AsgGrade)))!);
+            Assert.Equal(2, (int)(await _fixture.ExecuteScalarAsync(
+                "SELECT jsonb_array_length(breakdown -> 'pendingManual') FROM assessment_results WHERE assignment_id = @a",
+                ("a", FitEngineFixture.AsgGrade)))!);
+        }
+        finally
+        {
+            await _fixture.ExecuteScalarAsync(
+                "UPDATE assessment_questions SET points = 1 WHERE id = @q", ("q", FitEngineFixture.QChoice));
+        }
+    }
+
     [Theory]
     [InlineData(FitEngineFixture.ReaderOnlySub, HttpStatusCode.Forbidden)] // no assessment grant
     [InlineData(FitEngineFixture.TeamLeadSub, HttpStatusCode.NotFound)]   // assessment:update @ team; vacancy has no team
