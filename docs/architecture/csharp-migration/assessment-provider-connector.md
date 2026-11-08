@@ -117,6 +117,9 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - The inbox row is unique on (org, event_id).
   - A transient failure answers 503, so the provider's 72 h retries are the queue.
   - Lifecycle events move an attempt forward only (`ProviderAttemptStates.CanTransition`).
+  - `assignment.voided` (the only void signal for a link-out sitting, which has no session) voids the attempt like
+    `session.voided`. An in-progress session is relaunched past `expires_at` (it bounds only the start); the provider
+    decides.
   - Once a result is stored, its revisions alone decide validity: a `session.voided` never moves an attempt out of
     `result_ready`, nor lands on any attempt that holds a stored result (checked on the fresh read under the attempt
     lock that result storage also takes). The provider finalizes a sitting once (voided XOR completed with a result)
