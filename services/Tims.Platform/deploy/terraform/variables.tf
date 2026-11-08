@@ -124,6 +124,7 @@ variable "feature_flags" {
     access_review_write     = optional(bool, false)
     monitoring_read         = optional(bool, false) # Q0b slice 1 (#100) — gates flips #64/#66/#68
     alert_metrics_cron_read = optional(bool, false) # Q0b slice 2 (#172) — the last blocker on #64/#66
+    assessment_providers    = optional(bool, false) # AS-5 TIMS Assessments provider connector (inert until configured)
   })
   default = {}
 }

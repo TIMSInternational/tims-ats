@@ -17,26 +17,39 @@ namespace Tims.Application.CandidateConsent;
 /// <para>The parsers are pure and live here so they unit-test without a host: strict object (unknown key → 400),
 /// bounded strings.</para>
 /// </summary>
-public sealed partial class CandidateConsentUseCase(ICandidateConsentRepository repository)
+public sealed partial class CandidateConsentUseCase(
+    ICandidateConsentRepository repository, IConsentWithdrawalPropagator? propagator = null)
 {
     public const int MaxSlugLength = 100;
 
     private static readonly HashSet<string> StaffAllowedKeys = new(StringComparer.Ordinal) { "channel", "reason", "requestDeletion" };
 
     private readonly ICandidateConsentRepository _repository = repository;
+    private readonly IConsentWithdrawalPropagator _propagator = propagator ?? new NoConsentWithdrawalPropagator();
 
     public Task<CandidateConsentResult> GetAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
         _repository.GetAsync(organizationId, candidateId, cancellationToken);
 
-    public Task<CandidateConsentResult> WithdrawByStaffAsync(
+    public async Task<CandidateConsentResult> WithdrawByStaffAsync(
         Guid organizationId, Guid actorId, Guid candidateId, StaffWithdrawalInput input, DateTime now,
-        CancellationToken cancellationToken) =>
-        _repository.WithdrawAsync(
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var result = await _repository.WithdrawAsync(
             organizationId,
             candidateId,
             new WithdrawalActor(actorId, input.Channel, input.Reason, input.RequestDeletion, CandidateConsentConstants.StaffSource),
             now,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        if (result.Outcome == CandidateConsentOutcome.Ok)
+        {
+            await _propagator.PropagateAsync(organizationId, ToOffset(now), cancellationToken).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    private static DateTimeOffset ToOffset(DateTime now) => new(DateTime.SpecifyKind(now, DateTimeKind.Utc));
 
     /// <summary>
     /// Self-service withdrawal by the holder of a VERIFIED email. Always files a deletion request (the candidate's
@@ -53,13 +66,19 @@ public sealed partial class CandidateConsentUseCase(ICandidateConsentRepository 
             return new PortalWithdrawalResult(false, 0, 0);
         }
 
-        return await _repository.WithdrawByEmailAsync(
+        var result = await _repository.WithdrawByEmailAsync(
             orgId,
             NormalizeEmail(verifiedEmail),
             new WithdrawalActor(null, CandidateConsentConstants.PortalChannel, null, RequestDeletion: true,
                 CandidateConsentConstants.CandidatePortalSource),
             now,
             cancellationToken).ConfigureAwait(false);
+        if (result.CandidatesWithdrawn > 0)
+        {
+            await _propagator.PropagateAsync(orgId, ToOffset(now), cancellationToken).ConfigureAwait(false);
+        }
+
+        return result;
     }
 
     public Task<DataSubjectRequestListView> ListRequestsAsync(

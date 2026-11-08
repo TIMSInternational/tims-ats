@@ -1908,6 +1908,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assessments/provider-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderAssign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assessments/provider-assignments/{attemptId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/assessment-providers/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderBind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/portal/assessment-attempts/{attemptId}/launch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderLaunch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/tims-assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderSubjectExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderSubjectErasure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/data-subject-requests": {
         parameters: {
             query?: never;
@@ -4643,6 +4755,127 @@ export interface components {
             /** Format: int32 */
             totalPromotions: null | number | string;
             suppressed: boolean;
+        };
+        ProviderAssignBody: {
+            /** Format: uuid */
+            candidateId?: string;
+            /** Format: uuid */
+            vacancyId?: string;
+            instruments?: components["schemas"]["ProviderAssignInstrumentBody"][];
+            locale?: null | string;
+            /** Format: double */
+            timeMultiplier?: null | number | string;
+            aids?: null | string[];
+            /** Format: date-time */
+            expiresAt?: null | string;
+        };
+        ProviderAssignInstrumentBody: {
+            instrument?: string;
+            reason?: null | string;
+        };
+        ProviderAssignItem: {
+            attemptId: string;
+            instrument: string;
+            state: string;
+            instrumentVersion: null | string;
+            requiredConsents: string[];
+            expiresAt: null | string;
+            error: null | string;
+            locale: string;
+            /** Format: double */
+            timeMultiplier: number | string;
+            aids: string[];
+        };
+        ProviderAssignResponse: {
+            complete: boolean;
+            items: components["schemas"]["ProviderAssignItem"][];
+        };
+        ProviderBindingBody: {
+            /** Format: uuid */
+            organizationId?: string;
+            instruments?: string[];
+            defaultLocale?: string;
+        };
+        ProviderBindingView: {
+            organizationId: string;
+            providerTenantId: string;
+            enabledInstruments: string[];
+            defaultLocale: string;
+        };
+        ProviderErasureView: {
+            /** Format: int32 */
+            subjects: number | string;
+            /** Format: int32 */
+            requested: number | string;
+        };
+        ProviderExportAttempt: {
+            /** Format: uuid */
+            attemptId: string;
+            /** Format: uuid */
+            vacancyId: string;
+            instrument: string;
+            state: string;
+            locale: string;
+            /** Format: double */
+            timeMultiplier: number | string;
+            aids: string[];
+            instrumentVersion: null | string;
+            contentVersion: null | string;
+            /** Format: date-time */
+            expiresAt: null | string;
+            /** Format: date-time */
+            startedAt: null | string;
+            /** Format: date-time */
+            completedAt: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            withdrawalState: null | string;
+            /** Format: date-time */
+            erasureRequestedAt: null | string;
+        };
+        ProviderExportResult: {
+            /** Format: uuid */
+            attemptId: string;
+            /** Format: uuid */
+            resultId: string;
+            /** Format: int32 */
+            revision: number | string;
+            instrument: string;
+            instrumentVersion: string;
+            validityStatus: string;
+            validityReasons: string[];
+            completion: string;
+            /** Format: double */
+            globalPercentile: null | number | string;
+            cefr: null | string;
+            /** Format: int32 */
+            level: null | number | string;
+            scoresJson: null | string;
+            /** Format: date-time */
+            completedAt: string;
+            /** Format: date-time */
+            scoredAt: string;
+        };
+        ProviderLaunchBody: {
+            consents?: null | components["schemas"]["ProviderLaunchConsentBody"][];
+        };
+        ProviderLaunchConsentBody: {
+            purpose?: string;
+            textVersion?: string;
+            locale?: string;
+        };
+        ProviderLaunchResponse: {
+            delivery: string;
+            candidateToken: null | string;
+            tokenType: null | string;
+            /** Format: date-time */
+            expiresAt: string;
+            apiBaseUrl: string;
+            hostedUrl: null | string;
+        };
+        ProviderSubjectExport: {
+            attempts: components["schemas"]["ProviderExportAttempt"][];
+            results: components["schemas"]["ProviderExportResult"][];
         };
         PutTeamMemberBody: {
             role?: null | string;
@@ -10754,6 +10987,450 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AssessmentProviderAssign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderAssignBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAssignResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAssignResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attemptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAssignItem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderBind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderBindingBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderBindingView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderLaunch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attemptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderLaunchBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLaunchResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderSubjectExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSubjectExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderSubjectErasure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderErasureView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderErasureView"];
+                };
             };
         };
     };

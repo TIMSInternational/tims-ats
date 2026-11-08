@@ -15,11 +15,14 @@ using Amazon;
 using Amazon.DynamoDBv2;
 using Tims.Api.AccessReview;
 using Tims.Api.AssessmentTypes;
+using Tims.Api.Assessments;
 using Tims.Api.CandidateConsent;
 using Tims.Application.CandidateConsent;
 using Tims.Infrastructure.CandidateConsent;
 using Tims.Application.AssessmentTypes;
 using Tims.Infrastructure.AssessmentTypes;
+using Tims.Application.Assessments.Providers;
+using Tims.Infrastructure.Assessments.Providers;
 using Tims.Api.Fx;
 using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
@@ -593,10 +596,30 @@ try
     builder.Services.AddScoped<IAssessmentTypeWriteRepository, AssessmentTypeWriteRepository>();
     builder.Services.AddScoped<AssessmentTypeWriteUseCase>();
 
+    // AS-5: the TIMS Assessments provider connector (every instrument is a REMOTE provider behind the headless API
+    // v1). EF-OWNED assessment_provider_* tables (migration 20261107232524, NOT applied by the PR that added it),
+    // the typed /v1 client with its client-credentials token cache, and the use cases. Inert registration: routes are
+    // mapped only when AssessmentProvidersEnabled is on, and an unconfigured client answers provider_unconfigured.
+    builder.Services.AddAssessmentProviders(builder.Configuration, databaseConnectionString);
+
     // #312/#313: candidate data-processing consent (status + evidence read, staff and self-service withdrawal).
     // data_consents + data_subject_requests (efcoreStranglerWrite) and audit_logs in ONE context so a withdrawal and
     // its audit row share a transaction. Runs UNDER TenantScope; dark unless CandidateConsentEnabled.
     builder.Services.AddDbContext<CandidateConsentDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    // D15: with the provider connector ON (its migration applied), a #312 withdrawal stages the candidate's provider
+    // attempts in its own transaction and then propagates to the provider. OFF: neither runs, so the withdrawal never
+    // touches the provider tables (which may not exist yet).
+    if (builder.Configuration.GetValue<bool>("Platform:AssessmentProvidersEnabled"))
+    {
+        builder.Services.AddScoped<IConsentWithdrawalCascade, ProviderConsentWithdrawalCascade>();
+        builder.Services.AddScoped<IConsentWithdrawalPropagator, ProviderConsentWithdrawalPropagator>();
+    }
+    else
+    {
+        builder.Services.AddScoped<IConsentWithdrawalCascade, NoConsentWithdrawalCascade>();
+        builder.Services.AddScoped<IConsentWithdrawalPropagator, NoConsentWithdrawalPropagator>();
+    }
+
     builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
     builder.Services.AddScoped<CandidateConsentUseCase>();
     // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the
@@ -1590,6 +1613,15 @@ try
     if (externalOptions.AssessmentTypeWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapAssessmentTypeWriteEndpoints();
+    }
+
+    // AS-5: TIMS Assessments provider connector — staff assign (assessment:create + vacancy scope), platform-owner
+    // binding, the candidate's launch (confirmed email; consent gate incl. #312) and the signed webhook. Dark unless on.
+    if (externalOptions.AssessmentProvidersEnabled || isOpenApiDocGeneration)
+    {
+        app.MapProviderAssignmentEndpoints();
+        app.MapProviderCandidateEndpoints();
+        app.MapProviderSubjectRightsEndpoints();
     }
 
     // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service

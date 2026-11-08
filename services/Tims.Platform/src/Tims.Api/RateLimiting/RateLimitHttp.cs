@@ -19,12 +19,13 @@ internal static class RateLimitHttp
 
     /// <summary>
     /// Candidate-facing routes get the strict <c>auth</c> tier (IP-keyed), not the default mutation tier: the
-    /// anonymous candidate interview join (WP-H) and the candidate's self-service consent withdrawal (#312), whose
-    /// caller resolves to no staff principal. Referenced as constants so they cannot drift from the routes.
+    /// anonymous candidate interview join (WP-H), the candidate's self-service consent withdrawal (#312) and the
+    /// candidate's assessment launch (AS-5), whose caller resolves to no staff principal. Referenced as constants so they cannot drift from the routes.
     /// </summary>
     private static bool IsCapabilityTokenRoute(PathString path) =>
         Tims.Api.InterviewJoin.CandidateInterviewJoinEndpoints.IsRoute(path)
-        || Tims.Api.CandidateConsent.CandidateConsentEndpoints.IsPortalWithdrawalRoute(path);
+        || Tims.Api.CandidateConsent.CandidateConsentEndpoints.IsPortalWithdrawalRoute(path)
+        || Tims.Api.Assessments.ProviderCandidateEndpoints.IsLaunchRoute(path);
 
     /// <summary>Maps a URL path to the dotted-path shape the category rules expect (/candidate/export → candidate.export).</summary>
     public static string ToDottedPath(PathString path) =>

@@ -33,10 +33,15 @@ public sealed class RateLimitMiddleware(RequestDelegate next)
     // that 429s is a metric that never evaluates: alerts silently stop firing for every org after the cutoff.
     // The TS/Vercel route it replaces is un-throttled, so exempting it is parity, not a relaxation. Referenced
     // as a constant, never re-typed — a literal here could drift from the route registration silently.
+    //
+    // The TIMS Assessments webhook (AS-5) is exempt for the Stripe reason: ANONYMOUS + authenticated by its HMAC
+    // signature, delivered at-least-once from the provider's few IPs, and idempotent on the event id. A 429 would
+    // only force retries. A request with a bad signature costs one HMAC and touches no database.
     private static readonly string[] ExemptExactPaths =
     [
         "/", "/health", "/ready", "/whoami", "/external-whoami", "/billing/webhooks/stripe",
         Tims.Api.AlertMetrics.AlertMetricsEndpoints.RoutePath,
+        Tims.Api.Assessments.ProviderCandidateEndpoints.WebhookPath,
     ];
     private static readonly string[] ExemptPrefixes = ["/openapi"];
 
