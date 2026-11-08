@@ -113,6 +113,54 @@ public sealed class EssayGradingTests(FitEngineFixture fixture)
         }
     }
 
+    // Codex release review, round 1 [P2]: only the result row is locked, so a question edit that commits between the
+    // validation and the aggregation reaches the aggregation (READ COMMITTED). A SECURITY DEFINER trigger on
+    // assessment_responses lands the edit deterministically inside the grade's own transaction, right after the response
+    // write, which is what the aggregation sees when a concurrent edit commits at that moment.
+    [Theory]
+    [InlineData("choice", 0)] // the choice (1/1 awarded) drops to 0: (1 + 2) / (0 + 2) would store 150
+    [InlineData("essay", 4)]  // the graded essay rises from 2 to 4: its is_correct (2 >= 2) would be stale
+    public async Task AQuestionEditedDuringTheGrade_RefusesIt_AndWritesNothing(string edited, int points)
+    {
+        await _fixture.ResetGradingAsync();
+        var question = edited == "choice" ? FitEngineFixture.QChoice : FitEngineFixture.QEssay2;
+        await _fixture.ExecuteScalarAsync(
+            $$"""
+            CREATE FUNCTION test_edit_question_mid_grade() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+            SET search_path = public AS $fn$
+            BEGIN
+              UPDATE assessment_questions SET points = {{points}} WHERE id = '{{question}}';
+              RETURN NEW;
+            END $fn$;
+            CREATE TRIGGER test_edit_question_mid_grade AFTER UPDATE ON assessment_responses
+              FOR EACH ROW EXECUTE FUNCTION test_edit_question_mid_grade();
+            """);
+        try
+        {
+            var (status, body) = await GradeAsync(FitEngineFixture.QEssay2, "2");
+
+            Assert.Equal(HttpStatusCode.Conflict, status);
+            Assert.Equal("questions_changed", body!["error"]!.GetValue<string>());
+            Assert.Equal(100d, (double)(await _fixture.ExecuteScalarAsync(
+                "SELECT normalized_score FROM assessment_results WHERE assignment_id = @a", ("a", FitEngineFixture.AsgGrade)))!);
+            Assert.Equal(2, (int)(await _fixture.ExecuteScalarAsync(
+                "SELECT jsonb_array_length(breakdown -> 'pendingManual') FROM assessment_results WHERE assignment_id = @a",
+                ("a", FitEngineFixture.AsgGrade)))!);
+            Assert.Equal(DBNull.Value, await _fixture.ExecuteScalarAsync(
+                "SELECT points_awarded FROM assessment_responses WHERE assignment_id = @a AND question_id = @q",
+                ("a", FitEngineFixture.AsgGrade), ("q", FitEngineFixture.QEssay2))); // rolled back with the refusal
+        }
+        finally
+        {
+            await _fixture.ExecuteScalarAsync(
+                "DROP TRIGGER IF EXISTS test_edit_question_mid_grade ON assessment_responses; "
+                + "DROP FUNCTION IF EXISTS test_edit_question_mid_grade();");
+            await _fixture.ExecuteScalarAsync(
+                "UPDATE assessment_questions SET points = 1 WHERE id = @c; UPDATE assessment_questions SET points = 2 WHERE id = @e",
+                ("c", FitEngineFixture.QChoice), ("e", FitEngineFixture.QEssay2));
+        }
+    }
+
     [Theory]
     [InlineData(FitEngineFixture.ReaderOnlySub, HttpStatusCode.Forbidden)] // no assessment grant
     [InlineData(FitEngineFixture.TeamLeadSub, HttpStatusCode.NotFound)]   // assessment:update @ team; vacancy has no team

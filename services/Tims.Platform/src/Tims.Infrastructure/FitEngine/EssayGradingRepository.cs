@@ -114,6 +114,11 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
 
         // 2. The response's points (full marks count as correct), then the result: pendingManual minus the essay,
         //    the grade recorded, and the scores recomputed over every scored response (TS computeResult).
+        //    Only the RESULT row is locked, so a question's points can change between step 1 and the aggregation
+        //    (READ COMMITTED: each statement sees the latest commit). The aggregation is therefore a conditional write
+        //    that re-checks, against ITS OWN snapshot, that no awarded score exceeds its question's points and that this
+        //    essay's is_correct still matches them. If not, nothing is written (the transaction rolls back) and the grade
+        //    is refused as questions_changed, so a stored score never exceeds 100 and the essay stays pending.
         const string responseSql =
             "UPDATE assessment_responses SET points_awarded = @p, is_correct = (@p >= @max), updated_at = @now "
             + "WHERE assignment_id = @a AND question_id = @q AND organization_id = @org";
@@ -133,10 +138,12 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
             + "jsonb_build_object('points', @p, 'gradedBy', @by::text, 'gradedAt', @nowText))), "
             + "raw_score = s.raw, normalized_score = CASE WHEN s.maxp > 0 THEN s.raw / s.maxp * 100 END, "
             + "updated_at = @now "
-            + "FROM (SELECT sum(resp.points_awarded) AS raw, sum(q.points)::double precision AS maxp "
+            + "FROM (SELECT sum(resp.points_awarded) AS raw, sum(q.points)::double precision AS maxp, "
+            + "coalesce(bool_or(resp.points_awarded > q.points OR (resp.question_id = @q "
+            + "AND resp.is_correct IS DISTINCT FROM (resp.points_awarded >= q.points))), false) AS changed "
             + "FROM assessment_responses resp JOIN assessment_questions q ON q.id = resp.question_id "
             + "WHERE resp.assignment_id = @a AND resp.organization_id = @org AND resp.points_awarded IS NOT NULL) s "
-            + "WHERE r.assignment_id = @a AND r.organization_id = @org "
+            + "WHERE r.assignment_id = @a AND r.organization_id = @org AND NOT s.changed "
             + "RETURNING jsonb_array_length(r.breakdown -> 'pendingManual'), r.normalized_score";
         int remaining;
         double? normalized;
@@ -148,7 +155,12 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
             command.Parameters.Add(new NpgsqlParameter("now", NpgsqlDbType.Timestamp) { Value = ToTimestamp(now) });
             command.Parameters.Add(new NpgsqlParameter("nowText", NpgsqlDbType.Text) { Value = now.UtcDateTime.ToString("O") });
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                // The guard refused: a question changed under the grade. Not committing rolls back the response write.
+                return new EssayGradeOutcome(EssayGradeStatus.QuestionsChanged, 0, null);
+            }
+
             remaining = reader.GetInt32(0);
             normalized = reader.IsDBNull(1) ? null : reader.GetDouble(1);
         }
