@@ -453,6 +453,77 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         Assert.Equal("result_ready", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{voided}'"));
     }
 
+    [Fact]
+    public async Task A_late_session_voided_never_undoes_a_corrected_revision_delivered_first()
+    {
+        // Reverse delivery: the provider voided the sitting, then its review re-published a valid revision. The
+        // corrected revision arrives first and restores the attempt; the earlier session.voided arrives after it.
+        var (voided, subject) = await InsertAttemptAsync("voided");
+        var row = await RowAsync(voided);
+        var corrected = ResultFor(row.ProviderAssignmentId!.Value) with { SubjectId = subject, ResultRevision = 2 };
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, row, corrected, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        await using (var db = fixture.NewContext())
+        {
+            Assert.False(await new AssessmentProviderRepository(db).AdvanceAttemptAsync(AssessmentProviderSchemaFixture.OrgA,
+                voided, ProviderAttemptStates.Voided, DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow,
+                CancellationToken.None));
+        }
+
+        Assert.Equal("result_ready", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{voided}'"));
+    }
+
+    [Fact]
+    public async Task A_late_session_voided_never_lands_on_any_attempt_that_holds_a_stored_result()
+    {
+        // A superseded attempt keeps its terminal state with the corrected result attached (here: expired, replaced by a
+        // newer assignment). The domain rule alone would let a void move expired -> voided; the stored result forbids it.
+        var (expired, subject) = await InsertAttemptAsync("expired");
+        var row = await RowAsync(expired);
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, assigned_by_id, created_at)
+             VALUES (gen_random_uuid(), '{AssessmentProviderSchemaFixture.OrgA}', '{AssessmentProviderSchemaFixture.BindingA}',
+                 '{row.CandidateId}', '{AssessmentProviderSchemaFixture.VacancyA}', 'lia', 'pending_create', 'selection',
+                 'Análisis de datos', 'es', 1, gen_random_uuid(), now() + interval '1 minute')
+             """);
+        var result = ResultFor(row.ProviderAssignmentId!.Value) with { SubjectId = subject };
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, row, result, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("expired", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{expired}'"));
+
+        await using (var db = fixture.NewContext())
+        {
+            Assert.False(await new AssessmentProviderRepository(db).AdvanceAttemptAsync(AssessmentProviderSchemaFixture.OrgA,
+                expired, ProviderAttemptStates.Voided, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("expired", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{expired}'"));
+    }
+
+    [Fact]
+    public async Task A_session_voided_still_voids_an_attempt_with_no_result_yet()
+    {
+        var (inProgress, _) = await InsertAttemptAsync("in_progress");
+
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).AdvanceAttemptAsync(AssessmentProviderSchemaFixture.OrgA,
+                inProgress, ProviderAttemptStates.Voided, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("voided", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{inProgress}'"));
+    }
+
     // ---- Lock discipline: webhook writes, launches and erasures of one attempt are serialized --------------------
 
     private async Task<(Guid Attempt, Guid Subject)> InsertAttemptAsync(string state)

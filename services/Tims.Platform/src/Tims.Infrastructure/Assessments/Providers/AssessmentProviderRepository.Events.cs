@@ -98,7 +98,12 @@ public sealed partial class AssessmentProviderRepository
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
-        if (attempt is null || !ProviderAttemptStates.CanTransition(attempt.State, toState))
+        // A lifecycle void never lands on an attempt that holds a stored result, whatever state it is in (a superseded
+        // attempt keeps its expired/voided state with a result attached): result revisions alone decide validity once
+        // one exists, and StoreResultAsync applies them under this same lock. Checked on the fresh read, under the lock,
+        // so a void racing a result store cannot interleave.
+        if (attempt is null || !ProviderAttemptStates.CanTransition(attempt.State, toState)
+            || (toState == ProviderAttemptStates.Voided && attempt.LatestResultId is not null))
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
             return false;

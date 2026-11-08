@@ -165,7 +165,12 @@ public static class ProviderAttemptStates
     /// <summary>
     /// Lifecycle moves a webhook event may make (deliveries are unordered and at-least-once): lifecycle states only move
     /// forward; a terminal state is left only by a newer result revision (handled where results are stored); a void
-    /// wins over anything except cancel/erase; an expiry never overrides a finished sitting.
+    /// wins over anything except cancel/erase and a published result; an expiry never overrides a finished sitting.
+    /// <para>Once a result is published, its revisions alone decide validity. The provider finalizes a sitting once
+    /// (voided XOR completed with a result), and a later void of a scored sitting is re-published as a new result
+    /// revision with <c>validity.status = voided</c>. A <c>session.voided</c> arriving after the attempt reached
+    /// <c>result_ready</c> is therefore a stale, reordered delivery: applying it would undo a corrected revision that no
+    /// re-fetch could restore (the stored revision is already the latest).</para>
     /// </summary>
     public static bool CanTransition(string from, string to)
     {
@@ -176,7 +181,7 @@ public static class ProviderAttemptStates
 
         return to switch
         {
-            Voided => true,
+            Voided => from != ResultReady,
             Expired => !IsTerminal(from) && Rank(from) < Rank(Completed),
             Cancelled or Erased or PendingCreate => false,
             _ => !IsTerminal(from) && Rank(from) < Rank(to),

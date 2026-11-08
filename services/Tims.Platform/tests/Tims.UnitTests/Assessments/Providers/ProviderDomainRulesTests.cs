@@ -113,7 +113,9 @@ public sealed class ProviderDomainRulesTests
     [InlineData(ProviderAttemptStates.ResultReady, ProviderAttemptStates.Completed, false)] // late session.completed
     [InlineData(ProviderAttemptStates.InProgress, ProviderAttemptStates.Expired, true)]
     [InlineData(ProviderAttemptStates.Completed, ProviderAttemptStates.Expired, false)] // never expire a finished sitting
-    [InlineData(ProviderAttemptStates.ResultReady, ProviderAttemptStates.Voided, true)] // a void wins
+    [InlineData(ProviderAttemptStates.InProgress, ProviderAttemptStates.Voided, true)] // a void wins over an open sitting
+    [InlineData(ProviderAttemptStates.Completed, ProviderAttemptStates.Voided, true)]
+    [InlineData(ProviderAttemptStates.ResultReady, ProviderAttemptStates.Voided, false)] // a late session.voided: results decide
     [InlineData(ProviderAttemptStates.Voided, ProviderAttemptStates.InProgress, false)]
     [InlineData(ProviderAttemptStates.Cancelled, ProviderAttemptStates.Voided, false)]
     [InlineData(ProviderAttemptStates.Erased, ProviderAttemptStates.ResultReady, false)]
