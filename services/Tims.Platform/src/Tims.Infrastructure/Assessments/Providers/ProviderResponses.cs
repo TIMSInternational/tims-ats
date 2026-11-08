@@ -91,6 +91,57 @@ internal static partial class ProviderResponses
             ? new ProviderConsentRecord(id, purpose, status)
             : null;
 
+    public static IReadOnlyList<ProviderConsentRecord>? ConsentList(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() > 200)
+        {
+            return null;
+        }
+
+        var records = new List<ProviderConsentRecord>();
+        foreach (var entry in data.EnumerateArray())
+        {
+            if (Consent(entry) is not { } record)
+            {
+                return null;
+            }
+
+            records.Add(record);
+        }
+
+        return records;
+    }
+
+    public static ProviderErasureReceipt? ErasureReceipt(JsonElement root) =>
+        GuidOf(root, "subject_id") is { } subject && Str(root, "status") is { } status
+        && status is "accepted" or "in_progress" or "completed"
+            ? new ProviderErasureReceipt(subject, status)
+            : null;
+
+    /// <summary>
+    /// A lookup page: <c>data</c> holds at most one assignment, and it must be this tenant's and carry exactly the
+    /// external ref asked for (anything else is off contract, never silently taken as ours).
+    /// </summary>
+    public static ProviderAssignmentLookup? AssignmentLookup(JsonElement root, Guid tenantId, string externalRef)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() > 1)
+        {
+            return null;
+        }
+
+        if (data.GetArrayLength() == 0)
+        {
+            return new ProviderAssignmentLookup(null);
+        }
+
+        return Assignment(data[0]) is { } found && found.TenantId == tenantId
+            && string.Equals(found.ExternalRef, externalRef, StringComparison.Ordinal)
+                ? new ProviderAssignmentLookup(found)
+                : null;
+    }
+
     public static ProviderLaunch? Launch(JsonElement root, Guid expectedAssignmentId)
     {
         if (GuidOf(root, "assignment_id") != expectedAssignmentId

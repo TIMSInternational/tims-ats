@@ -44,6 +44,37 @@ public sealed class LaunchProviderAttemptUseCaseTests
     }
 
     [Fact]
+    public async Task A_link_out_launch_refused_for_missing_subject_data_patches_the_subject_and_launches_once_more()
+    {
+        var attempt = _repository.AddCreatedAttempt("pca");
+        var launches = 0;
+        _provider.OnLaunch = _ => ++launches == 1
+            ? ProviderCall<ProviderLaunch>.Fail(new ProviderFailure(422, ProviderFailure.SubjectDataRequired, false, []))
+            : ProviderCall<ProviderLaunch>.Success(new ProviderLaunch("link_out", null, Now.AddDays(1), "https://assessments.example.com",
+                "https://provider.example.com/sit/1"));
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        var (subjectId, update) = Assert.Single(_provider.SubjectUpdates);
+        Assert.Equal(attempt.ProviderSubjectId, subjectId);
+        Assert.Equal(new ProviderSubjectUpdate("Ana", "Pérez", "ana@example.com"), update);
+        Assert.Equal(2, launches);
+    }
+
+    [Fact]
+    public async Task An_attempt_already_in_the_withdrawal_cascade_cannot_be_launched()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.Attempts[0] = attempt with { WithdrawalState = ProviderWithdrawalStates.Pending };
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.ConsentWithdrawn, result.Outcome);
+        Assert.Empty(_provider.Calls);
+    }
+
+    [Fact]
     public async Task Another_persons_email_cannot_launch_the_attempt_and_learns_nothing()
     {
         var attempt = _repository.AddCreatedAttempt("lia");

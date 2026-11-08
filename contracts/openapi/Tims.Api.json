@@ -4974,6 +4974,114 @@
         }
       }
     },
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderSubjectExport",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSubjectExport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderSubjectErasure",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderErasureView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderErasureView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tenant/data-subject-requests": {
       "get": {
         "tags": [
@@ -15178,6 +15286,227 @@
           }
         }
       },
+      "ProviderErasureView": {
+        "required": [
+          "subjects",
+          "requested"
+        ],
+        "type": "object",
+        "properties": {
+          "subjects": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "requested": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ProviderExportAttempt": {
+        "required": [
+          "attemptId",
+          "vacancyId",
+          "instrument",
+          "state",
+          "locale",
+          "timeMultiplier",
+          "aids",
+          "instrumentVersion",
+          "contentVersion",
+          "expiresAt",
+          "startedAt",
+          "completedAt",
+          "createdAt",
+          "withdrawalState",
+          "erasureRequestedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vacancyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timeMultiplier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "aids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "instrumentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "contentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "withdrawalState": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "erasureRequestedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ProviderExportResult": {
+        "required": [
+          "attemptId",
+          "resultId",
+          "revision",
+          "instrument",
+          "instrumentVersion",
+          "validityStatus",
+          "validityReasons",
+          "completion",
+          "globalPercentile",
+          "cefr",
+          "level",
+          "scoresJson",
+          "completedAt",
+          "scoredAt"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resultId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "instrumentVersion": {
+            "type": "string"
+          },
+          "validityStatus": {
+            "type": "string"
+          },
+          "validityReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "completion": {
+            "type": "string"
+          },
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scoresJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scoredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "ProviderLaunchBody": {
         "type": "object",
         "properties": {
@@ -15244,6 +15573,27 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "ProviderSubjectExport": {
+        "required": [
+          "attempts",
+          "results"
+        ],
+        "type": "object",
+        "properties": {
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderExportAttempt"
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderExportResult"
+            }
           }
         }
       },

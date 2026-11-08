@@ -115,6 +115,40 @@ public sealed class CandidateConsentUseCaseTests
     }
 
     [Fact]
+    public async Task Subject_Withdrawal_PropagatesToExternalProcessors_AfterItCommitted()
+    {
+        // D15: the post-commit hook runs for the withdrawing org (the provider cascade it staged in its transaction).
+        var orgId = Guid.NewGuid();
+        var propagator = new RecordingPropagator();
+        await new CandidateConsentUseCase(new FakeRepository { OrganizationId = orgId }, propagator).WithdrawBySubjectAsync(
+            "acme", "ana@example.com", DateTime.UtcNow, CancellationToken.None);
+
+        Assert.Equal([orgId], propagator.Organizations);
+    }
+
+    [Fact]
+    public async Task Staff_Withdrawal_OfAnUnknownCandidate_PropagatesNothing()
+    {
+        var propagator = new RecordingPropagator();
+        await new CandidateConsentUseCase(new FakeRepository(), propagator).WithdrawByStaffAsync(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new StaffWithdrawalInput("phone", null, false), DateTime.UtcNow,
+            CancellationToken.None);
+
+        Assert.Empty(propagator.Organizations);
+    }
+
+    private sealed class RecordingPropagator : IConsentWithdrawalPropagator
+    {
+        public List<Guid> Organizations { get; } = [];
+
+        public Task PropagateAsync(Guid organizationId, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            Organizations.Add(organizationId);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
     public async Task Staff_Withdrawal_CarriesTheStaffActor()
     {
         var repository = new FakeRepository();

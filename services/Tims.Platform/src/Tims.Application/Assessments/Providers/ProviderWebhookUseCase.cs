@@ -50,6 +50,7 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
 
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
+    private readonly ProviderConsentWithdrawalUseCase _withdrawal = new(repository, provider);
 
     public async Task<WebhookResult> HandleAsync(
         ReadOnlyMemory<byte> rawBody, string? signature, string? eventIdHeader, string? eventTypeHeader,
@@ -152,6 +153,28 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             attempt = reconciled;
         }
 
+        // #312 reaches the provider (owner default D15, 2026-11-08). An attempt of a withdrawn candidate that the
+        // withdrawal's own transaction could not see (a same-email sibling reserved concurrently) is staged now, under
+        // the candidate lock; then a pending cascade is driven forward, and the event answers 503 until the provider
+        // confirmed it, so the provider's redelivery is the retry queue. Nothing of the event is applied, and no result
+        // is ever fetched for a withdrawn attempt.
+        if (attempt.WithdrawalState is null
+            && await _repository.StageConsentWithdrawalAsync(organizationId, attempt.CandidateId, now, cancellationToken)
+                .ConfigureAwait(false) > 0)
+        {
+            attempt = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false)
+                ?? attempt;
+        }
+
+        if (attempt.WithdrawalState == ProviderWithdrawalStates.Pending)
+        {
+            await _withdrawal.PropagateAsync(organizationId, now, cancellationToken).ConfigureAwait(false);
+            var after = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false);
+            return after?.WithdrawalState == ProviderWithdrawalStates.Pending
+                ? (InboxStatuses.Failed, "withdrawal_pending", true)
+                : (InboxStatuses.Ignored, "consent_withdrawn", false);
+        }
+
         if (ProviderCleanup.IsCancelPending(attempt))
         {
             // An event for the orphaned assignment of a cancelled attempt whose cancel at the provider is not confirmed
@@ -172,6 +195,12 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             // A refusal a redelivery would not change: the event is acknowledged (recorded as failed for operators), but
             // the cleanup marker stays on the attempt, so the staff cancel route (and any later event) retries the cancel.
             return (InboxStatuses.Failed, "orphan_cancel_" + cancelled.Failure.Code, false);
+        }
+
+        if (attempt.ResultsStopped)
+        {
+            // Withdrawn (cascade confirmed) or an ATS-initiated erasure requested: never fetched or applied again.
+            return (InboxStatuses.Ignored, attempt.WithdrawalState is not null ? "consent_withdrawn" : "erasure_requested", false);
         }
 
         switch (envelope.EventType)
@@ -300,7 +329,7 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
         return (InboxStatuses.Processed, null, false);
     }
 
-    internal static bool TryParseEnvelope(ReadOnlyMemory<byte> rawBody, out ProviderEventEnvelope? envelope, out string? error)
+    public static bool TryParseEnvelope(ReadOnlyMemory<byte> rawBody, out ProviderEventEnvelope? envelope, out string? error)
     {
         envelope = null;
         error = "invalid_envelope";

@@ -128,7 +128,81 @@ public interface IAssessmentProviderRepository
 
     /// <summary>Privileged read of an active organization's display name, or null.</summary>
     Task<string?> GetActiveOrganizationNameAsync(Guid organizationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #312 to provider (D15). Under the per-candidate lock the withdrawal itself takes, and only when the candidate's
+    /// recruitment consent IS withdrawn (directly or through a same-email candidate): every attempt of the candidate not
+    /// yet in the cascade gets <c>withdrawal_state = pending</c>; one that has not finished is cancelled, and one mapped
+    /// to a provider assignment gets the <see cref="ProviderCleanup.CancelPending"/> marker. One conditional UPDATE
+    /// plus its audit row, in one transaction. The same statement runs inside the withdrawal's own transaction; this is
+    /// the self-healing path for an attempt that transaction could not see. Returns the number of attempts staged.
+    /// </summary>
+    Task<int> StageConsentWithdrawalAsync(
+        Guid organizationId, Guid candidateId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>The org's attempts whose provider-side withdrawal is not confirmed yet, oldest first, at most <paramref name="max"/>.</summary>
+    Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(
+        Guid organizationId, int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Conditional write: moves each listed attempt from <c>pending</c> to <c>done</c> only while it carries no
+    /// <see cref="ProviderCleanup.CancelPending"/> marker, with one audit row. Returns how many moved.
+    /// </summary>
+    Task<int> MarkWithdrawalDoneAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// DSAR access (C# path): every provider attempt and stored result of one candidate, with a fail-closed audit row in
+    /// the same transaction. Null when the candidate is not in the org.
+    /// </summary>
+    Task<ProviderSubjectExport?> ExportCandidateAsync(
+        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>The distinct provider subject ids of one candidate's attempts (null when the candidate is not in the org).</summary>
+    Task<IReadOnlyList<Guid>?> ListProviderSubjectsAsync(
+        Guid organizationId, Guid candidateId, CancellationToken cancellationToken);
+
+    /// <summary>Records an accepted ATS-initiated erasure of one provider subject on its attempts, with an audit row.</summary>
+    Task MarkErasureRequestedAsync(
+        Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
+        CancellationToken cancellationToken);
 }
+
+public sealed record ProviderSubjectExport(
+    IReadOnlyList<ProviderExportAttempt> Attempts, IReadOnlyList<ProviderExportResult> Results);
+
+public sealed record ProviderExportAttempt(
+    Guid AttemptId,
+    Guid VacancyId,
+    string Instrument,
+    string State,
+    string Locale,
+    decimal TimeMultiplier,
+    IReadOnlyList<string> Aids,
+    string? InstrumentVersion,
+    string? ContentVersion,
+    DateTimeOffset? ExpiresAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset CreatedAt,
+    string? WithdrawalState,
+    DateTimeOffset? ErasureRequestedAt);
+
+public sealed record ProviderExportResult(
+    Guid AttemptId,
+    Guid ResultId,
+    int Revision,
+    string Instrument,
+    string InstrumentVersion,
+    string ValidityStatus,
+    IReadOnlyList<string> ValidityReasons,
+    string Completion,
+    double? GlobalPercentile,
+    string? Cefr,
+    int? Level,
+    string? ScoresJson,
+    DateTimeOffset CompletedAt,
+    DateTimeOffset ScoredAt);
 
 /// <summary>Durable cleanup markers kept in an attempt's <c>last_error_code</c>.</summary>
 public static class ProviderCleanup
@@ -196,7 +270,16 @@ public sealed record AttemptRow(
     IReadOnlyList<string> RequiredConsents,
     DateTimeOffset? ExpiresAt,
     string? LastErrorCode,
-    bool IsNew);
+    bool IsNew,
+    string? WithdrawalState = null,
+    DateTimeOffset? ErasureRequestedAt = null)
+{
+    /// <summary>
+    /// True once the candidate's #312 withdrawal reached this attempt (D15) or an erasure of its provider subject was
+    /// requested: the ATS never fetches or stores a result for it again.
+    /// </summary>
+    public bool ResultsStopped => WithdrawalState is not null || ErasureRequestedAt is not null;
+}
 
 /// <summary>
 /// The reserve result. <see cref="TermsConflict"/>: an open attempt for one of the instruments carries other terms than
@@ -206,7 +289,8 @@ public sealed record ReserveOutcome(bool ConsentWithdrawn, IReadOnlyList<Attempt
 
 /// <summary>The attempt plus the candidate identity a launch is checked against.</summary>
 public sealed record LaunchContext(
-    AttemptRow Attempt, string? CandidateEmail, bool CandidateActive, bool ConsentWithdrawn);
+    AttemptRow Attempt, string? CandidateEmail, bool CandidateActive, bool ConsentWithdrawn,
+    string? CandidateFirstName = null, string? CandidateLastName = null);
 
 public sealed record ProviderEventEnvelope(
     Guid EventId, string EventType, DateTimeOffset OccurredAt, Guid ProviderTenantId, string DataJson);

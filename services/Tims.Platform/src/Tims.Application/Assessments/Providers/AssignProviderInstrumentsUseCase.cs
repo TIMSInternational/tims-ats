@@ -75,9 +75,10 @@ public sealed record ProviderAssignResult(ProviderAssignOutcome Outcome, Provide
 /// </list>
 /// Then the attempts are reserved atomically (all instruments or none, idempotent per candidate + vacancy + instrument
 /// while open — an open attempt with OTHER terms is refused with <see cref="ProviderAssignOutcome.OpenAttemptTermsDiffer"/>,
-/// never kept silently), and only then is the provider called, with an idempotency key derived from the attempt id, so a crash
-/// or a retry re-drives the same provider assignment instead of creating a second one. Nothing here rejects a
-/// candidate: an assessment ranks and flags, a person decides.
+/// never kept silently), and only then is the provider called, with external_ref = the attempt id and an idempotency key
+/// derived from it. An attempt already sent once is first looked up by that external_ref (owner default D11, 2026-11-08),
+/// so a crash or a retry, even after the 24 h key window, recovers the provider assignment instead of creating a second
+/// one. Nothing here rejects a candidate: an assessment ranks and flags, a person decides.
 /// </summary>
 public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
 {
@@ -194,9 +195,9 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         AssignProviderInstrumentsInput input, DateTimeOffset now, CancellationToken cancellationToken)
     {
         // PII minimisation, per BINDING: names and email go to the provider only for an org that enables a link-out
-        // instrument (PCA, the provider's own questionnaire site needs them). It cannot be per request: the subject is
-        // created once per (tenant, candidate) and the contract has no subject update, so a subject first created for a
-        // native instrument without names would make a later PCA for the same candidate unlaunchable.
+        // instrument (PCA, the provider's own questionnaire site needs them). A subject is created once per (tenant,
+        // candidate) and a repeated create returns it unchanged, so a subject first created without names (before the
+        // org enabled PCA) is enriched below with PATCH /v1/subjects/{id} when a PCA needs them.
         var needsPii = binding.EnabledInstruments.Any(ProviderInstruments.IsLinkOut);
         var subjectRequest = new ProviderSubjectRequest(
             binding.ProviderTenantId,
@@ -215,12 +216,50 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 
         if (ProviderInstruments.IsLinkOut(attempt.Instrument) && !subject.Value!.HasNamesAndEmail)
         {
-            // The provider kept a subject created before this org enabled a link-out instrument (or the candidate has no
-            // usable name or email): its launch would refuse with subject_data_required. Refused here, before an
-            // assignment exists, instead of creating one nobody can launch.
-            return await FailAsync(organizationId, attempt,
-                ProviderFailure.Local(ProviderFailure.SubjectDataRequired, transient: false), now, cancellationToken)
+            // The provider kept a subject created before this org enabled a link-out instrument: its launch would refuse
+            // with subject_data_required. Enrich it (the contract's recovery path); refuse locally, before an assignment
+            // exists, only when the candidate record has no usable names or email to send.
+            if (SubjectUpdateFor(context) is not { } update)
+            {
+                return await FailAsync(organizationId, attempt,
+                    ProviderFailure.Local(ProviderFailure.SubjectDataRequired, transient: false), now, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var enriched = await _provider.UpdateSubjectAsync(subject.Value.SubjectId, update, cancellationToken)
                 .ConfigureAwait(false);
+            if (!enriched.Ok || !enriched.Value!.HasNamesAndEmail)
+            {
+                // A failed enrichment proves nothing about the assignment (none was sent yet), so it is never a refusal
+                // that cancels the attempt by itself: the attempt stays pending and a re-send retries the PATCH.
+                return await KeepPendingAsync(organizationId, attempt,
+                    enriched.Ok ? ProviderFailure.ContractViolation : enriched.Failure!.Code, now, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        // Owner default D11 (2026-11-08): an attempt that was already sent (not reserved by THIS request) may have been
+        // created at the provider even though no answer was recorded (a timeout, a crash before the commit). It is
+        // recovered by a lookup on its external_ref (= the attempt id), never by sending the create again: the
+        // Idempotency-Key is kept only 24 hours, the external_ref forever. Only an empty lookup sends the create.
+        ProviderAssignment? existing = null;
+        if (!attempt.IsNew)
+        {
+            var lookup = await _provider.FindAssignmentByExternalRefAsync(
+                binding.ProviderTenantId, attempt.Id.ToString(), cancellationToken).ConfigureAwait(false);
+            if (!lookup.Ok)
+            {
+                // A failed lookup proves nothing either way: keep the attempt pending, never cancel it, never create.
+                return await KeepPendingAsync(organizationId, attempt, lookup.Failure!.Code, now, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            existing = lookup.Value!.Assignment;
+        }
+
+        if (existing is not null)
+        {
+            return await RecordAsync(organizationId, binding, attempt, existing, now, cancellationToken).ConfigureAwait(false);
         }
 
         var request = new ProviderAssignmentRequest(
@@ -241,7 +280,13 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             return await FailAsync(organizationId, attempt, created.Failure!, now, cancellationToken).ConfigureAwait(false);
         }
 
-        var assignment = created.Value!;
+        return await RecordAsync(organizationId, binding, attempt, created.Value!, now, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ProviderAssignItem> RecordAsync(
+        Guid organizationId, ProviderBindingRow binding, AttemptRow attempt, ProviderAssignment assignment, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
         if (assignment.Instrument != attempt.Instrument || assignment.TenantId != binding.ProviderTenantId)
         {
             return await FailAsync(organizationId, attempt,
@@ -287,6 +332,22 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, state, null, [], null, failure.Code,
             attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
     }
+
+    private async Task<ProviderAssignItem> KeepPendingAsync(
+        Guid organizationId, AttemptRow attempt, string code, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await _repository.MarkCreateFailedAsync(organizationId, attempt.Id, code, cancel: false, now, cancellationToken)
+            .ConfigureAwait(false);
+        return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, ProviderAttemptStates.PendingCreate, null, [],
+            null, code, attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
+    }
+
+    /// <summary>The names and email for a PATCH, or null when the candidate record lacks a usable one.</summary>
+    internal static ProviderSubjectUpdate? SubjectUpdateFor(AssignmentContext context) =>
+        Bound(context.CandidateFirstName, 100) is { } given && Bound(context.CandidateLastName, 100) is { } family
+        && Bound(context.CandidateEmail?.Trim(), 254) is { } email
+            ? new ProviderSubjectUpdate(given, family, email)
+            : null;
 
     internal static ProviderAssignItem ToItem(AttemptRow attempt, string? error) =>
         new(attempt.Id.ToString(), attempt.Instrument, attempt.State, attempt.InstrumentVersion, attempt.RequiredConsents,
@@ -417,11 +478,12 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 
 /// <summary>
 /// Idempotency keys sent to the provider. Derived from ATS ids so a retry after a crash replays the original request
-/// (the provider keeps keys 24 h; past that, its own natural keys — tenant per org, subject per candidate — hold).
+/// (the provider keeps keys 24 h; past that, its own natural keys hold: tenant per org, subject per candidate, and
+/// assignment per external_ref = attempt id, which the ATS also looks up before re-sending a create, owner default D11).
 /// Where the request body can legitimately change between calls (names, display name, locale), a hash of the body is
 /// part of the key: the contract answers 422 <c>idempotency_key_reused</c> for one key with two different bodies.
-/// A new key does NOT update anything: a tenant or subject that already exists is returned unchanged (the contract
-/// has no update), which is why the subject's names are decided per binding, not per request.
+/// A new key does NOT update anything: a tenant or subject that already exists is returned unchanged; a subject's names
+/// and email change only through <c>PATCH /v1/subjects/{id}</c>.
 /// </summary>
 public static class IdempotencyKeys
 {

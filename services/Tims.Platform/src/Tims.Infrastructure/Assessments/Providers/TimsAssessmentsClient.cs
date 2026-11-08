@@ -73,6 +73,47 @@ public sealed class TimsAssessmentsClient(
             cancellationToken);
     }
 
+    public Task<ProviderCall<ProviderSubject>> UpdateSubjectAsync(
+        Guid subjectId, ProviderSubjectUpdate update, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        var body = new JsonObject
+        {
+            ["given_name"] = update.GivenName,
+            ["family_name"] = update.FamilyName,
+            ["email"] = update.Email,
+        };
+        return SendAsync(HttpMethod.Patch, $"/v1/subjects/{subjectId:D}", body, null, "update_subject",
+            root => ProviderResponses.Subject(root) is { } subject && subject.SubjectId == subjectId ? subject : null,
+            cancellationToken);
+    }
+
+    public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken) =>
+        SendAsync(HttpMethod.Delete, $"/v1/subjects/{subjectId:D}", null, null, "erase_subject",
+            root => ProviderResponses.ErasureReceipt(root) is { } receipt && receipt.SubjectId == subjectId ? receipt : null,
+            cancellationToken);
+
+    public Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(
+        Guid subjectId, CancellationToken cancellationToken) =>
+        SendAsync<IReadOnlyList<ProviderConsentRecord>>(HttpMethod.Get, $"/v1/subjects/{subjectId:D}/consents", null, null,
+            "list_consents", ProviderResponses.ConsentList, cancellationToken);
+
+    public Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
+        Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken) =>
+        SendAsync(HttpMethod.Post, $"/v1/subjects/{subjectId:D}/consents/{consentId:D}/withdrawal",
+            new JsonObject { ["withdrawn_at"] = FormatTimestamp(withdrawnAt) }, null, "withdraw_consent",
+            root => ProviderResponses.Consent(root) is { } consent && consent.ConsentId == consentId ? consent : null,
+            cancellationToken);
+
+    public Task<ProviderCall<ProviderAssignmentLookup>> FindAssignmentByExternalRefAsync(
+        Guid tenantId, string externalRef, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(externalRef);
+        var query = $"/v1/assignments?tenant_id={tenantId:D}&external_ref={Uri.EscapeDataString(externalRef)}";
+        return SendAsync(HttpMethod.Get, query, null, null, "find_assignment",
+            root => ProviderResponses.AssignmentLookup(root, tenantId, externalRef), cancellationToken);
+    }
+
     public Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(
         ProviderAssignmentRequest request, string idempotencyKey, CancellationToken cancellationToken)
     {

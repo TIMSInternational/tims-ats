@@ -28,6 +28,35 @@ public interface IAssessmentProvider
     Task<ProviderCall<ProviderSubject>> EnsureSubjectAsync(
         ProviderSubjectRequest request, string idempotencyKey, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <c>PATCH /v1/subjects/{subject_id}</c> (<c>subjects:write</c>): sets the names and email a link-out instrument needs
+    /// on a subject that was created without them. Merge semantics, idempotent; the contract's recovery path for
+    /// <c>subject_data_required</c>.
+    /// </summary>
+    Task<ProviderCall<ProviderSubject>> UpdateSubjectAsync(
+        Guid subjectId, ProviderSubjectUpdate update, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>DELETE /v1/subjects/{subject_id}</c>: starts the provider's asynchronous erasure of everything it holds for the
+    /// subject (DSAR). A 410 means the subject is already erased or erasure-pending.
+    /// </summary>
+    Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /v1/subjects/{subject_id}/consents</c>: the subject's consent records.</summary>
+    Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(Guid subjectId, CancellationToken cancellationToken);
+
+    /// <summary><c>POST /v1/subjects/{subject_id}/consents/{consent_id}/withdrawal</c>. Idempotent at the provider.</summary>
+    Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
+        Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>GET /v1/assignments?tenant_id=&amp;external_ref=</c>: the tenant's one assignment with this external ref, or none.
+    /// The provider keeps (tenant, external_ref) unique permanently, so this is how an ambiguous create is recovered
+    /// (owner default D11, 2026-11-08) without ever sending a second create.
+    /// </summary>
+    Task<ProviderCall<ProviderAssignmentLookup>> FindAssignmentByExternalRefAsync(
+        Guid tenantId, string externalRef, CancellationToken cancellationToken);
+
     /// <summary><c>POST /v1/assignments</c>. A replay with the same key returns the original assignment.</summary>
     Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(
         ProviderAssignmentRequest request, string idempotencyKey, CancellationToken cancellationToken);
@@ -94,10 +123,9 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     public const string TokenUnavailable = "provider_token_unavailable";
 
     /// <summary>
-    /// Local, raised BEFORE an assignment is created: a link-out instrument (PCA) needs the subject's names and email,
-    /// and the provider's subject has none. The contract has no subject update (a subject is idempotent on
-    /// tenant + external_ref and comes back unchanged), so the link-out launch would refuse with 422
-    /// <c>subject_data_required</c>; the attempt is refused here instead of creating an assignment nobody can launch.
+    /// A link-out instrument (PCA) needs the subject's names and email. The provider answers it on a link-out launch;
+    /// the ATS raises it locally, BEFORE an assignment is created, only when the provider's subject lacks them AND the
+    /// candidate record has no usable names or email to add with <c>PATCH /v1/subjects/{id}</c>.
     /// </summary>
     public const string SubjectDataRequired = "subject_data_required";
 
@@ -148,8 +176,8 @@ public sealed record ProviderTenant(Guid TenantId, string ExternalOrgRef, string
 
 /// <summary>
 /// The subject for one candidate. Names and email are sent ONLY when the org's binding enables a link-out instrument
-/// (PCA), whose provider sitting needs them; otherwise the subject is an opaque external ref. The rule is per binding,
-/// not per request, because a subject is created once per (tenant, external_ref) and the contract has no update.
+/// (PCA), whose provider sitting needs them; otherwise the subject is an opaque external ref. A subject created
+/// without them (before the org enabled PCA) is enriched with <c>PATCH /v1/subjects/{id}</c> when a PCA needs them.
 /// </summary>
 public sealed record ProviderSubjectRequest(
     Guid TenantId, string ExternalRef, string? GivenName, string? FamilyName, string? Email, string? PreferredLocale);
@@ -194,6 +222,18 @@ public sealed record ProviderConsentRequest(
     string ExternalVacancyRef);
 
 public sealed record ProviderConsentRecord(Guid ConsentId, string Purpose, string Status);
+
+/// <summary>The names and email a link-out instrument needs, set on an existing subject (merge semantics).</summary>
+public sealed record ProviderSubjectUpdate(string GivenName, string FamilyName, string Email);
+
+/// <summary>The provider's receipt for an erasure request (<c>accepted</c>, <c>in_progress</c> or <c>completed</c>).</summary>
+public sealed record ProviderErasureReceipt(Guid SubjectId, string Status);
+
+/// <summary>The answer to a lookup by external ref: the one assignment, or none (an empty page).</summary>
+public sealed class ProviderAssignmentLookup(ProviderAssignment? assignment)
+{
+    public ProviderAssignment? Assignment { get; } = assignment;
+}
 
 /// <summary>
 /// A launch. Deliberately a class with a redacting <see cref="ToString"/>: a record would print the candidate token

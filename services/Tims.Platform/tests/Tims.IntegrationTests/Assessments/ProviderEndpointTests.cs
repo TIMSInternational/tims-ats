@@ -133,6 +133,8 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
                 Mint(ProviderEndpointFixture.OwnerSub)),
             await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, Mint("candidate-dark")),
             await Send(client, Webhook, "{}", null),
+            await Send(client, Erasure(ProviderEndpointFixture.AssignCandidate), null, Mint(ProviderEndpointFixture.OwnerSub)),
+            await Get(client, Export(ProviderEndpointFixture.AssignCandidate), Mint(ProviderEndpointFixture.OwnerSub)),
         };
 
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.NotFound, r.StatusCode));
@@ -303,6 +305,88 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
             $"SELECT array_to_string(enabled_instruments, ',') FROM assessment_provider_bindings WHERE organization_id = '{ProviderEndpointFixture.OrgC}'"));
     }
 
+    // ── DSAR export and erasure (platform owner, D15) ────────────────────────────────────
+
+    private static string SubjectRights(Guid candidate) =>
+        $"/platform/assessment-providers/organizations/{ProviderEndpointFixture.OrgA}/candidates/{candidate}";
+
+    private static string Export(Guid candidate) => SubjectRights(candidate) + "/export";
+
+    private static string Erasure(Guid candidate) => SubjectRights(candidate) + "/erasure";
+
+    private static Task<HttpResponseMessage> Get(HttpClient client, string path, string? token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        if (token is not null)
+        {
+            request.Headers.Add("Authorization", $"Bearer {token}");
+        }
+
+        return client.SendAsync(request);
+    }
+
+    private async Task<(Guid Candidate, Guid Subject)> SubjectWithAttemptAsync()
+    {
+        var candidate = Guid.NewGuid();
+        var subject = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO candidates (id, organization_id, first_name, last_name, email)
+             VALUES ('{candidate}', '{ProviderEndpointFixture.OrgA}', 'Dee', 'Sar', '{candidate}@a.example');
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 instrument_version, content_version, assigned_by_id)
+             SELECT gen_random_uuid(), organization_id, id, '{candidate}', '{ProviderEndpointFixture.VacancyA}', 'lia', 'completed',
+                 'selection', 'Análisis de datos', 'es', 1, '{subject}', gen_random_uuid(), '1.0', 'content-1', gen_random_uuid()
+               FROM assessment_provider_bindings WHERE organization_id = '{ProviderEndpointFixture.OrgA}';
+             """);
+        return (candidate, subject);
+    }
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData(ProviderEndpointFixture.AdminSub, HttpStatusCode.Forbidden)] // an org admin is not the platform owner
+    public async Task SubjectRights_OnlyThePlatformOwner(string? sub, HttpStatusCode expected)
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+        var (candidate, _) = await SubjectWithAttemptAsync();
+        var token = sub is null ? null : Mint(sub);
+
+        var erasure = await Send(client, Erasure(candidate), null, token);
+        var export = await Get(client, Export(candidate), token);
+
+        Assert.Equal(expected, erasure.StatusCode);
+        Assert.Equal(expected, export.StatusCode);
+        Assert.Empty(provider.Calls);
+        Assert.Equal(0L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND provider_erasure_requested_at IS NOT NULL"));
+    }
+
+    [Fact]
+    public async Task SubjectRights_TheOwnerExportsThenErasesEveryProviderSubject()
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+        var (candidate, subject) = await SubjectWithAttemptAsync();
+        var owner = Mint(ProviderEndpointFixture.OwnerSub);
+
+        var export = await Get(client, Export(candidate), owner);
+        var erasure = await Send(client, Erasure(candidate), null, owner);
+        var unknown = await Send(client, Erasure(Guid.NewGuid()), null, owner);
+
+        Assert.Equal(HttpStatusCode.OK, export.StatusCode);
+        Assert.Equal("no-store", export.Headers.CacheControl?.ToString());
+        Assert.Equal("lia", (await ReadJson(export)).GetProperty("attempts")[0].GetProperty("instrument").GetString());
+        Assert.Equal(HttpStatusCode.Accepted, erasure.StatusCode);
+        Assert.Equal([subject], provider.ErasedSubjects);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND provider_erasure_requested_at IS NOT NULL"));
+    }
+
     // ── Launch (the candidate, by confirmed email) ──────────────────────────────────────
 
     [Fact]
@@ -449,6 +533,43 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
         {
             Calls.Enqueue("subject");
             return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(Guid.NewGuid(), "active")));
+        }
+
+        public ConcurrentQueue<Guid> ErasedSubjects { get; } = new();
+
+        public Task<ProviderCall<ProviderSubject>> UpdateSubjectAsync(
+            Guid subjectId, ProviderSubjectUpdate update, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("update_subject");
+            return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(subjectId, "active", true)));
+        }
+
+        public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("erase_subject");
+            ErasedSubjects.Enqueue(subjectId);
+            return Task.FromResult(ProviderCall<ProviderErasureReceipt>.Success(new ProviderErasureReceipt(subjectId, "accepted")));
+        }
+
+        public Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(
+            Guid subjectId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("list_consents");
+            return Task.FromResult(ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success([]));
+        }
+
+        public Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
+            Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("withdraw_consent");
+            return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(consentId, "assessment", "withdrawn")));
+        }
+
+        public Task<ProviderCall<ProviderAssignmentLookup>> FindAssignmentByExternalRefAsync(
+            Guid tenantId, string externalRef, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("lookup");
+            return Task.FromResult(ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(null)));
         }
 
         public Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(

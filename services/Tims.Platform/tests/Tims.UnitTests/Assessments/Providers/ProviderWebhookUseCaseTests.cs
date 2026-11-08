@@ -125,6 +125,97 @@ public sealed class ProviderWebhookUseCaseTests
     }
 
     [Fact]
+    public async Task A_captured_delivery_resent_with_a_fresh_header_id_is_rejected_and_never_applied_twice()
+    {
+        var attempt = Attempt();
+        _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(FetchedResult(attempt, id));
+        var (body, eventId) = Envelope("result.ready", ResultReadyData(attempt, Guid.NewGuid()));
+
+        var first = await Deliver(body, eventId, "result.ready");
+        var replay = await Deliver(body, Guid.NewGuid(), "result.ready"); // same signed body, rewritten header id
+
+        Assert.Equal(WebhookOutcome.Accepted, first.Outcome);
+        Assert.Equal(WebhookOutcome.Rejected, replay.Outcome);
+        Assert.Equal("header_mismatch", replay.Reason);
+        Assert.Single(_repository.StoredResults);
+        Assert.Equal([eventId], _repository.Inbox.Keys); // the inbox only ever saw the signed body's event id
+    }
+
+    // ---- #312 reaches the provider (owner default D15) ------------------------------------------------------------
+
+    [Fact]
+    public async Task A_result_for_a_withdrawn_candidate_is_never_fetched_and_the_withdrawal_is_propagated()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+        var consent = new ProviderConsentRecord(Guid.NewGuid(), "assessment", "active");
+        _provider.SubjectConsents[attempt.ProviderSubjectId!.Value] = [consent];
+        var (body, eventId) = Envelope("result.ready", ResultReadyData(attempt, Guid.NewGuid()));
+
+        var result = await Deliver(body, eventId, "result.ready");
+
+        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal("consent_withdrawn", result.Reason);
+        Assert.DoesNotContain("result", _provider.Calls);
+        Assert.Empty(_repository.StoredResults);
+        Assert.Equal([(attempt.ProviderSubjectId.Value, consent.ConsentId)], _provider.WithdrawnConsents);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    [Fact]
+    public async Task While_the_provider_side_withdrawal_is_unconfirmed_the_event_is_retried_and_nothing_is_fetched()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+        _provider.OnListConsents = _ => ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Fail(
+            ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        var (body, eventId) = Envelope("result.ready", ResultReadyData(attempt, Guid.NewGuid()));
+
+        var result = await Deliver(body, eventId, "result.ready");
+
+        Assert.Equal(WebhookOutcome.RetryLater, result.Outcome);
+        Assert.Equal("withdrawal_pending", result.Reason);
+        Assert.DoesNotContain("result", _provider.Calls);
+        Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    [Fact]
+    public async Task An_open_sitting_of_a_withdrawn_candidate_is_cancelled_at_the_provider_on_its_next_event()
+    {
+        var attempt = Attempt();
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+        var (body, eventId) = Envelope("assignment.started", new JsonObject { ["assignment_id"] = attempt.ProviderAssignmentId.ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.started");
+
+        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal([attempt.ProviderAssignmentId!.Value], _provider.Cancelled);
+        var row = _repository.Attempts.Single();
+        Assert.Equal(ProviderAttemptStates.Cancelled, row.State);
+        Assert.Null(row.LastErrorCode);
+        Assert.DoesNotContain("advance:in_progress", _repository.Writes);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_result_for_an_attempt_whose_results_are_stopped_is_never_fetched(bool withdrawn)
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        _repository.Attempts[0] = withdrawn
+            ? attempt with { WithdrawalState = ProviderWithdrawalStates.Done }
+            : attempt with { ErasureRequestedAt = Now };
+        var (body, eventId) = Envelope("result.ready", ResultReadyData(attempt, Guid.NewGuid()));
+
+        var result = await Deliver(body, eventId, "result.ready");
+
+        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal(withdrawn ? "consent_withdrawn" : "erasure_requested", result.Reason);
+        Assert.DoesNotContain("result", _provider.Calls);
+        Assert.Empty(_repository.StoredResults);
+    }
+
+    [Fact]
     public async Task An_unbound_tenant_and_an_unknown_event_type_are_acknowledged_and_ignored()
     {
         var (body, eventId) = Envelope("assignment.paused", new JsonObject());

@@ -70,7 +70,7 @@ public sealed class AssignProviderInstrumentsUseCaseTests
     public async Task Native_then_pca_for_one_candidate_works_when_the_org_enables_pca()
     {
         // The org's binding enables PCA, so the subject gets names and email from the FIRST assignment, even a native
-        // one: the provider never updates a subject, and a later PCA must find them there to be launchable.
+        // one: a later PCA then finds them there and needs no PATCH.
         await Assign(Input(("lia", null)));
         var pca = await Assign(Input(("pca", null)));
 
@@ -82,21 +82,119 @@ public sealed class AssignProviderInstrumentsUseCaseTests
     }
 
     [Fact]
-    public async Task A_pca_for_a_subject_the_provider_holds_without_names_is_refused_before_any_assignment()
+    public async Task A_pca_for_a_subject_the_provider_holds_without_names_enriches_it_with_patch_then_assigns()
     {
         // The subject was created while the org had no link-out instrument; PCA was enabled later. The provider returns
-        // the old subject unchanged, so the PCA would be unlaunchable (422 subject_data_required at launch).
+        // the old subject unchanged, so it is enriched with PATCH /v1/subjects/{id} (the contract's recovery path).
         _repository.Binding = _repository.Binding! with { EnabledInstruments = ["lia", "english"] };
         await Assign(Input(("lia", null)));
         _repository.Binding = _repository.Binding with { EnabledInstruments = ["lia", "english", "pca"] };
 
         var pca = await Assign(Input(("pca", null)));
 
+        Assert.Equal(ProviderAssignOutcome.Ok, pca.Outcome);
+        var (subjectId, update) = Assert.Single(_provider.SubjectUpdates);
+        Assert.Equal(_provider.SubjectId, subjectId);
+        Assert.Equal(new ProviderSubjectUpdate("Ana", "Pérez", "ana@example.com"), update);
+        Assert.True(_provider.Calls.IndexOf("update_subject") < _provider.Calls.IndexOf("assignment:pca"));
+        Assert.NotEqual(_provider.Subjects[0].Key, _provider.Subjects[1].Key); // a different body never reuses a key
+    }
+
+    [Fact]
+    public async Task A_pca_for_a_candidate_with_no_usable_email_is_refused_before_any_assignment()
+    {
+        _repository.Binding = _repository.Binding! with { EnabledInstruments = ["lia", "english"] };
+        await Assign(Input(("lia", null)));
+        _repository.Binding = _repository.Binding with { EnabledInstruments = ["lia", "english", "pca"] };
+        _repository.Context = _repository.Context with { CandidateEmail = "   " };
+
+        var pca = await Assign(Input(("pca", null)));
+
         Assert.Equal(ProviderAssignOutcome.Incomplete, pca.Outcome);
         Assert.Equal(ProviderAttemptStates.Cancelled, pca.Response!.Items[0].State);
         Assert.Equal(ProviderFailure.SubjectDataRequired, pca.Response.Items[0].Error);
+        Assert.Empty(_provider.SubjectUpdates);
         Assert.DoesNotContain("assignment:pca", _provider.Calls);
-        Assert.NotEqual(_provider.Subjects[0].Key, _provider.Subjects[1].Key); // a different body never reuses a key
+    }
+
+    [Fact]
+    public async Task A_failed_subject_patch_keeps_the_pca_pending_and_sends_no_assignment()
+    {
+        _repository.Binding = _repository.Binding! with { EnabledInstruments = ["lia", "english"] };
+        await Assign(Input(("lia", null)));
+        _repository.Binding = _repository.Binding with { EnabledInstruments = ["lia", "english", "pca"] };
+        _provider.OnUpdateSubject = _ => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(403, "insufficient_scope", false, []));
+
+        var pca = await Assign(Input(("pca", null)));
+
+        Assert.Equal(ProviderAttemptStates.PendingCreate, pca.Response!.Items[0].State);
+        Assert.Equal("insufficient_scope", pca.Response.Items[0].Error);
+        Assert.DoesNotContain("assignment:pca", _provider.Calls);
+    }
+
+    // ---- Owner default D11: an ambiguous pending_create is recovered by lookup, never by a second create ----------
+
+    [Fact]
+    public async Task A_create_that_succeeded_but_was_never_recorded_is_recovered_by_lookup_not_created_again()
+    {
+        // The provider created the assignment, but its answer was lost (a timeout): the attempt stays pending.
+        _provider.OnCreateAssignment = request =>
+        {
+            _provider.ByExternalRef[request.ExternalRef] = FakeProvider.Created(request).Value!;
+            return ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        };
+        var first = await Assign(Input(("lia", null)));
+        Assert.Equal(ProviderAttemptStates.PendingCreate, first.Response!.Items[0].State);
+        _provider.OnCreateAssignment = null;
+
+        // Days later (past the 24 h Idempotency-Key window) HR re-sends.
+        var retried = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAssignOutcome.Ok, retried.Outcome);
+        Assert.Equal(ProviderAttemptStates.Created, retried.Response!.Items[0].State);
+        Assert.Single(_provider.Assignments); // one create in total
+        Assert.Equal(1, _provider.Calls.Count(c => c == "lookup"));
+        var attempt = Assert.Single(_repository.Attempts);
+        Assert.Equal(_provider.ByExternalRef[attempt.Id.ToString()].AssignmentId, attempt.ProviderAssignmentId);
+    }
+
+    [Fact]
+    public async Task A_pending_attempt_the_provider_never_created_is_created_after_an_empty_lookup()
+    {
+        _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        await Assign(Input(("lia", null)));
+        _provider.OnCreateAssignment = null;
+
+        var retried = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAssignOutcome.Ok, retried.Outcome);
+        Assert.Equal(["lookup", "assignment:lia"], _provider.Calls.Where(c => c is "lookup" or "assignment:lia").Skip(1));
+    }
+
+    [Theory]
+    [InlineData(404, "not_found")]
+    [InlineData(null, ProviderFailure.Unavailable)]
+    public async Task A_failed_lookup_keeps_the_attempt_pending_and_never_creates(int? status, string code)
+    {
+        _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        await Assign(Input(("lia", null)));
+        _provider.OnCreateAssignment = null;
+        _provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Fail(new ProviderFailure(status, code, status is null, []));
+
+        var retried = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAttemptStates.PendingCreate, retried.Response!.Items[0].State);
+        Assert.Equal(code, retried.Response.Items[0].Error);
+        Assert.Single(_provider.Assignments); // only the first, failed create
+        Assert.Equal(ProviderAttemptStates.PendingCreate, Assert.Single(_repository.Attempts).State);
+    }
+
+    [Fact]
+    public async Task A_freshly_reserved_attempt_is_created_without_a_lookup()
+    {
+        await Assign(Input(("lia", null)));
+
+        Assert.DoesNotContain("lookup", _provider.Calls);
     }
 
     [Fact]

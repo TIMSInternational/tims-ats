@@ -21,6 +21,7 @@ using Tims.Application.CandidateConsent;
 using Tims.Infrastructure.CandidateConsent;
 using Tims.Application.AssessmentTypes;
 using Tims.Infrastructure.AssessmentTypes;
+using Tims.Application.Assessments.Providers;
 using Tims.Infrastructure.Assessments.Providers;
 using Tims.Api.Fx;
 using Tims.Api.AlertMetrics;
@@ -605,6 +606,20 @@ try
     // data_consents + data_subject_requests (efcoreStranglerWrite) and audit_logs in ONE context so a withdrawal and
     // its audit row share a transaction. Runs UNDER TenantScope; dark unless CandidateConsentEnabled.
     builder.Services.AddDbContext<CandidateConsentDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    // D15: with the provider connector ON (its migration applied), a #312 withdrawal stages the candidate's provider
+    // attempts in its own transaction and then propagates to the provider. OFF: neither runs, so the withdrawal never
+    // touches the provider tables (which may not exist yet).
+    if (builder.Configuration.GetValue<bool>("Platform:AssessmentProvidersEnabled"))
+    {
+        builder.Services.AddScoped<IConsentWithdrawalCascade, ProviderConsentWithdrawalCascade>();
+        builder.Services.AddScoped<IConsentWithdrawalPropagator, ProviderConsentWithdrawalPropagator>();
+    }
+    else
+    {
+        builder.Services.AddScoped<IConsentWithdrawalCascade, NoConsentWithdrawalCascade>();
+        builder.Services.AddScoped<IConsentWithdrawalPropagator, NoConsentWithdrawalPropagator>();
+    }
+
     builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
     builder.Services.AddScoped<CandidateConsentUseCase>();
     // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the
@@ -1606,6 +1621,7 @@ try
     {
         app.MapProviderAssignmentEndpoints();
         app.MapProviderCandidateEndpoints();
+        app.MapProviderSubjectRightsEndpoints();
     }
 
     // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service

@@ -74,7 +74,7 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return LaunchResult.Fail(LaunchOutcome.NotFound);
         }
 
-        if (context.ConsentWithdrawn)
+        if (context.ConsentWithdrawn || context.Attempt.WithdrawalState is not null)
         {
             return LaunchResult.Fail(LaunchOutcome.ConsentWithdrawn);
         }
@@ -129,6 +129,22 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         }
 
         var launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId.Value, cancellationToken).ConfigureAwait(false);
+        if (!launched.Ok && launched.Failure!.Code == ProviderFailure.SubjectDataRequired
+            && AssignProviderInstrumentsUseCase.SubjectUpdateFor(new AssignmentContext(
+                true, true, true, false, null, context.CandidateFirstName, context.CandidateLastName, context.CandidateEmail))
+                is { } update)
+        {
+            // A link-out sitting needs the subject's names and email (the provider creates it on the first launch). The
+            // contract's recovery path: PATCH the subject with them from the candidate record, then launch again, once.
+            var enriched = await _provider.UpdateSubjectAsync(attempt.ProviderSubjectId.Value, update, cancellationToken)
+                .ConfigureAwait(false);
+            if (enriched.Ok)
+            {
+                launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId.Value, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
         if (!launched.Ok)
         {
             var failure = launched.Failure!;

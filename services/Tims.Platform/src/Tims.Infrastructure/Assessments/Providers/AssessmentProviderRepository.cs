@@ -214,6 +214,12 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.ProviderSubjectId = assignment.SubjectId;
             attempt.ProviderAssignmentId = assignment.AssignmentId;
             attempt.LastErrorCode = ProviderCleanup.CancelPending;
+            if (attempt.WithdrawalState == ProviderWithdrawalStates.Done)
+            {
+                // A withdrawal already confirmed for this attempt: the new orphan re-opens its cascade (D15).
+                attempt.WithdrawalState = ProviderWithdrawalStates.Pending;
+            }
+
             attempt.UpdatedAt = now.UtcDateTime;
             AddAudit(organizationId, null, "assessment_provider_orphan_recorded", attempt.Id, new Dictionary<string, object?>
             {
@@ -357,11 +363,12 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
 
         var candidate = await _db.Candidates.AsNoTracking()
             .Where(c => c.Id == attempt.CandidateId && c.OrganizationId == organizationId)
-            .Select(c => new { c.Email, Active = c.IsActive && c.DeletedAt == null })
+            .Select(c => new { c.Email, c.FirstName, c.LastName, Active = c.IsActive && c.DeletedAt == null })
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
         var withdrawn = await IsWithdrawnAsync(organizationId, attempt.CandidateId, cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new LaunchContext(ToRow(attempt, isNew: false), candidate?.Email, candidate?.Active == true, withdrawn);
+        return new LaunchContext(ToRow(attempt, isNew: false), candidate?.Email, candidate?.Active == true, withdrawn,
+            candidate?.FirstName, candidate?.LastName);
     }
 
     public async Task AuditConsentCapturedAsync(
@@ -470,7 +477,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             ToOffset(r.CreatedAt)!.Value, r.TimeMultiplier, r.Applied)).ToList();
     }
 
-    private async Task<bool> IsWithdrawnAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
+    internal async Task<bool> IsWithdrawnAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
     {
         // (1) Direct: the candidate itself is the withdrawn subject.
         var direct = await _db.DataConsents.AsNoTracking()
@@ -516,7 +523,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
     private static AttemptRow ToRow(ProviderAttemptEntity a, bool isNew) =>
         new(a.Id, a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument, a.State, a.JobRelatednessReason, a.Locale,
             a.TimeMultiplier, a.Aids, ToOffset(a.RequestedExpiresAt), a.ProviderSubjectId, a.ProviderAssignmentId,
-            a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew);
+            a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
+            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt));
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

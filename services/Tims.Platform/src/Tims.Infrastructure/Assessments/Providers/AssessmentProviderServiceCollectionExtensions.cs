@@ -43,6 +43,8 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddScoped<LaunchProviderAttemptUseCase>();
         services.AddScoped<ProviderWebhookUseCase>();
         services.AddScoped<ProviderBindingUseCase>();
+        services.AddScoped<ProviderConsentWithdrawalUseCase>();
+        services.AddScoped<ProviderSubjectRightsUseCase>();
         services.AddScoped<IProviderAssessmentResultSource, ProviderAssessmentResultSource>();
         return services;
     }

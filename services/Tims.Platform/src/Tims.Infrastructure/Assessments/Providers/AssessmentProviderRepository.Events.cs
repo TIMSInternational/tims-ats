@@ -142,15 +142,24 @@ public sealed partial class AssessmentProviderRepository
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockSubjectAsync(result.SubjectId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attempt.Id, cancellationToken).ConfigureAwait(false);
+        // The per-candidate lock a #312 withdrawal holds while it stages this attempt (D15): once it is ours, a
+        // withdrawal either committed before (and is seen below) or waits until this write commits. Lock order
+        // subject -> attempt -> candidate, as everywhere a write takes more than one.
+        var candidateKey = attempt.CandidateId.ToString();
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({candidateKey}, 0))", cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
 
-        // Checked under the locks erasure also takes, on a fresh read, BEFORE anything is inserted: a result fetched
-        // before a subject.erased committed must not bring the erased scores back, whether the erasure already reached
-        // this attempt (state) or only its tombstone exists (an erasure that ran before the mapping committed).
+        // Checked under the locks erasure and withdrawal also take, on a fresh read, BEFORE anything is inserted: a
+        // result fetched before a subject.erased committed must not bring the erased scores back, whether the erasure
+        // already reached this attempt (state) or only its tombstone exists (an erasure that ran before the mapping
+        // committed); and nothing is stored once the candidate withdrew consent or an erasure was requested.
         var entity = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attempt.Id && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
         if (entity is null || entity.State is ProviderAttemptStates.Erased or ProviderAttemptStates.Cancelled
+            || entity.WithdrawalState is not null || entity.ProviderErasureRequestedAt is not null
+            || await IsWithdrawnAsync(organizationId, entity.CandidateId, cancellationToken).ConfigureAwait(false)
             || await IsSubjectErasedAsync(organizationId, result.SubjectId, cancellationToken).ConfigureAwait(false))
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -218,9 +227,6 @@ public sealed partial class AssessmentProviderRepository
         var superseded = false;
         if (restored == ProviderAttemptStates.ResultReady && !ProviderAttemptStates.IsOpen(entity.State))
         {
-            var candidateKey = entity.CandidateId.ToString();
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT pg_advisory_xact_lock(hashtextextended({candidateKey}, 0))", cancellationToken).ConfigureAwait(false);
             var open = ProviderAttemptStates.Open.ToList();
             superseded = await _db.Attempts.AsNoTracking()
                 .AnyAsync(a => a.OrganizationId == organizationId && a.Id != entity.Id && a.CandidateId == entity.CandidateId

@@ -163,7 +163,7 @@ public static class ProviderCandidateEndpoints
     }
 
     /// <summary>The raw request bytes (the signature covers them exactly), or null when empty or over the limit.</summary>
-    internal static async Task<byte[]?> ReadRawBodyAsync(HttpContext httpContext, int maxBytes, CancellationToken cancellationToken)
+    public static async Task<byte[]?> ReadRawBodyAsync(HttpContext httpContext, int maxBytes, CancellationToken cancellationToken)
     {
         if (httpContext.Request.ContentLength > maxBytes)
         {

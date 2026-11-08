@@ -69,12 +69,113 @@ internal sealed class FakeProvider : IAssessmentProvider
         return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(SubjectId, "active", hasNames)));
     }
 
+    public List<(Guid SubjectId, ProviderSubjectUpdate Update)> SubjectUpdates { get; } = [];
+
+    public Func<Guid, ProviderCall<ProviderSubject>>? OnUpdateSubject { get; set; }
+
+    // Like the real provider: merge semantics, so the subject holds names and email afterwards.
+    public Task<ProviderCall<ProviderSubject>> UpdateSubjectAsync(
+        Guid subjectId, ProviderSubjectUpdate update, CancellationToken cancellationToken)
+    {
+        Calls.Add("update_subject");
+        SubjectUpdates.Add((subjectId, update));
+        if (OnUpdateSubject is { } hook)
+        {
+            return Task.FromResult(hook(subjectId));
+        }
+
+        foreach (var key in SubjectHasNames.Keys.ToList())
+        {
+            SubjectHasNames[key] = true;
+        }
+
+        return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(subjectId, "active", true)));
+    }
+
+    public List<Guid> ErasedSubjects { get; } = [];
+
+    public Func<Guid, ProviderCall<ProviderErasureReceipt>>? OnEraseSubject { get; set; }
+
+    public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        Calls.Add("erase_subject");
+        ErasedSubjects.Add(subjectId);
+        return Task.FromResult(OnEraseSubject?.Invoke(subjectId)
+            ?? ProviderCall<ProviderErasureReceipt>.Success(new ProviderErasureReceipt(subjectId, "accepted")));
+    }
+
+    /// <summary>The consents each subject holds at the provider; a withdrawal marks one withdrawn.</summary>
+    public Dictionary<Guid, List<ProviderConsentRecord>> SubjectConsents { get; } = [];
+
+    public Func<Guid, ProviderCall<IReadOnlyList<ProviderConsentRecord>>>? OnListConsents { get; set; }
+
+    public Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        Calls.Add("list_consents");
+        if (OnListConsents is { } hook)
+        {
+            return Task.FromResult(hook(subjectId));
+        }
+
+        IReadOnlyList<ProviderConsentRecord> records = SubjectConsents.TryGetValue(subjectId, out var list) ? list.ToList() : [];
+        return Task.FromResult(ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success(records));
+    }
+
+    public List<(Guid SubjectId, Guid ConsentId)> WithdrawnConsents { get; } = [];
+
+    public Func<Guid, ProviderCall<ProviderConsentRecord>>? OnWithdrawConsent { get; set; }
+
+    public Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
+        Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken)
+    {
+        Calls.Add("withdraw_consent");
+        WithdrawnConsents.Add((subjectId, consentId));
+        if (OnWithdrawConsent is { } hook)
+        {
+            return Task.FromResult(hook(consentId));
+        }
+
+        if (SubjectConsents.TryGetValue(subjectId, out var list))
+        {
+            var index = list.FindIndex(c => c.ConsentId == consentId);
+            if (index >= 0)
+            {
+                list[index] = list[index] with { Status = "withdrawn" };
+            }
+        }
+
+        return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(consentId, "assessment", "withdrawn")));
+    }
+
+    /// <summary>What the provider holds per external_ref (D11 lookups). Filled by every successful create.</summary>
+    public Dictionary<string, ProviderAssignment> ByExternalRef { get; } = new(StringComparer.Ordinal);
+
+    public Func<string, ProviderCall<ProviderAssignmentLookup>>? OnLookup { get; set; }
+
+    public Task<ProviderCall<ProviderAssignmentLookup>> FindAssignmentByExternalRefAsync(
+        Guid tenantId, string externalRef, CancellationToken cancellationToken)
+    {
+        Calls.Add("lookup");
+        if (OnLookup is { } hook)
+        {
+            return Task.FromResult(hook(externalRef));
+        }
+
+        return Task.FromResult(ProviderCall<ProviderAssignmentLookup>.Success(
+            new ProviderAssignmentLookup(ByExternalRef.TryGetValue(externalRef, out var found) ? found : null)));
+    }
+
     public Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(
         ProviderAssignmentRequest request, string idempotencyKey, CancellationToken cancellationToken)
     {
         Calls.Add("assignment:" + request.Instrument);
         Assignments.Add((request, idempotencyKey));
         var answer = OnCreateAssignment?.Invoke(request) ?? Created(request);
+        if (answer.Ok && answer.Value!.ExternalRef is { } externalRef)
+        {
+            ByExternalRef[externalRef] = answer.Value;
+        }
+
         return Task.FromResult(answer);
     }
 
@@ -301,7 +402,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public Task<LaunchContext?> LoadLaunchContextAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken) =>
         Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId) is { } a
-            ? new LaunchContext(a, CandidateEmail, CandidateActive, LaunchWithdrawn)
+            ? new LaunchContext(a, CandidateEmail, CandidateActive, LaunchWithdrawn, "Ana", "Pérez")
             : null);
 
     public Task AuditConsentCapturedAsync(
@@ -402,6 +503,85 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public Task<string?> GetActiveOrganizationNameAsync(Guid organizationId, CancellationToken cancellationToken) =>
         Task.FromResult<string?>("INVU");
+
+    /// <summary>Candidates whose #312 consent is withdrawn (what StageConsentWithdrawalAsync's predicate sees).</summary>
+    public HashSet<Guid> WithdrawnCandidates { get; } = [];
+
+    // Mirrors ProviderWithdrawalSql: open attempts cancelled (mapped ones get the cleanup marker), all marked pending.
+    public Task<int> StageConsentWithdrawalAsync(
+        Guid organizationId, Guid candidateId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (!WithdrawnCandidates.Contains(candidateId))
+        {
+            return Task.FromResult(0);
+        }
+
+        var staged = 0;
+        foreach (var attempt in Attempts.Where(a => a.CandidateId == candidateId && a.WithdrawalState is null
+            && a.State != ProviderAttemptStates.Erased).ToList())
+        {
+            var cancellable = ProviderAttemptStates.IsCancellable(attempt.State);
+            Replace(attempt.Id, a => a with
+            {
+                State = cancellable ? ProviderAttemptStates.Cancelled : a.State,
+                LastErrorCode = cancellable && a.ProviderAssignmentId is not null ? ProviderCleanup.CancelPending : a.LastErrorCode,
+                WithdrawalState = ProviderWithdrawalStates.Pending,
+            });
+            staged++;
+        }
+
+        if (staged > 0)
+        {
+            Writes.Add("withdrawal_staged");
+        }
+
+        return Task.FromResult(staged);
+    }
+
+    public Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(Guid organizationId, int max, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AttemptRow>>(
+            Attempts.Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending).Take(max).ToList());
+
+    public Task<int> MarkWithdrawalDoneAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var moved = 0;
+        foreach (var id in attemptIds)
+        {
+            if (Attempts.FirstOrDefault(a => a.Id == id) is { WithdrawalState: ProviderWithdrawalStates.Pending } a
+                && a.LastErrorCode != ProviderCleanup.CancelPending)
+            {
+                Replace(id, x => x with { WithdrawalState = ProviderWithdrawalStates.Done });
+                moved++;
+            }
+        }
+
+        Writes.Add("withdrawal_done:" + moved);
+        return Task.FromResult(moved);
+    }
+
+    public Task<ProviderSubjectExport?> ExportCandidateAsync(
+        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        Task.FromResult<ProviderSubjectExport?>(new ProviderSubjectExport([], []));
+
+    public Task<IReadOnlyList<Guid>?> ListProviderSubjectsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>?>(candidateId != Candidate
+            ? null
+            : Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)
+                .Select(a => a.ProviderSubjectId!.Value).Distinct().ToList());
+
+    public Task MarkErasureRequestedAsync(
+        Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        Writes.Add("erasure_requested:" + receiptStatus);
+        foreach (var attempt in Attempts.Where(a => a.ProviderSubjectId == providerSubjectId).ToList())
+        {
+            Replace(attempt.Id, a => a with { ErasureRequestedAt = now });
+        }
+
+        return Task.CompletedTask;
+    }
 
     public AttemptRow AddCreatedAttempt(string instrument, string state = ProviderAttemptStates.Created, DateTimeOffset? expiresAt = null)
     {
