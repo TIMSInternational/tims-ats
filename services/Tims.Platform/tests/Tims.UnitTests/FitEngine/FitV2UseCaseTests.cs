@@ -17,7 +17,8 @@ namespace Tims.UnitTests.FitEngine;
 ///     failed or cancelled in-lock read writes nothing (the interleaving itself is pinned against real Postgres in
 ///     Tims.IntegrationTests/FitEngine/FitV2Tests);
 ///   weighting — the profile's assessment weight is split across scored instruments by their weights;
-///   a SCORED English result verifies the languages dimension (a gate never moves a number);
+///   a SCORED English result verifies the languages dimension and counts there only (owner default D3; a gate
+///     never moves a number);
 ///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
 ///   the composite source's order. (The ATS adapter and the provider stub live in Tims.Infrastructure and are
 ///   pinned in Tims.IntegrationTests/FitEngine/FitV2Tests.)
@@ -359,9 +360,9 @@ public sealed class FitV2UseCaseTests
         Assert.Equal(0.375, breakdown["assessments"]![1]!["effectiveWeight"]!.GetValue<double>());
     }
 
-    // ── a scored English result verifies languages ──
+    // ── a scored English result verifies languages, and counts there only (owner default D3) ──
     [Fact]
-    public async Task FlagOn_ScoredEnglishBelowTheMinimum_OverridesTheCvClaimInLanguages()
+    public async Task FlagOn_ScoredEnglishBelowTheMinimum_OverridesTheCvClaimInLanguages_AndCountsOnlyThere()
     {
         const string requirements =
             """{"requiredLanguages":["English"],"assessments":[{"instrument":"english","use":"scored","min":{"cefr":"B2"}}]}""";
@@ -371,8 +372,10 @@ public sealed class FitV2UseCaseTests
             .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
 
         var breakdown = SingleBreakdown(repo);
-        Assert.Equal(50, breakdown["assessment"]!.GetValue<double>()); // B1 vs B2 on the ladder: (2 + 1) / 6
+        Assert.Null(breakdown["assessment"]); // D3: English never enters the assessment dimension
         Assert.Equal(0, breakdown["languages"]!.GetValue<double>());
+        Assert.Equal(50, breakdown["assessments"]![0]!["score"]!.GetValue<double>()); // the ladder fit, shown only
+        Assert.Equal(0.2, breakdown["assessments"]![0]!["effectiveWeight"]!.GetValue<double>()); // languages 0.2 / 1
         Assert.Equal("assessment", breakdown["assessments"]![0]!["languagesEvidence"]!.GetValue<string>());
     }
 

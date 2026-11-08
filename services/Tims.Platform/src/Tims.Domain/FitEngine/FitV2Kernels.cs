@@ -43,9 +43,13 @@ namespace Tims.Domain.FitEngine;
 /// dimensions is null), and is also set when <see cref="FitV2Evaluation.ReviewPending"/> is (simulateWeights
 /// recomputes it from the five dimension keys only, so for such a row it can report false).</para>
 ///
-/// <para><b>English and the languages dimension.</b> When a SCORED english entry has a valid CEFR result, that
-/// result decides whether "English" counts as covered among <c>requiredLanguages</c> (achieved ≥ the entry's
-/// minimum), overriding the CV self-report for English only. Other languages still come from the CV. If the CV
+/// <para><b>English and the languages dimension (owner default D3, 2026-11-08: English counts once).</b> A SCORED
+/// english entry never enters the <c>assessment</c> dimension: its <c>weight</c> and <c>assessmentShare</c> are
+/// null and its <c>effectiveWeight</c> is English's share of the <c>languages</c> weight (that weight divided by
+/// the number of required languages). When the vacancy lists the test but not English among
+/// <c>requiredLanguages</c>, English is added to them. With a valid CEFR result, the result decides whether
+/// "English" counts as covered among <c>requiredLanguages</c> (achieved ≥ the entry's minimum), overriding the CV
+/// self-report for English only; without one the CV self-report stands, as in v1. Other languages still come from the CV. If the CV
 /// lists no languages and the vacancy also requires a non-English language, the dimension stays null as in v1 (a
 /// parser gap is not a missing language); if English is the only required language, the test alone decides. A
 /// GATE english entry never touches any dimension — not even languages — so a not-met gate cannot lower the
@@ -298,9 +302,23 @@ public static class FitV2Kernels
         JsonNode? candidateLanguages)
     {
         var assessmentWeight = profileWeights.TryGetValue("assessment", out var aw) ? aw : 0d;
+        var languagesWeight = profileWeights.TryGetValue("languages", out var lw) ? lw : 0d;
         var latest = SelectLatestPerInstrument(results);
 
-        var scored = requirements.Where(r => r.Use == FitInstrumentUses.Scored).ToList();
+        // Owner default D3 (2026-11-08): English counts ONCE, in the languages dimension. A scored English entry
+        // never enters the assessment mean; it decides English among the required languages, and English is added
+        // to them when the vacancy lists the test but not the language.
+        var englishScored = requirements.Any(r =>
+            r.Instrument == FitInstruments.English && r.Use == FitInstrumentUses.Scored);
+        if (englishScored && fitRequirements.RequiredLanguages?.Any(IsEnglish) != true)
+        {
+            fitRequirements = fitRequirements with
+            {
+                RequiredLanguages = [.. fitRequirements.RequiredLanguages ?? [], "English"],
+            };
+        }
+
+        var scored = requirements.Where(r => CountsInAssessment(r)).ToList();
         var useDeclaredWeights = scored.Count > 0 && scored.All(r => r.Weight is not null);
 
         var drafts = new List<Draft>(requirements.Count);
@@ -315,7 +333,7 @@ public static class FitV2Kernels
         var weighted = 0d;
         foreach (var draft in drafts)
         {
-            if (draft.Requirement.Use == FitInstrumentUses.Scored && draft.Score is { } score)
+            if (CountsInAssessment(draft.Requirement) && draft.Score is { } score)
             {
                 var w = RelativeWeight(draft.Requirement, useDeclaredWeights);
                 weightSum += w;
@@ -351,7 +369,12 @@ public static class FitV2Kernels
             double? share = null;
             double? effective = null;
             double? appliedWeight = null;
-            if (requirement.Use == FitInstrumentUses.Scored)
+            if (requirement.Instrument == FitInstruments.English && requirement.Use == FitInstrumentUses.Scored)
+            {
+                // D3: its weight is English's share of the languages dimension (one of the required languages).
+                effective = Round4(languagesWeight / fitRequirements.RequiredLanguages!.Count);
+            }
+            else if (requirement.Use == FitInstrumentUses.Scored)
             {
                 appliedWeight = useDeclaredWeights ? requirement.Weight : null;
                 if (draft.Score is not null && weightSum > 0)
@@ -590,6 +613,10 @@ public static class FitV2Kernels
             FitInstruments.NativeQuiz => result.NormalizedScore!.Value >= requirement.Min!.Score!.Value,
             _ => throw new InvalidOperationException($"instrument {requirement.Instrument} is never a gate"),
         };
+
+    // A scored entry other than English feeds the assessment dimension (English: D3, languages only).
+    private static bool CountsInAssessment(AssessmentRequirement requirement) =>
+        requirement.Use == FitInstrumentUses.Scored && requirement.Instrument != FitInstruments.English;
 
     private static double RelativeWeight(AssessmentRequirement requirement, bool useDeclaredWeights) =>
         useDeclaredWeights ? requirement.Weight!.Value : 1d;

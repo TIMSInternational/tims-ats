@@ -884,7 +884,7 @@
       }
     },
     {
-      "name": "English scored below the requirement: ladder score, and the test overrides the CV claim in languages",
+      "name": "English scored below the requirement (D3: English counts once, in languages): the test overrides the CV claim in languages and never enters the assessment mean",
       "input": {
         "fitRequirements": {
           "requiredLanguages": [
@@ -938,7 +938,7 @@
         ]
       },
       "expected": {
-        "assessment": 75,
+        "assessment": 100,
         "languages": 0,
         "reviewPending": false,
         "entries": [
@@ -948,9 +948,9 @@
             "status": "completed",
             "score": 50,
             "gate": null,
-            "weight": 2,
-            "assessmentShare": 0.5,
-            "effectiveWeight": 0.2,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": 0.1,
             "min": {
               "cefr": "B2"
             },
@@ -968,8 +968,8 @@
             "score": 100,
             "gate": null,
             "weight": 2,
-            "assessmentShare": 0.5,
-            "effectiveWeight": 0.2,
+            "assessmentShare": 1.0,
+            "effectiveWeight": 0.4,
             "min": {
               "globalPercentile": 40
             },
@@ -1107,7 +1107,7 @@
       }
     },
     {
-      "name": "an out-of-range or unknown result value is no_value, not a score",
+      "name": "an out-of-range or unknown result value is no_value, not a score (D3: the scored English entry still adds English to the required languages; with no CEFR the CV decides it)",
       "input": {
         "fitRequirements": {
           "assessments": [
@@ -1218,7 +1218,7 @@
             "gate": null,
             "weight": null,
             "assessmentShare": null,
-            "effectiveWeight": null,
+            "effectiveWeight": 0.1,
             "min": {
               "cefr": "B1"
             },
@@ -1227,7 +1227,7 @@
             "source": "provider",
             "contentVersion": null,
             "normVersion": null,
-            "languagesEvidence": null
+            "languagesEvidence": "cv"
           }
         ]
       }
@@ -1317,6 +1317,205 @@
             },
             "reason": null,
             "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "D3: a scored English test on a vacancy that does not list English adds English to the required languages (Spanish from the CV + English from the test → 100; effectiveWeight = languages weight / 2)",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "Spanish"
+          ],
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "scored",
+              "min": {
+                "cefr": "B2"
+              }
+            },
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              },
+              "weight": 2
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "C1"
+          },
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 40
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": [
+          "Spanish"
+        ]
+      },
+      "expected": {
+        "assessment": 100,
+        "languages": 100,
+        "reviewPending": false,
+        "entries": [
+          {
+            "instrument": "english",
+            "use": "scored",
+            "status": "completed",
+            "score": 100,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": 0.05,
+            "min": {
+              "cefr": "B2"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": "assessment"
+          },
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "completed",
+            "score": 100,
+            "gate": null,
+            "weight": 2,
+            "assessmentShare": 1.0,
+            "effectiveWeight": 0.4,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": "r-lia",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "D3: a scored English result awaiting review leaves the CV claim for English in languages, adds nothing to assessment, and marks the row reviewPending",
+      "input": {
+        "fitRequirements": {
+          "requiredLanguages": [
+            "English"
+          ],
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "scored",
+              "min": {
+                "cefr": "B2"
+              },
+              "weight": 2
+            },
+            {
+              "instrument": "lia",
+              "min": {
+                "globalPercentile": 40
+              },
+              "weight": 2
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "english",
+            "resultId": "r-en",
+            "source": "provider",
+            "integrity": "needs_review",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "cefr": "B1"
+          },
+          {
+            "instrument": "lia",
+            "resultId": "r-lia",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-10-01T00:00:00Z",
+            "globalPercentile": 40
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "languages": [
+          "English (C2)"
+        ]
+      },
+      "expected": {
+        "assessment": 100,
+        "languages": 100,
+        "reviewPending": true,
+        "entries": [
+          {
+            "instrument": "english",
+            "use": "scored",
+            "status": "needs_review",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": 0.1,
+            "min": {
+              "cefr": "B2"
+            },
+            "reason": null,
+            "resultId": "r-en",
+            "source": "provider",
+            "contentVersion": null,
+            "normVersion": null,
+            "languagesEvidence": "cv"
+          },
+          {
+            "instrument": "lia",
+            "use": "scored",
+            "status": "completed",
+            "score": 100,
+            "gate": null,
+            "weight": 2,
+            "assessmentShare": 1.0,
+            "effectiveWeight": 0.4,
+            "min": {
+              "globalPercentile": 40
+            },
+            "reason": null,
+            "resultId": "r-lia",
             "source": "provider",
             "contentVersion": null,
             "normVersion": null,
