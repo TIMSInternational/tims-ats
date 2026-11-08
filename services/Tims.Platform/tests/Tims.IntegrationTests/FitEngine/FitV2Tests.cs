@@ -19,7 +19,9 @@ namespace Tims.IntegrationTests.FitEngine;
 ///   the ATS native-quiz adapter — only assignments WITH a result, integrity from status + proctoring severity +
 ///     breakdown.pendingManual (a mixed choice/essay result awaiting manual grading is needs review),
 ///     an OrgB-stamped row for the same candidate/vacancy ids never returned, completedAt re-kinded UTC;
-///   the provider stub — returns nothing;
+///   the provider connector OFF (this fixture has no provider tables, as production before migration
+///     20261107232524): every v2 compute below runs without them, so the provider adapter must not be composed;
+///     FitV2ProviderTests covers the connector ON;
 ///   the flag — compute on VacFitV2 with FitEngineV2Enabled OFF writes the v1 breakdown (latest-of-any-type,
 ///     NULLS FIRST: 90 and 99), ON writes v2 (the flagged latest attempt is needs review and excluded; the
 ///     cancelled attempt is needs review; the valid 75 scores 100 against min 50), OFF again restores the v1
@@ -135,14 +137,6 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         Assert.Equal(FitEngineFixture.AsgV2Pending.ToString(), result.ResultId);
         Assert.Equal(100, result.NormalizedScore);
         Assert.Equal(ResultIntegrity.NeedsReview, result.Integrity);
-    }
-
-    [Fact]
-    public async Task ProviderStub_ReturnsNothing()
-    {
-        var results = await new ProviderAssessmentResultSource().GetResultsAsync(
-            FitEngineFixture.OrgA, FitEngineFixture.CandV2Valid, FitEngineFixture.VacFitV2, CancellationToken.None);
-        Assert.Empty(results);
     }
 
     // ── the flag, end to end ──

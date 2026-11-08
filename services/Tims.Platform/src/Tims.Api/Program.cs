@@ -672,15 +672,17 @@ try
     builder.Services.AddScoped<FitEngineReadUseCase>();
     builder.Services.AddDbContext<FitEngineWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IFitEngineWriteRepository, FitEngineWriteRepository>();
-    // FIT v2 result port: the ATS native-quiz tables first, then the provider stub (returns nothing until the
-    // TIMS Assessments connector exists). Read only when Platform:FitEngineV2Enabled is on.
+    // FIT v2 result port: the ATS native-quiz tables first, then the TIMS Assessments provider connector's stored
+    // results (AS-5). Read only when Platform:FitEngineV2Enabled is on. The provider adapter is composed ONLY with
+    // the connector ON: its tables (migration 20261107232524) exist only then, and a FIT v2 compute must never fail
+    // on a missing table. OFF: a provider instrument a vacancy lists shows as no_result.
     builder.Services.AddScoped<AtsAssessmentResultSource>();
-    builder.Services.AddScoped<ProviderAssessmentResultSource>();
+    builder.Services.AddScoped<ProviderFitResultSource>();
+    var providerResultsFeedFit = builder.Configuration.GetValue<bool>("Platform:AssessmentProvidersEnabled");
     builder.Services.AddScoped<IAssessmentResultSource>(sp => new CompositeAssessmentResultSource(
-    [
-        sp.GetRequiredService<AtsAssessmentResultSource>(),
-        sp.GetRequiredService<ProviderAssessmentResultSource>(),
-    ]));
+        providerResultsFeedFit
+            ? [sp.GetRequiredService<AtsAssessmentResultSource>(), sp.GetRequiredService<ProviderFitResultSource>()]
+            : [sp.GetRequiredService<AtsAssessmentResultSource>()]));
     builder.Services.AddScoped<FitEngineWriteUseCase>();
     builder.Services.AddScoped<IEssayGradingRepository, EssayGradingRepository>();
 
