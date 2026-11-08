@@ -35,6 +35,7 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
                     f.Id,
                     f.OverallScore,
                     f.Breakdown,
+                    f.Weights,
                     f.IsPartial,
                     f.CalculatedAt,
                     CandidateId = c.Id,
@@ -49,7 +50,7 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
         return rows
             .Select(r => new FitScoreForVacancyData(
                 r.Id, r.OverallScore, r.Breakdown, r.IsPartial, ToUtc(r.CalculatedAt), r.CandidateId, r.FirstName,
-                r.LastName))
+                r.LastName, r.Weights))
             .ToList();
     }
 

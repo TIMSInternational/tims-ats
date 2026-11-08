@@ -14,7 +14,8 @@ public sealed record FitScoreForVacancyData(
     DateTimeOffset CalculatedAt,
     Guid CandidateId,
     string FirstName,
-    string LastName);
+    string LastName,
+    string? Weights = null);
 
 /// <summary>One <c>role_family_weight_profiles</c> row — <c>Weights</c> is the raw jsonb.</summary>
 public sealed record WeightProfileData(Guid Id, string Name, string Weights);

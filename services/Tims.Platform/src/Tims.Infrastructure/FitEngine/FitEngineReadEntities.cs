@@ -19,6 +19,8 @@ public sealed class FitScoreReadEntity
 
     public string Breakdown { get; set; } = null!;
 
+    public string? Weights { get; set; }
+
     public bool IsPartial { get; set; }
 
     public DateTime CalculatedAt { get; set; }
