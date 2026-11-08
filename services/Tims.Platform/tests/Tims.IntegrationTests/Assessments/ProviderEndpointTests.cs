@@ -381,7 +381,9 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
         Assert.Equal("no-store", export.Headers.CacheControl?.ToString());
         Assert.Equal("lia", (await ReadJson(export)).GetProperty("attempts")[0].GetProperty("instrument").GetString());
         Assert.Equal(HttpStatusCode.Accepted, erasure.StatusCode);
-        Assert.Equal([subject], provider.ErasedSubjects);
+        // The recorded subject, plus the one the provider resolves for (tenant, candidate id) (this fake mints a new id).
+        Assert.Equal(2, provider.ErasedSubjects.Count);
+        Assert.Contains(subject, provider.ErasedSubjects);
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
         Assert.Equal(1L, await fixture.ScalarAsync(
             $"SELECT count(*) FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND provider_erasure_requested_at IS NOT NULL"));
