@@ -222,3 +222,30 @@ describe('essay grading (D5)', () => {
     expect(container.innerHTML).toBe('');
   });
 });
+
+describe('assessment results with the flag off', () => {
+  it('mounts no essay panel, so it needs no query client or permissions provider', async () => {
+    mocks.v2 = false;
+    mocks.essays = [{ questionId: '33333333-3333-4333-8333-333333333333', prompt: 'Explain A', answer: 'x', maxPoints: 2 }];
+    const { AssessmentResults } = await import(
+      '../../apps/web/app/(admin)/recruitment/candidates/[id]/assessment-results'
+    );
+    render(
+      <AssessmentResults
+        assignments={[
+          {
+            id: 'a1',
+            status: 'completed',
+            assignedAt: new Date(),
+            completedAt: new Date(),
+            assessmentType: { id: 't1', name: 'Quiz', code: 'quiz' },
+            result: { id: 'r1', normalizedScore: 80 },
+          },
+        ]}
+        fitScores={[]}
+      />,
+    );
+    expect(screen.queryByTestId('essay-grading-panel')).toBeNull();
+    mocks.v2 = true;
+  });
+});
