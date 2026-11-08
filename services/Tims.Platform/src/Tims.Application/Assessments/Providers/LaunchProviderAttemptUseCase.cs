@@ -38,8 +38,11 @@ public sealed record LaunchResult(LaunchOutcome Outcome, ProviderLaunch? Launch,
 /// <para>Gate order: identity → #312 withdrawn recruitment consent (409, checked on EVERY launch, not only at assign:
 /// TS never re-checked it at start) → launchable state → not expired → the per-purpose consents the candidate just
 /// gave are recorded at the provider (each with an ATS audit row whose id is the provider's <c>host_record_ref</c>) →
-/// launch. A provider <c>consent_required</c> comes back as the list of missing purposes for the portal to ask for.
-/// The candidate token is returned to the caller only and never stored or logged.</para>
+/// launch. A provider <c>consent_required</c> comes back as the list of missing purposes for the portal to ask for:
+/// the launch answers it for a LINK-OUT instrument (PCA), whose sitting has no session to gate. For a native instrument
+/// the provider checks consents when the browser starts the session (<c>POST /v1/sessions</c>), not here, so a launch
+/// with consents missing succeeds and the session start is refused. The candidate token is returned to the caller only
+/// and never stored or logged.</para>
 /// </summary>
 public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
 {

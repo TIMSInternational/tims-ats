@@ -23,12 +23,13 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 
 ## Routes (all dark)
 
-| Route                                                 | Who                                                    | Notes                                                                                                |
-| ----------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `POST /assessments/provider-assignments`              | staff, `assessment:create` plus the vacancy IDOR probe | 1–6 instruments, the reason for each, the accommodations, an optional expiry                         |
-| `POST /platform/assessment-providers/bindings`        | platform owner                                         | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments       |
-| `POST /portal/assessment-attempts/{attemptId}/launch` | the candidate, by confirmed email                      | Optional per-purpose consents. Returns the candidate token in the body only. Rate limit: `auth` tier |
-| `POST /webhooks/tims-assessments`                     | anonymous, HMAC                                        | `TIMS-Signature`, a 300 s replay window, de-duplication on `TIMS-Event-Id`                           |
+| Route                                                       | Who                                                                             | Notes                                                                                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /assessments/provider-assignments`                    | staff, `assessment:create` plus the vacancy IDOR probe                          | 1–6 instruments, the reason for each, the accommodations, an optional expiry. Each item echoes the locale, multiplier and aids in force |
+| `POST /assessments/provider-assignments/{attemptId}/cancel` | staff, `assessment:update` plus the vacancy IDOR probe on the attempt's vacancy | Cancels an attempt whose sitting has not finished, at the provider first. Unknown, foreign and out-of-scope ids are the same 404        |
+| `POST /platform/assessment-providers/bindings`              | platform owner                                                                  | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments                                          |
+| `POST /portal/assessment-attempts/{attemptId}/launch`       | the candidate, by confirmed email                                               | Optional per-purpose consents. Returns the candidate token in the body only. Rate limit: `auth` tier                                    |
+| `POST /webhooks/tims-assessments`                           | anonymous, HMAC                                                                 | `TIMS-Signature`, a 300 s replay window, de-duplication on `TIMS-Event-Id`                                                              |
 
 ## Hiring guardrails, and where each one is enforced
 
@@ -44,7 +45,10 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 - **Consent per purpose.**
   - The portal sends the purposes the candidate accepted.
   - Each one is recorded at the provider, with an `audit_logs` row whose id is the provider's `host_record_ref`.
-  - A provider `consent_required` answer returns the missing purposes.
+  - Where the gate is enforced is the provider's. For a **link-out** instrument (PCA) the launch itself answers
+    `consent_required`, and the ATS returns the missing purposes. For a **native** instrument the contract checks
+    consents when the candidate's browser starts the session (`POST /v1/sessions`), not at launch: the ATS launch
+    succeeds with consents missing and the provider refuses the session. The ATS does not pre-check them.
 - **No automatic rejection.** Nothing here rejects a candidate. Results feed FIT v2 as values or as `needs_review`.
 - **Server-authoritative timing and scoring; no keys on the wire.** These are the provider's job by contract.
   - The ATS stores only the typed result (percentile / CEFR / level, versions, validity) and the provider's `scores`
@@ -53,23 +57,32 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 - **Accommodations.**
   - Stored and sent: a `time_multiplier` from 1 to 3, and allowed `aids` codes.
   - Never stored or sent: a reason or a diagnosis.
+  - A re-send whose accommodation (or locale, or reason) differs from the open attempt's is a 409
+    `open_attempt_terms_differ` naming that attempt, never a 200 that keeps the old terms. HR cancels the attempt
+    (the cancel route) and assigns again. The expiry is not compared; the response echoes the one in force.
 - **Integrity.** `ProviderFitMapping` rules:
-  - Only a `valid` `selection` result on a `result_ready` attempt that is not flagged for review is `Valid`.
-  - Voided or review results are `NeedsReview`, with no value.
+  - One entry per instrument: the most recently assigned attempt that was not cancelled decides.
+  - Only a `valid` `selection` result on a `result_ready` attempt that is not flagged for review, sat at exactly the
+    time multiplier it was assigned with, is `Valid`.
+  - Voided or review results, and a multiplier mismatch, are `NeedsReview`, with no value.
   - `development` results are never reported.
 - **Visibility.** Results are fetched with `audience=tenant_hr`, and the provider enforces the level. A
   `result_not_visible` answer stores nothing.
-- **Audit.** Every write appends its `audit_logs` row in the same transaction. The cases:
-  - assign;
-  - a provider refusal;
+- **Audit.** Every write to an attempt, a result or a binding appends its `audit_logs` row in the same transaction.
+  The cases:
+  - assign (the reserve);
+  - the provider ids attached (`created`, or `erased` when a tombstone exists);
+  - a failed create, refused (cancelled) or still pending;
   - consent capture;
   - launch;
-  - each state change;
+  - each webhook state change;
   - a received result;
+  - a staff cancel;
   - an erasure;
   - a binding.
 
-  Metadata holds ids, versions and states only.
+  The webhook inbox is not audited row by row: it is itself the delivery record. Metadata holds ids, versions,
+  codes and states only.
 
 - **In-flight sessions.**
   - The provider pins the instrument and content version on the assignment.
@@ -81,9 +94,19 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   1. Reserve `pending_create` attempts in one transaction: all instruments or none. A partial unique index allows
      at most one open attempt per candidate + vacancy + instrument.
   2. Call the provider with `Idempotency-Key = ats-attempt-<attemptId>`.
-  3. On an outage, the attempt stays `pending_create`. Re-sending the same request replays the same key.
-  4. A 4xx refusal cancels the attempt.
+  3. Only a contract refusal that proves nothing was created (`ProviderFailure.IsDefinitiveRefusal`:
+     `invalid_request`, `not_found`, `vacancy_version_mismatch`, the 422 validation codes, ...) cancels the attempt.
+  4. Everything else keeps it `pending_create`, and re-sending the same request replays the same key: an outage, a
+     timeout, 429, 5xx, a concurrent request still creating it (409 `idempotency_key_in_use`), a reused key, an
+     off-contract 2xx, an unknown code.
+  5. A staff cancel of a `pending_create` attempt is local. If its create was in flight, the assign request (finding
+     the attempt cancelled) or a later webhook (on reconciliation) cancels the provider's assignment.
 - **Subject and tenant keys** carry a hash of the request body, because the contract rejects one key with two bodies.
+  A new key updates nothing: an existing subject comes back unchanged, and the contract has no subject update.
+- **Subject PII.** Names and email go to the provider for every subject of an org whose binding enables a link-out
+  instrument (PCA), and never otherwise. It cannot be decided per request: a subject first created for a native
+  instrument without names would make a later PCA unlaunchable (422 `subject_data_required`). A PCA whose provider
+  subject still lacks them (created before the org enabled PCA) is refused locally, before any assignment exists.
 - **Webhooks.**
   - The inbox row is unique on (org, event_id).
   - A transient failure answers 503, so the provider's 72 h retries are the queue.
@@ -91,17 +114,22 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - A result revision never overwrites a newer one.
   - An event for an unknown assignment is reconciled before it is ignored: `GET /v1/assignments/{id}` returns
     `external_ref` (the attempt id), so an attempt left in `pending_create` by a crash gets its provider id and the
-    event is applied. A provider outage during that check answers 503.
+    event is applied. An attempt the assign request mapped to this very assignment meanwhile is applied too. A
+    cancelled attempt with no provider ids means the assignment is an orphan, and it is cancelled at the provider. A
+    provider outage during that check answers 503.
 - **Locks, fresh reads, and the erasure tombstone.**
   - Every webhook write, the launch and the subject erasure of one attempt take the same
     `pg_advisory_xact_lock` on `assessment-provider-attempt:<id>`. Mapping (`MarkCreatedAsync`), result storage and
     erasure first take `assessment-provider-subject:<provider subject id>`, always before the attempt lock.
   - Under the lock, every write clears the request's EF change tracker and re-reads, so a value tracked before the
     lock (for example the `pending_create` row the reserve left) is never written back over a committed transition.
-  - A recorded `subject.erased` inbox row is the erasure tombstone. A mapping that commits after it leaves the attempt
+  - A recorded `subject.erased` inbox row is the erasure tombstone, matched on `lower(data->>'subject_id')` (the
+    payload is stored verbatim, and a UUID may arrive in any case). A mapping that commits after it leaves the attempt
     `erased`, and a result for that subject is never stored, even when the erasure ran before the attempt had its
     provider ids.
-  - A launch never rewinds a state a webhook already set.
+  - A launch or a staff cancel never rewinds a state a webhook already set.
+  - The subject lock's interleaving (an erasure racing a mapping) is argued, not tested: the tombstone tests are
+    sequential.
 
 ## Tables: migration `20261107232524_assessment_providers`
 
@@ -148,6 +176,16 @@ A blank value or the terraform placeholder makes the client unconfigured:
 `feat/fit-v2-per-instrument` was not merged when this was written. `IProviderAssessmentResultSource` has FIT v2's
 `IAssessmentResultSource` signature, and `ProviderInstrumentResult` has its `InstrumentResult` fields. Once both
 merge, its stub `ProviderAssessmentResultSource` becomes a one-to-one adapter over this port.
+
+## Known gaps (not done here)
+
+- A #312 withdrawal does not reach provider attempts. Results of a withdrawn candidate are still fetched and stored,
+  open provider assignments are not cancelled, and no provider consent withdrawal is sent. The launch's #312 check
+  runs outside the candidate lock. Needed before the flag is on.
+- The provider tables are not in the DSAR export, and nothing on the ATS side asks the provider to erase a subject
+  (`DELETE /v1/subjects/{id}`). Only a provider-initiated `subject.erased` reaches these tables.
+- The contract has no subject update, so names and email cannot be added to a subject created before its org enabled
+  PCA. Such a PCA is refused (`subject_data_required`) until the contract gains one.
 
 ## Owner steps, in order
 

@@ -430,7 +430,8 @@ public sealed class PlatformOptions
 
     /// <summary>
     /// AS-5: when true, the TIMS Assessments provider connector is mapped — POST /assessments/provider-assignments
-    /// (assessment:create + vacancy scope), POST /portal/assessment-attempts/{id}/launch (the candidate, by confirmed
+    /// (assessment:create + vacancy scope), POST /assessments/provider-assignments/{id}/cancel (assessment:update +
+    /// vacancy scope), POST /portal/assessment-attempts/{id}/launch (the candidate, by confirmed
     /// email), POST /webhooks/tims-assessments (signature-verified, anonymous) and
     /// POST /platform/assessment-providers/bindings (platform owner). Every instrument is a REMOTE provider behind the
     /// TIMS Assessments API v1; the ATS holds no items, keys, timing or scoring. Needs the four EF-owned tables of
