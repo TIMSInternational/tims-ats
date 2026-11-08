@@ -236,7 +236,9 @@ internal static class ProviderEndpointJson
 {
     public static async Task<(bool Ok, JsonNode? Node)> TryReadAsync(HttpContext httpContext, CancellationToken cancellationToken)
     {
-        if (httpContext.Request.ContentLength == 0)
+        // No body: Content-Length 0, or neither a length nor a content type (a bodiless POST, as HTTP/2 can send it).
+        var request = httpContext.Request;
+        if (request.ContentLength == 0 || (request.ContentLength is null && string.IsNullOrEmpty(request.ContentType)))
         {
             return (true, null);
         }

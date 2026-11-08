@@ -534,8 +534,8 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'Tims.IntegrationTests Assessments/ProviderEndpointTests (the real host over real Postgres with a fake provider: ' +
       'the dark flag, 401/403, the narrow-scope and cross-org vacancy 404 on assign and cancel, the platform-owner gate on ' +
       'bindings, the launch identity checks sub == confirmed identity, unconfirmed email, autoconfirm fail-closed, ' +
-      'and the webhook body cap), Tims.IntegrationTests Assessments (two-tenant RLS on the four tables, the lock and ' +
-      'tombstone interleavings, the typed client over a fake HTTP handler) and Tims.UnitTests Assessments/Providers ' +
+      'and the webhook body cap), Tims.IntegrationTests Assessments (two-tenant RLS on the four tables, the attempt-lock ' +
+      'interleavings, the erasure tombstone, the typed client over a fake HTTP handler) and Tims.UnitTests Assessments/Providers ' +
       '(signature + replay window, consent gate, #312 withdrawal at assign and launch, idempotency, result mapping).',
     routes: [
       'POST /assessments/provider-assignments',

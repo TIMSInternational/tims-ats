@@ -1,0 +1,526 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
+using Tims.Application.Assessments.Providers;
+using Tims.Application.CandidateConsent;
+using Tims.Application.PlatformInvitations;
+using Tims.Domain.Assessments.Providers;
+
+namespace Tims.IntegrationTests.Assessments;
+
+/// <summary>
+/// AS-5 route matrix over the REAL host + real Postgres (RLS forced, app_tenant), with a fake provider in place of
+/// the remote TIMS Assessments API. Pins what lives only in the endpoints: the dark flag, the staff gate (401/403),
+/// the vacancy scope probe (narrow scope and cross-org → 404, nothing written) on assign and cancel, the platform-owner
+/// gate on bindings, the launch's identity checks (sub must equal the confirmed identity, unconfirmed email, autoconfirm
+/// fail-closed) and the webhook's raw-body cap.
+/// </summary>
+[Collection("AssessmentProviderEndpoints")]
+public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
+{
+    private const string Issuer = "https://test-project.supabase.co/auth/v1";
+    private const string Audience = "authenticated";
+    private const string Assign = "/assessments/provider-assignments";
+    private const string Bindings = "/platform/assessment-providers/bindings";
+    private const string Webhook = "/webhooks/tims-assessments";
+    private const string WebhookSecret = "whsec_endpoint_test_value";
+
+    private static readonly RSA SigningRsa = RSA.Create(2048);
+    private static readonly RsaSecurityKey PrivateKey = new(SigningRsa) { KeyId = "assessment-provider-endpoint-test-key" };
+
+    private static string Cancel(Guid attempt) => $"{Assign}/{attempt}/cancel";
+
+    private static string Launch(Guid attempt) => $"/portal/assessment-attempts/{attempt}/launch";
+
+    private WebApplicationFactory<Program> Factory(
+        bool enabled = true, FakeProvider? provider = null, FakeIdentities? identities = null, bool requiresConfirmation = true) =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Platform:DatabaseConnectionString", fixture.ConnectionString);
+            builder.UseSetting("Platform:AssessmentProvidersEnabled", enabled ? "true" : "false");
+            builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
+            builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
+            var publicJwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(
+                new RsaSecurityKey(SigningRsa.ExportParameters(false)) { KeyId = PrivateKey.KeyId });
+            builder.ConfigureTestServices(services =>
+            {
+                services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+                {
+                    options.RequireHttpsMetadata = false;
+                    options.TokenValidationParameters.IssuerSigningKeys = [publicJwk];
+                });
+                services.RemoveAll<IAssessmentProvider>();
+                services.AddSingleton<IAssessmentProvider>(provider ?? new FakeProvider());
+                services.RemoveAll<IInvitationIdentityProvider>();
+                services.AddSingleton<IInvitationIdentityProvider>(identities ?? new FakeIdentities());
+                services.RemoveAll<IAuthSettingsProbe>();
+                services.AddSingleton<IAuthSettingsProbe>(new FakeAuthSettings(requiresConfirmation));
+            });
+        });
+
+    private static string Mint(string sub) => new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+    {
+        Issuer = Issuer,
+        Audience = Audience,
+        Subject = new ClaimsIdentity([new Claim("sub", sub)]),
+        Expires = DateTime.UtcNow.AddMinutes(10),
+        SigningCredentials = new SigningCredentials(PrivateKey, SecurityAlgorithms.RsaSha256),
+    });
+
+    private static Task<HttpResponseMessage> Send(HttpClient client, string path, object? body, string? token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path);
+        if (body is string raw)
+        {
+            request.Content = new StringContent(raw, Encoding.UTF8, "application/json");
+        }
+        else if (body is not null)
+        {
+            request.Content = JsonContent.Create(body);
+        }
+
+        if (token is not null)
+        {
+            request.Headers.Add("Authorization", $"Bearer {token}");
+        }
+
+        return client.SendAsync(request);
+    }
+
+    private static async Task<JsonElement> ReadJson(HttpResponseMessage response) =>
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
+
+    private static object AssignBody(Guid candidate, Guid vacancy, decimal multiplier = 1.5m) => new
+    {
+        candidateId = candidate,
+        vacancyId = vacancy,
+        instruments = new[] { new { instrument = "lia" } },
+        timeMultiplier = multiplier,
+        aids = new[] { "extended_breaks" },
+    };
+
+    private Task<object?> AttemptCount(Guid candidate) =>
+        fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_attempts WHERE candidate_id = '{candidate}'");
+
+    private Task<object?> State(Guid attempt) =>
+        fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'");
+
+    // ── Dark flag ────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DarkFlag_NoRouteIsMapped()
+    {
+        await using var factory = Factory(enabled: false);
+        using var client = factory.CreateClient();
+        var admin = Mint(ProviderEndpointFixture.AdminSub);
+
+        var responses = new[]
+        {
+            await Send(client, Assign, AssignBody(ProviderEndpointFixture.AssignCandidate, ProviderEndpointFixture.VacancyA), admin),
+            await Send(client, Cancel(ProviderEndpointFixture.GuardedAttempt), null, admin),
+            await Send(client, Bindings, new { organizationId = ProviderEndpointFixture.OrgC, instruments = Array.Empty<string>(), defaultLocale = "es" },
+                Mint(ProviderEndpointFixture.OwnerSub)),
+            await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, Mint("candidate-dark")),
+            await Send(client, Webhook, "{}", null),
+        };
+
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.NotFound, r.StatusCode));
+    }
+
+    // ── Assign ───────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Assign_Admin_Is200_EchoesTheTermsInForce_AndARetryWithOtherTermsIs409()
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+        var admin = Mint(ProviderEndpointFixture.AdminSub);
+        var candidate = ProviderEndpointFixture.TermsCandidate;
+
+        var first = await Send(client, Assign, AssignBody(candidate, ProviderEndpointFixture.VacancyA), admin);
+        var corrected = await Send(client, Assign, AssignBody(candidate, ProviderEndpointFixture.VacancyA, multiplier: 2m), admin);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var item = (await ReadJson(first)).GetProperty("items")[0];
+        Assert.Equal("created", item.GetProperty("state").GetString());
+        Assert.Equal(1.5m, item.GetProperty("timeMultiplier").GetDecimal());
+        Assert.Equal("extended_breaks", item.GetProperty("aids")[0].GetString());
+        Assert.Equal(HttpStatusCode.Conflict, corrected.StatusCode);
+        var conflict = await ReadJson(corrected);
+        Assert.Equal("open_attempt_terms_differ", conflict.GetProperty("error").GetString());
+        Assert.Equal(item.GetProperty("attemptId").GetString(), conflict.GetProperty("attempt").GetProperty("attemptId").GetString());
+        Assert.Equal(1.5m, conflict.GetProperty("attempt").GetProperty("timeMultiplier").GetDecimal());
+        Assert.Equal(1L, await AttemptCount(candidate));
+        Assert.Single(provider.Created);
+    }
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData(ProviderEndpointFixture.ReaderSub, HttpStatusCode.Forbidden)] // assessment:read only
+    [InlineData(ProviderEndpointFixture.OwnSub, HttpStatusCode.NotFound)] // own scope: the vacancy is not theirs
+    public async Task Assign_WithoutTheGrantOrTheVacancyInScope_WritesNothing(string? sub, HttpStatusCode expected)
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Assign, AssignBody(ProviderEndpointFixture.ScopeCandidate, ProviderEndpointFixture.VacancyA),
+            sub is null ? null : Mint(sub));
+
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal(0L, await AttemptCount(ProviderEndpointFixture.ScopeCandidate));
+        Assert.Empty(provider.Calls);
+    }
+
+    [Fact]
+    public async Task Assign_AnotherOrgsVacancy_Is404_AndWritesNothing()
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Assign, AssignBody(ProviderEndpointFixture.ScopeCandidate, ProviderEndpointFixture.VacancyB),
+            Mint(ProviderEndpointFixture.AdminSub));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(0L, await AttemptCount(ProviderEndpointFixture.ScopeCandidate));
+        Assert.Empty(provider.Calls);
+    }
+
+    [Fact]
+    public async Task Assign_AnonymousWithMalformedBody_Is401_NotA400()
+    {
+        await using var factory = Factory();
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Assign, "{not json", null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    // ── Cancel ───────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Cancel_Admin_CancelsAtTheProviderThenHere_WithAnAuditRow_AndIsIdempotent()
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+        var admin = Mint(ProviderEndpointFixture.AdminSub);
+
+        var response = await Send(client, Cancel(ProviderEndpointFixture.CancelAttempt), null, admin);
+        var again = await Send(client, Cancel(ProviderEndpointFixture.CancelAttempt), null, admin);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("cancelled", (await ReadJson(response)).GetProperty("state").GetString());
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Equal("cancelled", await State(ProviderEndpointFixture.CancelAttempt));
+        Assert.Single(provider.CancelledAssignments); // the repeat sends nothing more
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE entity_id = '{ProviderEndpointFixture.CancelAttempt}' AND action = 'assessment_provider_attempt_cancelled' AND actor_id = '{ProviderEndpointFixture.AdminId}'"));
+    }
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData(ProviderEndpointFixture.ReaderSub, HttpStatusCode.Forbidden)] // needs assessment:update
+    [InlineData(ProviderEndpointFixture.OwnSub, HttpStatusCode.NotFound)] // the attempt's vacancy is out of scope
+    [InlineData(ProviderEndpointFixture.OrgBSub, HttpStatusCode.NotFound)] // another org's attempt
+    public async Task Cancel_WithoutTheGrantOrTheAttemptInScope_ChangesNothing(string? sub, HttpStatusCode expected)
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Cancel(ProviderEndpointFixture.GuardedAttempt), null, sub is null ? null : Mint(sub));
+
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal("created", await State(ProviderEndpointFixture.GuardedAttempt));
+        Assert.Empty(provider.Calls);
+    }
+
+    [Fact]
+    public async Task Cancel_AnotherOrgsAttemptOrAnUnknownId_IsTheSame404()
+    {
+        await using var factory = Factory();
+        using var client = factory.CreateClient();
+        var admin = Mint(ProviderEndpointFixture.AdminSub);
+
+        var foreign = await Send(client, Cancel(ProviderEndpointFixture.OrgBAttempt), null, admin);
+        var unknown = await Send(client, Cancel(Guid.NewGuid()), null, admin);
+
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal(await foreign.Content.ReadAsStringAsync(), await unknown.Content.ReadAsStringAsync());
+        Assert.Equal("created", await State(ProviderEndpointFixture.OrgBAttempt));
+    }
+
+    // ── Bindings (platform owner) ────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData(ProviderEndpointFixture.AdminSub, HttpStatusCode.Forbidden)] // an org admin is not the platform owner
+    public async Task Bindings_OnlyThePlatformOwner(string? sub, HttpStatusCode expected)
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+
+        // OrgA is bound to TenantA with lia + english: the refused request would re-point it.
+        var response = await Send(client, Bindings,
+            new { organizationId = ProviderEndpointFixture.OrgA, instruments = new[] { "lia", "english", "itcia" }, defaultLocale = "en" },
+            sub is null ? null : Mint(sub));
+
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Empty(provider.Calls);
+        Assert.Equal("lia,english|es", await fixture.ScalarAsync(
+            $"SELECT array_to_string(enabled_instruments, ',') || '|' || default_locale FROM assessment_provider_bindings WHERE organization_id = '{ProviderEndpointFixture.OrgA}'"));
+    }
+
+    [Fact]
+    public async Task Bindings_ThePlatformOwnerBindsAnOrg()
+    {
+        await using var factory = Factory();
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Bindings,
+            new { organizationId = ProviderEndpointFixture.OrgC, instruments = new[] { "lia" }, defaultLocale = "es" },
+            Mint(ProviderEndpointFixture.OwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("lia", await fixture.ScalarAsync(
+            $"SELECT array_to_string(enabled_instruments, ',') FROM assessment_provider_bindings WHERE organization_id = '{ProviderEndpointFixture.OrgC}'"));
+    }
+
+    // ── Launch (the candidate, by confirmed email) ──────────────────────────────────────
+
+    [Fact]
+    public async Task Launch_ConfirmedEmailOfTheAttemptsCandidate_GetsTheTokenInANoStoreBody()
+    {
+        const string sub = "candidate-luz";
+        var identities = new FakeIdentities();
+        var token = Mint(sub);
+        identities.Confirmed[token] = new SetupIdentity(sub, "LUZ@a.example");
+        await using var factory = Factory(identities: identities);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal(FakeProvider.CandidateToken, (await ReadJson(response)).GetProperty("candidateToken").GetString());
+    }
+
+    [Fact]
+    public async Task Launch_AnIdentityForAnotherSubject_Is403()
+    {
+        var identities = new FakeIdentities();
+        var token = Mint("candidate-a");
+        identities.Confirmed[token] = new SetupIdentity("candidate-b", ProviderEndpointFixture.LaunchEmail);
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider, identities: identities);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, token);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(provider.Calls);
+    }
+
+    [Fact]
+    public async Task Launch_AnUnconfirmedEmail_Is403()
+    {
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider, identities: new FakeIdentities()); // no confirmed identity
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, Mint("candidate-unconfirmed"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("email_not_verified", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Empty(provider.Calls);
+    }
+
+    [Fact]
+    public async Task Launch_WithAutoconfirmOn_Is503_BeforeTheIdentityIsEvenAsked()
+    {
+        var identities = new FakeIdentities();
+        var token = Mint("candidate-auto");
+        identities.Confirmed[token] = new SetupIdentity("candidate-auto", ProviderEndpointFixture.LaunchEmail);
+        await using var factory = Factory(identities: identities, requiresConfirmation: false);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, token);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(0, identities.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task Launch_AnotherEmailOrNoToken_IsNotFoundOr401()
+    {
+        var identities = new FakeIdentities();
+        var token = Mint("candidate-other");
+        identities.Confirmed[token] = new SetupIdentity("candidate-other", "someone@a.example");
+        await using var factory = Factory(identities: identities);
+        using var client = factory.CreateClient();
+
+        var other = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, token);
+        var anonymous = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, null);
+
+        Assert.Equal(HttpStatusCode.NotFound, other.StatusCode); // never 403: no oracle on attempt ids
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+    }
+
+    // ── Webhook ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Webhook_ASignedEventIsAccepted_AndABodyOverTheCapIsRejectedUnread()
+    {
+        await using var factory = Factory();
+        using var client = factory.CreateClient();
+        var eventId = Guid.NewGuid();
+        var body = $$"""{"event_id":"{{eventId}}","event_type":"subject.erased","event_version":1,"occurred_at":"2026-11-09T14:38:06Z","producer":"tims-assessments","tenant_id":"{{ProviderEndpointFixture.TenantA}}","data":{"subject_id":"{{Guid.NewGuid()}}" """
+            + "}}";
+
+        var signed = await SendWebhook(client, Encoding.UTF8.GetBytes(body), eventId, "subject.erased");
+        var oversized = Encoding.UTF8.GetBytes(body + new string(' ', ProviderWebhookUseCase.MaxBodyBytes));
+        var tooLarge = await SendWebhook(client, oversized, eventId, "subject.erased");
+
+        Assert.Equal(HttpStatusCode.OK, signed.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, tooLarge.StatusCode);
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_webhook_inbox WHERE event_id = '{eventId}'"));
+    }
+
+    private static Task<HttpResponseMessage> SendWebhook(HttpClient client, byte[] body, Guid eventId, string type)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, Webhook) { Content = new ByteArrayContent(body) };
+        request.Content.Headers.ContentType = new("application/json");
+        request.Headers.Add(WebhookSignature.HeaderName,
+            WebhookSignature.BuildHeader(WebhookSecret, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), body));
+        request.Headers.Add("TIMS-Event-Id", eventId.ToString());
+        request.Headers.Add("TIMS-Event-Type", type);
+        return client.SendAsync(request);
+    }
+
+    /// <summary>The remote TIMS Assessments API, faked: canned success answers and a record of every call.</summary>
+    private sealed class FakeProvider : IAssessmentProvider
+    {
+        public const string CandidateToken = "test-candidate-token-xxxxxxxxxxxxxxxxxxxxxxxx";
+
+        public ConcurrentQueue<string> Calls { get; } = new();
+
+        public ConcurrentQueue<Guid> Created { get; } = new();
+
+        public ConcurrentQueue<Guid> CancelledAssignments { get; } = new();
+
+        public bool IsConfigured => true;
+
+        public Task<ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>> ListInstrumentsAsync(CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("catalog");
+            IReadOnlyList<ProviderCatalogInstrument> catalog = ProviderInstruments.All
+                .Select(i => new ProviderCatalogInstrument(i, [new ProviderCatalogVersion("1.0", "ga", "native", true, ["es"], ["assessment"])]))
+                .ToList();
+            return Task.FromResult(ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>.Success(catalog));
+        }
+
+        public Task<ProviderCall<ProviderTenant>> EnsureTenantAsync(
+            ProviderTenantRequest request, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("tenant");
+            return Task.FromResult(ProviderCall<ProviderTenant>.Success(new ProviderTenant(Guid.NewGuid(), request.ExternalOrgRef, "active")));
+        }
+
+        public Task<ProviderCall<ProviderSubject>> EnsureSubjectAsync(
+            ProviderSubjectRequest request, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("subject");
+            return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(Guid.NewGuid(), "active")));
+        }
+
+        public Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(
+            ProviderAssignmentRequest request, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("assignment");
+            var id = Guid.NewGuid();
+            Created.Enqueue(id);
+            return Task.FromResult(ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+                id, request.TenantId, request.SubjectId, request.Instrument, "1.0", "content-1", "created", ["assessment"],
+                ["assessment"], DateTimeOffset.UtcNow.AddDays(14), request.ExternalRef)));
+        }
+
+        public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("get_assignment");
+            return Task.FromResult(ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])));
+        }
+
+        public Task<ProviderCall<ProviderAssignment>> CancelAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("cancel");
+            CancelledAssignments.Enqueue(assignmentId);
+            return Task.FromResult(ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+                assignmentId, ProviderEndpointFixture.TenantA, Guid.NewGuid(), "lia", "1.0", "content-1", "cancelled",
+                ["assessment"], [], DateTimeOffset.UtcNow.AddDays(14))));
+        }
+
+        public Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
+            Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("consent");
+            return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active")));
+        }
+
+        public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("launch");
+            return Task.FromResult(ProviderCall<ProviderLaunch>.Success(new ProviderLaunch(
+                "native", CandidateToken, DateTimeOffset.UtcNow.AddHours(2), "https://assessments.test", null)));
+        }
+
+        public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("result");
+            return Task.FromResult(ProviderCall<ParsedProviderResult>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true)));
+        }
+
+        public WebhookSignatureCheck VerifyWebhook(string? signatureHeader, ReadOnlySpan<byte> rawBody, DateTimeOffset now) =>
+            WebhookSignature.Verify(signatureHeader, rawBody, [WebhookSecret], now);
+    }
+
+    /// <summary>Stands in for Supabase's /auth/v1/user: a token maps to a CONFIRMED identity, or to nothing.</summary>
+    private sealed class FakeIdentities : IInvitationIdentityProvider
+    {
+        private int _verifyCalls;
+
+        public ConcurrentDictionary<string, SetupIdentity> Confirmed { get; } = new(StringComparer.Ordinal);
+
+        public int VerifyCalls => _verifyCalls;
+
+        public Task<bool> CreateAsync(string email, string password, CancellationToken ct) => Task.FromResult(false);
+
+        public Task<SetupIdentity?> VerifyAsync(string accessToken, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _verifyCalls);
+            return Task.FromResult(Confirmed.TryGetValue(accessToken, out var identity) ? identity : null);
+        }
+    }
+
+    private sealed record FakeAuthSettings(bool RequiresConfirmation) : IAuthSettingsProbe
+    {
+        public Task<bool> RequiresEmailConfirmationAsync(CancellationToken cancellationToken) => Task.FromResult(RequiresConfirmation);
+    }
+}
