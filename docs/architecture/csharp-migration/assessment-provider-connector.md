@@ -99,10 +99,14 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   4. Everything else keeps it `pending_create`, and re-sending the same request replays the same key: an outage, a
      timeout, 429, 5xx, a concurrent request still creating it (409 `idempotency_key_in_use`), a reused key, an
      off-contract 2xx, an unknown code.
-  5. A staff cancel of a `pending_create` attempt is local. If its create was in flight, the assign request (finding
-     the attempt cancelled) or a later webhook (on reconciliation) cancels the provider's assignment. A local cancel
-     lands only while the attempt still names the provider assignment the caller cancelled (or none): if the create
-     was answered between the caller's read and its lock, that assignment is cancelled at the provider first.
+  5. A staff cancel of a `pending_create` attempt is local. A local cancel lands only while the attempt still names
+     the provider assignment the caller cancelled (or none): if the create was answered between the caller's read
+     and its lock, that assignment is cancelled at the provider first.
+  6. If the create was still in flight when the attempt was cancelled, its answer is recorded on the cancelled
+     attempt (provider ids, `last_error_code = provider_cancel_pending`, audited) and cancelled at the provider. Only
+     a confirmed cancel (or a 404/410) clears the marker. Until then the staff cancel route retries it (503 while the
+     provider is down) and so does any webhook for that assignment (503 to the sender, which redelivers). A crash
+     before the answer was recorded is caught by reconciliation instead.
 - **Subject and tenant keys** carry a hash of the request body, because the contract rejects one key with two bodies.
   A new key updates nothing: an existing subject comes back unchanged, and the contract has no subject update.
 - **Subject PII.** Names and email go to the provider for every subject of an org whose binding enables a link-out
@@ -114,8 +118,9 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - A transient failure answers 503, so the provider's 72 h retries are the queue.
   - Lifecycle events move an attempt forward only (`ProviderAttemptStates.CanTransition`).
   - A result revision never overwrites a newer one. A corrected (non-voided) revision for a voided or expired attempt
-    restores it, unless HR already re-assigned the instrument: then the revision is kept and the attempt is not
-    reopened (the replacement holds the one open slot).
+    restores it, unless a newer attempt that was not cancelled exists (HR re-assigned the instrument, whatever became
+    of the replacement since): then the revision is kept and the attempt is not reopened. This is FIT's rule for the
+    current attempt.
   - An event for an unknown assignment is reconciled before it is ignored: `GET /v1/assignments/{id}` returns
     `external_ref` (the attempt id), so an attempt left in `pending_create` by a crash gets its provider id and the
     event is applied. An attempt the assign request mapped to this very assignment meanwhile is applied too. A
