@@ -77,6 +77,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         ArgumentNullException.ThrowIfNull(attempts);
         var timestamp = now.UtcDateTime;
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
 
         // The lock CandidateConsentRepository.WithdrawOneAsync and the FIT upsert take for this candidate.
         var lockKey = candidateId.ToString();
@@ -149,19 +150,26 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         return new ReserveOutcome(false, rows);
     }
 
-    public async Task MarkCreatedAsync(
+    public async Task<string?> MarkCreatedAsync(
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(assignment);
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // Subject lock, then attempt lock (the order erasure and result storage use too), then a FRESH read: the
+        // request's context may still track this attempt from ReserveAttemptsAsync with its pre-lock state.
+        await LockSubjectAsync(assignment.SubjectId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
         if (attempt is not null && attempt.State == ProviderAttemptStates.PendingCreate)
         {
-            attempt.State = ProviderAttemptStates.Created;
+            // A subject.erased for this provider subject was already recorded (its inbox row is the tombstone): the
+            // mapping is attached so the attempt stays traceable, but the attempt is erased, never usable.
+            var erased = await IsSubjectErasedAsync(organizationId, assignment.SubjectId, cancellationToken).ConfigureAwait(false);
+            attempt.State = erased ? ProviderAttemptStates.Erased : ProviderAttemptStates.Created;
             attempt.ProviderSubjectId = assignment.SubjectId;
             attempt.ProviderAssignmentId = assignment.AssignmentId;
             attempt.InstrumentVersion = assignment.InstrumentVersion;
@@ -170,10 +178,17 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.ExpiresAt = assignment.ExpiresAt.UtcDateTime;
             attempt.LastErrorCode = null;
             attempt.UpdatedAt = now.UtcDateTime;
+            if (erased)
+            {
+                AddAudit(organizationId, null, "assessment_provider_attempt_erased_on_create", attempt.Id,
+                    new Dictionary<string, object?> { ["instrument"] = attempt.Instrument });
+            }
+
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return attempt?.State;
     }
 
     public async Task MarkCreateFailedAsync(
@@ -182,6 +197,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
@@ -277,6 +293,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);

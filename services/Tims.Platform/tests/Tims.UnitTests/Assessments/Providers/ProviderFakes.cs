@@ -178,7 +178,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult(new ReserveOutcome(false, rows));
     }
 
-    public Task MarkCreatedAsync(
+    public Task<string?> MarkCreatedAsync(
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add("created");
@@ -191,7 +191,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             RequiredConsents = assignment.RequiredConsents,
             ExpiresAt = assignment.ExpiresAt,
         });
-        return Task.CompletedTask;
+        return Task.FromResult<string?>(ProviderAttemptStates.Created);
     }
 
     public Task MarkCreateFailedAsync(

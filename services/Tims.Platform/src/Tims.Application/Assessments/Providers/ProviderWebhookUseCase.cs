@@ -248,6 +248,7 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
         var matches = result.ResultId == resultId
             && result.TenantId == envelope.ProviderTenantId
             && result.AssignmentId == attempt.ProviderAssignmentId
+            && result.SubjectId == attempt.ProviderSubjectId
             && result.Instrument == attempt.Instrument
             && result.Purpose == "selection"
             && result.ExternalVacancyRef == attempt.VacancyId.ToString()

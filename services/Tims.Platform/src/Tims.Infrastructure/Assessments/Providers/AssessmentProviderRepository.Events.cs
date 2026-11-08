@@ -94,6 +94,7 @@ public sealed partial class AssessmentProviderRepository
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
@@ -134,14 +135,18 @@ public sealed partial class AssessmentProviderRepository
         ArgumentNullException.ThrowIfNull(result);
         var timestamp = now.UtcDateTime;
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await LockSubjectAsync(result.SubjectId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attempt.Id, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
 
-        // Checked under the lock erasure also takes, BEFORE anything is inserted: a result fetched before a
-        // subject.erased committed must not bring the erased scores back.
+        // Checked under the locks erasure also takes, on a fresh read, BEFORE anything is inserted: a result fetched
+        // before a subject.erased committed must not bring the erased scores back, whether the erasure already reached
+        // this attempt (state) or only its tombstone exists (an erasure that ran before the mapping committed).
         var entity = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attempt.Id && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
-        if (entity is null || entity.State is ProviderAttemptStates.Erased or ProviderAttemptStates.Cancelled)
+        if (entity is null || entity.State is ProviderAttemptStates.Erased or ProviderAttemptStates.Cancelled
+            || await IsSubjectErasedAsync(organizationId, result.SubjectId, cancellationToken).ConfigureAwait(false))
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
             return false;
@@ -224,6 +229,11 @@ public sealed partial class AssessmentProviderRepository
         Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // The subject lock first: a mapping (MarkCreatedAsync) or result write for this subject either committed
+        // before the lookup below (and is found) or runs after and sees the tombstone, the inbox row recorded before
+        // this method runs.
+        await LockSubjectAsync(providerSubjectId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
         var ids = await _db.Attempts.AsNoTracking()
             .Where(a => a.OrganizationId == organizationId && a.ProviderSubjectId == providerSubjectId)
             .OrderBy(a => a.Id)
@@ -321,6 +331,29 @@ public sealed partial class AssessmentProviderRepository
             .Where(o => o.Id == organizationId && o.IsActive && o.DeletedAt == null)
             .Select(o => o.Name)
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
+    // Serializes mapping, result storage and erasure of one provider subject. Always taken BEFORE an attempt lock.
+    private Task LockSubjectAsync(Guid providerSubjectId, CancellationToken cancellationToken)
+    {
+        var key = "assessment-provider-subject:" + providerSubjectId.ToString();
+        return _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", cancellationToken);
+    }
+
+    // The erasure tombstone: a recorded (signature-verified) subject.erased inbox row for this subject, whatever its
+    // processing status. Rows are never deleted by app_tenant.
+    private Task<bool> IsSubjectErasedAsync(Guid organizationId, Guid providerSubjectId, CancellationToken cancellationToken)
+    {
+        var subject = providerSubjectId.ToString();
+        return _db.Database.SqlQuery<bool>(
+                $"""
+                 SELECT EXISTS (
+                     SELECT 1 FROM assessment_provider_webhook_inbox
+                      WHERE organization_id = {organizationId} AND event_type = 'subject.erased'
+                        AND data->>'subject_id' = {subject}) AS "Value"
+                 """)
+            .SingleAsync(cancellationToken);
+    }
 
     // Serializes every lifecycle/result write of one attempt (unordered, possibly concurrent webhook deliveries).
     private Task LockAttemptAsync(Guid attemptId, CancellationToken cancellationToken)

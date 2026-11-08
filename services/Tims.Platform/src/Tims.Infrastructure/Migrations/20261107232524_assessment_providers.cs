@@ -233,6 +233,12 @@ namespace Tims.Infrastructure.Migrations
                 columns: new[] { "organization_id", "event_id" },
                 unique: true);
 
+            // The erasure tombstone lookup (AssessmentProviderRepository.IsSubjectErasedAsync): a recorded
+            // subject.erased event for a provider subject. An expression index EF cannot model, so raw SQL.
+            migrationBuilder.Sql(
+                "CREATE INDEX ix_assessment_provider_webhook_inbox_erased_subject ON assessment_provider_webhook_inbox " +
+                "(organization_id, (data->>'subject_id')) WHERE event_type = 'subject.erased';");
+
             // All four tables are ORG-SCOPED and EF-OWNED → ship RLS with the tables (WP1.7 governance rail):
             // ENABLE + FORCE + the fail-closed tenant_isolation policy (USING doubles as WITH CHECK).
             migrationBuilder.EnableTenantRls("assessment_provider_bindings");

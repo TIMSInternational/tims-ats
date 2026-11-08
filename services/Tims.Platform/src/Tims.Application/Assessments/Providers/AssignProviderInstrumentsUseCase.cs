@@ -211,9 +211,10 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
                 .ConfigureAwait(false);
         }
 
-        await _repository.MarkCreatedAsync(organizationId, attempt.Id, assignment, now, cancellationToken).ConfigureAwait(false);
+        var state = await _repository.MarkCreatedAsync(organizationId, attempt.Id, assignment, now, cancellationToken)
+            .ConfigureAwait(false);
         return new ProviderAssignItem(
-            attempt.Id.ToString(), attempt.Instrument, ProviderAttemptStates.Created, assignment.InstrumentVersion,
+            attempt.Id.ToString(), attempt.Instrument, state ?? ProviderAttemptStates.Created, assignment.InstrumentVersion,
             assignment.RequiredConsents, FormatTimestamp(assignment.ExpiresAt), null);
     }
 

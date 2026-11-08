@@ -28,7 +28,12 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid actorId, ProviderBindingRow binding, Guid candidateId, Guid vacancyId,
         IReadOnlyList<NewAttempt> attempts, DateTimeOffset now, CancellationToken cancellationToken);
 
-    Task MarkCreatedAsync(
+    /// <summary>
+    /// Attaches the provider's ids to a <c>pending_create</c> attempt and returns the attempt's state afterwards:
+    /// <c>created</c>, <c>erased</c> when a <c>subject.erased</c> for that provider subject was already recorded, or
+    /// whatever state a concurrent writer left (only <c>pending_create</c> is ever changed). Null when not found.
+    /// </summary>
+    Task<string?> MarkCreatedAsync(
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now,
         CancellationToken cancellationToken);
 

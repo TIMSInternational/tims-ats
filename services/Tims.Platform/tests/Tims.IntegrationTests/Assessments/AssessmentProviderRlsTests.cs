@@ -347,4 +347,82 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
 
         Assert.Equal("completed", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
+
+    private static ProviderAssignment AssignmentFor(Guid attempt, Guid subject) => new(
+        Guid.NewGuid(), AssessmentProviderSchemaFixture.TenantA, subject, "lia", "1.0", "content-1", "created", ["assessment"],
+        ["assessment"], DateTimeOffset.UtcNow.AddDays(14), attempt.ToString());
+
+    private Task InsertErasureTombstoneAsync(Guid subject)
+    {
+        var data = "{\"subject_id\":\"" + subject + "\"}";
+        return fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_webhook_inbox (id, organization_id, event_id, event_type, event_version,
+                 provider_tenant_id, occurred_at, status, data)
+             VALUES (gen_random_uuid(), '{AssessmentProviderSchemaFixture.OrgA}', gen_random_uuid(), 'subject.erased', 1,
+                 '{AssessmentProviderSchemaFixture.TenantA}', now(), 'processed', '{data}')
+             """);
+    }
+
+    private async Task<Guid> ReservePendingAsync(AssessmentProviderRepository repository)
+    {
+        var candidate = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES ('{candidate}', '{AssessmentProviderSchemaFixture.OrgA}', 'Pe', 'Nding', '{candidate}@a.example')");
+        var binding = new ProviderBindingRow(AssessmentProviderSchemaFixture.BindingA, AssessmentProviderSchemaFixture.OrgA,
+            AssessmentProviderSchemaFixture.TenantA, ["lia"], "es");
+        var reserved = await repository.ReserveAttemptsAsync(AssessmentProviderSchemaFixture.OrgA, Guid.NewGuid(), binding,
+            candidate, AssessmentProviderSchemaFixture.VacancyA, [new NewAttempt("lia", "Análisis de datos", "es", 1m, [], null)],
+            DateTimeOffset.UtcNow, CancellationToken.None);
+        return Assert.Single(reserved.Attempts).Id;
+    }
+
+    [Fact]
+    public async Task MarkCreated_on_the_context_that_reserved_never_overwrites_a_committed_transition()
+    {
+        // ONE context for reserve and mark-created, as in a real request: the reserve leaves the attempt tracked.
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        var attempt = await ReservePendingAsync(repository);
+        var subject = Guid.NewGuid();
+        // Meanwhile a webhook reconciled the attempt and advanced it (committed by another connection).
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET state = 'in_progress', provider_subject_id = '{subject}', provider_assignment_id = gen_random_uuid() WHERE id = '{attempt}'");
+
+        var state = await repository.MarkCreatedAsync(AssessmentProviderSchemaFixture.OrgA, attempt, AssignmentFor(attempt, subject),
+            DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("in_progress", state);
+        Assert.Equal("in_progress", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+    }
+
+    [Fact]
+    public async Task A_mapping_that_commits_after_its_subject_was_erased_leaves_the_attempt_erased()
+    {
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        var attempt = await ReservePendingAsync(repository);
+        var subject = Guid.NewGuid();
+        await InsertErasureTombstoneAsync(subject); // subject.erased recorded before the mapping committed
+
+        var state = await repository.MarkCreatedAsync(AssessmentProviderSchemaFixture.OrgA, attempt, AssignmentFor(attempt, subject),
+            DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("erased", state);
+        Assert.Equal("erased", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+    }
+
+    [Fact]
+    public async Task A_result_for_a_tombstoned_subject_is_never_stored()
+    {
+        var (attempt, subject) = await InsertAttemptAsync("completed");
+        var row = await RowAsync(attempt);
+        await InsertErasureTombstoneAsync(subject);
+        var result = ResultFor(row.ProviderAssignmentId!.Value) with { SubjectId = subject };
+
+        await using var db = fixture.NewContext();
+        Assert.False(await new AssessmentProviderRepository(db).StoreResultAsync(
+            AssessmentProviderSchemaFixture.OrgA, row, result, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal(0L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+    }
 }

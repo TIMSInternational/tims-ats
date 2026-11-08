@@ -92,11 +92,16 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - An event for an unknown assignment is reconciled before it is ignored: `GET /v1/assignments/{id}` returns
     `external_ref` (the attempt id), so an attempt left in `pending_create` by a crash gets its provider id and the
     event is applied. A provider outage during that check answers 503.
-- **One lock per attempt.** Every webhook write, the launch and the subject erasure of one attempt take the same
-  `pg_advisory_xact_lock` on `assessment-provider-attempt:<id>`:
-  - a launch never rewinds a state a webhook already set;
-  - a result write checks for `erased` and `cancelled` under the lock, before inserting anything, so a result fetched
-    before a `subject.erased` committed is never stored after it.
+- **Locks, fresh reads, and the erasure tombstone.**
+  - Every webhook write, the launch and the subject erasure of one attempt take the same
+    `pg_advisory_xact_lock` on `assessment-provider-attempt:<id>`. Mapping (`MarkCreatedAsync`), result storage and
+    erasure first take `assessment-provider-subject:<provider subject id>`, always before the attempt lock.
+  - Under the lock, every write clears the request's EF change tracker and re-reads, so a value tracked before the
+    lock (for example the `pending_create` row the reserve left) is never written back over a committed transition.
+  - A recorded `subject.erased` inbox row is the erasure tombstone. A mapping that commits after it leaves the attempt
+    `erased`, and a result for that subject is never stored, even when the erasure ran before the attempt had its
+    provider ids.
+  - A launch never rewinds a state a webhook already set.
 
 ## Tables: migration `20261107232524_assessment_providers`
 

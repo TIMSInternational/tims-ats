@@ -59,6 +59,7 @@ public sealed class ProviderWebhookUseCaseTests
             ProviderResultParserTests.Summary());
         json["result_id"] = resultId.ToString();
         json["assignment_id"] = attempt.ProviderAssignmentId.ToString();
+        json["subject_id"] = attempt.ProviderSubjectId.ToString();
         json["vacancy"]!["external_vacancy_ref"] = attempt.VacancyId.ToString();
         change?.Invoke(json);
         return ProviderResultParserTests.Parse(json);
@@ -149,6 +150,20 @@ public sealed class ProviderWebhookUseCaseTests
         Assert.Equal("result_mismatch", result.Reason);
         Assert.Empty(_repository.StoredResults);
         Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]);
+    }
+
+    [Fact]
+    public async Task A_result_for_another_subject_is_not_stored()
+    {
+        var attempt = Attempt();
+        _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(
+            FetchedResult(attempt, id, json => json["subject_id"] = Guid.NewGuid().ToString()));
+        var (body, eventId) = Envelope("result.ready", ResultReadyData(attempt, Guid.NewGuid()));
+
+        var result = await Deliver(body, eventId, "result.ready");
+
+        Assert.Equal("result_mismatch", result.Reason);
+        Assert.Empty(_repository.StoredResults);
     }
 
     [Fact]
