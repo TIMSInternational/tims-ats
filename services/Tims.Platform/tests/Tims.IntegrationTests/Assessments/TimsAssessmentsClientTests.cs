@@ -143,6 +143,40 @@ public sealed class TimsAssessmentsClientTests
     }
 
     [Fact]
+    public async Task Cancel_posts_no_body_and_no_key_and_must_answer_for_the_requested_assignment()
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, AssignmentJson(id)));
+        var client = Client();
+
+        var cancelled = await client.CancelAssignmentAsync(id, CancellationToken.None);
+        var mismatched = await client.CancelAssignmentAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.True(cancelled.Ok);
+        var sent = _handler.Requests.First(r => r.Uri == $"https://assessments.test/v1/assignments/{id}/cancel");
+        Assert.Null(sent.IdempotencyKey); // the contract's cancel is idempotent and takes no key
+        Assert.Equal(string.Empty, sent.Body);
+        Assert.Equal(ProviderFailure.ContractViolation, mismatched.Failure!.Code);
+    }
+
+    [Theory]
+    [InlineData(""","given_name":"Ana","family_name":"Pérez","email":"ana@example.com" """, true)]
+    [InlineData(""","given_name":"Ana","family_name":"Pérez" """, false)]
+    [InlineData("", false)]
+    public async Task A_subject_reports_whether_the_provider_holds_its_names_and_email(string names, bool expected)
+    {
+        var json = """{"subject_id":"7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d","tenant_id":"3f1d2c4b-8a6e-4f2a-9c1d-5b7e8a9f0c12","external_ref":"c1","status":"active","created_at":"2026-11-09T13:00:00Z" """
+            + names + "}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var subject = await Client().EnsureSubjectAsync(
+            new ProviderSubjectRequest(Guid.Parse("3f1d2c4b-8a6e-4f2a-9c1d-5b7e8a9f0c12"), "c1", null, null, null, null),
+            "ats-subject-1", CancellationToken.None);
+
+        Assert.Equal(expected, subject.Value!.HasNamesAndEmail);
+    }
+
+    [Fact]
     public async Task A_problem_document_surfaces_its_code_and_missing_consents()
     {
         _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl

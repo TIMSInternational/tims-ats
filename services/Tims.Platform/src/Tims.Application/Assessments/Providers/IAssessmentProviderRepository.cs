@@ -22,7 +22,8 @@ public interface IAssessmentProviderRepository
     /// <summary>
     /// In ONE transaction, under the same per-candidate advisory lock a consent withdrawal takes: re-checks the
     /// withdrawal, then for each instrument returns the open attempt or inserts a <c>pending_create</c> one, plus one
-    /// audit row. All instruments or none.
+    /// audit row. All instruments or none: when an open attempt carries other terms than requested (accommodation,
+    /// locale or reason), nothing is written and that attempt comes back as <see cref="ReserveOutcome.TermsConflict"/>.
     /// </summary>
     Task<ReserveOutcome> ReserveAttemptsAsync(
         Guid organizationId, Guid actorId, ProviderBindingRow binding, Guid candidateId, Guid vacancyId,
@@ -43,6 +44,15 @@ public interface IAssessmentProviderRepository
     /// </summary>
     Task MarkCreateFailedAsync(
         Guid organizationId, Guid attemptId, string errorCode, bool cancel, DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Staff cancel: under the attempt lock, on a fresh read, moves an attempt that has not finished
+    /// (<see cref="ProviderAttemptStates.IsCancellable"/>) to <c>cancelled</c> with its audit row. Returns the state
+    /// afterwards (another state when a concurrent writer finished or voided it first), or null when not found.
+    /// </summary>
+    Task<string?> MarkCancelledAsync(
+        Guid organizationId, Guid attemptId, Guid actorId, bool cancelledAtProvider, DateTimeOffset now,
         CancellationToken cancellationToken);
 
     /// <summary>Pre-tenant: the org and candidate of an attempt id, or null. Nothing else crosses the boundary.</summary>
@@ -124,7 +134,22 @@ public sealed record AssignmentContext(
 
 public sealed record NewAttempt(
     string Instrument, string Reason, string Locale, decimal TimeMultiplier, IReadOnlyList<string> Aids,
-    DateTimeOffset? ExpiresAt);
+    DateTimeOffset? ExpiresAt)
+{
+    /// <summary>
+    /// True when an open attempt already carries exactly these terms: the accommodation (time multiplier and aids, as
+    /// a set), the locale and the job-relatedness reason. The expiry is not compared: a re-send may legitimately
+    /// recompute a relative expiry, and the response echoes the one in force.
+    /// </summary>
+    public bool SameTermsAs(AttemptRow open)
+    {
+        ArgumentNullException.ThrowIfNull(open);
+        return open.TimeMultiplier == TimeMultiplier
+            && string.Equals(open.Locale, Locale, StringComparison.Ordinal)
+            && string.Equals(open.Reason, Reason, StringComparison.Ordinal)
+            && open.Aids.Order(StringComparer.Ordinal).SequenceEqual(Aids.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+    }
+}
 
 public sealed record AttemptRow(
     Guid Id,
@@ -147,7 +172,11 @@ public sealed record AttemptRow(
     string? LastErrorCode,
     bool IsNew);
 
-public sealed record ReserveOutcome(bool ConsentWithdrawn, IReadOnlyList<AttemptRow> Attempts);
+/// <summary>
+/// The reserve result. <see cref="TermsConflict"/>: an open attempt for one of the instruments carries other terms than
+/// requested; nothing was written (re-sending can never silently drop a corrected accommodation).
+/// </summary>
+public sealed record ReserveOutcome(bool ConsentWithdrawn, IReadOnlyList<AttemptRow> Attempts, AttemptRow? TermsConflict = null);
 
 /// <summary>The attempt plus the candidate identity a launch is checked against.</summary>
 public sealed record LaunchContext(

@@ -91,6 +91,19 @@ internal sealed class FakeProvider : IAssessmentProvider
             ?? ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])));
     }
 
+    public List<Guid> Cancelled { get; } = [];
+
+    public Func<Guid, ProviderCall<ProviderAssignment>>? OnCancelAssignment { get; set; }
+
+    public Task<ProviderCall<ProviderAssignment>> CancelAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
+    {
+        Calls.Add("cancel_assignment");
+        Cancelled.Add(assignmentId);
+        return Task.FromResult(OnCancelAssignment?.Invoke(assignmentId) ?? ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+            assignmentId, TenantId, SubjectId, "lia", "1.0", "content-1", "cancelled", ["assessment"], [],
+            new DateTimeOffset(2026, 11, 23, 14, 0, 0, TimeSpan.Zero))));
+    }
+
     public Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken)
     {
@@ -172,11 +185,19 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             return Task.FromResult(new ReserveOutcome(true, []));
         }
 
+        // Mirrors the real repository: an open attempt with other terms is reported before anything is written.
+        foreach (var attempt in attempts)
+        {
+            if (OpenAttempt(candidateId, vacancyId, attempt.Instrument) is { } open && !attempt.SameTermsAs(open))
+            {
+                return Task.FromResult(new ReserveOutcome(false, [], open));
+            }
+        }
+
         var rows = new List<AttemptRow>();
         foreach (var attempt in attempts)
         {
-            var open = Attempts.FirstOrDefault(a => a.CandidateId == candidateId && a.VacancyId == vacancyId
-                && a.Instrument == attempt.Instrument && ProviderAttemptStates.IsOpen(a.State));
+            var open = OpenAttempt(candidateId, vacancyId, attempt.Instrument);
             if (open is not null)
             {
                 rows.Add(open with { IsNew = false });
@@ -191,6 +212,19 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         }
 
         return Task.FromResult(new ReserveOutcome(false, rows));
+    }
+
+    private AttemptRow? OpenAttempt(Guid candidateId, Guid vacancyId, string instrument) =>
+        Attempts.FirstOrDefault(a => a.CandidateId == candidateId && a.VacancyId == vacancyId
+            && a.Instrument == instrument && ProviderAttemptStates.IsOpen(a.State));
+
+    public Task<string?> MarkCancelledAsync(
+        Guid organizationId, Guid attemptId, Guid actorId, bool cancelledAtProvider, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        Writes.Add(cancelledAtProvider ? "staff_cancel:provider" : "staff_cancel:local");
+        Replace(attemptId, a => ProviderAttemptStates.IsCancellable(a.State) ? a with { State = ProviderAttemptStates.Cancelled } : a);
+        return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId)?.State);
     }
 
     // Mirrors the real repository: only a pending_create attempt is changed; the state afterwards is returned.

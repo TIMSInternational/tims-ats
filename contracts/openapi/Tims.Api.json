@@ -4784,6 +4784,55 @@
         }
       }
     },
+    "/assessments/provider-assignments/{attemptId}/cancel": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderCancel",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAssignItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/platform/assessment-providers/bindings": {
       "post": {
         "tags": [
@@ -15008,7 +15057,10 @@
           "instrumentVersion",
           "requiredConsents",
           "expiresAt",
-          "error"
+          "error",
+          "locale",
+          "timeMultiplier",
+          "aids"
         ],
         "type": "object",
         "properties": {
@@ -15044,6 +15096,23 @@
               "null",
               "string"
             ]
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timeMultiplier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "aids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

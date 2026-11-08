@@ -39,6 +39,7 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddDbContext<AssessmentProviderDbContext>(options => options.UseNpgsql(databaseConnectionString));
         services.AddScoped<IAssessmentProviderRepository, AssessmentProviderRepository>();
         services.AddScoped<AssignProviderInstrumentsUseCase>();
+        services.AddScoped<CancelProviderAttemptUseCase>();
         services.AddScoped<LaunchProviderAttemptUseCase>();
         services.AddScoped<ProviderWebhookUseCase>();
         services.AddScoped<ProviderBindingUseCase>();

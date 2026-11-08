@@ -247,6 +247,81 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
             $"SELECT count(*) FROM audit_logs WHERE action = 'assessment_provider_assigned' AND metadata->>'candidateId' = '{candidate}'"));
     }
 
+    [Fact]
+    public async Task An_open_attempt_with_other_terms_is_reported_and_nothing_is_written()
+    {
+        var candidate = Guid.NewGuid();
+        var binding = new ProviderBindingRow(AssessmentProviderSchemaFixture.BindingA, AssessmentProviderSchemaFixture.OrgA,
+            AssessmentProviderSchemaFixture.TenantA, ["lia", "english"], "es");
+        await using (var first = fixture.NewContext())
+        {
+            await new AssessmentProviderRepository(first).ReserveAttemptsAsync(AssessmentProviderSchemaFixture.OrgA, Guid.NewGuid(),
+                binding, candidate, AssessmentProviderSchemaFixture.VacancyA,
+                [new NewAttempt("lia", "Análisis de datos", "es", 1.5m, ["extended_breaks", "screen_reader"], null)],
+                DateTimeOffset.UtcNow, CancellationToken.None);
+        }
+
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        // Same terms, aids in another order: the open attempt is returned.
+        var same = await repository.ReserveAttemptsAsync(AssessmentProviderSchemaFixture.OrgA, Guid.NewGuid(), binding, candidate,
+            AssessmentProviderSchemaFixture.VacancyA,
+            [new NewAttempt("lia", "Análisis de datos", "es", 1.50m, ["screen_reader", "extended_breaks"], null)],
+            DateTimeOffset.UtcNow, CancellationToken.None);
+        // A corrected multiplier, plus a new instrument: refused as a whole.
+        var corrected = await repository.ReserveAttemptsAsync(AssessmentProviderSchemaFixture.OrgA, Guid.NewGuid(), binding, candidate,
+            AssessmentProviderSchemaFixture.VacancyA,
+            [
+                new NewAttempt("lia", "Análisis de datos", "es", 2m, ["extended_breaks", "screen_reader"], null),
+                new NewAttempt("english", "Clientes en inglés", "es", 2m, [], null),
+            ],
+            DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Null(same.TermsConflict);
+        Assert.False(Assert.Single(same.Attempts).IsNew);
+        Assert.Equal(1.5m, corrected.TermsConflict!.TimeMultiplier);
+        Assert.Empty(corrected.Attempts);
+        Assert.Equal(1L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_attempts WHERE candidate_id = '{candidate}'"));
+    }
+
+    [Fact]
+    public async Task A_staff_cancel_is_audited_and_frees_the_slot_for_a_corrected_assignment()
+    {
+        var (attempt, _) = await InsertAttemptAsync("launched");
+        var actor = Guid.NewGuid();
+
+        await using var db = fixture.NewContext();
+        var state = await new AssessmentProviderRepository(db).MarkCancelledAsync(
+            AssessmentProviderSchemaFixture.OrgA, attempt, actor, cancelledAtProvider: true, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("cancelled", state);
+        Assert.Equal(1L, await AuditCountAsync(attempt, "assessment_provider_attempt_cancelled"));
+        Assert.Equal($"{actor}|launched|true", await fixture.ScalarAsync(
+            $"SELECT actor_id::text || '|' || (metadata->>'from') || '|' || (metadata->>'cancelledAtProvider') FROM audit_logs WHERE entity_id = '{attempt}' AND action = 'assessment_provider_attempt_cancelled'"));
+    }
+
+    [Fact]
+    public async Task A_cancel_waiting_on_a_webhook_that_finished_the_sitting_leaves_it_finished()
+    {
+        var (attempt, _) = await InsertAttemptAsync("in_progress");
+        var (connection, transaction) = await HoldAttemptAsync(
+            attempt, $"UPDATE assessment_provider_attempts SET state = 'completed' WHERE id = '{attempt}';");
+        await using (connection)
+        {
+            await using var db = fixture.NewContext();
+            var cancel = new AssessmentProviderRepository(db).MarkCancelledAsync(
+                AssessmentProviderSchemaFixture.OrgA, attempt, Guid.NewGuid(), cancelledAtProvider: false, DateTimeOffset.UtcNow,
+                CancellationToken.None);
+            await Task.Delay(300);
+            await transaction.CommitAsync();
+
+            Assert.Equal("completed", await cancel);
+        }
+
+        Assert.Equal("completed", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        Assert.Equal(0L, await AuditCountAsync(attempt, "assessment_provider_attempt_cancelled"));
+    }
+
     // ---- Lock discipline: webhook writes, launches and erasures of one attempt are serialized --------------------
 
     private async Task<(Guid Attempt, Guid Subject)> InsertAttemptAsync(string state)

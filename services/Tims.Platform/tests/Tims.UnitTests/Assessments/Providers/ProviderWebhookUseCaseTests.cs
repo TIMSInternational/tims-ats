@@ -267,6 +267,28 @@ public sealed class ProviderWebhookUseCaseTests
     }
 
     [Fact]
+    public async Task An_event_for_the_orphan_of_a_staff_cancelled_attempt_cancels_it_at_the_provider()
+    {
+        // HR cancelled the attempt while its create was in flight and the ATS never recorded the provider's ids.
+        var cancelled = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Cancelled) with
+        {
+            ProviderAssignmentId = null, ProviderSubjectId = null,
+        };
+        _repository.Attempts[0] = cancelled;
+        var orphan = Guid.NewGuid();
+        _provider.OnGetAssignment = id => ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+            id, _provider.TenantId, _provider.SubjectId, "lia", "1.0", "content-1", "created", ["assessment"], [], Now.AddDays(14),
+            cancelled.Id.ToString()));
+        var (body, eventId) = Envelope("assignment.started", new JsonObject { ["assignment_id"] = orphan.ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.started");
+
+        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal([orphan], _provider.Cancelled);
+        Assert.Empty(_repository.Writes);
+    }
+
+    [Fact]
     public async Task A_provider_outage_during_reconciliation_keeps_the_event_retryable()
     {
         _provider.OnGetAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));

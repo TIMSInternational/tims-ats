@@ -15,6 +15,11 @@ public sealed record AssignProviderInstrumentsInput(
     IReadOnlyList<string> Aids,
     DateTimeOffset? ExpiresAt);
 
+/// <summary>
+/// One attempt as HR sees it. <see cref="Locale"/>, <see cref="TimeMultiplier"/> and <see cref="Aids"/> are the terms
+/// IN FORCE on the attempt (for an attempt that already existed, its own, not the request's), so a dropped change is
+/// visible.
+/// </summary>
 public sealed record ProviderAssignItem(
     string AttemptId,
     string Instrument,
@@ -22,7 +27,10 @@ public sealed record ProviderAssignItem(
     string? InstrumentVersion,
     IReadOnlyList<string> RequiredConsents,
     string? ExpiresAt,
-    string? Error);
+    string? Error,
+    string Locale,
+    decimal TimeMultiplier,
+    IReadOnlyList<string> Aids);
 
 public sealed record ProviderAssignResponse(bool Complete, IReadOnlyList<ProviderAssignItem> Items);
 
@@ -42,6 +50,12 @@ public enum ProviderAssignOutcome
 
     /// <summary>The ATS attempts exist, but the provider did not create every assignment. Retrying is safe.</summary>
     Incomplete,
+
+    /// <summary>
+    /// An open attempt for one instrument carries other terms (accommodation, locale or reason) than the request:
+    /// nothing was written. Cancel that attempt first, then assign again with the corrected terms.
+    /// </summary>
+    OpenAttemptTermsDiffer,
 }
 
 public sealed record ProviderAssignResult(ProviderAssignOutcome Outcome, ProviderAssignResponse? Response, string? Detail)
@@ -60,7 +74,8 @@ public sealed record ProviderAssignResult(ProviderAssignOutcome Outcome, Provide
 /// <item>Job-relatedness: the vacancy lists the instrument in <c>fit_requirements.assessments[]</c>, and a reason exists.</item>
 /// </list>
 /// Then the attempts are reserved atomically (all instruments or none, idempotent per candidate + vacancy + instrument
-/// while open), and only then is the provider called, with an idempotency key derived from the attempt id, so a crash
+/// while open — an open attempt with OTHER terms is refused with <see cref="ProviderAssignOutcome.OpenAttemptTermsDiffer"/>,
+/// never kept silently), and only then is the provider called, with an idempotency key derived from the attempt id, so a crash
 /// or a retry re-drives the same provider assignment instead of creating a second one. Nothing here rejects a
 /// candidate: an assessment ranks and flags, a person decides.
 /// </summary>
@@ -68,6 +83,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 {
     public const int MaxInstruments = 6;
     public const int MaxExpiryDays = 90;
+    public const string OpenAttemptTermsDifferCode = "open_attempt_terms_differ";
+    public const string AttemptCancelledCode = "attempt_cancelled";
 
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
@@ -145,6 +162,15 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         if (reserved.ConsentWithdrawn)
         {
             return ProviderAssignResult.Fail(ProviderAssignOutcome.ConsentWithdrawn);
+        }
+
+        if (reserved.TermsConflict is { } conflict)
+        {
+            // A re-send with a corrected accommodation must never answer 200 while the old terms stay in force.
+            return new ProviderAssignResult(
+                ProviderAssignOutcome.OpenAttemptTermsDiffer,
+                new ProviderAssignResponse(false, [ToItem(conflict, OpenAttemptTermsDifferCode)]),
+                conflict.Instrument);
         }
 
         var items = new List<ProviderAssignItem>();
@@ -225,9 +251,20 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 
         var state = await _repository.MarkCreatedAsync(organizationId, attempt.Id, assignment, now, cancellationToken)
             .ConfigureAwait(false);
+        if (state == ProviderAttemptStates.Cancelled)
+        {
+            // Staff cancelled the attempt while this create was in flight, so the mapping was not attached: the provider's
+            // assignment is unwanted. Cancel it there too (idempotent; best effort — a webhook for it is cancelled on
+            // reconciliation as well) instead of leaving a reserved use behind.
+            await _provider.CancelAssignmentAsync(assignment.AssignmentId, cancellationToken).ConfigureAwait(false);
+            return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, ProviderAttemptStates.Cancelled, null, [],
+                null, AttemptCancelledCode, attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
+        }
+
         return new ProviderAssignItem(
             attempt.Id.ToString(), attempt.Instrument, state ?? ProviderAttemptStates.Created, assignment.InstrumentVersion,
-            assignment.RequiredConsents, FormatTimestamp(assignment.ExpiresAt), null);
+            assignment.RequiredConsents, FormatTimestamp(assignment.ExpiresAt), null, attempt.Locale, attempt.TimeMultiplier,
+            attempt.Aids);
     }
 
     private async Task<ProviderAssignItem> FailAsync(
@@ -242,12 +279,13 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         await _repository.MarkCreateFailedAsync(organizationId, attempt.Id, failure.Code, cancel, now, cancellationToken)
             .ConfigureAwait(false);
         var state = cancel ? ProviderAttemptStates.Cancelled : ProviderAttemptStates.PendingCreate;
-        return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, state, null, [], null, failure.Code);
+        return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, state, null, [], null, failure.Code,
+            attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
     }
 
-    private static ProviderAssignItem ToItem(AttemptRow attempt, string? error) =>
+    internal static ProviderAssignItem ToItem(AttemptRow attempt, string? error) =>
         new(attempt.Id.ToString(), attempt.Instrument, attempt.State, attempt.InstrumentVersion, attempt.RequiredConsents,
-            attempt.ExpiresAt is { } e ? FormatTimestamp(e) : null, error);
+            attempt.ExpiresAt is { } e ? FormatTimestamp(e) : null, error, attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
 
     private static string? Bound(string? value, int max) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Length <= max ? value : null;

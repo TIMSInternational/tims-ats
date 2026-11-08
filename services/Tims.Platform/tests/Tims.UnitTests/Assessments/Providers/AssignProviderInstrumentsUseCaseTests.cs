@@ -134,6 +134,94 @@ public sealed class AssignProviderInstrumentsUseCaseTests
     }
 
     [Fact]
+    public async Task Every_item_echoes_the_accommodation_and_locale_in_force()
+    {
+        var result = await Assign(Input(("lia", null)));
+
+        var item = Assert.Single(result.Response!.Items);
+        Assert.Equal(1.5m, item.TimeMultiplier);
+        Assert.Equal(["extended_breaks"], item.Aids);
+        Assert.Equal("es", item.Locale);
+    }
+
+    [Theory]
+    [InlineData(2.0, "extended_breaks", null)] // a corrected multiplier
+    [InlineData(1.5, "screen_reader", null)] // other aids
+    [InlineData(1.5, "extended_breaks", "en")] // another locale
+    public async Task Re_sending_with_other_terms_is_a_conflict_naming_the_open_attempt_never_a_silent_200(
+        double multiplier, string aid, string? locale)
+    {
+        var first = await Assign(Input(("lia", null)));
+        var corrected = Input(("lia", null)) with { TimeMultiplier = (decimal)multiplier, Aids = [aid], Locale = locale };
+
+        var result = await Assign(corrected);
+
+        Assert.Equal(ProviderAssignOutcome.OpenAttemptTermsDiffer, result.Outcome);
+        var open = Assert.Single(result.Response!.Items);
+        Assert.Equal(first.Response!.Items[0].AttemptId, open.AttemptId);
+        Assert.Equal(1.5m, open.TimeMultiplier); // the terms still in force, so HR sees what was NOT applied
+        Assert.Equal(["extended_breaks"], open.Aids);
+        Assert.Equal(AssignProviderInstrumentsUseCase.OpenAttemptTermsDifferCode, open.Error);
+        Assert.Single(_repository.Attempts);
+        Assert.Single(_provider.Assignments);
+    }
+
+    [Fact]
+    public async Task A_terms_conflict_on_one_instrument_writes_none_of_the_others()
+    {
+        await Assign(Input(("lia", null)));
+        var writes = _repository.Writes.Count;
+
+        var result = await Assign(Input(("lia", null), ("english", "Atención a clientes en inglés")) with { TimeMultiplier = 2m });
+
+        Assert.Equal(ProviderAssignOutcome.OpenAttemptTermsDiffer, result.Outcome);
+        Assert.Equal("lia", result.Detail);
+        Assert.DoesNotContain(_repository.Attempts, a => a.Instrument == "english");
+        Assert.Equal(writes + 1, _repository.Writes.Count); // the reserve call only
+    }
+
+    [Fact]
+    public async Task After_a_staff_cancel_the_corrected_accommodation_is_assigned_as_a_new_attempt()
+    {
+        var first = await Assign(Input(("lia", null)));
+        var attempt = _repository.Attempts.Single();
+        var cancel = await new CancelProviderAttemptUseCase(_repository, _provider).CancelAsync(
+            FakeRepository.Org, Actor, attempt, Now, CancellationToken.None);
+
+        var corrected = await Assign(Input(("lia", null)) with { TimeMultiplier = 2m });
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, cancel.Outcome);
+        Assert.Equal(ProviderAssignOutcome.Ok, corrected.Outcome);
+        Assert.NotEqual(first.Response!.Items[0].AttemptId, corrected.Response!.Items[0].AttemptId);
+        Assert.Equal(2m, corrected.Response.Items[0].TimeMultiplier);
+        Assert.Equal(2m, _provider.Assignments[1].Request.TimeMultiplier);
+    }
+
+    [Fact]
+    public async Task A_create_that_lands_after_a_staff_cancel_is_cancelled_at_the_provider_too()
+    {
+        Guid? created = null;
+        _provider.OnCreateAssignment = request =>
+        {
+            // While the create is in flight, HR cancels the still pending attempt.
+            var pending = _repository.Attempts.Single();
+            new CancelProviderAttemptUseCase(_repository, _provider)
+                .CancelAsync(FakeRepository.Org, Actor, pending, Now, CancellationToken.None).GetAwaiter().GetResult();
+            var answer = FakeProvider.Created(request);
+            created = answer.Value!.AssignmentId;
+            return answer;
+        };
+
+        var result = await Assign(Input(("lia", null)));
+
+        var item = Assert.Single(result.Response!.Items);
+        Assert.Equal(ProviderAttemptStates.Cancelled, item.State);
+        Assert.Equal(AssignProviderInstrumentsUseCase.AttemptCancelledCode, item.Error);
+        Assert.False(result.Response.Complete);
+        Assert.Equal([created!.Value], _provider.Cancelled); // the orphan does not keep a reserved use
+    }
+
+    [Fact]
     public async Task A_provider_outage_keeps_the_attempt_pending_and_the_retry_replays_the_same_key()
     {
         _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));

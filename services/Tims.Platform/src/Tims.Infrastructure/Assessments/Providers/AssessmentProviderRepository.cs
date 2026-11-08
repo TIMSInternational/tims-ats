@@ -99,6 +99,18 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 && instruments.Contains(a.Instrument) && open.Contains(a.State))
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
+        // All or nothing: an open attempt with other terms (a corrected accommodation, locale or reason) is reported
+        // BEFORE anything is inserted, never silently kept as if the request had been applied.
+        foreach (var attempt in attempts)
+        {
+            if (existing.FirstOrDefault(e => e.Instrument == attempt.Instrument) is { } openAttempt
+                && !attempt.SameTermsAs(ToRow(openAttempt, isNew: false)))
+            {
+                await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return new ReserveOutcome(false, [], ToRow(openAttempt, isNew: false));
+            }
+        }
+
         var rows = new List<AttemptRow>();
         var created = new List<Guid>();
         foreach (var attempt in attempts)
@@ -232,6 +244,37 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<string?> MarkCancelledAsync(
+        Guid organizationId, Guid attemptId, Guid actorId, bool cancelledAtProvider, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // The attempt lock every webhook transition, launch and create mapping takes, then a fresh read: a sitting a
+        // webhook finished (or a void) committed first is never overwritten by the cancel.
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+        var attempt = await _db.Attempts
+            .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (attempt is not null && ProviderAttemptStates.IsCancellable(attempt.State))
+        {
+            var from = attempt.State;
+            attempt.State = ProviderAttemptStates.Cancelled;
+            attempt.UpdatedAt = now.UtcDateTime;
+            AddAudit(organizationId, actorId, "assessment_provider_attempt_cancelled", attempt.Id, new Dictionary<string, object?>
+            {
+                ["instrument"] = attempt.Instrument,
+                ["from"] = from,
+                ["to"] = attempt.State,
+                ["cancelledAtProvider"] = cancelledAtProvider,
+            });
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return attempt?.State;
     }
 
     public async Task<(Guid OrganizationId, Guid CandidateId)?> FindAttemptOwnerAsync(

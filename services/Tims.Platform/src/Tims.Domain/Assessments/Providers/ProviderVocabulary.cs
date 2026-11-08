@@ -139,6 +139,12 @@ public static class ProviderAttemptStates
     public static bool IsLaunchable(string state) => state is Created or Launched or InProgress;
 
     /// <summary>
+    /// Staff may cancel an attempt only before its sitting has finished. A completed sitting has (or will have) a
+    /// result, which is voided by the provider's own review, never by a cancel.
+    /// </summary>
+    public static bool IsCancellable(string state) => state is PendingCreate or Created or Launched or InProgress;
+
+    /// <summary>
     /// Forward order of the non-terminal lifecycle. Webhooks are delivered unordered, so a lifecycle event only
     /// moves an attempt forward (a late <c>assignment.started</c> never rewinds a completed attempt).
     /// </summary>

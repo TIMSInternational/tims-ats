@@ -527,15 +527,19 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
     reason:
       'AS-5 TIMS ASSESSMENTS PROVIDER CONNECTOR LANDED DARK (Platform:AssessmentProvidersEnabled). Every route depends ' +
       'on a REMOTE provider (the headless TIMS Assessments API v1) that does not exist yet, so a live probe would ' +
-      'measure the provider, not tenant isolation. The four routes are also four different principals the by-role ' +
-      'harness cannot express together: the staff assign needs a vacancy that lists the instrument plus a provider ' +
-      'binding; the binding is platform-owner only; the launch is authorized by a CONFIRMED candidate email, not a ' +
-      'role; the webhook is anonymous and authenticated only by its HMAC signature. Covered instead by ' +
-      'Tims.UnitTests Assessments/Providers (signature + replay window, consent gate, #312 withdrawal at assign and ' +
-      'launch, idempotency, result mapping) and Tims.IntegrationTests Assessments (two-tenant RLS on the four tables, ' +
-      'the typed client and its token cache over a fake HTTP handler).',
+      'measure the provider, not tenant isolation. The five routes are also four different principals the by-role ' +
+      'harness cannot express together: the staff assign and cancel need a vacancy that lists the instrument plus a ' +
+      'provider binding; the binding is platform-owner only; the launch is authorized by a CONFIRMED candidate email, ' +
+      'not a role; the webhook is anonymous and authenticated only by its HMAC signature. Covered instead by ' +
+      'Tims.IntegrationTests Assessments/ProviderEndpointTests (the real host over real Postgres with a fake provider: ' +
+      'the dark flag, 401/403, the narrow-scope and cross-org vacancy 404 on assign and cancel, the platform-owner gate on ' +
+      'bindings, the launch identity checks sub == confirmed identity, unconfirmed email, autoconfirm fail-closed, ' +
+      'and the webhook body cap), Tims.IntegrationTests Assessments (two-tenant RLS on the four tables, the lock and ' +
+      'tombstone interleavings, the typed client over a fake HTTP handler) and Tims.UnitTests Assessments/Providers ' +
+      '(signature + replay window, consent gate, #312 withdrawal at assign and launch, idempotency, result mapping).',
     routes: [
       'POST /assessments/provider-assignments',
+      'POST /assessments/provider-assignments/{attemptId}/cancel',
       'POST /platform/assessment-providers/bindings',
       'POST /portal/assessment-attempts/{attemptId}/launch',
       'POST /webhooks/tims-assessments',
@@ -625,7 +629,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         main 202 (after #339) + #345's +4 = 206.
     //         206 → 210 (AS-5): the dark TIMS Assessments provider connector — staff assign, platform-owner
     //         binding, the candidate launch and the signed webhook — all allowlisted in their own group above.
-    expect(deployed.size).toBe(210);
+    //         210 → 211 (AS-5 review): the staff cancel of a provider attempt joins the same group.
+    expect(deployed.size).toBe(211);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -704,7 +709,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   the group count below is unchanged. 109 + 1 = 110.
     //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
     // 110 → 114 (AS-5): the provider connector's four dark routes, in their own group.
-    expect(allowlistNormalised.length).toBe(114);
+    // 114 → 115 (AS-5 review): the staff cancel joins that group.
+    expect(allowlistNormalised.length).toBe(115);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -727,7 +733,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
     //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
     // 16 → 17 (AS-5): the provider connector — every route depends on a remote provider that does not exist yet,
-    //   and its four routes are four principals (staff grant, platform owner, confirmed candidate, HMAC) at once.
+    //   and its routes are four principals (staff grant, platform owner, confirmed candidate, HMAC) at once.
     expect(UNREGISTERED_ALLOWLIST.length, 'the seventeen documented gap categories').toBe(17);
   });
 });

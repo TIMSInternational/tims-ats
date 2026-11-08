@@ -38,6 +38,13 @@ public interface IAssessmentProvider
     /// </summary>
     Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <c>POST /v1/assignments/{id}/cancel</c>. Idempotent at the provider: voids an in-progress session
+    /// (<c>administrative_void</c>) and releases the reserved use if no session started; 409 once the assignment has
+    /// completed.
+    /// </summary>
+    Task<ProviderCall<ProviderAssignment>> CancelAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken);
+
     /// <summary><c>POST /v1/subjects/{subject_id}/consents</c>: one consent purpose.</summary>
     Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken);

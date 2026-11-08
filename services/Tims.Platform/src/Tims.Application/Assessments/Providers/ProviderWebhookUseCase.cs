@@ -209,6 +209,14 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             return (null, null, false);
         }
 
+        if (pending.State == ProviderAttemptStates.Cancelled && pending.ProviderAssignmentId is null)
+        {
+            // Staff cancelled the attempt before its create's answer was recorded: this assignment is an orphan of ours.
+            // Cancel it at the provider (idempotent) rather than leave a reserved use behind; an outage retries.
+            var cancelled = await _provider.CancelAssignmentAsync(assignmentId, cancellationToken).ConfigureAwait(false);
+            return cancelled.Ok || !cancelled.Failure!.Transient ? (null, null, false) : (null, cancelled.Failure.Code, true);
+        }
+
         if (pending.State != ProviderAttemptStates.PendingCreate)
         {
             // The assign request committed this very mapping between our lookup by assignment id and this read: the

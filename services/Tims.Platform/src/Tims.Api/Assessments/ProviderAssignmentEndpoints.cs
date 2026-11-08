@@ -20,8 +20,14 @@ namespace Tims.Api.Assessments;
 ///   <item><description><c>POST /assessments/provider-assignments</c> — <c>assessment:create</c> (TS
 ///   <c>assessment.assign</c> parity) + the vacancy IDOR probe. Assigns 1..6 provider instruments to a candidate for a
 ///   vacancy, each with its job-relatedness reason, optional accommodations (time multiplier 1..3, aids) and expiry.
-///   Idempotent while an attempt is open. 200 / 400 / 401 / 403 / 404 / 409 / 422 / 502 (some provider creates still
-///   pending — re-send the same request) / 503.</description></item>
+///   Idempotent while an attempt is open with the same terms; an open attempt with other terms (accommodation, locale,
+///   reason) is a 409 <c>open_attempt_terms_differ</c> naming it. Every item echoes the terms in force.
+///   200 / 400 / 401 / 403 / 404 / 409 / 422 / 502 (some provider creates still pending — re-send the same request) /
+///   503.</description></item>
+///   <item><description><c>POST /assessments/provider-assignments/{attemptId}/cancel</c> — <c>assessment:update</c> (TS
+///   <c>assessment.cancel</c> parity) + the vacancy IDOR probe on the attempt's vacancy. Cancels an attempt whose sitting
+///   has not finished, at the provider first, so it can be re-assigned (for example with a corrected accommodation).
+///   200 / 401 / 403 / 404 / 409 (finished) / 502 / 503.</description></item>
 ///   <item><description><c>POST /platform/assessment-providers/bindings</c> — platform owner only. Binds an org to its
 ///   provider tenant and sets the instruments it may assign (catalog-checked: selection-allowed only).</description></item>
 /// </list>
@@ -31,6 +37,7 @@ namespace Tims.Api.Assessments;
 public static class ProviderAssignmentEndpoints
 {
     public const string AssignPath = "/assessments/provider-assignments";
+    public const string CancelPath = AssignPath + "/{attemptId:guid}/cancel";
     public const string BindingPath = "/platform/assessment-providers/bindings";
 
     public static void MapProviderAssignmentEndpoints(this WebApplication app)
@@ -56,22 +63,9 @@ public static class ProviderAssignmentEndpoints
                 }
 
                 // A narrow-scoped caller must not reach an out-of-scope vacancy by id (TS assertScoped('vacancy')).
-                var anchors = anchorLoaderFactory.Create(gate.OrganizationId, gate.UserId);
-                try
+                if (await OutOfScopeAsync(input.VacancyId, gate, anchorLoaderFactory, scopedProbe, cancellationToken) is { } message)
                 {
-                    await scopedProbe.AssertScopedAsync(ScopedEntity.Vacancy, input.VacancyId, gate.Scope!.Value, anchors,
-                        gate.OrganizationId, gate.UserId, cancellationToken);
-                }
-                catch (ScopedNotFoundException ex)
-                {
-                    return Results.NotFound(new { message = ex.Message });
-                }
-                finally
-                {
-                    if (anchors is IAsyncDisposable disposable)
-                    {
-                        await disposable.DisposeAsync();
-                    }
+                    return Results.NotFound(new { message });
                 }
 
                 var result = await useCase.AssignAsync(
@@ -87,6 +81,49 @@ public static class ProviderAssignmentEndpoints
             .Produces<ProviderAssignResponse>(StatusCodes.Status502BadGateway)
             .Produces(StatusCodes.Status503ServiceUnavailable)
             .WithName("AssessmentProviderAssign")
+            .WithTags("AssessmentProviders");
+
+        app.MapPost(CancelPath, async (
+                Guid attemptId, ClaimsPrincipal user, HttpContext httpContext, PrincipalResolver principalResolver,
+                PermissionService permissionService, IOptions<PlatformOptions> platformOptions,
+                IAnchorLoaderFactory anchorLoaderFactory, ScopedProbe scopedProbe,
+                CancelProviderAttemptUseCase useCase, TimeProvider timeProvider, CancellationToken cancellationToken) =>
+            {
+                var gate = await AssessmentStaffGate.AuthorizeAsync(
+                    user, httpContext, principalResolver, permissionService, platformOptions.Value, "update",
+                    cancellationToken);
+                if (gate.Failure is not null)
+                {
+                    return gate.Failure;
+                }
+
+                // Unknown, another org's, and out of the caller's vacancy scope all answer the same 404: no oracle.
+                var attempt = await useCase.FindAsync(gate.OrganizationId, attemptId, cancellationToken);
+                if (attempt is null
+                    || await OutOfScopeAsync(attempt.VacancyId, gate, anchorLoaderFactory, scopedProbe, cancellationToken) is not null)
+                {
+                    return Results.NotFound(new { message = AttemptNotFound });
+                }
+
+                var result = await useCase.CancelAsync(
+                    gate.OrganizationId, gate.UserId, attempt, timeProvider.GetUtcNow(), cancellationToken);
+                return result.Outcome switch
+                {
+                    ProviderCancelOutcome.Cancelled => Results.Ok(result.Item),
+                    ProviderCancelOutcome.NotFound => Results.NotFound(new { message = AttemptNotFound }),
+                    ProviderCancelOutcome.NotCancellable => Results.Conflict(new { error = "attempt_not_cancellable", state = result.Detail }),
+                    ProviderCancelOutcome.ProviderRefused => Results.Json(
+                        new { error = "provider_refused", code = result.Detail }, statusCode: StatusCodes.Status502BadGateway),
+                    ProviderCancelOutcome.ProviderUnconfigured => Unavailable("provider_unconfigured"),
+                    _ => Unavailable("provider_unavailable"),
+                };
+            })
+            .RequireAuthorization()
+            .Produces<ProviderAssignItem>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized).Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status502BadGateway).Produces(StatusCodes.Status503ServiceUnavailable)
+            .WithName("AssessmentProviderCancel")
             .WithTags("AssessmentProviders");
 
         app.MapPost(BindingPath, async (
@@ -136,6 +173,33 @@ public static class ProviderAssignmentEndpoints
             .WithTags("AssessmentProviders");
     }
 
+    private const string AttemptNotFound = "Asignación no encontrada";
+
+    /// <summary>Null when the vacancy is in the caller's scope; else the not-found message (TS assertScoped).</summary>
+    private static async Task<string?> OutOfScopeAsync(
+        Guid vacancyId, AssessmentGateResult gate, IAnchorLoaderFactory anchorLoaderFactory, ScopedProbe scopedProbe,
+        CancellationToken cancellationToken)
+    {
+        var anchors = anchorLoaderFactory.Create(gate.OrganizationId, gate.UserId);
+        try
+        {
+            await scopedProbe.AssertScopedAsync(ScopedEntity.Vacancy, vacancyId, gate.Scope!.Value, anchors,
+                gate.OrganizationId, gate.UserId, cancellationToken);
+            return null;
+        }
+        catch (ScopedNotFoundException ex)
+        {
+            return ex.Message;
+        }
+        finally
+        {
+            if (anchors is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
+        }
+    }
+
     private static IResult ToResult(ProviderAssignResult result) => result.Outcome switch
     {
         ProviderAssignOutcome.Ok => Results.Ok(result.Response),
@@ -150,6 +214,12 @@ public static class ProviderAssignmentEndpoints
         ProviderAssignOutcome.NoActiveApplication => Results.BadRequest(
             new { error = "no_active_application", message = "El candidato no tiene una postulación activa para esta vacante" }),
         ProviderAssignOutcome.ConsentWithdrawn => Results.Conflict(new { error = "consent_withdrawn" }),
+        ProviderAssignOutcome.OpenAttemptTermsDiffer => Results.Conflict(new
+        {
+            error = AssignProviderInstrumentsUseCase.OpenAttemptTermsDifferCode,
+            instrument = result.Detail,
+            attempt = result.Response!.Items[0],
+        }),
         ProviderAssignOutcome.InstrumentNotListedByVacancy => Results.UnprocessableEntity(
             new { error = "instrument_not_listed_by_vacancy", instrument = result.Detail }),
         ProviderAssignOutcome.ReasonRequired => Results.UnprocessableEntity(
