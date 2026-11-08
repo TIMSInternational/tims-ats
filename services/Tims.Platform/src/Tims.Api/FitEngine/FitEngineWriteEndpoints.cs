@@ -21,7 +21,8 @@ namespace Tims.Api.FitEngine;
 /// no scoped input, TS parity). Body validation runs AFTER auth (tRPC middleware-before-Zod parity):
 /// name 1..100 chars, five weights each in [0,1] summing to 1 ± 0.001. Every write runs UNDER TenantScope with
 /// explicit org values. Dark-by-default behind <see cref="PlatformOptions.FitEngineWriteEnabled"/> (mapped only
-/// when on, or at build-time OpenAPI generation).
+/// when on, or at build-time OpenAPI generation). <see cref="PlatformOptions.FitEngineV2Enabled"/> switches compute
+/// to per-instrument FIT v2 for vacancies that configure <c>assessments</c>; the response shape is unchanged.
 /// </summary>
 public static class FitEngineWriteEndpoints
 {
@@ -63,7 +64,8 @@ public static class FitEngineWriteEndpoints
                 }
 
                 var result = await useCase.ComputeForVacancyAsync(
-                    Guid.Parse(gate.Context!.OrganizationId), vacancyId, timeProvider.GetUtcNow(), cancellationToken);
+                    Guid.Parse(gate.Context!.OrganizationId), vacancyId, timeProvider.GetUtcNow(),
+                    platformOptions.Value.FitEngineV2Enabled, cancellationToken);
                 return Results.Ok(result);
             })
             .RequireAuthorization()

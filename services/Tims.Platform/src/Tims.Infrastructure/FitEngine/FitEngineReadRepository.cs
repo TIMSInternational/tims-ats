@@ -35,6 +35,7 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
                     f.Id,
                     f.OverallScore,
                     f.Breakdown,
+                    f.Weights,
                     f.IsPartial,
                     f.CalculatedAt,
                     CandidateId = c.Id,
@@ -49,7 +50,7 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
         return rows
             .Select(r => new FitScoreForVacancyData(
                 r.Id, r.OverallScore, r.Breakdown, r.IsPartial, ToUtc(r.CalculatedAt), r.CandidateId, r.FirstName,
-                r.LastName))
+                r.LastName, r.Weights))
             .ToList();
     }
 
@@ -93,6 +94,36 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
             ? null
             : new ExplainFitRowData(row.OverallScore, row.Breakdown, row.FirstName, row.LastName, row.Title);
     }
+
+    public async Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
+        Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken)
+    {
+        var ids = fitScoreIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var rows = await VisibleFitScores(organizationId)
+            .Where(f => f.OrganizationId == organizationId && ids.Contains(f.Id))
+            .Select(f => new { f.Id, f.VacancyId, f.Breakdown })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return rows.Select(r => new FitReviewStateData(r.Id, r.VacancyId, IsReviewPending(r.Breakdown))).ToList();
+    }
+
+    // Exactly `reviewPending: true` (a v1 row has no key; anything else is not pending).
+    private static bool IsReviewPending(string breakdown) =>
+        System.Text.Json.Nodes.JsonNode.Parse(breakdown) is System.Text.Json.Nodes.JsonObject row
+        && row["reviewPending"] is System.Text.Json.Nodes.JsonValue value
+        && value.TryGetValue<bool>(out var pending)
+        && pending;
 
     // #312: fit_scores minus every row whose candidate's recruitment consent is withdrawn — a data_consents row
     // (recruitment_data_processing, withdrawn_at NOT NULL, same org) on the candidate itself OR on any same-org

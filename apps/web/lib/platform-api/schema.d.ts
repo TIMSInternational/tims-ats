@@ -2308,6 +2308,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fit-engine/scores/review-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["FitEngineGetReviewStates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fit-engine/vacancies/{vacancyId}/compute": {
         parameters: {
             query?: never;
@@ -2318,6 +2334,54 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["FitEngineComputeForVacancy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/vacancies/{vacancyId}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["FitEngineUpdateFitRequirements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/assignments/{assignmentId}/essays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FitEngineListPendingEssays"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/assignments/{assignmentId}/essays/{questionId}/grade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["FitEngineGradeEssay"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3998,6 +4062,12 @@ export interface components {
             suppressed: boolean;
             period: string;
         };
+        EssayGradedResponse: {
+            /** Format: int32 */
+            remainingPending: number | string;
+            /** Format: double */
+            normalizedScore: null | number | string;
+        };
         EthnicityDistributionView: {
             groups: components["schemas"]["EthnicityGroup"][];
             suppressed: boolean;
@@ -4106,6 +4176,23 @@ export interface components {
             /** Format: date-time */
             completedAt: unknown;
         };
+        FitAssessmentMinimumBody: {
+            /** Format: double */
+            globalPercentile: null | number | string;
+            cefr: null | string;
+            /** Format: int32 */
+            level: null | number | string;
+            /** Format: double */
+            score: null | number | string;
+        };
+        FitAssessmentRequirementBody: {
+            instrument: string;
+            use: null | string;
+            min: null | components["schemas"]["FitAssessmentMinimumBody"];
+            /** Format: double */
+            weight: null | number | string;
+            reason: null | string;
+        };
         FitRankingRow: {
             fitScoreId: string;
             candidateId: string;
@@ -4117,6 +4204,38 @@ export interface components {
             isPartial: boolean;
             /** Format: date-time */
             calculatedAt: unknown;
+        };
+        FitRequirementIssueDto: {
+            /** Format: int32 */
+            index: number | string;
+            instrument: null | string;
+            code: string;
+            dropped: boolean;
+        };
+        FitRequirementsBody: {
+            /** Format: double */
+            minYearsExperience: null | number | string;
+            requiredEducationLevel: null | string;
+            requiredLanguages: null | string[];
+            assessments: null | components["schemas"]["FitAssessmentRequirementBody"][];
+        };
+        FitRequirementsError: {
+            error: string;
+            issues: components["schemas"]["FitRequirementIssueDto"][];
+        };
+        FitRequirementsResponse: {
+            fitRequirements: null | components["schemas"]["JsonNode"];
+            issues: components["schemas"]["FitRequirementIssueDto"][];
+        };
+        FitReviewStateBody: {
+            fitScoreIds: string[];
+        };
+        FitReviewStateResponse: {
+            items: components["schemas"]["FitReviewStateRow"][];
+        };
+        FitReviewStateRow: {
+            fitScoreId: string;
+            reviewPending: boolean;
         };
         FlightRiskHolder: {
             id: string;
@@ -4170,6 +4289,10 @@ export interface components {
         GenderRepresentationView: {
             groups: components["schemas"]["GenderGroup"][];
             suppressed: boolean;
+        };
+        GradeEssayBody: {
+            /** Format: double */
+            points: number | string;
         };
         GridEvaluation: {
             id: string;
@@ -4604,6 +4727,16 @@ export interface components {
             gapPct: null | number | string;
             suppressed: boolean;
             currency: string;
+        };
+        PendingEssay: {
+            questionId: string;
+            prompt: string;
+            answer: string;
+            /** Format: double */
+            maxPoints: number | string;
+        };
+        PendingEssaysResponse: {
+            essays: components["schemas"]["PendingEssay"][];
         };
         PendingSurveyRow: {
             id: string;
@@ -12008,6 +12141,51 @@ export interface operations {
             };
         };
     };
+    FitEngineGetReviewStates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FitReviewStateBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitReviewStateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     FitEngineComputeForVacancy: {
         parameters: {
             query?: never;
@@ -12044,6 +12222,167 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineUpdateFitRequirements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vacancyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FitRequirementsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitRequirementsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitRequirementsError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineListPendingEssays: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingEssaysResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineGradeEssay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignmentId: string;
+                questionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradeEssayBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EssayGradedResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

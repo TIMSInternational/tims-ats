@@ -485,6 +485,19 @@ public sealed class PlatformOptions
     public bool FitEngineWriteEnabled { get; init; }
 
     /// <summary>
+    /// FIT v2 (per-instrument fit). When true, <c>POST /fit-engine/vacancies/{id}/compute</c> scores a vacancy whose
+    /// <c>job_profiles.fit_requirements</c> carries an <c>assessments</c> array per instrument
+    /// (<c>Tims.Domain.FitEngine.FitV2Kernels</c>): scored instruments split the profile's assessment weight, gates
+    /// are shown as met / not met / unknown and never reject, advisory instruments are never scored, needs-review
+    /// results are excluded, and a scored English result verifies the languages dimension. A vacancy WITHOUT an
+    /// <c>assessments</c> array keeps the v1 computation byte-for-byte, so turning this on changes nothing until HR
+    /// configures a vacancy. INERT unless <see cref="FitEngineWriteEnabled"/> is also on (it maps the route).
+    /// DEFAULT false (dark) — enable with <c>Platform__FitEngineV2Enabled=true</c>. Turning it off again only
+    /// affects the next compute: stored v2 rows keep their extra keys, which every v1 reader ignores.
+    /// </summary>
+    public bool FitEngineV2Enabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 25 / #98 (efcoreReadOnly on notifications + notification_preferences — reads only): when
     /// true, the C# notification READ surface is mapped and live — <c>GET /notifications</c> (list, cursor-paged),
     /// <c>/notifications/unread-count</c> (unreadCount) and <c>/notifications/preferences</c> (getPreferences).

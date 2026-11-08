@@ -649,7 +649,17 @@ try
     builder.Services.AddScoped<FitEngineReadUseCase>();
     builder.Services.AddDbContext<FitEngineWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IFitEngineWriteRepository, FitEngineWriteRepository>();
+    // FIT v2 result port: the ATS native-quiz tables first, then the provider stub (returns nothing until the
+    // TIMS Assessments connector exists). Read only when Platform:FitEngineV2Enabled is on.
+    builder.Services.AddScoped<AtsAssessmentResultSource>();
+    builder.Services.AddScoped<ProviderAssessmentResultSource>();
+    builder.Services.AddScoped<IAssessmentResultSource>(sp => new CompositeAssessmentResultSource(
+    [
+        sp.GetRequiredService<AtsAssessmentResultSource>(),
+        sp.GetRequiredService<ProviderAssessmentResultSource>(),
+    ]));
     builder.Services.AddScoped<FitEngineWriteUseCase>();
+    builder.Services.AddScoped<IEssayGradingRepository, EssayGradingRepository>();
 
     // Phase-5 Slice 25 / #98 — notification. ONE DbContext for both sides: the read and write flags cover the
     // SAME two tables, and getPreferences is a query that INSERTs, so the read path needs write capability.
@@ -1638,6 +1648,7 @@ try
     if (externalOptions.FitEngineReadEnabled || isOpenApiDocGeneration)
     {
         app.MapFitEngineReadEndpoints();
+        app.MapFitReviewStateEndpoints(); // FIT v2: the reviewPending marker for the candidate/talent-pool tables
     }
 
     // Phase-5 Slice 24 / #90 (efcoreStranglerWrite): the FIT-engine WRITE surface (2 writes) — POST
@@ -1651,6 +1662,20 @@ try
     if (externalOptions.FitEngineWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapFitEngineWriteEndpoints();
+    }
+
+    // FIT v2: the C#-owned fit_requirements writer (merges assessments[], reports dropped entries). Only with the
+    // compute route AND the v2 flag, so the flag-on deploy has one writer that knows the key (apps/web switches the
+    // requirements card to it under NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP).
+    if ((externalOptions.FitEngineWriteEnabled && externalOptions.FitEngineV2Enabled) || isOpenApiDocGeneration)
+    {
+        app.MapFitRequirementsEndpoints();
+    }
+
+    // FIT v2 / owner default D5: minimal manual essay grading (a quiz awaiting a grade is needs review in FIT v2).
+    if (externalOptions.FitEngineV2Enabled || isOpenApiDocGeneration)
+    {
+        app.MapEssayGradingEndpoints();
     }
 
     // Phase-5 Slice 25 / #98 (efcoreReadOnly + efcoreStranglerWrite): the notification READ surface (3 reads) —

@@ -10,8 +10,18 @@ namespace Tims.Application.FitEngine;
 /// candidates run SEQUENTIALLY (TS <c>Promise.all</c> — same DB end-state on success; both stacks are
 /// non-atomic on failure), and the vacancy row is fetched ONCE (TS re-fetches it per candidate — same values
 /// within the request).
+///
+/// <para>FIT v2 (<c>Platform:FitEngineV2Enabled</c>, default off): when the flag is on AND the vacancy's
+/// <c>fit_requirements</c> carries an <c>assessments</c> array, the <c>assessment</c> dimension is built per
+/// instrument from <see cref="IAssessmentResultSource"/> (<see cref="FitV2Kernels"/>), a scored English result
+/// verifies the <c>languages</c> dimension, and the breakdown gains <c>fitVersion</c>, <c>reviewPending</c> and
+/// <c>assessments</c> after the six v1 keys. A v2 compute reads the results and writes the row atomically under a
+/// per-(candidate, vacancy) lock (see <c>ComputeFitScoreV2Async</c>), so a slower concurrent v2 compute cannot leave
+/// a stale integrity state as the row's last word, and a failed compute leaves the row untouched. In every other case the v1
+/// code below runs unchanged — same reads, same breakdown bytes.</para>
 /// </summary>
-public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
+public sealed class FitEngineWriteUseCase(
+    IFitEngineWriteRepository repository, IAssessmentResultSource assessmentResults)
 {
     private const string DefaultProfileName = "Default";
 
@@ -20,6 +30,13 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
         """{"assessment":0.2,"interview":0.2,"experience":0.2,"education":0.2,"languages":0.2}""";
 
     private readonly IFitEngineWriteRepository _repository = repository;
+    private readonly IAssessmentResultSource _assessmentResults = assessmentResults;
+
+    /// <summary>v1-only construction (no result source): FIT v2 cannot run, so pass the flag off.</summary>
+    public FitEngineWriteUseCase(IFitEngineWriteRepository repository)
+        : this(repository, NoAssessmentResults.Instance)
+    {
+    }
 
     /// <summary><c>upsertRoleFamilyWeightProfile</c> — the weights JSON is built from the FIVE validated values only
     /// (Zod strips unknown body keys, so extras must never reach the row).</summary>
@@ -34,6 +51,30 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
     }
 
     /// <summary>
+    /// The C#-owned <c>fit_requirements</c> write (FIT v2): validates the body by <see cref="FitRequirementsInput"/>,
+    /// then merges it atomically. Returns null (with <paramref name="error"/>) for an invalid body; the stored
+    /// requirements plus every dropped or changed <c>assessments[]</c> entry otherwise.
+    /// </summary>
+    public async Task<FitRequirementsSaved?> UpdateFitRequirementsAsync(
+        Guid organizationId, Guid vacancyId, JsonNode? body, DateTimeOffset now, CancellationToken cancellationToken,
+        Action<string, IReadOnlyList<FitRequirementIssue>>? onInvalid = null)
+    {
+        if (FitRequirementsInput.Validate(body, out var error, out var issues) is not { } write)
+        {
+            onInvalid?.Invoke(error!, issues);
+            return null;
+        }
+
+        var stored = await _repository.UpsertFitRequirementsAsync(
+                organizationId, vacancyId, write.FitRequirements.ToJsonString(), write.ReplacesAssessments, now,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return stored is null
+            ? null
+            : new FitRequirementsSaved(JsonNode.Parse(stored), write.Issues);
+    }
+
+    /// <summary>
     /// <c>computeForVacancy</c> — score every active-pipeline candidate whose recruitment consent is NOT withdrawn;
     /// response is the count actually scored. A withdrawn candidate (#312/#313 — matched on itself or on any
     /// same-org candidate row with the same normalized email) is SKIPPED: no reads, no score computed, no
@@ -42,8 +83,17 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
     /// Each write re-checks the candidate's consent under the withdrawal's advisory lock, so a withdrawal that
     /// commits mid-run also skips that candidate (and it is not counted).
     /// </summary>
+    public Task<ComputeForVacancyResult> ComputeForVacancyAsync(
+        Guid organizationId, Guid vacancyId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        ComputeForVacancyAsync(organizationId, vacancyId, now, fitV2Enabled: false, cancellationToken);
+
+    /// <summary>
+    /// <c>computeForVacancy</c> with the FIT v2 switch. <paramref name="fitV2Enabled"/> false is exactly v1. True
+    /// takes the v2 path only for a vacancy whose requirements carry an <c>assessments</c> array.
+    /// </summary>
     public async Task<ComputeForVacancyResult> ComputeForVacancyAsync(
-        Guid organizationId, Guid vacancyId, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, Guid vacancyId, DateTimeOffset now, bool fitV2Enabled,
+        CancellationToken cancellationToken)
     {
         var pipelineIds = await _repository.GetPipelineCandidateIdsAsync(organizationId, vacancyId, cancellationToken)
             .ConfigureAwait(false);
@@ -67,16 +117,23 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
             .ConfigureAwait(false);
         // Vacancy null (soft-deleted between probe and compute) ⇒ requirements {} and roleFamily null — the TS
         // `vacancy?.` chain, not an error.
-        var requirements = FitEngineKernels.ParseRequirements(ParseNullableJson(vacancy?.FitRequirements));
+        var requirementsNode = ParseNullableJson(vacancy?.FitRequirements);
+        var requirements = FitEngineKernels.ParseRequirements(requirementsNode);
+        // null ⇒ v1 for every candidate (flag off, or no `assessments` array on this vacancy).
+        var assessmentRequirements = fitV2Enabled ? FitV2Kernels.ParseAssessmentRequirements(requirementsNode) : null;
 
         var scored = 0;
         foreach (var candidateId in candidateIds)
         {
             // #312: false ⇒ the candidate withdrew after the pre-loop check (re-checked under the withdrawal's lock
             // immediately before the write) — nothing written, not counted.
-            if (await ComputeFitScoreAsync(
+            var computed = assessmentRequirements is null
+                ? ComputeFitScoreAsync(
                     organizationId, candidateId, vacancyId, requirements, vacancy?.RoleFamily, now, cancellationToken)
-                .ConfigureAwait(false))
+                : ComputeFitScoreV2Async(
+                    organizationId, candidateId, vacancyId, requirements, assessmentRequirements, vacancy?.RoleFamily,
+                    now, cancellationToken);
+            if (await computed.ConfigureAwait(false))
             {
                 scored++;
             }
@@ -131,6 +188,76 @@ public sealed class FitEngineWriteUseCase(IFitEngineWriteRepository repository)
                 organizationId, candidateId, vacancyId, result.OverallScore, breakdown.ToJsonString(), weightsJson,
                 result.IsPartial, now, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    // FIT v2 for one candidate: the same reads as v1 except that the per-instrument results REPLACE the
+    // latest-of-any-type assessment score (GetLatestAssessmentScoreAsync is not called). Same weight resolution,
+    // same five-dimension kernel, same consent guard.
+    //
+    // The results carry the integrity state (a cancel, a proctoring flag, an essay awaiting grading), so they are read
+    // INSIDE the write: UpsertFitScoreV2Async holds a per-(org, candidate, vacancy) advisory lock across that read,
+    // the evaluation and the upsert, in one transaction. Two v2 computes cannot interleave (A reads valid, a cancel
+    // lands, B writes needs_review, A writes its stale clean score is impossible: B waits for A's commit and then
+    // reads the cancel, or A waits for B's and reads it). A failure or a cancellation anywhere in that unit rolls it
+    // back, so a compute never leaves a row it could not stand behind. A change that commits after the last compute's
+    // in-lock read is picked up by the next compute, as for every other input. The other inputs (candidate data,
+    // interview score, weights) keep v1's snapshot semantics.
+    private async Task<bool> ComputeFitScoreV2Async(
+        Guid organizationId, Guid candidateId, Guid vacancyId, FitRequirements requirements,
+        IReadOnlyList<AssessmentRequirement> assessmentRequirements, string? roleFamily, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var candidate = await _repository.GetCandidateForFitAsync(organizationId, candidateId, cancellationToken)
+            .ConfigureAwait(false);
+        var interviewScore = await _repository
+            .GetLatestInterviewFitScoreAsync(organizationId, candidateId, vacancyId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var (weights, weightsJson) = await ResolveWeightProfileAsync(organizationId, roleFamily, now, cancellationToken)
+            .ConfigureAwait(false);
+        var candidateLanguages = ParseNullableJson(candidate?.Languages);
+        var experience = FitEngineKernels.DeriveExperienceScore(candidate?.YearsExperience, requirements);
+        var education = FitEngineKernels.DeriveEducationScore(ParseNullableJson(candidate?.Education), requirements);
+
+        return await _repository.UpsertFitScoreV2Async(
+                organizationId, candidateId, vacancyId, weightsJson, now,
+                async ct =>
+                {
+                    var results = await _assessmentResults
+                        .GetResultsAsync(organizationId, candidateId, vacancyId, ct)
+                        .ConfigureAwait(false);
+                    return BuildV2Write(
+                        assessmentRequirements, results, weights, requirements, candidateLanguages, interviewScore,
+                        experience, education);
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static FitScoreWrite BuildV2Write(
+        IReadOnlyList<AssessmentRequirement> assessmentRequirements, IReadOnlyList<InstrumentResult> results,
+        IReadOnlyDictionary<string, double> weights, FitRequirements requirements, JsonNode? candidateLanguages,
+        int? interviewScore, double? experience, double? education)
+    {
+        var evaluation = FitV2Kernels.Evaluate(
+            assessmentRequirements, results, weights, requirements, candidateLanguages);
+
+        var rawScores = new Dictionary<string, double?>(StringComparer.Ordinal)
+        {
+            ["assessment"] = evaluation.AssessmentScore,
+            ["interview"] = interviewScore,
+            ["experience"] = experience,
+            ["education"] = education,
+            ["languages"] = evaluation.LanguagesScore,
+        };
+
+        var result = FitEngineKernels.ComputeWeightedScore(rawScores, weights);
+        var breakdown = FitV2Kernels.BuildBreakdown(rawScores, evaluation.Entries, evaluation.ReviewPending);
+
+        // A scored result awaiting review is left out of the number, so the number is provisional. Store the row as
+        // partial; the breakdown's reviewPending says why, so a reader can hold the row apart.
+        return new FitScoreWrite(
+            result.OverallScore, breakdown.ToJsonString(), result.IsPartial || evaluation.ReviewPending);
     }
 
     // TS resolveWeightProfile: roleFamily profile (an EMPTY-STRING roleFamily is falsy in TS → skipped) →

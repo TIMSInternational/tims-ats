@@ -5931,6 +5931,45 @@
         }
       }
     },
+    "/fit-engine/scores/review-state": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineGetReviewStates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitReviewStateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitReviewStateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/fit-engine/vacancies/{vacancyId}/compute": {
       "post": {
         "tags": [
@@ -5967,6 +6006,171 @@
           },
           "404": {
             "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/fit-engine/vacancies/{vacancyId}/requirements": {
+      "put": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineUpdateFitRequirements",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitRequirementsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitRequirementsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitRequirementsError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/fit-engine/assignments/{assignmentId}/essays": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineListPendingEssays",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingEssaysResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/fit-engine/assignments/{assignmentId}/essays/{questionId}/grade": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineGradeEssay",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeEssayBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EssayGradedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           }
         }
       }
@@ -12027,6 +12231,32 @@
           }
         }
       },
+      "EssayGradedResponse": {
+        "required": [
+          "remainingPending",
+          "normalizedScore"
+        ],
+        "type": "object",
+        "properties": {
+          "remainingPending": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "normalizedScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "EthnicityDistributionView": {
         "required": [
           "groups",
@@ -12484,6 +12714,99 @@
           }
         }
       },
+      "FitAssessmentMinimumBody": {
+        "required": [
+          "globalPercentile",
+          "cefr",
+          "level",
+          "score"
+        ],
+        "type": "object",
+        "properties": {
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "FitAssessmentRequirementBody": {
+        "required": [
+          "instrument",
+          "use",
+          "min",
+          "weight",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "instrument": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "use": {
+            "maxLength": 16,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "min": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitAssessmentMinimumBody"
+              }
+            ]
+          },
+          "weight": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "reason": {
+            "maxLength": 500,
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "FitRankingRow": {
         "required": [
           "fitScoreId",
@@ -12532,6 +12855,174 @@
           },
           "calculatedAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "FitRequirementIssueDto": {
+        "required": [
+          "index",
+          "instrument",
+          "code",
+          "dropped"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "instrument": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "dropped": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FitRequirementsBody": {
+        "required": [
+          "minYearsExperience",
+          "requiredEducationLevel",
+          "requiredLanguages",
+          "assessments"
+        ],
+        "type": "object",
+        "properties": {
+          "minYearsExperience": {
+            "maximum": 60,
+            "minimum": 0,
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "requiredEducationLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requiredLanguages": {
+            "maxItems": 20,
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "assessments": {
+            "maxItems": 64,
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/FitAssessmentRequirementBody"
+            }
+          }
+        }
+      },
+      "FitRequirementsError": {
+        "required": [
+          "error",
+          "issues"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitRequirementIssueDto"
+            }
+          }
+        }
+      },
+      "FitRequirementsResponse": {
+        "required": [
+          "fitRequirements",
+          "issues"
+        ],
+        "type": "object",
+        "properties": {
+          "fitRequirements": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitRequirementIssueDto"
+            }
+          }
+        }
+      },
+      "FitReviewStateBody": {
+        "required": [
+          "fitScoreIds"
+        ],
+        "type": "object",
+        "properties": {
+          "fitScoreIds": {
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "FitReviewStateResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitReviewStateRow"
+            }
+          }
+        }
+      },
+      "FitReviewStateRow": {
+        "required": [
+          "fitScoreId",
+          "reviewPending"
+        ],
+        "type": "object",
+        "properties": {
+          "fitScoreId": {
+            "type": "string"
+          },
+          "reviewPending": {
+            "type": "boolean"
           }
         }
       },
@@ -12773,6 +13264,22 @@
           },
           "suppressed": {
             "type": "boolean"
+          }
+        }
+      },
+      "GradeEssayBody": {
+        "required": [
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -14574,6 +15081,48 @@
           },
           "currency": {
             "type": "string"
+          }
+        }
+      },
+      "PendingEssay": {
+        "required": [
+          "questionId",
+          "prompt",
+          "answer",
+          "maxPoints"
+        ],
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "maxPoints": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "PendingEssaysResponse": {
+        "required": [
+          "essays"
+        ],
+        "type": "object",
+        "properties": {
+          "essays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingEssay"
+            }
           }
         }
       },

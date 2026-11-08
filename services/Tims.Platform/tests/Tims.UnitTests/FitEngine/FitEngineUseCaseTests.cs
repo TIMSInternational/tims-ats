@@ -463,6 +463,17 @@ public sealed class FitEngineUseCaseTests
             return Task.FromResult(true);
         }
 
+        // v1 never takes the v2 path; a call here is a test failure.
+        public Task<bool> UpsertFitScoreV2Async(
+            Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
+            Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the v1 tests never reach the FIT v2 write");
+
+        public Task<string?> UpsertFitRequirementsAsync(
+            Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the v1 tests never write fit_requirements");
+
         public Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
             Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
             Task.FromResult(PipelineCandidateIds);
@@ -493,6 +504,10 @@ public sealed class FitEngineUseCaseTests
         public Task<IReadOnlyList<WeightProfileData>> ListWeightProfilesAsync(
             Guid organizationId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WeightProfileData>>([]);
+
+        public Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
+            Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FitReviewStateData>>([]);
 
         public Task<ExplainFitRowData?> GetFitScoreForExplainAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken) =>
