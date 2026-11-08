@@ -223,8 +223,13 @@ merge, its stub `ProviderAssessmentResultSource` becomes a one-to-one adapter ov
   attempt in the cascade. An attempt whose provider never sends another event, and whose org sees no further
   withdrawal, stays `pending` (results stay stopped; the provider-side withdrawal is not sent) until one of those
   happens. A worker that runs `PropagateAsync` per org would close it.
-- The launch's #312 check still runs outside the candidate lock. A launch that races a withdrawal can record consent
-  and mint a token at the provider; the cascade then cancels the assignment and withdraws the consent.
+- The launch's #312 check runs outside the candidate lock. A launch that records consent re-checks #312 after the
+  provider recorded it: a withdrawal seen then re-opens the attempt's cascade, which withdraws that consent, and
+  nothing is launched; a withdrawal committed after the re-check lists consents after this one exists. A launch
+  without new consents that races a withdrawal can still mint a token; the cascade cancels the assignment.
+- Erasure resolves the candidate's provider subject through the provider's idempotent (tenant, candidate id) subject
+  key, so a subject created by a failed or crashed assignment is erased too. If the candidate never had a subject,
+  that call creates an empty one (no names or email) that is then erased.
 - The DSAR export covers the ATS's own provider tables. What the provider itself holds (media, its access log) is its
   `GET /v1/subjects/{id}/export`, which needs the `subjects:export` scope and is not called here.
 - D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
