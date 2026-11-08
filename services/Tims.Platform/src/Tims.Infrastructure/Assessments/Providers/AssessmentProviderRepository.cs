@@ -247,8 +247,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
     }
 
     public async Task<string?> MarkCancelledAsync(
-        Guid organizationId, Guid attemptId, Guid actorId, bool cancelledAtProvider, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        Guid organizationId, Guid attemptId, Guid? expectedProviderAssignmentId, Guid actorId, bool cancelledAtProvider,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         // The attempt lock every webhook transition, launch and create mapping takes, then a fresh read: a sitting a
@@ -258,7 +258,10 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
-        if (attempt is not null && ProviderAttemptStates.IsCancellable(attempt.State))
+        // Mapped to a provider assignment the caller did not cancel (the create was answered meanwhile): leave it, so the
+        // caller cancels THAT assignment at the provider first. Never a local cancel over a live provider assignment.
+        if (attempt is not null && ProviderAttemptStates.IsCancellable(attempt.State)
+            && attempt.ProviderAssignmentId == expectedProviderAssignmentId)
         {
             var from = attempt.State;
             attempt.State = ProviderAttemptStates.Cancelled;

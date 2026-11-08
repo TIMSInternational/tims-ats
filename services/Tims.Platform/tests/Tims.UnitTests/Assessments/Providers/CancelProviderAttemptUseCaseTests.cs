@@ -48,6 +48,25 @@ public sealed class CancelProviderAttemptUseCaseTests
         Assert.Contains("staff_cancel:local", _repository.Writes);
     }
 
+    [Fact]
+    public async Task A_create_answered_between_the_read_and_the_local_cancel_is_cancelled_at_the_provider_first()
+    {
+        // HR read the attempt while it was pending_create; the assign request then attached the provider's ids and
+        // returned. The local cancel must not land over that live assignment: it is cancelled at the provider first.
+        var reserved = await _repository.ReserveAttemptsAsync(FakeRepository.Org, Actor, _repository.Binding!, FakeRepository.Candidate,
+            FakeRepository.Vacancy, [new NewAttempt("lia", "Análisis de datos", "es", 1m, [], null)], Now, CancellationToken.None);
+        var pending = Assert.Single(reserved.Attempts);
+        var mapped = Guid.NewGuid();
+        _repository.BeforeNextMarkCancelled = id => _repository.MapAttempt(id, mapped);
+
+        var result = await Cancel(pending);
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, result.Outcome);
+        Assert.Equal([mapped], _provider.Cancelled);
+        Assert.Equal(["reserve", "staff_cancel:provider"], _repository.Writes);
+        Assert.Equal(ProviderAttemptStates.Cancelled, State(pending.Id).State);
+    }
+
     [Theory]
     [InlineData(ProviderAttemptStates.Completed)]
     [InlineData(ProviderAttemptStates.ResultReady)]

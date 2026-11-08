@@ -51,60 +51,79 @@ public sealed class CancelProviderAttemptUseCase(IAssessmentProviderRepository r
             return new ProviderCancelResult(ProviderCancelOutcome.Cancelled, AssignProviderInstrumentsUseCase.ToItem(attempt, null), null);
         }
 
-        if (!ProviderAttemptStates.IsCancellable(attempt.State))
+        // Two rounds at most: the provider ids are attached once (pending_create -> created), so an attempt can be mapped
+        // under us at most once — the second round cancels that assignment at the provider before the local cancel.
+        for (var round = 0; round < 2; round++)
         {
-            return new ProviderCancelResult(ProviderCancelOutcome.NotCancellable, null, attempt.State);
-        }
-
-        var cancelledAtProvider = false;
-        if (attempt.ProviderAssignmentId is { } assignmentId)
-        {
-            if (!_provider.IsConfigured)
+            if (!ProviderAttemptStates.IsCancellable(attempt.State))
             {
-                return new ProviderCancelResult(ProviderCancelOutcome.ProviderUnconfigured, null, null);
+                return new ProviderCancelResult(ProviderCancelOutcome.NotCancellable, null, attempt.State);
             }
 
-            var cancelled = await _provider.CancelAssignmentAsync(assignmentId, cancellationToken).ConfigureAwait(false);
-            if (!cancelled.Ok)
+            var cancelledAtProvider = false;
+            if (attempt.ProviderAssignmentId is { } assignmentId)
             {
-                var failure = cancelled.Failure!;
-                if (failure.Transient)
+                if (!_provider.IsConfigured)
                 {
-                    return new ProviderCancelResult(ProviderCancelOutcome.ProviderUnavailable, null, failure.Code);
+                    return new ProviderCancelResult(ProviderCancelOutcome.ProviderUnconfigured, null, null);
                 }
 
-                if (failure.HttpStatus == 409)
+                var cancelled = await _provider.CancelAssignmentAsync(assignmentId, cancellationToken).ConfigureAwait(false);
+                if (!cancelled.Ok)
                 {
-                    return new ProviderCancelResult(ProviderCancelOutcome.NotCancellable, null, failure.Code);
-                }
+                    var failure = cancelled.Failure!;
+                    if (failure.Transient)
+                    {
+                        return new ProviderCancelResult(ProviderCancelOutcome.ProviderUnavailable, null, failure.Code);
+                    }
 
-                if (failure.HttpStatus is not (404 or 410))
+                    if (failure.HttpStatus == 409)
+                    {
+                        return new ProviderCancelResult(ProviderCancelOutcome.NotCancellable, null, failure.Code);
+                    }
+
+                    if (failure.HttpStatus is not (404 or 410))
+                    {
+                        return new ProviderCancelResult(ProviderCancelOutcome.ProviderRefused, null, failure.Code);
+                    }
+                }
+                else
                 {
-                    return new ProviderCancelResult(ProviderCancelOutcome.ProviderRefused, null, failure.Code);
+                    cancelledAtProvider = true;
                 }
             }
-            else
+
+            var state = await _repository.MarkCancelledAsync(
+                organizationId, attempt.Id, attempt.ProviderAssignmentId, actorId, cancelledAtProvider, now, cancellationToken)
+                .ConfigureAwait(false);
+            if (state is null)
             {
-                cancelledAtProvider = true;
+                return new ProviderCancelResult(ProviderCancelOutcome.NotFound, null, null);
             }
+
+            if (ProviderAttemptStates.IsCancellable(state))
+            {
+                // The create was answered between our read and the lock: the attempt now names a provider assignment we
+                // have not cancelled. Re-read it and cancel that one first.
+                attempt = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false)
+                    ?? attempt with { State = state };
+                continue;
+            }
+
+            if (ProviderAttemptStates.IsOpen(state))
+            {
+                // A webhook finished the sitting between our read and the lock: its result stands.
+                return new ProviderCancelResult(ProviderCancelOutcome.NotCancellable, null, state);
+            }
+
+            var current = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false);
+            return new ProviderCancelResult(
+                ProviderCancelOutcome.Cancelled,
+                AssignProviderInstrumentsUseCase.ToItem(current ?? attempt with { State = state }, null),
+                null);
         }
 
-        var state = await _repository.MarkCancelledAsync(
-            organizationId, attempt.Id, actorId, cancelledAtProvider, now, cancellationToken).ConfigureAwait(false);
-        if (state is null)
-        {
-            return new ProviderCancelResult(ProviderCancelOutcome.NotFound, null, null);
-        }
-
-        if (ProviderAttemptStates.IsOpen(state))
-        {
-            // A webhook finished the sitting between our read and the lock: its result stands.
-            return new ProviderCancelResult(ProviderCancelOutcome.NotCancellable, null, state);
-        }
-
-        var current = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false);
-        return new ProviderCancelResult(
-            ProviderCancelOutcome.Cancelled, AssignProviderInstrumentsUseCase.ToItem(current ?? attempt with { State = state }, null),
-            null);
+        // Mapped under us twice cannot happen (ids are attached once); refuse rather than cancel blind.
+        return new ProviderCancelResult(ProviderCancelOutcome.ProviderUnavailable, null, "attempt_changed");
     }
 }

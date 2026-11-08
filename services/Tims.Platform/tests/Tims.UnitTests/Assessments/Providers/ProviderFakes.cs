@@ -218,14 +218,35 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Attempts.FirstOrDefault(a => a.CandidateId == candidateId && a.VacancyId == vacancyId
             && a.Instrument == instrument && ProviderAttemptStates.IsOpen(a.State));
 
+    /// <summary>Runs once just before the next local cancel takes its lock (a concurrent writer committing first).</summary>
+    public Action<Guid>? BeforeNextMarkCancelled { get; set; }
+
+    // Mirrors the real repository: cancels only a cancellable attempt still mapped to the expected provider assignment.
     public Task<string?> MarkCancelledAsync(
-        Guid organizationId, Guid attemptId, Guid actorId, bool cancelledAtProvider, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        Guid organizationId, Guid attemptId, Guid? expectedProviderAssignmentId, Guid actorId, bool cancelledAtProvider,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
-        Writes.Add(cancelledAtProvider ? "staff_cancel:provider" : "staff_cancel:local");
-        Replace(attemptId, a => ProviderAttemptStates.IsCancellable(a.State) ? a with { State = ProviderAttemptStates.Cancelled } : a);
+        var before = BeforeNextMarkCancelled;
+        BeforeNextMarkCancelled = null;
+        before?.Invoke(attemptId);
+        var current = Attempts.FirstOrDefault(a => a.Id == attemptId);
+        if (current is not null && ProviderAttemptStates.IsCancellable(current.State)
+            && current.ProviderAssignmentId == expectedProviderAssignmentId)
+        {
+            Writes.Add(cancelledAtProvider ? "staff_cancel:provider" : "staff_cancel:local");
+            Replace(attemptId, a => a with { State = ProviderAttemptStates.Cancelled });
+        }
+
         return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId)?.State);
     }
+
+    public void MapAttempt(Guid attemptId, Guid providerAssignmentId) =>
+        Replace(attemptId, a => a with
+        {
+            State = ProviderAttemptStates.Created,
+            ProviderAssignmentId = providerAssignmentId,
+            ProviderSubjectId = Guid.NewGuid(),
+        });
 
     // Mirrors the real repository: only a pending_create attempt is changed; the state afterwards is returned.
     public Task<string?> MarkCreatedAsync(

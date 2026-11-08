@@ -48,12 +48,15 @@ public interface IAssessmentProviderRepository
 
     /// <summary>
     /// Staff cancel: under the attempt lock, on a fresh read, moves an attempt that has not finished
-    /// (<see cref="ProviderAttemptStates.IsCancellable"/>) to <c>cancelled</c> with its audit row. Returns the state
-    /// afterwards (another state when a concurrent writer finished or voided it first), or null when not found.
+    /// (<see cref="ProviderAttemptStates.IsCancellable"/>) to <c>cancelled</c> with its audit row, but ONLY while its
+    /// provider assignment is still <paramref name="expectedProviderAssignmentId"/> (the one the caller cancelled at the
+    /// provider, or none). Returns the state afterwards: <c>cancelled</c>; a finished or voided state a concurrent writer
+    /// set first; or a still-cancellable state when the attempt was mapped to a provider assignment meanwhile (the
+    /// caller must cancel that one at the provider and try again). Null when not found.
     /// </summary>
     Task<string?> MarkCancelledAsync(
-        Guid organizationId, Guid attemptId, Guid actorId, bool cancelledAtProvider, DateTimeOffset now,
-        CancellationToken cancellationToken);
+        Guid organizationId, Guid attemptId, Guid? expectedProviderAssignmentId, Guid actorId, bool cancelledAtProvider,
+        DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>Pre-tenant: the org and candidate of an attempt id, or null. Nothing else crosses the boundary.</summary>
     Task<(Guid OrganizationId, Guid CandidateId)?> FindAttemptOwnerAsync(Guid attemptId, CancellationToken cancellationToken);

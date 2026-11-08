@@ -202,10 +202,30 @@ public sealed partial class AssessmentProviderRepository
         stored.UpdatedAt = timestamp;
 
         // A newer revision decides the attempt's state: a voided result voids it, a re-published valid result (staff
-        // review overturned a void) restores it.
-        entity.State = result.ValidityStatus == ProviderValidity.Voided
-            ? ProviderAttemptStates.Voided
-            : ProviderAttemptStates.ResultReady;
+        // review overturned a void) restores it — unless HR re-assigned the instrument after the void (or the expiry):
+        // the replacement holds the one open slot and supersedes this attempt, so the corrected revision is kept on
+        // record but the attempt is not reopened (that would also break ux_assessment_provider_attempts_open and fail
+        // the delivery on every retry). The candidate lock is the one the reserve takes, so a re-assignment can never
+        // interleave between this check and the update.
+        var restored = result.ValidityStatus == ProviderValidity.Voided ? ProviderAttemptStates.Voided : ProviderAttemptStates.ResultReady;
+        var superseded = false;
+        if (restored == ProviderAttemptStates.ResultReady && !ProviderAttemptStates.IsOpen(entity.State))
+        {
+            var candidateKey = entity.CandidateId.ToString();
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtextextended({candidateKey}, 0))", cancellationToken).ConfigureAwait(false);
+            var open = ProviderAttemptStates.Open.ToList();
+            superseded = await _db.Attempts.AsNoTracking()
+                .AnyAsync(a => a.OrganizationId == organizationId && a.Id != entity.Id && a.CandidateId == entity.CandidateId
+                    && a.VacancyId == entity.VacancyId && a.Instrument == entity.Instrument && open.Contains(a.State),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (!superseded)
+        {
+            entity.State = restored;
+        }
 
         entity.LatestResultId = result.ResultId;
         entity.CompletedAt ??= result.CompletedAt.UtcDateTime;
@@ -219,6 +239,8 @@ public sealed partial class AssessmentProviderRepository
             ["contentVersion"] = result.ContentVersion,
             ["normVersion"] = result.NormVersion,
             ["scoringVersion"] = result.ScoringVersion,
+            ["to"] = entity.State,
+            ["supersededByReassignment"] = superseded,
         });
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
