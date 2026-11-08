@@ -659,6 +659,7 @@ try
         sp.GetRequiredService<ProviderAssessmentResultSource>(),
     ]));
     builder.Services.AddScoped<FitEngineWriteUseCase>();
+    builder.Services.AddScoped<IEssayGradingRepository, EssayGradingRepository>();
 
     // Phase-5 Slice 25 / #98 — notification. ONE DbContext for both sides: the read and write flags cover the
     // SAME two tables, and getPreferences is a query that INSERTs, so the read path needs write capability.
@@ -1669,6 +1670,12 @@ try
     if ((externalOptions.FitEngineWriteEnabled && externalOptions.FitEngineV2Enabled) || isOpenApiDocGeneration)
     {
         app.MapFitRequirementsEndpoints();
+    }
+
+    // FIT v2 / owner default D5: minimal manual essay grading (a quiz awaiting a grade is needs review in FIT v2).
+    if (externalOptions.FitEngineV2Enabled || isOpenApiDocGeneration)
+    {
+        app.MapEssayGradingEndpoints();
     }
 
     // Phase-5 Slice 25 / #98 (efcoreReadOnly + efcoreStranglerWrite): the notification READ surface (3 reads) —

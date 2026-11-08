@@ -59,7 +59,6 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "api_keys",
     "interview_evaluators",
     "candidates",
-    "assessment_results",
     "assessment_assignments",
     "invoices",
     "vacancies",
@@ -116,7 +115,9 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "user_business_units",
     "data_consents",
     "data_subject_requests",
-    "job_profiles"
+    "job_profiles",
+    "assessment_results",
+    "assessment_responses"
   ],
   "quartzInfra": [
     "qrtz_job_details",
@@ -132,6 +133,7 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "qrtz_locks"
   ],
   "notes": {
+    "essay_grading_20261108": "Owner default D5: minimal manual essay grading (GET /fit-engine/assignments/{id}/essays, POST …/essays/{questionId}/grade; mapped only with Platform:FitEngineV2Enabled). assessment_results MOVES from efcoreReadOnly[] to efcoreStranglerWrite[] (one UPDATE of breakdown.pendingManual/manualGrades, raw_score, normalized_score, updated_at under a SELECT … FOR UPDATE row lock); assessment_responses joins efcoreStranglerWrite[] (raw-SQL UPDATE of points_awarded, is_correct, updated_at; not EF-mapped); assessment_questions is read by raw SQL only (not EF-mapped, so not listed). Prisma keeps the DDL and the submission writer; TS has no grading writer, so there is no second writer of these columns.",
     "fit_v2_requirements_writer_20261108": "FIT v2 C#-owned fit_requirements writer (PUT /fit-engine/vacancies/{id}/requirements, mapped only when Platform:FitEngineWriteEnabled AND Platform:FitEngineV2Enabled). job_profiles MOVES from efcoreReadOnly[] to efcoreStranglerWrite[]: EF now runs one INSERT … ON CONFLICT (vacancy_id) DO UPDATE that sets fit_requirements (+ updated_at; on insert also disc_targets/competencies '{}' and created_at) under TenantScope, merging the stored assessments key in the statement itself. Prisma keeps the DDL and the other job_profiles writers (upsertJobProfile, the TS updateFitRequirements). One active writer of fit_requirements per deploy: apps/web routes the requirements card to C# under NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP, which must be set together with the C# flags.",
     "fit_v2_20261107": "FIT v2 per-instrument fit (Platform:FitEngineV2Enabled, default false; inert unless Platform:FitEngineWriteEnabled maps the compute route). FitEngineWriteDbContext gains a SELECT-only `proctoring_sessions` subset (id/organization_id/assignment_id/severity) — NEW in efcoreReadOnly[] — and reads two more columns of tables already there: assessment_assignments.status and assessment_results.organization_id. AtsAssessmentResultSource reads them under TenantScope with an explicit organization_id filter on all three tables, to mark a native-quiz result 'needs review' when its assignment is not 'completed' or its proctoring severity is high/critical. No writes, no DDL, no new table: the provider results are a stub (ProviderAssessmentResultSource) until the TIMS Assessments connector exists. fit_scores stays efcoreStranglerWrite[]; a v2 breakdown is a superset of the v1 JSON (the six v1 keys, then fitVersion + assessments).",
     "candidate_interview_join_wph": "WP-H candidate video-interview join (POST /interviews/candidate-join, behind Platform:CandidateInterviewJoinEnabled, default false). `interviews` MOVES from efcoreReadOnly[] to efcoreStranglerWrite[]: CandidateInterviewJoinRepository (raw Npgsql, no ToTable, so the ToTable check cannot see it and this note is the record) runs ONE pre-tenant SELECT by candidate_join_token_hash, then a narrow tenant-filtered UPDATE of meeting_url (+updated_at) only WHERE id AND organization_id AND meeting_url IS NULL, as app_tenant with app.current_org_id = the resolved org. `candidates` stays efcoreReadOnly[] (first_name/last_name read, joined on the same organization_id). `audit_logs` stays efcoreAppendOnly[] (INSERT of a candidate_interview_join row, actor NULL, outcome only, never the token). Prisma keeps the DDL (migration 20260929120000_interview_candidate_join_token) and every existing TS writer, including the TS token issue/clear at schedule/reschedule/cancel. Not an ownership flip.",
