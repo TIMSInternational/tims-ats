@@ -272,7 +272,8 @@ public sealed class ProviderWebhookUseCaseTests
         // HR cancelled the attempt while its create was in flight and the ATS never recorded the provider's ids.
         var cancelled = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Cancelled) with
         {
-            ProviderAssignmentId = null, ProviderSubjectId = null,
+            ProviderAssignmentId = null,
+            ProviderSubjectId = null,
         };
         _repository.Attempts[0] = cancelled;
         var orphan = Guid.NewGuid();
