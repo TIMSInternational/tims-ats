@@ -5,7 +5,8 @@
 > default `false`. It is inert unless `Platform:FitEngineWriteEnabled` also maps the compute route.
 > Code: `Tims.Domain/FitEngine/FitV2Kernels.cs` (rules), `FitV2Models.cs`,
 > `Tims.Application/FitEngine/IAssessmentResultSource.cs` (port), `FitEngineWriteUseCase.cs` (switch),
-> `Tims.Infrastructure/FitEngine/AtsAssessmentResultSource.cs` + `ProviderAssessmentResultSource.cs` (adapters).
+> `Tims.Infrastructure/FitEngine/AtsAssessmentResultSource.cs` + `Tims.Application/FitEngine/ProviderFitResultSource.cs`
+> (adapters).
 > Golden cases: `contracts/fit-v2-fixtures/*.json` (hand-derived; there is no TS oracle).
 
 ## Why
@@ -195,8 +196,14 @@ redacted; see Rollout.
     maximum seen. Once sessions exist, an attempt a person reviewed and cleared would stay `needs_review` for
     good. Before a session writer ships (the proctoring work adds `proctoring_sessions.review_status` and
     per-event severity), define the review-completion signal and read it here, so a cleared result counts again.
-- `ProviderAssessmentResultSource`: a stub that returns nothing until the TIMS Assessments connector implements
-  it against the tims-interop result schemas (`LiaResultV1`, …). Its doc comment holds the intended mapping.
+- `ProviderFitResultSource` (release/assessments-fit-provider): an adapter over the AS-5 connector's
+  `IProviderAssessmentResultSource`, whose `ProviderFitMapping` reads the stored typed results (`LiaResultV1`
+  global percentile, `EnglishResultV1` CEFR, `ItciaResultV1` level; advisory instruments carry no value) and decides
+  integrity: one current attempt per instrument, only a `valid` `selection` result sat at its assigned time
+  multiplier is valid, anything voided, flagged or sat at another multiplier is needs review with no value. It is
+  composed only with `Platform:AssessmentProvidersEnabled` on (its tables exist only after migration
+  `20261107232524_assessment_providers`); with it off a provider instrument shows as `no_result`. See
+  `assessment-provider-connector.md`, "FIT v2".
 - No table is created.
 
 ## Rollout notes

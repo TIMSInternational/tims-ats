@@ -16,7 +16,8 @@ namespace Tims.Api.Assessments;
 ///   just gave. Returns the provider's short-lived candidate token in the body only (<c>Cache-Control: no-store</c>),
 ///   never in a URL, never logged. Rate-limited on the strict <c>auth</c> tier.</description></item>
 ///   <item><description><c>POST /webhooks/tims-assessments</c> — anonymous; authenticated by the <c>TIMS-Signature</c>
-///   HMAC over the raw body with a 300 s replay window, de-duplicated on <c>TIMS-Event-Id</c>. 200 / 400 / 503.
+///   HMAC over the raw body with a 300 s replay window, de-duplicated on the signed body's <c>event_id</c> (a
+///   <c>TIMS-Event-Id</c> or <c>TIMS-Event-Type</c> header that differs from the body is a 400). 200 / 400 / 503.
 ///   </description></item>
 /// </list>
 /// </summary>

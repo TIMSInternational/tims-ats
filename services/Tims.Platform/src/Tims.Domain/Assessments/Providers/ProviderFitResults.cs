@@ -12,8 +12,8 @@ public enum ProviderResultIntegrity
 
 /// <summary>
 /// One provider result as the FIT v2 result source reports it. Field-for-field the shape of FIT v2's
-/// <c>Tims.Domain.FitEngine.InstrumentResult</c> (branch <c>feat/fit-v2-per-instrument</c>, not merged when this was
-/// written), so the adapter that plugs this into <c>IAssessmentResultSource</c> is a one-to-one copy.
+/// <c>Tims.Domain.FitEngine.InstrumentResult</c>, so the adapter that plugs this into <c>IAssessmentResultSource</c>
+/// (<c>Tims.Application.FitEngine.ProviderFitResultSource</c>) is a one-to-one copy.
 /// <c>NormalizedScore</c> is always null: it is the ATS native quiz's value, not a provider instrument's.
 /// </summary>
 public sealed record ProviderInstrumentResult(

@@ -102,7 +102,7 @@ locals {
     # Q0b slice 2 (#172): the cross-org alert-metric surface. Enabling it WITHOUT populating the
     # alert_metrics_cron secret above is inert, not open — the gate refuses everything.
     Platform__AlertMetricsCronReadEnabled = tostring(var.feature_flags.alert_metrics_cron_read)
-    # AS-5: the TIMS Assessments provider connector (four routes). Inert, not open, until the out-of-band
+    # AS-5: the TIMS Assessments provider connector (seven routes). Inert, not open, until the out-of-band
     # AssessmentProviders__* client credentials and webhook secret are set AND migration
     # 20261107232524_assessment_providers is applied: an unconfigured client answers provider_unconfigured and an
     # unsigned webhook is refused. Those secrets are deliberately NOT in base_secrets here (see the README's

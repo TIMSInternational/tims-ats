@@ -34,8 +34,9 @@ public enum WebhookSignatureCheck
 /// secrets (current, previous); any match is accepted.
 ///
 /// <para>Receiver rules, in the contract's order: reject <c>|now - t| &gt; 300</c> s (the replay window), then compare
-/// every <c>v1</c> against every secret in constant time. De-duplication on <c>TIMS-Event-Id</c> (a replay inside the
-/// window) is the caller's job and is done by the webhook inbox's unique key.</para>
+/// every <c>v1</c> against every secret in constant time. De-duplication (a replay inside the window) is the caller's
+/// job: it is on the SIGNED BODY's <c>event_id</c>, never on a header (a <c>TIMS-Event-Id</c> header that differs from
+/// it is refused), through the webhook inbox's unique key.</para>
 /// </summary>
 public static partial class WebhookSignature
 {

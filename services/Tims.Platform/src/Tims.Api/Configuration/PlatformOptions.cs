@@ -432,8 +432,11 @@ public sealed class PlatformOptions
     /// AS-5: when true, the TIMS Assessments provider connector is mapped — POST /assessments/provider-assignments
     /// (assessment:create + vacancy scope), POST /assessments/provider-assignments/{id}/cancel (assessment:update +
     /// vacancy scope), POST /portal/assessment-attempts/{id}/launch (the candidate, by confirmed
-    /// email), POST /webhooks/tims-assessments (signature-verified, anonymous) and
-    /// POST /platform/assessment-providers/bindings (platform owner). Every instrument is a REMOTE provider behind the
+    /// email), POST /webhooks/tims-assessments (signature-verified, anonymous),
+    /// POST /platform/assessment-providers/bindings and the D15 DSAR export and erasure under
+    /// /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId} (platform owner). It also
+    /// registers the #312 withdrawal cascade to the provider, and composes the provider's stored results into FIT v2's
+    /// result source (read only when <see cref="FitEngineV2Enabled"/> is on). Every instrument is a REMOTE provider behind the
     /// TIMS Assessments API v1; the ATS holds no items, keys, timing or scoring. Needs the four EF-owned tables of
     /// migration 20261107232524_assessment_providers (NOT applied by this change) and the AssessmentProviders:* client
     /// credentials and webhook secret; without them every call answers provider_unconfigured. DEFAULT false (dark) —

@@ -197,7 +197,8 @@ from `dotnet ef migrations script --idempotent --context AssessmentProviderDbCon
 
 `AssessmentProviders:*`, set out of band as App Runner env from Secrets Manager:
 
-- `BaseUrl` (https origin)
+- `BaseUrl`: an https origin or base path. Owner default D18: the suite serves `/v1` under `/api`, so production is
+  `https://www.timssuite.com/api`. Every call path (`v1/...`) is joined relative to it.
 - `TokenUrl`
 - `ClientId`
 - `ClientSecret`
@@ -213,9 +214,30 @@ A blank value or the terraform placeholder makes the client unconfigured:
 
 ## FIT v2
 
-`feat/fit-v2-per-instrument` was not merged when this was written. `IProviderAssessmentResultSource` has FIT v2's
-`IAssessmentResultSource` signature, and `ProviderInstrumentResult` has its `InstrumentResult` fields. Once both
-merge, its stub `ProviderAssessmentResultSource` becomes a one-to-one adapter over this port.
+Both are on `release/assessments-fit-provider`. `Tims.Application.FitEngine.ProviderFitResultSource` adapts
+`IProviderAssessmentResultSource` to FIT v2's `IAssessmentResultSource`: a field-for-field copy of each
+`ProviderInstrumentResult`, keeping only the six provider instruments (never `native_quiz`), no value on a
+needs-review result, and the source tag `provider`. It is composed into FIT's source only with
+`Platform:AssessmentProvidersEnabled` on, because the provider tables exist only once the migration is applied; with
+the connector off, a provider instrument a vacancy lists shows as `no_result`.
+
+It reads the provider tables on their own connection, under `TenantScope`, while FIT v2 holds its
+per-(organization, candidate, vacancy) advisory lock, so a compute that follows another compute's commit reads every
+provider result committed before its read. Nothing recomputes FIT when a provider result arrives; the next compute
+picks it up, as for every other FIT input.
+
+## Unconfirmed 404s
+
+A provider that does not serve a route answers its catch-all 404 with the same `not_found` code as "no such
+resource". The callers of the cancel route clear their cleanup marker on a 404, and erasure counts a 404 as done, so
+the client confirms a 404 first: `GET /v1/assignments/{id}` for a cancel (404/410 confirms; an assignment already
+`cancelled` is returned as the success), `GET /v1/subjects/{id}` for an erasure (404 confirms, 410 is returned as
+already erased). Anything else is the transient `provider_not_found_unconfirmed`, which no caller reads as gone.
+
+## ITC-IA review flag
+
+`requires_human_review` is a top-level field of `ItciaResultV1`, not part of `scores`, so a summary projection carries
+it too. A present non-boolean value is off contract and the result is refused.
 
 ## Known gaps (not done here)
 

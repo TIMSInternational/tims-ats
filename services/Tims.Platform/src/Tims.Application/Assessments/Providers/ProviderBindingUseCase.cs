@@ -129,10 +129,9 @@ public sealed class ProviderBindingUseCase(IAssessmentProviderRepository reposit
 }
 
 /// <summary>
-/// The provider side of FIT v2's result source. FIT v2 (<c>feat/fit-v2-per-instrument</c>, not merged when this was
-/// written) defines <c>IAssessmentResultSource</c> with this exact signature and a stub
-/// <c>ProviderAssessmentResultSource</c> that returns nothing. This minimal port lets that stub become a one-line
-/// adapter (copy each <see cref="ProviderInstrumentResult"/> field into FIT's <c>InstrumentResult</c>) once both land.
+/// The provider side of FIT v2's result source: the same signature as FIT v2's <c>IAssessmentResultSource</c>.
+/// <c>Tims.Application.FitEngine.ProviderFitResultSource</c> adapts it (one <see cref="ProviderInstrumentResult"/> to
+/// one FIT <c>InstrumentResult</c>), and is composed into FIT only with <c>Platform:AssessmentProvidersEnabled</c> on.
 /// </summary>
 public interface IProviderAssessmentResultSource
 {
