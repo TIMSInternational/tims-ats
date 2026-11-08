@@ -105,6 +105,10 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return LaunchResult.Fail(LaunchOutcome.ProviderUnconfigured);
         }
 
+        // A capture that FAILED may still have been stored by the provider (a timeout after its commit), and an earlier
+        // capture in this loop may have succeeded, so the first failure stops the loop but is returned only AFTER the
+        // #312 re-check below: every attempted capture is covered by it.
+        LaunchResult? captureFailure = null;
         foreach (var consent in consents)
         {
             var auditId = Guid.NewGuid();
@@ -122,17 +126,19 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
                 consent.Locale, recorded.Ok, cancellationToken).ConfigureAwait(false);
             if (!recorded.Ok)
             {
-                return recorded.Failure!.Transient
+                captureFailure = recorded.Failure!.Transient
                     ? LaunchResult.Fail(LaunchOutcome.ProviderUnavailable, recorded.Failure.Code)
                     : LaunchResult.Fail(LaunchOutcome.ConsentRejected, recorded.Failure.Code);
+                break;
             }
         }
 
         if (consents.Count > 0)
         {
             // A withdrawal may have run its whole provider cascade between the #312 check above and these consent
-            // writes, so a consent just recorded would stay active. Re-checked AFTER the provider recorded it: a
-            // withdrawal seen now re-opens this attempt's cascade (which withdraws every active consent again); one
+            // writes, so a consent just recorded would stay active. Re-checked AFTER the provider recorded it, whether
+            // or not every capture succeeded: a withdrawal seen now re-opens this attempt's cascade (durably: the
+            // attempt is pending again, and the cascade withdraws every active consent the provider lists); one
             // committed later lists consents after this one exists, so its own cascade withdraws it.
             var recheck = await _repository.LoadLaunchContextAsync(found.OrganizationId, attemptId, cancellationToken)
                 .ConfigureAwait(false);
@@ -144,6 +150,11 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
                     found.OrganizationId, attempt.CandidateId, now, cancellationToken).ConfigureAwait(false);
                 return LaunchResult.Fail(LaunchOutcome.ConsentWithdrawn);
             }
+        }
+
+        if (captureFailure is not null)
+        {
+            return captureFailure;
         }
 
         var launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId.Value, cancellationToken).ConfigureAwait(false);

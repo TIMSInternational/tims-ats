@@ -92,6 +92,67 @@ public sealed class LaunchProviderAttemptUseCaseTests
         Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
     }
 
+    // Codex release review, round 1 [P1]: a FAILED capture returned before the re-check above. The first consent is
+    // stored, the withdrawal's cascade has already finished, the second capture fails: the first consent must still be
+    // withdrawn (the cascade is re-opened), and nothing is launched.
+    [Fact]
+    public async Task A_failed_capture_after_a_stored_one_still_withdraws_it_when_the_cascade_already_finished()
+    {
+        var attempt = _repository.AddCreatedAttempt("english", ProviderAttemptStates.Completed) with { State = ProviderAttemptStates.Created };
+        _repository.Attempts[0] = attempt;
+        var subjectId = attempt.ProviderSubjectId!.Value;
+        var captures = 0;
+        _provider.OnRecordConsent = () =>
+        {
+            if (++captures == 2)
+            {
+                return ProviderCall<ProviderConsentRecord>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, transient: true));
+            }
+
+            var record = new ProviderConsentRecord(Guid.NewGuid(), "assessment", "active");
+            _provider.SubjectConsents[subjectId] = [record];
+            return ProviderCall<ProviderConsentRecord>.Success(record);
+        };
+        var reads = 0;
+        _repository.BeforeLoadLaunchContext = () =>
+        {
+            if (++reads == 2)
+            {
+                _repository.LaunchWithdrawn = true;
+                _repository.Attempts[0] = _repository.Attempts[0] with
+                {
+                    State = ProviderAttemptStates.Cancelled,
+                    WithdrawalState = ProviderWithdrawalStates.Done,
+                };
+            }
+        };
+
+        var result = await Launch(attempt.Id, consents: [Assessment, new CapturedConsent("voice", "voice-v2026-11-cr", "es")]);
+
+        Assert.Equal(LaunchOutcome.ConsentWithdrawn, result.Outcome);
+        Assert.Equal(2, captures);
+        Assert.Equal("withdrawn", Assert.Single(_provider.SubjectConsents[subjectId]).Status);
+        Assert.DoesNotContain("launch", _provider.Calls);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    [Fact]
+    public async Task A_failed_capture_without_a_withdrawal_keeps_its_outcome_and_launches_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _provider.OnRecordConsent = () =>
+            ProviderCall<ProviderConsentRecord>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, transient: true));
+        var reads = 0;
+        _repository.BeforeLoadLaunchContext = () => reads++;
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
+        Assert.Equal(2, reads); // the #312 re-check ran after the failed capture
+        Assert.DoesNotContain("launch", _provider.Calls);
+        Assert.Null(_repository.Attempts.Single().WithdrawalState);
+    }
+
     [Fact]
     public async Task An_attempt_already_in_the_withdrawal_cascade_cannot_be_launched()
     {
