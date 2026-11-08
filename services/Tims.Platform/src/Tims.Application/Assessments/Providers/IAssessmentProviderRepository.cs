@@ -37,7 +37,10 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now,
         CancellationToken cancellationToken);
 
-    /// <summary>Records a failed provider create. A non-transient refusal cancels the attempt so it can be re-assigned.</summary>
+    /// <summary>
+    /// Records a failed provider create. <paramref name="cancel"/> (a definitive refusal: the provider created nothing)
+    /// cancels the attempt so it can be re-assigned; otherwise it stays <c>pending_create</c> for a re-send.
+    /// </summary>
     Task MarkCreateFailedAsync(
         Guid organizationId, Guid attemptId, string errorCode, bool cancel, DateTimeOffset now,
         CancellationToken cancellationToken);

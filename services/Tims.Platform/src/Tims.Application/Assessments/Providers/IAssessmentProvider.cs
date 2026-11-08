@@ -86,6 +86,37 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     public const string ContractViolation = "provider_contract_violation";
     public const string TokenUnavailable = "provider_token_unavailable";
 
+    /// <summary>
+    /// Local, raised BEFORE an assignment is created: a link-out instrument (PCA) needs the subject's names and email,
+    /// and the provider's subject has none. The contract has no subject update (a subject is idempotent on
+    /// tenant + external_ref and comes back unchanged), so the link-out launch would refuse with 422
+    /// <c>subject_data_required</c>; the attempt is refused here instead of creating an assignment nobody can launch.
+    /// </summary>
+    public const string SubjectDataRequired = "subject_data_required";
+
+    // Contract codes (tims-assessments.v1.yaml, Errors) that refuse a create OUTRIGHT: the provider validated the
+    // request and created nothing. Deliberately absent: idempotency_key_in_use (another request with this key is still
+    // creating it), idempotency_key_reused (an earlier body under this key may have created it), and any code this
+    // connector does not know (the contract may add codes in a minor version).
+    private static readonly string[] RefusalCodes =
+    [
+        "invalid_request", "insufficient_scope", "forbidden", "not_found", "vacancy_version_mismatch", "subject_erased",
+        "validation_failed", "locale_not_supported", "instrument_version_not_available",
+        "instrument_not_offered_for_selection", "accommodation_not_supported", SubjectDataRequired,
+    ];
+
+    /// <summary>
+    /// True only when this failure PROVES the provider created nothing, so a <c>pending_create</c> attempt may be
+    /// cancelled and a corrected request start over. Everything else may mean the provider has, or is still creating,
+    /// the resource: an outage, a timeout, 429, 5xx, an in-flight duplicate (409 <c>idempotency_key_in_use</c>), an
+    /// off-contract 2xx, an unknown code. Those keep the attempt pending, and a re-send replays the same idempotency key
+    /// instead of orphaning a provider assignment.
+    /// </summary>
+    public bool IsDefinitiveRefusal =>
+        HttpStatus is >= 400 and < 500
+            ? RefusalCodes.Contains(Code, StringComparer.Ordinal)
+            : HttpStatus is null && Code == SubjectDataRequired;
+
     public static ProviderFailure Local(string code, bool transient) => new(null, code, transient, []);
 }
 
@@ -109,13 +140,18 @@ public sealed record ProviderTenantRequest(string ExternalOrgRef, string Display
 public sealed record ProviderTenant(Guid TenantId, string ExternalOrgRef, string Status);
 
 /// <summary>
-/// The subject for one candidate. Names and email are sent ONLY when a link-out instrument (PCA) needs them;
-/// otherwise the subject is an opaque external ref.
+/// The subject for one candidate. Names and email are sent ONLY when the org's binding enables a link-out instrument
+/// (PCA), whose provider sitting needs them; otherwise the subject is an opaque external ref. The rule is per binding,
+/// not per request, because a subject is created once per (tenant, external_ref) and the contract has no update.
 /// </summary>
 public sealed record ProviderSubjectRequest(
     Guid TenantId, string ExternalRef, string? GivenName, string? FamilyName, string? Email, string? PreferredLocale);
 
-public sealed record ProviderSubject(Guid SubjectId, string Status);
+/// <summary>
+/// A subject as the provider holds it. <see cref="HasNamesAndEmail"/>: the given name, family name and email are all
+/// on record (what a link-out launch needs). An existing subject comes back UNCHANGED whatever the request sent.
+/// </summary>
+public sealed record ProviderSubject(Guid SubjectId, string Status, bool HasNamesAndEmail = false);
 
 /// <summary>
 /// One assignment, always purpose <c>selection</c> with the vacancy and the job-relatedness reason. Accommodations

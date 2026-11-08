@@ -167,9 +167,11 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         Guid organizationId, ProviderBindingRow binding, AttemptRow attempt, AssignmentContext context,
         AssignProviderInstrumentsInput input, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        // PII minimisation: names and email go to the provider only when a link-out instrument in this request needs
-        // them (the provider's own questionnaire site); a native instrument's subject is an opaque candidate id.
-        var needsPii = input.Instruments.Any(i => ProviderInstruments.IsLinkOut(i.Instrument));
+        // PII minimisation, per BINDING: names and email go to the provider only for an org that enables a link-out
+        // instrument (PCA, the provider's own questionnaire site needs them). It cannot be per request: the subject is
+        // created once per (tenant, candidate) and the contract has no subject update, so a subject first created for a
+        // native instrument without names would make a later PCA for the same candidate unlaunchable.
+        var needsPii = binding.EnabledInstruments.Any(ProviderInstruments.IsLinkOut);
         var subjectRequest = new ProviderSubjectRequest(
             binding.ProviderTenantId,
             attempt.CandidateId.ToString(),
@@ -183,6 +185,16 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         if (!subject.Ok)
         {
             return await FailAsync(organizationId, attempt, subject.Failure!, now, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (ProviderInstruments.IsLinkOut(attempt.Instrument) && !subject.Value!.HasNamesAndEmail)
+        {
+            // The provider kept a subject created before this org enabled a link-out instrument (or the candidate has no
+            // usable name or email): its launch would refuse with subject_data_required. Refused here, before an
+            // assignment exists, instead of creating one nobody can launch.
+            return await FailAsync(organizationId, attempt,
+                ProviderFailure.Local(ProviderFailure.SubjectDataRequired, transient: false), now, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         var request = new ProviderAssignmentRequest(
@@ -222,9 +234,11 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         Guid organizationId, AttemptRow attempt, ProviderFailure failure, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // A transient failure keeps the attempt pending: re-sending the same request re-drives the provider call with
-        // the same idempotency key. A refusal (4xx) cancels it, so a corrected request can create a fresh attempt.
-        var cancel = !failure.Transient;
+        // Only a refusal that proves the provider created nothing cancels the attempt, so a corrected request can create
+        // a fresh one. Anything else (an outage, a timeout, a concurrent request still creating it under the same key,
+        // an off-contract answer) keeps it pending: re-sending re-drives the provider call with the same idempotency key
+        // instead of orphaning an assignment the provider may already hold.
+        var cancel = failure.IsDefinitiveRefusal;
         await _repository.MarkCreateFailedAsync(organizationId, attempt.Id, failure.Code, cancel, now, cancellationToken)
             .ConfigureAwait(false);
         var state = cancel ? ProviderAttemptStates.Cancelled : ProviderAttemptStates.PendingCreate;
@@ -363,6 +377,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 /// (the provider keeps keys 24 h; past that, its own natural keys — tenant per org, subject per candidate — hold).
 /// Where the request body can legitimately change between calls (names, display name, locale), a hash of the body is
 /// part of the key: the contract answers 422 <c>idempotency_key_reused</c> for one key with two different bodies.
+/// A new key does NOT update anything: a tenant or subject that already exists is returned unchanged (the contract
+/// has no update), which is why the subject's names are decided per binding, not per request.
 /// </summary>
 public static class IdempotencyKeys
 {

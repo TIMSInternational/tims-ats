@@ -53,8 +53,10 @@ public sealed class AssignProviderInstrumentsUseCaseTests
     }
 
     [Fact]
-    public async Task A_native_instrument_sends_no_candidate_pii()
+    public async Task An_org_without_a_link_out_instrument_sends_no_candidate_pii()
     {
+        _repository.Binding = _repository.Binding! with { EnabledInstruments = ["lia", "english"] };
+
         await Assign(Input(("lia", null)));
 
         var subject = Assert.Single(_provider.Subjects).Request;
@@ -65,16 +67,36 @@ public sealed class AssignProviderInstrumentsUseCaseTests
     }
 
     [Fact]
-    public async Task Pca_link_out_sends_the_names_and_email_it_needs_under_a_different_idempotency_key()
+    public async Task Native_then_pca_for_one_candidate_works_when_the_org_enables_pca()
     {
+        // The org's binding enables PCA, so the subject gets names and email from the FIRST assignment, even a native
+        // one: the provider never updates a subject, and a later PCA must find them there to be launchable.
         await Assign(Input(("lia", null)));
-        await Assign(Input(("pca", null)));
+        var pca = await Assign(Input(("pca", null)));
 
-        Assert.Equal(2, _provider.Subjects.Count);
-        var pca = _provider.Subjects[1];
-        Assert.Equal("Ana", pca.Request.GivenName);
-        Assert.Equal("ana@example.com", pca.Request.Email);
-        Assert.NotEqual(_provider.Subjects[0].Key, pca.Key); // a different body must not reuse the key (422 otherwise)
+        Assert.Equal("Ana", _provider.Subjects[0].Request.GivenName);
+        Assert.Equal("ana@example.com", _provider.Subjects[0].Request.Email);
+        Assert.Equal(ProviderAssignOutcome.Ok, pca.Outcome);
+        Assert.Equal(ProviderAttemptStates.Created, pca.Response!.Items[0].State);
+        Assert.Contains("assignment:pca", _provider.Calls);
+    }
+
+    [Fact]
+    public async Task A_pca_for_a_subject_the_provider_holds_without_names_is_refused_before_any_assignment()
+    {
+        // The subject was created while the org had no link-out instrument; PCA was enabled later. The provider returns
+        // the old subject unchanged, so the PCA would be unlaunchable (422 subject_data_required at launch).
+        _repository.Binding = _repository.Binding! with { EnabledInstruments = ["lia", "english"] };
+        await Assign(Input(("lia", null)));
+        _repository.Binding = _repository.Binding with { EnabledInstruments = ["lia", "english", "pca"] };
+
+        var pca = await Assign(Input(("pca", null)));
+
+        Assert.Equal(ProviderAssignOutcome.Incomplete, pca.Outcome);
+        Assert.Equal(ProviderAttemptStates.Cancelled, pca.Response!.Items[0].State);
+        Assert.Equal(ProviderFailure.SubjectDataRequired, pca.Response.Items[0].Error);
+        Assert.DoesNotContain("assignment:pca", _provider.Calls);
+        Assert.NotEqual(_provider.Subjects[0].Key, _provider.Subjects[1].Key); // a different body never reuses a key
     }
 
     [Fact]
@@ -140,6 +162,86 @@ public sealed class AssignProviderInstrumentsUseCaseTests
         Assert.Equal(ProviderAttemptStates.Cancelled, result.Response!.Items[0].State);
         Assert.Equal("vacancy_version_mismatch", result.Response.Items[0].Error);
         Assert.Contains("cancelled:vacancy_version_mismatch", _repository.Writes);
+    }
+
+    [Fact]
+    public async Task A_retry_that_meets_the_first_create_still_in_flight_does_not_cancel_its_attempt()
+    {
+        // The client retries while the first request's create is still running at the provider: the provider answers the
+        // retry 409 idempotency_key_in_use for the same key. The first request then completes and must find its attempt
+        // still pending, attach the provider ids and report it created, not cancelled.
+        ProviderAssignResult? retry = null;
+        var calls = 0;
+        _provider.OnCreateAssignment = request =>
+        {
+            if (++calls == 1)
+            {
+                retry = Assign(Input(("lia", null))).GetAwaiter().GetResult();
+                return FakeProvider.Created(request);
+            }
+
+            return ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(409, "idempotency_key_in_use", false, []));
+        };
+
+        var first = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAssignOutcome.Incomplete, retry!.Outcome);
+        Assert.Equal(ProviderAttemptStates.PendingCreate, retry.Response!.Items[0].State);
+        Assert.Equal("idempotency_key_in_use", retry.Response.Items[0].Error);
+        Assert.Equal(ProviderAssignOutcome.Ok, first.Outcome);
+        Assert.Equal(ProviderAttemptStates.Created, first.Response!.Items[0].State);
+        var attempt = Assert.Single(_repository.Attempts);
+        Assert.Equal(ProviderAttemptStates.Created, attempt.State);
+        Assert.NotNull(attempt.ProviderAssignmentId);
+        Assert.DoesNotContain(_repository.Writes, w => w.StartsWith("cancelled:", StringComparison.Ordinal));
+        Assert.Equal(_provider.Assignments[0].Key, _provider.Assignments[1].Key); // one provider assignment, one key
+    }
+
+    [Theory]
+    [InlineData(409, "idempotency_key_in_use")] // another request with this key is still creating it
+    [InlineData(422, "idempotency_key_reused")] // an earlier body under this key may have created it
+    [InlineData(422, "a_code_added_in_a_minor_version")] // unknown codes are not proof of a refusal
+    [InlineData(401, "unauthorized")]
+    [InlineData(null, ProviderFailure.ContractViolation)] // an off-contract 2xx: the resource exists
+    [InlineData(503, ProviderFailure.Unavailable)]
+    public async Task An_answer_that_does_not_prove_nothing_was_created_keeps_the_attempt_pending(int? status, string code)
+    {
+        _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(status, code, status >= 500, []));
+
+        var result = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAssignOutcome.Incomplete, result.Outcome);
+        Assert.Equal(ProviderAttemptStates.PendingCreate, result.Response!.Items[0].State);
+        Assert.Equal(ProviderAttemptStates.PendingCreate, Assert.Single(_repository.Attempts).State);
+        Assert.Contains("pending:" + code, _repository.Writes);
+    }
+
+    [Theory]
+    [InlineData(400, "invalid_request")]
+    [InlineData(404, "not_found")]
+    [InlineData(409, "vacancy_version_mismatch")]
+    [InlineData(410, "subject_erased")]
+    [InlineData(422, "accommodation_not_supported")]
+    [InlineData(422, "instrument_not_offered_for_selection")]
+    public async Task A_contract_refusal_cancels_the_attempt(int status, string code)
+    {
+        _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(status, code, false, []));
+
+        var result = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAttemptStates.Cancelled, result.Response!.Items[0].State);
+        Assert.Contains("cancelled:" + code, _repository.Writes);
+    }
+
+    [Fact]
+    public async Task An_off_contract_create_answer_keeps_the_attempt_pending_because_the_assignment_exists()
+    {
+        _provider.OnCreateAssignment = request => FakeProvider.Created(request with { Instrument = "english" });
+
+        var result = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAttemptStates.PendingCreate, result.Response!.Items[0].State);
+        Assert.Equal(ProviderFailure.ContractViolation, result.Response.Items[0].Error);
     }
 
     [Fact]

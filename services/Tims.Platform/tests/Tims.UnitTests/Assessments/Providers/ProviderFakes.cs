@@ -50,12 +50,23 @@ internal sealed class FakeProvider : IAssessmentProvider
         return Task.FromResult(ProviderCall<ProviderTenant>.Success(new ProviderTenant(TenantId, request.ExternalOrgRef, "active")));
     }
 
+    /// <summary>Per external_ref, whether the subject the provider holds has names and email (first create wins).</summary>
+    public Dictionary<string, bool> SubjectHasNames { get; } = new(StringComparer.Ordinal);
+
+    // Like the real provider: idempotent on (tenant, external_ref), and an existing subject comes back UNCHANGED
+    // whatever the new request carries (the contract has no subject update).
     public Task<ProviderCall<ProviderSubject>> EnsureSubjectAsync(
         ProviderSubjectRequest request, string idempotencyKey, CancellationToken cancellationToken)
     {
         Calls.Add("subject");
         Subjects.Add((request, idempotencyKey));
-        return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(SubjectId, "active")));
+        if (!SubjectHasNames.TryGetValue(request.ExternalRef, out var hasNames))
+        {
+            hasNames = request.GivenName is not null && request.FamilyName is not null && request.Email is not null;
+            SubjectHasNames[request.ExternalRef] = hasNames;
+        }
+
+        return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(SubjectId, "active", hasNames)));
     }
 
     public Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(
@@ -63,11 +74,15 @@ internal sealed class FakeProvider : IAssessmentProvider
     {
         Calls.Add("assignment:" + request.Instrument);
         Assignments.Add((request, idempotencyKey));
-        var answer = OnCreateAssignment?.Invoke(request) ?? ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
-            Guid.NewGuid(), request.TenantId, request.SubjectId, request.Instrument, "1.0", "content-2026.11.1", "created",
-            ["assessment"], ["assessment"], new DateTimeOffset(2026, 11, 23, 14, 0, 0, TimeSpan.Zero)));
+        var answer = OnCreateAssignment?.Invoke(request) ?? Created(request);
         return Task.FromResult(answer);
     }
+
+    /// <summary>The provider's success answer for a create (also usable from an <see cref="OnCreateAssignment"/> hook).</summary>
+    public static ProviderCall<ProviderAssignment> Created(ProviderAssignmentRequest request) =>
+        ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+            Guid.NewGuid(), request.TenantId, request.SubjectId, request.Instrument, "1.0", "content-2026.11.1", "created",
+            ["assessment"], ["assessment"], new DateTimeOffset(2026, 11, 23, 14, 0, 0, TimeSpan.Zero), request.ExternalRef));
 
     public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
     {
@@ -178,11 +193,12 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult(new ReserveOutcome(false, rows));
     }
 
+    // Mirrors the real repository: only a pending_create attempt is changed; the state afterwards is returned.
     public Task<string?> MarkCreatedAsync(
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add("created");
-        Replace(attemptId, a => a with
+        Replace(attemptId, a => a.State != ProviderAttemptStates.PendingCreate ? a : a with
         {
             State = ProviderAttemptStates.Created,
             ProviderAssignmentId = assignment.AssignmentId,
@@ -191,14 +207,14 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             RequiredConsents = assignment.RequiredConsents,
             ExpiresAt = assignment.ExpiresAt,
         });
-        return Task.FromResult<string?>(ProviderAttemptStates.Created);
+        return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId)?.State);
     }
 
     public Task MarkCreateFailedAsync(
         Guid organizationId, Guid attemptId, string errorCode, bool cancel, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add(cancel ? "cancelled:" + errorCode : "pending:" + errorCode);
-        Replace(attemptId, a => a with
+        Replace(attemptId, a => a.State != ProviderAttemptStates.PendingCreate ? a : a with
         {
             State = cancel ? ProviderAttemptStates.Cancelled : a.State,
             LastErrorCode = errorCode,

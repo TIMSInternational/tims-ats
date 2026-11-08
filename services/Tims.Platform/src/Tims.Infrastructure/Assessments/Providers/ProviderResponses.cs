@@ -61,7 +61,10 @@ internal static partial class ProviderResponses
             : null;
 
     public static ProviderSubject? Subject(JsonElement root) =>
-        GuidOf(root, "subject_id") is { } id && Str(root, "status") is { } status ? new ProviderSubject(id, status) : null;
+        GuidOf(root, "subject_id") is { } id && Str(root, "status") is { } status
+            ? new ProviderSubject(id, status,
+                Str(root, "given_name") is not null && Str(root, "family_name") is not null && Str(root, "email") is not null)
+            : null;
 
     public static ProviderAssignment? Assignment(JsonElement root)
     {
