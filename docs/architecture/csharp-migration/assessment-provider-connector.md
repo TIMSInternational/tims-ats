@@ -23,13 +23,15 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 
 ## Routes (all dark)
 
-| Route                                                       | Who                                                                             | Notes                                                                                                                                   |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /assessments/provider-assignments`                    | staff, `assessment:create` plus the vacancy IDOR probe                          | 1–6 instruments, the reason for each, the accommodations, an optional expiry. Each item echoes the locale, multiplier and aids in force |
-| `POST /assessments/provider-assignments/{attemptId}/cancel` | staff, `assessment:update` plus the vacancy IDOR probe on the attempt's vacancy | Cancels an attempt whose sitting has not finished, at the provider first. Unknown, foreign and out-of-scope ids are the same 404        |
-| `POST /platform/assessment-providers/bindings`              | platform owner                                                                  | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments                                          |
-| `POST /portal/assessment-attempts/{attemptId}/launch`       | the candidate, by confirmed email                                               | Optional per-purpose consents. Returns the candidate token in the body only. Rate limit: `auth` tier                                    |
-| `POST /webhooks/tims-assessments`                           | anonymous, HMAC                                                                 | `TIMS-Signature`, a 300 s replay window, de-duplication on `TIMS-Event-Id`                                                              |
+| Route                                                                                                 | Who                                                                             | Notes                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /assessments/provider-assignments`                                                              | staff, `assessment:create` plus the vacancy IDOR probe                          | 1–6 instruments, the reason for each, the accommodations, an optional expiry. Each item echoes the locale, multiplier and aids in force        |
+| `POST /assessments/provider-assignments/{attemptId}/cancel`                                           | staff, `assessment:update` plus the vacancy IDOR probe on the attempt's vacancy | Cancels an attempt whose sitting has not finished, at the provider first. Unknown, foreign and out-of-scope ids are the same 404               |
+| `POST /platform/assessment-providers/bindings`                                                        | platform owner                                                                  | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments                                                 |
+| `POST /portal/assessment-attempts/{attemptId}/launch`                                                 | the candidate, by confirmed email                                               | Optional per-purpose consents. Returns the candidate token in the body only. Rate limit: `auth` tier                                           |
+| `POST /webhooks/tims-assessments`                                                                     | anonymous, HMAC                                                                 | `TIMS-Signature`, a 300 s replay window; a `TIMS-Event-Id` that differs from the signed body is a 400; de-duplication on the body's `event_id` |
+| `GET /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export`   | platform owner                                                                  | DSAR access to the ATS's provider tables for one candidate (attempts and stored results), audited fail-closed, `no-store` (D15)                |
+| `POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure` | platform owner                                                                  | `DELETE /v1/subjects/{id}` for each provider subject of the candidate; 202 when all were accepted, 503 to retry (D15)                          |
 
 ## Hiring guardrails, and where each one is enforced
 
@@ -42,6 +44,17 @@ Here every instrument is a **remote** provider, and provider attempts live only 
     `pg_advisory_xact_lock(hashtextextended(candidate_id))`.
   - Checked again at **every** launch.
   - The predicate is the FIT engine's: the candidate, or a same-org candidate with the same `lower(btrim(email))`.
+  - **It reaches the provider (owner default D15, 2026-11-08).** The withdrawal's own transaction, under the same
+    candidate lock, runs `ProviderWithdrawalSql`: every attempt of the candidate (and of a same-email sibling) gets
+    `withdrawal_state = pending`; one that has not finished is cancelled, and one mapped to a provider assignment gets
+    `provider_cancel_pending`. Registered only when `Platform:AssessmentProvidersEnabled` is on (the tables must exist).
+    After the commit, `ProviderConsentWithdrawalUseCase` looks up unmapped attempts by `external_ref`, cancels the
+    orphans, withdraws every active provider consent of each subject (`POST .../consents/{id}/withdrawal`) and only
+    then moves the attempt to `done` by a conditional write. A failed step stays `pending`: every webhook for such an
+    attempt drives another pass and answers 503 until it is confirmed (the provider's redelivery is the queue).
+  - No result is fetched for an attempt in the cascade, and `StoreResultAsync` re-checks the withdrawal under the
+    candidate lock (lock order subject -> attempt -> candidate), so a result fetched before a withdrawal committed is
+    not stored after it.
 - **Consent per purpose.**
   - The portal sends the purposes the candidate accepted.
   - Each one is recorded at the provider, with an `audit_logs` row whose id is the provider's `host_record_ref`.
@@ -93,7 +106,12 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 - **Assign.**
   1. Reserve `pending_create` attempts in one transaction: all instruments or none. A partial unique index allows
      at most one open attempt per candidate + vacancy + instrument.
-  2. Call the provider with `Idempotency-Key = ats-attempt-<attemptId>`.
+  2. Call the provider with `external_ref = <attemptId>` and `Idempotency-Key = ats-attempt-<attemptId>`. An attempt
+     that was already sent once (not reserved by this request) is first looked up with
+     `GET /v1/assignments?tenant_id=&external_ref=<attemptId>` (owner default D11, 2026-11-08): a found assignment is
+     recorded, and only an empty lookup sends the create. A failed lookup keeps the attempt pending and sends nothing.
+     This closes the case where the 24 h `Idempotency-Key` window expired; the provider also keeps
+     (tenant, external_ref) unique permanently.
   3. Only a contract refusal that proves nothing was created (`ProviderFailure.IsDefinitiveRefusal`:
      `invalid_request`, `not_found`, `vacancy_version_mismatch`, the 422 validation codes, ...) cancels the attempt.
   4. Everything else keeps it `pending_create`, and re-sending the same request replays the same key: an outage, a
@@ -108,11 +126,12 @@ Here every instrument is a **remote** provider, and provider attempts live only 
      provider is down) and so does any webhook for that assignment (503 to the sender, which redelivers). A crash
      before the answer was recorded is caught by reconciliation instead.
 - **Subject and tenant keys** carry a hash of the request body, because the contract rejects one key with two bodies.
-  A new key updates nothing: an existing subject comes back unchanged, and the contract has no subject update.
+  A new key updates nothing: an existing subject comes back unchanged; only `PATCH /v1/subjects/{id}` changes it.
 - **Subject PII.** Names and email go to the provider for every subject of an org whose binding enables a link-out
-  instrument (PCA), and never otherwise. It cannot be decided per request: a subject first created for a native
-  instrument without names would make a later PCA unlaunchable (422 `subject_data_required`). A PCA whose provider
-  subject still lacks them (created before the org enabled PCA) is refused locally, before any assignment exists.
+  instrument (PCA), and never otherwise. A PCA whose provider subject lacks them (created before the org enabled
+  PCA) is enriched with `PATCH /v1/subjects/{id}` (scope `subjects:write`) before the assignment is created, and a
+  link-out launch answered 422 `subject_data_required` is patched and launched once more. Only a candidate with no
+  usable names or email is refused locally (`subject_data_required`), before any assignment exists.
 - **Webhooks.**
   - The inbox row is unique on (org, event_id).
   - A transient failure answers 503, so the provider's 72 h retries are the queue.
@@ -148,8 +167,9 @@ Here every instrument is a **remote** provider, and provider attempts live only 
     `erased`, and a result for that subject is never stored, even when the erasure ran before the attempt had its
     provider ids.
   - A launch or a staff cancel never rewinds a state a webhook already set.
-  - The subject lock's interleaving (an erasure racing a mapping) is argued, not tested: the tombstone tests are
-    sequential.
+  - The subject lock's interleaving is tested both ways (`AssessmentProviderWithdrawalTests`): an erasure waiting on
+    a mapping in flight erases the attempt that mapping commits, and a mapping waiting on an erasure in flight leaves
+    the attempt erased. Each test goes red when its method's subject lock is removed.
 
 ## Tables: migration `20261107232524_assessment_providers`
 
@@ -181,7 +201,7 @@ from `dotnet ef migrations script --idempotent --context AssessmentProviderDbCon
 - `TokenUrl`
 - `ClientId`
 - `ClientSecret`
-- `Scopes` (default `catalog:read assignments:write results:read`)
+- `Scopes` (default `catalog:read assignments:write subjects:write results:read`)
 - `WebhookSigningSecret`
 - `WebhookSigningSecretPrevious` (during a rotation)
 - `RequestTimeoutSeconds` (default 6)
@@ -199,13 +219,15 @@ merge, its stub `ProviderAssessmentResultSource` becomes a one-to-one adapter ov
 
 ## Known gaps (not done here)
 
-- A #312 withdrawal does not reach provider attempts. Results of a withdrawn candidate are still fetched and stored,
-  open provider assignments are not cancelled, and no provider consent withdrawal is sent. The launch's #312 check
-  runs outside the candidate lock. Needed before the flag is on.
-- The provider tables are not in the DSAR export, and nothing on the ATS side asks the provider to erase a subject
-  (`DELETE /v1/subjects/{id}`). Only a provider-initiated `subject.erased` reaches these tables.
-- The contract has no subject update, so names and email cannot be added to a subject created before its org enabled
-  PCA. Such a PCA is refused (`subject_data_required`) until the contract gains one.
+- The withdrawal cascade has no scheduled sweeper: a pass runs after each withdrawal and on every webhook for an
+  attempt in the cascade. An attempt whose provider never sends another event, and whose org sees no further
+  withdrawal, stays `pending` (results stay stopped; the provider-side withdrawal is not sent) until one of those
+  happens. A worker that runs `PropagateAsync` per org would close it.
+- The launch's #312 check still runs outside the candidate lock. A launch that races a withdrawal can record consent
+  and mint a token at the provider; the cascade then cancels the assignment and withdraws the consent.
+- The DSAR export covers the ATS's own provider tables. What the provider itself holds (media, its access log) is its
+  `GET /v1/subjects/{id}/export`, which needs the `subjects:export` scope and is not called here.
+- D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
 
 ## Owner steps, in order
 
@@ -215,7 +237,7 @@ merge, its stub `ProviderAssessmentResultSource` becomes a one-to-one adapter ov
    - Check 18 (`pre-flip-scan --flip-diff`) will list the four tables as "newly efcore-owned". They are new tables,
      not flips.
 3. Register the ATS as an OAuth client at the provider:
-   - the scopes;
+   - the scopes, including `subjects:write` (subject enrichment);
    - the ATS portal origin in its CORS allow-list;
    - a webhook subscription to `https://<api>/webhooks/tims-assessments`.
 4. Store the secrets: `AssessmentProviders__ClientSecret` and `AssessmentProviders__WebhookSigningSecret`. Watch
