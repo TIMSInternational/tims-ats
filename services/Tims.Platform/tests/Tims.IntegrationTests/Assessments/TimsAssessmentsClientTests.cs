@@ -420,6 +420,107 @@ public sealed class TimsAssessmentsClientTests
         Assert.Equal("2026-11-09T12:00:00Z", JsonNode.Parse(sent[1].Body)!["withdrawn_at"]!.GetValue<string>());
     }
 
+    private static HttpResponseMessage NotFound() =>
+        Json(HttpStatusCode.NotFound, """{"type":"about:blank","title":"Not found","status":404,"code":"not_found"}""",
+            "application/problem+json");
+
+    // Round-8 cross-repo check: a provider that does not serve POST /v1/assignments/{id}/cancel answers its catch-all
+    // 404 not_found, and every caller reads a 404 as "already gone" and clears its cleanup marker. The client confirms a
+    // 404 with GET /v1/assignments/{id} before it returns one.
+    [Fact]
+    public async Task A_cancel_404_is_returned_only_when_the_lookup_confirms_the_assignment_is_gone()
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : NotFound());
+
+        var result = await Client().CancelAssignmentAsync(id, CancellationToken.None);
+
+        Assert.Equal(404, result.Failure!.HttpStatus);
+        Assert.Equal(
+            [$"https://assessments.test/v1/assignments/{id}/cancel", $"https://assessments.test/v1/assignments/{id}"],
+            _handler.Requests.Where(r => r.Uri != TokenUrl).Select(r => r.Uri).ToList());
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task A_cancel_404_for_an_assignment_the_provider_still_serves_is_unconfirmed_and_transient(HttpStatusCode lookup)
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.RequestUri!.AbsolutePath.EndsWith("/cancel", StringComparison.Ordinal) ? NotFound()
+            : lookup == HttpStatusCode.OK ? Json(HttpStatusCode.OK, AssignmentJson(id))
+            : new HttpResponseMessage(lookup));
+
+        var result = await Client().CancelAssignmentAsync(id, CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Failure!.HttpStatus); // never read as "already gone" by a caller
+        Assert.Equal(ProviderFailure.NotFoundUnconfirmed, result.Failure.Code);
+        Assert.True(result.Failure.Transient);
+    }
+
+    [Fact]
+    public async Task A_cancel_404_for_an_assignment_already_cancelled_is_the_success_the_route_would_give()
+    {
+        var id = Guid.NewGuid();
+        var cancelledJson = AssignmentJson(id).Replace("\"status\":\"created\"", "\"status\":\"cancelled\"", StringComparison.Ordinal);
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.RequestUri!.AbsolutePath.EndsWith("/cancel", StringComparison.Ordinal) ? NotFound()
+            : Json(HttpStatusCode.OK, cancelledJson));
+
+        var result = await Client().CancelAssignmentAsync(id, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Equal("cancelled", result.Value!.Status);
+    }
+
+    [Fact]
+    public async Task A_cancel_that_succeeds_or_fails_otherwise_makes_no_lookup()
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK,
+            AssignmentJson(id).Replace("\"status\":\"created\"", "\"status\":\"cancelled\"", StringComparison.Ordinal)));
+        var client = Client();
+
+        Assert.True((await client.CancelAssignmentAsync(id, CancellationToken.None)).Ok);
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : Json(HttpStatusCode.Conflict, """{"type":"about:blank","title":"Conflict","status":409,"code":"assignment_completed"}""", "application/problem+json"));
+        Assert.Equal(409, (await client.CancelAssignmentAsync(id, CancellationToken.None)).Failure!.HttpStatus);
+
+        Assert.DoesNotContain(_handler.Requests, r => r.Uri == $"https://assessments.test/v1/assignments/{id}");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, 404, null)]
+    [InlineData(HttpStatusCode.Gone, 410, null)]
+    [InlineData(HttpStatusCode.OK, null, ProviderFailure.NotFoundUnconfirmed)]
+    [InlineData(HttpStatusCode.BadGateway, null, ProviderFailure.NotFoundUnconfirmed)]
+    public async Task An_erasure_404_is_confirmed_by_the_subject_lookup(HttpStatusCode lookup, int? expectedStatus, string? expectedCode)
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.Method == HttpMethod.Delete ? NotFound()
+            : lookup == HttpStatusCode.OK
+                ? Json(HttpStatusCode.OK, $$"""{"subject_id":"{{subject}}","tenant_id":"{{Tenant}}","external_ref":"c-1","status":"active","created_at":"2026-11-09T12:00:00Z"}""")
+            : lookup == HttpStatusCode.Gone
+                ? Json(HttpStatusCode.Gone, """{"type":"about:blank","title":"Gone","status":410,"code":"subject_erased"}""", "application/problem+json")
+            : lookup == HttpStatusCode.NotFound ? NotFound()
+            : new HttpResponseMessage(lookup));
+
+        var result = await Client().EraseSubjectAsync(subject, CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal(expectedStatus, result.Failure!.HttpStatus);
+        if (expectedCode is not null)
+        {
+            Assert.Equal(expectedCode, result.Failure.Code);
+            Assert.True(result.Failure.Transient);
+        }
+
+        Assert.Equal($"https://assessments.test/v1/subjects/{subject}", _handler.Requests.Last(r => r.Uri != TokenUrl).Uri);
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         private Func<HttpRequestMessage, HttpResponseMessage> _respond = _ => new HttpResponseMessage(HttpStatusCode.NotFound);

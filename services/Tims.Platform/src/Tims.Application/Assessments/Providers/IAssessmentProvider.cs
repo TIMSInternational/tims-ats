@@ -123,6 +123,13 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     public const string TokenUnavailable = "provider_token_unavailable";
 
     /// <summary>
+    /// A cancel or an erasure answered 404, but the provider's own lookup did not confirm that the resource is gone (it
+    /// still serves it, or the lookup failed). A provider that does not serve the route answers the same 404
+    /// <c>not_found</c>, so this is never read as "already gone". Transient: retry later.
+    /// </summary>
+    public const string NotFoundUnconfirmed = "provider_not_found_unconfirmed";
+
+    /// <summary>
     /// A link-out instrument (PCA) needs the subject's names and email. The provider answers it on a link-out launch;
     /// the ATS raises it locally, BEFORE an assignment is created, only when the provider's subject lacks them AND the
     /// candidate record has no usable names or email to add with <c>PATCH /v1/subjects/{id}</c>.

@@ -88,10 +88,37 @@ public sealed class TimsAssessmentsClient(
             cancellationToken);
     }
 
-    public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Delete, $"v1/subjects/{subjectId:D}", null, null, "erase_subject",
-            root => ProviderResponses.ErasureReceipt(root) is { } receipt && receipt.SubjectId == subjectId ? receipt : null,
-            cancellationToken);
+    /// <summary>
+    /// <c>DELETE /v1/subjects/{id}</c>. A 404 is returned as such ("no such subject") ONLY when <c>GET /v1/subjects/{id}</c>
+    /// confirms it; a 410 there is returned as the subject already erased. A provider that does not serve the erase
+    /// route answers its catch-all 404 with the same <c>not_found</c> code, and the erasure use case counts a 404 as
+    /// done, so an unconfirmed 404 (the subject is still served, or the check failed) is a transient
+    /// <see cref="ProviderFailure.NotFoundUnconfirmed"/> instead: nothing is recorded and the erasure stays retryable.
+    /// </summary>
+    public async Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        var erased = await SendAsync(HttpMethod.Delete, $"v1/subjects/{subjectId:D}", null, null, "erase_subject",
+                root => ProviderResponses.ErasureReceipt(root) is { } receipt && receipt.SubjectId == subjectId ? receipt : null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (erased.Ok || erased.Failure!.HttpStatus != 404)
+        {
+            return erased;
+        }
+
+        var probe = await SendAsync(HttpMethod.Get, $"v1/subjects/{subjectId:D}", null, null, "get_subject",
+                root => ProviderResponses.Subject(root) is { } subject && subject.SubjectId == subjectId ? subject : null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!probe.Ok && probe.Failure!.HttpStatus is 404 or 410)
+        {
+            return ProviderCall<ProviderErasureReceipt>.Fail(probe.Failure);
+        }
+
+        logger.LogWarning("TIMS Assessments erase_subject answered 404 without a confirming lookup");
+        return ProviderCall<ProviderErasureReceipt>.Fail(
+            ProviderFailure.Local(ProviderFailure.NotFoundUnconfirmed, transient: true));
+    }
 
     public Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(
         Guid subjectId, CancellationToken cancellationToken) =>
@@ -156,10 +183,48 @@ public sealed class TimsAssessmentsClient(
         SendAsync(HttpMethod.Get, $"v1/assignments/{assignmentId:D}", null, null, "get_assignment",
             ProviderResponses.Assignment, cancellationToken);
 
-    public Task<ProviderCall<ProviderAssignment>> CancelAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/cancel", null, null, "cancel_assignment",
-            root => ProviderResponses.Assignment(root) is { } cancelled && cancelled.AssignmentId == assignmentId ? cancelled : null,
-            cancellationToken);
+    /// <summary>
+    /// <c>POST /v1/assignments/{id}/cancel</c>, which the contract makes idempotent (an already-cancelled assignment
+    /// answers 200). Every caller reads a 404 as "the assignment is gone" and clears its cleanup marker, so a 404 is
+    /// returned as such ONLY when <c>GET /v1/assignments/{id}</c> confirms it (404 or 410). A provider that does not serve
+    /// the cancel route answers its catch-all 404 with the same <c>not_found</c> code: when the GET still finds the
+    /// assignment, a <c>cancelled</c> one is returned as the success the route would have given, and anything else (or
+    /// a failed GET) is a transient <see cref="ProviderFailure.NotFoundUnconfirmed"/>, so the marker stays and the
+    /// cancel is retried.
+    /// </summary>
+    public async Task<ProviderCall<ProviderAssignment>> CancelAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
+    {
+        var cancelled = await SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/cancel", null, null,
+                "cancel_assignment",
+                root => ProviderResponses.Assignment(root) is { } assignment && assignment.AssignmentId == assignmentId
+                    ? assignment
+                    : null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (cancelled.Ok || cancelled.Failure!.HttpStatus != 404)
+        {
+            return cancelled;
+        }
+
+        var probe = await SendAsync(HttpMethod.Get, $"v1/assignments/{assignmentId:D}", null, null, "get_assignment",
+                root => ProviderResponses.Assignment(root) is { } assignment && assignment.AssignmentId == assignmentId
+                    ? assignment
+                    : null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!probe.Ok && probe.Failure!.HttpStatus is 404 or 410)
+        {
+            return cancelled;
+        }
+
+        if (probe.Ok && string.Equals(probe.Value!.Status, "cancelled", StringComparison.Ordinal))
+        {
+            return probe;
+        }
+
+        logger.LogWarning("TIMS Assessments cancel_assignment answered 404 without a confirming lookup");
+        return ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.NotFoundUnconfirmed, transient: true));
+    }
 
     public Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken)
