@@ -143,4 +143,8 @@ describe('explainFit', () => {
     expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/needs_review must be reviewed by a person/);
     expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/never describe it as a\s+low score/);
   });
+
+  it('the system prompt says English counts once, in languages (owner default D3)', () => {
+    expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/except english, which counts once and only in\s+the languages dimension/);
+  });
 });

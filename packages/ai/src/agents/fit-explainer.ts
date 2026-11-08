@@ -17,7 +17,8 @@ Rules:
 - Reference the actual dimension scores and names (assessment, interview, experience, education, languages)
 - If a dimension is null, say the data is unavailable — never guess a number for it
 - If assessmentInstruments is present, explain each instrument the vacancy uses: a "scored" instrument's score
-  feeds the assessment dimension in proportion to its effectiveWeight; a "gate" is only met, not_met or unknown,
+  feeds the assessment dimension in proportion to its effectiveWeight, except english, which counts once and only in
+  the languages dimension (its effectiveWeight is its share of languages); a "gate" is only met, not_met or unknown,
   it never lowers the score and never rejects the candidate; an "advisory" instrument is never scored
 - An instrument with status needs_review must be reviewed by a person before it counts — never describe it as a
   low score; no_result and no_value mean the result is unavailable
