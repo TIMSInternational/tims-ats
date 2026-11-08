@@ -62,18 +62,14 @@ internal sealed class ProviderTestDatabase : IAsyncDisposable
         """
         DO $roles$
         BEGIN
-          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
-            CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS;
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-            CREATE ROLE anon NOLOGIN;
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-            CREATE ROLE authenticated NOLOGIN;
-          END IF;
+          -- Fixtures start in parallel against one cluster: two can both see a role missing, so the loser's CREATE is
+          -- caught instead of checked first (a NOT EXISTS check alone races: 23505 on pg_authid_rolname_index).
+          BEGIN CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END;
+          BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END;
+          BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END;
+          BEGIN GRANT app_tenant TO CURRENT_USER; EXCEPTION WHEN unique_violation THEN NULL; END;
         END
         $roles$;
-        GRANT app_tenant TO CURRENT_USER;
         """;
 
     public async ValueTask DisposeAsync()
