@@ -152,6 +152,25 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             attempt = reconciled;
         }
 
+        if (ProviderCleanup.IsCancelPending(attempt))
+        {
+            // An event for the orphaned assignment of a cancelled attempt whose cancel at the provider is not confirmed
+            // yet: retry that cancel (an outage retries the delivery), and apply nothing.
+            var cancelled = await _provider.CancelAssignmentAsync(attempt.ProviderAssignmentId!.Value, cancellationToken)
+                .ConfigureAwait(false);
+            if (!cancelled.Ok && cancelled.Failure!.Transient)
+            {
+                return (InboxStatuses.Failed, cancelled.Failure.Code, true);
+            }
+
+            if (cancelled.Ok || cancelled.Failure!.HttpStatus is 404 or 410)
+            {
+                await _repository.MarkProviderCancelledAsync(organizationId, attempt.Id, now, cancellationToken).ConfigureAwait(false);
+            }
+
+            return (InboxStatuses.Ignored, "orphan_cancelled", false);
+        }
+
         switch (envelope.EventType)
         {
             case ProviderEventTypes.AssignmentStarted:

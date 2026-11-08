@@ -206,9 +206,50 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
 
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
+        else if (attempt is not null && attempt.State == ProviderAttemptStates.Cancelled && attempt.ProviderAssignmentId is null)
+        {
+            // Staff cancelled the attempt while this create was in flight. The provider now holds an assignment nobody
+            // wants: record it durably (ids + the cleanup marker) so the cancel at the provider is retried until it is
+            // confirmed, instead of depending on one best-effort call.
+            attempt.ProviderSubjectId = assignment.SubjectId;
+            attempt.ProviderAssignmentId = assignment.AssignmentId;
+            attempt.LastErrorCode = ProviderCleanup.CancelPending;
+            attempt.UpdatedAt = now.UtcDateTime;
+            AddAudit(organizationId, null, "assessment_provider_orphan_recorded", attempt.Id, new Dictionary<string, object?>
+            {
+                ["instrument"] = attempt.Instrument,
+                ["providerAssignmentId"] = assignment.AssignmentId,
+            });
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return attempt?.State;
+    }
+
+    public async Task MarkProviderCancelledAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+        var attempt = await _db.Attempts
+            .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (attempt is not null && attempt.State == ProviderAttemptStates.Cancelled
+            && attempt.LastErrorCode == ProviderCleanup.CancelPending)
+        {
+            attempt.LastErrorCode = null;
+            attempt.UpdatedAt = now.UtcDateTime;
+            AddAudit(organizationId, null, "assessment_provider_orphan_cancelled", attempt.Id, new Dictionary<string, object?>
+            {
+                ["instrument"] = attempt.Instrument,
+                ["providerAssignmentId"] = attempt.ProviderAssignmentId,
+            });
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task MarkCreateFailedAsync(

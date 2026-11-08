@@ -48,6 +48,28 @@ public sealed class CancelProviderAttemptUseCase(IAssessmentProviderRepository r
         ArgumentNullException.ThrowIfNull(attempt);
         if (attempt.State == ProviderAttemptStates.Cancelled)
         {
+            // Idempotent — except that a cancelled attempt whose orphaned provider assignment is not yet confirmed
+            // cancelled there (its create landed after the cancel) retries that cancel first.
+            if (ProviderCleanup.IsCancelPending(attempt))
+            {
+                if (!_provider.IsConfigured)
+                {
+                    return new ProviderCancelResult(ProviderCancelOutcome.ProviderUnconfigured, null, null);
+                }
+
+                var retried = await _provider.CancelAssignmentAsync(attempt.ProviderAssignmentId!.Value, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!retried.Ok && retried.Failure!.HttpStatus is not (404 or 410))
+                {
+                    return new ProviderCancelResult(
+                        retried.Failure.Transient ? ProviderCancelOutcome.ProviderUnavailable : ProviderCancelOutcome.ProviderRefused,
+                        null, retried.Failure.Code);
+                }
+
+                await _repository.MarkProviderCancelledAsync(organizationId, attempt.Id, now, cancellationToken).ConfigureAwait(false);
+                attempt = attempt with { LastErrorCode = null };
+            }
+
             return new ProviderCancelResult(ProviderCancelOutcome.Cancelled, AssignProviderInstrumentsUseCase.ToItem(attempt, null), null);
         }
 

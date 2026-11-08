@@ -289,6 +289,38 @@ public sealed class ProviderWebhookUseCaseTests
         Assert.Empty(_repository.Writes);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_event_for_a_recorded_orphan_retries_its_cancel_at_the_provider(bool providerUp)
+    {
+        // The attempt was cancelled while its create was in flight; the create's answer recorded the orphan with the
+        // cleanup marker, and the compensating cancel failed.
+        var orphan = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Cancelled) with { LastErrorCode = ProviderCleanup.CancelPending };
+        _repository.Attempts[0] = orphan;
+        if (!providerUp)
+        {
+            _provider.OnCancelAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        }
+
+        var (body, eventId) = Envelope("assignment.expired", new JsonObject { ["assignment_id"] = orphan.ProviderAssignmentId.ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.expired");
+
+        Assert.Equal([orphan.ProviderAssignmentId!.Value], _provider.Cancelled);
+        Assert.DoesNotContain(_repository.Writes, w => w.StartsWith("advance:", StringComparison.Ordinal));
+        if (providerUp)
+        {
+            Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+            Assert.Null(_repository.Attempts[0].LastErrorCode);
+        }
+        else
+        {
+            Assert.Equal(WebhookOutcome.RetryLater, result.Outcome); // the provider redelivers, so the cancel is retried
+            Assert.Equal(ProviderCleanup.CancelPending, _repository.Attempts[0].LastErrorCode);
+        }
+    }
+
     [Fact]
     public async Task A_provider_outage_during_reconciliation_keeps_the_event_retryable()
     {

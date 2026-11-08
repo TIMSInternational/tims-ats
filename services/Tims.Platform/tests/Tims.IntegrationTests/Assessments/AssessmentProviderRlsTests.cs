@@ -370,6 +370,75 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
             $"SELECT metadata->>'supersededByReassignment' FROM audit_logs WHERE entity_id = '{voided}' AND action = 'assessment_provider_result_received'"));
     }
 
+    [Theory]
+    [InlineData("expired")] // the replacement expired: still newer, still supersedes
+    [InlineData("voided")]
+    public async Task A_corrected_revision_never_reopens_an_attempt_a_newer_replacement_superseded(string replacementState)
+    {
+        var (voided, subject) = await InsertAttemptAsync("voided");
+        var row = await RowAsync(voided);
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 assigned_by_id, created_at)
+             VALUES (gen_random_uuid(), '{AssessmentProviderSchemaFixture.OrgA}', '{AssessmentProviderSchemaFixture.BindingA}',
+                 '{row.CandidateId}', '{AssessmentProviderSchemaFixture.VacancyA}', 'lia', '{replacementState}', 'selection',
+                 'Análisis de datos', 'es', 1, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), now() + interval '1 minute')
+             """);
+        var corrected = ResultFor(row.ProviderAssignmentId!.Value) with { SubjectId = subject, ResultRevision = 2 };
+
+        await using var db = fixture.NewContext();
+        Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+            AssessmentProviderSchemaFixture.OrgA, row, corrected, DateTimeOffset.UtcNow, CancellationToken.None));
+
+        Assert.Equal("voided", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{voided}'"));
+    }
+
+    [Fact]
+    public async Task A_corrected_revision_restores_the_attempt_when_the_only_newer_one_was_cancelled()
+    {
+        var (voided, subject) = await InsertAttemptAsync("voided");
+        var row = await RowAsync(voided);
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, assigned_by_id, created_at)
+             VALUES (gen_random_uuid(), '{AssessmentProviderSchemaFixture.OrgA}', '{AssessmentProviderSchemaFixture.BindingA}',
+                 '{row.CandidateId}', '{AssessmentProviderSchemaFixture.VacancyA}', 'lia', 'cancelled', 'selection',
+                 'Análisis de datos', 'es', 1, gen_random_uuid(), now() + interval '1 minute')
+             """);
+        var corrected = ResultFor(row.ProviderAssignmentId!.Value) with { SubjectId = subject, ResultRevision = 2 };
+
+        await using var db = fixture.NewContext();
+        Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+            AssessmentProviderSchemaFixture.OrgA, row, corrected, DateTimeOffset.UtcNow, CancellationToken.None));
+
+        Assert.Equal("result_ready", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{voided}'"));
+    }
+
+    [Fact]
+    public async Task A_create_answered_after_a_staff_cancel_is_recorded_as_an_orphan_until_the_provider_confirms()
+    {
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        var attempt = await ReservePendingAsync(repository);
+        Assert.Equal("cancelled", await repository.MarkCancelledAsync(AssessmentProviderSchemaFixture.OrgA, attempt, null, Guid.NewGuid(),
+            cancelledAtProvider: false, DateTimeOffset.UtcNow, CancellationToken.None));
+        var assignment = AssignmentFor(attempt, Guid.NewGuid());
+
+        Assert.Equal("cancelled", await repository.MarkCreatedAsync(AssessmentProviderSchemaFixture.OrgA, attempt, assignment,
+            DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal($"cancelled|{assignment.AssignmentId}|provider_cancel_pending", await fixture.ScalarAsync(
+            $"SELECT state || '|' || provider_assignment_id || '|' || last_error_code FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        Assert.Equal(1L, await AuditCountAsync(attempt, "assessment_provider_orphan_recorded"));
+
+        await repository.MarkProviderCancelledAsync(AssessmentProviderSchemaFixture.OrgA, attempt, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Null(await fixture.ScalarAsync($"SELECT last_error_code FROM assessment_provider_attempts WHERE id = '{attempt}'") as string);
+        Assert.Equal(1L, await AuditCountAsync(attempt, "assessment_provider_orphan_cancelled"));
+    }
+
     [Fact]
     public async Task A_corrected_revision_for_a_voided_attempt_nobody_replaced_restores_it()
     {

@@ -253,10 +253,15 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             .ConfigureAwait(false);
         if (state == ProviderAttemptStates.Cancelled)
         {
-            // Staff cancelled the attempt while this create was in flight, so the mapping was not attached: the provider's
-            // assignment is unwanted. Cancel it there too (idempotent; best effort — a webhook for it is cancelled on
-            // reconciliation as well) instead of leaving a reserved use behind.
-            await _provider.CancelAssignmentAsync(assignment.AssignmentId, cancellationToken).ConfigureAwait(false);
+            // Staff cancelled the attempt while this create was in flight. The repository recorded the provider's
+            // assignment on it with the cleanup marker, so this cancel at the provider is durable: if it fails here, the
+            // staff cancel route and any webhook for that assignment retry it. Only a confirmed cancel clears the marker.
+            var cancelled = await _provider.CancelAssignmentAsync(assignment.AssignmentId, cancellationToken).ConfigureAwait(false);
+            if (cancelled.Ok || cancelled.Failure!.HttpStatus is 404 or 410)
+            {
+                await _repository.MarkProviderCancelledAsync(organizationId, attempt.Id, now, cancellationToken).ConfigureAwait(false);
+            }
+
             return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, ProviderAttemptStates.Cancelled, null, [],
                 null, AttemptCancelledCode, attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
         }

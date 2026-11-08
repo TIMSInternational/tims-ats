@@ -219,6 +219,44 @@ public sealed class AssignProviderInstrumentsUseCaseTests
         Assert.Equal(AssignProviderInstrumentsUseCase.AttemptCancelledCode, item.Error);
         Assert.False(result.Response.Complete);
         Assert.Equal([created!.Value], _provider.Cancelled); // the orphan does not keep a reserved use
+        var attempt = Assert.Single(_repository.Attempts);
+        Assert.Equal(created, attempt.ProviderAssignmentId); // recorded durably first
+        Assert.Null(attempt.LastErrorCode); // and the confirmed cancel cleared the cleanup marker
+    }
+
+    [Fact]
+    public async Task A_failed_compensating_cancel_is_kept_on_record_and_the_staff_cancel_retries_it()
+    {
+        Guid? created = null;
+        var cancelUseCase = new CancelProviderAttemptUseCase(_repository, _provider);
+        _provider.OnCreateAssignment = request =>
+        {
+            cancelUseCase.CancelAsync(FakeRepository.Org, Actor, _repository.Attempts.Single(), Now, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            var answer = FakeProvider.Created(request);
+            created = answer.Value!.AssignmentId;
+            return answer;
+        };
+        _provider.OnCancelAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+
+        await Assign(Input(("lia", null)));
+
+        var orphaned = Assert.Single(_repository.Attempts);
+        Assert.Equal(ProviderAttemptStates.Cancelled, orphaned.State);
+        Assert.Equal(created, orphaned.ProviderAssignmentId);
+        Assert.Equal(ProviderCleanup.CancelPending, orphaned.LastErrorCode);
+
+        // The provider is still down: the staff cancel says so (503), it does not claim success.
+        var stillDown = await cancelUseCase.CancelAsync(FakeRepository.Org, Actor, orphaned, Now, CancellationToken.None);
+        Assert.Equal(ProviderCancelOutcome.ProviderUnavailable, stillDown.Outcome);
+        Assert.Equal(ProviderCleanup.CancelPending, _repository.Attempts.Single().LastErrorCode);
+
+        // Back up: the retry cancels the orphan and clears the marker.
+        _provider.OnCancelAssignment = null;
+        var retried = await cancelUseCase.CancelAsync(FakeRepository.Org, Actor, _repository.Attempts.Single(), Now, CancellationToken.None);
+        Assert.Equal(ProviderCancelOutcome.Cancelled, retried.Outcome);
+        Assert.Equal(created, _provider.Cancelled.Last());
+        Assert.Null(_repository.Attempts.Single().LastErrorCode);
     }
 
     [Fact]

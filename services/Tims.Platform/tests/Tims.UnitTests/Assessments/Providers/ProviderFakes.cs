@@ -248,21 +248,38 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             ProviderSubjectId = Guid.NewGuid(),
         });
 
-    // Mirrors the real repository: only a pending_create attempt is changed; the state afterwards is returned.
+    // Mirrors the real repository: a pending_create attempt is mapped; a cancelled one with no ids records the orphan
+    // (ids + the cleanup marker); nothing else changes. The state afterwards is returned.
     public Task<string?> MarkCreatedAsync(
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add("created");
-        Replace(attemptId, a => a.State != ProviderAttemptStates.PendingCreate ? a : a with
-        {
-            State = ProviderAttemptStates.Created,
-            ProviderAssignmentId = assignment.AssignmentId,
-            ProviderSubjectId = assignment.SubjectId,
-            InstrumentVersion = assignment.InstrumentVersion,
-            RequiredConsents = assignment.RequiredConsents,
-            ExpiresAt = assignment.ExpiresAt,
-        });
+        Replace(attemptId, a => a.State == ProviderAttemptStates.PendingCreate
+            ? a with
+            {
+                State = ProviderAttemptStates.Created,
+                ProviderAssignmentId = assignment.AssignmentId,
+                ProviderSubjectId = assignment.SubjectId,
+                InstrumentVersion = assignment.InstrumentVersion,
+                RequiredConsents = assignment.RequiredConsents,
+                ExpiresAt = assignment.ExpiresAt,
+            }
+            : a.State == ProviderAttemptStates.Cancelled && a.ProviderAssignmentId is null
+                ? a with
+                {
+                    ProviderAssignmentId = assignment.AssignmentId,
+                    ProviderSubjectId = assignment.SubjectId,
+                    LastErrorCode = ProviderCleanup.CancelPending,
+                }
+                : a);
         return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId)?.State);
+    }
+
+    public Task MarkProviderCancelledAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Writes.Add("orphan_cancelled");
+        Replace(attemptId, a => a.LastErrorCode == ProviderCleanup.CancelPending ? a with { LastErrorCode = null } : a);
+        return Task.CompletedTask;
     }
 
     public Task MarkCreateFailedAsync(

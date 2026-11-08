@@ -203,9 +203,11 @@ public sealed partial class AssessmentProviderRepository
 
         // A newer revision decides the attempt's state: a voided result voids it, a re-published valid result (staff
         // review overturned a void) restores it — unless HR re-assigned the instrument after the void (or the expiry):
-        // the replacement holds the one open slot and supersedes this attempt, so the corrected revision is kept on
-        // record but the attempt is not reopened (that would also break ux_assessment_provider_attempts_open and fail
-        // the delivery on every retry). The candidate lock is the one the reserve takes, so a re-assignment can never
+        // ANY newer attempt that was not cancelled supersedes this one, the same rule FIT uses to pick the current
+        // attempt, whether the replacement is still open or has itself expired or been voided. The corrected revision is
+        // kept on record, but the attempt is not reopened: reopening would hold the one open slot without being the
+        // attempt FIT reads (and, with an open replacement, break ux_assessment_provider_attempts_open and fail the
+        // delivery on every retry). The candidate lock is the one the reserve takes, so a re-assignment can never
         // interleave between this check and the update.
         var restored = result.ValidityStatus == ProviderValidity.Voided ? ProviderAttemptStates.Voided : ProviderAttemptStates.ResultReady;
         var superseded = false;
@@ -217,7 +219,9 @@ public sealed partial class AssessmentProviderRepository
             var open = ProviderAttemptStates.Open.ToList();
             superseded = await _db.Attempts.AsNoTracking()
                 .AnyAsync(a => a.OrganizationId == organizationId && a.Id != entity.Id && a.CandidateId == entity.CandidateId
-                    && a.VacancyId == entity.VacancyId && a.Instrument == entity.Instrument && open.Contains(a.State),
+                    && a.VacancyId == entity.VacancyId && a.Instrument == entity.Instrument
+                    && (open.Contains(a.State)
+                        || (a.State != ProviderAttemptStates.Cancelled && a.CreatedAt > entity.CreatedAt)),
                     cancellationToken)
                 .ConfigureAwait(false);
         }

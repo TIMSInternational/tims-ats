@@ -32,7 +32,10 @@ public interface IAssessmentProviderRepository
     /// <summary>
     /// Attaches the provider's ids to a <c>pending_create</c> attempt and returns the attempt's state afterwards:
     /// <c>created</c>, <c>erased</c> when a <c>subject.erased</c> for that provider subject was already recorded, or
-    /// whatever state a concurrent writer left (only <c>pending_create</c> is ever changed). Null when not found.
+    /// whatever state a concurrent writer left. A <c>cancelled</c> attempt with no provider ids (staff cancelled it while
+    /// this create was in flight) gets the ids too, with <see cref="ProviderCleanup.CancelPending"/> as its
+    /// <c>last_error_code</c>: a durable record that the provider still holds an unwanted assignment, until
+    /// <see cref="MarkProviderCancelledAsync"/> clears it. Nothing else is changed. Null when not found.
     /// </summary>
     Task<string?> MarkCreatedAsync(
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now,
@@ -57,6 +60,12 @@ public interface IAssessmentProviderRepository
     Task<string?> MarkCancelledAsync(
         Guid organizationId, Guid attemptId, Guid? expectedProviderAssignmentId, Guid actorId, bool cancelledAtProvider,
         DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The provider confirmed the cancel of a cancelled attempt's orphaned assignment: clears
+    /// <see cref="ProviderCleanup.CancelPending"/> under the attempt lock, with an audit row. No-op otherwise.
+    /// </summary>
+    Task MarkProviderCancelledAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>Pre-tenant: the org and candidate of an attempt id, or null. Nothing else crosses the boundary.</summary>
     Task<(Guid OrganizationId, Guid CandidateId)?> FindAttemptOwnerAsync(Guid attemptId, CancellationToken cancellationToken);
@@ -119,6 +128,20 @@ public interface IAssessmentProviderRepository
 
     /// <summary>Privileged read of an active organization's display name, or null.</summary>
     Task<string?> GetActiveOrganizationNameAsync(Guid organizationId, CancellationToken cancellationToken);
+}
+
+/// <summary>Durable cleanup markers kept in an attempt's <c>last_error_code</c>.</summary>
+public static class ProviderCleanup
+{
+    /// <summary>
+    /// A cancelled attempt whose provider assignment was created after the cancel (the create was in flight) and is not
+    /// yet confirmed cancelled at the provider. Retried by the staff cancel route and by any webhook for that assignment.
+    /// </summary>
+    public const string CancelPending = "provider_cancel_pending";
+
+    public static bool IsCancelPending(AttemptRow attempt) =>
+        attempt is not null && attempt.State == Domain.Assessments.Providers.ProviderAttemptStates.Cancelled
+        && attempt.ProviderAssignmentId is not null && attempt.LastErrorCode == CancelPending;
 }
 
 public sealed record ProviderBindingRow(
