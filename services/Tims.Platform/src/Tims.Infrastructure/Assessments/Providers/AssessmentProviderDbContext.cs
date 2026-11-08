@@ -112,6 +112,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                     "content_version IS NULL OR char_length(content_version) <= 64");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_error_code",
                     "last_error_code IS NULL OR char_length(last_error_code) <= 64");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_withdrawal_state",
+                    $"withdrawal_state IS NULL OR withdrawal_state IN ({InList(ProviderWithdrawalStates.All)})");
                 // Past pending_create every attempt must carry the provider's ids (a cancelled one may never have had them).
                 t.HasCheckConstraint("ck_assessment_provider_attempts_external_ids",
                     "state IN ('pending_create', 'cancelled') OR (provider_assignment_id IS NOT NULL AND provider_subject_id IS NOT NULL)");
@@ -141,6 +143,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(a => a.LastLaunchedAt).HasColumnName("last_launched_at");
             entity.Property(a => a.LatestResultId).HasColumnName("latest_result_id");
             entity.Property(a => a.LastErrorCode).HasColumnName("last_error_code");
+            entity.Property(a => a.WithdrawalState).HasColumnName("withdrawal_state");
+            entity.Property(a => a.ProviderErasureRequestedAt).HasColumnName("provider_erasure_requested_at");
             entity.Property(a => a.AssignedById).HasColumnName("assigned_by_id");
             entity.Property(a => a.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(a => a.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
@@ -153,6 +157,10 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                 .HasDatabaseName("ix_assessment_provider_attempts_subject");
             entity.HasIndex(a => new { a.OrganizationId, a.ProviderAssignmentId }).IsUnique()
                 .HasDatabaseName("ux_assessment_provider_attempts_provider_assignment");
+            // The withdrawal cascade's work queue (D15): attempts whose provider-side withdrawal is not confirmed yet.
+            entity.HasIndex(a => new { a.OrganizationId, a.CandidateId })
+                .HasFilter($"withdrawal_state = '{ProviderWithdrawalStates.Pending}'")
+                .HasDatabaseName("ix_assessment_provider_attempts_withdrawal_pending");
             // Idempotency backstop: at most one OPEN attempt per candidate + vacancy + instrument, even under a race.
             entity.HasIndex(a => new { a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument }).IsUnique()
                 .HasFilter($"state IN ({InList(ProviderAttemptStates.Open)})")

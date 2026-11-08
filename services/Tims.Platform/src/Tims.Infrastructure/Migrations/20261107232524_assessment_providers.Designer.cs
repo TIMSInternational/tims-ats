@@ -139,6 +139,10 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("provider_assignment_id");
 
+                    b.Property<DateTime?>("ProviderErasureRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("provider_erasure_requested_at");
+
                     b.Property<Guid?>("ProviderSubjectId")
                         .HasColumnType("uuid")
                         .HasColumnName("provider_subject_id");
@@ -182,10 +186,18 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("vacancy_id");
 
+                    b.Property<string>("WithdrawalState")
+                        .HasColumnType("text")
+                        .HasColumnName("withdrawal_state");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BindingId")
                         .HasDatabaseName("ix_assessment_provider_attempts_binding");
+
+                    b.HasIndex("OrganizationId", "CandidateId")
+                        .HasDatabaseName("ix_assessment_provider_attempts_withdrawal_pending")
+                        .HasFilter("withdrawal_state = 'pending'");
 
                     b.HasIndex("OrganizationId", "ProviderAssignmentId")
                         .IsUnique()
@@ -227,6 +239,8 @@ namespace Tims.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_assessment_provider_attempts_state", "state IN ('pending_create', 'created', 'launched', 'in_progress', 'completed', 'result_ready', 'voided', 'expired', 'cancelled', 'erased')");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_time_multiplier", "time_multiplier BETWEEN 1 AND 3");
+
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_withdrawal_state", "withdrawal_state IS NULL OR withdrawal_state IN ('pending', 'done')");
                         });
                 });
 

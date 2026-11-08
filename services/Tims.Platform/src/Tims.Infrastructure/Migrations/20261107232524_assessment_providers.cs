@@ -91,6 +91,8 @@ namespace Tims.Infrastructure.Migrations
                     last_launched_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     latest_result_id = table.Column<Guid>(type: "uuid", nullable: true),
                     last_error_code = table.Column<string>(type: "text", nullable: true),
+                    withdrawal_state = table.Column<string>(type: "text", nullable: true),
+                    provider_erasure_requested_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     assigned_by_id = table.Column<Guid>(type: "uuid", nullable: false),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
                     updated_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
@@ -107,6 +109,7 @@ namespace Tims.Infrastructure.Migrations
                     table.CheckConstraint("ck_assessment_provider_attempts_locale", "locale ~ '^[a-z]{2}(-[A-Z]{2})?$'");
                     table.CheckConstraint("ck_assessment_provider_attempts_purpose", "purpose = 'selection'");
                     table.CheckConstraint("ck_assessment_provider_attempts_reason", "char_length(job_relatedness_reason) BETWEEN 3 AND 500");
+                    table.CheckConstraint("ck_assessment_provider_attempts_withdrawal_state", "withdrawal_state IS NULL OR withdrawal_state IN ('pending', 'done')");
                     table.CheckConstraint("ck_assessment_provider_attempts_required_consents", "required_consents <@ ARRAY['assessment', 'biometric', 'voice', 'ai_scoring']::text[]");
                     table.CheckConstraint("ck_assessment_provider_attempts_state", "state IN ('pending_create', 'created', 'launched', 'in_progress', 'completed', 'result_ready', 'voided', 'expired', 'cancelled', 'erased')");
                     table.CheckConstraint("ck_assessment_provider_attempts_time_multiplier", "time_multiplier BETWEEN 1 AND 3");
@@ -190,6 +193,12 @@ namespace Tims.Infrastructure.Migrations
                 name: "ix_assessment_provider_attempts_subject",
                 table: "assessment_provider_attempts",
                 columns: new[] { "organization_id", "provider_subject_id" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_assessment_provider_attempts_withdrawal_pending",
+                table: "assessment_provider_attempts",
+                columns: new[] { "organization_id", "candidate_id" },
+                filter: "withdrawal_state = 'pending'");
 
             migrationBuilder.CreateIndex(
                 name: "ux_assessment_provider_attempts_open",

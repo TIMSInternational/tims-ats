@@ -73,6 +73,12 @@ public sealed class ProviderAttemptEntity
 
     public string? LastErrorCode { get; set; }
 
+    /// <summary>D15: <c>pending</c> from the #312 withdrawal's own transaction until the provider confirms, then <c>done</c>.</summary>
+    public string? WithdrawalState { get; set; }
+
+    /// <summary>When an ATS-initiated erasure (<c>DELETE /v1/subjects/{id}</c>) of the attempt's subject was accepted.</summary>
+    public DateTime? ProviderErasureRequestedAt { get; set; }
+
     public Guid AssignedById { get; set; }
 
     public DateTime CreatedAt { get; set; }

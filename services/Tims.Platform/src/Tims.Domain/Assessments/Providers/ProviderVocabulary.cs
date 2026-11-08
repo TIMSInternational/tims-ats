@@ -195,6 +195,20 @@ public static class ProviderAttemptStates
     }
 }
 
+/// <summary>
+/// Where an attempt stands in the #312 consent-withdrawal cascade to the provider (owner default D15, 2026-11-08). Set to
+/// <see cref="Pending"/> in the SAME transaction, under the same per-candidate lock, as the recruitment-consent
+/// withdrawal; <see cref="Done"/> once the provider confirmed the assignment's cancel and the subject's consent
+/// withdrawal. Any value stops result fetching for the attempt.
+/// </summary>
+public static class ProviderWithdrawalStates
+{
+    public const string Pending = "pending";
+    public const string Done = "done";
+
+    public static readonly IReadOnlyList<string> All = [Pending, Done];
+}
+
 /// <summary>Format checks for the contract's string fragments (<c>common.v1 $defs</c>).</summary>
 public static partial class ProviderFormats
 {
