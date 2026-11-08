@@ -220,7 +220,11 @@ normalized score to the same readers. **Owner decision needed before the flag is
   - under continuous churn the row is held as `reviewPending` until a compute sees stable results;
   - only the results are re-read; the CV, interview and weight inputs keep v1's last-writer-wins snapshot;
   - the live TS writers (v1) do not verify and can still overwrite a v2 row (see above);
-  - a process that dies between its write and its check leaves that write until the next compute.
+  - **open (Codex round 6 [P1]):** a write whose check never completes leaves that write until the next compute,
+    and it can be a stale clean score. That happens when the process dies, but also when the check's read throws
+    or the request is cancelled or times out: the upsert has already committed and the check has no failure
+    handling. The fix is to keep the row provisional until a check succeeds, or to make the integrity read and the
+    write atomic. That is not done in this PR. It is a precondition for enabling the flag.
 - Turning the flag off affects the next compute only; stored v2 rows keep their extra keys, which every v1 reader
   ignores.
 - Before gates are used on real vacancies: monitor pass and fit rates by group (DEI), and confirm the LIA norms
