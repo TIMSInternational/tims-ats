@@ -2045,6 +2045,15 @@
     "fitDimensionEducation": "Educación",
     "fitDimensionLanguages": "Idiomas",
     "fitDimensionUnavailable": "Sin datos disponibles",
+    "fitReviewPending": "Provisional: un resultado que cuenta en esta puntuación está pendiente de revisión",
+    "fitReviewPendingShort": "En revisión",
+    "essayGradingTitle": "Respuestas abiertas pendientes de calificar",
+    "essayPointsLabel": "Puntos (de 0 a {max})",
+    "essayGradeButton": "Calificar",
+    "essayGrading": "Calificando...",
+    "essayGraded": "Respuesta calificada",
+    "essayGradeError": "No se pudo calificar la respuesta",
+    "essayInvalidPoints": "Ingresa puntos entre 0 y {max}",
     "cognitive": "Cognitivo (PCA)",
     "personality": "Personalidad",
     "experience": "Experiencia",
@@ -4636,7 +4645,10 @@
     "languagesPlaceholder": "ej. inglés, español",
     "saveButton": "Guardar Requisitos",
     "saving": "Guardando...",
-    "saved": "Requisitos FIT guardados"
+    "saved": "Requisitos FIT guardados",
+    "assessmentsKept": "Las evaluaciones configuradas se conservan ({count}).",
+    "assessmentIssues": "Se descartaron o ajustaron {count} evaluaciones. Revisa la configuración.",
+    "saveError": "No se pudieron guardar los requisitos FIT"
   },
   "myOnboarding": {
     "breadcrumb": "Mi Inicio",

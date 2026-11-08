@@ -2,6 +2,7 @@
 
 import { useI18n } from '../../../../../lib/i18n';
 import { DiscChart } from '../../../../../components';
+import { EssayGradingPanel } from './essay-grading-panel';
 
 interface Assignment {
   id: string;
@@ -167,6 +168,7 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
               !Array.isArray(a.result.breakdown) ? (
                 <BreakdownGrid data={a.result.breakdown as Record<string, number>} />
               ) : null}
+              {a.status === 'completed' && a.result != null && <EssayGradingPanel assignmentId={a.id} />}
             </AssessmentRow>
           );
         })}

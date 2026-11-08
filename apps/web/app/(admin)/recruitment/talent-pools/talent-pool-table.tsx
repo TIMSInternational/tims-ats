@@ -6,6 +6,8 @@ import { toast } from '../../../../lib/toast';
 import { CandidateAvatar } from '../../../../components/candidate-avatar';
 import { ErrorState } from '../../../../components/error-state';
 import { Skeleton } from '../../../../components/skeleton';
+import { useReviewPendingFitScores } from '../../../../lib/platform-api/fit-engine';
+import { FitReviewPendingBadge } from '../fit-review-pending-badge';
 
 interface CandidateItem {
   id: string;
@@ -109,6 +111,10 @@ export function TalentPoolTable({
 }: TalentPoolTableProps) {
   const { t } = useI18n();
   const tp = t.talentPool;
+  // FIT v2: which shown scores are provisional (from C#; candidate.list carries the id, not the breakdown).
+  const pendingFit = useReviewPendingFitScores(
+    candidates.flatMap((c) => (c.fitScores[0]?.id ? [c.fitScores[0].id] : [])),
+  ).data;
 
   if (isError) {
     return (
@@ -174,8 +180,11 @@ export function TalentPoolTable({
                   {fitScore === null ? (
                     <span className="text-[11px] text-[#8B8B8B]">—</span>
                   ) : (
-                    <span className={`${getFitColor(fitScore)} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
-                      {Math.round(fitScore)}
+                    <span className="inline-flex flex-col items-center gap-1">
+                      <span className={`${getFitColor(fitScore)} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
+                        {Math.round(fitScore)}
+                      </span>
+                      {pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />}
                     </span>
                   )}
                 </div>
