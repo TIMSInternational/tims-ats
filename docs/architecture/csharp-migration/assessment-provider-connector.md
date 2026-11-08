@@ -232,7 +232,10 @@ A provider that does not serve a route answers its catch-all 404 with the same `
 resource". The callers of the cancel route clear their cleanup marker on a 404, and erasure counts a 404 as done, so
 the client confirms a 404 first: `GET /v1/assignments/{id}` for a cancel (404/410 confirms; an assignment already
 `cancelled` is returned as the success), `GET /v1/subjects/{id}` for an erasure (404 confirms, 410 is returned as
-already erased). Anything else is the transient `provider_not_found_unconfirmed`, which no caller reads as gone.
+already erased). The #312 cascade's consent calls follow the same rule: a consent-list 404 is confirmed by the subject
+lookup, and a withdrawal 404 by re-listing the subject's consents (absent: the 404 stands; no longer `active`: the
+success; still active: unconfirmed). Anything unconfirmed is the transient `provider_not_found_unconfirmed`, which no
+caller reads as gone, so the attempt's cascade stays pending.
 
 ## ITC-IA review flag
 
@@ -246,7 +249,8 @@ it too. A present non-boolean value is off contract and the result is refused.
   withdrawal, stays `pending` (results stay stopped; the provider-side withdrawal is not sent) until one of those
   happens. A worker that runs `PropagateAsync` per org would close it.
 - The launch's #312 check runs outside the candidate lock. A launch that records consent re-checks #312 after the
-  provider recorded it: a withdrawal seen then re-opens the attempt's cascade, which withdraws that consent, and
+  provider recorded it, also when a capture failed (a failed capture may have been stored, and an earlier one in the
+  same launch was): a withdrawal seen then re-opens the attempt's cascade, which withdraws that consent, and
   nothing is launched; a withdrawal committed after the re-check lists consents after this one exists. A launch
   without new consents that races a withdrawal can still mint a token; the cascade cancels the assignment.
 - Erasure resolves the candidate's provider subject through the provider's idempotent (tenant, candidate id) subject
