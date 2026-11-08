@@ -29,7 +29,11 @@ public sealed record ProviderInstrumentResult(
     string? ContentVersion,
     string? NormVersion);
 
-/// <summary>The stored attempt + latest result an integrity decision is made from.</summary>
+/// <summary>
+/// The stored attempt + latest result an integrity decision is made from. <see cref="RequestedTimeMultiplier"/> is the
+/// accommodation the attempt was assigned with; <see cref="AppliedTimeMultiplier"/> is the one the provider reports it
+/// applied (null without a result).
+/// </summary>
 public sealed record ProviderFitRow(
     Guid AttemptId,
     string Instrument,
@@ -43,14 +47,21 @@ public sealed record ProviderFitRow(
     string? Cefr,
     int? Level,
     string? ContentVersion,
-    string? NormVersion);
+    string? NormVersion,
+    DateTimeOffset AttemptCreatedAt,
+    decimal RequestedTimeMultiplier,
+    decimal? AppliedTimeMultiplier);
 
 /// <summary>
 /// Maps stored provider attempts and results to FIT v2 results. The rules (assessment-platform design §6.3):
 /// <list type="bullet">
+/// <item>ONE entry per instrument: the most recently assigned attempt that was not cancelled decides. A voided, expired
+/// or erased attempt can be re-assigned, and the re-assignment supersedes it.</item>
 /// <item>Only a <c>valid</c> result of a <c>selection</c> assignment, not flagged for human review, on an attempt that
-/// is still <c>result_ready</c>, is <see cref="ProviderResultIntegrity.Valid"/>.</item>
-/// <item>A voided or review-pending result, or a voided attempt with no result yet, is
+/// is still <c>result_ready</c>, sat at exactly the time multiplier it was assigned with, is
+/// <see cref="ProviderResultIntegrity.Valid"/>. A candidate granted extra time who sat at another multiplier is not
+/// a valid hiring value.</item>
+/// <item>A voided or review-pending result, a multiplier mismatch, or a voided attempt with no result yet, is
 /// <see cref="ProviderResultIntegrity.NeedsReview"/>: present, never dropped, never down-scored.</item>
 /// <item>A <c>development</c> result never feeds a hiring score: it is not reported at all.</item>
 /// <item>An attempt still in flight (no result, not voided) is not reported: FIT shows <c>no_result</c>.</item>
@@ -63,8 +74,12 @@ public static class ProviderFitMapping
     public static IReadOnlyList<ProviderInstrumentResult> Map(IEnumerable<ProviderFitRow> rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
+        var current = rows
+            .Where(r => r.AttemptState != ProviderAttemptStates.Cancelled)
+            .GroupBy(r => r.Instrument, StringComparer.Ordinal)
+            .Select(g => g.OrderByDescending(r => r.AttemptCreatedAt).ThenByDescending(r => r.AttemptId).First());
         var results = new List<ProviderInstrumentResult>();
-        foreach (var row in rows)
+        foreach (var row in current)
         {
             if (row.ProviderResultId is not { } resultId)
             {
@@ -85,7 +100,8 @@ public static class ProviderFitMapping
 
             var valid = row.ValidityStatus == ProviderValidity.Valid
                 && !row.RequiresHumanReview
-                && row.AttemptState == ProviderAttemptStates.ResultReady;
+                && row.AttemptState == ProviderAttemptStates.ResultReady
+                && row.AppliedTimeMultiplier == row.RequestedTimeMultiplier;
 
             results.Add(new ProviderInstrumentResult(
                 row.Instrument,

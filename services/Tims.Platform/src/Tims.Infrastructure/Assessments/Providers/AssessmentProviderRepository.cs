@@ -360,6 +360,9 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                     a.Instrument,
                     a.State,
                     a.CompletedAt,
+                    a.CreatedAt,
+                    a.TimeMultiplier,
+                    Applied = r == null ? (decimal?)null : r.TimeMultiplierApplied,
                     ResultId = r == null ? (Guid?)null : r.ProviderResultId,
                     Purpose = r == null ? null : r.Purpose,
                     Validity = r == null ? null : r.ValidityStatus,
@@ -376,7 +379,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
 
         return rows.Select(r => new ProviderFitRow(
             r.Id, r.Instrument, r.State, r.ResultId, r.Purpose, r.Validity, r.HumanReview,
-            ToOffset(r.ResultCompletedAt ?? r.CompletedAt), r.Percentile, r.Cefr, r.Level, r.Content, r.Norm)).ToList();
+            ToOffset(r.ResultCompletedAt ?? r.CompletedAt), r.Percentile, r.Cefr, r.Level, r.Content, r.Norm,
+            ToOffset(r.CreatedAt)!.Value, r.TimeMultiplier, r.Applied)).ToList();
     }
 
     private async Task<bool> IsWithdrawnAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken)

@@ -9,9 +9,11 @@ public sealed class ProviderDomainRulesTests
 
     private static ProviderFitRow Row(
         string state = ProviderAttemptStates.ResultReady, string? validity = ProviderValidity.Valid, string? purpose = "selection",
-        bool humanReview = false, bool hasResult = true) =>
-        new(Guid.NewGuid(), ProviderInstruments.Lia, state, hasResult ? Guid.NewGuid() : null, hasResult ? purpose : null,
-            hasResult ? validity : null, humanReview, Completed, 46.2, null, null, "content-1", "norms-1");
+        bool humanReview = false, bool hasResult = true, string instrument = ProviderInstruments.Lia, int assignedDay = 1,
+        decimal requested = 1.5m, decimal applied = 1.5m) =>
+        new(Guid.NewGuid(), instrument, state, hasResult ? Guid.NewGuid() : null, hasResult ? purpose : null,
+            hasResult ? validity : null, humanReview, Completed, 46.2, null, null, "content-1", "norms-1",
+            new DateTimeOffset(2026, 11, assignedDay, 9, 0, 0, TimeSpan.Zero), requested, hasResult ? applied : null);
 
     [Fact]
     public void A_valid_selection_result_is_valid_and_carries_its_value_and_versions()
@@ -51,11 +53,39 @@ public sealed class ProviderDomainRulesTests
     [Fact]
     public void Development_results_and_in_flight_attempts_are_not_reported()
     {
-        Assert.Empty(ProviderFitMapping.Map([
-            Row(purpose: "development"),
-            Row(ProviderAttemptStates.InProgress, hasResult: false),
-            Row(ProviderAttemptStates.Created, hasResult: false),
-        ]));
+        Assert.Empty(ProviderFitMapping.Map([Row(purpose: "development")]));
+        Assert.Empty(ProviderFitMapping.Map([Row(ProviderAttemptStates.InProgress, hasResult: false)]));
+        Assert.Empty(ProviderFitMapping.Map([Row(ProviderAttemptStates.Created, hasResult: false)]));
+    }
+
+    [Theory]
+    [InlineData(1.0)] // granted 1.5x, sat at standard time
+    [InlineData(2.0)]
+    public void A_result_sat_at_another_time_multiplier_than_assigned_is_needs_review_without_a_value(double applied)
+    {
+        var result = Assert.Single(ProviderFitMapping.Map([Row(requested: 1.5m, applied: (decimal)applied)]));
+
+        Assert.Equal(ProviderResultIntegrity.NeedsReview, result.Integrity);
+        Assert.Null(result.GlobalPercentile);
+    }
+
+    [Fact]
+    public void Only_the_latest_non_cancelled_attempt_per_instrument_is_reported()
+    {
+        var voided = Row(ProviderAttemptStates.Voided, ProviderValidity.Voided, assignedDay: 1);
+        var reassigned = Row(assignedDay: 3);
+        var cancelledLater = Row(ProviderAttemptStates.Cancelled, hasResult: false, assignedDay: 5);
+        var english = Row(instrument: ProviderInstruments.English, assignedDay: 2);
+
+        var results = ProviderFitMapping.Map([reassigned, voided, cancelledLater, english]);
+
+        Assert.Equal(2, results.Count);
+        var lia = Assert.Single(results, r => r.Instrument == ProviderInstruments.Lia);
+        Assert.Equal(reassigned.ProviderResultId.ToString(), lia.ResultId);
+        Assert.Equal(ProviderResultIntegrity.Valid, lia.Integrity);
+
+        // A re-assignment still in flight supersedes the voided attempt: no stale needs-review entry for it.
+        Assert.Empty(ProviderFitMapping.Map([voided, Row(ProviderAttemptStates.Created, hasResult: false, assignedDay: 4)]));
     }
 
     [Fact]
