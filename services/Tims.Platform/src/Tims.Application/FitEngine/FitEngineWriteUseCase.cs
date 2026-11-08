@@ -25,7 +25,10 @@ public sealed class FitEngineWriteUseCase(
 {
     private const string DefaultProfileName = "Default";
 
-    /// <summary>The most FIT v2 writes one candidate gets in one compute (see <c>ComputeFitScoreV2Async</c>).</summary>
+    /// <summary>
+    /// The most CHECKED FIT v2 writes one candidate gets in one compute (see <c>ComputeFitScoreV2Async</c>). When the
+    /// results still differ after the last of them, one more write, marked reviewPending, settles the row.
+    /// </summary>
     public const int MaxV2Writes = 3;
 
     // TS DEFAULT_WEIGHTS, verbatim — written only when no 'Default' profile exists yet.
@@ -179,8 +182,12 @@ public sealed class FitEngineWriteUseCase(
     // every v2 compute re-reads its results AFTER its write and, when they changed, evaluates and writes again.
     // The last write to land is always followed by its own check, so the row ends on results at least as new as
     // that check; a change after it is picked up by the next compute, as for every other input. Bounded by
-    // MaxV2Writes: under continuous churn the last write stands. Only the results are re-read: they carry the
-    // integrity state, and the other inputs keep v1's snapshot semantics.
+    // MaxV2Writes: when the results still differ after the last checked write, the compute does NOT let that
+    // write stand (it was just shown stale). It writes once more from the newest read with reviewPending forced
+    // true (and so isPartial), which is the conservative state: a reader holds the row apart until the next
+    // compute settles it. That settling write is not re-checked, and needs no check: however the results move
+    // after it, the stored row never counts them as a clean, final score. Only the results are re-read: they
+    // carry the integrity state, and the other inputs keep v1's snapshot semantics.
     private async Task<bool> ComputeFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, FitRequirements requirements,
         IReadOnlyList<AssessmentRequirement> assessmentRequirements, string? roleFamily, DateTimeOffset now,
@@ -201,8 +208,11 @@ public sealed class FitEngineWriteUseCase(
 
         for (var write = 1; ; write++)
         {
+            // Retry budget spent and the results still moving: the settling write (see above).
+            var settling = write > MaxV2Writes;
             var evaluation = FitV2Kernels.Evaluate(
                 assessmentRequirements, results, weights, requirements, candidateLanguages);
+            var reviewPending = evaluation.ReviewPending || settling;
 
             var rawScores = new Dictionary<string, double?>(StringComparer.Ordinal)
             {
@@ -215,12 +225,12 @@ public sealed class FitEngineWriteUseCase(
             };
 
             var result = FitEngineKernels.ComputeWeightedScore(rawScores, weights);
-            var breakdown = FitV2Kernels.BuildBreakdown(rawScores, evaluation.Entries, evaluation.ReviewPending);
+            var breakdown = FitV2Kernels.BuildBreakdown(rawScores, evaluation.Entries, reviewPending);
 
             // A scored result awaiting review is left out of the number, so the number is provisional. Store the
             // row as partial (the vacancy ranking and the pipeline views flag a partial score; some readers do
             // not, see the design doc); the breakdown's reviewPending says why, so a reader can hold the row apart.
-            var isPartial = result.IsPartial || evaluation.ReviewPending;
+            var isPartial = result.IsPartial || reviewPending;
 
             var written = await _repository.UpsertFitScoreUnlessWithdrawnAsync(
                     organizationId, candidateId, vacancyId, result.OverallScore, breakdown.ToJsonString(),
@@ -233,10 +243,15 @@ public sealed class FitEngineWriteUseCase(
                 return write > 1;
             }
 
+            if (settling)
+            {
+                return true;
+            }
+
             var current = await _assessmentResults
                 .GetResultsAsync(organizationId, candidateId, vacancyId, cancellationToken)
                 .ConfigureAwait(false);
-            if (SameResults(results, current) || write == MaxV2Writes)
+            if (SameResults(results, current))
             {
                 return true;
             }

@@ -317,7 +317,7 @@ public sealed class FitV2UseCaseTests
     }
 
     [Fact]
-    public async Task FlagOn_ResultsKeepChanging_StopsAfterMaxV2Writes()
+    public async Task FlagOn_ResultsKeepChanging_StopsAfterMaxV2Writes_PlusOneSettlingWrite()
     {
         var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
         var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
@@ -328,8 +328,65 @@ public sealed class FitV2UseCaseTests
             .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
 
         Assert.Equal(1, computed.Computed);
+        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes + 1, repo.FitScoreUpserts.Count);
+        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes + 1, source.CallCount); // the settling write is not re-checked
+    }
+
+    [Fact]
+    public async Task FlagOn_RetryBudgetSpent_ResultTurnedNeedsReviewInTheLastCheck_StoredRowIsPending()
+    {
+        // Codex round 5: result changes spend the retries, then a cancel lands; the last check sees needs review.
+        // The row stored LAST must not count the result as a clean, final score.
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", yearsExperience: 4);
+        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
+        var rescored = Result(FitInstruments.NativeQuiz, "a-1", score: 90);
+        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 90, integrity: ResultIntegrity.NeedsReview);
+        var source = new ScriptedResultSource([valid], [rescored], [valid], [flagged]);
+
+        await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var last = repo.FitScoreUpserts[^1];
+        var breakdown = JsonNode.Parse(last.BreakdownJson)!;
+        Assert.True(breakdown["reviewPending"]!.GetValue<bool>());
+        Assert.True(last.IsPartial);
+        Assert.Null(breakdown["assessment"]); // the newest read: needs review, excluded
+        Assert.Equal("needs_review", breakdown["assessments"]![0]!["status"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task FlagOn_RetryBudgetSpent_EvenWhenTheNewestReadIsValid_StoredRowIsPending()
+    {
+        // The newest read is clean, but the results were still moving at the last check, so it is not final.
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", yearsExperience: 4);
+        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
+        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
+        var source = new ScriptedResultSource([flagged], [valid], [flagged], [valid]);
+
+        await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var last = repo.FitScoreUpserts[^1];
+        var breakdown = JsonNode.Parse(last.BreakdownJson)!;
+        Assert.True(breakdown["reviewPending"]!.GetValue<bool>());
+        Assert.True(last.IsPartial);
+        Assert.Equal("completed", breakdown["assessments"]![0]!["status"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task FlagOn_WithdrawnBeforeTheSettlingWrite_StillCountsTheEarlierWrites()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        repo.WithdrawnAfterWrites = FitEngineWriteUseCase.MaxV2Writes;
+        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
+        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
+        var source = new ScriptedResultSource([valid], [flagged], [valid], [flagged]);
+
+        var computed = await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(1, computed.Computed);
         Assert.Equal(FitEngineWriteUseCase.MaxV2Writes, repo.FitScoreUpserts.Count);
-        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes + 1, source.CallCount);
     }
 
     [Fact]

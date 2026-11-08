@@ -203,11 +203,15 @@ normalized score to the same readers. **Owner decision needed before the flag is
   cancel lands on it through the TOCTOU above), compute B writes `needs_review`, then A overwrites it with
   `completed`, the counted score and `reviewPending: false`. Found by the Codex review of this branch; reachable
   today through the cancel TOCTOU. Each v2 compute now re-reads the candidate's results AFTER its write and, when
-  they changed, evaluates and writes again (at most `MaxV2Writes` = 3 writes). The last write to land is always
-  followed by its own check, so the row ends on results at least as new as that check. What remains:
+  they changed, evaluates and writes again (at most `MaxV2Writes` = 3 checked writes). When the results still
+  differ after the third check, that write is not left standing: one more **settling write** evaluates the newest
+  read with `reviewPending: true` (so `isPartial: true`) and is not re-checked. Whatever happens after it, the
+  stored row never presents a just-shown-stale result as a clean, final score; the next compute clears the flag
+  once the results are stable. (Codex round 5 found that the earlier "the third write stands" let a cancel seen by
+  the last check be stored as counted, with `reviewPending: false`.) What remains:
   - a change after the last check is picked up by the next compute, as for every other input (v1 snapshot
     semantics);
-  - under continuous churn the third write stands unchecked;
+  - under continuous churn the row is held as `reviewPending` until a compute sees stable results;
   - only the results are re-read; the CV, interview and weight inputs keep v1's last-writer-wins snapshot;
   - the live TS writers (v1) do not verify and can still overwrite a v2 row (see above);
   - a process that dies between its write and its check leaves that write until the next compute.
