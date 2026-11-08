@@ -1647,6 +1647,7 @@ try
     if (externalOptions.FitEngineReadEnabled || isOpenApiDocGeneration)
     {
         app.MapFitEngineReadEndpoints();
+        app.MapFitReviewStateEndpoints(); // FIT v2: the reviewPending marker for the candidate/talent-pool tables
     }
 
     // Phase-5 Slice 24 / #90 (efcoreStranglerWrite): the FIT-engine WRITE surface (2 writes) — POST

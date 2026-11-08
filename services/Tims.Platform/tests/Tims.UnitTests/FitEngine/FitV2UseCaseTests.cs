@@ -508,6 +508,10 @@ public sealed class FitV2UseCaseTests
             Guid organizationId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WeightProfileData>>([]);
 
+        public Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
+            Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FitReviewStateData>>([]);
+
         public Task<ExplainFitRowData?> GetFitScoreForExplainAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken) =>
             Task.FromResult<ExplainFitRowData?>(null);

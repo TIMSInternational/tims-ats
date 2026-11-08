@@ -95,6 +95,36 @@ public sealed class FitEngineReadUseCase(IFitEngineReadRepository repository)
             .ToList();
     }
 
+    /// <summary>
+    /// FIT v2 review state for fit_scores ids a list view already holds (the candidate and talent-pool tables), so a
+    /// provisional score can be marked there. Only rows whose vacancy passes <paramref name="vacancyInScope"/> (the
+    /// caller's scope probe, run once per distinct vacancy) are returned; ids out of scope or unknown are omitted.
+    /// </summary>
+    public async Task<IReadOnlyList<FitReviewStateRow>> GetReviewStatesAsync(
+        Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, Func<Guid, Task<bool>> vacancyInScope,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _repository.GetReviewStatesAsync(organizationId, fitScoreIds, cancellationToken)
+            .ConfigureAwait(false);
+        var allowed = new Dictionary<Guid, bool>();
+        var result = new List<FitReviewStateRow>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (!allowed.TryGetValue(row.VacancyId, out var inScope))
+            {
+                inScope = await vacancyInScope(row.VacancyId).ConfigureAwait(false);
+                allowed[row.VacancyId] = inScope;
+            }
+
+            if (inScope)
+            {
+                result.Add(new FitReviewStateRow(row.FitScoreId.ToString(), row.ReviewPending));
+            }
+        }
+
+        return result;
+    }
+
     /// <summary><c>listRoleFamilyWeightProfiles</c> — org profiles, name ASC, weights jsonb passed through.</summary>
     public async Task<IReadOnlyList<WeightProfileRow>> ListWeightProfilesAsync(
         Guid organizationId, CancellationToken cancellationToken)

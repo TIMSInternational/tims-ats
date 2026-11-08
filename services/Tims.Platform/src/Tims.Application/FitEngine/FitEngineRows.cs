@@ -20,6 +20,12 @@ public sealed record FitScoreForVacancyData(
     string LastName,
     string? Weights = null);
 
+/// <summary>The review state of one fit_scores row, as returned to a caller.</summary>
+public sealed record FitReviewStateRow(string FitScoreId, bool ReviewPending);
+
+/// <summary>One fit_scores row's FIT v2 review state, with its vacancy (for the caller's scope check).</summary>
+public sealed record FitReviewStateData(Guid FitScoreId, Guid VacancyId, bool ReviewPending);
+
 /// <summary>One <c>role_family_weight_profiles</c> row — <c>Weights</c> is the raw jsonb.</summary>
 public sealed record WeightProfileData(Guid Id, string Name, string Weights);
 
