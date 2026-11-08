@@ -407,6 +407,44 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         Assert.Equal("in_progress", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
 
+    private Task<object?> AuditCountAsync(Guid attempt, string action) => fixture.ScalarAsync(
+        $"SELECT count(*) FROM audit_logs WHERE entity = 'assessment_provider_attempt' AND entity_id = '{attempt}' AND action = '{action}'");
+
+    [Fact]
+    public async Task Mapping_a_pending_attempt_writes_its_created_audit_row()
+    {
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        var attempt = await ReservePendingAsync(repository);
+        var assignment = AssignmentFor(attempt, Guid.NewGuid());
+
+        Assert.Equal("created", await repository.MarkCreatedAsync(AssessmentProviderSchemaFixture.OrgA, attempt, assignment,
+            DateTimeOffset.UtcNow, CancellationToken.None));
+
+        Assert.Equal(1L, await AuditCountAsync(attempt, "assessment_provider_attempt_created"));
+        Assert.Equal("1.0|content-1|created", await fixture.ScalarAsync(
+            $"SELECT metadata->>'instrumentVersion' || '|' || (metadata->>'contentVersion') || '|' || (metadata->>'to') FROM audit_logs WHERE entity_id = '{attempt}' AND action = 'assessment_provider_attempt_created'"));
+    }
+
+    [Fact]
+    public async Task A_failed_create_is_audited_whether_it_stays_pending_or_is_refused()
+    {
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        var pending = await ReservePendingAsync(repository);
+        var refused = await ReservePendingAsync(repository);
+
+        await repository.MarkCreateFailedAsync(AssessmentProviderSchemaFixture.OrgA, pending, "idempotency_key_in_use", cancel: false,
+            DateTimeOffset.UtcNow, CancellationToken.None);
+        await repository.MarkCreateFailedAsync(AssessmentProviderSchemaFixture.OrgA, refused, "validation_failed", cancel: true,
+            DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("pending_create", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{pending}'"));
+        Assert.Equal(1L, await AuditCountAsync(pending, "assessment_provider_create_failed"));
+        Assert.Equal("cancelled", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{refused}'"));
+        Assert.Equal(1L, await AuditCountAsync(refused, "assessment_provider_assignment_refused"));
+    }
+
     [Fact]
     public async Task A_mapping_that_commits_after_its_subject_was_erased_leaves_the_attempt_erased()
     {

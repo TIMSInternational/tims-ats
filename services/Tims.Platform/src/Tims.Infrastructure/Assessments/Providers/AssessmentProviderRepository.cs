@@ -20,8 +20,11 @@ namespace Tims.Infrastructure.Assessments.Providers;
 /// <c>lower(btrim(email))</c>), and reserving attempts takes the SAME per-candidate advisory lock a withdrawal takes, so
 /// a withdrawal can never interleave between the check and the insert.</para>
 ///
-/// <para><b>Audit.</b> Every write appends its <c>audit_logs</c> row in the same transaction: no row, no write. Audit
-/// metadata holds ids, instruments, versions and states only — never scores, tokens, reasons or PII.</para>
+/// <para><b>Audit.</b> Every write to an attempt, a result or a binding appends its <c>audit_logs</c> row in the same
+/// transaction: no row, no write. That covers each attempt state change (reserve, created, create failed or refused,
+/// launched, every webhook transition, result stored, cancelled, erased). The webhook inbox is not audited row by row:
+/// it is itself the delivery record. Audit metadata holds ids, instruments, versions, codes and states only — never
+/// scores, tokens, reasons or PII.</para>
 /// </summary>
 public sealed partial class AssessmentProviderRepository(AssessmentProviderDbContext db) : IAssessmentProviderRepository
 {
@@ -178,11 +181,16 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.ExpiresAt = assignment.ExpiresAt.UtcDateTime;
             attempt.LastErrorCode = null;
             attempt.UpdatedAt = now.UtcDateTime;
-            if (erased)
-            {
-                AddAudit(organizationId, null, "assessment_provider_attempt_erased_on_create", attempt.Id,
-                    new Dictionary<string, object?> { ["instrument"] = attempt.Instrument });
-            }
+            AddAudit(organizationId, null,
+                erased ? "assessment_provider_attempt_erased_on_create" : "assessment_provider_attempt_created", attempt.Id,
+                new Dictionary<string, object?>
+                {
+                    ["instrument"] = attempt.Instrument,
+                    ["providerAssignmentId"] = assignment.AssignmentId,
+                    ["instrumentVersion"] = assignment.InstrumentVersion,
+                    ["contentVersion"] = assignment.ContentVersion,
+                    ["to"] = attempt.State,
+                });
 
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -208,9 +216,17 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             if (cancel)
             {
                 attempt.State = ProviderAttemptStates.Cancelled;
-                AddAudit(organizationId, attempt.AssignedById, "assessment_provider_assignment_refused", attempt.Id,
-                    new Dictionary<string, object?> { ["instrument"] = attempt.Instrument, ["code"] = attempt.LastErrorCode });
             }
+
+            // Refused (cancelled) or still pending for a re-send: either way the failed create is on record.
+            AddAudit(organizationId, attempt.AssignedById,
+                cancel ? "assessment_provider_assignment_refused" : "assessment_provider_create_failed", attempt.Id,
+                new Dictionary<string, object?>
+                {
+                    ["instrument"] = attempt.Instrument,
+                    ["code"] = attempt.LastErrorCode,
+                    ["to"] = attempt.State,
+                });
 
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
