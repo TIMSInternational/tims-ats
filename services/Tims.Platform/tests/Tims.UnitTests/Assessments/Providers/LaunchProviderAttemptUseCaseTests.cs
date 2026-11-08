@@ -129,6 +129,17 @@ public sealed class LaunchProviderAttemptUseCaseTests
     }
 
     [Fact]
+    public async Task A_session_in_progress_resumes_after_the_assignment_expiry_and_the_provider_decides()
+    {
+        // expires_at bounds only when a sitting can START: a candidate who started before it and reloads after it
+        // still has time on the session's own deadline.
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.InProgress, expiresAt: Now.AddSeconds(-1));
+
+        Assert.Equal(LaunchOutcome.Launched, (await Launch(attempt.Id)).Outcome);
+        Assert.NotEmpty(_provider.Calls);
+    }
+
+    [Fact]
     public async Task A_provider_side_expiry_is_recorded()
     {
         var attempt = _repository.AddCreatedAttempt("lia");

@@ -86,7 +86,11 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return LaunchResult.Fail(LaunchOutcome.NotReady);
         }
 
-        if (attempt.State == ProviderAttemptStates.Expired || (attempt.ExpiresAt is { } expiresAt && expiresAt <= now))
+        // expires_at bounds only when a sitting can START (contract, launchAssignment): a session already in progress
+        // stays resumable after it, until its own deadline. So the local clock check applies only to a sitting that has
+        // not started; for one in progress the provider decides (410 assignment_expired is handled below).
+        if (attempt.State == ProviderAttemptStates.Expired
+            || (attempt.State != ProviderAttemptStates.InProgress && attempt.ExpiresAt is { } expiresAt && expiresAt <= now))
         {
             return LaunchResult.Fail(LaunchOutcome.Expired);
         }
