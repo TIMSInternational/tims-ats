@@ -162,8 +162,14 @@ normalized score to the same readers. **Owner decision needed before the flag is
 ## Result sources (`IAssessmentResultSource`)
 
 - `AtsAssessmentResultSource`: the existing ATS tables. Every row is `native_quiz`. Only assignments with a result
-  row. Valid iff `status = 'completed'` and no proctoring session of severity `high`/`critical`; anything else
-  (e.g. `cancelled`) is needs review. Explicit `organization_id` filter on all three tables plus TenantScope.
+  row. Valid iff `status = 'completed'`, no proctoring session of severity `high`/`critical`, and
+  `assessment_results.breakdown.pendingManual` empty or absent; anything else (e.g. `cancelled`) is needs review.
+  - **Manual grading pending is needs review.** The TS submission completes the assignment and stores
+    `normalized_score` over the auto-scored questions only, with the essay ids in `breakdown.pendingManual`; one
+    correct choice plus an ungraded essay reads 100. v2 holds such a result as needs review (`reviewPending`)
+    instead of counting it or meeting a gate with it. A `pendingManual` that is present but not an array fails
+    closed. Found by Codex round 5. v1 still reads the auto-only score (unchanged, byte for byte). Nothing on main
+    grades essays yet, so such a result stays needs review until an essay-grading pass empties the list. Explicit `organization_id` filter on all three tables plus TenantScope.
   Adds `proctoring_sessions` to `efcoreReadOnly[]` (SELECT only).
   - **The proctoring rule is inert today.** Nothing on main creates a `proctoring_sessions` row (the TS
     `assessment.flagProctoring` only updates an existing session and returns NOT_FOUND without one).

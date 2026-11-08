@@ -92,6 +92,7 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
             entity.Property(r => r.OrganizationId).HasColumnName("organization_id");
             entity.Property(r => r.AssignmentId).HasColumnName("assignment_id");
             entity.Property(r => r.NormalizedScore).HasColumnName("normalized_score");
+            entity.Property(r => r.Breakdown).HasColumnName("breakdown").HasColumnType("jsonb");
         });
 
         modelBuilder.Entity<FitProctoringSessionReadEntity>(entity =>

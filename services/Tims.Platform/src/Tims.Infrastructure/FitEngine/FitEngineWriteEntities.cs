@@ -77,6 +77,13 @@ public sealed class FitAssessmentResultWriteEntity
     public Guid AssignmentId { get; set; }
 
     public double? NormalizedScore { get; set; }
+
+    /// <summary>
+    /// The jsonb <c>breakdown</c>, read ONLY by the FIT v2 native-quiz adapter for <c>pendingManual</c> (question ids
+    /// awaiting manual grading). The TS submission writes <c>{ autoScored, pendingManual }</c> and completes the
+    /// assignment in the same transaction, with <c>normalized_score</c> over the auto-scored questions only.
+    /// </summary>
+    public string? Breakdown { get; set; }
 }
 
 /// <summary>

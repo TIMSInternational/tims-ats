@@ -15,7 +15,8 @@ namespace Tims.IntegrationTests.FitEngine;
 
 /// <summary>
 /// FIT v2 against real Postgres (RLS on, app_tenant) and the real host:
-///   the ATS native-quiz adapter — only assignments WITH a result, integrity from status + proctoring severity,
+///   the ATS native-quiz adapter — only assignments WITH a result, integrity from status + proctoring severity +
+///     breakdown.pendingManual (a mixed choice/essay result awaiting manual grading is needs review),
 ///     an OrgB-stamped row for the same candidate/vacancy ids never returned, completedAt re-kinded UTC;
 ///   the provider stub — returns nothing;
 ///   the flag — compute on VacFitV2 with FitEngineV2Enabled OFF writes the v1 breakdown (latest-of-any-type,
@@ -70,7 +71,7 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         Assert.Equal(
             [FitEngineFixture.AsgV2Valid.ToString(), FitEngineFixture.AsgV2Cancelled.ToString()],
             results.Select(r => r.ResultId).ToArray());
-        Assert.Equal(ResultIntegrity.Valid, results[0].Integrity); // a 'low' proctoring session does not block
+        Assert.Equal(ResultIntegrity.Valid, results[0].Integrity); // 'low' session, pendingManual [] — not blocked
         Assert.Equal(75, results[0].NormalizedScore);
         Assert.Equal(ResultIntegrity.NeedsReview, results[1].Integrity);
         Assert.Null(results[1].CompletedAt);
@@ -95,17 +96,45 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
     }
 
     [Theory]
-    [InlineData("completed", null, ResultIntegrity.Valid)]
-    [InlineData("completed", "low", ResultIntegrity.Valid)]
-    [InlineData("completed", "medium", ResultIntegrity.Valid)]
-    [InlineData("completed", "high", ResultIntegrity.NeedsReview)]
-    [InlineData("completed", "CRITICAL", ResultIntegrity.NeedsReview)]
-    [InlineData("cancelled", null, ResultIntegrity.NeedsReview)]
-    [InlineData("in_progress", null, ResultIntegrity.NeedsReview)]
-    [InlineData("Completed", null, ResultIntegrity.NeedsReview)]
-    public void AtsIntegrity_OnlyACompletedUnflaggedAssignmentIsValid(
-        string status, string? severity, ResultIntegrity expected) =>
-        Assert.Equal(expected, AtsAssessmentResultSource.IntegrityOf(status, severity));
+    [InlineData("completed", null, false, ResultIntegrity.Valid)]
+    [InlineData("completed", "low", false, ResultIntegrity.Valid)]
+    [InlineData("completed", "medium", false, ResultIntegrity.Valid)]
+    [InlineData("completed", "high", false, ResultIntegrity.NeedsReview)]
+    [InlineData("completed", "CRITICAL", false, ResultIntegrity.NeedsReview)]
+    [InlineData("cancelled", null, false, ResultIntegrity.NeedsReview)]
+    [InlineData("in_progress", null, false, ResultIntegrity.NeedsReview)]
+    [InlineData("Completed", null, false, ResultIntegrity.NeedsReview)]
+    [InlineData("completed", null, true, ResultIntegrity.NeedsReview)]
+    [InlineData("completed", "low", true, ResultIntegrity.NeedsReview)]
+    public void AtsIntegrity_OnlyACompletedUnflaggedFullyGradedAssignmentIsValid(
+        string status, string? severity, bool pendingManual, ResultIntegrity expected) =>
+        Assert.Equal(expected, AtsAssessmentResultSource.IntegrityOf(status, severity, pendingManual));
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("""{"autoScored":3,"pendingManual":[]}""", false)]
+    [InlineData("""{"autoScored":3}""", false)]
+    [InlineData("""[]""", false)]
+    [InlineData("""{"autoScored":1,"pendingManual":["q-essay"]}""", true)]
+    [InlineData("""{"pendingManual":"q-essay"}""", true)]
+    [InlineData("""{"pendingManual":null}""", true)]
+    public void AtsPendingManualGrading_NonEmptyOrMalformedListIsPending(string? breakdown, bool expected) =>
+        Assert.Equal(expected, AtsAssessmentResultSource.HasPendingManualGrading(breakdown));
+
+    [Fact]
+    public async Task AtsSource_MixedChoiceAndEssay_AwaitingManualGrading_IsNeedsReview_NotAScoreOf100()
+    {
+        // The TS submission of one correct choice plus an ungraded essay: completed, normalized_score 100 over the
+        // auto-scored question only, breakdown.pendingManual = [the essay]. Codex round 5 [P1].
+        await using var db = _fixture.NewWriteContext();
+        var results = await new AtsAssessmentResultSource(db).GetResultsAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.CandV2Pending, FitEngineFixture.VacFitV2, CancellationToken.None);
+
+        var result = Assert.Single(results);
+        Assert.Equal(FitEngineFixture.AsgV2Pending.ToString(), result.ResultId);
+        Assert.Equal(100, result.NormalizedScore);
+        Assert.Equal(ResultIntegrity.NeedsReview, result.Integrity);
+    }
 
     [Fact]
     public async Task ProviderStub_ReturnsNothing()
@@ -129,6 +158,8 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         Assert.Equal(99, JsonNode.Parse(v1Valid.Breakdown)!["assessment"]!.GetValue<double>());
         Assert.Null(JsonNode.Parse(v1Valid.Breakdown)!["fitVersion"]);
         Assert.Equal(97, v1Flagged.OverallScore); // (90 + 100 + 100) × 0.2 / 0.6 = 96.67
+        var v1PendingRow = await _fixture.GetFitScoreAsync(FitEngineFixture.CandV2Pending, FitEngineFixture.VacFitV2);
+        Assert.NotNull(v1PendingRow);
 
         // 2. Flag ON → v2.
         await ComputeAsync(v2: true);
@@ -157,6 +188,18 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         Assert.False(valid["reviewPending"]!.GetValue<bool>()); // the cancelled attempt has no completedAt: not judged
         Assert.Equal(FitEngineFixture.AsgV2Valid.ToString(), valid["assessments"]![0]!["resultId"]!.GetValue<string>());
         Assert.Equal(v1Valid.Id, v2Valid.Id); // the same row, updated
+
+        // Mixed choice/essay awaiting manual grading: v1 reads the auto-only 100; v2 holds it as needs review.
+        var v1Pending = JsonNode.Parse(v1PendingRow.Breakdown)!;
+        Assert.Equal(100, v1Pending["assessment"]!.GetValue<double>());
+        var v2PendingRow = await _fixture.GetFitScoreAsync(FitEngineFixture.CandV2Pending, FitEngineFixture.VacFitV2);
+        Assert.NotNull(v2PendingRow);
+        var pending = JsonNode.Parse(v2PendingRow.Breakdown)!;
+        Assert.Null(pending["assessment"]);
+        Assert.True(pending["reviewPending"]!.GetValue<bool>());
+        Assert.True(v2PendingRow.IsPartial);
+        Assert.Equal("needs_review", pending["assessments"]![0]!["status"]!.GetValue<string>());
+        Assert.Equal(FitEngineFixture.AsgV2Pending.ToString(), pending["assessments"]![0]!["resultId"]!.GetValue<string>());
 
         // 3. Flag OFF again → the v1 bytes come back exactly.
         await ComputeAsync(v2: false);
@@ -190,7 +233,7 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("{\"computed\":2}", await response.Content.ReadAsStringAsync());
+        Assert.Equal("{\"computed\":3}", await response.Content.ReadAsStringAsync());
     }
 
     private WebApplicationFactory<Program> Factory(bool write, bool v2) =>
