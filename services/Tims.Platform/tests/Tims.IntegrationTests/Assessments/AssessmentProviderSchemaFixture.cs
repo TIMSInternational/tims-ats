@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using Tims.Infrastructure.Assessments.Providers;
 
 namespace Tims.IntegrationTests.Assessments;
@@ -40,25 +39,17 @@ public sealed class AssessmentProviderSchemaFixture : IAsyncLifetime
     public static readonly Guid EventA = Guid.Parse("aaaa0000-0000-4000-8000-0000000000ee");
     public static readonly Guid EventB = Guid.Parse("bbbb0000-0000-4000-8000-0000000000ee");
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithUsername("postgres")
-        .WithPassword("postgres")
-        .WithDatabase("tims_assessment_providers")
-        .Build();
+    private ProviderTestDatabase? _database;
 
     public string ConnectionString { get; private set; } = string.Empty;
 
     public async Task InitializeAsync()
     {
-        await _container.StartAsync();
-        ConnectionString = _container.GetConnectionString();
+        _database = await ProviderTestDatabase.StartAsync("tims_assessment_providers");
+        ConnectionString = _database.ConnectionString;
 
-        await ExecuteAsync(
+        await ExecuteAsync(ProviderTestDatabase.CreateRolesSql +
             """
-            CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS;
-            CREATE ROLE anon NOLOGIN;
-            CREATE ROLE authenticated NOLOGIN;
-            GRANT app_tenant TO postgres;
             ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
                 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_tenant;
             ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
@@ -74,7 +65,13 @@ public sealed class AssessmentProviderSchemaFixture : IAsyncLifetime
         await SeedAsync();
     }
 
-    public async Task DisposeAsync() => await _container.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        if (_database is not null)
+        {
+            await _database.DisposeAsync();
+        }
+    }
 
     public static DbContextOptions<AssessmentProviderDbContext> BuildOptions(string connectionString) =>
         new DbContextOptionsBuilder<AssessmentProviderDbContext>().UseNpgsql(connectionString).Options;
