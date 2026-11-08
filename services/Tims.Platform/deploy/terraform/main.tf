@@ -108,6 +108,10 @@ locals {
     # unsigned webhook is refused. Those secrets are deliberately NOT in base_secrets here (see the README's
     # placeholder-secret note); the options class treats REPLACE_ME_OUT_OF_BAND as unset.
     Platform__AssessmentProvidersEnabled = tostring(var.feature_flags.assessment_providers)
+    # FIT v2 (per-instrument fit). Changes only POST /fit-engine/vacancies/{id}/compute, and only for vacancies
+    # whose fit_requirements carry an `assessments` array; inert while Platform__FitEngineWriteEnabled is off
+    # (that flag maps the route and is NOT wired here — it is flipped out-of-band like the other slice flags).
+    Platform__FitEngineV2Enabled = tostring(var.feature_flags.fit_engine_v2)
     # #173. A STRING, not a bool: Tims.Domain.Identity.MfaGate.IsEnforced treats ONLY the exact "true" as
     # enabling, so a garbled value fails OPEN and cannot lock privileged operators out. Also never wired
     # when it shipped. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one

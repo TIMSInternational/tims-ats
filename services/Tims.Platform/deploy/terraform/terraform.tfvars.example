@@ -66,6 +66,9 @@ feature_flags = {
 
   # --- AS-5: TIMS Assessments provider connector (new, never enabled anywhere) ---
   assessment_providers = false
+
+  # --- FIT v2: per-instrument assessment fit (new, never enabled anywhere) ---
+  fit_engine_v2 = false
 }
 
 # #173 MFA step-up on the platform service. ⚠️ Also previously absent from main.tf, so the same

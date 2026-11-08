@@ -22,12 +22,27 @@ public static class FitEngineStaffGate
 {
     private const string FitEngineModule = "fit_engine";
 
+    public static Task<FitEngineGateResult> AuthorizeAsync(
+        ClaimsPrincipal user,
+        HttpContext httpContext,
+        PrincipalResolver principalResolver,
+        PermissionService permissionService,
+        PlatformOptions options,
+        string action,
+        CancellationToken cancellationToken) =>
+        AuthorizeAsync(
+            user, httpContext, principalResolver, permissionService, options, FitEngineModule, action,
+            cancellationToken);
+
+    /// <summary>The same gate on another module's grant (the requirements writer checks <c>vacancy:update</c>, as the
+    /// TS <c>updateFitRequirements</c> does).</summary>
     public static async Task<FitEngineGateResult> AuthorizeAsync(
         ClaimsPrincipal user,
         HttpContext httpContext,
         PrincipalResolver principalResolver,
         PermissionService permissionService,
         PlatformOptions options,
+        string module,
         string action,
         CancellationToken cancellationToken)
     {
@@ -40,7 +55,7 @@ public static class FitEngineStaffGate
         AccessDecision decision;
         try
         {
-            decision = await permissionService.CheckAsync(context, FitEngineModule, action, cancellationToken);
+            decision = await permissionService.CheckAsync(context, module, action, cancellationToken);
         }
         catch (TenantOrgRequiredException)
         {
