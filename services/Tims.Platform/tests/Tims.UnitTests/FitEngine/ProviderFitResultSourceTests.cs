@@ -106,7 +106,11 @@ public sealed class ProviderFitResultSourceTests
             [new AssessmentRequirement(FitInstruments.Lia, FitInstrumentUses.Scored, new InstrumentMinimum(40, null, null, null), null, "análisis")];
         var weights = new Dictionary<string, double>(StringComparer.Ordinal)
         {
-            ["assessment"] = 0.2, ["interview"] = 0.2, ["experience"] = 0.2, ["education"] = 0.2, ["languages"] = 0.2,
+            ["assessment"] = 0.2,
+            ["interview"] = 0.2,
+            ["experience"] = 0.2,
+            ["education"] = 0.2,
+            ["languages"] = 0.2,
         };
         var fitRequirements = new FitRequirements(null, null, null);
 
