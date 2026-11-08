@@ -106,31 +106,95 @@ public sealed class TimsAssessmentsClient(
             return erased;
         }
 
+        return ProviderCall<ProviderErasureReceipt>.Fail(
+            await ConfirmSubjectGoneAsync(subjectId, "erase_subject", cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// <c>GET /v1/subjects/{id}/consents</c>. The #312 cascade reads a 404 as "the subject holds no consent", so a 404 is
+    /// returned as such only when <see cref="ConfirmSubjectGoneAsync"/> confirms it; otherwise it is
+    /// <see cref="ProviderFailure.NotFoundUnconfirmed"/>.
+    /// </summary>
+    public async Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(
+        Guid subjectId, CancellationToken cancellationToken)
+    {
+        var listed = await SendAsync<IReadOnlyList<ProviderConsentRecord>>(HttpMethod.Get,
+                $"v1/subjects/{subjectId:D}/consents", null, null, "list_consents", ProviderResponses.ConsentList,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (listed.Ok || listed.Failure!.HttpStatus != 404)
+        {
+            return listed;
+        }
+
+        return ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Fail(
+            await ConfirmSubjectGoneAsync(subjectId, "list_consents", cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// <c>POST /v1/subjects/{id}/consents/{consentId}/withdrawal</c>. The #312 cascade reads a 404 as "nothing left to
+    /// withdraw", so a 404 is confirmed by listing the subject's consents (itself confirmed, see
+    /// <see cref="ListConsentsAsync"/>): a consent the list no longer holds, or a subject confirmed gone, returns the
+    /// 404/410; a consent the list shows as no longer <c>active</c> is returned as the success the route would give;
+    /// a consent still active, or a failed list, is <see cref="ProviderFailure.NotFoundUnconfirmed"/>.
+    /// </summary>
+    public async Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
+        Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken)
+    {
+        var withdrawn = await SendAsync(HttpMethod.Post, $"v1/subjects/{subjectId:D}/consents/{consentId:D}/withdrawal",
+                new JsonObject { ["withdrawn_at"] = FormatTimestamp(withdrawnAt) }, null, "withdraw_consent",
+                root => ProviderResponses.Consent(root) is { } consent && consent.ConsentId == consentId ? consent : null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (withdrawn.Ok || withdrawn.Failure!.HttpStatus != 404)
+        {
+            return withdrawn;
+        }
+
+        var listed = await ListConsentsAsync(subjectId, cancellationToken).ConfigureAwait(false);
+        if (!listed.Ok)
+        {
+            return listed.Failure!.HttpStatus is 404 or 410
+                ? ProviderCall<ProviderConsentRecord>.Fail(listed.Failure)
+                : Unconfirmed<ProviderConsentRecord>("withdraw_consent");
+        }
+
+        var held = listed.Value!.FirstOrDefault(c => c.ConsentId == consentId);
+        if (held is null)
+        {
+            return withdrawn;
+        }
+
+        return held.Status == "active"
+            ? Unconfirmed<ProviderConsentRecord>("withdraw_consent")
+            : ProviderCall<ProviderConsentRecord>.Success(held);
+    }
+
+    /// <summary>
+    /// The failure to return for a 404 on a subject-scoped route: the 404/410 from <c>GET /v1/subjects/{id}</c> when the
+    /// provider confirms the subject is gone, else <see cref="ProviderFailure.NotFoundUnconfirmed"/>.
+    /// </summary>
+    private async Task<ProviderFailure> ConfirmSubjectGoneAsync(Guid subjectId, string operation, CancellationToken cancellationToken)
+    {
         var probe = await SendAsync(HttpMethod.Get, $"v1/subjects/{subjectId:D}", null, null, "get_subject",
                 root => ProviderResponses.Subject(root) is { } subject && subject.SubjectId == subjectId ? subject : null,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!probe.Ok && probe.Failure!.HttpStatus is 404 or 410)
         {
-            return ProviderCall<ProviderErasureReceipt>.Fail(probe.Failure);
+            return probe.Failure;
         }
 
-        logger.LogWarning("TIMS Assessments erase_subject answered 404 without a confirming lookup");
-        return ProviderCall<ProviderErasureReceipt>.Fail(
-            ProviderFailure.Local(ProviderFailure.NotFoundUnconfirmed, transient: true));
+        logger.LogWarning("TIMS Assessments {Operation} answered 404 without a confirming lookup", operation);
+        return ProviderFailure.Local(ProviderFailure.NotFoundUnconfirmed, transient: true);
     }
 
-    public Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(
-        Guid subjectId, CancellationToken cancellationToken) =>
-        SendAsync<IReadOnlyList<ProviderConsentRecord>>(HttpMethod.Get, $"v1/subjects/{subjectId:D}/consents", null, null,
-            "list_consents", ProviderResponses.ConsentList, cancellationToken);
-
-    public Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
-        Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Post, $"v1/subjects/{subjectId:D}/consents/{consentId:D}/withdrawal",
-            new JsonObject { ["withdrawn_at"] = FormatTimestamp(withdrawnAt) }, null, "withdraw_consent",
-            root => ProviderResponses.Consent(root) is { } consent && consent.ConsentId == consentId ? consent : null,
-            cancellationToken);
+    private ProviderCall<T> Unconfirmed<T>(string operation)
+        where T : class
+    {
+        logger.LogWarning("TIMS Assessments {Operation} answered 404 without a confirming lookup", operation);
+        return ProviderCall<T>.Fail(ProviderFailure.Local(ProviderFailure.NotFoundUnconfirmed, transient: true));
+    }
 
     public Task<ProviderCall<ProviderAssignmentLookup>> FindAssignmentByExternalRefAsync(
         Guid tenantId, string externalRef, CancellationToken cancellationToken)

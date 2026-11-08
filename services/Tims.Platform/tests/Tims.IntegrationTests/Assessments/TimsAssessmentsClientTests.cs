@@ -521,6 +521,91 @@ public sealed class TimsAssessmentsClientTests
         Assert.Equal($"https://assessments.test/v1/subjects/{subject}", _handler.Requests.Last(r => r.Uri != TokenUrl).Uri);
     }
 
+    private static string ConsentJson(Guid consent, string status) =>
+        $$"""{"consent_id":"{{consent}}","subject_id":"7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d","tenant_id":"{{Tenant}}","purpose":"assessment","text_version":"v1","locale":"es","status":"{{status}}","granted_at":"2026-11-09T12:00:00Z","recorded_at":"2026-11-09T12:00:00Z","withdrawn_at":null,"capture_method":"host_ui"}""";
+
+    // Codex release review, round 1 [P1]: the #312 cascade read a consent-list 404 as "no consent" and a withdrawal
+    // 404 as "nothing left", so a provider without those routes left active consents while the attempt was marked done.
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, 404, null)]
+    [InlineData(HttpStatusCode.Gone, 410, null)]
+    [InlineData(HttpStatusCode.OK, null, ProviderFailure.NotFoundUnconfirmed)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, null, ProviderFailure.NotFoundUnconfirmed)]
+    public async Task A_consent_list_404_is_confirmed_by_the_subject_lookup(HttpStatusCode lookup, int? expectedStatus, string? expectedCode)
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.RequestUri!.AbsolutePath.EndsWith("/consents", StringComparison.Ordinal) ? NotFound()
+            : lookup == HttpStatusCode.OK
+                ? Json(HttpStatusCode.OK, $$"""{"subject_id":"{{subject}}","tenant_id":"{{Tenant}}","external_ref":"c-1","status":"active","created_at":"2026-11-09T12:00:00Z"}""")
+            : lookup == HttpStatusCode.Gone
+                ? Json(HttpStatusCode.Gone, """{"type":"about:blank","title":"Gone","status":410,"code":"subject_erased"}""", "application/problem+json")
+            : lookup == HttpStatusCode.NotFound ? NotFound()
+            : new HttpResponseMessage(lookup));
+
+        var result = await Client().ListConsentsAsync(subject, CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal(expectedStatus, result.Failure!.HttpStatus);
+        if (expectedCode is not null)
+        {
+            Assert.Equal(expectedCode, result.Failure.Code);
+            Assert.True(result.Failure.Transient);
+        }
+
+        Assert.Equal($"https://assessments.test/v1/subjects/{subject}", _handler.Requests.Last(r => r.Uri != TokenUrl).Uri);
+    }
+
+    [Theory]
+    [InlineData("active", false, null)]       // the route is missing: the consent is still active
+    [InlineData("withdrawn", true, null)]     // already withdrawn: the success the route would give
+    [InlineData(null, false, 404)]            // the subject no longer holds it: a confirmed 404
+    public async Task A_consent_withdrawal_404_is_confirmed_by_listing_the_subjects_consents(string? listedStatus, bool ok, int? status)
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        var consent = Guid.NewGuid();
+        var page = listedStatus is null
+            ? """{"data":[],"next_cursor":null}"""
+            : "{\"data\":[" + ConsentJson(consent, listedStatus) + "],\"next_cursor\":null}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.Method == HttpMethod.Post ? NotFound()
+            : Json(HttpStatusCode.OK, page));
+
+        var result = await Client().WithdrawConsentAsync(subject, consent, _clock.GetUtcNow(), CancellationToken.None);
+
+        Assert.Equal(ok, result.Ok);
+        if (ok)
+        {
+            Assert.Equal("withdrawn", result.Value!.Status);
+        }
+        else if (status is null)
+        {
+            Assert.Null(result.Failure!.HttpStatus);
+            Assert.Equal(ProviderFailure.NotFoundUnconfirmed, result.Failure.Code);
+        }
+        else
+        {
+            Assert.Equal(status, result.Failure!.HttpStatus);
+        }
+
+        Assert.Equal($"https://assessments.test/v1/subjects/{subject}/consents", _handler.Requests.Last(r => r.Uri != TokenUrl).Uri);
+    }
+
+    [Fact]
+    public async Task A_consent_withdrawal_404_whose_list_is_also_unconfirmed_stays_unconfirmed()
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.RequestUri!.AbsolutePath == $"/v1/subjects/{subject}"
+                ? Json(HttpStatusCode.OK, $$"""{"subject_id":"{{subject}}","tenant_id":"{{Tenant}}","external_ref":"c-1","status":"active","created_at":"2026-11-09T12:00:00Z"}""")
+            : NotFound());
+
+        var result = await Client().WithdrawConsentAsync(subject, Guid.NewGuid(), _clock.GetUtcNow(), CancellationToken.None);
+
+        Assert.Null(result.Failure!.HttpStatus);
+        Assert.Equal(ProviderFailure.NotFoundUnconfirmed, result.Failure.Code);
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         private Func<HttpRequestMessage, HttpResponseMessage> _respond = _ => new HttpResponseMessage(HttpStatusCode.NotFound);
