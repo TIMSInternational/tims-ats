@@ -137,11 +137,55 @@ public sealed class ProviderWebhookUseCaseTests
     }
 
     [Fact]
-    public async Task A_result_for_another_tenant_vacancy_or_assignment_is_not_stored()
+    public async Task A_result_for_another_vacancy_is_not_stored()
     {
         var attempt = Attempt();
         _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(
             FetchedResult(attempt, id, json => json["vacancy"]!["external_vacancy_ref"] = "some-other-vacancy"));
+        var (body, eventId) = Envelope("result.ready", ResultReadyData(attempt, Guid.NewGuid()));
+
+        var result = await Deliver(body, eventId, "result.ready");
+
+        Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
+        Assert.Equal("result_mismatch", result.Reason);
+        Assert.Empty(_repository.StoredResults);
+        Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]);
+    }
+
+    // One guard per case: each changes exactly one field of an otherwise matching result, so each fails only if ITS
+    // guard in ApplyResultAsync is missing.
+    [Theory]
+    [InlineData("tenant")]
+    [InlineData("assignment")]
+    [InlineData("result_id")]
+    [InlineData("purpose_development")]
+    [InlineData("rendered_for_subject")]
+    public async Task A_result_that_does_not_match_the_attempt_on_one_field_is_not_stored(string field)
+    {
+        var attempt = Attempt();
+        _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(FetchedResult(attempt, id, json =>
+        {
+            switch (field)
+            {
+                case "tenant":
+                    json["tenant_id"] = Guid.NewGuid().ToString();
+                    break;
+                case "assignment":
+                    json["assignment_id"] = Guid.NewGuid().ToString();
+                    break;
+                case "result_id":
+                    json["result_id"] = Guid.NewGuid().ToString();
+                    break;
+                case "purpose_development":
+                    json["purpose"] = "development"; // development results are never reported, even with a vacancy
+                    break;
+                case "rendered_for_subject":
+                    json["visibility"]!["rendered_for"] = "subject"; // only the tenant_hr projection is stored
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(field));
+            }
+        }));
         var (body, eventId) = Envelope("result.ready", ResultReadyData(attempt, Guid.NewGuid()));
 
         var result = await Deliver(body, eventId, "result.ready");
@@ -201,6 +245,25 @@ public sealed class ProviderWebhookUseCaseTests
         Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
         Assert.Equal(["reserve", "created", "advance:expired"], _repository.Writes);
         Assert.Equal(providerAssignment, _repository.Attempts.Single().ProviderAssignmentId);
+    }
+
+    [Fact]
+    public async Task An_event_that_races_the_assign_request_storing_the_mapping_is_applied_not_ignored()
+    {
+        // The webhook's lookup by assignment id ran just before the assign request committed the mapping: by the time
+        // reconciliation reads the attempt it is already created and mapped to THIS assignment. It must be applied.
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.MissNextLookupByAssignment = true;
+        _provider.OnGetAssignment = id => ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+            id, _provider.TenantId, attempt.ProviderSubjectId!.Value, "lia", "1.0", "content-1", "in_progress", ["assessment"], [],
+            Now.AddDays(14), attempt.Id.ToString()));
+        var (body, eventId) = Envelope("assignment.started", new JsonObject { ["assignment_id"] = attempt.ProviderAssignmentId.ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.started");
+
+        Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
+        Assert.Equal(["advance:in_progress"], _repository.Writes);
+        Assert.Equal(InboxStatuses.Processed, _repository.Inbox[eventId]);
     }
 
     [Fact]

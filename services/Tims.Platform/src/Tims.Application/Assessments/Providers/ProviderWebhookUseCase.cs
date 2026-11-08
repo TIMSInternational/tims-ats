@@ -204,9 +204,16 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
         }
 
         var pending = await _repository.FindAttemptAsync(organizationId, attemptId, cancellationToken).ConfigureAwait(false);
-        if (pending is null || pending.State != ProviderAttemptStates.PendingCreate || pending.Instrument != assignment.Instrument)
+        if (pending is null || pending.Instrument != assignment.Instrument)
         {
             return (null, null, false);
+        }
+
+        if (pending.State != ProviderAttemptStates.PendingCreate)
+        {
+            // The assign request committed this very mapping between our lookup by assignment id and this read: the
+            // attempt is ours and current, so the event applies to it. Mapped to anything else, it is not ours.
+            return pending.ProviderAssignmentId == assignmentId ? (pending, null, false) : (null, null, false);
         }
 
         await _repository.MarkCreatedAsync(organizationId, attemptId, assignment, now, cancellationToken).ConfigureAwait(false);

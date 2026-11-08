@@ -279,9 +279,20 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     public Task<AttemptRow?> FindAttemptAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken) =>
         Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId));
 
+    /// <summary>When set, the next lookup by provider assignment id misses (the mapping commits just after it).</summary>
+    public bool MissNextLookupByAssignment { get; set; }
+
     public Task<AttemptRow?> FindAttemptByProviderAssignmentAsync(
-        Guid organizationId, Guid providerAssignmentId, CancellationToken cancellationToken) =>
-        Task.FromResult(Attempts.FirstOrDefault(a => a.ProviderAssignmentId == providerAssignmentId));
+        Guid organizationId, Guid providerAssignmentId, CancellationToken cancellationToken)
+    {
+        if (MissNextLookupByAssignment)
+        {
+            MissNextLookupByAssignment = false;
+            return Task.FromResult<AttemptRow?>(null);
+        }
+
+        return Task.FromResult(Attempts.FirstOrDefault(a => a.ProviderAssignmentId == providerAssignmentId));
+    }
 
     public Task<bool> AdvanceAttemptAsync(
         Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now, CancellationToken cancellationToken)
