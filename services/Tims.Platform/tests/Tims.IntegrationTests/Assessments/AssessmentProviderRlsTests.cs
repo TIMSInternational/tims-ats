@@ -32,10 +32,18 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         var inbox = await db.Inbox.AsNoTracking().ToListAsync();
         await scope.CommitAsync();
 
+        // Other tests in this collection add OrgA rows, so assert ownership of every visible row, presence of OrgA's
+        // seed and absence of OrgB's — never a count.
         Assert.Equal(AssessmentProviderSchemaFixture.BindingA, Assert.Single(bindings).Id);
-        Assert.Equal(AssessmentProviderSchemaFixture.AttemptA, Assert.Single(attempts).Id);
-        Assert.Equal(AssessmentProviderSchemaFixture.ResultA, Assert.Single(results).ProviderResultId);
-        Assert.Equal(AssessmentProviderSchemaFixture.EventA, Assert.Single(inbox).EventId);
+        Assert.All(attempts, a => Assert.Equal(AssessmentProviderSchemaFixture.OrgA, a.OrganizationId));
+        Assert.All(results, r => Assert.Equal(AssessmentProviderSchemaFixture.OrgA, r.OrganizationId));
+        Assert.All(inbox, i => Assert.Equal(AssessmentProviderSchemaFixture.OrgA, i.OrganizationId));
+        Assert.Contains(attempts, a => a.Id == AssessmentProviderSchemaFixture.AttemptA);
+        Assert.DoesNotContain(attempts, a => a.Id == AssessmentProviderSchemaFixture.AttemptB);
+        Assert.Contains(results, r => r.ProviderResultId == AssessmentProviderSchemaFixture.ResultA);
+        Assert.DoesNotContain(results, r => r.ProviderResultId == AssessmentProviderSchemaFixture.ResultB);
+        Assert.Contains(inbox, i => i.EventId == AssessmentProviderSchemaFixture.EventA);
+        Assert.DoesNotContain(inbox, i => i.EventId == AssessmentProviderSchemaFixture.EventB);
     }
 
     [Fact]
@@ -243,15 +251,18 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
 
     private async Task<(Guid Attempt, Guid Subject)> InsertAttemptAsync(string state)
     {
+        // A fresh candidate per attempt: the open-attempt unique index allows one open lia attempt per candidate and
+        // vacancy, and the collection's tests share one database.
         var attempt = Guid.NewGuid();
         var subject = Guid.NewGuid();
+        var candidate = Guid.NewGuid();
         await fixture.ExecuteAsync(
             $"""
              INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
                  purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
                  instrument_version, content_version, assigned_by_id)
              VALUES ('{attempt}', '{AssessmentProviderSchemaFixture.OrgA}', '{AssessmentProviderSchemaFixture.BindingA}',
-                 '{AssessmentProviderSchemaFixture.CandidateA}', '{AssessmentProviderSchemaFixture.VacancyA}', 'lia', '{state}',
+                 '{candidate}', '{AssessmentProviderSchemaFixture.VacancyA}', 'lia', '{state}',
                  'selection', 'Análisis de datos', 'es', 1, '{subject}', gen_random_uuid(), '1.0', 'content-1', gen_random_uuid())
              """);
         return (attempt, subject);
