@@ -100,7 +100,9 @@ Here every instrument is a **remote** provider, and provider attempts live only 
      timeout, 429, 5xx, a concurrent request still creating it (409 `idempotency_key_in_use`), a reused key, an
      off-contract 2xx, an unknown code.
   5. A staff cancel of a `pending_create` attempt is local. If its create was in flight, the assign request (finding
-     the attempt cancelled) or a later webhook (on reconciliation) cancels the provider's assignment.
+     the attempt cancelled) or a later webhook (on reconciliation) cancels the provider's assignment. A local cancel
+     lands only while the attempt still names the provider assignment the caller cancelled (or none): if the create
+     was answered between the caller's read and its lock, that assignment is cancelled at the provider first.
 - **Subject and tenant keys** carry a hash of the request body, because the contract rejects one key with two bodies.
   A new key updates nothing: an existing subject comes back unchanged, and the contract has no subject update.
 - **Subject PII.** Names and email go to the provider for every subject of an org whose binding enables a link-out
@@ -111,7 +113,9 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - The inbox row is unique on (org, event_id).
   - A transient failure answers 503, so the provider's 72 h retries are the queue.
   - Lifecycle events move an attempt forward only (`ProviderAttemptStates.CanTransition`).
-  - A result revision never overwrites a newer one.
+  - A result revision never overwrites a newer one. A corrected (non-voided) revision for a voided or expired attempt
+    restores it, unless HR already re-assigned the instrument: then the revision is kept and the attempt is not
+    reopened (the replacement holds the one open slot).
   - An event for an unknown assignment is reconciled before it is ignored: `GET /v1/assignments/{id}` returns
     `external_ref` (the attempt id), so an attempt left in `pending_create` by a crash gets its provider id and the
     event is applied. An attempt the assign request mapped to this very assignment meanwhile is applied too. A
