@@ -12,7 +12,8 @@ namespace Tims.IntegrationTests.Assessments;
 ///
 /// Principals: Admin = assessment create+update @ organization (OrgA); Own = a leader with create+update @ own (the
 /// vacancy is neither assigned to nor created by them → the scope probe 404s; the role slug must be a real staff role,
-/// unknown slugs are filtered out before any grant is read); Reader = assessment read only (→ 403); OrgBAdmin;
+/// unknown slugs are filtered out before any grant is read); Reader = an employee with assessment read only (→ 403
+/// for lack of the grant, not for lack of a role); OrgBAdmin;
 /// Owner = platform owner (no org). Each test that writes owns its own candidate or attempt.
 /// </summary>
 public sealed class ProviderEndpointFixture : IAsyncLifetime
@@ -149,7 +150,7 @@ public sealed class ProviderEndpointFixture : IAsyncLifetime
         INSERT INTO roles (id, organization_id, slug, name) VALUES
           ('a0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'recruiter', 'Recruiter'),
           ('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'leader', 'Leader'),
-          ('a0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'viewer', 'Viewer'),
+          ('a0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'employee', 'Employee'),
           ('a0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'recruiter', 'OrgB Recruiter');
         INSERT INTO permissions (id, module, action) VALUES
           ('b0000000-0000-0000-0000-000000000001', 'assessment', 'create'),
