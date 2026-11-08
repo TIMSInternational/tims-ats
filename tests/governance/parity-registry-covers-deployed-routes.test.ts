@@ -394,6 +394,23 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'FIT v2 (PR #427, 2026-11-08) — four C#-ONLY routes with no tRPC twin, landed DARK: the fit_requirements ' +
+      'writer (mapped only with FitEngineWriteEnabled AND FitEngineV2Enabled), the review-state read for list ' +
+      'views (FitEngineReadEnabled), and the two essay-grading routes (owner default D5; FitEngineV2Enabled). ' +
+      'A by-role parity comparison needs a TS procedure to compare against, and none exists or will (survival ' +
+      'rule). They are pinned instead by Tims.IntegrationTests FitRequirementsWriterTests, FitReviewStateTests ' +
+      'and EssayGradingTests (authorization, scope, tenant isolation, atomicity). Registering them C#-only needs ' +
+      'the same fixture-first work as the fit-engine group above (fit_engine/vacancy/assessment grants, seeded ' +
+      'fit_scores rows and a graded-assignment fixture), tracked with it.',
+    routes: [
+      'PUT /fit-engine/vacancies/{vacancyId}/requirements',
+      'POST /fit-engine/scores/review-state',
+      'GET /fit-engine/assignments/{assignmentId}/essays',
+      'POST /fit-engine/assignments/{assignmentId}/essays/{questionId}/grade',
+    ],
+  },
+  {
+    reason:
       'DEPLOYED HONEST 501 STUBS — the two team-intel AI reads (TeamIntelReadEndpoints.cs: gate → team IDOR ' +
       'probe → 501 "AI agent pending"). NO role receives a 200 from them, and the harness contract cannot express ' +
       'that: `expectedByRole` admits only 200|403, checks/parity.ts fails a C#-only endpoint on any non-200, ' +
@@ -605,7 +622,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         same candidate-consent group. 205 + 1 = 206.
     //         Re-derived after merging main: #331/#332/#334/#337/#339 added no deployed routes, so
     //         main 202 (after #339) + #345's +4 = 206.
-    expect(deployed.size).toBe(206);
+    //         206 → 210 (PR #427, FIT v2): the requirements writer, the review-state read and the two
+    //         essay-grading routes, all C#-only and allowlisted in their own group above.
+    expect(deployed.size).toBe(210);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -683,7 +702,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
     //   the group count below is unchanged. 109 + 1 = 110.
     //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
-    expect(allowlistNormalised.length).toBe(110);
+    // 110 → 114 (PR #427): FIT v2's four C#-only routes, in their own group.
+    expect(allowlistNormalised.length).toBe(114);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -705,6 +725,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
     // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
     //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the sixteen documented gap categories').toBe(16);
+    // 16 → 17 (PR #427): FIT v2's C#-only routes. Not folded into the fit-engine group: theirs is a missing
+    //   fixture, these also have no TS procedure to compare against.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the seventeen documented gap categories').toBe(17);
   });
 });
