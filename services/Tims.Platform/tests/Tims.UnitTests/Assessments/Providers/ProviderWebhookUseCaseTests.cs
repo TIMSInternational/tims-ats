@@ -418,6 +418,7 @@ public sealed class ProviderWebhookUseCaseTests
     [InlineData("session.completed", "completed")]
     [InlineData("session.voided", "voided")]
     [InlineData("assignment.expired", "expired")]
+    [InlineData("assignment.voided", "voided")] // a link-out (PCA) sitting's only void signal: no result follows
     public async Task Lifecycle_events_advance_the_attempt(string type, string state)
     {
         var attempt = Attempt();

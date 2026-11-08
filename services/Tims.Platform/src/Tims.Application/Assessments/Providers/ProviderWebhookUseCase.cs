@@ -185,6 +185,7 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
                     TryTimestamp(data, "completed_at"), now, cancellationToken).ConfigureAwait(false);
                 return (InboxStatuses.Processed, null, false);
             case ProviderEventTypes.SessionVoided:
+            case ProviderEventTypes.AssignmentVoided:
                 await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, ProviderAttemptStates.Voided,
                     TryTimestamp(data, "voided_at"), now, cancellationToken).ConfigureAwait(false);
                 return (InboxStatuses.Processed, null, false);

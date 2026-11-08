@@ -89,7 +89,7 @@ public static class ProviderValidity
     public static bool IsKnown(string? status) => status is not null && All.Contains(status, StringComparer.Ordinal);
 }
 
-/// <summary>The six webhook event types of the contract (<c>WebhookEventType</c>).</summary>
+/// <summary>The seven webhook event types of the contract (<c>WebhookEventType</c>).</summary>
 public static class ProviderEventTypes
 {
     public const string AssignmentStarted = "assignment.started";
@@ -97,10 +97,16 @@ public static class ProviderEventTypes
     public const string SessionVoided = "session.voided";
     public const string ResultReady = "result.ready";
     public const string AssignmentExpired = "assignment.expired";
+
+    /// <summary>
+    /// A sitting in progress was voided. For a native instrument it accompanies <see cref="SessionVoided"/>; for a
+    /// link-out instrument (PCA), which has no session, it is the ONLY void signal and no result ever follows.
+    /// </summary>
+    public const string AssignmentVoided = "assignment.voided";
     public const string SubjectErased = "subject.erased";
 
     public static readonly IReadOnlyList<string> All =
-        [AssignmentStarted, SessionCompleted, SessionVoided, ResultReady, AssignmentExpired, SubjectErased];
+        [AssignmentStarted, SessionCompleted, SessionVoided, ResultReady, AssignmentExpired, AssignmentVoided, SubjectErased];
 
     public static bool IsKnown(string? type) => type is not null && All.Contains(type, StringComparer.Ordinal);
 }
