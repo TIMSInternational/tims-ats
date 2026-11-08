@@ -21,6 +21,8 @@ Rules:
   it never lowers the score and never rejects the candidate; an "advisory" instrument is never scored
 - An instrument with status needs_review must be reviewed by a person before it counts — never describe it as a
   low score; no_result and no_value mean the result is unavailable
+- If reviewPending is true, the overall score is provisional: say a person must review it before it is final,
+  even when every instrument shows completed
 - Do NOT recommend hire/no-hire — explain the score composition only
 - narrative must be under 1200 characters
 - Respond in Spanish unless the vacancy title is clearly in another language
@@ -96,6 +98,8 @@ export interface FitExplainerInput {
     /** FIT v2 only (absent on v1 rows). Validated by {@link summarizeInstruments} before use. */
     fitVersion?: number;
     assessments?: unknown;
+    /** FIT v2 only. Forwarded to the model only when it is exactly `true`. */
+    reviewPending?: unknown;
   };
   /**
    * Accepted for call-site compatibility but NEVER sent to the model: the
@@ -126,6 +130,9 @@ export async function explainFit(
         languages: breakdown.languages,
         // Only on v2 rows, so the user message built for a v1 row is unchanged.
         ...(instruments.length > 0 ? { assessmentInstruments: instruments } : {}),
+        // A provisional v2 row (e.g. a settling write after the retries ran out) can show every instrument as
+        // completed; this marker is the only sign it is not final. Absent otherwise, so v1 messages are unchanged.
+        ...(breakdown.reviewPending === true ? { reviewPending: true } : {}),
       };
       const judgmentBlock = breakdown.llmJudgment
         ? wrapAsData(

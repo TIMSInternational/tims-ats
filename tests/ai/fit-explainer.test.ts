@@ -119,6 +119,25 @@ describe('explainFit', () => {
     expect((msg.match(/"instrument":/g) ?? []).length).toBe(3);
   });
 
+  it('a provisional v2 row forwards reviewPending even when every instrument is completed', async () => {
+    invokeAgentMock.mockResolvedValue({ data: { narrative: 'ok' }, model: 'sonnet' });
+    const assessments = [{ instrument: 'native_quiz', use: 'scored', status: 'completed', score: 100 }];
+    await explainFit('org-1', {
+      overallScore: 90,
+      breakdown: { ...V1_BREAKDOWN, fitVersion: 2, reviewPending: true, assessments },
+      vacancyTitle: 'Analyst',
+    });
+    expect(lastMessage()).toContain('"reviewPending":true');
+
+    await explainFit('org-1', {
+      overallScore: 90,
+      breakdown: { ...V1_BREAKDOWN, fitVersion: 2, reviewPending: false, assessments },
+      vacancyTitle: 'Analyst',
+    });
+    expect(lastMessage()).not.toContain('reviewPending');
+    expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/reviewPending is true, the overall score is provisional/);
+  });
+
   it('the system prompt states that gates never reject and needs_review is never a low score', () => {
     expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/never lowers the score and never rejects the candidate/);
     expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/needs_review must be reviewed by a person/);
