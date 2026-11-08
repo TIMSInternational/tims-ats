@@ -536,13 +536,17 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'bindings, the launch identity checks sub == confirmed identity, unconfirmed email, autoconfirm fail-closed, ' +
       'and the webhook body cap), Tims.IntegrationTests Assessments (two-tenant RLS on the four tables, the attempt-lock ' +
       'interleavings, the erasure tombstone, the typed client over a fake HTTP handler) and Tims.UnitTests Assessments/Providers ' +
-      '(signature + replay window, consent gate, #312 withdrawal at assign and launch, idempotency, result mapping).',
+      '(signature + replay window, consent gate, #312 withdrawal at assign and launch, idempotency, result mapping). ' +
+      'The DSAR export and erasure routes (owner default D15) are platform-owner only, like bindings, and the erasure ' +
+      'calls the remote provider: covered by the same ProviderEndpointTests (401/403, export, erasure, unknown candidate).',
     routes: [
       'POST /assessments/provider-assignments',
       'POST /assessments/provider-assignments/{attemptId}/cancel',
       'POST /platform/assessment-providers/bindings',
       'POST /portal/assessment-attempts/{attemptId}/launch',
       'POST /webhooks/tims-assessments',
+      'GET /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export',
+      'POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure',
     ],
   },
 ];
@@ -630,7 +634,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         206 → 210 (AS-5): the dark TIMS Assessments provider connector — staff assign, platform-owner
     //         binding, the candidate launch and the signed webhook — all allowlisted in their own group above.
     //         210 → 211 (AS-5 review): the staff cancel of a provider attempt joins the same group.
-    expect(deployed.size).toBe(211);
+    //         211 → 213 (AS-5, D15): the platform-owner DSAR export and erasure of provider subjects join it.
+    expect(deployed.size).toBe(213);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -710,7 +715,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
     // 110 → 114 (AS-5): the provider connector's four dark routes, in their own group.
     // 114 → 115 (AS-5 review): the staff cancel joins that group.
-    expect(allowlistNormalised.length).toBe(115);
+    // 115 → 117 (AS-5, D15): the DSAR export and erasure routes join that group.
+    expect(allowlistNormalised.length).toBe(117);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

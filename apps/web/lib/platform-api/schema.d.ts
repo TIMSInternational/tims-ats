@@ -1988,6 +1988,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderSubjectExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderSubjectErasure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/data-subject-requests": {
         parameters: {
             query?: never;
@@ -4770,6 +4802,60 @@ export interface components {
             enabledInstruments: string[];
             defaultLocale: string;
         };
+        ProviderErasureView: {
+            /** Format: int32 */
+            subjects: number | string;
+            /** Format: int32 */
+            requested: number | string;
+        };
+        ProviderExportAttempt: {
+            /** Format: uuid */
+            attemptId: string;
+            /** Format: uuid */
+            vacancyId: string;
+            instrument: string;
+            state: string;
+            locale: string;
+            /** Format: double */
+            timeMultiplier: number | string;
+            aids: string[];
+            instrumentVersion: null | string;
+            contentVersion: null | string;
+            /** Format: date-time */
+            expiresAt: null | string;
+            /** Format: date-time */
+            startedAt: null | string;
+            /** Format: date-time */
+            completedAt: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            withdrawalState: null | string;
+            /** Format: date-time */
+            erasureRequestedAt: null | string;
+        };
+        ProviderExportResult: {
+            /** Format: uuid */
+            attemptId: string;
+            /** Format: uuid */
+            resultId: string;
+            /** Format: int32 */
+            revision: number | string;
+            instrument: string;
+            instrumentVersion: string;
+            validityStatus: string;
+            validityReasons: string[];
+            completion: string;
+            /** Format: double */
+            globalPercentile: null | number | string;
+            cefr: null | string;
+            /** Format: int32 */
+            level: null | number | string;
+            scoresJson: null | string;
+            /** Format: date-time */
+            completedAt: string;
+            /** Format: date-time */
+            scoredAt: string;
+        };
         ProviderLaunchBody: {
             consents?: null | components["schemas"]["ProviderLaunchConsentBody"][];
         };
@@ -4786,6 +4872,10 @@ export interface components {
             expiresAt: string;
             apiBaseUrl: string;
             hostedUrl: null | string;
+        };
+        ProviderSubjectExport: {
+            attempts: components["schemas"]["ProviderExportAttempt"][];
+            results: components["schemas"]["ProviderExportResult"][];
         };
         PutTeamMemberBody: {
             role?: null | string;
@@ -11244,6 +11334,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AssessmentProviderSubjectExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSubjectExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderSubjectErasure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderErasureView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderErasureView"];
+                };
             };
         };
     };
