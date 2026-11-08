@@ -48,6 +48,20 @@ public interface IFitEngineWriteRepository
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
         string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The FIT v2 write: read the integrity-carrying inputs and write the row ATOMICALLY. In one transaction it
+    /// takes the #312 consent lock and re-checks consent (a withdrawn candidate returns false and
+    /// <paramref name="buildInLock"/> is never called), then takes a per-(organization, candidate, vacancy) FIT v2
+    /// advisory lock, then calls <paramref name="buildInLock"/> ON THAT OPEN TRANSACTION (it re-reads the results
+    /// and evaluates them) and writes what it returns. Two v2 computes for the same pair therefore never
+    /// interleave a read and a write: the row always reflects the results as of its own in-lock read. If
+    /// <paramref name="buildInLock"/> throws or the token is cancelled, the transaction rolls back and the stored
+    /// row is left exactly as it was.
+    /// </summary>
+    Task<bool> UpsertFitScoreV2Async(
+        Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
+        Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken);
+
     /// <summary><c>getPipelineCandidateIds</c>: candidate ids of the vacancy's <c>status = 'active'</c> applications.</summary>
     Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
         Guid organizationId, Guid vacancyId, CancellationToken cancellationToken);

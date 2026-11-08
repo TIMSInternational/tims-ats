@@ -42,8 +42,20 @@ public sealed class AtsAssessmentResultSource(FitEngineWriteDbContext db) : IAss
     public async Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
     {
-        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
-            .ConfigureAwait(false);
+        // Inside FitEngineWriteRepository.UpsertFitScoreV2Async the read MUST run on the write transaction that holds
+        // the FIT v2 lock (same scoped DbContext), so join it instead of opening a second scope (TenantScope does not
+        // nest). It is only joined when it is a tenant scope for THIS organization; anything else fails closed.
+        TenantScope? scope = null;
+        if (_db.Database.CurrentTransaction is null)
+        {
+            scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await AssertOpenScopeIsAsync(organizationId, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var ownedScope = scope;
 
         var rows = await (
                 from a in _db.AssessmentAssignments.AsNoTracking()
@@ -69,7 +81,10 @@ public sealed class AtsAssessmentResultSource(FitEngineWriteDbContext db) : IAss
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        if (scope is not null)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         return rows
             .Select(row => new InstrumentResult(
@@ -87,6 +102,19 @@ public sealed class AtsAssessmentResultSource(FitEngineWriteDbContext db) : IAss
                 ContentVersion: null,
                 NormVersion: null))
             .ToList();
+    }
+
+    private async Task AssertOpenScopeIsAsync(Guid organizationId, CancellationToken cancellationToken)
+    {
+        var current = await _db.Database
+            .SqlQuery<string>($"SELECT coalesce(current_setting('app.current_org_id', true), '') AS \"Value\"")
+            .SingleAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.Equals(current, organizationId.ToString(), StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "AtsAssessmentResultSource joined an open transaction that is not a tenant scope for this organization.");
+        }
     }
 
     /// <summary>The integrity rule above, exposed for unit tests.</summary>

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using Tims.Application.FitEngine;
 using Tims.Domain.FitEngine;
 using Tims.Infrastructure.FitEngine;
 
@@ -208,6 +209,152 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         Assert.Equal(v1Flagged.Breakdown, again.Breakdown);
         Assert.Equal(v1Flagged.OverallScore, again.OverallScore);
         Assert.Equal(v1Flagged.IsPartial, again.IsPartial);
+    }
+
+    // ── the concurrent-recompute race (Codex round 6 [P1]) ──
+    [Fact]
+    public async Task Race_StaleComputeWhoseLaterReadFails_NeverLeavesACleanScore_OverANewerNeedsReview()
+    {
+        // Codex's reproduction, deterministically: compute A reads a valid result; the assignment is cancelled; compute
+        // B runs; A then writes, and any read A makes after that fails. Before the fix A's read sat outside the write,
+        // B finished first and A's stale clean 80 overwrote B's needs_review, and A's failed check left it there. Now
+        // A reads inside the locked write, so B waits for A's commit and then reads the cancel: needs_review stands.
+        await _fixture.ExecuteScalarAsync(
+            "UPDATE assessment_assignments SET status = 'completed' WHERE id = @a", ("a", FitEngineFixture.AsgV2Race));
+        await _fixture.ExecuteScalarAsync(
+            "DELETE FROM fit_scores WHERE candidate_id = @c", ("c", FitEngineFixture.CandV2Race));
+        var now = new DateTimeOffset(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
+
+        await using var dbA = _fixture.NewWriteContext();
+        await using var dbB = _fixture.NewWriteContext();
+        var gated = new GatedSource(new AtsAssessmentResultSource(dbA));
+        var computeA = new FitEngineWriteUseCase(new FitEngineWriteRepository(dbA), gated);
+        var computeB = new FitEngineWriteUseCase(
+            new FitEngineWriteRepository(dbB), new AtsAssessmentResultSource(dbB));
+
+        var taskA = Task.Run(() => computeA.ComputeForVacancyAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.VacFitV2Race, now, fitV2Enabled: true, CancellationToken.None));
+        await gated.FirstReadDone.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        await _fixture.ExecuteScalarAsync(
+            "UPDATE assessment_assignments SET status = 'cancelled' WHERE id = @a", ("a", FitEngineFixture.AsgV2Race));
+        var taskB = Task.Run(() => computeB.ComputeForVacancyAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.VacFitV2Race, now, fitV2Enabled: true, CancellationToken.None));
+
+        // Let B run as far as it can: to the end (no lock held by A), or until it waits on A's advisory lock.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!taskB.IsCompleted && DateTime.UtcNow < deadline)
+        {
+            var waiting = (long)(await _fixture.ExecuteScalarAsync(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"))!;
+            if (waiting > 0)
+            {
+                break;
+            }
+
+            await Task.Delay(25);
+        }
+
+        gated.Release.SetResult();
+        try
+        {
+            await taskA;
+        }
+        catch (InvalidOperationException)
+        {
+            // the pre-fix path: A's post-write check read fails (that is the scenario under test)
+        }
+
+        await taskB;
+
+        var row = await _fixture.GetFitScoreAsync(FitEngineFixture.CandV2Race, FitEngineFixture.VacFitV2Race);
+        Assert.NotNull(row);
+        var breakdown = JsonNode.Parse(row.Breakdown)!;
+        Assert.True(breakdown["reviewPending"]!.GetValue<bool>());
+        Assert.True(row.IsPartial);
+        Assert.Null(breakdown["assessment"]);
+        Assert.Equal("needs_review", breakdown["assessments"]![0]!["status"]!.GetValue<string>());
+        Assert.Equal(1, gated.Calls); // A read once, inside its write
+    }
+
+    [Fact]
+    public async Task InLockReadFails_TheTransactionRollsBack_TheStoredRowIsUntouched()
+    {
+        await _fixture.ExecuteScalarAsync(
+            "UPDATE assessment_assignments SET status = 'cancelled' WHERE id = @a", ("a", FitEngineFixture.AsgV2Race));
+        await _fixture.ExecuteScalarAsync(
+            "DELETE FROM fit_scores WHERE candidate_id = @c", ("c", FitEngineFixture.CandV2Race));
+        var now = new DateTimeOffset(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
+
+        await using (var db = _fixture.NewWriteContext())
+        {
+            await new FitEngineWriteUseCase(new FitEngineWriteRepository(db), new AtsAssessmentResultSource(db))
+                .ComputeForVacancyAsync(
+                    FitEngineFixture.OrgA, FitEngineFixture.VacFitV2Race, now, fitV2Enabled: true, CancellationToken.None);
+        }
+
+        var before = await _fixture.GetFitScoreAsync(FitEngineFixture.CandV2Race, FitEngineFixture.VacFitV2Race);
+        Assert.NotNull(before);
+        Assert.True(JsonNode.Parse(before.Breakdown)!["reviewPending"]!.GetValue<bool>());
+
+        // The assessment is reinstated, and the next compute's in-lock read is cancelled after it has read it.
+        await _fixture.ExecuteScalarAsync(
+            "UPDATE assessment_assignments SET status = 'completed' WHERE id = @a", ("a", FitEngineFixture.AsgV2Race));
+        using var cts = new CancellationTokenSource();
+        await using (var db = _fixture.NewWriteContext())
+        {
+            var cancelling = new CancelAfterReadSource(new AtsAssessmentResultSource(db), cts);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                new FitEngineWriteUseCase(new FitEngineWriteRepository(db), cancelling).ComputeForVacancyAsync(
+                    FitEngineFixture.OrgA, FitEngineFixture.VacFitV2Race, now.AddMinutes(1), fitV2Enabled: true,
+                    cts.Token));
+        }
+
+        var after = await _fixture.GetFitScoreAsync(FitEngineFixture.CandV2Race, FitEngineFixture.VacFitV2Race);
+        Assert.NotNull(after);
+        Assert.Equal(before.Breakdown, after.Breakdown);
+        Assert.Equal(before.UpdatedAt, after.UpdatedAt);
+        Assert.Equal(0, (long)(await _fixture.ExecuteScalarAsync(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'"))!);
+    }
+
+    // Lets the first read through, then holds the caller until released; every later read fails.
+    private sealed class GatedSource(IAssessmentResultSource inner) : IAssessmentResultSource
+    {
+        public TaskCompletionSource FirstReadDone { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Calls { get; private set; }
+
+        public async Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (Calls > 1)
+            {
+                throw new InvalidOperationException("the post-write read failed");
+            }
+
+            var results = await inner.GetResultsAsync(organizationId, candidateId, vacancyId, cancellationToken);
+            FirstReadDone.SetResult();
+            await Release.Task;
+            return results;
+        }
+    }
+
+    // Reads for real, then cancels the compute's token before returning.
+    private sealed class CancelAfterReadSource(IAssessmentResultSource inner, CancellationTokenSource cts)
+        : IAssessmentResultSource
+    {
+        public async Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            var results = await inner.GetResultsAsync(organizationId, candidateId, vacancyId, cancellationToken);
+            await cts.CancelAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            return results;
+        }
     }
 
     [Fact]

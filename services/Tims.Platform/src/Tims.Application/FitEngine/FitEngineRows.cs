@@ -38,3 +38,9 @@ public sealed record CandidateForFitData(int? YearsExperience, string? Education
 /// (null when the vacancy has no job profile OR the profile has no fitRequirements — the TS optional chain).
 /// </summary>
 public sealed record VacancyForFitData(string? RoleFamily, string? FitRequirements);
+
+/// <summary>
+/// What a FIT v2 compute writes for one candidate, built INSIDE the write transaction from an in-lock read of the
+/// results (see <c>IFitEngineWriteRepository.UpsertFitScoreV2Async</c>).
+/// </summary>
+public sealed record FitScoreWrite(double OverallScore, string BreakdownJson, bool IsPartial);

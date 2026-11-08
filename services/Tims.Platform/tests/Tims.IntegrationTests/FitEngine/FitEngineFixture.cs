@@ -95,6 +95,11 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid AsgV2OtherOrg = Guid.Parse("aa000000-0000-0000-0000-0000000000f6");
     public static readonly Guid AsgV2Pending = Guid.Parse("aa000000-0000-0000-0000-0000000000f7");
 
+    // FIT v2 race — its own vacancy and candidate, driven only by the interleaving test.
+    public static readonly Guid VacFitV2Race = Guid.Parse("7ac00000-0000-0000-0000-00000000000b");
+    public static readonly Guid CandV2Race = Guid.Parse("ca000000-0000-0000-0000-0000000000f5");
+    public static readonly Guid AsgV2Race = Guid.Parse("aa000000-0000-0000-0000-0000000000f8");
+
     // fit_scores seed rows (READ endpoints)
     public static readonly Guid FsCandFull = Guid.Parse("f5000000-0000-0000-0000-000000000001");  // overall 85
     public static readonly Guid FsCandEmpty = Guid.Parse("f5000000-0000-0000-0000-000000000002"); // overall 40, partial
@@ -172,6 +177,21 @@ public sealed class FitEngineFixture : IAsyncLifetime
         return new FitScoreRow(
             reader.GetGuid(0), reader.GetDouble(1), reader.GetString(2), reader.GetString(3), reader.GetBoolean(4),
             reader.GetDateTime(5), reader.GetDateTime(6), reader.GetDateTime(7), reader.GetGuid(8));
+    }
+
+    /// <summary>Runs one statement as the superuser (bypasses RLS) and returns its scalar, or null.</summary>
+    public async Task<object?> ExecuteScalarAsync(string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        foreach (var (name, value) in parameters)
+        {
+            command.Parameters.AddWithValue(name, value);
+        }
+
+        return await command.ExecuteScalarAsync();
     }
 
     /// <summary>The (org, name) weight profile via superuser: id, weights-json + both timestamps, or null.</summary>
@@ -597,5 +617,18 @@ public sealed class FitEngineFixture : IAsyncLifetime
         INSERT INTO proctoring_sessions (id, organization_id, assignment_id, started_at, flag_count, severity) VALUES
           ('ad000000-0000-0000-0000-0000000000f2', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f2', '2026-03-01 00:00:00', 2, 'high'),
           ('ad000000-0000-0000-0000-0000000000f3', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f3', '2026-02-01 00:00:00', 1, 'low');
+
+        INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+          ('7ac00000-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'FIT v2 Race', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+        INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
+          ('9f000000-0000-0000-0000-0000000000f2', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-00000000000b', '{"minYearsExperience":2,"assessments":[{"instrument":"native_quiz","use":"scored"}]}');
+        INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+          ('ca000000-0000-0000-0000-0000000000f5', '11111111-1111-1111-1111-111111111111', 'v2race@fit.test', 'Raúl', 'Race', 4, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+        INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
+          ('ab000000-0000-0000-0000-0000000000f5', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f5', '7ac00000-0000-0000-0000-00000000000b', 'active');
+        INSERT INTO assessment_assignments (id, organization_id, candidate_id, vacancy_id, status, completed_at) VALUES
+          ('aa000000-0000-0000-0000-0000000000f8', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000f5', '7ac00000-0000-0000-0000-00000000000b', 'completed', '2026-03-01 00:00:00');
+        INSERT INTO assessment_results (id, organization_id, assignment_id, normalized_score, breakdown) VALUES
+          ('ae000000-0000-0000-0000-0000000000f8', '11111111-1111-1111-1111-111111111111', 'aa000000-0000-0000-0000-0000000000f8', 80, '{"autoScored":4,"pendingManual":[]}');
         """;
 }

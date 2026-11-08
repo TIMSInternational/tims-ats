@@ -13,8 +13,9 @@ namespace Tims.UnitTests.FitEngine;
 ///   hiring guardrails — a not-met gate never moves the overall score and never skips the candidate; a
 ///     needs-review result is excluded from the assessment dimension (never read as a 0 instrument score), and
 ///     because excluding it still moves the overall number, the row is stored partial with reviewPending: true;
-///   write, then verify — a compute re-reads its results after writing and writes again when they changed
-///     (deterministic interleavings through a scripted source), bounded by MaxV2Writes;
+///   the atomic write — the results are read once, inside the locked write (after the consent re-check), and a
+///     failed or cancelled in-lock read writes nothing (the interleaving itself is pinned against real Postgres in
+///     Tims.IntegrationTests/FitEngine/FitV2Tests);
 ///   weighting — the profile's assessment weight is split across scored instruments by their weights;
 ///   a SCORED English result verifies the languages dimension (a gate never moves a number);
 ///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
@@ -92,8 +93,8 @@ public sealed class FitV2UseCaseTests
         Assert.Equal(2, breakdown["fitVersion"]!.GetValue<int>());
         Assert.False(breakdown["reviewPending"]!.GetValue<bool>());
         Assert.Equal(0, repo.LatestAssessmentReads);
-        Assert.Equal([(OrgId, CandidateId, VacancyId), (OrgId, CandidateId, VacancyId)], source.Calls); // read + check
-        Assert.Single(repo.FitScoreUpserts); // unchanged on the check: one write
+        Assert.Equal([(OrgId, CandidateId, VacancyId)], source.Calls); // one read, inside the locked write
+        Assert.Single(repo.FitScoreUpserts);
 
         var entries = breakdown["assessments"]!.AsArray();
         Assert.Equal(["lia", "personality"], entries.Select(e => e!["instrument"]!.GetValue<string>()).ToArray());
@@ -275,138 +276,53 @@ public sealed class FitV2UseCaseTests
         Assert.False(JsonNode.Parse(counted.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
     }
 
-    // ── write, then verify (the concurrent-recompute race) ──
+    // ── the results are read inside the write (the concurrent-recompute race, Codex rounds 2-6) ──
     [Fact]
-    public async Task FlagOn_ResultTurnsNeedsReviewAfterTheRead_TheComputeWritesAgain_LastWriteIsPending()
+    public async Task FlagOn_ResultsAreReadInsideTheLockedWrite_OnceOnly()
     {
-        // Deterministic interleaving: the compute reads a valid 85, and by the time its write has landed the result
-        // needs review (a cancel or a proctoring flag committed in between, possibly with another compute already
-        // having written needs_review). The stale counted score must not be the row's last word.
         var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", yearsExperience: 4);
-        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
-        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
-        var source = new ScriptedResultSource([valid], [flagged], [flagged]);
+        var source = new ScriptedResultSource([Result(FitInstruments.NativeQuiz, "a-1", score: 85)]);
+        repo.OnLockTaken = () => source.Events.Add("lock");
+        source.Events = repo.Events;
 
         var computed = await new FitEngineWriteUseCase(repo, source)
             .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
 
         Assert.Equal(1, computed.Computed);
-        Assert.Equal(3, source.CallCount); // read, check (changed), check (stable)
-        Assert.Equal(2, repo.FitScoreUpserts.Count);
-        Assert.False(JsonNode.Parse(repo.FitScoreUpserts[0].BreakdownJson)!["reviewPending"]!.GetValue<bool>());
-        var last = JsonNode.Parse(repo.FitScoreUpserts[^1].BreakdownJson)!;
-        Assert.True(last["reviewPending"]!.GetValue<bool>());
-        Assert.Null(last["assessment"]);
-        Assert.Equal("needs_review", last["assessments"]![0]!["status"]!.GetValue<string>());
-        Assert.True(repo.FitScoreUpserts[^1].IsPartial);
+        Assert.Equal(1, source.CallCount);
+        Assert.Equal(["consent", "lock", "read", "write"], repo.Events);
+        Assert.Equal(85, JsonNode.Parse(Assert.Single(repo.FitScoreUpserts).BreakdownJson)!["assessment"]!.GetValue<double>());
     }
 
     [Fact]
-    public async Task FlagOn_StableResults_OneWrite_OneCheck_EvenWhenTheSourceReordersRows()
-    {
-        var repo = Repo("""{"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"native_quiz"}]}""");
-        var lia = Result(FitInstruments.Lia, "r-lia", percentile: 50);
-        var quiz = Result(FitInstruments.NativeQuiz, "a-1", score: 70);
-        var source = new ScriptedResultSource([lia, quiz], [quiz, lia]);
-
-        await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
-
-        Assert.Equal(2, source.CallCount);
-        Assert.Single(repo.FitScoreUpserts);
-    }
-
-    [Fact]
-    public async Task FlagOn_ResultsKeepChanging_StopsAfterMaxV2Writes_PlusOneSettlingWrite()
+    public async Task FlagOn_TheInLockReadThrows_NothingIsWritten_AndTheFailureSurfaces()
     {
         var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
-        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
-        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
-        var source = new ScriptedResultSource([valid], [flagged], [valid], [flagged], [valid], [flagged]);
+        var source = new ThrowingResultSource(new InvalidOperationException("read failed"));
 
-        var computed = await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None));
 
-        Assert.Equal(1, computed.Computed);
-        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes + 1, repo.FitScoreUpserts.Count);
-        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes + 1, source.CallCount); // the settling write is not re-checked
+        Assert.Empty(repo.FitScoreUpserts);
+        Assert.Equal(1, repo.RolledBack);
     }
 
     [Fact]
-    public async Task FlagOn_RetryBudgetSpent_ResultTurnedNeedsReviewInTheLastCheck_StoredRowIsPending()
-    {
-        // Codex round 5: result changes spend the retries, then a cancel lands; the last check sees needs review.
-        // The row stored LAST must not count the result as a clean, final score.
-        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", yearsExperience: 4);
-        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
-        var rescored = Result(FitInstruments.NativeQuiz, "a-1", score: 90);
-        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 90, integrity: ResultIntegrity.NeedsReview);
-        var source = new ScriptedResultSource([valid], [rescored], [valid], [flagged]);
-
-        await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
-
-        var last = repo.FitScoreUpserts[^1];
-        var breakdown = JsonNode.Parse(last.BreakdownJson)!;
-        Assert.True(breakdown["reviewPending"]!.GetValue<bool>());
-        Assert.True(last.IsPartial);
-        Assert.Null(breakdown["assessment"]); // the newest read: needs review, excluded
-        Assert.Equal("needs_review", breakdown["assessments"]![0]!["status"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task FlagOn_RetryBudgetSpent_EvenWhenTheNewestReadIsValid_StoredRowIsPending()
-    {
-        // The newest read is clean, but the results were still moving at the last check, so it is not final.
-        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", yearsExperience: 4);
-        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
-        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
-        var source = new ScriptedResultSource([flagged], [valid], [flagged], [valid]);
-
-        await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
-
-        var last = repo.FitScoreUpserts[^1];
-        var breakdown = JsonNode.Parse(last.BreakdownJson)!;
-        Assert.True(breakdown["reviewPending"]!.GetValue<bool>());
-        Assert.True(last.IsPartial);
-        Assert.Equal("completed", breakdown["assessments"]![0]!["status"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task FlagOn_WithdrawnBeforeTheSettlingWrite_StillCountsTheEarlierWrites()
+    public async Task FlagOn_CancelledDuringTheInLockRead_NothingIsWritten()
     {
         var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
-        repo.WithdrawnAfterWrites = FitEngineWriteUseCase.MaxV2Writes;
-        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
-        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
-        var source = new ScriptedResultSource([valid], [flagged], [valid], [flagged]);
+        using var cts = new CancellationTokenSource();
+        var source = new ThrowingResultSource(null, cts);
 
-        var computed = await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, cts.Token));
 
-        Assert.Equal(1, computed.Computed);
-        Assert.Equal(FitEngineWriteUseCase.MaxV2Writes, repo.FitScoreUpserts.Count);
+        Assert.Empty(repo.FitScoreUpserts);
+        Assert.Equal(1, repo.RolledBack);
     }
 
     [Fact]
-    public async Task FlagOn_WithdrawnBeforeTheRewrite_StopsAndStillCountsTheFirstWrite()
-    {
-        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
-        repo.WithdrawnAfterWrites = 1;
-        var valid = Result(FitInstruments.NativeQuiz, "a-1", score: 85);
-        var flagged = Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview);
-        var source = new ScriptedResultSource([valid], [flagged]);
-
-        var computed = await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
-
-        Assert.Equal(1, computed.Computed);
-        Assert.Single(repo.FitScoreUpserts);
-    }
-
-    [Fact]
-    public async Task FlagOn_WithdrawnBeforeTheFirstWrite_IsNotCounted()
+    public async Task FlagOn_WithdrawnAtTheWrite_IsNotCounted_AndTheResultsAreNeverRead()
     {
         var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
         repo.WithdrawnAfterWrites = 0;
@@ -417,7 +333,7 @@ public sealed class FitV2UseCaseTests
 
         Assert.Equal(0, computed.Computed);
         Assert.Empty(repo.FitScoreUpserts);
-        Assert.Equal(1, source.CallCount); // nothing written, so nothing to check
+        Assert.Equal(0, source.CallCount); // consent is re-checked before the in-lock read
     }
 
     // ── weighting ──
@@ -549,12 +465,33 @@ public sealed class FitV2UseCaseTests
     {
         public int CallCount { get; private set; }
 
+        public List<string> Events { get; set; } = [];
+
         public Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
         {
             var response = responses[Math.Min(CallCount, responses.Length - 1)];
             CallCount++;
+            Events.Add("read");
             return Task.FromResult<IReadOnlyList<InstrumentResult>>(response);
+        }
+    }
+
+    // Throws the given exception, or cancels the given source and throws its cancellation.
+    private sealed class ThrowingResultSource(Exception? error, CancellationTokenSource? cancel = null)
+        : IAssessmentResultSource
+    {
+        public async Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            if (cancel is not null)
+            {
+                await cancel.CancelAsync();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            throw error!;
         }
     }
 
@@ -633,6 +570,41 @@ public sealed class FitV2UseCaseTests
 
             FitScoreUpserts.Add(new FitScoreUpsert(overallScore, breakdownJson, weightsJson, isPartial));
             return Task.FromResult(true);
+        }
+
+        public List<string> Events { get; } = [];
+
+        public Action? OnLockTaken { get; set; }
+
+        public int RolledBack { get; private set; }
+
+        // Mirrors the real transaction: consent re-check, lock, in-lock build, write; a throw rolls everything back.
+        public async Task<bool> UpsertFitScoreV2Async(
+            Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
+            Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken)
+        {
+            Events.Add("consent");
+            if (WithdrawnAfterWrites is { } limit && FitScoreUpserts.Count >= limit)
+            {
+                return false;
+            }
+
+            OnLockTaken?.Invoke();
+            FitScoreWrite write;
+            try
+            {
+                write = await buildInLock(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch
+            {
+                RolledBack++;
+                throw;
+            }
+
+            Events.Add("write");
+            FitScoreUpserts.Add(new FitScoreUpsert(write.OverallScore, write.BreakdownJson, weightsJson, write.IsPartial));
+            return true;
         }
 
         public Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
