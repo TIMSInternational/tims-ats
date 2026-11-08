@@ -6,7 +6,7 @@ namespace Tims.Infrastructure.Assessments.Providers;
 
 /// <summary>
 /// The assessment-provider connector's context (AS-5). It OWNS the DDL of four org-scoped tables (ledger
-/// <c>efcore[]</c>, migration <c>20261107120000_assessment_providers</c>, RLS ENABLE + FORCE + <c>tenant_isolation</c>,
+/// <c>efcore[]</c>, migration <c>20261107232524_assessment_providers</c>, RLS ENABLE + FORCE + <c>tenant_isolation</c>,
 /// no grants to <c>anon</c>/<c>authenticated</c>):
 /// <list type="bullet">
 /// <item><c>assessment_provider_bindings</c> — one per org: the provider tenant id and the enabled instruments. Written

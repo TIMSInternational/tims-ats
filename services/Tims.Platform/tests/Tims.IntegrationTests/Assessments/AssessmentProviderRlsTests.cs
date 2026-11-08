@@ -363,9 +363,10 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         Guid.NewGuid(), AssessmentProviderSchemaFixture.TenantA, subject, "lia", "1.0", "content-1", "created", ["assessment"],
         ["assessment"], DateTimeOffset.UtcNow.AddDays(14), attempt.ToString());
 
-    private Task InsertErasureTombstoneAsync(Guid subject)
+    private Task InsertErasureTombstoneAsync(Guid subject, bool upperCase = false)
     {
-        var data = "{\"subject_id\":\"" + subject + "\"}";
+        var id = upperCase ? subject.ToString().ToUpperInvariant() : subject.ToString();
+        var data = "{\"subject_id\":\"" + id + "\"}";
         return fixture.ExecuteAsync(
             $"""
              INSERT INTO assessment_provider_webhook_inbox (id, organization_id, event_id, event_type, event_version,
@@ -459,6 +460,22 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
 
         Assert.Equal("erased", state);
         Assert.Equal("erased", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+    }
+
+    [Fact]
+    public async Task An_upper_case_subject_id_in_the_tombstone_still_erases_a_late_mapping()
+    {
+        // The contract's Uuid is format: uuid, any case; the inbox stores the payload verbatim.
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        var attempt = await ReservePendingAsync(repository);
+        var subject = Guid.NewGuid();
+        await InsertErasureTombstoneAsync(subject, upperCase: true);
+
+        var state = await repository.MarkCreatedAsync(AssessmentProviderSchemaFixture.OrgA, attempt, AssignmentFor(attempt, subject),
+            DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("erased", state);
     }
 
     [Fact]

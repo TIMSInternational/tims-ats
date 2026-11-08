@@ -341,7 +341,9 @@ public sealed partial class AssessmentProviderRepository
     }
 
     // The erasure tombstone: a recorded (signature-verified) subject.erased inbox row for this subject, whatever its
-    // processing status. Rows are never deleted by app_tenant.
+    // processing status. Rows are never deleted by app_tenant. The inbox keeps the payload verbatim and the contract's
+    // Uuid is any-case, so the stored id is lower-cased to meet Guid.ToString()'s lowercase form (and the index is on
+    // that same expression).
     private Task<bool> IsSubjectErasedAsync(Guid organizationId, Guid providerSubjectId, CancellationToken cancellationToken)
     {
         var subject = providerSubjectId.ToString();
@@ -350,7 +352,7 @@ public sealed partial class AssessmentProviderRepository
                  SELECT EXISTS (
                      SELECT 1 FROM assessment_provider_webhook_inbox
                       WHERE organization_id = {organizationId} AND event_type = 'subject.erased'
-                        AND data->>'subject_id' = {subject}) AS "Value"
+                        AND lower(data->>'subject_id') = {subject}) AS "Value"
                  """)
             .SingleAsync(cancellationToken);
     }

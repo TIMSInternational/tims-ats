@@ -229,7 +229,7 @@ END $EF$;
 DO $EF$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261107232524_assessment_providers') THEN
-    CREATE INDEX ix_assessment_provider_webhook_inbox_erased_subject ON assessment_provider_webhook_inbox (organization_id, (data->>'subject_id')) WHERE event_type = 'subject.erased';
+    CREATE INDEX ix_assessment_provider_webhook_inbox_erased_subject ON assessment_provider_webhook_inbox (organization_id, lower(data->>'subject_id')) WHERE event_type = 'subject.erased';
     END IF;
 END $EF$;
 
