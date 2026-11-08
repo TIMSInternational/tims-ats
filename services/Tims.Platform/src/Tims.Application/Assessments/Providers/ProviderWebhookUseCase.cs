@@ -158,7 +158,7 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             // yet: retry that cancel (an outage retries the delivery), and apply nothing.
             var cancelled = await _provider.CancelAssignmentAsync(attempt.ProviderAssignmentId!.Value, cancellationToken)
                 .ConfigureAwait(false);
-            if (!cancelled.Ok && cancelled.Failure!.Transient)
+            if (!cancelled.Ok && (cancelled.Failure!.Transient || cancelled.Failure.Code == ProviderFailure.Unconfigured))
             {
                 return (InboxStatuses.Failed, cancelled.Failure.Code, true);
             }
@@ -166,9 +166,12 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             if (cancelled.Ok || cancelled.Failure!.HttpStatus is 404 or 410)
             {
                 await _repository.MarkProviderCancelledAsync(organizationId, attempt.Id, now, cancellationToken).ConfigureAwait(false);
+                return (InboxStatuses.Ignored, "orphan_cancelled", false);
             }
 
-            return (InboxStatuses.Ignored, "orphan_cancelled", false);
+            // A refusal a redelivery would not change: the event is acknowledged (recorded as failed for operators), but
+            // the cleanup marker stays on the attempt, so the staff cancel route (and any later event) retries the cancel.
+            return (InboxStatuses.Failed, "orphan_cancel_" + cancelled.Failure.Code, false);
         }
 
         switch (envelope.EventType)
@@ -228,23 +231,23 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             return (null, null, false);
         }
 
-        if (pending.State == ProviderAttemptStates.Cancelled && pending.ProviderAssignmentId is null)
-        {
-            // Staff cancelled the attempt before its create's answer was recorded: this assignment is an orphan of ours.
-            // Cancel it at the provider (idempotent) rather than leave a reserved use behind; an outage retries.
-            var cancelled = await _provider.CancelAssignmentAsync(assignmentId, cancellationToken).ConfigureAwait(false);
-            return cancelled.Ok || !cancelled.Failure!.Transient ? (null, null, false) : (null, cancelled.Failure.Code, true);
-        }
-
-        if (pending.State != ProviderAttemptStates.PendingCreate)
+        var unmapped = pending.State == ProviderAttemptStates.PendingCreate
+            || (pending.State == ProviderAttemptStates.Cancelled && pending.ProviderAssignmentId is null);
+        if (!unmapped)
         {
             // The assign request committed this very mapping between our lookup by assignment id and this read: the
             // attempt is ours and current, so the event applies to it. Mapped to anything else, it is not ours.
             return pending.ProviderAssignmentId == assignmentId ? (pending, null, false) : (null, null, false);
         }
 
+        // Record the mapping under the attempt lock BEFORE anything else is sent to the provider. A pending attempt
+        // becomes created. A cancelled one (staff cancelled it before its create's answer was recorded) keeps its
+        // state and gets the ids plus the ProviderCleanup.CancelPending marker, so the orphan is durable: the cancel at
+        // the provider then runs in ProcessAsync's cleanup branch, and if it fails, the staff cancel route and any later
+        // event retry it. Cancelling first and recording nothing would lose the orphan on any failure.
         await _repository.MarkCreatedAsync(organizationId, attemptId, assignment, now, cancellationToken).ConfigureAwait(false);
-        return (await _repository.FindAttemptAsync(organizationId, attemptId, cancellationToken).ConfigureAwait(false), null, false);
+        var recorded = await _repository.FindAttemptAsync(organizationId, attemptId, cancellationToken).ConfigureAwait(false);
+        return recorded is not null && recorded.ProviderAssignmentId == assignmentId ? (recorded, null, false) : (null, null, false);
     }
 
     private async Task<(string Status, string? Code, bool Retry)> ApplyResultAsync(

@@ -280,13 +280,67 @@ public sealed class ProviderWebhookUseCaseTests
         _provider.OnGetAssignment = id => ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
             id, _provider.TenantId, _provider.SubjectId, "lia", "1.0", "content-1", "created", ["assessment"], [], Now.AddDays(14),
             cancelled.Id.ToString()));
+        string? markerWhenCancelSent = null;
+        _provider.OnCancelAssignment = id =>
+        {
+            markerWhenCancelSent = _repository.Attempts[0].ProviderAssignmentId == id ? _repository.Attempts[0].LastErrorCode : null;
+            return ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+                id, _provider.TenantId, _provider.SubjectId, "lia", "1.0", "content-1", "cancelled", ["assessment"], [],
+                Now.AddDays(14), cancelled.Id.ToString()));
+        };
         var (body, eventId) = Envelope("assignment.started", new JsonObject { ["assignment_id"] = orphan.ToString() });
 
         var result = await Deliver(body, eventId, "assignment.started");
 
         Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
         Assert.Equal([orphan], _provider.Cancelled);
-        Assert.Empty(_repository.Writes);
+        // The orphan was recorded (ids + cleanup marker) BEFORE the cancel was sent, then cleared once confirmed.
+        Assert.Equal(ProviderCleanup.CancelPending, markerWhenCancelSent);
+        Assert.Equal(["created", "orphan_cancelled"], _repository.Writes);
+        Assert.Equal(ProviderAttemptStates.Cancelled, _repository.Attempts[0].State);
+        Assert.Null(_repository.Attempts[0].LastErrorCode);
+    }
+
+    [Theory]
+    [InlineData(403, "forbidden", false, WebhookOutcome.Accepted)] // a refusal a redelivery would not change
+    [InlineData(503, "provider_unavailable", true, WebhookOutcome.RetryLater)]
+    public async Task A_reconciled_orphan_whose_cancel_fails_stays_recorded_and_a_staff_retry_cancels_it(
+        int status, string code, bool transient, WebhookOutcome outcome)
+    {
+        // A crash lost the create's answer, staff cancelled the attempt, then an event for the orphan arrives and the
+        // compensating cancel FAILS. The orphan must stay recorded with its cleanup marker, so a later staff cancel
+        // retries it; a cancel sent before anything was recorded would lose the orphan for good.
+        var cancelled = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Cancelled) with
+        {
+            ProviderAssignmentId = null,
+            ProviderSubjectId = null,
+        };
+        _repository.Attempts[0] = cancelled;
+        var orphan = Guid.NewGuid();
+        _provider.OnGetAssignment = id => ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
+            id, _provider.TenantId, _provider.SubjectId, "lia", "1.0", "content-1", "created", ["assessment"], [], Now.AddDays(14),
+            cancelled.Id.ToString()));
+        _provider.OnCancelAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(status, code, transient, []));
+        var (body, eventId) = Envelope("assignment.started", new JsonObject { ["assignment_id"] = orphan.ToString() });
+
+        var result = await Deliver(body, eventId, "assignment.started");
+
+        Assert.Equal(outcome, result.Outcome);
+        Assert.Equal([orphan], _provider.Cancelled);
+        Assert.Equal(["created"], _repository.Writes);
+        var recorded = _repository.Attempts[0];
+        Assert.Equal(orphan, recorded.ProviderAssignmentId);
+        Assert.Equal(ProviderCleanup.CancelPending, recorded.LastErrorCode);
+        Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]);
+
+        // The staff retry re-attempts the cleanup and, confirmed, clears the marker.
+        _provider.OnCancelAssignment = null;
+        var retried = await new CancelProviderAttemptUseCase(_repository, _provider).CancelAsync(
+            FakeRepository.Org, Guid.NewGuid(), recorded, Now, CancellationToken.None);
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, retried.Outcome);
+        Assert.Equal([orphan, orphan], _provider.Cancelled);
+        Assert.Null(_repository.Attempts[0].LastErrorCode);
     }
 
     [Theory]
