@@ -59,7 +59,7 @@ namespace Tims.Infrastructure.Migrations
                     table.CheckConstraint("ck_assessment_provider_webhook_inbox_attempts", "processing_attempts >= 0");
                     table.CheckConstraint("ck_assessment_provider_webhook_inbox_error_code", "last_error_code IS NULL OR char_length(last_error_code) <= 64");
                     table.CheckConstraint("ck_assessment_provider_webhook_inbox_status", "status IN ('received', 'processed', 'ignored', 'failed')");
-                    table.CheckConstraint("ck_assessment_provider_webhook_inbox_type", "event_type IN ('assignment.started', 'session.completed', 'session.voided', 'result.ready', 'assignment.expired', 'subject.erased')");
+                    table.CheckConstraint("ck_assessment_provider_webhook_inbox_type", "event_type IN ('assignment.started', 'session.completed', 'session.voided', 'result.ready', 'assignment.expired', 'assignment.voided', 'subject.erased')");
                     table.CheckConstraint("ck_assessment_provider_webhook_inbox_version", "event_version = 1");
                 });
 

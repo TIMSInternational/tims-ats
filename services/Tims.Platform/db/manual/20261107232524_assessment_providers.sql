@@ -49,7 +49,7 @@ BEGIN
         CONSTRAINT ck_assessment_provider_webhook_inbox_attempts CHECK (processing_attempts >= 0),
         CONSTRAINT ck_assessment_provider_webhook_inbox_error_code CHECK (last_error_code IS NULL OR char_length(last_error_code) <= 64),
         CONSTRAINT ck_assessment_provider_webhook_inbox_status CHECK (status IN ('received', 'processed', 'ignored', 'failed')),
-        CONSTRAINT ck_assessment_provider_webhook_inbox_type CHECK (event_type IN ('assignment.started', 'session.completed', 'session.voided', 'result.ready', 'assignment.expired', 'subject.erased')),
+        CONSTRAINT ck_assessment_provider_webhook_inbox_type CHECK (event_type IN ('assignment.started', 'session.completed', 'session.voided', 'result.ready', 'assignment.expired', 'assignment.voided', 'subject.erased')),
         CONSTRAINT ck_assessment_provider_webhook_inbox_version CHECK (event_version = 1)
     );
     END IF;

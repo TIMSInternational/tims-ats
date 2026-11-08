@@ -172,6 +172,22 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         Assert.Null(await repository.FindOrganizationByProviderTenantAsync(Guid.NewGuid(), CancellationToken.None));
     }
 
+    [Theory]
+    [MemberData(nameof(EveryEventType))]
+    public async Task The_inbox_accepts_every_contract_event_type(string eventType)
+    {
+        // The inbox's CHECK constraint is generated from ProviderEventTypes.All: a type added to the vocabulary but not
+        // to the migration would fail every delivery of it on insert.
+        await using var db = fixture.NewContext();
+        var envelope = new ProviderEventEnvelope(
+            Guid.NewGuid(), eventType, DateTimeOffset.UtcNow, AssessmentProviderSchemaFixture.TenantA, "{}");
+
+        Assert.Equal(InboxOutcome.New, await new AssessmentProviderRepository(db).RecordInboxAsync(
+            AssessmentProviderSchemaFixture.OrgA, envelope, 1, DateTimeOffset.UtcNow, CancellationToken.None));
+    }
+
+    public static TheoryData<string> EveryEventType() => [.. ProviderEventTypes.All];
+
     [Fact]
     public async Task The_inbox_deduplicates_an_event_and_another_org_cannot_see_or_claim_it()
     {

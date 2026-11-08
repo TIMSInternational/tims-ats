@@ -705,7 +705,7 @@ namespace Tims.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_status", "status IN ('received', 'processed', 'ignored', 'failed')");
 
-                            t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_type", "event_type IN ('assignment.started', 'session.completed', 'session.voided', 'result.ready', 'assignment.expired', 'subject.erased')");
+                            t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_type", "event_type IN ('assignment.started', 'session.completed', 'session.voided', 'result.ready', 'assignment.expired', 'assignment.voided', 'subject.erased')");
 
                             t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_version", "event_version = 1");
                         });
