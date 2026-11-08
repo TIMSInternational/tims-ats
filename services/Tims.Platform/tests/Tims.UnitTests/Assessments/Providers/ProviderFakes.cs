@@ -414,12 +414,19 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     /// <summary>Runs before every launch-context read (a withdrawal committing between two reads).</summary>
     public Action? BeforeLoadLaunchContext { get; set; }
 
+    /// <summary>Runs once, right after the next launch-context read (a withdrawal staging right after the check).</summary>
+    public Action? AfterLoadLaunchContext { get; set; }
+
     public Task<LaunchContext?> LoadLaunchContextAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
     {
         BeforeLoadLaunchContext?.Invoke();
-        return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId) is { } a
+        var context = Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId) is { } a
             ? new LaunchContext(a, CandidateEmail, CandidateActive, LaunchWithdrawn, "Ana", "Pérez")
-            : null);
+            : null;
+        var after = AfterLoadLaunchContext;
+        AfterLoadLaunchContext = null;
+        after?.Invoke();
+        return Task.FromResult(context);
     }
 
     public Task ReopenWithdrawalAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -566,22 +573,77 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Task.FromResult<IReadOnlyList<AttemptRow>>(
             Attempts.Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending).Take(max).ToList());
 
+    /// <summary>Consent-capture fence state per attempt (mirrors the three attempt columns).</summary>
+    public Dictionary<Guid, (int Generation, int InFlight, DateTimeOffset? StartedAt)> Captures { get; } = [];
+
+    /// <summary>The "database clock" the fake judges capture staleness with.</summary>
+    public DateTimeOffset DbNow { get; set; } = new(2026, 11, 9, 14, 0, 0, TimeSpan.Zero);
+
+    /// <summary>Runs once, right after the fences are read (a launch interleaving with the pass).</summary>
+    public Action? AfterReadFences { get; set; }
+
+    private (int Generation, int InFlight, DateTimeOffset? StartedAt) CaptureOf(Guid attemptId) =>
+        Captures.TryGetValue(attemptId, out var capture) ? capture : (0, 0, null);
+
+    public Task<IReadOnlyList<WithdrawalFence>> ReadWithdrawalFencesAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<WithdrawalFence> fences = attemptIds
+            .Where(id => Attempts.Any(a => a.Id == id))
+            .Select(id =>
+            {
+                var (generation, inFlight, startedAt) = CaptureOf(id);
+                return new WithdrawalFence(id, generation, inFlight > 0,
+                    inFlight > 0 && startedAt < DbNow - ProviderCleanup.ConsentCaptureStaleAfter);
+            })
+            .ToList();
+        var hook = AfterReadFences;
+        AfterReadFences = null;
+        hook?.Invoke();
+        return Task.FromResult(fences);
+    }
+
     public Task<int> MarkWithdrawalDoneAsync(
-        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, IReadOnlyList<WithdrawalFence> fences, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var moved = 0;
-        foreach (var id in attemptIds)
+        foreach (var fence in fences)
         {
-            if (Attempts.FirstOrDefault(a => a.Id == id) is { WithdrawalState: ProviderWithdrawalStates.Pending } a
-                && a.LastErrorCode != ProviderCleanup.CancelPending)
+            var capture = CaptureOf(fence.AttemptId);
+            if (Attempts.FirstOrDefault(a => a.Id == fence.AttemptId) is { WithdrawalState: ProviderWithdrawalStates.Pending } a
+                && a.LastErrorCode != ProviderCleanup.CancelPending
+                && capture.Generation == fence.CaptureGeneration
+                && (capture.InFlight == 0 || fence.CaptureStale))
             {
-                Replace(id, x => x with { WithdrawalState = ProviderWithdrawalStates.Done });
+                Replace(fence.AttemptId, x => x with { WithdrawalState = ProviderWithdrawalStates.Done });
                 moved++;
             }
         }
 
         Writes.Add("withdrawal_done:" + moved);
         return Task.FromResult(moved);
+    }
+
+    public Task<bool> BeginConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (Attempts.FirstOrDefault(a => a.Id == attemptId) is not { WithdrawalState: null })
+        {
+            Writes.Add("capture_refused");
+            return Task.FromResult(false);
+        }
+
+        var (generation, inFlight, _) = CaptureOf(attemptId);
+        Captures[attemptId] = (generation + 1, inFlight + 1, DbNow);
+        Writes.Add("capture_begun");
+        return Task.FromResult(true);
+    }
+
+    public Task EndConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var (generation, inFlight, startedAt) = CaptureOf(attemptId);
+        Captures[attemptId] = (generation + 1, Math.Max(inFlight - 1, 0), inFlight <= 1 ? null : startedAt);
+        Writes.Add("capture_ended");
+        return Task.CompletedTask;
     }
 
     public Task<ProviderSubjectExport?> ExportCandidateAsync(

@@ -79,6 +79,15 @@ public sealed class ProviderAttemptEntity
     /// <summary>When an ATS-initiated erasure (<c>DELETE /v1/subjects/{id}</c>) of the attempt's subject was accepted.</summary>
     public DateTime? ProviderErasureRequestedAt { get; set; }
 
+    /// <summary>Bumped when a launch begins or ends a consent capture (the withdrawal pass's completion fence).</summary>
+    public int ConsentCaptureGeneration { get; set; }
+
+    /// <summary>Consent captures begun by launches and not yet ended with the provider's answer.</summary>
+    public int ConsentCapturesInFlight { get; set; }
+
+    /// <summary>When the latest in-flight consent capture began (database clock); null when none is in flight.</summary>
+    public DateTime? ConsentCaptureStartedAt { get; set; }
+
     public Guid AssignedById { get; set; }
 
     public DateTime CreatedAt { get; set; }

@@ -145,11 +145,36 @@ public interface IAssessmentProviderRepository
         Guid organizationId, int max, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Conditional write: moves each listed attempt from <c>pending</c> to <c>done</c> only while it carries no
-    /// <see cref="ProviderCleanup.CancelPending"/> marker, with one audit row. Returns how many moved.
+    /// Reads each attempt's consent-capture fence (<see cref="WithdrawalFence"/>). A withdrawal pass reads it BEFORE it
+    /// lists the provider's consents, so the fence it later completes with describes every capture that list can miss.
+    /// Staleness is judged by the database clock at this read.
+    /// </summary>
+    Task<IReadOnlyList<WithdrawalFence>> ReadWithdrawalFencesAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Conditional write: moves each fenced attempt from <c>pending</c> to <c>done</c> only while it carries no
+    /// <see cref="ProviderCleanup.CancelPending"/> marker AND its consent-capture generation still equals the fence's
+    /// AND (no capture is in flight, or the in-flight one was already stale when the fence was read). A capture that began
+    /// or ended after the fence was read keeps the attempt pending. One audit row. Returns how many moved.
     /// </summary>
     Task<int> MarkWithdrawalDoneAsync(
-        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken);
+        Guid organizationId, IReadOnlyList<WithdrawalFence> fences, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A launch announces a consent capture BEFORE it sends one, durably: one conditional write that bumps the attempt's
+    /// capture generation and in-flight count, and refuses (false, nothing written) an attempt already in a #312
+    /// withdrawal. Row-level locking orders it against the withdrawal's staging write, so either the staging sees the
+    /// announcement or the announcement sees the staging.
+    /// </summary>
+    Task<bool> BeginConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The launch's captures all got the provider's answer: bumps the generation and decrements the in-flight count. Not
+    /// called when a capture ended without an answer (a timeout, an outage, a cancellation): the provider may still store
+    /// it, so the announcement stays in flight until it is stale (<see cref="ProviderCleanup.ConsentCaptureStaleAfter"/>).
+    /// </summary>
+    Task EndConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>
     /// DSAR access (C# path): every provider attempt and stored result of one candidate, with a fail-closed audit row in
@@ -230,6 +255,26 @@ public static class ProviderCleanup
     public static bool IsCancelPending(AttemptRow attempt) =>
         attempt is not null && attempt.State == Domain.Assessments.Providers.ProviderAttemptStates.Cancelled
         && attempt.ProviderAssignmentId is not null && attempt.LastErrorCode == CancelPending;
+
+    /// <summary>
+    /// After this long, a consent capture announced by a launch and never ended can no longer be in flight at the
+    /// provider: one launch sends at most four captures, each bounded by the client's per-call timeout (at most 30 s)
+    /// plus a token request, and the provider's own request limit. A withdrawal pass that reads the fence later lists
+    /// every consent such a capture could have stored.
+    /// </summary>
+    public static readonly TimeSpan ConsentCaptureStaleAfter = TimeSpan.FromMinutes(10);
+}
+
+/// <summary>
+/// One attempt's consent-capture fence, read by a withdrawal pass before it lists the provider's consents.
+/// <see cref="CaptureGeneration"/> changes whenever a launch begins or ends a capture; <see cref="CaptureInFlight"/> is
+/// true while a begun capture has not ended; <see cref="CaptureStale"/> is true when that in-flight capture began more than
+/// <see cref="ProviderCleanup.ConsentCaptureStaleAfter"/> before the read (database clock).
+/// </summary>
+public sealed record WithdrawalFence(Guid AttemptId, int CaptureGeneration, bool CaptureInFlight, bool CaptureStale)
+{
+    /// <summary>Whether the pass may complete this attempt, provided the generation is unchanged at completion.</summary>
+    public bool AllowsCompletion => !CaptureInFlight || CaptureStale;
 }
 
 public sealed record ProviderBindingRow(

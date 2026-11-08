@@ -83,6 +83,22 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
 
+                    b.Property<int>("ConsentCaptureGeneration")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("consent_capture_generation");
+
+                    b.Property<DateTime?>("ConsentCaptureStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consent_capture_started_at");
+
+                    b.Property<int>("ConsentCapturesInFlight")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("consent_captures_in_flight");
+
                     b.Property<string>("ContentVersion")
                         .HasColumnType("text")
                         .HasColumnName("content_version");
@@ -214,6 +230,8 @@ namespace Tims.Infrastructure.Migrations
                     b.ToTable("assessment_provider_attempts", null, t =>
                         {
                             t.HasCheckConstraint("ck_assessment_provider_attempts_aids", "aids <@ ARRAY['extended_breaks', 'screen_reader', 'screen_magnification', 'high_contrast', 'assistive_input', 'captions_or_transcript', 'reader_assistance', 'separate_setting']::text[]");
+
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_consent_capture", "consent_capture_generation >= 0 AND consent_captures_in_flight >= 0");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_content_version", "content_version IS NULL OR char_length(content_version) <= 64");
 

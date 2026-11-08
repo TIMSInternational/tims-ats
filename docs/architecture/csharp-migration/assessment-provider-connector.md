@@ -237,6 +237,29 @@ lookup, and a withdrawal 404 by re-listing the subject's consents (absent: the 4
 success; still active: unconfirmed). Anything unconfirmed is the transient `provider_not_found_unconfirmed`, which no
 caller reads as gone, so the attempt's cascade stays pending.
 
+## Consent captures and the withdrawal cascade (completion fence)
+
+A launch records consents at the provider; a #312 withdrawal's cascade lists and withdraws them. Two races could leave
+a consent active behind a completed (`done`) cascade: a pass that listed before a racing capture landed and then
+completed, and a launch cancelled (or failing) after the provider stored a consent but before its re-check. Migration
+`20261108224533_assessment_provider_consent_capture` adds the fence that closes both:
+
+1. Before sending any capture, the launch announces it with ONE conditional write: it bumps
+   `consent_capture_generation` and `consent_captures_in_flight` and stamps `consent_capture_started_at` (database
+   clock), only while `withdrawal_state IS NULL`. An attempt already in a withdrawal is refused (nothing is captured or
+   launched). Row locking orders this write against the withdrawal's staging write.
+2. When every capture of the launch got an HTTP answer, the launch ends it (generation bumped again, in-flight count
+   decremented). A capture without an answer (timeout, outage, cancellation, crash) stays in flight: the provider may
+   still store it.
+3. A pass reads each attempt's fence (generation, in flight, stale = in flight and started more than 10 minutes before,
+   by the database clock) BEFORE it lists consents, and `done` is a conditional write on it: same generation, and no
+   capture in flight unless it was already stale at that read. Otherwise the attempt stays pending, and a later pass
+   (listing after the capture landed) withdraws the consent.
+
+The post-capture #312 re-check stays: it keeps a withdrawn candidate from getting a token and drives the cascade at
+once. What remains is liveness, not correctness: without a sweeper, a pending attempt waits for its next webhook or
+the org's next withdrawal (see Known gaps).
+
 ## ITC-IA review flag
 
 `requires_human_review` is a top-level field of `ItciaResultV1`, not part of `scores`, so a summary projection carries
@@ -262,7 +285,8 @@ it too. A present non-boolean value is off contract and the result is refused.
 
 ## Owner steps, in order
 
-1. Review the SQL. Apply it with psql on the direct connection (`:5432`).
+1. Review the SQL. Apply both files, in this order, with psql on the direct connection (`:5432`):
+   `20261107232524_assessment_providers.sql`, then `20261108224533_assessment_provider_consent_capture.sql`.
 2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be these
    four tables, their policies, grants and indexes). Then run `/gate` checks 14, 16 and 17.
    - Check 18 (`pre-flip-scan --flip-diff`) will list the four tables as "newly efcore-owned". They are new tables,

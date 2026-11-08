@@ -259,11 +259,102 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         var repository = new AssessmentProviderRepository(db);
         await repository.StageConsentWithdrawalAsync(Org, candidate, DateTimeOffset.UtcNow, CancellationToken.None);
 
-        var moved = await repository.MarkWithdrawalDoneAsync(Org, [open, finished], DateTimeOffset.UtcNow, CancellationToken.None);
+        var fences = await repository.ReadWithdrawalFencesAsync(Org, [open, finished], CancellationToken.None);
+        var moved = await repository.MarkWithdrawalDoneAsync(Org, fences, DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Equal(1, moved);
         Assert.Equal("cancelled|provider_cancel_pending|pending", await RowAsync(open));
         Assert.Equal("result_ready||done", await RowAsync(finished));
+    }
+
+    private async Task<string?> CaptureAsync(Guid attempt) => (string?)await fixture.ScalarAsync(
+        $"SELECT consent_capture_generation || '|' || consent_captures_in_flight || '|' || (consent_capture_started_at IS NOT NULL) FROM assessment_provider_attempts WHERE id = '{attempt}'");
+
+    // Codex release review, round 2 [P1] x2: the consent-capture fence, against the real SQL.
+    [Fact]
+    public async Task A_capture_is_refused_for_an_attempt_already_in_a_withdrawal_and_counted_while_in_flight()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: false);
+        var (attempt, _) = await AttemptAsync(candidate, "created");
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+
+        Assert.True(await repository.BeginConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.True(await repository.BeginConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("2|2|true", await CaptureAsync(attempt));
+        await repository.EndConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal("3|1|true", await CaptureAsync(attempt)); // the other launch's capture is still in flight
+        await repository.EndConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal("4|0|false", await CaptureAsync(attempt));
+
+        await WithdrawAsync(candidate);
+        await repository.StageConsentWithdrawalAsync(Org, candidate, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.False(await repository.BeginConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("4|0|false", await CaptureAsync(attempt));
+        Assert.Equal(2L, (long)(await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE entity_id = '{attempt}' AND action = 'assessment_provider_consent_capture_started'"))!);
+    }
+
+    [Fact]
+    public async Task Completion_waits_for_an_in_flight_capture_until_it_is_stale()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: false);
+        var (attempt, _) = await AttemptAsync(candidate, "result_ready");
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        Assert.True(await repository.BeginConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None));
+        await WithdrawAsync(candidate);
+        await repository.StageConsentWithdrawalAsync(Org, candidate, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var fresh = Assert.Single(await repository.ReadWithdrawalFencesAsync(Org, [attempt], CancellationToken.None));
+        Assert.Equal(0, await repository.MarkWithdrawalDoneAsync(Org, [fresh], DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("result_ready||pending", await RowAsync(attempt));
+
+        // Even a pass that wrongly believed it stale cannot complete it: the database re-checks in-flight against the fence.
+        Assert.Equal(0, await repository.MarkWithdrawalDoneAsync(
+            Org, [fresh with { CaptureInFlight = false }], DateTimeOffset.UtcNow, CancellationToken.None));
+
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET consent_capture_started_at = clock_timestamp() - interval '11 minutes' WHERE id = '{attempt}'");
+        var stale = Assert.Single(await repository.ReadWithdrawalFencesAsync(Org, [attempt], CancellationToken.None));
+        Assert.True(stale is { CaptureInFlight: true, CaptureStale: true });
+        Assert.Equal(1, await repository.MarkWithdrawalDoneAsync(Org, [stale], DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("result_ready||done", await RowAsync(attempt));
+    }
+
+    [Fact]
+    public async Task Completion_is_refused_when_a_capture_ended_after_the_fence_was_read()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: false);
+        var (attempt, _) = await AttemptAsync(candidate, "result_ready");
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        Assert.True(await repository.BeginConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None));
+        await WithdrawAsync(candidate);
+        await repository.StageConsentWithdrawalAsync(Org, candidate, DateTimeOffset.UtcNow, CancellationToken.None);
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET consent_capture_started_at = clock_timestamp() - interval '11 minutes' WHERE id = '{attempt}'");
+        var stale = Assert.Single(await repository.ReadWithdrawalFencesAsync(Org, [attempt], CancellationToken.None));
+
+        // The stale capture's launch resumes and ends it after the pass read its fence: the listing may predate it.
+        await repository.EndConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(0, await repository.MarkWithdrawalDoneAsync(Org, [stale], DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("result_ready||pending", await RowAsync(attempt));
+        var next = Assert.Single(await repository.ReadWithdrawalFencesAsync(Org, [attempt], CancellationToken.None));
+        Assert.Equal(1, await repository.MarkWithdrawalDoneAsync(Org, [next], DateTimeOffset.UtcNow, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_capture_counters_cannot_go_negative()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: false);
+        var (attempt, _) = await AttemptAsync(candidate, "created");
+
+        var error = await Assert.ThrowsAsync<PostgresException>(() => fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET consent_captures_in_flight = -1 WHERE id = '{attempt}'"));
+
+        Assert.Equal("ck_assessment_provider_attempts_consent_capture", error.ConstraintName);
     }
 
     [Fact]

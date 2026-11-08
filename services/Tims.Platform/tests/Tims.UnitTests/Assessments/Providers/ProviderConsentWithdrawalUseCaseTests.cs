@@ -38,6 +38,98 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         Assert.Equal(ProviderWithdrawalStates.Done, row.WithdrawalState);
     }
 
+    // Codex release review, round 2 [P1]: a pass lists no active consent; a launch that announced its capture before the
+    // withdrawal stores one after that listing. The pass must not complete the attempt, so a later pass withdraws it.
+    [Fact]
+    public async Task A_consent_capture_in_flight_keeps_the_attempt_pending_and_a_later_pass_withdraws_its_consent()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        var subject = attempt.ProviderSubjectId!.Value;
+        Assert.True(await _repository.BeginConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None));
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+        _provider.OnListConsents = id =>
+        {
+            // The listing runs before the capture lands; the capture lands right after it.
+            _provider.OnListConsents = null;
+            var snapshot = ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success([]);
+            _provider.SubjectConsents[subject] = [new ProviderConsentRecord(Guid.NewGuid(), "assessment", "active")];
+            return snapshot;
+        };
+
+        var first = await UseCase.StageAndPropagateAsync(FakeRepository.Org, attempt.CandidateId, Now, CancellationToken.None);
+
+        Assert.Equal(new WithdrawalPropagation(0, 1), first);
+        Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
+        Assert.Equal("active", Assert.Single(_provider.SubjectConsents[subject]).Status);
+
+        // The launch gets the provider's answer and ends its capture; the next pass completes the cascade.
+        await _repository.EndConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None);
+        var second = await UseCase.PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
+
+        Assert.Equal(new WithdrawalPropagation(1, 0), second);
+        Assert.Equal("withdrawn", Assert.Single(_provider.SubjectConsents[subject]).Status);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    // The fence must be read BEFORE the listing: a capture that lands after the listing and ends before a later fence
+    // read would look finished to that read, and the cascade would complete without its consent.
+    [Fact]
+    public async Task A_capture_that_lands_and_ends_during_the_listing_keeps_the_attempt_pending()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        var subject = attempt.ProviderSubjectId!.Value;
+        Assert.True(await _repository.BeginConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None));
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+        _provider.OnListConsents = id =>
+        {
+            _provider.OnListConsents = null;
+            var snapshot = ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success([]);
+            _provider.SubjectConsents[subject] = [new ProviderConsentRecord(Guid.NewGuid(), "assessment", "active")];
+            _repository.EndConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None).GetAwaiter().GetResult();
+            return snapshot;
+        };
+
+        var outcome = await UseCase.StageAndPropagateAsync(FakeRepository.Org, attempt.CandidateId, Now, CancellationToken.None);
+
+        Assert.Equal(new WithdrawalPropagation(0, 1), outcome);
+        Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
+        Assert.Equal("active", Assert.Single(_provider.SubjectConsents[subject]).Status);
+    }
+
+    // A capture that begins or ends after the pass read its fence (here: a stale capture's launch resuming and ending it)
+    // changes the generation, so the pass cannot complete on a listing that may predate that consent.
+    [Fact]
+    public async Task A_capture_that_ends_after_the_fence_was_read_keeps_the_attempt_pending()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        Assert.True(await _repository.BeginConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None));
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+        _repository.DbNow += ProviderCleanup.ConsentCaptureStaleAfter + TimeSpan.FromMinutes(1); // stale at the read
+        _repository.AfterReadFences = () =>
+            _repository.EndConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None).GetAwaiter().GetResult();
+
+        var outcome = await UseCase.StageAndPropagateAsync(FakeRepository.Org, attempt.CandidateId, Now, CancellationToken.None);
+
+        Assert.Equal(new WithdrawalPropagation(0, 1), outcome);
+        Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    [Fact]
+    public async Task A_capture_left_in_flight_is_completed_once_it_is_stale()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        Assert.True(await _repository.BeginConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None));
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+
+        var fresh = await UseCase.StageAndPropagateAsync(FakeRepository.Org, attempt.CandidateId, Now, CancellationToken.None);
+        _repository.DbNow += ProviderCleanup.ConsentCaptureStaleAfter + TimeSpan.FromSeconds(1);
+        var stale = await UseCase.PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
+
+        Assert.Equal(new WithdrawalPropagation(0, 1), fresh);
+        Assert.Equal(new WithdrawalPropagation(1, 0), stale);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+    }
+
     [Fact]
     public async Task A_failed_cancel_keeps_the_attempt_pending_with_its_marker()
     {

@@ -133,7 +133,74 @@ public sealed class LaunchProviderAttemptUseCaseTests
         Assert.Equal(2, captures);
         Assert.Equal("withdrawn", Assert.Single(_provider.SubjectConsents[subjectId]).Status);
         Assert.DoesNotContain("launch", _provider.Calls);
+        // The failed capture got no answer, so the provider may still store it: the capture stays in flight and the
+        // cascade stays pending until it is stale; then it completes.
+        Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
+        Assert.DoesNotContain("capture_ended", _repository.Writes);
+        _repository.DbNow += ProviderCleanup.ConsentCaptureStaleAfter + TimeSpan.FromSeconds(1);
+        await new ProviderConsentWithdrawalUseCase(_repository, _provider).PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
         Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    // Codex release review, round 2 [P1]: a request cancelled after the provider stored the consent never reaches the
+    // re-check. The capture was announced before it was sent, so a later withdrawal's cascade still withdraws it and
+    // does not complete while the capture may be in flight.
+    [Fact]
+    public async Task A_launch_cancelled_after_the_provider_stored_its_consent_leaves_the_capture_announced()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        var subjectId = attempt.ProviderSubjectId!.Value;
+        _provider.OnRecordConsent = () =>
+        {
+            _provider.SubjectConsents[subjectId] = [new ProviderConsentRecord(Guid.NewGuid(), "assessment", "active")];
+            throw new OperationCanceledException();
+        };
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => Launch(attempt.Id, consents: [Assessment]));
+
+        Assert.Equal((1, 1), (_repository.Captures[attempt.Id].Generation, _repository.Captures[attempt.Id].InFlight));
+        _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+        var cascade = new ProviderConsentWithdrawalUseCase(_repository, _provider);
+        await cascade.StageAndPropagateAsync(FakeRepository.Org, attempt.CandidateId, Now, CancellationToken.None);
+        Assert.Equal("withdrawn", Assert.Single(_provider.SubjectConsents[subjectId]).Status);
+        Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
+        _repository.DbNow += ProviderCleanup.ConsentCaptureStaleAfter + TimeSpan.FromSeconds(1);
+        await cascade.PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+    }
+
+    [Fact]
+    public async Task A_capture_is_announced_before_it_is_sent_and_ended_once_the_provider_answered()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        var order = new List<string>();
+        _provider.OnRecordConsent = () =>
+        {
+            order.Add("capture_sent_after:" + string.Join(",", _repository.Writes.Where(w => w.StartsWith("capture_", StringComparison.Ordinal))));
+            return ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(Guid.NewGuid(), "assessment", "active"));
+        };
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        Assert.Equal(["capture_sent_after:capture_begun"], order);
+        Assert.Equal((2, 0), (_repository.Captures[attempt.Id].Generation, _repository.Captures[attempt.Id].InFlight));
+    }
+
+    [Fact]
+    public async Task A_launch_whose_attempt_entered_a_withdrawal_after_the_check_captures_and_launches_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        // The context read sees no withdrawal; the withdrawal's staging commits right after it.
+        _repository.AfterLoadLaunchContext = () =>
+            _repository.Attempts[0] = _repository.Attempts[0] with { WithdrawalState = ProviderWithdrawalStates.Pending };
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.ConsentWithdrawn, result.Outcome);
+        Assert.Contains("capture_refused", _repository.Writes);
+        Assert.DoesNotContain(_provider.Calls, c => c.StartsWith("consent:", StringComparison.Ordinal));
+        Assert.DoesNotContain("launch", _provider.Calls);
     }
 
     [Fact]

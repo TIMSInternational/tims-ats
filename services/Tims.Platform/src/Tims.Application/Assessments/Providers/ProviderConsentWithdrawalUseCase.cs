@@ -18,7 +18,10 @@ public sealed record WithdrawalPropagation(int Confirmed, int StillPending);
 /// <item>each active consent of each provider subject is withdrawn
 /// (<c>POST /v1/subjects/{id}/consents/{consent_id}/withdrawal</c>), which makes the provider void open sittings and
 /// results and delete what D2 says it must;</item>
-/// <item>only then is the attempt marked <c>done</c>, by a conditional write.</item>
+/// <item>only then is the attempt marked <c>done</c>, by a conditional write on the consent-capture fence read before
+/// the consents were listed (<see cref="WithdrawalFence"/>): a launch that began or ended a consent capture since, or
+/// whose capture is still in flight, keeps the attempt pending, so a consent the listing could not see is never
+/// left behind by a completed cascade.</item>
 /// </list>
 /// Anything that fails stays pending and is retried by the next pass: every webhook for such an attempt runs one (and
 /// answers 503 while it is still pending, so the provider's 72 h redelivery is the retry queue), and so does the next
@@ -101,6 +104,11 @@ public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderReposito
             current.Add(attempt);
         }
 
+        // Read BEFORE the consents are listed: a launch that begins or ends a consent capture after this read changes the
+        // fence, and completion is conditional on it, so a capture this listing can miss keeps its attempt pending.
+        var fences = await _repository.ReadWithdrawalFencesAsync(
+            organizationId, current.Select(a => a.Id).ToList(), cancellationToken).ConfigureAwait(false);
+
         foreach (var subject in current.Where(a => a.ProviderSubjectId is not null).GroupBy(a => a.ProviderSubjectId!.Value))
         {
             if (!await WithdrawSubjectConsentsAsync(subject.Key, now, cancellationToken).ConfigureAwait(false))
@@ -112,7 +120,9 @@ public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderReposito
             }
         }
 
-        var confirmed = current.Where(a => !blocked.Contains(a.Id)).Select(a => a.Id).ToList();
+        var confirmed = fences
+            .Where(f => !blocked.Contains(f.AttemptId) && f.AllowsCompletion && current.Any(a => a.Id == f.AttemptId))
+            .ToList();
         var moved = await _repository.MarkWithdrawalDoneAsync(organizationId, confirmed, now, cancellationToken)
             .ConfigureAwait(false);
         return new WithdrawalPropagation(moved, pending.Count - moved);

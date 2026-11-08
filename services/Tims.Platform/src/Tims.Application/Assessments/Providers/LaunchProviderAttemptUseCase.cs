@@ -105,10 +105,22 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return LaunchResult.Fail(LaunchOutcome.ProviderUnconfigured);
         }
 
+        // Announced durably BEFORE any capture is sent (and refused for an attempt that entered a #312 withdrawal since
+        // the check above): a withdrawal pass cannot complete this attempt while the capture is in flight or after it
+        // changed, so a consent stored now is withdrawn by the cascade even if this request is cancelled, fails or
+        // crashes before the re-check below (WithdrawalFence).
+        if (consents.Count > 0
+            && !await _repository.BeginConsentCaptureAsync(found.OrganizationId, attempt.Id, now, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return LaunchResult.Fail(LaunchOutcome.ConsentWithdrawn);
+        }
+
         // A capture that FAILED may still have been stored by the provider (a timeout after its commit), and an earlier
         // capture in this loop may have succeeded, so the first failure stops the loop but is returned only AFTER the
         // #312 re-check below: every attempted capture is covered by it.
         LaunchResult? captureFailure = null;
+        var everyCaptureAnswered = true;
         foreach (var consent in consents)
         {
             var auditId = Guid.NewGuid();
@@ -126,7 +138,9 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
                 consent.Locale, recorded.Ok, cancellationToken).ConfigureAwait(false);
             if (!recorded.Ok)
             {
-                captureFailure = recorded.Failure!.Transient
+                // Without an HTTP answer (timeout, outage) the provider may still store this capture.
+                everyCaptureAnswered = recorded.Failure!.HttpStatus is not null;
+                captureFailure = recorded.Failure.Transient
                     ? LaunchResult.Fail(LaunchOutcome.ProviderUnavailable, recorded.Failure.Code)
                     : LaunchResult.Fail(LaunchOutcome.ConsentRejected, recorded.Failure.Code);
                 break;
@@ -135,6 +149,14 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
 
         if (consents.Count > 0)
         {
+            if (everyCaptureAnswered)
+            {
+                // Nothing of this launch is in flight at the provider any more. Otherwise the announcement stays in flight
+                // until it is stale, and the cascade keeps the attempt pending meanwhile.
+                await _repository.EndConsentCaptureAsync(found.OrganizationId, attempt.Id, now, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             // A withdrawal may have run its whole provider cascade between the #312 check above and these consent
             // writes, so a consent just recorded would stay active. Re-checked AFTER the provider recorded it, whether
             // or not every capture succeeded: a withdrawal seen now re-opens this attempt's cascade (durably: the

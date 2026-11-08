@@ -48,26 +48,60 @@ public sealed partial class AssessmentProviderRepository
         return rows.Select(a => ToRow(a, isNew: false)).ToList();
     }
 
-    public async Task<int> MarkWithdrawalDoneAsync(
-        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<WithdrawalFence>> ReadWithdrawalFencesAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(attemptIds);
         if (attemptIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var ids = attemptIds.ToArray();
+        var staleSeconds = ProviderCleanup.ConsentCaptureStaleAfter.TotalSeconds;
+        // Staleness by the DATABASE clock (the same clock that stamped consent_capture_started_at), at this read.
+        var rows = await _db.Database.SqlQuery<FenceRow>(
+                $"""
+                 SELECT id AS "AttemptId", consent_capture_generation AS "Generation",
+                        consent_captures_in_flight > 0 AS "InFlight",
+                        (consent_captures_in_flight > 0
+                         AND consent_capture_started_at < clock_timestamp() - make_interval(secs => {staleSeconds})) AS "Stale"
+                   FROM assessment_provider_attempts
+                  WHERE organization_id = {organizationId} AND id = ANY({ids})
+                 """)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Select(r => new WithdrawalFence(r.AttemptId, r.Generation, r.InFlight, r.Stale)).ToList();
+    }
+
+    public async Task<int> MarkWithdrawalDoneAsync(
+        Guid organizationId, IReadOnlyList<WithdrawalFence> fences, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(fences);
+        if (fences.Count == 0)
         {
             return 0;
         }
 
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
-        var ids = attemptIds.ToArray();
+        var ids = fences.Select(f => f.AttemptId).ToArray();
+        var generations = fences.Select(f => f.CaptureGeneration).ToArray();
+        var stale = fences.Select(f => f.CaptureStale).ToArray();
         var timestamp = now.UtcDateTime;
-        // Conditional at the database: an orphan recorded meanwhile (marker set) keeps the attempt pending.
+        // Conditional at the database: an orphan recorded meanwhile (marker set) keeps the attempt pending, and so does a
+        // consent capture that began or ended after the fence was read (generation changed) or is still in flight and was
+        // not stale at that read (same generation means in-flight count and start are unchanged since the read).
         var moved = await _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
-             UPDATE assessment_provider_attempts
+             UPDATE assessment_provider_attempts a
                 SET withdrawal_state = 'done', updated_at = {timestamp}
-              WHERE organization_id = {organizationId} AND id = ANY({ids})
-                AND withdrawal_state = 'pending'
-                AND last_error_code IS DISTINCT FROM 'provider_cancel_pending'
+               FROM unnest({ids}::uuid[], {generations}::integer[], {stale}::boolean[]) AS f(id, generation, stale)
+              WHERE a.organization_id = {organizationId} AND a.id = f.id
+                AND a.withdrawal_state = 'pending'
+                AND a.last_error_code IS DISTINCT FROM 'provider_cancel_pending'
+                AND a.consent_capture_generation = f.generation
+                AND (a.consent_captures_in_flight = 0 OR f.stale)
              """, cancellationToken).ConfigureAwait(false);
         if (moved > 0)
         {
@@ -80,6 +114,67 @@ public sealed partial class AssessmentProviderRepository
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return moved;
+    }
+
+    public async Task<bool> BeginConsentCaptureAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var timestamp = now.UtcDateTime;
+        // Refused (0 rows) for an attempt already in a withdrawal. Against the withdrawal's staging UPDATE of the same row,
+        // row locking decides the order: the loser re-evaluates its WHERE on the winner's row version.
+        var begun = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts
+                SET consent_capture_generation = consent_capture_generation + 1,
+                    consent_captures_in_flight = consent_captures_in_flight + 1,
+                    consent_capture_started_at = clock_timestamp(),
+                    updated_at = {timestamp}
+              WHERE organization_id = {organizationId} AND id = {attemptId} AND withdrawal_state IS NULL
+             """, cancellationToken).ConfigureAwait(false);
+        if (begun > 0)
+        {
+            AddAudit(organizationId, null, "assessment_provider_consent_capture_started", attemptId, []);
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return begun > 0;
+    }
+
+    public async Task EndConsentCaptureAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var timestamp = now.UtcDateTime;
+        var ended = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts
+                SET consent_capture_generation = consent_capture_generation + 1,
+                    consent_captures_in_flight = GREATEST(consent_captures_in_flight - 1, 0),
+                    consent_capture_started_at = CASE WHEN consent_captures_in_flight <= 1 THEN NULL
+                                                      ELSE consent_capture_started_at END,
+                    updated_at = {timestamp}
+              WHERE organization_id = {organizationId} AND id = {attemptId}
+             """, cancellationToken).ConfigureAwait(false);
+        if (ended > 0)
+        {
+            AddAudit(organizationId, null, "assessment_provider_consent_capture_ended", attemptId, []);
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed class FenceRow
+    {
+        public Guid AttemptId { get; init; }
+
+        public int Generation { get; init; }
+
+        public bool InFlight { get; init; }
+
+        public bool Stale { get; init; }
     }
 
     public async Task<ProviderSubjectExport?> ExportCandidateAsync(
