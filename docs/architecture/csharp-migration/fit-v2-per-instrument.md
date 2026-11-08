@@ -77,27 +77,29 @@ equal split). Both are silent until a C#-owned writer validates the configuratio
   latest result of any SCORED instrument needs review, the breakdown carries `reviewPending: true` and the row is
   stored with `isPartial: true`. Some web readers flag `isPartial`: the vacancy FIT ranking (its status column),
   and the pipeline kanban card, list view and table row (a `*`; the kanban card also keeps a partial score out of
-  its >= 80 highlight). Others show the bare number: the candidate header (whose high-fit banner does not check
-  `isPartial`), the candidate table, the talent-pool table and the candidate page's breakdown and assessment
-  panels. No reader holds these rows apart from the ranking; that is a precondition for enabling the flag (see
-  Rollout). A gate awaiting review moves no number and does not set `reviewPending`.
+  its >= 80 highlight). The candidate header and its high-fit banner mark a `reviewPending` score as provisional
+  (from the stored breakdown, which `candidate.getById` already returns), and the candidate table and the
+  talent-pool table mark it from the C# read `POST /fit-engine/scores/review-state` (their `candidate.list` query
+  carries the fit score id but not the breakdown). The candidate page's breakdown and assessment panels still show
+  the dimension numbers without the marker. A gate awaiting review moves no number and does not set
+  `reviewPending`.
 - **Gates never reject.** A gate entry contributes nothing to any dimension, the `languages` dimension included.
   A candidate whose gate is `not_met` is still scored and ranked; a person decides.
 - **Weighting.** The `assessment` dimension is the weighted mean of the scored instruments that have a score,
   rounded with `JsRound`. The declared weights apply when every scored entry declares a valid one; otherwise all
-  scored instruments weigh the same. Equivalently, instrument _i_ carries `profile.assessment × wᵢ / Σw` over the
+  scored instruments weigh the same. A scored English entry is not part of this mean (owner default D3, below). Equivalently, instrument _i_ carries `profile.assessment × wᵢ / Σw` over the
   instruments with a score. When none has one, the dimension is null and the five-dimension renormalization drops
   it, exactly as v1 does for any missing dimension. `isPartial` keeps its v1 meaning and is also set by
   `reviewPending` (simulateWeights recomputes it from the five dimension keys, so it can report false there).
-- **English verifies languages (scored only).** A SCORED english entry with a valid CEFR result decides whether
-  "English" (also "Inglés"/"Ingles") counts as covered among `requiredLanguages`: covered iff achieved ≥ the
-  entry's minimum, whatever the CV says. Other languages still come from the CV. If the CV lists no languages and
-  a non-English language is also required, the dimension stays null as in v1. A scored English result therefore
-  moves two numbers (its ladder score in `assessment`, and English coverage in `languages`). **Open, needs owner
-  sign-off with the DEI rollout checks:** a below-minimum result counts twice, and `effectiveWeight` reports only
-  its `assessment` share, not its effect on `languages`, so neither HR nor the explainer sees the combined weight.
-  The alternatives are one channel only, or a combined weight in the breakdown. A GATE english entry moves
-  neither number: HR sees its met / not met next to the CV self-report.
+- **English counts once, in languages (owner default D3, 2026-11-08; scored only).** A SCORED english entry never
+  enters the `assessment` mean. It decides whether "English" (also "Inglés"/"Ingles") counts as covered among
+  `requiredLanguages`: covered iff achieved ≥ the entry's minimum, whatever the CV says; English is added to the
+  required languages when the vacancy lists the test but not the language. Other languages still come from the CV.
+  If the CV lists no languages and a non-English language is also required, the dimension stays null as in v1.
+  Without a usable result (no result, no value, needs review) the CV self-report stands for English. The entry's
+  `weight` and `assessmentShare` are null and its `effectiveWeight` is English's share of the `languages` weight
+  (that weight divided by the number of required languages); its `score` is the CEFR ladder fit, shown only. A
+  GATE english entry moves no number: HR sees its met / not met next to the CV self-report.
 - **Job-relatedness.** Results for instruments the vacancy does not list are ignored.
 
 ## Breakdown
@@ -156,8 +158,18 @@ carries its status and the vacancy's reason only: no result id, source or versio
 A1..C1 to 17/33/50/67/83 and the ITC-IA ladder maps levels 1..4 to 20/40/60/80, both one-to-one, so a reader
 recovers the exact CEFR level or ITC-IA level of every candidate below the minimum. The LIA curve inverts as
 `p = score × min / 100`. At or above the minimum all three read 100. v1's `assessment` key already exposes a
-normalized score to the same readers. **Owner decision needed before the flag is enabled:** accept this for
-`leader@team`, or coarsen what the breakdown stores (e.g. met / below only).
+normalized score to the same readers.
+
+**Owner default D6 (2026-11-08): team leaders see only "below minimum".** The stored row keeps the derived fits (HR
+and admins see the exact level). The C# reads redact on the way out for a reader below company scope (own, team,
+unit; `FitV2Visibility`): a scored entry with a minimum whose fit is under 100 loses its `score` and gains
+`belowMinimum: true`; the `assessment` dimension it feeds is dropped too, because it is a known-weight mean of
+those fits; the ranking's overall is recomputed from the dimensions that remain (and the row marked partial), and
+the list re-sorted, since the stored overall would invert as well; simulateWeights runs over the redacted
+breakdown. English (D3) feeds only `languages`, which says covered or not, i.e. exactly "below minimum", so it
+stays. **Not covered:** the TS reads that still serve the web app (`fitEngine.getRankingForVacancy`,
+`fitEngine.explainFit`, and `candidate.getById`, which returns the breakdown) live in `packages/api` and are not
+redacted; see Rollout.
 
 ## Result sources (`IAssessmentResultSource`)
 
@@ -189,42 +201,46 @@ normalized score to the same readers. **Owner decision needed before the flag is
 
 ## Rollout notes
 
-- **Preconditions for enabling `FitEngineV2Enabled`** (none is met by this PR):
-  1. **A writer for `assessments[]` that does not get erased.** The only writer of `fit_requirements` is the TS
-     `vacancy.jobProfile.updateFitRequirements` (`packages/api/src/routers/vacancy/job-profile.ts`), whose input
-     schema has no `assessments` field and which replaces the whole jsonb on save. Saving the requirements card
-     after a vacancy was configured therefore drops the array, and the next compute silently returns to v1. The
-     survival rule forbids patching that router; a C#-owned writer (merge-on-update, plus the web form) must land
-     first. It should also report dropped entries and invalid weights instead of the silent lenient parse.
-  2. **Readers that hold `reviewPending` rows apart** (or show "needs review" rather than a number), the vacancy
-     ranking first. Today they rank on a provisional number, flagged only where a reader shows `isPartial`.
-  3. **The owner visibility decision** above, and the DEI / LIA-norm checks below.
+- **Preconditions for enabling `FitEngineV2Enabled`:**
+  1. **Done in this PR — a writer for `assessments[]` that does not get erased:** `PUT
+     /fit-engine/vacancies/{id}/requirements` (C#, `vacancy:update` + the vacancy scope probe) merges the array in
+     one `INSERT … ON CONFLICT` statement, normalizes what it stores by the parse rules above and reports every
+     dropped or changed entry (a non-empty array with no valid entry is refused). Under
+     `NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP` the requirements card saves through it, without an `assessments` key.
+     **Still open:** a web editor for the array itself (today it can only be set through the C# endpoint).
+  2. **Partly done — readers that mark `reviewPending`:** the candidate header and banner, the candidate table and
+     the talent-pool table (above); the ranking and the pipeline views flag `isPartial`. **Still open:** the
+     candidate page's breakdown and assessment panels.
+  3. **D6 on every surface a team leader can reach.** The C# reads redact (above). The web app still reads fit data
+     through `packages/api` (`fitEngine.getRankingForVacancy`, `fitEngine.explainFit`, `candidate.getById`), which
+     the survival rule does not let this PR change: those reads must move to C# (an FE wrapper over the C# fit-engine
+     reads, `FitEngineReadEnabled`) or be retired before a vacancy is configured.
   4. **A review-completion signal** read by the ATS adapter before any proctoring-session writer ships.
+  5. **The DEI / LIA-norm checks** below.
+- **Essays (owner default D5).** A quiz with an essay awaiting a grade is needs review. `GET
+  /fit-engine/assignments/{id}/essays` and `POST …/essays/{questionId}/grade` (`assessment:read` /
+  `assessment:update` + the assignment's vacancy scope; mapped with the v2 flag) let a recruiter grade it from the
+  candidate's assessment results. A grade runs in one transaction that locks the result row: it writes the
+  response's points, removes the essay from `pendingManual`, records the grader in `breakdown.manualGrades`, and
+  recomputes `raw_score` / `normalized_score` as the TS `computeResult` does. It does not compute the norm
+  percentile or band (TS computes those only at submission) and does not recompute FIT; the next compute reads the
+  graded result as valid.
 - The C# compute is not called by the web app yet (no FE wrapper for the fit-engine surface; see `cutover.sh`).
   The live TS writers (`fitEngine.computeForVacancy`, `candidateAiService.screenCandidate`) still write v1
   breakdowns, and a later TS recompute overwrites a v2 row with v1.
-- **Concurrent recomputes: write, then verify.** Results are read before, and outside, the transaction that
-  writes `fit_scores`. Two concurrent computes that straddle an integrity change could therefore end with the
-  slower one's stale view: compute A reads a clean result, the result becomes needs review (HR flags it high, or a
-  cancel lands on it through the TOCTOU above), compute B writes `needs_review`, then A overwrites it with
-  `completed`, the counted score and `reviewPending: false`. Found by the Codex review of this branch; reachable
-  today through the cancel TOCTOU. Each v2 compute now re-reads the candidate's results AFTER its write and, when
-  they changed, evaluates and writes again (at most `MaxV2Writes` = 3 checked writes). When the results still
-  differ after the third check, that write is not left standing: one more **settling write** evaluates the newest
-  read with `reviewPending: true` (so `isPartial: true`) and is not re-checked. Whatever happens after it, the
-  stored row never presents a just-shown-stale result as a clean, final score; the next compute clears the flag
-  once the results are stable. (Codex round 5 found that the earlier "the third write stands" let a cancel seen by
-  the last check be stored as counted, with `reviewPending: false`.) What remains:
-  - a change after the last check is picked up by the next compute, as for every other input (v1 snapshot
-    semantics);
-  - under continuous churn the row is held as `reviewPending` until a compute sees stable results;
-  - only the results are re-read; the CV, interview and weight inputs keep v1's last-writer-wins snapshot;
-  - the live TS writers (v1) do not verify and can still overwrite a v2 row (see above);
-  - **open (Codex round 6 [P1]):** a write whose check never completes leaves that write until the next compute,
-    and it can be a stale clean score. That happens when the process dies, but also when the check's read throws
-    or the request is cancelled or times out: the upsert has already committed and the check has no failure
-    handling. The fix is to keep the row provisional until a check succeeds, or to make the integrity read and the
-    write atomic. That is not done in this PR. It is a precondition for enabling the flag.
+- **Concurrent recomputes: the results are read inside the write.** The results carry the integrity state (a
+  cancel, a proctoring flag, an essay awaiting a grade), so a v2 compute reads them, evaluates and upserts the row in
+  ONE transaction that holds a per-(organization, candidate, vacancy) advisory lock, taken after the #312 consent
+  lock and re-check. Two computes therefore never interleave a read and a write: in the race the Codex review found
+  (A reads a clean result, a cancel lands, B writes `needs_review`, A overwrites it with the stale clean score), B
+  now waits for A's commit and reads the cancel, or A waits for B's and reads it. If the read, the evaluation or the
+  write fails or is cancelled, the transaction rolls back and the stored row is untouched, so a compute never
+  leaves a row it could not stand behind. This replaces the earlier write-then-verify loop and its settling write
+  (Codex rounds 4-6). What remains:
+  - a change that commits after the last compute's in-lock read is picked up by the next compute, as for every
+    other input (nothing recomputes FIT when an assignment is cancelled or flagged);
+  - only the results are read in the lock; the CV, interview and weight inputs keep v1's snapshot semantics;
+  - the live TS writers (v1) take no lock and can still overwrite a v2 row (see above).
 - Turning the flag off affects the next compute only; stored v2 rows keep their extra keys, which every v1 reader
   ignores.
 - Before gates are used on real vacancies: monitor pass and fit rates by group (DEI), and confirm the LIA norms

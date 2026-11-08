@@ -62,7 +62,8 @@ namespace Tims.Domain.FitEngine;
 /// id, source or version. The derived fit is NOT opaque below the minimum: the English and ITC-IA ladders are
 /// one-to-one there (A1..C1 → 17/33/50/67/83, levels 1..4 → 20/40/60/80) and the LIA curve inverts as
 /// <c>p = score × min / 100</c>, so a reader who also sees <c>min</c> recovers the raw level or percentile. That
-/// exposure to leader@team is an owner decision, recorded in the design doc.</para>
+/// stored row keeps them for HR and admins; the C# reads redact them for narrow-scoped readers (owner default D6,
+/// see <see cref="FitV2Visibility"/>).</para>
 /// </summary>
 public static class FitV2Kernels
 {
