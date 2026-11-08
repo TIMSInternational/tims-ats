@@ -513,9 +513,12 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult(true);
     }
 
+    public List<Guid> LocallyErasedSubjects { get; } = [];
+
     public Task<int> EraseSubjectAsync(Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add("erase");
+        LocallyErasedSubjects.Add(providerSubjectId);
         return Task.FromResult(1);
     }
 

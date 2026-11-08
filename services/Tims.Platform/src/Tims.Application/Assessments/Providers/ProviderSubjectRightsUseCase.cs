@@ -21,7 +21,9 @@ public sealed record ProviderErasureResult(ProviderErasureOutcome Outcome, int S
 /// which needs the <c>subjects:export</c> scope and is not called here.</item>
 /// <item><b>Erasure.</b> ATS-initiated: <c>DELETE /v1/subjects/{id}</c> for every provider subject of the candidate. The
 /// provider erases asynchronously and then emits <c>subject.erased</c>, whose existing handler deletes the ATS's stored
-/// results. From the accepted request on, no result is fetched or stored for those attempts.</item>
+/// results. A subject the provider confirms it no longer holds (410, or a 404 its lookup confirms) emits no such event, so
+/// the ATS erases its own stored results for it at once. From the accepted request on, no result is fetched or stored for
+/// those attempts.</item>
 /// </list>
 /// </summary>
 public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
@@ -91,6 +93,13 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
 
             await _repository.MarkErasureRequestedAsync(organizationId, candidateId, subject, status, actorId, now, cancellationToken)
                 .ConfigureAwait(false);
+            if (!erased.Ok)
+            {
+                // A CONFIRMED 410/404 (the client confirms a 404 with the subject lookup): the provider holds nothing, so no
+                // subject.erased event will follow to delete what the ATS stored. Erase locally now, as that handler does.
+                await _repository.EraseSubjectAsync(organizationId, subject, now, cancellationToken).ConfigureAwait(false);
+            }
+
             requested++;
         }
 

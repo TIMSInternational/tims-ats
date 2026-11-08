@@ -255,6 +255,34 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         Assert.Contains("erasure_requested:already_erased", _repository.Writes);
     }
 
+    // Codex release review, round 3 [P1]: a subject the provider confirms it no longer holds emits no subject.erased
+    // event, so the ATS's stored results for it must be erased locally at once, not left for an event that never comes.
+    [Theory]
+    [InlineData(410, "subject_erased")]
+    [InlineData(404, "not_found")]
+    public async Task A_confirmed_gone_subject_is_erased_locally_at_once(int status, string code)
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _provider.OnEraseSubject = _ => ProviderCall<ProviderErasureReceipt>.Fail(new ProviderFailure(status, code, false, []));
+
+        var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Requested, result.Outcome);
+        Assert.Contains(attempt.ProviderSubjectId!.Value, _repository.LocallyErasedSubjects);
+        Assert.Equal(_provider.ErasedSubjects, _repository.LocallyErasedSubjects); // every subject the provider confirmed gone
+    }
+
+    [Fact]
+    public async Task An_accepted_erasure_waits_for_the_providers_subject_erased_event()
+    {
+        _repository.AddCreatedAttempt("lia");
+
+        var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Requested, result.Outcome);
+        Assert.Empty(_repository.LocallyErasedSubjects);
+    }
+
     [Fact]
     public async Task An_unknown_candidate_is_not_found_and_nothing_is_sent()
     {
