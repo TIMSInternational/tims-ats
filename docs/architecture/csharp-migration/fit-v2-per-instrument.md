@@ -240,7 +240,14 @@ panel (pre-existing, `candidate:read`), and a v2 row computed before this column
      one `INSERT … ON CONFLICT` statement, normalizes what it stores by the parse rules above and reports every
      dropped or changed entry (a non-empty array with no valid entry is refused). Under
      `NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP` the requirements card saves through it, without an `assessments` key.
-     **Still open:** a web editor for the array itself (today it can only be set through the C# endpoint).
+     **Done (release slice "atsux") — a web editor for the array itself:** `GET` and `PUT
+     /fit-engine/vacancies/{id}/requirements/assessments` (same flags as the writer; `vacancy:read` / `vacancy:update` +
+     the vacancy scope probe) read the array as FIT parses it with a version token (`md5` of the stored jsonb,
+     computed by Postgres), and replace ONLY `assessments[]` (the card's keys are carried over in the same `UPDATE`),
+     strictly (an entry the parser would drop, or one without a job-relatedness reason, refuses the whole write) and
+     conditionally (a `FOR UPDATE` row lock and the version the editor read; a stale version or a lost concurrent
+     insert is a 409 with the current array). The vacancy page's assessments card uses them: tests from the provider
+     catalog, use, minimum, reason, the pinned version, and the D3/D20 notes.
   2. **Done — readers that mark `reviewPending`:** the candidate header and banner, the candidate table and the
      talent-pool table, and (release slice "fit") the candidate page's breakdown panel (the provisional badge and one
      line per instrument: needs review, below minimum, gate state, advisory, score) and assessment panel (each

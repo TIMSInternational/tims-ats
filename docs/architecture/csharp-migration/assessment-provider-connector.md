@@ -28,6 +28,8 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 | `POST /assessments/provider-assignments`                                                              | staff, `assessment:create` plus the vacancy IDOR probe                          | 1–6 instruments, the reason for each, the accommodations, an optional expiry. Each item echoes the locale, multiplier and aids in force                                |
 | `POST /assessments/provider-assignments/{attemptId}/cancel`                                           | staff, `assessment:update` plus the vacancy IDOR probe on the attempt's vacancy | Cancels an attempt whose sitting has not finished, at the provider first. Unknown, foreign and out-of-scope ids are the same 404                                       |
 | `POST /platform/assessment-providers/bindings`                                                        | platform owner                                                                  | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments                                                                         |
+| `GET /assessments/provider-catalog?vacancyId=`                                                         | staff, `assessment:read` (+ the vacancy scope probe with `vacancyId`)           | The instruments this org may assign (binding AND catalog for selection), with delivery, locales, consents, versions and the version the vacancy is pinned to             |
+| `GET /assessments/provider-attempts?candidateId=`                                                      | staff, `assessment:read`; out-of-scope vacancies omitted                        | Status chip, how the vacancy counts it (D3, D20) and the result (validity, reviewPending, minimum met). D6: below company scope, no level, reasons or accommodation       |
 | `POST /portal/assessment-attempts/{attemptId}/launch`                                                 | the candidate, by confirmed email                                               | Optional per-purpose consents and `embedded`. Returns the hosted launch (D16): the player's single-use URL and its frame ancestors, body only. Rate limit: `auth` tier |
 | `GET /portal/assessment-attempts?organizationSlug=`                                                   | the candidate, by confirmed email                                               | The candidate's own attempts at that org, one coarse status each (D9), the consent purposes still missing, the start deadline                                          |
 | `GET /portal/assessment-attempts/{attemptId}/consent-templates?locale=es\|en`                         | the candidate, by confirmed email                                               | The provider's consent templates for the purposes the attempt still needs; 404 unless it is the candidate's and needs consent                                          |
@@ -107,6 +109,11 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   The webhook inbox is not audited row by row: it is itself the delivery record. Metadata holds ids, versions,
   codes and states only.
 
+- **Same version for every candidate of a vacancy** (design §6.3). A new attempt takes the version the EARLIEST
+  attempt of the same vacancy and instrument carries (any state), stored on the row at reserve so every re-send of its
+  create carries the same body, and the create sends it as `instrument_version`. The vacancy's first attempt sends
+  none (the provider pins its current GA); the provider also refuses a different version for the vacancy
+  (409 `vacancy_version_mismatch`).
 - **In-flight sessions.**
   - The provider pins the instrument and content version on the assignment.
   - The ATS stores both on the attempt and on the result.
