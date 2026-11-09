@@ -361,12 +361,15 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         var repository = new AssessmentProviderRepository(db);
         try
         {
-            var before = (await repository.ListPendingWithdrawalsAsync(Org, 500, CancellationToken.None)).Select(a => a.Id).ToList();
+            var claimer = Guid.NewGuid();
+            var before = (await repository.ClaimPendingWithdrawalsAsync(Org, claimer, 500, CancellationToken.None)).Select(a => a.Id).ToList();
+            await repository.ReleaseWithdrawalLeasesAsync(Org, before, claimer, CancellationToken.None);
             Assert.True(before.IndexOf(first) < before.IndexOf(second));
 
             await repository.DeferPendingWithdrawalsAsync(Org, [first], DateTimeOffset.UtcNow, CancellationToken.None);
 
-            var after = (await repository.ListPendingWithdrawalsAsync(Org, 500, CancellationToken.None)).Select(a => a.Id).ToList();
+            var after = (await repository.ClaimPendingWithdrawalsAsync(Org, claimer, 500, CancellationToken.None)).Select(a => a.Id).ToList();
+            await repository.ReleaseWithdrawalLeasesAsync(Org, after, claimer, CancellationToken.None);
             Assert.True(after.IndexOf(second) < after.IndexOf(first));
 
             await fixture.ExecuteAsync($"UPDATE assessment_provider_attempts SET withdrawal_state = 'done' WHERE id = '{second}'");

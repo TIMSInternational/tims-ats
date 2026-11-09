@@ -35,6 +35,8 @@ const portalAttemptSchema = z
     delivery: z.enum(['native', 'link_out']),
     /** The candidate's own application's vacancy, named in the consent notice. */
     vacancyId: z.string().uuid(),
+    /** OPTIONAL purposes not decided yet (English speaking: voice, ai_scoring); may be declined. */
+    optionalConsents: z.array(z.enum(CONSENT_PURPOSES)).max(4),
   })
   .strict();
 
@@ -69,7 +71,15 @@ const templateSchema = z
 
 export type ConsentTemplate = z.infer<typeof templateSchema>;
 
-const templatesSchema = z.object({ templates: z.array(templateSchema).max(4) }).strict();
+const templatesSchema = z
+  .object({
+    templates: z.array(templateSchema).max(4),
+    /** The purposes among `templates` the candidate may leave unticked (shown apart, unticked by default). */
+    optionalPurposes: z.array(z.enum(CONSENT_PURPOSES)).max(4),
+  })
+  .strict();
+
+export type ConsentTemplateSet = z.infer<typeof templatesSchema>;
 
 const launchSchema = z
   .object({
@@ -104,10 +114,10 @@ export function useProviderConsentTemplates(attemptId: string, locale: 'es' | 'e
     queryKey: ['platform', 'provider-consent-templates', attemptId, locale] as const,
     enabled: enabled && isProviderAssessmentsPortalEnabled(),
     retry: false,
-    queryFn: async (): Promise<ConsentTemplate[]> =>
+    queryFn: async (): Promise<ConsentTemplateSet> =>
       templatesSchema.parse(
         await platformGet('/portal/assessment-attempts/{attemptId}/consent-templates', { locale }, { attemptId }),
-      ).templates,
+      ),
   });
 }
 
@@ -117,20 +127,32 @@ export interface AcceptedConsent {
   locale: string;
 }
 
+/** What the candidate decided in the consent step: the texts accepted, and the OPTIONAL purposes left unticked. */
+export interface ConsentDecision {
+  accepted: AcceptedConsent[];
+  declined: ConsentPurpose[];
+}
+
 /**
- * POST /portal/assessment-attempts/{id}/launch — records the consents the candidate just accepted and mints the hosted
- * launch. The returned URL carries a single-use launch code: open it at once, never store or log it.
+ * POST /portal/assessment-attempts/{id}/launch — records the consents the candidate just accepted (and the optional
+ * purposes declined) and mints the hosted launch. The returned URL carries a single-use launch code: open it at once,
+ * never store or log it.
  */
 export async function launchProviderAttempt(
   attemptId: string,
-  consents: AcceptedConsent[],
+  decision: ConsentDecision,
   embedded: boolean,
 ): Promise<ProviderLaunch> {
   if (!isProviderAssessmentsPortalEnabled()) throw new Error('Provider assessments are not enabled');
+  const { accepted, declined } = decision;
   return launchSchema.parse(
     await platformPost(
       '/portal/assessment-attempts/{attemptId}/launch',
-      { consents: consents.length > 0 ? consents : undefined, embedded },
+      {
+        consents: accepted.length > 0 ? accepted : undefined,
+        declinedConsents: declined.length > 0 ? declined : undefined,
+        embedded,
+      },
       { attemptId },
     ),
   );

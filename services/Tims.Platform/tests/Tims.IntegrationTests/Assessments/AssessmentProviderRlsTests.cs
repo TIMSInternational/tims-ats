@@ -199,8 +199,21 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         // A delivery without TIMS-Delivery-Attempt stores NULL (the parameter must still type as integer).
         var first = await repository.RecordInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope, null, DateTimeOffset.UtcNow, CancellationToken.None);
         var unfinished = await repository.RecordInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope, 2, DateTimeOffset.UtcNow, CancellationToken.None);
-        await repository.CompleteInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope.EventId, InboxStatuses.Processed, null,
-            DateTimeOffset.UtcNow, CancellationToken.None);
+        // OrgA's due rows from other tests in this collection may come first: claim until this event is ours.
+        var owner = Guid.NewGuid();
+        ClaimedInboxEvent? claimed = null;
+        for (var i = 0; i < 50 && claimed?.Envelope.EventId != envelope.EventId; i++)
+        {
+            claimed = await repository.ClaimInboxEventAsync(AssessmentProviderSchemaFixture.OrgA, owner, CancellationToken.None);
+            Assert.NotNull(claimed);
+        }
+
+        Assert.Equal(envelope.EventId, claimed!.Envelope.EventId);
+        // Another org's worker never sees it (RLS and the explicit org filter).
+        var other = await repository.ClaimInboxEventAsync(AssessmentProviderSchemaFixture.OrgB, Guid.NewGuid(), CancellationToken.None);
+        Assert.NotEqual(envelope.EventId, other?.Envelope.EventId);
+        await repository.CompleteInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope.EventId, owner, InboxStatuses.Processed,
+            null, null, DateTimeOffset.UtcNow, CancellationToken.None);
         var done = await repository.RecordInboxAsync(AssessmentProviderSchemaFixture.OrgA, envelope, 3, DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Equal(InboxOutcome.New, first);

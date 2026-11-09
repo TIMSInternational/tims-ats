@@ -3915,6 +3915,10 @@
     "providerLaunchConsentRequired": "A consent still needs to be accepted. Read it and try again.",
     "providerFrameTitle": "Online assessment",
     "providerFrameClose": "Close the assessment",
+    "providerOptionalTitle": "Optional consents: English speaking section",
+    "providerOptionalIntro": "These consents are optional. You may leave them unticked and still take the test: the speaking section is then not given, and the hiring team will see that it was not assessed because you did not consent. Ticking these boxes or not changes nothing else about your application.",
+    "providerOptionalDraft": "DRAFT PENDING LEGAL REVIEW (owner decision D22): these optional texts have not been approved by counsel.",
+    "providerOptionalAccept": "I agree (optional).",
     "providerFrameHint": "When you finish, close this window to return to your dashboard."
   },
   "billing": {
@@ -5230,6 +5234,10 @@
     "cancelled": "Assessment cancelled",
     "cancelError": "The assessment could not be cancelled.",
     "vacancyLabel": "Vacancy",
+    "speakingNotAssessed": {
+      "no_voice_consent": "Speaking not assessed (no voice consent).",
+      "no_ai_scoring_consent": "Speaking not assessed (no AI-scoring consent)."
+    },
     "unknownVacancy": "Another vacancy"
   },
   "assignProviderAssessments": {

@@ -28,8 +28,8 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 | `POST /assessments/provider-assignments`                                                              | staff, `assessment:create` plus the vacancy IDOR probe                          | 1–6 instruments, the reason for each, the accommodations, an optional expiry. Each item echoes the locale, multiplier and aids in force                                |
 | `POST /assessments/provider-assignments/{attemptId}/cancel`                                           | staff, `assessment:update` plus the vacancy IDOR probe on the attempt's vacancy | Cancels an attempt whose sitting has not finished, at the provider first. Unknown, foreign and out-of-scope ids are the same 404                                       |
 | `POST /platform/assessment-providers/bindings`                                                        | platform owner                                                                  | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments                                                                         |
-| `GET /assessments/provider-catalog?vacancyId=`                                                         | staff, `assessment:read` (+ the vacancy scope probe with `vacancyId`)           | The instruments this org may assign (binding AND catalog for selection), with delivery, locales, consents, versions and the version the vacancy is pinned to             |
-| `GET /assessments/provider-attempts?candidateId=`                                                      | staff, `assessment:read`; out-of-scope vacancies omitted                        | Status chip, how the vacancy counts it (D3, D20) and the result (validity, reviewPending, minimum met). D6: below company scope, no level, reasons or accommodation       |
+| `GET /assessments/provider-catalog?vacancyId=`                                                        | staff, `assessment:read` (+ the vacancy scope probe with `vacancyId`)           | The instruments this org may assign (binding AND catalog for selection), with delivery, locales, consents, versions and the version the vacancy is pinned to           |
+| `GET /assessments/provider-attempts?candidateId=`                                                     | staff, `assessment:read`; out-of-scope vacancies omitted                        | Status chip, how the vacancy counts it (D3, D20) and the result (validity, reviewPending, minimum met). D6: below company scope, no level, reasons or accommodation    |
 | `POST /portal/assessment-attempts/{attemptId}/launch`                                                 | the candidate, by confirmed email                                               | Optional per-purpose consents and `embedded`. Returns the hosted launch (D16): the player's single-use URL and its frame ancestors, body only. Rate limit: `auth` tier |
 | `GET /portal/assessment-attempts?organizationSlug=`                                                   | the candidate, by confirmed email                                               | The candidate's own attempts at that org, one coarse status each (D9), the consent purposes still missing, the start deadline                                          |
 | `GET /portal/assessment-attempts/{attemptId}/consent-templates?locale=es\|en`                         | the candidate, by confirmed email                                               | The provider's consent templates for the purposes the attempt still needs; 404 unless it is the candidate's and needs consent                                          |
@@ -238,6 +238,33 @@ connector on) re-reads stale attempts so nothing depends on a webhook arriving:
   not) changes nothing. A withdrawn candidate's attempt is staged for the cascade and nothing is fetched.
 - `listResults` is not needed: `result_id` is stable across revisions and `GET /v1/results/{id}` returns the latest.
 
+## Webhook inbox (contract step 6: acknowledge first, process asynchronously)
+
+`POST /webhooks/tims-assessments` does only what must precede the 2xx: the signature over the raw body (300 s window),
+the envelope and header checks, the tenant lookup, and ONE committed insert into `assessment_provider_webhook_inbox`
+(unique on org + event id) with `next_attempt_at` = now (database clock). It answers 200 `queued` (or `duplicate` for an
+event already processed or ignored) without any provider call, well inside the sender's 10 s timeout. The row is the
+durable record: a crash after the commit loses nothing.
+
+`ProviderInboxWorkerHostedService` (registered only with the connector on) applies the events. It runs as soon as the
+route commits a row (an in-process wake-up) and at least every 15 s otherwise, so a retry that comes due or an event
+another instance received is picked up without a wake-up:
+
+- **Lease:** one conditional `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1)` claims the org's oldest
+  due row for this process's owner id, lease free or expired (15 minutes, database clock). Processing is cancelled after
+  10 minutes, so the lease outlives the work; an instance that dies frees the row when the lease expires. The completion
+  is conditional on the owner.
+- **Outcome:** processed or ignored rows become final (`next_attempt_at` NULL). A transient failure (an outage, a #312
+  cascade still pending, an exception, a run past the budget) is rescheduled: 30 s, doubling, capped at 1 hour, for 72
+  hours from receipt (the sender's own retry window), then left `failed` with `retry_exhausted` for operators. A
+  failure no retry can fix (`invalid_data`) is final at once. A redelivery of a row that is not final makes it due
+  again.
+- **Backstop:** the D17 poller re-reads every stale attempt whatever happened to its events.
+
+Migration `20261109055548_assessment_provider_queues` adds `next_attempt_at`, `lease_owner`, `lease_until` (CHECK: both
+or neither) and the partial index `ix_assessment_provider_webhook_inbox_due`, and makes rows recorded before it that are
+not final due at once.
+
 ## Idempotency key in use
 
 The amended contract makes 409 `idempotency_key_in_use` a contract code: an earlier request with the same key and body
@@ -347,6 +374,37 @@ The post-capture #312 re-check stays: it keeps a withdrawn candidate from gettin
 once. A pending attempt is retried by the scheduled sweep (see Known gaps) without waiting for its next webhook or
 the org's next withdrawal.
 
+### The create fence
+
+The same race exists for a create: a pass whose lookup by `external_ref` came back empty while `POST /v1/assignments`
+was still in flight, then completed, would leave the assignment live at the provider if the ATS died before recording
+the create's answer (Codex P1). Migration `20261109055548_assessment_provider_queues` adds `create_started_at`:
+
+1. Before the create is sent, ONE conditional write stamps it (database clock), only while the attempt is
+   `pending_create`, not in a withdrawal and not under an erasure request; refused otherwise, and nothing is sent.
+2. Recording the provider's answer clears it (the mapping, or the orphan with its cleanup marker); so does a definitive
+   refusal. A create without an answer leaves it in place: the provider may still create the assignment.
+3. A pass reads it with the consent fence, BEFORE any lookup. While it is set and not stale (10 minutes), the attempt
+   stays pending unless that pass found and recorded the assignment; `done` is also conditional on it at the database.
+
+### The cascade's lease
+
+Every pass (after a withdrawal, from a webhook, from a launch, or the scheduled sweep) claims the pending attempts it
+works on with `withdrawal_lease_owner` / `withdrawal_lease_until` (one conditional UPDATE with `FOR UPDATE SKIP
+LOCKED`, 15 minutes, database clock), is cut off after 8 minutes, and releases them when it ends. Two instances never
+send the same cancels and withdrawals at once; the sweep's organization listing skips attempts under a live lease.
+
+## Optional consents: English speaking
+
+The English instrument administers its speaking section only when the optional purposes `voice` and `ai_scoring` are
+active. The portal offers them on the consent step of an English attempt, apart from the required texts, each with its
+own UNTICKED checkbox, with the D22 "draft pending counsel" note: leaving them unticked never blocks the start. The
+launch records the ticked ones at the provider like any consent, and the attempt keeps the candidate's decision
+(`granted_optional_consents`, `declined_optional_consents`, migration `20261109055548`). An attempt shows "consent
+needed" until the candidate has decided. HR's attempt row reads "speaking not assessed (no voice consent)" (or "no
+AI-scoring consent") when the candidate declined. The provider's consent texts themselves are the provider's and
+pending counsel (D2, D22).
+
 ## ITC-IA review flag
 
 `requires_human_review` is a top-level field of `ItciaResultV1`, not part of `scores`, so a summary projection carries
@@ -355,35 +413,49 @@ it too. A present non-boolean value is off contract and the result is refused.
 ## Known gaps (not done here)
 
 - The withdrawal cascade's scheduled retry (`ProviderWithdrawalSweepHostedService`, registered only with the connector
-  on) sweeps every 10 minutes: it lists, pre-tenant, the organizations holding pending attempts and propagates each
-  under its own tenant scope, several passes while they make progress. Every instance runs its own loop WITHOUT a
-  lease (the D17 poller has one): duplicate provider calls are idempotent and every write is conditional, so it costs
-  only duplicate calls. A sweep handles at most 200 organizations and 20 passes of 50 attempts per organization.
-  Attempts blocked at the head of an organization's queue hold the rest of that queue until they clear.
+  on) sweeps every 10 minutes: it lists, pre-tenant, the organizations holding pending attempts not under a live lease
+  and propagates each under its own tenant scope, several passes while they make progress. Each pass works only on the
+  attempts it claimed (see "The cascade's lease"). A sweep handles at most 200 organizations and 20 passes of 50
+  attempts per organization. Attempts blocked at the head of an organization's queue hold the rest of that queue until
+  they clear.
 - The poller handles at most 200 organizations and 25 attempts per organization per run; more waits for the next run.
   A provider that answers 404 forever for an assignment keeps that attempt polled every 15 minutes (until a week past
   its start deadline for one that never started).
 - Erasure and export resolve the candidate's provider subject through the provider's idempotent (tenant, candidate id)
   subject key, so a subject created by a failed or crashed assignment is covered too. If the candidate never had a
-  subject, that call creates an empty one (no names or email).
+  subject, that call creates an empty one (no names or email). A stored erasure is terminal: once every attempt of the
+  candidate is erased or under an accepted erasure request, the subject is NOT resolved again (the provider forgets its
+  external_ref when erasure is requested, so resolving would create a fresh, empty subject), and a subject whose
+  `subject.erased` is recorded is listed as `erased` without calling the provider.
 - The provider-held export must fit the client's 256 KiB response cap; a larger one fails the export closed (503).
 - D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
 
 ## Owner steps, in order
 
-1. Review the SQL. Apply the three files, in this order, with psql on the direct connection (`:5432`):
-   `20261107232524_assessment_providers.sql`, `20261108224533_assessment_provider_consent_capture.sql`, then
-   `20261109010328_assessment_provider_attempt_poll.sql`.
+1. Review the SQL. Apply the files in `services/Tims.Platform/db/manual`, in this order, with psql on the direct
+   connection (`:5432`): `20261107232524_assessment_providers.sql`, `20261108224533_assessment_provider_consent_capture.sql`,
+   `20261109010328_assessment_provider_attempt_poll.sql`, `20261109011531_fit_v2_provider_recompute.sql`,
+   `20261109030506_fit_v2_provider_erasure_recompute.sql`, then `20261109055548_assessment_provider_queues.sql`.
 2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be these
    four tables, their policies, grants and indexes). Then run `/gate` checks 14, 16 and 17.
    - Check 18 (`pre-flip-scan --flip-diff`) will list the four tables as "newly efcore-owned". They are new tables,
      not flips.
-3. Register the ATS as an OAuth client at the provider:
-   - the scopes, including `subjects:write` (subject enrichment) and `subjects:export` (DSAR export, requested alone);
-   - the candidate portal's origin as a registered origin (`return_url`, framing the player, CORS);
-   - a webhook subscription to `https://<api>/webhooks/tims-assessments`.
-4. Store the secrets: `AssessmentProviders__ClientSecret` and `AssessmentProviders__WebhookSigningSecret`. Watch
+3. Register the ATS as an OAuth client at the provider. The provider refuses a token request for any scope the client
+   was not granted (`invalid_scope`), and the ATS then gets no token at all, so grant every one:
+   - `catalog:read`, `assignments:write`, `subjects:write`, `results:read` (the ATS's default `Scopes`; `subjects:write`
+     includes subject enrichment);
+   - `subjects:export` (the DSAR export, which the ATS requests ALONE in a separate token);
+   - `events:subscribe` (managing the webhook subscription in step 4; the ATS's own calls never request it);
+   - as the client's registered origin, the candidate portal's https origin, exactly `AssessmentProviders__PortalBaseUrl`
+     (the hosted player's `return_url`, CORS, and the `frame_ancestors` that let the portal frame the player).
+4. Create the webhook subscription (nothing automates it): with a client-credentials token for that client requesting
+   `events:subscribe`, `POST {BaseUrl}/v1/webhook-subscriptions` with the URL `https://<api>/webhooks/tims-assessments`
+   and the event types `assignment.started`, `session.completed`, `session.voided`, `result.ready`,
+   `assignment.expired`, `assignment.voided`, `subject.erased`, sending an `Idempotency-Key` header. The signing secret
+   is returned ONCE, in that create's response: store it as `AssessmentProviders__WebhookSigningSecret`. On a rotation
+   the provider signs with both secrets for 24 hours; keep the old one in `...Previous` meanwhile.
+5. Store the secrets: `AssessmentProviders__ClientSecret` and `AssessmentProviders__WebhookSigningSecret`. Watch
    for the placeholder trap. Set `AssessmentProviders__PortalBaseUrl` to the portal origin registered in step 3.
-5. Bind each org (platform owner), then set `Platform__AssessmentProvidersEnabled=true`.
-6. On Vercel, set `NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true` to show the portal section, and only if the player
+6. Bind each org (platform owner), then set `Platform__AssessmentProvidersEnabled=true`.
+7. On Vercel, set `NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true` to show the portal section, and only if the player
    is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin). Both are build-time.

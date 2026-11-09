@@ -2,7 +2,7 @@
 
 import type { useI18n } from '../../../../../lib/i18n';
 import type {
-  AcceptedConsent,
+  ConsentDecision,
   PortalProviderAttempt,
   PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
@@ -13,6 +13,9 @@ import { ProviderAssessmentNoticeStep } from './provider-assessment-notice-step'
 // has not started, and the one action its status allows (read the consent, start, continue). Completed, expired and
 // needs-review entries have no action: the hint tells the candidate what happens next.
 export type PortalMessages = ReturnType<typeof useI18n>['t']['portalDashboard'];
+
+/** A launch with nothing newly accepted or declined (no consent step shown). */
+const NO_DECISION: ConsentDecision = { accepted: [], declined: [] };
 
 const STATUS_LABEL: Record<PortalStatus, keyof PortalMessages> = {
   consent_needed: 'providerStatusConsentNeeded',
@@ -66,7 +69,7 @@ export function ProviderAssessmentItem({
   consentOpen: boolean;
   onOpenConsent: () => void;
   onCancelConsent: () => void;
-  onStart: (consents: AcceptedConsent[]) => void;
+  onStart: (decision: ConsentDecision) => void;
 }) {
   const name = t[INSTRUMENT_LABEL[attempt.instrument] ?? 'providerInstrumentOther'];
   // A sitting not started yet first shows the organization's notice (Codex atsux run 1): through the consent step when
@@ -110,7 +113,7 @@ export function ProviderAssessmentItem({
           <ProviderAssessmentNoticeStep
             notice={{ ...notice, instrumentName: name }}
             busy={busy}
-            onStart={() => onStart([])}
+            onStart={() => onStart(NO_DECISION)}
             onCancel={onCancelConsent}
           />
         ) : (
@@ -120,7 +123,7 @@ export function ProviderAssessmentItem({
         ))}
 
       {launchable && (
-        <button type="button" disabled={busy} onClick={() => onStart([])} className={BUTTON}>
+        <button type="button" disabled={busy} onClick={() => onStart(NO_DECISION)} className={BUTTON}>
           {busy ? t.providerOpening : t.providerContinue}
         </button>
       )}

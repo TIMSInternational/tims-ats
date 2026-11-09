@@ -286,6 +286,20 @@ describe('ProviderAssessmentsCard', () => {
     expect(screen.queryByText(/30/)).not.toBeInTheDocument();
   });
 
+  // Mismatch 4: a candidate who declined the optional voice consent sits English without speaking; HR is told why.
+  it('tells HR that speaking was not assessed because the candidate declined the voice consent', () => {
+    mocks.attempts = {
+      consentWithdrawn: false,
+      attempts: [
+        attempt('english', 'in_progress', null, { speakingNotAssessed: 'no_voice_consent' }),
+        attempt('lia', 'in_progress', null, { speakingNotAssessed: null }),
+      ],
+    };
+    renderCard();
+    expect(screen.getByTestId('speaking-not-assessed')).toHaveTextContent(pa.speakingNotAssessed.no_voice_consent);
+    expect(screen.getAllByTestId('speaking-not-assessed')).toHaveLength(1);
+  });
+
   it('never shows a result awaiting review as a score', () => {
     mocks.attempts = {
       consentWithdrawn: false,

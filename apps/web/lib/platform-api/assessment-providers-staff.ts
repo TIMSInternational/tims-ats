@@ -92,6 +92,8 @@ const resultSchema = z
   })
   .strict();
 
+export const SPEAKING_NOT_ASSESSED = ['no_voice_consent', 'no_ai_scoring_consent'] as const;
+
 const attemptSchema = z
   .object({
     attemptId: z.string().uuid(),
@@ -108,6 +110,8 @@ const attemptSchema = z
     aids: z.array(z.string().max(32)).max(8).nullable(),
     countsIn: z.enum(COUNTS_IN),
     result: resultSchema.nullable(),
+    /** English only: the candidate declined an optional purpose the speaking section needs. */
+    speakingNotAssessed: z.enum(SPEAKING_NOT_ASSESSED).nullable().optional(),
   })
   .strict();
 

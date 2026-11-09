@@ -9,7 +9,7 @@ import {
   launchProviderAttempt,
   providerAttemptsKey,
   useMyProviderAssessments,
-  type AcceptedConsent,
+  type ConsentDecision,
   type PortalProviderAttempt,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
@@ -51,7 +51,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     [queryClient, orgSlug],
   );
 
-  const start = async (attempt: PortalProviderAttempt, consents: AcceptedConsent[]) => {
+  const start = async (attempt: PortalProviderAttempt, decision: ConsentDecision) => {
     const { attemptId } = attempt;
     setBusy(attemptId);
     setFailure(null);
@@ -59,12 +59,13 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
       // Ask for an embedded launch (no return URL) only when the player could be framed at all: a native instrument and
       // a configured player origin. Whether THIS origin is a registered frame ancestor is known only from the launch.
       const embedded = attempt.delivery === 'native' && canEmbedPlayer(PLAYER_ORIGIN);
-      let launch = await launchProviderAttempt(attemptId, consents, embedded);
+      let launch = await launchProviderAttempt(attemptId, decision, embedded);
       let target = chooseLaunchTarget(launch, window.location.origin, PLAYER_ORIGIN);
       if (embedded && target.kind === 'navigate') {
         // It cannot be framed after all: launch again for a top-level sitting, so the player returns the candidate to
-        // this dashboard. A new launch revokes the first, unused launch code; consents were recorded by the first.
-        launch = await launchProviderAttempt(attemptId, [], false);
+        // this dashboard. A new launch revokes the first, unused launch code; consents (and declined optional purposes)
+        // were recorded by the first.
+        launch = await launchProviderAttempt(attemptId, { accepted: [], declined: [] }, false);
         target = chooseLaunchTarget(launch, window.location.origin, PLAYER_ORIGIN);
         if (target.kind === 'iframe') target = { kind: 'navigate', url: target.url };
       }
@@ -117,7 +118,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
               notice={{ orgName, vacancyTitle: vacancyTitles.get(attempt.vacancyId) ?? '' }}
               onOpenConsent={() => setConsentFor(attempt.attemptId)}
               onCancelConsent={() => setConsentFor(null)}
-              onStart={(consents) => void start(attempt, consents)}
+              onStart={(decision) => void start(attempt, decision)}
             />
           ))}
         </ul>

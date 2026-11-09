@@ -5039,9 +5039,11 @@ export interface components {
             delivery: string;
             /** Format: uuid */
             vacancyId: string;
+            optionalConsents: string[];
         };
         PortalConsentTemplatesResponse: {
             templates: components["schemas"]["ProviderConsentTemplate"][];
+            optionalPurposes: string[];
         };
         PortalConsentWithdrawalBody: {
             organizationSlug: string;
@@ -5174,6 +5176,7 @@ export interface components {
         ProviderLaunchBody: {
             consents?: null | components["schemas"]["ProviderLaunchConsentBody"][];
             embedded?: null | boolean;
+            declinedConsents?: null | string[];
         };
         ProviderLaunchConsentBody: {
             purpose?: string;
@@ -5431,6 +5434,7 @@ export interface components {
             aids: null | string[];
             countsIn: string;
             result: null | components["schemas"]["StaffProviderResult"];
+            speakingNotAssessed?: null | string;
         };
         StaffProviderResult: {
             validity: string;

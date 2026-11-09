@@ -5,14 +5,23 @@ import { useI18n } from '../../../../../lib/i18n';
 import { AssessmentConsentNotice } from '../../../../../components/assessment-consent-notice';
 import {
   useProviderConsentTemplates,
-  type AcceptedConsent,
+  type ConsentDecision,
+  type ConsentTemplate,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { ProviderConsentTemplateCard } from './provider-consent-template-card';
+import { ProviderOptionalConsents } from './provider-optional-consents';
+
+const accept = (template: ConsentTemplate) => ({
+  purpose: template.purpose,
+  textVersion: template.textVersion,
+  locale: template.locale,
+});
 
 // The consent step before a provider assessment (D16, design §2.2 "the host shows its own consent text, using a
 // template served by the API"). Each purpose the provider still needs is shown in full, as plain text (the API's
 // blocks carry no markup and are rendered as text nodes only), with its own acceptance checkbox. "Accept and start"
-// stays disabled until every text is accepted; it hands back each purpose with the exact text_version shown. First
+// stays disabled until every REQUIRED text is accepted; it hands back each accepted purpose with the exact text_version
+// shown, and the OPTIONAL purposes left unticked as declined (English speaking: ProviderOptionalConsents). First
 // comes the organization's own notice (design §6.3: TIMS Assessments named, the purpose "selection for vacancy X",
 // who sees the results, retention, rights; D22: a draft pending counsel), which must be read before starting.
 export function ProviderAssessmentConsent({
@@ -25,7 +34,7 @@ export function ProviderAssessmentConsent({
   attemptId: string;
   busy: boolean;
   notice: { orgName: string; vacancyTitle: string; instrumentName: string };
-  onAccept: (consents: AcceptedConsent[]) => void;
+  onAccept: (decision: ConsentDecision) => void;
   onCancel: () => void;
 }) {
   const { t, locale } = useI18n();
@@ -34,7 +43,7 @@ export function ProviderAssessmentConsent({
   const [noticeRead, setNoticeRead] = useState(false);
 
   if (isLoading) return <p className="text-[12px] text-muted mt-3">{t.portalDashboard.providerConsentLoading}</p>;
-  if (isError || !data || data.length === 0) {
+  if (isError || !data || data.templates.length === 0) {
     return (
       <div className="mt-3">
         <p role="alert" className="text-[12px] text-[#B42318]">
@@ -47,7 +56,15 @@ export function ProviderAssessmentConsent({
     );
   }
 
-  const allAccepted = noticeRead && data.every((template) => accepted[template.purpose] === true);
+  const optional = new Set<string>(data.optionalPurposes);
+  const required = data.templates.filter((template) => !optional.has(template.purpose));
+  const offered = data.templates.filter((template) => optional.has(template.purpose));
+  const allAccepted = noticeRead && required.every((template) => accepted[template.purpose] === true);
+  const decide = (): ConsentDecision => ({
+    accepted: data.templates.filter((template) => accepted[template.purpose] === true).map(accept),
+    declined: offered.filter((template) => accepted[template.purpose] !== true).map((template) => template.purpose),
+  });
+  const toggle = (purpose: string, value: boolean) => setAccepted((current) => ({ ...current, [purpose]: value }));
   return (
     <div className="mt-3 space-y-3" aria-label={t.portalDashboard.providerConsentTitle}>
       <AssessmentConsentNotice
@@ -59,28 +76,21 @@ export function ProviderAssessmentConsent({
         <input type="checkbox" checked={noticeRead} onChange={(event) => setNoticeRead(event.target.checked)} />
         <span>{t.assessmentConsentNotice.readAck}</span>
       </label>
-      {data.map((template) => (
+      {required.map((template) => (
         <ProviderConsentTemplateCard
           key={template.purpose}
           template={template}
           checked={accepted[template.purpose] === true}
           label={t.portalDashboard.providerConsentAccept}
-          onChange={(value) => setAccepted((current) => ({ ...current, [template.purpose]: value }))}
+          onChange={(value) => toggle(template.purpose, value)}
         />
       ))}
+      <ProviderOptionalConsents templates={offered} accepted={accepted} onChange={toggle} />
       <div className="flex gap-2">
         <button
           type="button"
           disabled={!allAccepted || busy}
-          onClick={() =>
-            onAccept(
-              data.map((template) => ({
-                purpose: template.purpose,
-                textVersion: template.textVersion,
-                locale: template.locale,
-              })),
-            )
-          }
+          onClick={() => onAccept(decide())}
           className="inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition disabled:opacity-50"
         >
           {busy ? t.portalDashboard.providerOpening : t.portalDashboard.providerAcceptAndStart}

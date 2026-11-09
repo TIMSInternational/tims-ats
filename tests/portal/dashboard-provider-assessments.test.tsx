@@ -54,6 +54,7 @@ const attempt = (status: string, extra: Record<string, unknown> = {}) => ({
   expiresAt: '2026-11-20T15:00:00Z',
   delivery: 'native',
   vacancyId: VACANCY,
+  optionalConsents: [],
   ...extra,
 });
 
@@ -225,7 +226,7 @@ describe('DashboardProviderAssessments', () => {
   it('shows each consent text as plain text and launches only once every one is accepted, with its text version', async () => {
     const launchBodies: unknown[] = [];
     respond({
-      '/consent-templates?locale=en': () => json({ templates: [template] }),
+      '/consent-templates?locale=en': () => json({ templates: [template], optionalPurposes: [] }),
       '/launch': (init) => {
         launchBodies.push(JSON.parse(String(init?.body)));
         return json({
@@ -264,6 +265,65 @@ describe('DashboardProviderAssessments', () => {
     expect(launchBodies).toEqual([
       { consents: [{ purpose: 'assessment', textVersion: 'assessment-v2026-11', locale: 'en' }], embedded: true },
       { embedded: false },
+    ]);
+  });
+
+  // Mismatch 4: English speaking is administered only with the optional voice and ai_scoring consents. They are shown
+  // apart, unticked, never required to start; what the candidate left unticked travels as declinedConsents.
+  it('offers the optional English speaking consents apart and sends what was declined', async () => {
+    const launchBodies: unknown[] = [];
+    const optional = (purpose: string, title: string) => ({
+      ...template,
+      purpose,
+      textVersion: `${purpose}-v1`,
+      title,
+      blocks: [{ type: 'paragraph', text: `${title} text.` }],
+    });
+    respond({
+      '/consent-templates?locale=en': () =>
+        json({
+          templates: [optional('voice', 'Voice recording'), optional('ai_scoring', 'AI scoring')],
+          optionalPurposes: ['voice', 'ai_scoring'],
+        }),
+      '/launch': (init) => {
+        launchBodies.push(JSON.parse(String(init?.body)));
+        return json({
+          delivery: 'native',
+          expiresAt: '2026-11-09T14:05:00Z',
+          hostedUrl: 'https://player.test/l/4',
+          frameAncestors: [window.location.origin],
+        });
+      },
+      '/portal/assessment-attempts': () =>
+        json({
+          attempts: [
+            attempt('consent_needed', { instrument: 'english', optionalConsents: ['voice', 'ai_scoring'] }),
+          ],
+        }),
+    });
+    renderSection();
+
+    fireEvent.click(await screen.findByRole('button', { name: m.providerReviewConsent }));
+    const section = await screen.findByTestId('provider-optional-consents');
+    expect(section).toHaveTextContent(m.providerOptionalTitle);
+    expect(section).toHaveTextContent(m.providerOptionalDraft); // D22: pending counsel
+    const boxes = within(section).getAllByLabelText(m.providerOptionalAccept);
+    expect(boxes).toHaveLength(2);
+    boxes.forEach((box) => expect(box).not.toBeChecked()); // optional: never pre-ticked
+    const accept = screen.getByRole('button', { name: m.providerAcceptAndStart });
+    fireEvent.click(screen.getByLabelText(en.assessmentConsentNotice.readAck));
+    expect(accept).toBeEnabled(); // nothing optional is required to start
+
+    fireEvent.click(boxes[1]!); // ai_scoring yes, voice left unticked
+    fireEvent.click(accept);
+
+    await screen.findByTitle(m.providerFrameTitle);
+    expect(launchBodies).toEqual([
+      {
+        consents: [{ purpose: 'ai_scoring', textVersion: 'ai_scoring-v1', locale: 'en' }],
+        declinedConsents: ['voice'],
+        embedded: true,
+      },
     ]);
   });
 

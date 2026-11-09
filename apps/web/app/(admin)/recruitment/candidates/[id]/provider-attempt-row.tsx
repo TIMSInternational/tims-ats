@@ -59,6 +59,11 @@ export function ProviderAttemptRow({
         )}
       </div>
       {waiting && <p className="text-[11px] text-amber-700">{pa.awaitingConsent.replace('{purposes}', waiting)}</p>}
+      {attempt.speakingNotAssessed && (
+        <p className="text-[11px] text-[#585858]" data-testid="speaking-not-assessed">
+          {pa.speakingNotAssessed[attempt.speakingNotAssessed]}
+        </p>
+      )}
       {attempt.status === 'pending' && attempt.lastErrorCode && (
         <p className="text-[11px] text-amber-700">{pa.pendingError.replace('{code}', attempt.lastErrorCode)}</p>
       )}

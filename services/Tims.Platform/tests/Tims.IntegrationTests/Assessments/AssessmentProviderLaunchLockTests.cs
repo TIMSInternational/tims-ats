@@ -7,7 +7,7 @@ namespace Tims.IntegrationTests.Assessments;
 /// The launch's #312 check inside the candidate lock, against the real migration, RLS and the same advisory lock the
 /// withdrawal takes: a withdrawal committed before the launch's transaction stops it before the provider is called; one
 /// that starts while the provider call is in flight waits for the launch to commit and then stages the launched attempt;
-/// a same-email sibling's withdrawal (its own lock) that stages the attempt during the call makes the launch withdrawn.
+/// a same-email sibling's withdrawal waits the same way (the candidate lock covers same-email siblings).
 /// </summary>
 [Collection("AssessmentProviderRls")]
 public sealed class AssessmentProviderLaunchLockTests(AssessmentProviderSchemaFixture fixture)
@@ -100,30 +100,39 @@ public sealed class AssessmentProviderLaunchLockTests(AssessmentProviderSchemaFi
         Assert.Equal("cancelled|provider_cancel_pending|pending|true", await RowAsync(attempt));
     }
 
+    // Round 10 (Codex P1): the candidate lock now covers same-email siblings, so a sibling's withdrawal that starts during
+    // the provider call no longer runs beside the launch: it waits for the launch to commit and then stages the launched
+    // attempt, exactly like the candidate's own withdrawal.
     [Fact]
-    public async Task A_sibling_withdrawal_that_stages_the_attempt_during_the_call_is_never_overwritten()
+    public async Task A_sibling_withdrawal_that_starts_during_the_call_waits_and_then_stages_the_launched_attempt()
     {
         var email = $"{Guid.NewGuid():N}@a.example";
         var candidate = await CandidateAsync(email);
         var sibling = await CandidateAsync(email.ToUpperInvariant());
         var attempt = await AttemptAsync(candidate);
+        var inCall = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         await using var launchDb = fixture.NewContext();
-        var outcome = await new AssessmentProviderRepository(launchDb).LaunchUnderCandidateLockAsync(Org, attempt, async (_, _) =>
+        var launch = new AssessmentProviderRepository(launchDb).LaunchUnderCandidateLockAsync(Org, attempt, async (_, _) =>
         {
-            // The sibling's withdrawal takes only ITS candidate lock, so it is not blocked by ours.
-            await WithdrawAsync(sibling);
-            await using var stageDb = fixture.NewContext();
-            var staged = await new AssessmentProviderRepository(stageDb).StageConsentWithdrawalAsync(
-                Org, sibling, DateTimeOffset.UtcNow, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(1, staged);
+            inCall.SetResult();
+            await release.Task;
             return Hosted();
         }, DateTimeOffset.UtcNow, CancellationToken.None);
+        await inCall.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal(LockedLaunchOutcome.ConsentWithdrawn, outcome.Outcome);
-        Assert.Equal("cancelled|provider_cancel_pending|pending|false", await RowAsync(attempt));
-        Assert.Equal(0L, await fixture.ScalarAsync(
-            $"SELECT count(*) FROM audit_logs WHERE action = 'assessment_provider_launched' AND entity_id = '{attempt}'"));
+        await WithdrawAsync(sibling);
+        await using var stageDb = fixture.NewContext();
+        var stage = new AssessmentProviderRepository(stageDb).StageConsentWithdrawalAsync(
+            Org, sibling, DateTimeOffset.UtcNow, CancellationToken.None);
+        await Task.Delay(500);
+        Assert.False(stage.IsCompleted, "the sibling's staging did not wait for the launch holding the sibling locks");
+
+        release.SetResult();
+        Assert.Equal(LockedLaunchOutcome.Called, (await launch).Outcome);
+        Assert.Equal(1, await stage.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("cancelled|provider_cancel_pending|pending|true", await RowAsync(attempt));
     }
 
     // Codex release round A2 [P2]: an accepted erasure marks the attempt under the SUBJECT lock only, so it can land

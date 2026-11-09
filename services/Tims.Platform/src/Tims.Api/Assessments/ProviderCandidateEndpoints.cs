@@ -179,6 +179,12 @@ public sealed class ProviderLaunchBody
 
     /// <summary>True when the portal will frame the hosted player: no return URL is requested.</summary>
     public bool? Embedded { get; init; }
+
+    /// <summary>
+    /// The OPTIONAL purposes the candidate was offered and left unticked (English speaking: <c>voice</c>,
+    /// <c>ai_scoring</c>). Never also among <see cref="Consents"/>.
+    /// </summary>
+    public IReadOnlyList<string>? DeclinedConsents { get; init; }
 }
 
 public sealed class ProviderLaunchConsentBody
