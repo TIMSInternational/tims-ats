@@ -30,7 +30,10 @@ public static class FitInstrumentUses
     /// <summary>Feeds the <c>assessment</c> dimension.</summary>
     public const string Scored = "scored";
 
-    /// <summary>Shown as met / not met / unknown. Never changes the score and never rejects a candidate.</summary>
+    /// <summary>
+    /// Shown as met / not met / unknown. Never part of the <c>assessment</c> dimension and never rejects a candidate.
+    /// An English gate still decides English in the <c>languages</c> dimension (owner defaults D3 + D23).
+    /// </summary>
     public const string Gate = "gate";
 
     /// <summary>Shown to HR only. Never scored.</summary>

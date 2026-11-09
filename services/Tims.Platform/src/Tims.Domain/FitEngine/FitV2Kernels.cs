@@ -43,17 +43,19 @@ namespace Tims.Domain.FitEngine;
 /// dimensions is null), and is also set when <see cref="FitV2Evaluation.ReviewPending"/> is (simulateWeights
 /// recomputes it from the five dimension keys only, so for such a row it can report false).</para>
 ///
-/// <para><b>English and the languages dimension (owner default D3, 2026-11-08: English counts once).</b> A SCORED
-/// english entry never enters the <c>assessment</c> dimension: its <c>weight</c> and <c>assessmentShare</c> are
-/// null and its <c>effectiveWeight</c> is English's share of the <c>languages</c> weight (that weight divided by
-/// the number of required languages). When the vacancy lists the test but not English among
-/// <c>requiredLanguages</c>, English is added to them. With a valid CEFR result, the result decides whether
-/// "English" counts as covered among <c>requiredLanguages</c> (achieved ≥ the entry's minimum), overriding the CV
-/// self-report for English only; without one the CV self-report stands, as in v1. Other languages still come from the CV. If the CV
-/// lists no languages and the vacancy also requires a non-English language, the dimension stays null as in v1 (a
-/// parser gap is not a missing language); if English is the only required language, the test alone decides. A
-/// GATE english entry never touches any dimension — not even languages — so a not-met gate cannot lower the
-/// overall score; HR sees its met/not_met next to the CV self-report (<c>languagesEvidence</c> = <c>cv</c>).</para>
+/// <para><b>English and the languages dimension (owner default D3, 2026-11-08: English counts once; owner default
+/// D23, 2026-11-09: whatever its role).</b> An english entry with a minimum — SCORED or GATE — never enters the
+/// <c>assessment</c> dimension: its <c>weight</c> and <c>assessmentShare</c> are null and its <c>effectiveWeight</c>
+/// is English's share of the <c>languages</c> weight (that weight divided by the number of required languages). When
+/// the vacancy lists the test but not English among <c>requiredLanguages</c>, English is added to them. With a valid
+/// CEFR result, the result decides whether "English" counts as covered among <c>requiredLanguages</c> (achieved ≥ the
+/// entry's minimum), overriding the CV self-report for English only; without one the CV self-report stands, as in v1.
+/// Other languages still come from the CV. If the CV lists no languages and the vacancy also requires a non-English
+/// language, the dimension stays null as in v1 (a parser gap is not a missing language); if English is the only
+/// required language, the test alone decides. A GATE english entry feeds languages exactly like a scored one and
+/// ADDITIONALLY carries its met/not_met (the below-minimum flag); a gate never rejects and never touches the
+/// <c>assessment</c> dimension (D20). An ADVISORY english entry carries no minimum, so it cannot decide coverage:
+/// the CV self-report stands for it.</para>
 ///
 /// <para><b>Visibility.</b> The breakdown is readable by every fit_engine reader (leader@team included), so a
 /// scored or gate entry carries the derived fit, the gate state, the requirement, the result id and source, and
@@ -375,12 +377,12 @@ public static class FitV2Kernels
         var languagesWeight = profileWeights.TryGetValue("languages", out var lw) ? lw : 0d;
         var latest = SelectLatestPerInstrument(results, out var combinedIds);
 
-        // Owner default D3 (2026-11-08): English counts ONCE, in the languages dimension. A scored English entry
-        // never enters the assessment mean; it decides English among the required languages, and English is added
-        // to them when the vacancy lists the test but not the language.
-        var englishScored = requirements.Any(r =>
-            r.Instrument == FitInstruments.English && r.Use == FitInstrumentUses.Scored);
-        if (englishScored && fitRequirements.RequiredLanguages?.Any(IsEnglish) != true)
+        // Owner default D3 (2026-11-08): English counts ONCE, in the languages dimension. Owner default D23
+        // (2026-11-09): whatever its role. A scored or gate English entry never enters the assessment mean; it
+        // decides English among the required languages, and English is added to them when the vacancy lists the
+        // test but not the language. A gate additionally carries its met/not_met flag (and never rejects).
+        var englishFeedsLanguages = requirements.Any(FeedsLanguages);
+        if (englishFeedsLanguages && fitRequirements.RequiredLanguages?.Any(IsEnglish) != true)
         {
             fitRequirements = fitRequirements with
             {
@@ -417,11 +419,11 @@ public static class FitV2Kernels
         var reviewPending = drafts.Any(d =>
             d.Requirement.Use == FitInstrumentUses.Scored && d.Status == FitInstrumentStatuses.NeedsReview);
 
-        // English → languages: only a SCORED english entry may move a number (a gate never does).
+        // English → languages (D3, D23): a scored or gate english entry decides English when its result is usable.
         bool? englishCovered = null;
         var englishDraft = drafts.FirstOrDefault(d => d.Requirement.Instrument == FitInstruments.English);
         if (englishDraft is not null
-            && englishDraft.Requirement.Use == FitInstrumentUses.Scored
+            && FeedsLanguages(englishDraft.Requirement)
             && englishDraft.Status == FitInstrumentStatuses.Completed
             && CefrOrdinal(englishDraft.Result!.Cefr) is { } achieved
             && CefrOrdinal(englishDraft.Requirement.Min?.Cefr) is { } required)
@@ -439,9 +441,9 @@ public static class FitV2Kernels
             double? share = null;
             double? effective = null;
             double? appliedWeight = null;
-            if (requirement.Instrument == FitInstruments.English && requirement.Use == FitInstrumentUses.Scored)
+            if (FeedsLanguages(requirement))
             {
-                // D3: its weight is English's share of the languages dimension (one of the required languages).
+                // D3/D23: its weight is English's share of the languages dimension (one of the required languages).
                 effective = Round4(languagesWeight / fitRequirements.RequiredLanguages!.Count);
             }
             else if (requirement.Use == FitInstrumentUses.Scored)
@@ -705,6 +707,14 @@ public static class FitV2Kernels
     // A scored entry other than English feeds the assessment dimension (English: D3, languages only).
     private static bool CountsInAssessment(AssessmentRequirement requirement) =>
         requirement.Use == FitInstrumentUses.Scored && requirement.Instrument != FitInstruments.English;
+
+    /// <summary>
+    /// Owner defaults D3 + D23: an english entry with a minimum feeds the languages dimension whatever its role —
+    /// scored, or gate (which also keeps its met/not_met flag). An advisory entry has no minimum to decide coverage.
+    /// </summary>
+    public static bool FeedsLanguages(AssessmentRequirement requirement) =>
+        requirement.Instrument == FitInstruments.English
+        && requirement.Use is FitInstrumentUses.Scored or FitInstrumentUses.Gate;
 
     private static double RelativeWeight(AssessmentRequirement requirement, bool useDeclaredWeights) =>
         useDeclaredWeights ? requirement.Weight!.Value : 1d;

@@ -10,15 +10,15 @@ namespace Tims.UnitTests.FitEngine;
 ///   the switch — flag OFF is v1 even for a configured vacancy (the result source is never read); flag ON with no
 ///     <c>assessments</c> array is byte-identical to flag OFF; flag ON + array takes the v2 path, which REPLACES
 ///     the latest-of-any-type read and keeps the six v1 keys first;
-///   hiring guardrails — a not-met gate never moves the overall score and never skips the candidate; a
+///   hiring guardrails — a not-met gate never moves the assessment number and never skips the candidate (an English gate decides English in languages, D23); a
 ///     needs-review result is excluded from the assessment dimension (never read as a 0 instrument score), and
 ///     because excluding it still moves the overall number, the row is stored partial with reviewPending: true;
 ///   the atomic write — the results are read once, inside the locked write (after the consent re-check), and a
 ///     failed or cancelled in-lock read writes nothing (the interleaving itself is pinned against real Postgres in
 ///     Tims.IntegrationTests/FitEngine/FitV2Tests);
 ///   weighting — the profile's assessment weight is split across scored instruments by their weights;
-///   a SCORED English result verifies the languages dimension and counts there only (owner default D3; a gate
-///     never moves a number);
+///   an English result verifies the languages dimension and counts there only, scored or gate (owner defaults D3 and
+///     D23; a gate additionally shows met / not met and never rejects; any other gate never moves a number);
 ///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
 ///   the composite source's order. Tests of the SCORED LIA curve pass liaScoredAllowed: true (norms confirmed); the
 ///   production default treats LIA as a threshold gate (owner default D20, pinned in FitV2IntegrityTests). (The ATS adapter and the provider stub live in Tims.Infrastructure and are
@@ -149,10 +149,9 @@ public sealed class FitV2UseCaseTests
     [Fact]
     public async Task FlagOn_GateNotMet_NeverChangesTheOverallScore_AndNeverSkipsTheCandidate()
     {
-        // English is ALSO required in languages and the CV claims it: a not-met English GATE must not override that
-        // claim (only a scored English entry may move a number), so both rows score the same.
+        // A not-met ITC-IA gate is a flag only: both rows score the same and the candidate is still written.
         var withGate = Repo(
-            """{"requiredLanguages":["English"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"english","use":"gate","min":{"cefr":"C1"}}]}""",
+            """{"requiredLanguages":["English"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"itcia","use":"gate","min":{"level":4}}]}""",
             interview: 30,
             languages: """["English (C2)"]""");
         var withoutGate = Repo(
@@ -161,7 +160,7 @@ public sealed class FitV2UseCaseTests
             languages: """["English (C2)"]""");
         var source = new FakeResultSource(
             Result(FitInstruments.Lia, "r-lia", percentile: 60),
-            Result(FitInstruments.English, "r-en", cefr: "A2"));
+            Result(FitInstruments.Itcia, "r-it", level: 2));
 
         await new FitEngineWriteUseCase(withGate, source)
             .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
@@ -172,12 +171,47 @@ public sealed class FitV2UseCaseTests
         var plain = Assert.Single(withoutGate.FitScoreUpserts);
         Assert.Equal(plain.OverallScore, gated.OverallScore);
         Assert.Equal(77, gated.OverallScore); // (100 + 30 + 100) × 0.2 / 0.6 = 76.67
-        var breakdown = JsonNode.Parse(gated.BreakdownJson)!;
-        Assert.Equal(100, breakdown["languages"]!.GetValue<double>());
-        var english = breakdown["assessments"]![1]!;
+        var itcia = JsonNode.Parse(gated.BreakdownJson)!["assessments"]![1]!;
+        Assert.Equal("not_met", itcia["gate"]!.GetValue<string>());
+        Assert.Null(itcia["score"]);
+    }
+
+    [Fact]
+    public async Task FlagOn_EnglishGate_FeedsLanguages_D23_AndOnlyFlagsBelowMinimum()
+    {
+        // Owner default D23 (2026-11-09): an English result feeds the languages dimension (D3) whatever its role. As a
+        // GATE it decides English there exactly as a scored entry would, and additionally shows not_met; it never
+        // enters the assessment dimension and never skips the candidate. The vacancy does not list English among its
+        // required languages: the test adds it (as for a scored entry), so the CV's Spanish and the test's English
+        // are the two required languages.
+        const string requirements =
+            """{"requiredLanguages":["Spanish"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"english","use":"gate","min":{"cefr":"C1"}}]}""";
+        var notMet = Repo(requirements, interview: 30, languages: """["Spanish"]""");
+        var met = Repo(requirements, interview: 30, languages: """["Spanish"]""");
+
+        await new FitEngineWriteUseCase(notMet, new FakeResultSource(
+                Result(FitInstruments.Lia, "r-lia", percentile: 60), Result(FitInstruments.English, "r-en", cefr: "A2")))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(met, new FakeResultSource(
+                Result(FitInstruments.Lia, "r-lia", percentile: 60), Result(FitInstruments.English, "r-en", cefr: "C2")))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+
+        var below = Assert.Single(notMet.FitScoreUpserts);
+        var above = Assert.Single(met.FitScoreUpserts);
+        var belowBreakdown = JsonNode.Parse(below.BreakdownJson)!;
+        var aboveBreakdown = JsonNode.Parse(above.BreakdownJson)!;
+        Assert.Equal(50, belowBreakdown["languages"]!.GetValue<double>()); // Spanish covered, English not
+        Assert.Equal(100, aboveBreakdown["languages"]!.GetValue<double>());
+        Assert.Equal(100, belowBreakdown["assessment"]!.GetValue<double>()); // LIA alone: the gate never enters it
+        Assert.Equal(60, below.OverallScore); // (100 + 30 + 50) × 0.2 / 0.6
+        Assert.Equal(77, above.OverallScore); // (100 + 30 + 100) × 0.2 / 0.6 = 76.67
+        var english = belowBreakdown["assessments"]![1]!;
         Assert.Equal("not_met", english["gate"]!.GetValue<string>());
         Assert.Null(english["score"]);
-        Assert.Equal("cv", english["languagesEvidence"]!.GetValue<string>());
+        Assert.Null(english["assessmentShare"]);
+        Assert.Equal(0.1, english["effectiveWeight"]!.GetValue<double>()); // the languages weight / 2 languages
+        Assert.Equal("assessment", english["languagesEvidence"]!.GetValue<string>());
+        Assert.Equal("met", aboveBreakdown["assessments"]![1]!["gate"]!.GetValue<string>());
     }
 
     [Fact]

@@ -98,23 +98,26 @@ stored configuration is unchanged and the requirements writer reports `lia_thres
   carries the fit score id but not the breakdown). The candidate page's breakdown and assessment panels still show
   the dimension numbers without the marker. A gate awaiting review moves no number and does not set
   `reviewPending`.
-- **Gates never reject.** A gate entry contributes nothing to any dimension, the `languages` dimension included.
-  A candidate whose gate is `not_met` is still scored and ranked; a person decides.
+- **Gates never reject.** A gate entry contributes nothing to the `assessment` dimension. The one exception to
+  "a gate moves no number" is English (owner default D23, 2026-11-09): an English gate decides English in the
+  `languages` dimension exactly like a scored English entry (below), and additionally shows met / not met. A
+  candidate whose gate is `not_met` is still scored and ranked; a person decides.
 - **Weighting.** The `assessment` dimension is the weighted mean of the scored instruments that have a score,
   rounded with `JsRound`. The declared weights apply when every scored entry declares a valid one; otherwise all
   scored instruments weigh the same. A scored English entry is not part of this mean (owner default D3, below). Equivalently, instrument _i_ carries `profile.assessment × wᵢ / Σw` over the
   instruments with a score. When none has one, the dimension is null and the five-dimension renormalization drops
   it, exactly as v1 does for any missing dimension. `isPartial` keeps its v1 meaning and is also set by
   `reviewPending` (simulateWeights recomputes it from the five dimension keys, so it can report false there).
-- **English counts once, in languages (owner default D3, 2026-11-08; scored only).** A SCORED english entry never
-  enters the `assessment` mean. It decides whether "English" (also "Inglés"/"Ingles") counts as covered among
+- **English counts once, in languages (owner default D3, 2026-11-08; owner default D23, 2026-11-09: whatever its
+  role).** A SCORED or GATE english entry never enters the `assessment` mean. It decides whether "English" (also "Inglés"/"Ingles") counts as covered among
   `requiredLanguages`: covered iff achieved ≥ the entry's minimum, whatever the CV says; English is added to the
   required languages when the vacancy lists the test but not the language. Other languages still come from the CV.
   If the CV lists no languages and a non-English language is also required, the dimension stays null as in v1.
   Without a usable result (no result, no value, needs review) the CV self-report stands for English. The entry's
   `weight` and `assessmentShare` are null and its `effectiveWeight` is English's share of the `languages` weight
-  (that weight divided by the number of required languages); its `score` is the CEFR ladder fit, shown only. A
-  GATE english entry moves no number: HR sees its met / not met next to the CV self-report.
+  (that weight divided by the number of required languages); a scored entry's `score` is the CEFR ladder fit, shown
+  only. A GATE english entry does all of the above too (D23) and keeps its met / not met (the below-minimum flag); it
+  has no `score`. An ADVISORY english entry has no minimum, so it decides nothing: the CV self-report stands.
 - **Job-relatedness.** Results for instruments the vacancy does not list are ignored.
 
 ## Breakdown
@@ -155,8 +158,9 @@ The six v1 keys first, unchanged in meaning and order, then three new keys:
 
 `status` ∈ `completed | no_result | needs_review | no_value`; `gate` ∈ `met | not_met | unknown` (gate entries
 only); `assessmentShare` and `effectiveWeight` (rounded to 4 dp, before the five-dimension renormalization) only
-for scored entries with a score; `languagesEvidence` (english only) is `assessment` when a scored English result
-decided English, `cv` when the CV stood (always so for a gate or advisory English entry), null when English is not
+for scored entries with a score, except that a scored or gate English entry carries an `effectiveWeight` (its share
+of `languages`) and no `assessmentShare`; `languagesEvidence` (english only) is `assessment` when a scored English result
+decided English (a scored or gate entry, D23), `cv` when the CV stood (always so for an advisory English entry), null when English is not
 in `requiredLanguages`. `reviewPending` (top level) is true when a scored instrument's latest result needs review;
 see Rules.
 
