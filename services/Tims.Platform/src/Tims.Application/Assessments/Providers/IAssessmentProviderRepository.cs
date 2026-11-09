@@ -274,7 +274,10 @@ public enum LockedLaunchOutcome
     /// <summary>The checks passed under the locks and the provider was called (<see cref="LockedLaunch.Call"/>).</summary>
     Called,
 
-    /// <summary>The attempt no longer exists for this organization.</summary>
+    /// <summary>
+    /// The attempt no longer exists for this organization, or an erasure of its provider subject was requested (before
+    /// the locks, or during the call: then nothing is recorded and the URL must not reach the candidate).
+    /// </summary>
     NotFound,
 
     /// <summary>
@@ -437,7 +440,8 @@ public sealed record AttemptRow(
     string? WithdrawalState = null,
     DateTimeOffset? ErasureRequestedAt = null,
     IReadOnlyList<string>? MissingConsents = null,
-    string? AgeBand = null)
+    string? AgeBand = null,
+    Guid? LatestResultId = null)
 {
     /// <summary>
     /// True once the candidate's #312 withdrawal reached this attempt (D15) or an erasure of its provider subject was

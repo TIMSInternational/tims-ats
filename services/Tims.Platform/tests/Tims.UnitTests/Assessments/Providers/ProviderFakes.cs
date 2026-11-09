@@ -511,6 +511,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             return new LockedLaunch(LockedLaunchOutcome.NotFound, null, null);
         }
 
+        if (attempt.ErasureRequestedAt is not null)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, null, attempt.State);
+        }
+
         if (attempt.WithdrawalState is not null || LaunchWithdrawn || WithdrawnCandidates.Contains(attempt.CandidateId))
         {
             return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, null, attempt.State);
@@ -530,7 +535,13 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             return new LockedLaunch(LockedLaunchOutcome.Called, call, attempt.State);
         }
 
-        if (Attempts.First(a => a.Id == attemptId).WithdrawalState is not null)
+        var after = Attempts.First(a => a.Id == attemptId);
+        if (after.ErasureRequestedAt is not null)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, call, attempt.State);
+        }
+
+        if (after.WithdrawalState is not null)
         {
             return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, call, attempt.State);
         }
@@ -754,7 +765,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public Task<bool> BeginConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (Attempts.FirstOrDefault(a => a.Id == attemptId) is not { WithdrawalState: null })
+        if (Attempts.FirstOrDefault(a => a.Id == attemptId) is not { WithdrawalState: null, ErasureRequestedAt: null })
         {
             Writes.Add("capture_refused");
             return Task.FromResult(false);

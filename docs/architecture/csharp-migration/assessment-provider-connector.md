@@ -201,6 +201,11 @@ a single-use launch code: it goes to the candidate's own response body only, and
   record is conditional (`withdrawal_state IS NULL`): a same-email sibling's withdrawal takes only its own candidate
   lock, so if it staged the attempt during the call, nothing is recorded and the URL never reaches the candidate (the
   cascade cancels the assignment, revoking the unused code).
+- **Erasure.** An attempt whose provider subject has an accepted erasure is never launched again: refused before any
+  consent capture (the capture announcement is conditional on it too), under the locks, and by the same conditional
+  record if the erasure is accepted during the provider call (it marks the attempt under the subject lock only).
+- **Portal status (D9).** A finished attempt that holds a result shows as completed even when a later revision voided
+  it; "needs review" is only a sitting voided before any result (D4).
 
 ## Polling fallback (D17)
 

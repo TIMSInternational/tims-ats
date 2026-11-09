@@ -105,6 +105,34 @@ public sealed class LaunchProviderAttemptUseCaseTests
         Assert.DoesNotContain("launched", _repository.Writes);
     }
 
+    // Codex release round A2 [P2]: an accepted erasure of the attempt's provider subject stops every later launch, before
+    // any consent is captured, and also when the erasure is accepted while the provider call is in flight.
+    [Fact]
+    public async Task An_attempt_under_an_accepted_erasure_captures_and_launches_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.Attempts[0] = attempt with { ErasureRequestedAt = Now.AddMinutes(-1) };
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.NotFound, result.Outcome);
+        Assert.Empty(_provider.Calls);
+        Assert.DoesNotContain("capture_begun", _repository.Writes);
+    }
+
+    [Fact]
+    public async Task An_erasure_accepted_during_the_provider_call_hands_out_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.DuringLockedLaunchCall = () => _repository.Attempts[0] = _repository.Attempts[0] with { ErasureRequestedAt = Now };
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.NotFound, result.Outcome);
+        Assert.Null(result.Launch);
+        Assert.DoesNotContain("launched", _repository.Writes);
+    }
+
     [Fact]
     public async Task An_attempt_that_finished_before_the_lock_was_taken_is_not_launched()
     {

@@ -126,6 +126,55 @@ public sealed class AssessmentProviderLaunchLockTests(AssessmentProviderSchemaFi
             $"SELECT count(*) FROM audit_logs WHERE action = 'assessment_provider_launched' AND entity_id = '{attempt}'"));
     }
 
+    // Codex release round A2 [P2]: an accepted erasure marks the attempt under the SUBJECT lock only, so it can land
+    // before the launch's transaction or during its provider call; either way nothing is launched or recorded.
+    [Fact]
+    public async Task An_attempt_under_an_accepted_erasure_is_never_launched_or_captured()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example");
+        var attempt = await AttemptAsync(candidate);
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now() WHERE id = '{attempt}'");
+
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        var called = false;
+        var outcome = await repository.LaunchUnderCandidateLockAsync(Org, attempt, (_, _) =>
+        {
+            called = true;
+            return Task.FromResult(Hosted());
+        }, DateTimeOffset.UtcNow, CancellationToken.None);
+        var captureBegun = await repository.BeginConsentCaptureAsync(Org, attempt, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(LockedLaunchOutcome.NotFound, outcome.Outcome);
+        Assert.False(called);
+        Assert.False(captureBegun);
+        Assert.Equal("created|||false", await RowAsync(attempt));
+    }
+
+    [Fact]
+    public async Task An_erasure_accepted_during_the_provider_call_leaves_nothing_recorded()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example");
+        var attempt = await AttemptAsync(candidate);
+        var subject = (Guid)(await fixture.ScalarAsync($"SELECT provider_subject_id FROM assessment_provider_attempts WHERE id = '{attempt}'"))!;
+
+        await using var launchDb = fixture.NewContext();
+        var outcome = await new AssessmentProviderRepository(launchDb).LaunchUnderCandidateLockAsync(Org, attempt, async (_, _) =>
+        {
+            await using var eraseDb = fixture.NewContext();
+            await new AssessmentProviderRepository(eraseDb).MarkErasureRequestedAsync(
+                Org, candidate, subject, "accepted", Guid.NewGuid(), DateTimeOffset.UtcNow, CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(10));
+            return Hosted();
+        }, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(LockedLaunchOutcome.NotFound, outcome.Outcome);
+        Assert.Equal("created|||false", await RowAsync(attempt));
+        Assert.Equal(0L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE action = 'assessment_provider_launched' AND entity_id = '{attempt}'"));
+    }
+
     [Fact]
     public async Task A_successful_launch_moves_created_to_launched_with_its_audit_row()
     {

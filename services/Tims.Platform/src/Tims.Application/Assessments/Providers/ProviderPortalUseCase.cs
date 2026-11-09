@@ -10,10 +10,11 @@ namespace Tims.Application.Assessments.Providers;
 /// first (the portal shows the provider's consent templates, then launches with them);</item>
 /// <item><see cref="Ready"/>: launchable, nothing missing;</item>
 /// <item><see cref="InProgress"/>: a sitting has started; relaunching resumes it, even past the start deadline;</item>
-/// <item><see cref="Completed"/>: finished at the provider, whatever its result's validity (a result flagged for review
-/// shows as completed: D9);</item>
+/// <item><see cref="Completed"/>: finished at the provider, whatever its result's validity: a result flagged for review,
+/// or voided afterwards by a new revision (D12: the attempt then reads <c>voided</c> but HOLDS a result), still shows as
+/// completed, so the portal never reveals a review or a later invalidation (D9);</item>
 /// <item><see cref="Expired"/>: the start deadline passed before a sitting started;</item>
-/// <item><see cref="NeedsReview"/>: the sitting was voided before a result (D4: it counts as a used attempt, and the
+/// <item><see cref="NeedsReview"/>: the sitting was voided BEFORE any result (D4: it counts as a used attempt, and the
 /// organization decides on a new one). The portal tells the candidate the organization will contact them; it never says
 /// why.</item>
 /// </list>
@@ -44,6 +45,7 @@ public static class ProviderPortalStatuses
                 => attempt.MissingConsents is { Count: > 0 } ? ConsentNeeded : Ready,
             ProviderAttemptStates.InProgress => InProgress,
             ProviderAttemptStates.Completed or ProviderAttemptStates.ResultReady => Completed,
+            ProviderAttemptStates.Voided or ProviderAttemptStates.Expired when attempt.LatestResultId is not null => Completed,
             ProviderAttemptStates.Expired => Expired,
             ProviderAttemptStates.Voided => NeedsReview,
             _ => null, // pending_create, cancelled, erased

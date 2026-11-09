@@ -36,6 +36,18 @@ public sealed class ProviderPortalUseCaseTests
         Assert.Equal(expected, ProviderPortalStatuses.For(attempt, Now));
     }
 
+    // Codex release round A2 [P2] (D9): a published result voided later by a new revision leaves the attempt voided but
+    // holding a result; the candidate keeps seeing "completed", never the invalidation.
+    [Theory]
+    [InlineData(ProviderAttemptStates.Voided)]
+    [InlineData(ProviderAttemptStates.Expired)]
+    public void A_finished_attempt_holding_a_result_shows_as_completed_whatever_its_later_revisions(string state)
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", state) with { LatestResultId = Guid.NewGuid() };
+
+        Assert.Equal(ProviderPortalStatuses.Completed, ProviderPortalStatuses.For(attempt, Now));
+    }
+
     [Fact]
     public void An_attempt_in_a_withdrawal_or_under_erasure_is_never_shown()
     {

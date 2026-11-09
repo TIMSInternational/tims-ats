@@ -83,6 +83,12 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return LaunchResult.Fail(LaunchOutcome.NotFound);
         }
 
+        if (context.Attempt.ErasureRequestedAt is not null)
+        {
+            // An erasure of the attempt's provider subject was accepted: nothing is captured or launched for it again.
+            return LaunchResult.Fail(LaunchOutcome.NotFound);
+        }
+
         if (context.ConsentWithdrawn || context.Attempt.WithdrawalState is not null)
         {
             return LaunchResult.Fail(LaunchOutcome.ConsentWithdrawn);

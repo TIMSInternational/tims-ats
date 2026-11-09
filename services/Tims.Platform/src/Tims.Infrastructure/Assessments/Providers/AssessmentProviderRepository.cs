@@ -424,6 +424,13 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({candidateKey}, 0))", cancellationToken).ConfigureAwait(false);
         await _db.Entry(attempt).ReloadAsync(cancellationToken).ConfigureAwait(false);
+        if (attempt.ProviderErasureRequestedAt is not null)
+        {
+            // An erasure of the attempt's provider subject was accepted: it is never launched again.
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, null, attempt.State);
+        }
+
         if (attempt.WithdrawalState is not null
             || await IsWithdrawnAsync(organizationId, attempt.CandidateId, cancellationToken).ConfigureAwait(false))
         {
@@ -446,9 +453,10 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
 
         // Conditional at the database, never a tracked write over the row read before the provider call: webhooks and staff
         // cancels take the attempt lock we hold, but a withdrawal of a same-email SIBLING candidate takes only its own
-        // candidate lock and stages this row directly. If it committed during the call, nothing is recorded and the launch
-        // is reported as withdrawn (its URL never reaches the candidate); the cascade cancels the assignment, which
-        // revokes the unused launch code. A webhook-set state is never rewound: only created becomes launched.
+        // candidate lock and stages this row directly, and an accepted erasure marks it under the subject lock only. If
+        // either committed during the call, nothing is recorded and the launch is reported as withdrawn or gone (its URL
+        // never reaches the candidate); the cascade or the erasure revokes the unused launch code. A webhook-set state is
+        // never rewound: only created becomes launched.
         var timestamp = now.UtcDateTime;
         var marked = await _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -456,11 +464,15 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 SET state = CASE WHEN state = {ProviderAttemptStates.Created} THEN {ProviderAttemptStates.Launched} ELSE state END,
                     last_launched_at = {timestamp}, updated_at = {timestamp}
               WHERE organization_id = {organizationId} AND id = {attemptId} AND withdrawal_state IS NULL
+                AND provider_erasure_requested_at IS NULL
              """, cancellationToken).ConfigureAwait(false);
         if (marked == 0)
         {
+            await _db.Entry(attempt).ReloadAsync(cancellationToken).ConfigureAwait(false);
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, call, attempt.State);
+            return new LockedLaunch(
+                attempt.ProviderErasureRequestedAt is not null ? LockedLaunchOutcome.NotFound : LockedLaunchOutcome.ConsentWithdrawn,
+                call, attempt.State);
         }
 
         AddAudit(organizationId, null, "assessment_provider_launched", attemptId, new Dictionary<string, object?>
@@ -562,7 +574,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         new(a.Id, a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument, a.State, a.JobRelatednessReason, a.Locale,
             a.TimeMultiplier, a.Aids, ToOffset(a.RequestedExpiresAt), a.ProviderSubjectId, a.ProviderAssignmentId,
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
-            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand);
+            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand, a.LatestResultId);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

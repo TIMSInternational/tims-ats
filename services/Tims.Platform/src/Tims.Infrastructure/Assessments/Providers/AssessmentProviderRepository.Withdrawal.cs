@@ -144,6 +144,7 @@ public sealed partial class AssessmentProviderRepository
                     consent_capture_started_at = clock_timestamp(),
                     updated_at = {timestamp}
               WHERE organization_id = {organizationId} AND id = {attemptId} AND withdrawal_state IS NULL
+                AND provider_erasure_requested_at IS NULL
              """, cancellationToken).ConfigureAwait(false);
         if (begun > 0)
         {
