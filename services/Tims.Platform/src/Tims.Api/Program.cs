@@ -616,6 +616,9 @@ try
         // The cascade's durable retry: an attempt left pending (outage, unconfirmed 404, capture in flight) is retried
         // every 10 minutes without waiting for a webhook or another withdrawal.
         builder.Services.AddHostedService<ProviderWithdrawalSweepHostedService>();
+        // D17: the polling fallback. Webhooks stay the primary signal; stale attempts are re-read every 5 minutes under
+        // a per-attempt lease, so two instances never poll the same attempt.
+        builder.Services.AddHostedService<ProviderAttemptPollHostedService>();
     }
     else
     {
@@ -1645,6 +1648,7 @@ try
     {
         app.MapProviderAssignmentEndpoints();
         app.MapProviderCandidateEndpoints();
+        app.MapProviderPortalEndpoints();
         app.MapProviderSubjectRightsEndpoints();
     }
 

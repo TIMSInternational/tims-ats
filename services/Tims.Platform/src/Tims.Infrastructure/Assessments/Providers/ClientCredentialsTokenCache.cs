@@ -14,6 +14,9 @@ namespace Tims.Infrastructure.Assessments.Providers;
 /// and dropped on a 401 (<see cref="Invalidate"/>) so a rotated client secret takes effect on the next call.</item>
 /// <item>Client authentication is HTTP Basic (<c>client_secret_basic</c>, RFC 6749 §2.3.1). The secret and the token
 /// are never logged; a failure logs only the HTTP status.</item>
+/// <item>One token per scope set. The default set (<see cref="AssessmentProviderOptions.Scopes"/>) serves every call
+/// except the DSAR export, which asks for <c>subjects:export</c> ALONE: the contract keeps that scope apart because the
+/// export returns media links, so no ordinary call carries it.</item>
 /// </list>
 /// </summary>
 public sealed class ClientCredentialsTokenCache(
@@ -28,13 +31,18 @@ public sealed class ClientCredentialsTokenCache(
 
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    // One immutable snapshot, swapped atomically: readers outside the lock never see a token with another's expiry.
-    private CachedToken? _cached;
+    // Per scope set, one immutable snapshot, swapped atomically: readers outside the lock never see a token with
+    // another's expiry.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CachedToken> _cached = new(StringComparer.Ordinal);
 
-    /// <summary>A valid access token, or null when the token endpoint is unconfigured, unreachable or refused us.</summary>
-    public async Task<string?> GetTokenAsync(CancellationToken cancellationToken)
+    /// <summary>A valid access token for the default scopes, or null when the token endpoint is unconfigured, unreachable or refused us.</summary>
+    public Task<string?> GetTokenAsync(CancellationToken cancellationToken) => GetTokenAsync(null, cancellationToken);
+
+    /// <summary>A valid access token for <paramref name="scopes"/> (null: the configured default scopes), or null.</summary>
+    public async Task<string?> GetTokenAsync(string? scopes, CancellationToken cancellationToken)
     {
-        if (TryCached(out var cached))
+        var key = scopes ?? options.Value.Scopes;
+        if (TryCached(key, out var cached))
         {
             return cached;
         }
@@ -42,17 +50,17 @@ public sealed class ClientCredentialsTokenCache(
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (TryCached(out cached))
+            if (TryCached(key, out cached))
             {
                 return cached;
             }
 
-            var fetched = await FetchAsync(cancellationToken).ConfigureAwait(false);
+            var fetched = await FetchAsync(key, cancellationToken).ConfigureAwait(false);
             if (fetched is { } token)
             {
                 var lifetime = TimeSpan.FromSeconds(token.ExpiresInSeconds) - RefreshSkew;
                 var refreshAt = timeProvider.GetUtcNow() + (lifetime > TimeSpan.Zero ? lifetime : TimeSpan.Zero);
-                Volatile.Write(ref _cached, new CachedToken(token.AccessToken, refreshAt));
+                _cached[key] = new CachedToken(token.AccessToken, refreshAt);
                 return token.AccessToken;
             }
 
@@ -64,16 +72,24 @@ public sealed class ClientCredentialsTokenCache(
         }
     }
 
-    /// <summary>Drops the cached token (after a 401), so the next call fetches a new one.</summary>
-    public void Invalidate() => Volatile.Write(ref _cached, null);
+    /// <summary>Drops the cached default-scope token (after a 401), so the next call fetches a new one.</summary>
+    public void Invalidate() => Invalidate(null);
+
+    /// <summary>Drops the cached token for <paramref name="scopes"/> (null: the default scopes).</summary>
+    public void Invalidate(string? scopes) => _cached.TryRemove(scopes ?? options.Value.Scopes, out _);
 
     public void Dispose() => _gate.Dispose();
 
-    private bool TryCached(out string? token)
+    private bool TryCached(string key, out string? token)
     {
-        var cached = Volatile.Read(ref _cached);
-        token = cached?.Value;
-        return cached is not null && timeProvider.GetUtcNow() < cached.RefreshAt;
+        token = null;
+        if (!_cached.TryGetValue(key, out var cached))
+        {
+            return false;
+        }
+
+        token = cached.Value;
+        return timeProvider.GetUtcNow() < cached.RefreshAt;
     }
 
     private sealed class CachedToken(string value, DateTimeOffset refreshAt)
@@ -85,7 +101,7 @@ public sealed class ClientCredentialsTokenCache(
         public override string ToString() => "CachedToken { [redacted] }";
     }
 
-    private async Task<(string AccessToken, int ExpiresInSeconds)?> FetchAsync(CancellationToken cancellationToken)
+    private async Task<(string AccessToken, int ExpiresInSeconds)?> FetchAsync(string scopes, CancellationToken cancellationToken)
     {
         var settings = options.Value;
         if (!settings.IsConfigured)
@@ -101,7 +117,7 @@ public sealed class ClientCredentialsTokenCache(
         request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
-            ["scope"] = settings.Scopes,
+            ["scope"] = scopes,
         });
 
         try

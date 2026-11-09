@@ -108,6 +108,7 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
         instruments = new[] { new { instrument = "lia" } },
         timeMultiplier = multiplier,
         aids = new[] { "extended_breaks" },
+        ageBand = "18_plus",
     };
 
     private Task<object?> AttemptCount(Guid candidate) =>
@@ -135,6 +136,9 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
             await Send(client, Webhook, "{}", null),
             await Send(client, Erasure(ProviderEndpointFixture.AssignCandidate), null, Mint(ProviderEndpointFixture.OwnerSub)),
             await Get(client, Export(ProviderEndpointFixture.AssignCandidate), Mint(ProviderEndpointFixture.OwnerSub)),
+            await Get(client, "/portal/assessment-attempts?organizationSlug=org-a", Mint("candidate-dark")),
+            await Get(client, $"/portal/assessment-attempts/{ProviderEndpointFixture.LaunchAttempt}/consent-templates?locale=es",
+                Mint("candidate-dark")),
         };
 
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.NotFound, r.StatusCode));
@@ -379,7 +383,14 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
         Assert.Equal("no-store", export.Headers.CacheControl?.ToString());
-        Assert.Equal("lia", (await ReadJson(export)).GetProperty("attempts")[0].GetProperty("instrument").GetString());
+        var exported = await ReadJson(export);
+        Assert.Equal("lia", exported.GetProperty("attempts")[0].GetProperty("instrument").GetString());
+        // D15 access includes what the provider holds: its own export for the recorded subject and the resolved one.
+        var held = exported.GetProperty("providerExports");
+        Assert.Equal(2, held.GetArrayLength());
+        Assert.Contains(held.EnumerateArray(), h => h.GetProperty("subjectId").GetGuid() == subject
+            && h.GetProperty("status").GetString() == "exported"
+            && h.GetProperty("export").GetProperty("subject").GetProperty("subject_id").GetGuid() == subject);
         Assert.Equal(HttpStatusCode.Accepted, erasure.StatusCode);
         // The recorded subject, plus the one the provider resolves for (tenant, candidate id) (this fake mints a new id).
         Assert.Equal(2, provider.ErasedSubjects.Count);
@@ -392,7 +403,7 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
     // ── Launch (the candidate, by confirmed email) ──────────────────────────────────────
 
     [Fact]
-    public async Task Launch_ConfirmedEmailOfTheAttemptsCandidate_GetsTheTokenInANoStoreBody()
+    public async Task Launch_ConfirmedEmailOfTheAttemptsCandidate_GetsTheHostedPlayerUrlInANoStoreBody()
     {
         const string sub = "candidate-luz";
         var identities = new FakeIdentities();
@@ -405,7 +416,133 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
-        Assert.Equal(FakeProvider.CandidateToken, (await ReadJson(response)).GetProperty("candidateToken").GetString());
+        var json = await ReadJson(response);
+        Assert.Equal(FakeProvider.PlayerUrl, json.GetProperty("hostedUrl").GetString());
+        Assert.Equal("https://ats.test", json.GetProperty("frameAncestors")[0].GetString());
+        Assert.False(json.TryGetProperty("candidateToken", out _)); // D16: no candidate token exists on this path
+    }
+
+    // ── Portal reads (the candidate, by confirmed email; D16) ────────────────────────────
+
+    [Fact]
+    public async Task Portal_TheCandidateListsOnlyTheirOwnAttempts_WithACoarseStatusAndNoScores()
+    {
+        const string sub = "candidate-luz-list";
+        var identities = new FakeIdentities();
+        var token = Mint(sub);
+        identities.Confirmed[token] = new SetupIdentity(sub, " Luz@A.example ");
+        var stranger = Mint("candidate-stranger");
+        identities.Confirmed[stranger] = new SetupIdentity("candidate-stranger", "nobody@a.example");
+        await using var factory = Factory(identities: identities);
+        using var client = factory.CreateClient();
+
+        var mine = await Get(client, "/portal/assessment-attempts?organizationSlug=org-a", token);
+        var theirs = await Get(client, "/portal/assessment-attempts?organizationSlug=org-a", stranger);
+        var otherOrg = await Get(client, "/portal/assessment-attempts?organizationSlug=org-b", token);
+        var unknown = await Get(client, "/portal/assessment-attempts?organizationSlug=no-such-org", token);
+
+        Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
+        Assert.Equal("no-store", mine.Headers.CacheControl?.ToString());
+        var attempt = Assert.Single((await ReadJson(mine)).GetProperty("attempts").EnumerateArray());
+        Assert.Equal(ProviderEndpointFixture.LaunchAttempt, attempt.GetProperty("attemptId").GetGuid());
+        Assert.Equal("lia", attempt.GetProperty("instrument").GetString());
+        Assert.Equal("native", attempt.GetProperty("delivery").GetString());
+        Assert.Contains(attempt.GetProperty("status").GetString(), new[] { "ready", "consent_needed", "in_progress" });
+        Assert.False(attempt.TryGetProperty("providerAssignmentId", out _));
+        Assert.Empty((await ReadJson(theirs)).GetProperty("attempts").EnumerateArray());
+        Assert.Empty((await ReadJson(otherOrg)).GetProperty("attempts").EnumerateArray());
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [Fact]
+    public async Task Portal_ConsentTemplates_AreServedOnlyForTheCandidatesAttemptThatNeedsConsent()
+    {
+        const string sub = "candidate-luz-templates";
+        var identities = new FakeIdentities();
+        var token = Mint(sub);
+        identities.Confirmed[token] = new SetupIdentity(sub, ProviderEndpointFixture.LaunchEmail);
+        var stranger = Mint("candidate-stranger-2");
+        identities.Confirmed[stranger] = new SetupIdentity("candidate-stranger-2", "nobody@a.example");
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider, identities: identities);
+        using var client = factory.CreateClient();
+        var path = $"/portal/assessment-attempts/{ProviderEndpointFixture.LaunchAttempt}/consent-templates?locale=en";
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET missing_consents = ARRAY['assessment'] WHERE id = '{ProviderEndpointFixture.LaunchAttempt}'");
+        try
+        {
+            var templates = await Get(client, path, token);
+            var foreign = await Get(client, path, stranger);
+            var badLocale = await Get(client, path.Replace("locale=en", "locale=fr", StringComparison.Ordinal), token);
+
+            Assert.Equal(HttpStatusCode.OK, templates.StatusCode);
+            var template = Assert.Single((await ReadJson(templates)).GetProperty("templates").EnumerateArray());
+            Assert.Equal(("assessment", "en"), (template.GetProperty("purpose").GetString(), template.GetProperty("locale").GetString()));
+            Assert.Equal("assessment-v1", template.GetProperty("textVersion").GetString());
+            Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, badLocale.StatusCode);
+        }
+        finally
+        {
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_attempts SET missing_consents = '{{}}' WHERE id = '{ProviderEndpointFixture.LaunchAttempt}'");
+        }
+
+        // Nothing left to consent to: the same 404 as a stranger's attempt.
+        Assert.Equal(HttpStatusCode.NotFound, (await Get(client, path, token)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Portal_AnUnconfirmedOrForeignIdentity_GetsNothing()
+    {
+        var identities = new FakeIdentities();
+        var token = Mint("candidate-x");
+        identities.Confirmed[token] = new SetupIdentity("candidate-y", ProviderEndpointFixture.LaunchEmail);
+        await using var factory = Factory(identities: identities);
+        using var client = factory.CreateClient();
+
+        var mismatched = await Get(client, "/portal/assessment-attempts?organizationSlug=org-a", token);
+        var anonymous = await Get(client, "/portal/assessment-attempts?organizationSlug=org-a", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, mismatched.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+    }
+
+    // The portal's shared platform client reads `code`: a withdrawn candidate's launch says so with a stable code, and
+    // nothing reaches the provider.
+    [Fact]
+    public async Task Launch_AWithdrawnCandidate_Is409WithAStableCode()
+    {
+        var candidate = Guid.NewGuid();
+        var attempt = Guid.NewGuid();
+        var email = $"{candidate:N}@a.example";
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO candidates (id, organization_id, first_name, last_name, email)
+             VALUES ('{candidate}', '{ProviderEndpointFixture.OrgA}', 'Wil', 'Drawn', '{email}');
+             INSERT INTO data_consents (id, organization_id, subject_user_id, consent_type, withdrawn_at)
+             VALUES (gen_random_uuid(), '{ProviderEndpointFixture.OrgA}', '{candidate}', 'recruitment_data_processing', now());
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 instrument_version, content_version, required_consents, expires_at, assigned_by_id)
+             VALUES ('{attempt}', '{ProviderEndpointFixture.OrgA}', 'aaaa0000-0000-4000-8000-0000000000b0', '{candidate}',
+                 '{ProviderEndpointFixture.VacancyA}', 'english', 'created', 'selection', 'Análisis de datos', 'es', 1,
+                 gen_random_uuid(), gen_random_uuid(), '1.0', 'content-1', ARRAY['assessment'], now() + interval '14 days',
+                 '{ProviderEndpointFixture.AdminId}');
+             """);
+        const string sub = "candidate-withdrawn";
+        var identities = new FakeIdentities();
+        var token = Mint(sub);
+        identities.Confirmed[token] = new SetupIdentity(sub, email);
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider, identities: identities);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Launch(attempt), """{"embedded":true}""", token);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("consent_withdrawn", (await ReadJson(response)).GetProperty("code").GetString());
+        Assert.DoesNotContain("launch", provider.Calls);
     }
 
     [Fact]
@@ -504,7 +641,7 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
     /// <summary>The remote TIMS Assessments API, faked: canned success answers and a record of every call.</summary>
     private sealed class FakeProvider : IAssessmentProvider
     {
-        public const string CandidateToken = "test-candidate-token-xxxxxxxxxxxxxxxxxxxxxxxx";
+        public const string PlayerUrl = "https://player.test/launch/single-use-code";
 
         public ConcurrentQueue<string> Calls { get; } = new();
 
@@ -544,6 +681,22 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
         {
             Calls.Enqueue("update_subject");
             return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(subjectId, "active", true)));
+        }
+
+        public Task<ProviderCall<ProviderConsentTemplate>> GetConsentTemplateAsync(
+            string purpose, string locale, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("consent_template");
+            return Task.FromResult(ProviderCall<ProviderConsentTemplate>.Success(new ProviderConsentTemplate(
+                purpose, purpose + "-v1", locale, "Consentimiento", [new ConsentTextBlock("paragraph", "Texto.")], ["purpose"])));
+        }
+
+        public Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("export_subject");
+            return Task.FromResult(ProviderCall<ProviderHeldExport>.Success(new ProviderHeldExport(subjectId,
+                "{\"subject\":{\"subject_id\":\"" + subjectId + "\"},\"generated_at\":\"2026-11-09T14:00:00Z\",\"consents\":[],"
+                + "\"assignments\":[],\"sessions\":[],\"results\":[],\"media\":[],\"access_log\":[]}")));
         }
 
         public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
@@ -607,11 +760,11 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
             return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active")));
         }
 
-        public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken)
+        public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken)
         {
             Calls.Enqueue("launch");
             return Task.FromResult(ProviderCall<ProviderLaunch>.Success(new ProviderLaunch(
-                "native", CandidateToken, DateTimeOffset.UtcNow.AddHours(2), "https://assessments.test", null)));
+                "native", DateTimeOffset.UtcNow.AddMinutes(5), PlayerUrl, ["https://ats.test"])));
         }
 
         public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken)

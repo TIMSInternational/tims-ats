@@ -6,6 +6,10 @@ namespace Tims.Application.Assessments.Providers;
 
 public sealed record AssignInstrumentItem(string Instrument, string? Reason);
 
+/// <param name="AgeBand">
+/// The candidate's age band as HR attests it (<see cref="ProviderAgeBands"/>), required: the contract requires it on every
+/// assignment and the provider never defaults it.
+/// </param>
 public sealed record AssignProviderInstrumentsInput(
     Guid CandidateId,
     Guid VacancyId,
@@ -13,7 +17,8 @@ public sealed record AssignProviderInstrumentsInput(
     string? Locale,
     decimal TimeMultiplier,
     IReadOnlyList<string> Aids,
-    DateTimeOffset? ExpiresAt);
+    DateTimeOffset? ExpiresAt,
+    string AgeBand);
 
 /// <summary>
 /// One attempt as HR sees it. <see cref="Locale"/>, <see cref="TimeMultiplier"/> and <see cref="Aids"/> are the terms
@@ -154,7 +159,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
                 return ProviderAssignResult.Fail(ProviderAssignOutcome.ReasonRequired, item.Instrument);
             }
 
-            attempts.Add(new NewAttempt(item.Instrument, reason, locale, input.TimeMultiplier, input.Aids, input.ExpiresAt));
+            attempts.Add(new NewAttempt(
+                item.Instrument, reason, locale, input.TimeMultiplier, input.Aids, input.ExpiresAt, input.AgeBand));
         }
 
         var reserved = await _repository.ReserveAttemptsAsync(
@@ -262,6 +268,15 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             return await RecordAsync(organizationId, binding, attempt, existing, now, cancellationToken).ConfigureAwait(false);
         }
 
+        if (!ProviderAgeBands.IsKnown(attempt.AgeBand))
+        {
+            // An attempt reserved without an attested age band (none can be since the band became required on assign):
+            // the contract refuses a create without one, so refuse it here, before anything is sent.
+            return await FailAsync(organizationId, attempt,
+                ProviderFailure.Local(ProviderFailure.AgeAttestationRequired, transient: false), now, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var request = new ProviderAssignmentRequest(
             binding.ProviderTenantId,
             subject.Value!.SubjectId,
@@ -272,7 +287,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             attempt.TimeMultiplier,
             attempt.Aids,
             attempt.RequestedExpiresAt,
-            attempt.Id.ToString());
+            attempt.Id.ToString(),
+            attempt.AgeBand!);
         var created = await _provider.CreateAssignmentAsync(request, IdempotencyKeys.Assignment(attempt.Id), cancellationToken)
             .ConfigureAwait(false);
         if (!created.Ok)
@@ -370,13 +386,14 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             return false;
         }
 
-        string[] allowed = ["candidateId", "vacancyId", "instruments", "locale", "timeMultiplier", "aids", "expiresAt"];
+        string[] allowed = ["candidateId", "vacancyId", "instruments", "locale", "timeMultiplier", "aids", "expiresAt", "ageBand"];
         if (body.Any(p => !allowed.Contains(p.Key, StringComparer.Ordinal)))
         {
             return false;
         }
 
         if (!TryGuid(body["candidateId"], out var candidateId) || !TryGuid(body["vacancyId"], out var vacancyId)
+            || !TryString(body["ageBand"], 8, out var ageBand) || !ProviderAgeBands.IsKnown(ageBand)
             || body["instruments"] is not JsonArray instrumentNodes
             || instrumentNodes.Count is < 1 or > MaxInstruments)
         {
@@ -452,7 +469,7 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             expiresAt = parsed.ToUniversalTime();
         }
 
-        input = new AssignProviderInstrumentsInput(candidateId, vacancyId, instruments, locale, multiplier, aids, expiresAt);
+        input = new AssignProviderInstrumentsInput(candidateId, vacancyId, instruments, locale, multiplier, aids, expiresAt, ageBand!);
         return true;
     }
 

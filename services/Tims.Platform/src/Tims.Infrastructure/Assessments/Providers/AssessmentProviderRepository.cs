@@ -137,6 +137,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 TimeMultiplier = attempt.TimeMultiplier,
                 Aids = [.. attempt.Aids],
                 RequestedExpiresAt = attempt.ExpiresAt?.UtcDateTime,
+                AgeBand = attempt.AgeBand,
                 RequiredConsents = [],
                 AssignedById = actorId,
                 CreatedAt = timestamp,
@@ -157,6 +158,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 ["attemptIds"] = created,
                 ["timeMultiplier"] = attempts[0].TimeMultiplier,
                 ["aidsCount"] = attempts[0].Aids.Count,
+                ["ageBand"] = attempts[0].AgeBand,
             });
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -190,6 +192,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.InstrumentVersion = assignment.InstrumentVersion;
             attempt.ContentVersion = assignment.ContentVersion;
             attempt.RequiredConsents = [.. assignment.RequiredConsents];
+            attempt.MissingConsents = [.. assignment.MissingConsents.Where(ConsentPurposes.IsKnown).Distinct()];
             attempt.ExpiresAt = assignment.ExpiresAt.UtcDateTime;
             attempt.LastErrorCode = null;
             attempt.UpdatedAt = now.UtcDateTime;
@@ -397,45 +400,92 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task MarkLaunchedAsync(
-        Guid organizationId, Guid attemptId, Guid candidateId, string delivery, DateTimeOffset now,
-        CancellationToken cancellationToken)
+    public async Task<LockedLaunch> LaunchUnderCandidateLockAsync(
+        Guid organizationId, Guid attemptId, Func<AttemptRow, CancellationToken, Task<ProviderCall<ProviderLaunch>>> launch,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(launch);
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // Attempt lock, then the candidate lock (the order StoreResultAsync uses), then FRESH reads under both: a
+        // withdrawal (which takes the candidate lock for its whole transaction) either committed before and is seen here,
+        // or waits until this launch has committed.
         await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
             .ConfigureAwait(false);
-        if (attempt is not null)
+        if (attempt is null)
         {
-            // Under the attempt lock every webhook transition also takes, so the state read here is current: a launch
-            // never rewinds an attempt a webhook already moved to in_progress, completed or voided.
-            if (attempt.State == ProviderAttemptStates.Created)
-            {
-                attempt.State = ProviderAttemptStates.Launched;
-            }
-
-            attempt.LastLaunchedAt = now.UtcDateTime;
-            attempt.UpdatedAt = now.UtcDateTime;
-            _db.AuditLogs.Add(new AuditLogEntity
-            {
-                Id = Guid.NewGuid(),
-                OrganizationId = organizationId,
-                Action = "assessment_provider_launched",
-                Entity = AuditEntity,
-                EntityId = attemptId.ToString(),
-                Metadata = JsonSerializer.Serialize(new Dictionary<string, object?>
-                {
-                    ["candidateId"] = candidateId,
-                    ["instrument"] = attempt.Instrument,
-                    ["delivery"] = delivery,
-                }),
-            });
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, null, null);
         }
 
+        var candidateKey = attempt.CandidateId.ToString();
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({candidateKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await _db.Entry(attempt).ReloadAsync(cancellationToken).ConfigureAwait(false);
+        if (attempt.ProviderErasureRequestedAt is not null)
+        {
+            // An erasure of the attempt's provider subject was accepted: it is never launched again.
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, null, attempt.State);
+        }
+
+        if (attempt.WithdrawalState is not null
+            || await IsWithdrawnAsync(organizationId, attempt.CandidateId, cancellationToken).ConfigureAwait(false))
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, null, attempt.State);
+        }
+
+        if (!ProviderAttemptStates.IsLaunchable(attempt.State))
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new LockedLaunch(LockedLaunchOutcome.NotLaunchable, null, attempt.State);
+        }
+
+        var call = await launch(ToRow(attempt, isNew: false), cancellationToken).ConfigureAwait(false);
+        if (!call.Ok)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new LockedLaunch(LockedLaunchOutcome.Called, call, attempt.State);
+        }
+
+        // Conditional at the database, never a tracked write over the row read before the provider call: webhooks and staff
+        // cancels take the attempt lock we hold, but a withdrawal of a same-email SIBLING candidate takes only its own
+        // candidate lock and stages this row directly, and an accepted erasure marks it under the subject lock only. If
+        // either committed during the call, nothing is recorded and the launch is reported as withdrawn or gone (its URL
+        // never reaches the candidate); the cascade or the erasure revokes the unused launch code. A webhook-set state is
+        // never rewound: only created becomes launched.
+        var timestamp = now.UtcDateTime;
+        var marked = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts
+                SET state = CASE WHEN state = {ProviderAttemptStates.Created} THEN {ProviderAttemptStates.Launched} ELSE state END,
+                    last_launched_at = {timestamp}, updated_at = {timestamp}
+              WHERE organization_id = {organizationId} AND id = {attemptId} AND withdrawal_state IS NULL
+                AND provider_erasure_requested_at IS NULL
+             """, cancellationToken).ConfigureAwait(false);
+        if (marked == 0)
+        {
+            await _db.Entry(attempt).ReloadAsync(cancellationToken).ConfigureAwait(false);
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new LockedLaunch(
+                attempt.ProviderErasureRequestedAt is not null ? LockedLaunchOutcome.NotFound : LockedLaunchOutcome.ConsentWithdrawn,
+                call, attempt.State);
+        }
+
+        AddAudit(organizationId, null, "assessment_provider_launched", attemptId, new Dictionary<string, object?>
+        {
+            ["candidateId"] = attempt.CandidateId,
+            ["instrument"] = attempt.Instrument,
+            ["delivery"] = call.Value!.Delivery,
+            ["mode"] = "hosted",
+        });
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new LockedLaunch(LockedLaunchOutcome.Called, call,
+            attempt.State == ProviderAttemptStates.Created ? ProviderAttemptStates.Launched : attempt.State);
     }
 
     public async Task<IReadOnlyList<ProviderFitRow>> GetFitRowsAsync(
@@ -524,7 +574,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         new(a.Id, a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument, a.State, a.JobRelatednessReason, a.Locale,
             a.TimeMultiplier, a.Aids, ToOffset(a.RequestedExpiresAt), a.ProviderSubjectId, a.ProviderAssignmentId,
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
-            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt));
+            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand, a.LatestResultId);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

@@ -170,7 +170,7 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         };
         await assign.AssignAsync(FakeRepository.Org, Guid.NewGuid(),
             new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
-                [new AssignInstrumentItem("lia", null)], null, 1m, [], null), Now, CancellationToken.None);
+                [new AssignInstrumentItem("lia", null)], null, 1m, [], null, ProviderAgeBands.Adult), Now, CancellationToken.None);
         _repository.WithdrawnCandidates.Add(FakeRepository.Candidate);
 
         var outcome = await UseCase.StageAndPropagateAsync(FakeRepository.Org, FakeRepository.Candidate, Now, CancellationToken.None);
@@ -221,7 +221,7 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
         await new AssignProviderInstrumentsUseCase(_repository, _provider).AssignAsync(FakeRepository.Org, Guid.NewGuid(),
             new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
-                [new AssignInstrumentItem("lia", null)], null, 1m, [], null), Now, CancellationToken.None);
+                [new AssignInstrumentItem("lia", null)], null, 1m, [], null, ProviderAgeBands.Adult), Now, CancellationToken.None);
         Assert.Null(_repository.Attempts.Single().ProviderSubjectId);
 
         var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);

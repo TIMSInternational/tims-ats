@@ -559,12 +559,17 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'interleavings, the erasure tombstone, the typed client over a fake HTTP handler) and Tims.UnitTests Assessments/Providers ' +
       '(signature + replay window, consent gate, #312 withdrawal at assign and launch, idempotency, result mapping). ' +
       'The DSAR export and erasure routes (owner default D15) are platform-owner only, like bindings, and the erasure ' +
-      'calls the remote provider: covered by the same ProviderEndpointTests (401/403, export, erasure, unknown candidate).',
+      'calls the remote provider: covered by the same ProviderEndpointTests (401/403, export, erasure, unknown candidate). ' +
+      'The two candidate-portal reads (D16: the attempt list and the consent templates) are authorized like the launch, ' +
+      'by a CONFIRMED candidate email, never a role, and the templates come from the remote provider: covered by the same ' +
+      "ProviderEndpointTests (the dark flag, 401/403, only the candidate's own attempts, the 404 on another's attempt).",
     routes: [
       'POST /assessments/provider-assignments',
       'POST /assessments/provider-assignments/{attemptId}/cancel',
       'POST /platform/assessment-providers/bindings',
       'POST /portal/assessment-attempts/{attemptId}/launch',
+      'GET /portal/assessment-attempts',
+      'GET /portal/assessment-attempts/{attemptId}/consent-templates',
       'POST /webhooks/tims-assessments',
       'GET /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export',
       'POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure',
@@ -659,8 +664,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         213 → 217 (PR #427, FIT v2, merged in release/assessments-fit-provider): the requirements writer,
     //         the review-state read and the two essay-grading routes, all C#-only and allowlisted in their own
     //         group above.
-    //         217 → 218 (release slice "fit"): the candidate page's fit-scores read joins that group.
-    expect(deployed.size).toBe(218);
+    //         217 → 219 (release/assessments-fit-provider, D16): the candidate portal's attempt list and consent
+    //         templates join the AS-5 group.
+    //         219 → 220 (release slice "fit"): the candidate page's fit-scores read joins the FIT v2 group.
+    expect(deployed.size).toBe(220);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -742,8 +749,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 114 → 115 (AS-5 review): the staff cancel joins that group.
     // 115 → 117 (AS-5, D15): the DSAR export and erasure routes join that group.
     // 117 → 121 (PR #427, release/assessments-fit-provider): FIT v2's four C#-only routes, in their own group.
-    // 121 → 122 (release slice "fit"): the candidate fit-scores read joins that group.
-    expect(allowlistNormalised.length).toBe(122);
+    // 121 → 123 (release/assessments-fit-provider, D16): the two candidate-portal reads join the AS-5 group.
+    // 123 → 124 (release slice "fit"): the candidate fit-scores read joins the FIT v2 group.
+    expect(allowlistNormalised.length).toBe(124);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

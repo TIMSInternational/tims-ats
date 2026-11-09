@@ -88,6 +88,28 @@ public sealed class ProviderAttemptEntity
     /// <summary>When the latest in-flight consent capture began (database clock); null when none is in flight.</summary>
     public DateTime? ConsentCaptureStartedAt { get; set; }
 
+    /// <summary>
+    /// The consent purposes the provider still lacks for this assignment (its <c>missing_consents</c>), as last seen: at
+    /// create, on a poll, on a launch's <c>consent_required</c>, and minus each purpose a launch recorded. What the
+    /// candidate portal shows as "consent needed".
+    /// </summary>
+    public string[] MissingConsents { get; set; } = [];
+
+    /// <summary>
+    /// D17 polling lease: the poller instance that claimed this attempt and until when (database clock). A claim is one
+    /// conditional UPDATE (lease free or expired, <c>FOR UPDATE SKIP LOCKED</c>), so two instances never poll one attempt
+    /// at once. Both null when unclaimed.
+    /// </summary>
+    public Guid? PollLeaseOwner { get; set; }
+
+    public DateTime? PollLeaseUntil { get; set; }
+
+    /// <summary>When the poller last finished with this attempt (database clock); null when never polled.</summary>
+    public DateTime? LastPolledAt { get; set; }
+
+    /// <summary>The age band HR attested at assignment (<c>18_plus</c> or <c>16_17</c>), sent as <c>age_attestation</c>.</summary>
+    public string? AgeBand { get; set; }
+
     public Guid AssignedById { get; set; }
 
     public DateTime CreatedAt { get; set; }
@@ -257,6 +279,8 @@ public sealed class ProviderOrganizationRef
     public Guid Id { get; set; }
 
     public string Name { get; set; } = string.Empty;
+
+    public string Slug { get; set; } = string.Empty;
 
     public bool IsActive { get; set; }
 

@@ -477,9 +477,9 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         await using var db = fixture.NewContext();
         var repository = new AssessmentProviderRepository(db);
 
-        var export = await repository.ExportCandidateAsync(Org, AssessmentProviderSchemaFixture.CandidateA, actor,
+        var export = await repository.ExportCandidateAsync(Org, AssessmentProviderSchemaFixture.CandidateA, actor, 2,
             DateTimeOffset.UtcNow, CancellationToken.None);
-        var foreign = await repository.ExportCandidateAsync(Org, AssessmentProviderSchemaFixture.CandidateB, actor,
+        var foreign = await repository.ExportCandidateAsync(Org, AssessmentProviderSchemaFixture.CandidateB, actor, 0,
             DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Contains(export!.Attempts, a => a.AttemptId == AssessmentProviderSchemaFixture.AttemptA);
@@ -488,6 +488,8 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         Assert.Null(foreign); // another org's candidate is not found, never exported
         Assert.Equal(1L, await fixture.ScalarAsync(
             $"SELECT count(*) FROM audit_logs WHERE action = 'assessment_provider_subject_exported' AND actor_id = '{actor}'"));
+        Assert.Equal("2", await fixture.ScalarAsync(
+            $"SELECT metadata->>'providerExports' FROM audit_logs WHERE action = 'assessment_provider_subject_exported' AND actor_id = '{actor}'"));
     }
 
     [Fact]

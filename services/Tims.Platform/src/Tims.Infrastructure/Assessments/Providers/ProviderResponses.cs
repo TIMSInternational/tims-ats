@@ -55,6 +55,71 @@ internal static partial class ProviderResponses
         return instruments;
     }
 
+    /// <summary>
+    /// <c>ConsentTemplate</c> for the purpose asked for: a <c>text_version</c> (the ContentVersion shape), a locale, a title
+    /// and 1..50 plain-text blocks, each one of the four <c>RichTextBlock</c> kinds with the contract's bounds. Anything
+    /// else (a markup-bearing block type, an oversized text) refuses the whole template: a consent is never shown partially.
+    /// </summary>
+    public static ProviderConsentTemplate? ConsentTemplate(JsonElement root, string purpose)
+    {
+        if (root.ValueKind != JsonValueKind.Object || Str(root, "purpose") != purpose
+            || Str(root, "text_version", 64) is not { } textVersion || !ProviderFormats.IsContentVersion(textVersion)
+            || Str(root, "locale") is not { } locale || !ProviderFormats.IsLocale(locale)
+            || Str(root, "title", 200) is not { } title
+            || !root.TryGetProperty("blocks", out var blocks) || blocks.ValueKind != JsonValueKind.Array
+            || blocks.GetArrayLength() is < 1 or > 50)
+        {
+            return null;
+        }
+
+        var parsed = new List<ConsentTextBlock>();
+        foreach (var block in blocks.EnumerateArray())
+        {
+            ConsentTextBlock? item = Str(block, "type") switch
+            {
+                "paragraph" when Str(block, "text", 4000) is { } text => new ConsentTextBlock("paragraph", text),
+                "heading" when Str(block, "text", 200) is { } text && block.TryGetProperty("level", out var level)
+                    && level.TryGetInt32(out var n) && n is >= 1 and <= 3 => new ConsentTextBlock("heading", text, n),
+                "callout" when Str(block, "text", 1000) is { } text && Str(block, "tone") is ({ } tone and ("info" or "warning"))
+                    => new ConsentTextBlock("callout", text, Tone: tone),
+                "list" when block.TryGetProperty("ordered", out var ordered)
+                    && ordered.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    && ListItems(block) is { Count: >= 1 and <= 30 } items
+                    => new ConsentTextBlock("list", null, Ordered: ordered.GetBoolean(), Items: items),
+                _ => null,
+            };
+            if (item is null)
+            {
+                return null;
+            }
+
+            parsed.Add(item);
+        }
+
+        return new ProviderConsentTemplate(purpose, textVersion, locale, title, parsed, StrArray(root, "disclosures") ?? []);
+    }
+
+    private static List<string>? ListItems(JsonElement block)
+    {
+        if (!block.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() > 30)
+        {
+            return null;
+        }
+
+        var values = new List<string>();
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || item.GetString() is not { Length: > 0 and <= 1000 } value)
+            {
+                return null;
+            }
+
+            values.Add(value);
+        }
+
+        return values;
+    }
+
     public static ProviderTenant? Tenant(JsonElement root) =>
         GuidOf(root, "tenant_id") is { } id && Str(root, "external_org_ref") is { } externalRef && Str(root, "status") is { } status
             ? new ProviderTenant(id, externalRef, status)
@@ -81,8 +146,17 @@ internal static partial class ProviderResponses
             return null;
         }
 
+        // result_id and the sitting timestamps are nullable in the contract; a value that is present must be well formed.
+        if (!OptionalGuid(root, "result_id", out var resultId) || !OptionalTimestamp(root, "started_at", out var startedAt)
+            || !OptionalTimestamp(root, "completed_at", out var completedAt)
+            || !OptionalTimestamp(root, "voided_at", out var voidedAt))
+        {
+            return null;
+        }
+
         return new ProviderAssignment(
-            id, tenant, subject, instrument, version, content, status, required, missing, expiresAt, Str(root, "external_ref", 128));
+            id, tenant, subject, instrument, version, content, status, required, missing, expiresAt, Str(root, "external_ref", 128),
+            resultId, startedAt, completedAt, voidedAt);
     }
 
     public static ProviderConsentRecord? Consent(JsonElement root) =>
@@ -111,6 +185,30 @@ internal static partial class ProviderResponses
         }
 
         return records;
+    }
+
+    /// <summary>
+    /// <c>SubjectExport</c>: the subject named is the one asked for, <c>generated_at</c> is a timestamp, and the six
+    /// sections are arrays. Kept verbatim (the provider's own document); unknown extra fields are kept too.
+    /// </summary>
+    public static ProviderHeldExport? SubjectExport(JsonElement root, Guid subjectId)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("subject", out var subject) || GuidOf(subject, "subject_id") != subjectId
+            || Timestamp(root, "generated_at") is null)
+        {
+            return null;
+        }
+
+        foreach (var section in new[] { "consents", "assignments", "sessions", "results", "media", "access_log" })
+        {
+            if (!root.TryGetProperty(section, out var items) || items.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+        }
+
+        return new ProviderHeldExport(subjectId, root.GetRawText());
     }
 
     public static ProviderErasureReceipt? ErasureReceipt(JsonElement root) =>
@@ -142,35 +240,60 @@ internal static partial class ProviderResponses
                 : null;
     }
 
+    /// <summary>
+    /// A <c>mode: hosted</c> launch (D16). Refused as off contract: another assignment, a mode other than <c>hosted</c>,
+    /// ANY candidate token or token type (a hosted launch never hands the host a credential for the sitting, and the ATS
+    /// must never relay one), a missing or non-https <c>hosted_url</c>, and a native launch whose <c>frame_ancestors</c>
+    /// is not a list of at most 20 registered origins (<c>https://host[:port]</c>, lowercase, no path). A link-out has no
+    /// frame ancestors: it is never framed.
+    /// </summary>
     public static ProviderLaunch? Launch(JsonElement root, Guid expectedAssignmentId)
     {
-        if (GuidOf(root, "assignment_id") != expectedAssignmentId
-            || Str(root, "delivery") is not { } delivery
+        if (root.ValueKind != JsonValueKind.Object
+            || GuidOf(root, "assignment_id") != expectedAssignmentId
+            || Str(root, "delivery") is not ({ } delivery and ("native" or "link_out"))
+            || Str(root, "mode") != "hosted"
             || Timestamp(root, "expires_at") is not { } expiresAt
-            || Str(root, "api_base_url") is not { } apiBaseUrl || !IsHttps(apiBaseUrl))
+            || Str(root, "hosted_url", maxLength: 2048) is not { } hostedUrl || !IsHttps(hostedUrl)
+            || !IsNullOrAbsent(root, "candidate_token") || !IsNullOrAbsent(root, "token_type"))
         {
             return null;
         }
 
-        var token = Str(root, "candidate_token", maxLength: 4096);
-        var hostedUrl = Str(root, "hosted_url", maxLength: 2048);
-        if (hostedUrl is not null && !IsHttps(hostedUrl))
+        if (delivery == "link_out")
+        {
+            return new ProviderLaunch(delivery, expiresAt, hostedUrl, []);
+        }
+
+        if (!root.TryGetProperty("frame_ancestors", out var ancestors) || ancestors.ValueKind != JsonValueKind.Array
+            || ancestors.GetArrayLength() > 20)
         {
             return null;
         }
 
-        return delivery switch
+        var origins = new List<string>();
+        foreach (var origin in ancestors.EnumerateArray())
         {
-            "native" when token is { Length: >= 32 } && Str(root, "token_type") == "Bearer" =>
-                new ProviderLaunch(delivery, token, expiresAt, apiBaseUrl, hostedUrl),
-            "link_out" when token is null && hostedUrl is not null =>
-                new ProviderLaunch(delivery, null, expiresAt, apiBaseUrl, hostedUrl),
-            _ => null,
-        };
+            if (origin.ValueKind != JsonValueKind.String || origin.GetString() is not { Length: <= 262 } value
+                || !RegisteredOriginRegex().IsMatch(value) || origins.Contains(value, StringComparer.Ordinal))
+            {
+                return null;
+            }
+
+            origins.Add(value);
+        }
+
+        return new ProviderLaunch(delivery, expiresAt, hostedUrl, origins);
     }
 
-    /// <summary>An RFC 9457 problem → a failure with the stable code. 429 and 5xx are transient.</summary>
-    public static ProviderFailure Problem(int status, string text)
+    private static bool IsNullOrAbsent(JsonElement obj, string name) =>
+        !obj.TryGetProperty(name, out var node) || node.ValueKind == JsonValueKind.Null;
+
+    /// <summary>
+    /// An RFC 9457 problem → a failure with the stable code. 429, 5xx and 409 <c>idempotency_key_in_use</c> (an earlier
+    /// request with the same key is still being processed; the amended contract's Idempotency section) are transient.
+    /// </summary>
+    public static ProviderFailure Problem(int status, string text, TimeSpan? retryAfter = null)
     {
         var transient = status == 429 || status >= 500;
         var code = status switch
@@ -200,7 +323,32 @@ internal static partial class ProviderResponses
             // Not a problem document (a proxy's HTML error page, for example): keep the status-derived code.
         }
 
-        return new ProviderFailure(status, code, transient, missing);
+        if (status == 409 && code == ProviderFailure.IdempotencyKeyInUse)
+        {
+            transient = true;
+        }
+
+        return new ProviderFailure(status, code, transient, missing) { RetryAfter = retryAfter };
+    }
+
+    /// <summary>
+    /// <c>Retry-After</c> as delay-seconds (RFC 9110 §10.2.3) or an HTTP date, relative to <paramref name="now"/>; null
+    /// when absent or unreadable. Bounded to a day so a hostile value cannot park a caller.
+    /// </summary>
+    public static TimeSpan? RetryAfter(System.Net.Http.Headers.RetryConditionHeaderValue? header, DateTimeOffset now)
+    {
+        var delay = header switch
+        {
+            { Delta: { } delta } => delta,
+            { Date: { } date } => date - now,
+            _ => (TimeSpan?)null,
+        };
+        if (delay is not { } value)
+        {
+            return null;
+        }
+
+        return value < TimeSpan.Zero ? TimeSpan.Zero : value > TimeSpan.FromDays(1) ? TimeSpan.FromDays(1) : value;
     }
 
     private static bool IsHttps(string value) =>
@@ -214,6 +362,31 @@ internal static partial class ProviderResponses
 
     private static Guid? GuidOf(JsonElement obj, string name) =>
         Str(obj, name) is { } raw && Guid.TryParseExact(raw, "D", out var value) ? value : null;
+
+    // Absent or null: true with no value. Present: true only when it parses.
+    private static bool OptionalGuid(JsonElement obj, string name, out Guid? value)
+    {
+        value = null;
+        if (!obj.TryGetProperty(name, out var node) || node.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        value = GuidOf(obj, name);
+        return value is not null;
+    }
+
+    private static bool OptionalTimestamp(JsonElement obj, string name, out DateTimeOffset? value)
+    {
+        value = null;
+        if (!obj.TryGetProperty(name, out var node) || node.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        value = Timestamp(obj, name);
+        return value is not null;
+    }
 
     private static DateTimeOffset? Timestamp(JsonElement obj, string name) =>
         Str(obj, name) is { } raw && DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture,
@@ -245,4 +418,10 @@ internal static partial class ProviderResponses
 
     [GeneratedRegex("^[a-z][a-z0-9_]{0,63}$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     private static partial Regex ProblemCodeRegex();
+
+    // RegisteredOrigin (partner.v1 $defs): https, a lowercase host, an optional port; no path, no wildcard.
+    [GeneratedRegex(
+        "^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$",
+        RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
+    private static partial Regex RegisteredOriginRegex();
 }

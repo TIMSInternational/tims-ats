@@ -17,6 +17,13 @@ public interface IAssessmentProvider
     /// <summary>False when the client credentials, the base URL or the webhook secret are unset or placeholders.</summary>
     bool IsConfigured { get; }
 
+    /// <summary>
+    /// <c>GET /v1/catalog/consent-templates/{purpose}?locale=</c> (<c>catalog:read</c>): the counsel-reviewed text the host
+    /// shows before recording a consent with the returned <c>text_version</c>. Plain-text blocks only (never markup).
+    /// </summary>
+    Task<ProviderCall<ProviderConsentTemplate>> GetConsentTemplateAsync(
+        string purpose, string locale, CancellationToken cancellationToken);
+
     /// <summary><c>GET /v1/catalog/instruments</c> (<c>catalog:read</c>).</summary>
     Task<ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>> ListInstrumentsAsync(CancellationToken cancellationToken);
 
@@ -41,6 +48,14 @@ public interface IAssessmentProvider
     /// subject (DSAR). A 410 means the subject is already erased or erasure-pending.
     /// </summary>
     Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>GET /v1/subjects/{subject_id}/export</c> (DSAR access): everything the PROVIDER holds about the subject (consents,
+    /// assignments, sessions, results rendered for <c>tenant_hr</c>, media as short-lived links, its access log). Called
+    /// with a token for <c>subjects:export</c> ALONE. A 404 is returned as such only when <c>GET /v1/subjects/{id}</c>
+    /// confirms it (else <see cref="ProviderFailure.NotFoundUnconfirmed"/>); 410 means the subject is erased.
+    /// </summary>
+    Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken);
 
     /// <summary><c>GET /v1/subjects/{subject_id}/consents</c>: the subject's consent records.</summary>
     Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(Guid subjectId, CancellationToken cancellationToken);
@@ -78,8 +93,15 @@ public interface IAssessmentProvider
     Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken);
 
-    /// <summary><c>POST /v1/assignments/{id}/launch</c> with <c>mode: headless</c>.</summary>
-    Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken);
+    /// <summary>
+    /// <c>POST /v1/assignments/{id}/launch</c> with <c>mode: hosted</c> (owner default D16: release 1 runs every native
+    /// instrument in the TIMS hosted player, and the ATS links to its <c>hosted_url</c>; link-out instruments return the
+    /// provider's URL whatever the mode). No candidate token is ever requested or accepted. <paramref name="returnPath"/>
+    /// (a portal path such as <c>/careers/{slug}/dashboard</c>) becomes the launch's <c>return_url</c> on the configured
+    /// portal origin, which must be one of the partner client's registered origins; null, or no portal origin
+    /// configured, sends none.
+    /// </summary>
+    Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken);
 
     /// <summary><c>GET /v1/results/{id}?audience=tenant_hr</c>, parsed and validated.</summary>
     Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken);
@@ -113,11 +135,24 @@ public sealed class ProviderCall<T>
 /// <summary>
 /// A provider failure. <see cref="Code"/> is the contract's problem <c>code</c> when the provider answered with one
 /// (<c>consent_required</c>, <c>vacancy_version_mismatch</c>, …), else one of the local codes below.
-/// <see cref="Transient"/> is true for outages, 429 and 5xx: retrying the same idempotent call is safe and useful.
+/// <see cref="Transient"/> is true for outages, 429, 5xx and 409 <see cref="IdempotencyKeyInUse"/>: retrying the same
+/// idempotent call (same key, same body) is safe and useful. <see cref="RetryAfter"/> is the provider's
+/// <c>Retry-After</c>, when it sent one.
 /// </summary>
 public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transient, IReadOnlyList<string> MissingConsents)
 {
     public const string Unconfigured = "provider_unconfigured";
+
+    /// <summary>
+    /// 409 (contract, Idempotency): an earlier request with the same <c>Idempotency-Key</c> and body is still being
+    /// processed, so nothing was done for this one. Retry with the same key and body after <c>Retry-After</c>: once the
+    /// first request has finished, the retry gets its original response. Transient, and never a refusal: the first
+    /// request may still create the resource (or store the consent).
+    /// </summary>
+    public const string IdempotencyKeyInUse = "idempotency_key_in_use";
+
+    /// <summary>The provider's <c>Retry-After</c> (429, 503, 409 <see cref="IdempotencyKeyInUse"/>), when present.</summary>
+    public TimeSpan? RetryAfter { get; init; }
     public const string Unavailable = "provider_unavailable";
     public const string ContractViolation = "provider_contract_violation";
     public const string TokenUnavailable = "provider_token_unavailable";
@@ -136,15 +171,22 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     /// </summary>
     public const string SubjectDataRequired = "subject_data_required";
 
+    /// <summary>
+    /// Local: an attempt carries no attested age band, which the contract requires on every create
+    /// (<c>age_attestation</c>). Raised before anything is sent, so it proves nothing was created.
+    /// </summary>
+    public const string AgeAttestationRequired = "age_attestation_required";
+
     // Contract codes (tims-assessments.v1.yaml, Errors) that refuse a create OUTRIGHT: the provider validated the
-    // request and created nothing. Deliberately absent: idempotency_key_in_use (another request with this key is still
-    // creating it), idempotency_key_reused (an earlier body under this key may have created it), and any code this
-    // connector does not know (the contract may add codes in a minor version).
+    // request and created nothing. Deliberately absent: idempotency_key_in_use (a 409 contract code since the amended
+    // contract: another request with this key is still creating it), idempotency_key_reused (an earlier body under this
+    // key may have created it), and any code this connector does not know (the contract may add codes in a minor
+    // version).
     private static readonly string[] RefusalCodes =
     [
         "invalid_request", "insufficient_scope", "forbidden", "not_found", "vacancy_version_mismatch", "subject_erased",
         "validation_failed", "locale_not_supported", "instrument_version_not_available",
-        "instrument_not_offered_for_selection", "accommodation_not_supported", SubjectDataRequired,
+        "instrument_not_offered_for_selection", "accommodation_not_supported", SubjectDataRequired, "age_band_not_supported",
     ];
 
     /// <summary>
@@ -157,7 +199,7 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     public bool IsDefinitiveRefusal =>
         HttpStatus is >= 400 and < 500
             ? RefusalCodes.Contains(Code, StringComparer.Ordinal)
-            : HttpStatus is null && Code == SubjectDataRequired;
+            : HttpStatus is null && Code is SubjectDataRequired or AgeAttestationRequired;
 
     public static ProviderFailure Local(string code, bool transient) => new(null, code, transient, []);
 }
@@ -176,6 +218,18 @@ public sealed record ProviderCatalogInstrument(string Instrument, IReadOnlyList<
     public bool OfferedForSelection =>
         Versions.Any(v => v.SelectionAllowed && v.Status is "ga" or "beta");
 }
+
+/// <summary>
+/// A consent template (<c>ConsentTemplate</c>): the purpose, the <c>text_version</c> a consent is recorded against, and
+/// the text as plain blocks (<c>RichTextBlock</c>: paragraph, heading, list, callout), which the portal renders as text.
+/// </summary>
+public sealed record ProviderConsentTemplate(
+    string Purpose, string TextVersion, string Locale, string Title, IReadOnlyList<ConsentTextBlock> Blocks,
+    IReadOnlyList<string> Disclosures);
+
+/// <summary>One plain-text block: <c>paragraph</c>/<c>callout</c> (text), <c>heading</c> (text, level), <c>list</c> (items).</summary>
+public sealed record ConsentTextBlock(
+    string Type, string? Text, int? Level = null, bool? Ordered = null, IReadOnlyList<string>? Items = null, string? Tone = null);
 
 public sealed record ProviderTenantRequest(string ExternalOrgRef, string DisplayName, string DefaultLocale);
 
@@ -197,7 +251,8 @@ public sealed record ProviderSubject(Guid SubjectId, string Status, bool HasName
 
 /// <summary>
 /// One assignment, always purpose <c>selection</c> with the vacancy and the job-relatedness reason. Accommodations
-/// carry the adjustment only (multiplier + aids), never its reason.
+/// carry the adjustment only (multiplier + aids), never its reason. <see cref="AgeBand"/> is the attested band sent as
+/// <c>age_attestation</c> (required by the amended contract), never an age or a date of birth.
 /// </summary>
 public sealed record ProviderAssignmentRequest(
     Guid TenantId,
@@ -209,8 +264,13 @@ public sealed record ProviderAssignmentRequest(
     decimal TimeMultiplier,
     IReadOnlyList<string> Aids,
     DateTimeOffset? ExpiresAt,
-    string ExternalRef);
+    string ExternalRef,
+    string AgeBand);
 
+/// <summary>
+/// An assignment as the provider holds it. <see cref="ResultId"/> and the sitting timestamps are what the D17 poller
+/// reads to advance an attempt without a webhook (null until they happen, or when an older provider omits them).
+/// </summary>
 public sealed record ProviderAssignment(
     Guid AssignmentId,
     Guid TenantId,
@@ -222,7 +282,11 @@ public sealed record ProviderAssignment(
     IReadOnlyList<string> RequiredConsents,
     IReadOnlyList<string> MissingConsents,
     DateTimeOffset ExpiresAt,
-    string? ExternalRef = null);
+    string? ExternalRef = null,
+    Guid? ResultId = null,
+    DateTimeOffset? StartedAt = null,
+    DateTimeOffset? CompletedAt = null,
+    DateTimeOffset? VoidedAt = null);
 
 public sealed record ProviderConsentRequest(
     string Purpose, string TextVersion, string Locale, DateTimeOffset GrantedAt, string HostRecordRef,
@@ -232,6 +296,19 @@ public sealed record ProviderConsentRecord(Guid ConsentId, string Purpose, strin
 
 /// <summary>The names and email a link-out instrument needs, set on an existing subject (merge semantics).</summary>
 public sealed record ProviderSubjectUpdate(string GivenName, string FamilyName, string Email);
+
+/// <summary>
+/// The provider's DSAR export of one subject (<c>SubjectExport</c>), checked for shape and kept as the provider's own JSON.
+/// It holds personal data and short-lived media links meant for the data subject only, so <see cref="ToString"/> redacts.
+/// </summary>
+public sealed class ProviderHeldExport(Guid subjectId, string json)
+{
+    public Guid SubjectId { get; } = subjectId;
+
+    public string Json { get; } = json;
+
+    public override string ToString() => $"ProviderHeldExport {{ SubjectId = {SubjectId}, Json = [redacted] }}";
+}
 
 /// <summary>The provider's receipt for an erasure request (<c>accepted</c>, <c>in_progress</c> or <c>completed</c>).</summary>
 public sealed record ProviderErasureReceipt(Guid SubjectId, string Status);
@@ -243,21 +320,22 @@ public sealed class ProviderAssignmentLookup(ProviderAssignment? assignment)
 }
 
 /// <summary>
-/// A launch. Deliberately a class with a redacting <see cref="ToString"/>: a record would print the candidate token
-/// into any log line that formats it. The token goes only into the candidate's own response body.
+/// A hosted launch (D16). <see cref="HostedUrl"/> is the TIMS hosted player's URL (native) or the provider's
+/// questionnaire URL (link-out). A native player URL carries a single-use launch code, which is a bearer credential until
+/// it is spent or expires (<see cref="ExpiresAt"/>, at most 300 s): it goes only into the candidate's own response body,
+/// is never stored or logged, so this is a class with a redacting <see cref="ToString"/>. <see cref="FrameAncestors"/>
+/// lists the registered origins allowed to frame a native player; it is empty for a link-out (never framed).
 /// </summary>
 public sealed class ProviderLaunch(
-    string delivery, string? candidateToken, DateTimeOffset expiresAt, string apiBaseUrl, string? hostedUrl)
+    string delivery, DateTimeOffset expiresAt, string hostedUrl, IReadOnlyList<string> frameAncestors)
 {
     public string Delivery { get; } = delivery;
 
-    public string? CandidateToken { get; } = candidateToken;
-
     public DateTimeOffset ExpiresAt { get; } = expiresAt;
 
-    public string ApiBaseUrl { get; } = apiBaseUrl;
+    public string HostedUrl { get; } = hostedUrl;
 
-    public string? HostedUrl { get; } = hostedUrl;
+    public IReadOnlyList<string> FrameAncestors { get; } = frameAncestors;
 
-    public override string ToString() => $"ProviderLaunch {{ Delivery = {Delivery}, CandidateToken = [redacted] }}";
+    public override string ToString() => $"ProviderLaunch {{ Delivery = {Delivery}, HostedUrl = [redacted] }}";
 }

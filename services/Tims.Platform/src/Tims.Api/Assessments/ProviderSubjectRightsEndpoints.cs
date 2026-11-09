@@ -11,8 +11,11 @@ namespace Tims.Api.Assessments;
 /// AS-5 data-subject rights over the provider connector (owner default D15, 2026-11-08), platform owner only (the DSAR
 /// workflow's own gate), dark behind <c>Platform:AssessmentProvidersEnabled</c>:
 /// <list type="bullet">
-///   <item><description><c>GET .../candidates/{candidateId}/export</c> — the candidate's provider attempts and stored
-///   results from the ATS's own tables (DSAR access), audited fail-closed. <c>no-store</c>.</description></item>
+///   <item><description><c>GET .../candidates/{candidateId}/export</c> — DSAR access: the candidate's provider attempts and
+///   stored results from the ATS's own tables, plus the provider's own export of each of the candidate's provider subjects
+///   (<c>GET /v1/subjects/{id}/export</c>, scope <c>subjects:export</c>; media as short-lived links, to be delivered to
+///   the data subject only), audited fail-closed. 503 when a provider export cannot be read (nothing returned).
+///   <c>no-store</c>.</description></item>
 ///   <item><description><c>POST .../candidates/{candidateId}/erasure</c> — asks the provider to erase every provider
 ///   subject of the candidate (<c>DELETE /v1/subjects/{id}</c>); the ATS's stored results go when the provider's
 ///   <c>subject.erased</c> arrives. 202 when every subject's erasure was accepted, 503 when some must be retried.
@@ -44,14 +47,21 @@ public static class ProviderSubjectRightsEndpoints
                     return Results.StatusCode(StatusCodes.Status401Unauthorized);
                 }
 
-                var export = await useCase.ExportAsync(
+                var result = await useCase.ExportAsync(
                     organizationId, candidateId, actorId, timeProvider.GetUtcNow(), cancellationToken);
-                return export is null ? Results.NotFound() : Results.Ok(export);
+                return result.Outcome switch
+                {
+                    ProviderExportOutcome.Exported => Results.Ok(result.Export),
+                    ProviderExportOutcome.CandidateNotFound => Results.NotFound(),
+                    ProviderExportOutcome.ProviderUnconfigured => Results.Json(
+                        new { error = "provider_unconfigured" }, statusCode: StatusCodes.Status503ServiceUnavailable),
+                    _ => Results.Json(new { error = "provider_export_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable),
+                };
             })
             .RequireAuthorization()
             .Produces<ProviderSubjectExport>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized).Produces(StatusCodes.Status403Forbidden)
-            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status503ServiceUnavailable)
             .WithName("AssessmentProviderSubjectExport")
             .WithTags("AssessmentProviders");
 

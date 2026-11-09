@@ -19,7 +19,11 @@ namespace Tims.Infrastructure.Assessments.Providers;
 /// retries once with a fresh token.</item>
 /// <item>Every create sends <c>Idempotency-Key</c>; request bodies are built key by key (snake_case, nulls omitted).</item>
 /// <item>Errors are RFC 9457 problem documents: the stable <c>code</c> (and <c>missing_consents</c>) is surfaced;
-/// network errors, timeouts, 429 and 5xx are transient.</item>
+/// network errors, timeouts, 429, 5xx and 409 <c>idempotency_key_in_use</c> are transient.</item>
+/// <item>409 <c>idempotency_key_in_use</c> on a keyed request (the amended contract: an earlier request with the same key
+/// and body is still being processed, and nothing was done for this one) is retried ONCE in place with the same key and
+/// body when its <c>Retry-After</c> is at most <see cref="MaxInlineRetryAfter"/>; otherwise it is returned as transient
+/// with the delay, and the caller retries later with the same key and body.</item>
 /// <item>Every response is validated before use; an off-contract response is a non-transient contract violation.</item>
 /// <item>Logs carry the operation and HTTP status only — never tokens, secrets, bodies or ids of people.</item>
 /// </list>
@@ -28,10 +32,20 @@ public sealed class TimsAssessmentsClient(
     HttpClient http,
     ClientCredentialsTokenCache tokens,
     IOptions<AssessmentProviderOptions> options,
-    ILogger<TimsAssessmentsClient> logger) : IAssessmentProvider
+    ILogger<TimsAssessmentsClient> logger,
+    TimeProvider timeProvider) : IAssessmentProvider
 {
     public const string HttpClientName = "tims-assessments";
     public const int MaxResponseBytes = 262_144;
+
+    /// <summary>
+    /// The longest <c>Retry-After</c> an <c>idempotency_key_in_use</c> is waited out in place (once). Longer, the failure
+    /// goes back to the caller: a webhook, a launch or an assign must not hold its request that long. A 409 without
+    /// <c>Retry-After</c> is waited out for <see cref="DefaultInUseRetryAfter"/>.
+    /// </summary>
+    public static readonly TimeSpan MaxInlineRetryAfter = TimeSpan.FromSeconds(2);
+
+    public static readonly TimeSpan DefaultInUseRetryAfter = TimeSpan.FromSeconds(1);
 
     private readonly AssessmentProviderOptions _options = options.Value;
 
@@ -41,6 +55,19 @@ public sealed class TimsAssessmentsClient(
         SendAsync<IReadOnlyList<ProviderCatalogInstrument>>(
             HttpMethod.Get, "v1/catalog/instruments", null, null, "list_instruments", ProviderResponses.Catalog,
             cancellationToken);
+
+    public Task<ProviderCall<ProviderConsentTemplate>> GetConsentTemplateAsync(
+        string purpose, string locale, CancellationToken cancellationToken)
+    {
+        if (!ConsentPurposes.IsKnown(purpose) || !ProviderFormats.IsLocale(locale))
+        {
+            return Task.FromResult(ProviderCall<ProviderConsentTemplate>.Fail(
+                ProviderFailure.Local(ProviderFailure.ContractViolation, transient: false)));
+        }
+
+        return SendAsync(HttpMethod.Get, $"v1/catalog/consent-templates/{purpose}?locale={Uri.EscapeDataString(locale)}", null,
+            null, "get_consent_template", root => ProviderResponses.ConsentTemplate(root, purpose), cancellationToken);
+    }
 
     public Task<ProviderCall<ProviderTenant>> EnsureTenantAsync(
         ProviderTenantRequest request, string idempotencyKey, CancellationToken cancellationToken)
@@ -108,6 +135,26 @@ public sealed class TimsAssessmentsClient(
 
         return ProviderCall<ProviderErasureReceipt>.Fail(
             await ConfirmSubjectGoneAsync(subjectId, "erase_subject", cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// <c>GET /v1/subjects/{id}/export</c> with a token for <c>subjects:export</c> alone. A 404 is returned as such only when
+    /// <see cref="ConfirmSubjectGoneAsync"/> confirms it: a provider that does not serve the route answers the same 404, and
+    /// a DSAR export must never report "nothing held" for a subject the provider still serves.
+    /// </summary>
+    public async Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        var exported = await SendAsync(HttpMethod.Get, $"v1/subjects/{subjectId:D}/export", null, null, "export_subject",
+                root => ProviderResponses.SubjectExport(root, subjectId), cancellationToken,
+                scopes: AssessmentProviderOptions.ExportScope)
+            .ConfigureAwait(false);
+        if (exported.Ok || exported.Failure!.HttpStatus != 404)
+        {
+            return exported;
+        }
+
+        return ProviderCall<ProviderHeldExport>.Fail(
+            await ConfirmSubjectGoneAsync(subjectId, "export_subject", cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>
@@ -233,6 +280,7 @@ public sealed class TimsAssessmentsClient(
                 ["aids"] = aids,
             },
             ["external_ref"] = request.ExternalRef,
+            ["age_attestation"] = new JsonObject { ["age_band"] = request.AgeBand },
         };
         if (request.ExpiresAt is { } expiresAt)
         {
@@ -308,9 +356,30 @@ public sealed class TimsAssessmentsClient(
             ProviderResponses.Consent, cancellationToken);
     }
 
-    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/launch", new JsonObject { ["mode"] = "headless" },
-            null, "launch", root => ProviderResponses.Launch(root, assignmentId), cancellationToken);
+    /// <summary>
+    /// <c>POST /v1/assignments/{id}/launch</c> with <c>mode: hosted</c> (D16). <c>return_url</c> = the configured portal
+    /// origin + <paramref name="returnPath"/>, only when both are present and the path is a plain absolute path (no
+    /// scheme, host, query or fragment can be smuggled in). The response is validated by <see cref="ProviderResponses.Launch"/>.
+    /// </summary>
+    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken)
+    {
+        var body = new JsonObject { ["mode"] = "hosted" };
+        if (ReturnUrl(returnPath) is { } returnUrl)
+        {
+            body["return_url"] = returnUrl;
+        }
+
+        return SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/launch", body, null, "launch",
+            root => ProviderResponses.Launch(root, assignmentId), cancellationToken);
+    }
+
+    internal string? ReturnUrl(string? returnPath) =>
+        _options.ResolvedPortalOrigin is { } origin && returnPath is { Length: > 1 and <= 512 }
+        && System.Text.RegularExpressions.Regex.IsMatch(returnPath, "^/[A-Za-z0-9/_-]+$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100))
+        && !returnPath.Contains("//", StringComparison.Ordinal)
+            ? origin + returnPath
+            : null;
 
     public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken) =>
         SendAsync(HttpMethod.Get, $"v1/results/{resultId:D}?audience=tenant_hr", null, null, "get_result",
@@ -321,7 +390,7 @@ public sealed class TimsAssessmentsClient(
 
     private async Task<ProviderCall<T>> SendAsync<T>(
         HttpMethod method, string pathAndQuery, JsonObject? body, string? idempotencyKey, string operation,
-        Func<JsonElement, T?> parse, CancellationToken cancellationToken)
+        Func<JsonElement, T?> parse, CancellationToken cancellationToken, string? scopes = null)
         where T : class
     {
         if (!IsConfigured)
@@ -331,9 +400,11 @@ public sealed class TimsAssessmentsClient(
 
         // Relative join (D18): a base path such as https://www.timssuite.com/api is kept, never replaced by /v1.
         var uri = new Uri(_options.ResolvedBaseUri, pathAndQuery);
-        for (var attempt = 0; attempt < 2; attempt++)
+        var unauthorizedRetried = false;
+        var inUseRetried = false;
+        while (true)
         {
-            var token = await tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            var token = await tokens.GetTokenAsync(scopes, cancellationToken).ConfigureAwait(false);
             if (token is null)
             {
                 return ProviderCall<T>.Fail(ProviderFailure.Local(ProviderFailure.TokenUnavailable, transient: true));
@@ -354,12 +425,14 @@ public sealed class TimsAssessmentsClient(
 
             HttpStatusCode status;
             string text;
+            TimeSpan? retryAfter;
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(_options.RequestTimeoutSeconds));
                 using var response = await http.SendAsync(request, timeout.Token).ConfigureAwait(false);
                 status = response.StatusCode;
+                retryAfter = ProviderResponses.RetryAfter(response.Headers.RetryAfter, timeProvider.GetUtcNow());
                 text = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
             }
             catch (HttpRequestException)
@@ -373,9 +446,15 @@ public sealed class TimsAssessmentsClient(
                 return ProviderCall<T>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, transient: true));
             }
 
-            if (status == HttpStatusCode.Unauthorized && attempt == 0)
+            if (status == HttpStatusCode.Unauthorized)
             {
-                tokens.Invalidate();
+                if (unauthorizedRetried)
+                {
+                    return ProviderCall<T>.Fail(new ProviderFailure(401, "unauthorized", false, []));
+                }
+
+                unauthorizedRetried = true;
+                tokens.Invalidate(scopes);
                 continue;
             }
 
@@ -391,11 +470,22 @@ public sealed class TimsAssessmentsClient(
                 return ProviderCall<T>.Success(parsed);
             }
 
-            logger.LogWarning("TIMS Assessments {Operation} failed with {Status}", operation, (int)status);
-            return ProviderCall<T>.Fail(ProviderResponses.Problem((int)status, text));
-        }
+            var failure = ProviderResponses.Problem((int)status, text, retryAfter);
+            if (failure.Code == ProviderFailure.IdempotencyKeyInUse && idempotencyKey is not null && !inUseRetried
+                && (failure.RetryAfter ?? DefaultInUseRetryAfter) <= MaxInlineRetryAfter)
+            {
+                // The first request with this key is still running and nothing was done for this one: wait it out once,
+                // then send the SAME key and body, which then returns the first request's original response.
+                inUseRetried = true;
+                logger.LogInformation("TIMS Assessments {Operation}: idempotency key in use, retrying once", operation);
+                await Task.Delay(failure.RetryAfter ?? DefaultInUseRetryAfter, timeProvider, cancellationToken)
+                    .ConfigureAwait(false);
+                continue;
+            }
 
-        return ProviderCall<T>.Fail(new ProviderFailure(401, "unauthorized", false, []));
+            logger.LogWarning("TIMS Assessments {Operation} failed with {Status}", operation, (int)status);
+            return ProviderCall<T>.Fail(failure);
+        }
     }
 
     private static T? TryParse<T>(string text, Func<JsonElement, T?> parse)

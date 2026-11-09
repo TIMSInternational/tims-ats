@@ -34,6 +34,24 @@ internal sealed class FakeProvider : IAssessmentProvider
 
     public Guid SubjectId { get; set; } = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
 
+    public List<(string Purpose, string Locale)> TemplateRequests { get; } = [];
+
+    public Func<string, string, ProviderCall<ProviderConsentTemplate>>? OnConsentTemplate { get; set; }
+
+    public static ProviderConsentTemplate Template(string purpose, string locale) => new(
+        purpose, purpose + "-v2026-11", locale, "Consentimiento: " + purpose,
+        [new ConsentTextBlock("paragraph", "Texto de prueba."), new ConsentTextBlock("list", null, Ordered: false, Items: ["Uno"])],
+        ["purpose", "retention"]);
+
+    public Task<ProviderCall<ProviderConsentTemplate>> GetConsentTemplateAsync(
+        string purpose, string locale, CancellationToken cancellationToken)
+    {
+        Calls.Add("consent_template:" + purpose + ":" + locale);
+        TemplateRequests.Add((purpose, locale));
+        return Task.FromResult(OnConsentTemplate?.Invoke(purpose, locale)
+            ?? ProviderCall<ProviderConsentTemplate>.Success(Template(purpose, locale)));
+    }
+
     public Task<ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>> ListInstrumentsAsync(CancellationToken cancellationToken)
     {
         Calls.Add("catalog");
@@ -102,6 +120,21 @@ internal sealed class FakeProvider : IAssessmentProvider
         ErasedSubjects.Add(subjectId);
         return Task.FromResult(OnEraseSubject?.Invoke(subjectId)
             ?? ProviderCall<ProviderErasureReceipt>.Success(new ProviderErasureReceipt(subjectId, "accepted")));
+    }
+
+    public List<Guid> ExportedSubjects { get; } = [];
+
+    public Func<Guid, ProviderCall<ProviderHeldExport>>? OnExportSubject { get; set; }
+
+    public static string ExportJson(Guid subjectId) =>
+        $$"""{"subject":{"subject_id":"{{subjectId}}","status":"active"},"generated_at":"2026-11-09T14:00:00Z","consents":[],"assignments":[],"sessions":[],"results":[],"media":[{"media_id":"{{Guid.Empty}}","kind":"speaking_audio"}],"access_log":[]}""";
+
+    public Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        Calls.Add("export_subject");
+        ExportedSubjects.Add(subjectId);
+        return Task.FromResult(OnExportSubject?.Invoke(subjectId)
+            ?? ProviderCall<ProviderHeldExport>.Success(new ProviderHeldExport(subjectId, ExportJson(subjectId))));
     }
 
     /// <summary>The consents each subject holds at the provider; a withdrawal marks one withdrawn.</summary>
@@ -185,9 +218,17 @@ internal sealed class FakeProvider : IAssessmentProvider
             Guid.NewGuid(), request.TenantId, request.SubjectId, request.Instrument, "1.0", "content-2026.11.1", "created",
             ["assessment"], ["assessment"], new DateTimeOffset(2026, 11, 23, 14, 0, 0, TimeSpan.Zero), request.ExternalRef));
 
+    /// <summary>An asynchronous answer that sees the call's cancellation (a slow provider).</summary>
+    public Func<Guid, CancellationToken, Task<ProviderCall<ProviderAssignment>>>? OnGetAssignmentAsync { get; set; }
+
     public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
     {
         Calls.Add("get_assignment");
+        if (OnGetAssignmentAsync is { } slow)
+        {
+            return slow(assignmentId, cancellationToken);
+        }
+
         return Task.FromResult(OnGetAssignment?.Invoke(assignmentId)
             ?? ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])));
     }
@@ -225,12 +266,16 @@ internal sealed class FakeProvider : IAssessmentProvider
         return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(record));
     }
 
-    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken)
+    public const string PlayerUrl = "https://player.example.com/launch/single-use-code";
+
+    public List<string?> LaunchReturnPaths { get; } = [];
+
+    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken)
     {
         Calls.Add("launch");
+        LaunchReturnPaths.Add(returnPath);
         return Task.FromResult(OnLaunch?.Invoke(assignmentId) ?? ProviderCall<ProviderLaunch>.Success(new ProviderLaunch(
-            "native", "test-candidate-token-" + new string('x', 24), new DateTimeOffset(2026, 11, 9, 16, 0, 0, TimeSpan.Zero),
-            "https://assessments.example.com", null)));
+            "native", new DateTimeOffset(2026, 11, 9, 14, 5, 0, TimeSpan.Zero), PlayerUrl, ["https://ats.example.com"])));
     }
 
     public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken)
@@ -318,7 +363,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
             var row = new AttemptRow(Guid.NewGuid(), organizationId, candidateId, vacancyId, attempt.Instrument,
                 ProviderAttemptStates.PendingCreate, attempt.Reason, attempt.Locale, attempt.TimeMultiplier, attempt.Aids,
-                attempt.ExpiresAt, null, null, null, null, [], null, null, true);
+                attempt.ExpiresAt, null, null, null, null, [], null, null, true, AgeBand: attempt.AgeBand);
             Attempts.Add(row);
             rows.Add(row);
         }
@@ -444,13 +489,81 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.CompletedTask;
     }
 
-    public Task MarkLaunchedAsync(
-        Guid organizationId, Guid attemptId, Guid candidateId, string delivery, DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>Runs once, after the locks are taken and before the fresh checks (a withdrawal committed just before them).</summary>
+    public Action? BeforeLockedLaunchChecks { get; set; }
+
+    /// <summary>Runs once, after the provider call and before the conditional record (a sibling's withdrawal staging it).</summary>
+    public Action? DuringLockedLaunchCall { get; set; }
+
+    public string? OrganizationSlug { get; set; } = "invu";
+
+    // Mirrors the real repository: fresh checks under the locks, the call, then a write conditional on no withdrawal.
+    public async Task<LockedLaunch> LaunchUnderCandidateLockAsync(
+        Guid organizationId, Guid attemptId, Func<AttemptRow, CancellationToken, Task<ProviderCall<ProviderLaunch>>> launch,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
+        var before = BeforeLockedLaunchChecks;
+        BeforeLockedLaunchChecks = null;
+        before?.Invoke();
+        Writes.Add("launch_locked");
+        if (Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId) is not { } attempt)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, null, null);
+        }
+
+        if (attempt.ErasureRequestedAt is not null)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, null, attempt.State);
+        }
+
+        if (attempt.WithdrawalState is not null || LaunchWithdrawn || WithdrawnCandidates.Contains(attempt.CandidateId))
+        {
+            return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, null, attempt.State);
+        }
+
+        if (!ProviderAttemptStates.IsLaunchable(attempt.State))
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotLaunchable, null, attempt.State);
+        }
+
+        var call = await launch(attempt, cancellationToken);
+        var during = DuringLockedLaunchCall;
+        DuringLockedLaunchCall = null;
+        during?.Invoke();
+        if (!call.Ok)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.Called, call, attempt.State);
+        }
+
+        var after = Attempts.First(a => a.Id == attemptId);
+        if (after.ErasureRequestedAt is not null)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, call, attempt.State);
+        }
+
+        if (after.WithdrawalState is not null)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, call, attempt.State);
+        }
+
         Writes.Add("launched");
         Replace(attemptId, a => a with { State = a.State == ProviderAttemptStates.Created ? ProviderAttemptStates.Launched : a.State });
-        return Task.CompletedTask;
+        return new LockedLaunch(LockedLaunchOutcome.Called, call, Attempts.First(a => a.Id == attemptId).State);
     }
+
+    public Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        Task.FromResult(OrganizationSlug);
+
+    public Task<Guid?> FindActiveOrganizationBySlugAsync(string slug, CancellationToken cancellationToken) =>
+        Task.FromResult(slug == OrganizationSlug ? (Guid?)Org : null);
+
+    /// <summary>What the portal listing returns for the verified email (by default: every attempt, when it is CandidateEmail).</summary>
+    public Task<IReadOnlyList<AttemptRow>> ListCandidateAttemptsByEmailAsync(
+        Guid organizationId, string verifiedEmail, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AttemptRow>>(
+            string.Equals(verifiedEmail.Trim(), CandidateEmail, StringComparison.OrdinalIgnoreCase) && !LaunchWithdrawn
+                ? Attempts.Where(a => a.OrganizationId == organizationId).ToList()
+                : []);
 
     public Task MarkExpiredAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -669,7 +782,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public Task<bool> BeginConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (Attempts.FirstOrDefault(a => a.Id == attemptId) is not { WithdrawalState: null })
+        if (Attempts.FirstOrDefault(a => a.Id == attemptId) is not { WithdrawalState: null, ErasureRequestedAt: null })
         {
             Writes.Add("capture_refused");
             return Task.FromResult(false);
@@ -689,9 +802,20 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.CompletedTask;
     }
 
+    public List<int> ExportAudits { get; } = [];
+
     public Task<ProviderSubjectExport?> ExportCandidateAsync(
-        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken) =>
-        Task.FromResult<ProviderSubjectExport?>(new ProviderSubjectExport([], []));
+        Guid organizationId, Guid candidateId, Guid actorId, int providerExports, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (candidateId != Candidate)
+        {
+            return Task.FromResult<ProviderSubjectExport?>(null);
+        }
+
+        ExportAudits.Add(providerExports);
+        return Task.FromResult<ProviderSubjectExport?>(new ProviderSubjectExport([], []));
+    }
 
     public Task<ProviderCandidateSubjects?> ListProviderSubjectsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
         Task.FromResult(candidateId != Candidate
@@ -711,6 +835,67 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             Replace(attempt.Id, a => a with { ErasureRequestedAt = now });
         }
 
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Attempts currently leased by a poll (a claim skips them, like the real lease predicate).</summary>
+    public Dictionary<Guid, Guid> Leases { get; } = [];
+
+    public List<(Guid AttemptId, Guid Owner)> Released { get; } = [];
+
+    /// <summary>An organization whose claim throws (a failing org in a poll).</summary>
+    public Guid? FailingClaimOrganization { get; set; }
+
+    /// <summary>Attempts the fake treats as holding a stored result (what latest_result_id records).</summary>
+    public HashSet<Guid> WithStoredResult { get; } = [];
+
+    private bool IsPollable(AttemptRow a) =>
+        a.ProviderAssignmentId is not null && a.WithdrawalState is null && a.ErasureRequestedAt is null
+        && !Leases.ContainsKey(a.Id) && !Released.Any(r => r.AttemptId == a.Id)
+        && (ProviderAttemptPolling.SittingStates.Contains(a.State)
+            || (ProviderAttemptPolling.RevisionStates.Contains(a.State)
+                && (a.State == ProviderAttemptStates.ResultReady || WithStoredResult.Contains(a.Id))));
+
+    public Task<IReadOnlyList<Guid>> ListOrganizationsWithPollableAttemptsAsync(int max, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>>(Attempts.Where(IsPollable).Select(a => a.OrganizationId).Distinct().Take(max).ToList());
+
+    public Task<IReadOnlyList<PolledAttempt>> ClaimPollableAttemptsAsync(
+        Guid organizationId, Guid owner, int max, CancellationToken cancellationToken)
+    {
+        if (organizationId == FailingClaimOrganization)
+        {
+            throw new InvalidOperationException("claim failed");
+        }
+
+        var claimed = Attempts.Where(a => a.OrganizationId == organizationId && IsPollable(a)).Take(max).ToList();
+        foreach (var attempt in claimed)
+        {
+            Leases[attempt.Id] = owner;
+        }
+
+        Writes.Add("claim:max=" + max);
+        Writes.Add("claimed:" + claimed.Count);
+        return Task.FromResult<IReadOnlyList<PolledAttempt>>(
+            claimed.Select(a => new PolledAttempt(a, Binding?.ProviderTenantId ?? Guid.Empty)).ToList());
+    }
+
+    public Task ReleasePollLeaseAsync(Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken)
+    {
+        if (Leases.TryGetValue(attemptId, out var holder) && holder == owner)
+        {
+            Leases.Remove(attemptId);
+            Released.Add((attemptId, owner));
+            Writes.Add("released");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetMissingConsentsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> missingConsents, CancellationToken cancellationToken)
+    {
+        Writes.Add("missing:" + string.Join(",", missingConsents));
+        Replace(attemptId, a => a with { MissingConsents = missingConsents.ToList() });
         return Task.CompletedTask;
     }
 

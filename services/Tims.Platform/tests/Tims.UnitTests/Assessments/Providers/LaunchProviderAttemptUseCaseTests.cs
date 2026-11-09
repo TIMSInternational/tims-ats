@@ -16,8 +16,10 @@ public sealed class LaunchProviderAttemptUseCaseTests
     private Task<LaunchResult> Launch(Guid attemptId, string email = "ana@example.com", params CapturedConsent[] consents) =>
         new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(attemptId, email, consents, Now, CancellationToken.None);
 
+    // D16: the hosted player's single-use URL and the origins that may frame it; never a candidate token. The player
+    // returns the candidate to the org's portal dashboard.
     [Fact]
-    public async Task The_candidate_launches_and_gets_the_provider_token()
+    public async Task The_candidate_launches_the_hosted_player_and_is_returned_to_the_portal()
     {
         var attempt = _repository.AddCreatedAttempt("lia");
 
@@ -25,9 +27,139 @@ public sealed class LaunchProviderAttemptUseCaseTests
 
         Assert.Equal(LaunchOutcome.Launched, result.Outcome);
         Assert.Equal("native", result.Launch!.Delivery);
-        Assert.NotNull(result.Launch.CandidateToken);
-        Assert.DoesNotContain(result.Launch.CandidateToken!, result.Launch.ToString()); // never printable into a log line
+        Assert.Equal(FakeProvider.PlayerUrl, result.Launch.HostedUrl);
+        Assert.Equal(["https://ats.example.com"], result.Launch.FrameAncestors);
+        Assert.DoesNotContain(result.Launch.HostedUrl, result.Launch.ToString()); // the launch code never reaches a log line
+        Assert.Equal(["/careers/invu/dashboard"], _provider.LaunchReturnPaths);
         Assert.Contains("launched", _repository.Writes);
+    }
+
+    // A portal that frames the player asks for no return URL: the player ends on its own screen in the frame, instead of
+    // navigating the frame to the portal (which refuses to be framed).
+    [Fact]
+    public async Task An_embedded_launch_asks_for_no_return_path()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider)
+            .LaunchAsync(attempt.Id, "ana@example.com", [], Now, CancellationToken.None, embedded: true);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        Assert.Equal([null], _provider.LaunchReturnPaths);
+    }
+
+    [Theory]
+    [InlineData("""{"embedded":true}""", true, true)]
+    [InlineData("""{"embedded":false,"consents":[]}""", true, false)]
+    [InlineData("""{"embedded":"yes"}""", false, false)]
+    [InlineData("""{"embedded":true,"other":1}""", false, false)]
+    public void The_launch_body_accepts_an_optional_boolean_embedded_flag(string json, bool valid, bool embedded)
+    {
+        var ok = LaunchProviderAttemptUseCase.TryParseBody(JsonNode.Parse(json), out _, out var parsed);
+
+        Assert.Equal(valid, ok);
+        Assert.Equal(embedded, parsed);
+    }
+
+    [Fact]
+    public async Task An_organization_without_a_slug_launches_without_a_return_path()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.OrganizationSlug = null;
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        Assert.Equal([null], _provider.LaunchReturnPaths);
+    }
+
+    // The #312 check runs again INSIDE the candidate lock, right before the provider call: a withdrawal that committed
+    // after the early check (no consents to capture, so no capture re-check) launches nothing.
+    [Fact]
+    public async Task A_withdrawal_committed_after_the_early_check_is_seen_under_the_lock_and_nothing_is_launched()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.BeforeLockedLaunchChecks = () => _repository.WithdrawnCandidates.Add(attempt.CandidateId);
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.ConsentWithdrawn, result.Outcome);
+        Assert.DoesNotContain("launch", _provider.Calls);
+        Assert.DoesNotContain("launched", _repository.Writes);
+    }
+
+    // A same-email sibling's withdrawal takes only its own candidate lock, so it can stage this attempt during the call:
+    // the URL is then never handed to the candidate (the cascade cancels the assignment, revoking the unused code).
+    [Fact]
+    public async Task A_sibling_withdrawal_staging_the_attempt_during_the_call_hands_out_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.DuringLockedLaunchCall = () =>
+            _repository.Attempts[0] = _repository.Attempts[0] with { WithdrawalState = ProviderWithdrawalStates.Pending };
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.ConsentWithdrawn, result.Outcome);
+        Assert.Null(result.Launch);
+        Assert.Contains("launch", _provider.Calls);
+        Assert.DoesNotContain("launched", _repository.Writes);
+    }
+
+    // Codex release round A2 [P2]: an accepted erasure of the attempt's provider subject stops every later launch, before
+    // any consent is captured, and also when the erasure is accepted while the provider call is in flight.
+    [Fact]
+    public async Task An_attempt_under_an_accepted_erasure_captures_and_launches_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.Attempts[0] = attempt with { ErasureRequestedAt = Now.AddMinutes(-1) };
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.NotFound, result.Outcome);
+        Assert.Empty(_provider.Calls);
+        Assert.DoesNotContain("capture_begun", _repository.Writes);
+    }
+
+    [Fact]
+    public async Task An_erasure_accepted_during_the_provider_call_hands_out_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.DuringLockedLaunchCall = () => _repository.Attempts[0] = _repository.Attempts[0] with { ErasureRequestedAt = Now };
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.NotFound, result.Outcome);
+        Assert.Null(result.Launch);
+        Assert.DoesNotContain("launched", _repository.Writes);
+    }
+
+    [Fact]
+    public async Task An_attempt_that_finished_before_the_lock_was_taken_is_not_launched()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.BeforeLockedLaunchChecks = () =>
+            _repository.Attempts[0] = _repository.Attempts[0] with { State = ProviderAttemptStates.Completed };
+
+        var result = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.NotLaunchable, result.Outcome);
+        Assert.DoesNotContain("launch", _provider.Calls);
+    }
+
+    [Fact]
+    public async Task Recorded_consents_are_no_longer_shown_as_missing_and_a_consent_required_replaces_the_list()
+    {
+        var attempt = _repository.AddCreatedAttempt("english");
+        _repository.Attempts[0] = attempt with { MissingConsents = ["assessment", "voice"] };
+
+        await Launch(attempt.Id, consents: [Assessment]);
+        Assert.Equal(["voice"], _repository.Attempts[0].MissingConsents);
+
+        _provider.OnLaunch = _ => ProviderCall<ProviderLaunch>.Fail(new ProviderFailure(409, "consent_required", false, ["voice", "ai_scoring"]));
+        var refused = await Launch(attempt.Id);
+
+        Assert.Equal(LaunchOutcome.ConsentRequired, refused.Outcome);
+        Assert.Equal(["voice", "ai_scoring"], _repository.Attempts[0].MissingConsents);
     }
 
     [Fact]
@@ -50,8 +182,7 @@ public sealed class LaunchProviderAttemptUseCaseTests
         var launches = 0;
         _provider.OnLaunch = _ => ++launches == 1
             ? ProviderCall<ProviderLaunch>.Fail(new ProviderFailure(422, ProviderFailure.SubjectDataRequired, false, []))
-            : ProviderCall<ProviderLaunch>.Success(new ProviderLaunch("link_out", null, Now.AddDays(1), "https://assessments.example.com",
-                "https://provider.example.com/sit/1"));
+            : ProviderCall<ProviderLaunch>.Success(new ProviderLaunch("link_out", Now.AddDays(1), "https://provider.example.com/sit/1", []));
 
         var result = await Launch(attempt.Id);
 
@@ -218,6 +349,24 @@ public sealed class LaunchProviderAttemptUseCaseTests
         Assert.Equal(2, reads); // the #312 re-check ran after the failed capture
         Assert.DoesNotContain("launch", _provider.Calls);
         Assert.Null(_repository.Attempts.Single().WithdrawalState);
+    }
+
+    // The amended contract: 409 idempotency_key_in_use means a request with this key is still being processed at the
+    // provider, so the capture may still be stored. It is transient (503 to the candidate) and NOT an answer: the
+    // announcement stays in flight, so a withdrawal's cascade cannot complete before it is stale.
+    [Fact]
+    public async Task A_capture_answered_idempotency_key_in_use_stays_announced_and_is_transient()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _provider.OnRecordConsent = () => ProviderCall<ProviderConsentRecord>.Fail(
+            new ProviderFailure(409, ProviderFailure.IdempotencyKeyInUse, true, []) { RetryAfter = TimeSpan.FromSeconds(30) });
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
+        Assert.DoesNotContain("capture_ended", _repository.Writes);
+        Assert.Equal((1, 1), (_repository.Captures[attempt.Id].Generation, _repository.Captures[attempt.Id].InFlight));
+        Assert.DoesNotContain("launch", _provider.Calls);
     }
 
     [Fact]

@@ -78,9 +78,35 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid auditId, Guid candidateId, Guid attemptId, string purpose, string textVersion,
         string locale, bool recordedAtProvider, CancellationToken cancellationToken);
 
-    Task MarkLaunchedAsync(
-        Guid organizationId, Guid attemptId, Guid candidateId, string delivery, DateTimeOffset now,
-        CancellationToken cancellationToken);
+    /// <summary>
+    /// The launch's #312 check INSIDE the candidate lock. ONE transaction takes the attempt lock and then the per-candidate
+    /// lock a #312 withdrawal takes (the order result storage uses: subject, attempt, candidate), re-reads the attempt and
+    /// the withdrawn-consent predicate, and only then runs <paramref name="launch"/> (the provider call), recording a
+    /// successful launch (<c>created</c> to <c>launched</c>, <c>last_launched_at</c>, audit) before it commits. So a
+    /// withdrawal committed before this transaction is always seen and nothing is launched, and one that starts during it
+    /// waits for the launch to commit and then stages the attempt (launched) for the cascade, which cancels it at the
+    /// provider. The provider call runs with both locks held, bounded by the client's per-call timeout. The record is a
+    /// conditional write (<c>withdrawal_state IS NULL</c>): a same-email SIBLING's withdrawal, which takes only its own
+    /// candidate lock, may stage this attempt during the call; then nothing is recorded and the outcome is
+    /// <see cref="LockedLaunchOutcome.ConsentWithdrawn"/> although the provider was called.
+    /// </summary>
+    Task<LockedLaunch> LaunchUnderCandidateLockAsync(
+        Guid organizationId, Guid attemptId, Func<AttemptRow, CancellationToken, Task<ProviderCall<ProviderLaunch>>> launch,
+        DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>PRE-TENANT (privileged): the active organization with this public slug, or null. Only the id leaves.</summary>
+    Task<Guid?> FindActiveOrganizationBySlugAsync(string slug, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The candidate portal's own attempts: those of the org's ACTIVE candidates whose <c>lower(btrim(email))</c> equals the
+    /// verified email's, newest first, at most 50. Empty when that person's #312 recruitment consent is withdrawn (the
+    /// sibling predicate covers every candidate row with that email). Under the tenant scope.
+    /// </summary>
+    Task<IReadOnlyList<AttemptRow>> ListCandidateAttemptsByEmailAsync(
+        Guid organizationId, string verifiedEmail, CancellationToken cancellationToken);
+
+    /// <summary>Privileged read of an active organization's public slug (its portal path), or null.</summary>
+    Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken);
 
     Task MarkExpiredAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
 
@@ -194,10 +220,12 @@ public interface IAssessmentProviderRepository
 
     /// <summary>
     /// DSAR access (C# path): every provider attempt and stored result of one candidate, with a fail-closed audit row in
-    /// the same transaction. Null when the candidate is not in the org.
+    /// the same transaction (it also counts the <paramref name="providerExports"/> the provider returned for the
+    /// candidate's subjects, included by the caller). Null when the candidate is not in the org.
     /// </summary>
     Task<ProviderSubjectExport?> ExportCandidateAsync(
-        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken);
+        Guid organizationId, Guid candidateId, Guid actorId, int providerExports, DateTimeOffset now,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// The distinct provider subject ids recorded on one candidate's attempts, and whether any attempt exists at all
@@ -219,12 +247,83 @@ public interface IAssessmentProviderRepository
     Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// PRE-TENANT (privileged connection): the organizations holding at least one attempt the D17 poller could claim now
+    /// (<see cref="ClaimPollableAttemptsAsync"/>'s predicate), at most <paramref name="max"/>. Only organization ids leave.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListOrganizationsWithPollableAttemptsAsync(int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// D17 polling lease. ONE conditional UPDATE claims, for <paramref name="owner"/>, up to <paramref name="max"/> of the
+    /// org's stale pollable attempts whose lease is free or expired, locking them with <c>FOR UPDATE SKIP LOCKED</c>: two
+    /// pollers (two App Runner instances) never claim the same attempt, and neither waits on the other. The lease lasts
+    /// <see cref="Domain.Assessments.Providers.ProviderAttemptPolling.LeaseDuration"/> by the database clock. Returns the
+    /// claimed attempts with their binding's provider tenant.
+    /// </summary>
+    Task<IReadOnlyList<PolledAttempt>> ClaimPollableAttemptsAsync(
+        Guid organizationId, Guid owner, int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Ends <paramref name="owner"/>'s lease on one attempt and stamps <c>last_polled_at</c> (database clock). Conditional
+    /// on the owner: a lease that expired and was claimed by another poller is left alone.
+    /// </summary>
+    Task ReleasePollLeaseAsync(Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sets the consent purposes the provider still lacks for this attempt (its <c>missing_consents</c>), as just seen.
+    /// Unknown purposes are dropped. A no-op on an attempt that is not open.
+    /// </summary>
+    Task SetMissingConsentsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> missingConsents, CancellationToken cancellationToken);
 }
+
+public enum LockedLaunchOutcome
+{
+    /// <summary>The checks passed under the locks and the provider was called (<see cref="LockedLaunch.Call"/>).</summary>
+    Called,
+
+    /// <summary>
+    /// The attempt no longer exists for this organization, or an erasure of its provider subject was requested (before
+    /// the locks, or during the call: then nothing is recorded and the URL must not reach the candidate).
+    /// </summary>
+    NotFound,
+
+    /// <summary>
+    /// The candidate's recruitment consent is withdrawn, or the attempt is in the #312 cascade: nothing called; or a
+    /// sibling's withdrawal staged the attempt during the call (<see cref="LockedLaunch.Call"/> is then set, and its URL
+    /// must not reach the candidate).
+    /// </summary>
+    ConsentWithdrawn,
+
+    /// <summary>The attempt left the launchable states before the locks were taken: nothing called.</summary>
+    NotLaunchable,
+}
+
+/// <summary>What <see cref="IAssessmentProviderRepository.LaunchUnderCandidateLockAsync"/> did, and the fresh state.</summary>
+public sealed record LockedLaunch(LockedLaunchOutcome Outcome, ProviderCall<ProviderLaunch>? Call, string? State);
+
+/// <summary>An attempt the D17 poller claimed, with the provider tenant its binding maps to.</summary>
+public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 
 public sealed record ProviderCandidateSubjects(IReadOnlyList<Guid> Subjects, bool HasAttempts);
 
+/// <summary>
+/// The DSAR access export: the ATS's own provider tables (<see cref="Attempts"/>, <see cref="Results"/>) and what the
+/// provider itself holds for each of the candidate's provider subjects (<see cref="ProviderExports"/>).
+/// </summary>
 public sealed record ProviderSubjectExport(
-    IReadOnlyList<ProviderExportAttempt> Attempts, IReadOnlyList<ProviderExportResult> Results);
+    IReadOnlyList<ProviderExportAttempt> Attempts, IReadOnlyList<ProviderExportResult> Results)
+{
+    public IReadOnlyList<ProviderHeldSubjectExport> ProviderExports { get; init; } = [];
+}
+
+/// <summary>
+/// One provider subject in a DSAR export. <see cref="Status"/>: <c>exported</c> (the provider's own <c>SubjectExport</c>
+/// document is <see cref="Export"/>), <c>erased</c> (410: the provider holds nothing any more) or <c>not_found</c> (a 404
+/// the provider's subject lookup confirmed).
+/// </summary>
+public sealed record ProviderHeldSubjectExport(Guid SubjectId, string Status, System.Text.Json.JsonElement? Export);
 
 public sealed record ProviderExportAttempt(
     Guid AttemptId,
@@ -309,18 +408,19 @@ public sealed record AssignmentContext(
 
 public sealed record NewAttempt(
     string Instrument, string Reason, string Locale, decimal TimeMultiplier, IReadOnlyList<string> Aids,
-    DateTimeOffset? ExpiresAt)
+    DateTimeOffset? ExpiresAt, string? AgeBand = null)
 {
     /// <summary>
     /// True when an open attempt already carries exactly these terms: the accommodation (time multiplier and aids, as
-    /// a set), the locale and the job-relatedness reason. The expiry is not compared: a re-send may legitimately
-    /// recompute a relative expiry, and the response echoes the one in force.
+    /// a set), the locale, the job-relatedness reason and the attested age band. The expiry is not compared: a re-send
+    /// may legitimately recompute a relative expiry, and the response echoes the one in force.
     /// </summary>
     public bool SameTermsAs(AttemptRow open)
     {
         ArgumentNullException.ThrowIfNull(open);
         return open.TimeMultiplier == TimeMultiplier
             && string.Equals(open.Locale, Locale, StringComparison.Ordinal)
+            && string.Equals(open.AgeBand, AgeBand, StringComparison.Ordinal)
             && string.Equals(open.Reason, Reason, StringComparison.Ordinal)
             && open.Aids.Order(StringComparer.Ordinal).SequenceEqual(Aids.Order(StringComparer.Ordinal), StringComparer.Ordinal);
     }
@@ -347,7 +447,10 @@ public sealed record AttemptRow(
     string? LastErrorCode,
     bool IsNew,
     string? WithdrawalState = null,
-    DateTimeOffset? ErasureRequestedAt = null)
+    DateTimeOffset? ErasureRequestedAt = null,
+    IReadOnlyList<string>? MissingConsents = null,
+    string? AgeBand = null,
+    Guid? LatestResultId = null)
 {
     /// <summary>
     /// True once the candidate's #312 withdrawal reached this attempt (D15) or an erasure of its provider subject was

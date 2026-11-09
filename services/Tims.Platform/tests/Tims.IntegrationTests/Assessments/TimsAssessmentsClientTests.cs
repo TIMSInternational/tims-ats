@@ -39,7 +39,8 @@ public sealed class TimsAssessmentsClientTests
         var wrapped = Options.Create(options ?? Configured());
         var cache = new ClientCredentialsTokenCache(new StubFactory(_handler), wrapped, _clock,
             NullLogger<ClientCredentialsTokenCache>.Instance);
-        return new TimsAssessmentsClient(new HttpClient(_handler), cache, wrapped, NullLogger<TimsAssessmentsClient>.Instance);
+        return new TimsAssessmentsClient(new HttpClient(_handler), cache, wrapped, NullLogger<TimsAssessmentsClient>.Instance,
+            _clock);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string json, string mediaType = "application/json") =>
@@ -58,7 +59,7 @@ public sealed class TimsAssessmentsClientTests
 
     private static ProviderAssignmentRequest AssignmentRequest() => new(
         Guid.Parse("3f1d2c4b-8a6e-4f2a-9c1d-5b7e8a9f0c12"), Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d"), "lia", "es",
-        "a0000000-0000-4000-8000-000000000001", "Análisis de datos", 1.5m, ["extended_breaks"], null, "attempt-1");
+        "a0000000-0000-4000-8000-000000000001", "Análisis de datos", 1.5m, ["extended_breaks"], null, "attempt-1", "18_plus");
 
     [Fact]
     public async Task One_token_serves_several_calls_and_is_requested_with_basic_client_auth()
@@ -140,6 +141,8 @@ public sealed class TimsAssessmentsClientTests
         Assert.Equal("Análisis de datos", body["vacancy"]!["job_relatedness_reason"]!.GetValue<string>());
         Assert.Equal(1.5m, body["accommodations"]!["time_multiplier"]!.GetValue<decimal>());
         Assert.Null(body["expires_at"]); // omitted, not null
+        // The amended contract requires the attested age band on every create: the band only, never an age.
+        Assert.Equal("""{"age_band":"18_plus"}""", body["age_attestation"]!.ToJsonString());
     }
 
     [Fact]
@@ -185,7 +188,7 @@ public sealed class TimsAssessmentsClientTests
                 """{"type":"https://contracts.timsinternational.com/problems/consent_required","title":"Consent required","status":409,"code":"consent_required","request_id":"r1","missing_consents":["ai_scoring","not_a_purpose"]}""",
                 "application/problem+json"));
 
-        var result = await Client().LaunchAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await Client().LaunchAsync(Guid.NewGuid(), null, CancellationToken.None);
 
         Assert.Equal("consent_required", result.Failure!.Code);
         Assert.Equal(["ai_scoring"], result.Failure.MissingConsents);
@@ -304,21 +307,119 @@ public sealed class TimsAssessmentsClientTests
         Assert.True(result.Failure.Transient);
     }
 
+    private static string HostedLaunchJson(Guid id, string delivery = "native", string? token = null, string? frameAncestors = null,
+        string mode = "hosted", string? hostedUrl = "https://player.test/launch/code-1") =>
+        "{\"assignment_id\":\"" + id + "\",\"delivery\":\"" + delivery + "\",\"mode\":\"" + mode + "\","
+        + "\"candidate_token\":" + (token is null ? "null" : "\"" + token + "\"") + ","
+        + "\"token_type\":" + (token is null ? "null" : "\"Bearer\"") + ","
+        + "\"expires_at\":\"2026-11-09T12:05:00Z\",\"api_base_url\":\"https://suite.test/api\","
+        + "\"hosted_url\":" + (hostedUrl is null ? "null" : "\"" + hostedUrl + "\"") + ","
+        + "\"frame_ancestors\":" + (frameAncestors ?? (delivery == "native" ? "[\"https://ats.test\"]" : "null")) + "}";
+
+    // D16: every launch is mode hosted; the single-use player URL and the frame ancestors come back, never a token, and
+    // the launch code in the URL never prints into a log line.
     [Fact]
-    public async Task A_launch_must_name_the_requested_assignment_and_its_token_never_prints()
+    public async Task A_hosted_launch_returns_the_player_url_and_its_frame_ancestors_and_the_url_never_prints()
     {
         var id = Guid.NewGuid();
-        var launchJson = $$"""{"assignment_id":"{{id}}","delivery":"native","candidate_token":"{{FakeCandidateToken}}","token_type":"Bearer","expires_at":"2026-11-09T16:00:00Z","api_base_url":"https://assessments.test","hosted_url":null}""";
-        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, launchJson));
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, HostedLaunchJson(id)));
         var client = Client();
 
-        var launched = await client.LaunchAsync(id, CancellationToken.None);
-        var mismatched = await client.LaunchAsync(Guid.NewGuid(), CancellationToken.None);
+        var launched = await client.LaunchAsync(id, null, CancellationToken.None);
+        var mismatched = await client.LaunchAsync(Guid.NewGuid(), null, CancellationToken.None);
 
-        Assert.Equal(FakeCandidateToken, launched.Value!.CandidateToken);
-        Assert.DoesNotContain(FakeCandidateToken, launched.Value.ToString(), StringComparison.Ordinal);
+        Assert.Equal("https://player.test/launch/code-1", launched.Value!.HostedUrl);
+        Assert.Equal(["https://ats.test"], launched.Value.FrameAncestors);
+        Assert.DoesNotContain("code-1", launched.Value.ToString(), StringComparison.Ordinal);
         Assert.Equal(ProviderFailure.ContractViolation, mismatched.Failure!.Code);
-        Assert.Equal("""{"mode":"headless"}""", _handler.Requests.Last(r => r.Uri != TokenUrl).Body);
+        Assert.Equal("""{"mode":"hosted"}""", _handler.Requests.Last(r => r.Uri != TokenUrl).Body);
+    }
+
+    [Fact]
+    public async Task A_link_out_launch_has_no_frame_ancestors()
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : Json(HttpStatusCode.OK, HostedLaunchJson(id, "link_out", hostedUrl: "https://pca.test/sit/1")));
+
+        var launched = await Client().LaunchAsync(id, null, CancellationToken.None);
+
+        Assert.Equal(("link_out", "https://pca.test/sit/1"), (launched.Value!.Delivery, launched.Value.HostedUrl));
+        Assert.Empty(launched.Value.FrameAncestors);
+    }
+
+    // A hosted launch must never hand the host a credential for the sitting; anything else off contract is refused too.
+    [Theory]
+    [InlineData("token")]
+    [InlineData("headless")]
+    [InlineData("no_url")]
+    [InlineData("http_url")]
+    [InlineData("wildcard_origin")]
+    [InlineData("origin_with_path")]
+    [InlineData("missing_ancestors")]
+    public async Task An_off_contract_hosted_launch_is_refused(string defect)
+    {
+        var id = Guid.NewGuid();
+        var json = defect switch
+        {
+            "token" => HostedLaunchJson(id, token: FakeCandidateToken),
+            "headless" => HostedLaunchJson(id, mode: "headless"),
+            "no_url" => HostedLaunchJson(id, hostedUrl: null),
+            "http_url" => HostedLaunchJson(id, hostedUrl: "http://player.test/launch/code-1"),
+            "wildcard_origin" => HostedLaunchJson(id, frameAncestors: "[\"https://*.ats.test\"]"),
+            "origin_with_path" => HostedLaunchJson(id, frameAncestors: "[\"https://ats.test/portal\"]"),
+            _ => HostedLaunchJson(id, frameAncestors: "null"),
+        };
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var result = await Client().LaunchAsync(id, null, CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, result.Failure!.Code);
+    }
+
+    // The return_url is the configured portal origin plus a plain absolute path; anything else sends none.
+    [Theory]
+    [InlineData("https://ats.test", "/careers/invu/dashboard", "https://ats.test/careers/invu/dashboard")]
+    [InlineData("https://ats.test/", "/careers/invu/dashboard", "https://ats.test/careers/invu/dashboard")]
+    [InlineData(null, "/careers/invu/dashboard", null)]
+    [InlineData("https://ats.test", null, null)]
+    [InlineData("https://ats.test", "//evil.test/x", null)]
+    [InlineData("https://ats.test", "//evil/x", null)] // never an empty segment: no path reads as protocol-relative
+    [InlineData("https://ats.test", "/careers/invu/dashboard?next=https://evil.test", null)]
+    [InlineData("https://ats.test", "https://evil.test/x", null)]
+    public async Task A_hosted_launch_sends_a_return_url_only_on_the_portal_origin(string? portal, string? path, string? expected)
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, HostedLaunchJson(id)));
+        var options = Configured();
+        var client = Client(new AssessmentProviderOptions
+        {
+            BaseUrl = options.BaseUrl,
+            TokenUrl = options.TokenUrl,
+            ClientId = options.ClientId,
+            ClientSecret = options.ClientSecret,
+            WebhookSigningSecret = options.WebhookSigningSecret,
+            PortalBaseUrl = portal,
+        });
+
+        await client.LaunchAsync(id, path, CancellationToken.None);
+
+        var body = JsonNode.Parse(_handler.Requests.Last(r => r.Uri != TokenUrl).Body)!.AsObject();
+        Assert.Equal("hosted", body["mode"]!.GetValue<string>());
+        Assert.Equal(expected, body["return_url"]?.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("https://ats.test", true)]
+    [InlineData("https://ats.test:8443/", true)]
+    [InlineData("https://ats.test/portal", false)]
+    [InlineData("http://ats.test", false)]
+    [InlineData("https://ats.test?x=1", false)]
+    public void The_portal_base_url_must_be_an_https_origin(string portal, bool valid)
+    {
+        var options = new AssessmentProviderOptions { PortalBaseUrl = portal };
+
+        Assert.Equal(valid, options.IsValid());
     }
 
     [Fact]
@@ -604,6 +705,177 @@ public sealed class TimsAssessmentsClientTests
 
         Assert.Null(result.Failure!.HttpStatus);
         Assert.Equal(ProviderFailure.NotFoundUnconfirmed, result.Failure.Code);
+    }
+
+    // The host shows the provider's counsel-reviewed text and records the consent against its text_version. Only the
+    // four plain-text block kinds are accepted, within the contract's bounds; anything else refuses the whole template.
+    [Fact]
+    public async Task A_consent_template_is_read_as_plain_text_blocks()
+    {
+        var json = """
+            {"purpose":"voice","text_version":"voice-v2026-11","locale":"en","title":"Voice recording",
+             "blocks":[{"type":"heading","text":"What we record","level":2},{"type":"paragraph","text":"Your spoken answers."},
+                       {"type":"list","ordered":true,"items":["Audio","Transcript"]},{"type":"callout","tone":"warning","text":"Optional."}],
+             "disclosures":["purpose","retention"]}
+            """;
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var template = await Client().GetConsentTemplateAsync("voice", "en", CancellationToken.None);
+
+        Assert.True(template.Ok);
+        Assert.Equal(("voice-v2026-11", 4), (template.Value!.TextVersion, template.Value.Blocks.Count));
+        Assert.Equal(["Audio", "Transcript"], template.Value.Blocks[2].Items);
+        Assert.Equal("https://assessments.test/v1/catalog/consent-templates/voice?locale=en", _handler.Requests.Last().Uri);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"html","text":"<b>x</b>"}""")]
+    [InlineData("""{"type":"heading","text":"x","level":7}""")]
+    [InlineData("""{"type":"callout","tone":"danger","text":"x"}""")]
+    [InlineData("""{"type":"list","ordered":false,"items":[]}""")]
+    public async Task A_consent_template_with_an_off_contract_block_is_refused_whole(string block)
+    {
+        var json = "{\"purpose\":\"assessment\",\"text_version\":\"a-1\",\"locale\":\"es\",\"title\":\"T\",\"blocks\":[{\"type\":\"paragraph\",\"text\":\"ok\"},"
+            + block + "],\"disclosures\":[]}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var template = await Client().GetConsentTemplateAsync("assessment", "es", CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, template.Failure!.Code);
+    }
+
+    // D15 DSAR access: the provider's export asks for a token with subjects:export ALONE (never added to the default
+    // scopes every other call carries), and its body is checked to be this subject's SubjectExport.
+    [Fact]
+    public async Task The_subject_export_uses_its_own_subjects_export_token_and_returns_the_providers_document()
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        var export = $$"""{"subject":{"subject_id":"{{subject}}","status":"active"},"generated_at":"2026-11-09T12:00:00Z","consents":[],"assignments":[],"sessions":[],"results":[],"media":[],"access_log":[],"future_field":1}""";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl
+            ? Token(r.Content!.ReadAsStringAsync().Result.Contains("scope=subjects%3Aexport", StringComparison.Ordinal) ? "export-token" : "default-token")
+            : r.RequestUri!.AbsolutePath.EndsWith("/export", StringComparison.Ordinal) ? Json(HttpStatusCode.OK, export)
+            : Json(HttpStatusCode.OK, """{"data":[]}"""));
+        var client = Client();
+
+        await client.ListInstrumentsAsync(CancellationToken.None);
+        var exported = await client.ExportSubjectAsync(subject, CancellationToken.None);
+        var exportedAgain = await client.ExportSubjectAsync(subject, CancellationToken.None);
+        await client.ListInstrumentsAsync(CancellationToken.None);
+
+        Assert.True(exported.Ok);
+        Assert.True(exportedAgain.Ok);
+        Assert.Contains("\"future_field\":1", exported.Value!.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("generated_at", exported.Value.ToString(), StringComparison.Ordinal);
+        var tokenBodies = _handler.Requests.Where(r => r.Uri == TokenUrl).Select(r => r.Body).ToList();
+        Assert.Equal(2, tokenBodies.Count); // one per scope set, each cached
+        Assert.Contains(tokenBodies, b => b.EndsWith("scope=subjects%3Aexport", StringComparison.Ordinal));
+        Assert.DoesNotContain(tokenBodies, b => b.Contains("subjects%3Aexport", StringComparison.Ordinal) && b.Contains("results%3Aread", StringComparison.Ordinal));
+        var calls = _handler.Requests.Where(r => r.Uri != TokenUrl).ToList();
+        Assert.Equal($"https://assessments.test/v1/subjects/{subject}/export", calls[1].Uri);
+        Assert.Equal("Bearer export-token", calls[1].Authorization);
+        Assert.Equal("Bearer default-token", calls[3].Authorization);
+    }
+
+    [Theory]
+    [InlineData("other_subject")]
+    [InlineData("missing_media")]
+    public async Task An_off_contract_subject_export_is_refused(string defect)
+    {
+        var subject = Guid.NewGuid();
+        var named = defect == "other_subject" ? Guid.NewGuid() : subject;
+        var media = defect == "missing_media" ? string.Empty : "\"media\":[],";
+        var json = "{\"subject\":{\"subject_id\":\"" + named + "\"},\"generated_at\":\"2026-11-09T12:00:00Z\",\"consents\":[],"
+            + "\"assignments\":[],\"sessions\":[],\"results\":[]," + media + "\"access_log\":[]}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var result = await Client().ExportSubjectAsync(subject, CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, result.Failure!.Code);
+    }
+
+    // A route the provider does not serve answers the same 404 as "no such subject": an export never reports "nothing
+    // held" unless the subject lookup confirms it.
+    [Theory]
+    [InlineData(HttpStatusCode.OK, null, ProviderFailure.NotFoundUnconfirmed)]
+    [InlineData(HttpStatusCode.NotFound, 404, "not_found")]
+    [InlineData(HttpStatusCode.Gone, 410, "provider_error")]
+    public async Task A_subject_export_404_is_confirmed_by_the_subject_lookup(HttpStatusCode lookup, int? status, string code)
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.RequestUri!.AbsolutePath.EndsWith("/export", StringComparison.Ordinal) ? NotFound()
+            : lookup == HttpStatusCode.OK
+                ? Json(HttpStatusCode.OK, $$"""{"subject_id":"{{subject}}","tenant_id":"{{Tenant}}","external_ref":"c-1","status":"active","created_at":"2026-11-09T12:00:00Z"}""")
+                : Json(lookup, "{}", "application/problem+json"));
+
+        var result = await Client().ExportSubjectAsync(subject, CancellationToken.None);
+
+        Assert.Equal(status, result.Failure!.HttpStatus);
+        Assert.Equal(code, result.Failure.Code);
+    }
+
+    // The amended contract (Idempotency): a request that arrives while an earlier one with the same Idempotency-Key and
+    // body is still being processed is refused with 409 idempotency_key_in_use and Retry-After, and nothing is done for
+    // it; a retry with the same key and body after the delay gets the original response.
+    private static HttpResponseMessage InUse(string? retryAfter)
+    {
+        var response = Json(HttpStatusCode.Conflict,
+            """{"type":"about:blank","title":"Conflict","status":409,"code":"idempotency_key_in_use"}""", "application/problem+json");
+        if (retryAfter is not null)
+        {
+            response.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
+        }
+
+        return response;
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData(null)] // no Retry-After: waited out for the 1 s default
+    public async Task An_idempotency_key_in_use_is_waited_out_once_and_resent_with_the_same_key_and_body(string? retryAfter)
+    {
+        var id = Guid.NewGuid();
+        var posts = 0;
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : ++posts == 1 ? InUse(retryAfter) : Json(HttpStatusCode.Created, AssignmentJson(id)));
+
+        var result = await Client().CreateAssignmentAsync(AssignmentRequest(), "ats-attempt-1", CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Equal(id, result.Value!.AssignmentId);
+        var sent = _handler.Requests.Where(r => r.Uri != TokenUrl).ToList();
+        Assert.Equal(2, sent.Count);
+        Assert.All(sent, r => Assert.Equal("ats-attempt-1", r.IdempotencyKey));
+        Assert.Equal(sent[0].Body, sent[1].Body);
+    }
+
+    [Fact]
+    public async Task An_idempotency_key_in_use_with_a_long_retry_after_is_a_transient_failure_carrying_the_delay()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : InUse("30"));
+
+        var result = await Client().CreateAssignmentAsync(AssignmentRequest(), "ats-attempt-1", CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal(409, result.Failure!.HttpStatus);
+        Assert.Equal(ProviderFailure.IdempotencyKeyInUse, result.Failure.Code);
+        Assert.True(result.Failure.Transient);
+        Assert.False(result.Failure.IsDefinitiveRefusal);
+        Assert.Equal(TimeSpan.FromSeconds(30), result.Failure.RetryAfter);
+        Assert.Single(_handler.Requests, r => r.Uri != TokenUrl);
+    }
+
+    [Fact]
+    public async Task A_second_idempotency_key_in_use_is_returned_not_retried_again()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : InUse("0"));
+
+        var result = await Client().EnsureSubjectAsync(
+            new ProviderSubjectRequest(Guid.Parse(Tenant), "c-1", null, null, null, null), "subject-key", CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.IdempotencyKeyInUse, result.Failure!.Code);
+        Assert.True(result.Failure.Transient);
+        Assert.Equal(2, _handler.Requests.Count(r => r.Uri != TokenUrl));
     }
 
     private sealed class StubHandler : HttpMessageHandler

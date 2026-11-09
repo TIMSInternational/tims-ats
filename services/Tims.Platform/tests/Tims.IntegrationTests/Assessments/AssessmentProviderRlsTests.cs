@@ -641,12 +641,23 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         await using (connection)
         {
             await using var db = fixture.NewContext();
-            var launch = new AssessmentProviderRepository(db).MarkLaunchedAsync(
-                AssessmentProviderSchemaFixture.OrgA, attempt, AssessmentProviderSchemaFixture.CandidateA, "native",
+            var called = false;
+            var launch = new AssessmentProviderRepository(db).LaunchUnderCandidateLockAsync(
+                AssessmentProviderSchemaFixture.OrgA, attempt,
+                (_, _) =>
+                {
+                    called = true;
+                    return Task.FromResult(ProviderCall<ProviderLaunch>.Success(
+                        new ProviderLaunch("native", DateTimeOffset.UtcNow.AddMinutes(5), "https://player.test/l/1", [])));
+                },
                 DateTimeOffset.UtcNow, CancellationToken.None);
             await Task.Delay(300);
             await transaction.CommitAsync();
-            await launch;
+            var outcome = await launch;
+
+            // The fresh read under the attempt lock sees the finished sitting: nothing is launched, nothing rewound.
+            Assert.Equal(LockedLaunchOutcome.NotLaunchable, outcome.Outcome);
+            Assert.False(called);
         }
 
         Assert.Equal("completed", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));

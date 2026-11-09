@@ -8,6 +8,8 @@ import { isPilotScope } from '../../../../../lib/launch-scope';
 import { DashboardApplications } from './dashboard-applications';
 import { DashboardInterviews } from './dashboard-interviews';
 import { DashboardAssessments } from './dashboard-assessments';
+import { DashboardProviderAssessments } from './dashboard-provider-assessments';
+import { isProviderAssessmentsPortalEnabled } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { DashboardOffer } from './dashboard-offer';
 import { DashboardFaqChat } from './dashboard-faq-chat';
 import { DashboardPrivacy } from './dashboard-privacy';
@@ -81,6 +83,8 @@ export function PortalDashboardShell({
             <DashboardInterviews orgSlug={orgSlug} timeZone={timeZone} />
             {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
             {!pilot && <DashboardAssessments orgSlug={orgSlug} />}
+            {/* AS-5 / D16: provider assessments (C# only), dark unless NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP. */}
+            {!pilot && isProviderAssessmentsPortalEnabled() && <DashboardProviderAssessments orgSlug={orgSlug} />}
             <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
             {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
             {profile && <DashboardProfile orgSlug={orgSlug} profile={profile} />}

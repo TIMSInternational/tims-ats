@@ -38,11 +38,15 @@ public sealed record LaunchResult(LaunchOutcome Outcome, ProviderLaunch? Launch,
 /// <para>Gate order: identity → #312 withdrawn recruitment consent (409, checked on EVERY launch, not only at assign:
 /// TS never re-checked it at start) → launchable state → not expired → the per-purpose consents the candidate just
 /// gave are recorded at the provider (each with an ATS audit row whose id is the provider's <c>host_record_ref</c>) →
-/// launch. A provider <c>consent_required</c> comes back as the list of missing purposes for the portal to ask for:
-/// the launch answers it for a LINK-OUT instrument (PCA), whose sitting has no session to gate. For a native instrument
-/// the provider checks consents when the browser starts the session (<c>POST /v1/sessions</c>), not here, so a launch
-/// with consents missing succeeds and the session start is refused. The candidate token is returned to the caller only
-/// and never stored or logged.</para>
+/// launch, with the #312 check repeated INSIDE the candidate lock a withdrawal takes and held across the provider call
+/// (<see cref="IAssessmentProviderRepository.LaunchUnderCandidateLockAsync"/>). A provider <c>consent_required</c> comes
+/// back as the list of missing purposes for the portal to ask for: the launch answers it for a LINK-OUT instrument
+/// (PCA), whose sitting has no session to gate. For a native instrument the provider checks consents when the session
+/// starts, so the portal asks for the purposes the provider last reported missing BEFORE it launches.</para>
+///
+/// <para>Owner default D16: every launch is <c>mode: hosted</c>. The candidate gets the TIMS hosted player's single-use
+/// URL (native) or the provider's URL (link-out), plus the registered origins that may frame the player; never a
+/// candidate token. The URL is returned to the caller only, never stored or logged.</para>
 /// </summary>
 public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
 {
@@ -51,9 +55,14 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
 
+    /// <param name="embedded">
+    /// The portal will FRAME the hosted player (its origin is among the player's registered frame ancestors): no
+    /// <c>return_url</c> is sent, so the player ends on its own screen inside the frame instead of navigating the frame to
+    /// the portal (which refuses to be framed). Top-level (the default): the player returns the candidate to the portal.
+    /// </param>
     public async Task<LaunchResult> LaunchAsync(
         Guid attemptId, string verifiedEmail, IReadOnlyList<CapturedConsent> consents, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool embedded = false)
     {
         ArgumentNullException.ThrowIfNull(consents);
         if (string.IsNullOrWhiteSpace(verifiedEmail))
@@ -71,6 +80,12 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             .ConfigureAwait(false);
         if (context is null || !context.CandidateActive || !SameEmail(context.CandidateEmail, verifiedEmail))
         {
+            return LaunchResult.Fail(LaunchOutcome.NotFound);
+        }
+
+        if (context.Attempt.ErasureRequestedAt is not null)
+        {
+            // An erasure of the attempt's provider subject was accepted: nothing is captured or launched for it again.
             return LaunchResult.Fail(LaunchOutcome.NotFound);
         }
 
@@ -121,6 +136,7 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         // #312 re-check below: every attempted capture is covered by it.
         LaunchResult? captureFailure = null;
         var everyCaptureAnswered = true;
+        var captured = new List<string>();
         foreach (var consent in consents)
         {
             var auditId = Guid.NewGuid();
@@ -138,13 +154,17 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
                 consent.Locale, recorded.Ok, cancellationToken).ConfigureAwait(false);
             if (!recorded.Ok)
             {
-                // Without an HTTP answer (timeout, outage) the provider may still store this capture.
-                everyCaptureAnswered = recorded.Failure!.HttpStatus is not null;
+                // Without an HTTP answer (timeout, outage) the provider may still store this capture, and so it may
+                // after a 409 idempotency_key_in_use (a request with this key is still being processed there).
+                everyCaptureAnswered = recorded.Failure!.HttpStatus is not null
+                    && recorded.Failure.Code != ProviderFailure.IdempotencyKeyInUse;
                 captureFailure = recorded.Failure.Transient
                     ? LaunchResult.Fail(LaunchOutcome.ProviderUnavailable, recorded.Failure.Code)
                     : LaunchResult.Fail(LaunchOutcome.ConsentRejected, recorded.Failure.Code);
                 break;
             }
+
+            captured.Add(consent.Purpose);
         }
 
         if (consents.Count > 0)
@@ -179,28 +199,40 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return captureFailure;
         }
 
-        var launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId.Value, cancellationToken).ConfigureAwait(false);
-        if (!launched.Ok && launched.Failure!.Code == ProviderFailure.SubjectDataRequired
-            && AssignProviderInstrumentsUseCase.SubjectUpdateFor(new AssignmentContext(
-                true, true, true, false, null, context.CandidateFirstName, context.CandidateLastName, context.CandidateEmail))
-                is { } update)
+        if (captured.Count > 0 && attempt.MissingConsents is { Count: > 0 } before)
         {
-            // A link-out sitting needs the subject's names and email (the provider creates it on the first launch). The
-            // contract's recovery path: PATCH the subject with them from the candidate record, then launch again, once.
-            var enriched = await _provider.UpdateSubjectAsync(attempt.ProviderSubjectId.Value, update, cancellationToken)
+            // What the portal shows as "consent needed": the purposes just recorded are no longer missing. The provider
+            // stays the authority; a poll or a consent_required below replaces this list with its own.
+            await _repository.SetMissingConsentsAsync(
+                found.OrganizationId, attempt.Id, before.Except(captured, StringComparer.Ordinal).ToList(), cancellationToken)
                 .ConfigureAwait(false);
-            if (enriched.Ok)
-            {
-                launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId.Value, cancellationToken)
-                    .ConfigureAwait(false);
-            }
         }
 
+        var slug = await _repository.GetActiveOrganizationSlugAsync(found.OrganizationId, cancellationToken).ConfigureAwait(false);
+        var returnPath = !embedded && slug is { Length: > 0 } ? $"/careers/{slug}/dashboard" : null;
+        var locked = await _repository.LaunchUnderCandidateLockAsync(
+            found.OrganizationId, attempt.Id,
+            (fresh, ct) => LaunchAtProviderAsync(fresh, context, returnPath, ct), now, cancellationToken).ConfigureAwait(false);
+        switch (locked.Outcome)
+        {
+            case LockedLaunchOutcome.NotFound:
+                return LaunchResult.Fail(LaunchOutcome.NotFound);
+            case LockedLaunchOutcome.ConsentWithdrawn:
+                return LaunchResult.Fail(LaunchOutcome.ConsentWithdrawn);
+            case LockedLaunchOutcome.NotLaunchable:
+                return locked.State == ProviderAttemptStates.Expired
+                    ? LaunchResult.Fail(LaunchOutcome.Expired)
+                    : LaunchResult.Fail(LaunchOutcome.NotLaunchable, locked.State);
+        }
+
+        var launched = locked.Call!;
         if (!launched.Ok)
         {
             var failure = launched.Failure!;
             if (failure.Code == "consent_required")
             {
+                await _repository.SetMissingConsentsAsync(found.OrganizationId, attempt.Id, failure.MissingConsents, cancellationToken)
+                    .ConfigureAwait(false);
                 return new LaunchResult(LaunchOutcome.ConsentRequired, null, failure.MissingConsents, failure.Code);
             }
 
@@ -216,10 +248,31 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
                 : LaunchResult.Fail(LaunchOutcome.ProviderRefused, failure.Code);
         }
 
-        await _repository.MarkLaunchedAsync(
-            found.OrganizationId, attempt.Id, attempt.CandidateId, launched.Value!.Delivery, now, cancellationToken)
-            .ConfigureAwait(false);
         return new LaunchResult(LaunchOutcome.Launched, launched.Value, [], null);
+    }
+
+    // Runs inside the candidate lock: the hosted launch, plus the contract's recovery for a link-out sitting that needs the
+    // subject's names and email (PATCH the subject from the candidate record, then launch again, once).
+    private async Task<ProviderCall<ProviderLaunch>> LaunchAtProviderAsync(
+        AttemptRow attempt, LaunchContext context, string? returnPath, CancellationToken cancellationToken)
+    {
+        var launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId!.Value, returnPath, cancellationToken)
+            .ConfigureAwait(false);
+        if (!launched.Ok && launched.Failure!.Code == ProviderFailure.SubjectDataRequired
+            && AssignProviderInstrumentsUseCase.SubjectUpdateFor(new AssignmentContext(
+                true, true, true, false, null, context.CandidateFirstName, context.CandidateLastName, context.CandidateEmail))
+                is { } update)
+        {
+            var enriched = await _provider.UpdateSubjectAsync(attempt.ProviderSubjectId!.Value, update, cancellationToken)
+                .ConfigureAwait(false);
+            if (enriched.Ok)
+            {
+                launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId!.Value, returnPath, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        return launched;
     }
 
     // The same normalisation the #312 email-sibling predicate uses: lower(btrim(email)).
@@ -228,19 +281,34 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         && string.Equals(stored.Trim(), verified.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Strict body: <c>{ "consents"?: [{ "purpose", "textVersion", "locale" }] }</c>, at most one entry per purpose.
+    /// Strict body: <c>{ "consents"?: [{ "purpose", "textVersion", "locale" }], "embedded"?: boolean }</c>, at most one
+    /// consent entry per purpose.
     /// </summary>
-    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents)
+    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents) =>
+        TryParseBody(node, out consents, out _);
+
+    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded)
     {
         consents = [];
+        embedded = false;
         if (node is null)
         {
             return true;
         }
 
-        if (node is not JsonObject body || body.Any(p => p.Key != "consents"))
+        if (node is not JsonObject body || body.Any(p => p.Key is not ("consents" or "embedded")))
         {
             return false;
+        }
+
+        if (body["embedded"] is { } flag)
+        {
+            if (flag is not JsonValue value || !value.TryGetValue(out bool isEmbedded))
+            {
+                return false;
+            }
+
+            embedded = isEmbedded;
         }
 
         if (body["consents"] is null)

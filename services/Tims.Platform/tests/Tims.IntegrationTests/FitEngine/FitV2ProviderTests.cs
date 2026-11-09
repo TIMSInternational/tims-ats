@@ -174,6 +174,19 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Equal(providers, hosted.Any(h => h is Tims.Api.Assessments.ProviderWithdrawalSweepHostedService));
     }
 
+    // D17: the polling fallback is registered with the connector and only with it, like the sweep.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_attempt_poller_is_registered_only_with_the_connector_on(bool providers)
+    {
+        await using var factory = Factory(providers);
+
+        var hosted = factory.Services.GetServices<IHostedService>();
+
+        Assert.Equal(providers, hosted.Any(h => h is Tims.Api.Assessments.ProviderAttemptPollHostedService));
+    }
+
     private static JsonNode Entry(JsonNode breakdown, string instrument) =>
         Assert.Single(breakdown["assessments"]!.AsArray(), e => e!["instrument"]!.GetValue<string>() == instrument)!;
 

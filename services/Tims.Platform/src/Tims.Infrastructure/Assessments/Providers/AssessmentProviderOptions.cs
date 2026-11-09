@@ -16,6 +16,12 @@ public sealed class AssessmentProviderOptions
     public const string DefaultScopes = "catalog:read assignments:write subjects:write results:read";
 
     /// <summary>
+    /// The DSAR export's own scope, requested ALONE for that one call (the contract keeps it apart from
+    /// <c>results:read</c>: the export carries the subject's media links). The partner client must be allowed it.
+    /// </summary>
+    public const string ExportScope = "subjects:export";
+
+    /// <summary>
     /// The API base URL: an https origin or an https base path, e.g. <c>https://www.timssuite.com/api</c> (owner default
     /// D18: <c>/v1</c> stays mounted at <c>/api/v1</c>). Every call path (<c>v1/…</c>) is joined RELATIVE to it, so a
     /// base path is kept; a trailing slash is optional. Credentials, a query or a fragment make it invalid.
@@ -40,6 +46,15 @@ public sealed class AssessmentProviderOptions
     /// <summary>Per-call timeout. Bounded so a webhook's result fetch stays inside the sender's 10 s window.</summary>
     public int RequestTimeoutSeconds { get; init; } = 6;
 
+    /// <summary>
+    /// Optional. The candidate portal's ORIGIN (<c>https://host[:port]</c>, no path), e.g. <c>https://ats.example.com</c>.
+    /// When set, a hosted launch (D16) sends <c>return_url</c> = this origin + the portal path (the candidate's
+    /// dashboard), where the hosted player returns the candidate when the sitting ends. It must be one of the partner
+    /// client's registered origins at the provider, which also lets the portal frame the player; the provider refuses a
+    /// <c>return_url</c> on any other origin (422). Unset: no <c>return_url</c> is sent.
+    /// </summary>
+    public string? PortalBaseUrl { get; init; }
+
     public bool IsConfigured =>
         IsHttpsUrl(BaseUrl) && IsHttpsUrl(TokenUrl) && IsUsable(ClientId) && IsUsable(ClientSecret)
         && IsUsable(WebhookSigningSecret) && RequestTimeoutSeconds is >= 1 and <= 30;
@@ -52,11 +67,16 @@ public sealed class AssessmentProviderOptions
     public bool IsValid() =>
         (string.IsNullOrWhiteSpace(BaseUrl) || IsHttpsUrl(BaseUrl))
         && (string.IsNullOrWhiteSpace(TokenUrl) || IsHttpsUrl(TokenUrl))
+        && (string.IsNullOrWhiteSpace(PortalBaseUrl) || IsHttpsOrigin(PortalBaseUrl))
         && RequestTimeoutSeconds is >= 1 and <= 30
         && Scopes.Length <= 200;
 
     public static bool IsUsable(string? value) =>
         !string.IsNullOrWhiteSpace(value) && !string.Equals(value.Trim(), TerraformPlaceholder, StringComparison.Ordinal);
+
+    /// <summary>An https origin: scheme, host and optional port only (a trailing slash is tolerated).</summary>
+    public static bool IsHttpsOrigin(string? value) =>
+        IsHttpsUrl(value) && Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.AbsolutePath == "/";
 
     private static bool IsHttpsUrl(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
@@ -68,6 +88,10 @@ public sealed class AssessmentProviderOptions
     /// <c>https://host/api/v1/assignments</c>, and an origin to <c>https://host/v1/assignments</c>. Only valid when
     /// <see cref="IsConfigured"/>.
     /// </summary>
+    /// <summary>The portal origin without a trailing slash, or null when unset or not an https origin.</summary>
+    public string? ResolvedPortalOrigin =>
+        IsHttpsOrigin(PortalBaseUrl) ? PortalBaseUrl!.Trim().TrimEnd('/') : null;
+
     public Uri ResolvedBaseUri
     {
         get
