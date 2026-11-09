@@ -1,7 +1,13 @@
 # AS-5: the TIMS Assessments provider connector
 
 Status: implemented, dark (`Platform:AssessmentProvidersEnabled=false`). The migration is committed and **not applied**.
-Nothing here has run against a real provider: the TIMS Assessments API v1 exists only as a contract.
+Proven locally on 2026-11-09, not in production: against a real tims-suite `/v1` (release/assessments-v1 at b8e3b6dc,
+contract e583dd8) running on one machine, `apps/web/e2e/assessments-cross` drives binding, the vacancy's tests, apply,
+assign, candidate consent (with and without the optional voice consents), the hosted player for LIA, English and
+Personality, signed webhooks, result intake, FIT v2, the HR and team-leader (D6) views, cancel, expiry, consent
+withdrawal and DSAR export and erasure: 14 of 14 hops pass. Not proven: anything that needs AWS (the English speaking
+upload and its AI scoring, the ITC-IA judge), the framed player, approved (non-draft) consent texts, and any
+production deployment. Production remains unproven.
 
 Sources:
 
