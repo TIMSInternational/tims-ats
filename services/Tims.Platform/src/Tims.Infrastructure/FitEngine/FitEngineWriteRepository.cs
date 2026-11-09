@@ -189,8 +189,7 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
-            "SELECT EXISTS (SELECT 1 FROM fit_scores WHERE organization_id = @org AND candidate_id = @cand "
-            + "AND vacancy_id = @vac)",
+            FitScoreExistsSql,
             (NpgsqlConnection)_db.Database.GetDbConnection(),
             (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction());
         command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
@@ -398,6 +397,10 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     /// <summary>The transaction-local marker the fit_scores_keep_v2 trigger accepts as a FIT v2-aware writer.</summary>
     public const string FitV2AwareWriterSql = "SELECT set_config('tims.fit_writer', 'fit_v2_aware', true)";
+
+    private const string FitScoreExistsSql =
+        "SELECT EXISTS (SELECT 1 FROM fit_scores WHERE organization_id = @org AND candidate_id = @cand "
+        + "AND vacancy_id = @vac)";
 
     private const string FitScoreUpsertSql =
         "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, "
