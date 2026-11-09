@@ -97,6 +97,20 @@ describe('fitEngineService.getRankingForVacancy', () => {
   });
 });
 
+describe('D6: redacted ties never keep the hidden order (Codex r10 run 3)', () => {
+  it("ranking and simulateWeights break a narrow reader's ties by candidate id, not by the stored score", async () => {
+    // Fetched by stored overall DESC: the higher hidden LIA first. Redacted, both show the same visible dimensions.
+    fitFindMany.mockResolvedValue([row('x-hi', 73, v2(50, 35)), row('a-lo', 70, v2(30, 20))]);
+    const ranking = await fitEngineService.getRankingForVacancy('org-1', 'vac-1', true);
+    expect(ranking[0]!.overallScore).toBe(ranking[1]!.overallScore);
+    expect(ranking.map((r) => r.lastName)).toEqual(['a-lo', 'x-hi']);
+
+    const lead = await fitEngineService.simulateWeights('org-1', 'vac-1', WEIGHTS, true);
+    expect(lead[0]!.simulatedScore).toBe(lead[1]!.simulatedScore);
+    expect(lead.map((r) => r.lastName)).toEqual(['a-lo', 'x-hi']);
+  });
+});
+
 describe('fitEngineService.simulateWeights', () => {
   const allOnAssessment = { assessment: 1, interview: 0, experience: 0, education: 0, languages: 0 };
 

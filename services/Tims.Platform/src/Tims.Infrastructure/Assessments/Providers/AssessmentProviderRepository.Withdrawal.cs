@@ -241,6 +241,9 @@ public sealed partial class AssessmentProviderRepository
         Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // The attempt lock a launch holds across its provider call: an announcement waits for a launch in progress, so a
+        // launch that enforces the candidate's optional declines under that lock sees every capture that can still land.
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
         var timestamp = now.UtcDateTime;
         // Refused (0 rows) for an attempt already in a withdrawal. Against the withdrawal's staging UPDATE of the same row,
         // row locking decides the order: the loser re-evaluates its WHERE on the winner's row version.

@@ -540,7 +540,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             return new LockedLaunch(LockedLaunchOutcome.NotLaunchable, null, attempt.State);
         }
 
-        var call = await launch(attempt, cancellationToken);
+        var (_, inFlight, startedAt) = CaptureOf(attempt.Id);
+        var call = await launch(attempt with { ConsentCapturesInFlight = inFlight, ConsentCaptureStartedAt = startedAt }, cancellationToken);
         var during = DuringLockedLaunchCall;
         DuringLockedLaunchCall = null;
         during?.Invoke();

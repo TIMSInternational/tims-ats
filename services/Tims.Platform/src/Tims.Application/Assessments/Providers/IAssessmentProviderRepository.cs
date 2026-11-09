@@ -537,8 +537,18 @@ public sealed record AttemptRow(
     string? AgeBand = null,
     Guid? LatestResultId = null,
     IReadOnlyList<string>? GrantedOptionalConsents = null,
-    IReadOnlyList<string>? DeclinedOptionalConsents = null)
+    IReadOnlyList<string>? DeclinedOptionalConsents = null,
+    int ConsentCapturesInFlight = 0,
+    DateTimeOffset? ConsentCaptureStartedAt = null)
 {
+    /// <summary>
+    /// A consent capture announced by a launch and not answered yet, and not stale at <paramref name="now"/>: the provider
+    /// may still store it.
+    /// </summary>
+    public bool CaptureInFlightAt(DateTimeOffset now) =>
+        ConsentCapturesInFlight > 0
+        && (ConsentCaptureStartedAt is not { } started || started > now - ProviderCleanup.ConsentCaptureStaleAfter);
+
     /// <summary>The optional purposes the candidate has neither granted nor declined yet.</summary>
     public IReadOnlyList<string> PendingOptionalConsents => Domain.Assessments.Providers.OptionalConsents.For(Instrument)
         .Where(p => !(GrantedOptionalConsents ?? []).Contains(p) && !(DeclinedOptionalConsents ?? []).Contains(p))

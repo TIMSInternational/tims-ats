@@ -304,6 +304,15 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         // held), are enforced at the provider before the sitting starts: an active consent for a declined purpose (an
         // earlier grant, another tab) is withdrawn, so the provider never administers what HR reads as "not assessed".
         var declined = (attempt.DeclinedOptionalConsents ?? []).Where(OptionalConsents.For(attempt.Instrument).Contains).ToList();
+        if (declined.Count > 0 && attempt.CaptureInFlightAt(now))
+        {
+            // Another launch's capture (another tab) was announced and may still land at the provider AFTER the
+            // withdrawal below, re-activating a declined purpose. Captures are announced under this same attempt lock,
+            // so none can begin while it is held; one already in flight is waited out (retry) until it is answered (its
+            // launch then records its decision) or stale.
+            return ProviderCall<ProviderLaunch>.Fail(new ProviderFailure(null, "consent_capture_in_flight", true, []));
+        }
+
         if (declined.Count > 0 && attempt.ProviderSubjectId is { } subjectId
             && !await WithdrawDeclinedAsync(subjectId, declined, now, cancellationToken).ConfigureAwait(false))
         {

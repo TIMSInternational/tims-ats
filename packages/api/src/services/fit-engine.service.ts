@@ -180,6 +180,9 @@ async function resolveWeightProfile(orgId: string, roleFamily: string | null): P
   return created.weights as Record<FitDimension, number>;
 }
 
+/** Ordinal candidate-id order: the D6 tie-breaker for a narrow reader's sorted lists (the C# twin uses the same). */
+const byId = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 export const fitEngineService = {
   async computeFitScore(orgId: string, candidateId: string, vacancyId: string, opts?: { llmJudgment?: LlmJudgment }) {
     const [candidate, vacancy, assessmentScore, interviewScore] = await Promise.all([
@@ -235,7 +238,10 @@ export const fitEngineService = {
         calculatedAt: r.calculatedAt,
       };
     });
-    return hideBelowMinimum ? ranking.sort((a, b) => b.overallScore - a.overallScore) : ranking;
+    // D6: ties broken by candidate id, never by the fetch order (the STORED overall's, which would leak the hidden level).
+    return hideBelowMinimum
+      ? ranking.sort((a, b) => b.overallScore - a.overallScore || byId(a.candidateId, b.candidateId))
+      : ranking;
   },
 
   async simulateWeights(
@@ -264,7 +270,9 @@ export const fitEngineService = {
           isPartial,
         };
       })
-      .sort((a, b) => b.simulatedScore - a.simulatedScore);
+      .sort(
+        (a, b) => b.simulatedScore - a.simulatedScore || (hideBelowMinimum ? byId(a.candidateId, b.candidateId) : 0),
+      );
   },
 
   async upsertWeightProfile(orgId: string, name: string, weights: Record<FitDimension, number>) {

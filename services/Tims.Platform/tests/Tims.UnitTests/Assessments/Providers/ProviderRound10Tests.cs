@@ -389,6 +389,24 @@ public sealed class ProviderRound10Tests
     }
 
     [Fact]
+    public async Task A_decline_is_not_enforced_while_another_tabs_capture_may_still_land()
+    {
+        // Codex r10 run 3 [P1]: tab B announced a capture and its request is still in flight; tab A declines voice. A's
+        // withdrawal could run before B's capture lands, so A retries instead of launching against a reactivated consent.
+        var attempt = _repository.AddCreatedAttempt("english");
+        _repository.DbNow = Now;
+        _repository.BeforeLockedLaunchChecks = () =>
+            _repository.BeginConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None).GetAwaiter().GetResult();
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+
+        Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
+        Assert.Equal("consent_capture_in_flight", result.Detail);
+        Assert.DoesNotContain(_provider.Calls, c => c == "launch");
+    }
+
+    [Fact]
     public async Task A_recorded_decline_is_enforced_under_the_launch_lock_even_against_a_later_capture()
     {
         // The decline was recorded earlier; another tab's capture then landed at the provider without recording a grant.
