@@ -225,8 +225,9 @@ a single-use launch code: it goes to the candidate's own response body only, and
   before the erasure marker (separate transactions), so an interruption between them leaves the results deleted and
   the run incomplete (retry). A create announced before the markers may still create a NEW provider subject (the
   provider forgot the erased subject's external_ref): the erasure re-reads the candidate after its markers and stays
-  incomplete (503) while such a create is live or recorded a subject the run did not erase; an unanswered create
-  with no recorded subject makes the next run resolve (tenant, candidate id) again.
+  incomplete (503) while such a create is live or recorded a subject the run did not erase; any unanswered create
+  (whatever its attempt's subject or state) makes the next run resolve (tenant, candidate id) again, which finds a
+  subject that create made after the erasure.
 - **Portal status (D9).** A finished attempt that holds a result shows as completed even when a later revision voided
   it; "needs review" is only a sitting voided before any result (D4).
 

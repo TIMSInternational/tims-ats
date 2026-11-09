@@ -701,7 +701,15 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     {
         Writes.Add("erase");
         LocallyErasedSubjects.Add(providerSubjectId);
-        return Task.FromResult(1);
+        // Mirrors the real repository: every attempt of the subject is erased (results gone, state terminal).
+        var erased = Attempts.Where(a => a.OrganizationId == organizationId && a.ProviderSubjectId == providerSubjectId)
+            .Select(a => a.Id).ToList();
+        foreach (var id in erased)
+        {
+            Replace(id, a => a with { State = ProviderAttemptStates.Erased });
+        }
+
+        return Task.FromResult(erased.Count);
     }
 
     public Task<IReadOnlyList<ProviderFitRow>> GetFitRowsAsync(
@@ -981,7 +989,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
                 Attempts.Any(a => a.CandidateId == candidateId),
                 ErasedSubjects.ToList(),
                 Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
-                    && (a.ErasureRequestedAt is null || (CreatesInFlight.ContainsKey(a.Id) && a.ProviderSubjectId is null))),
+                    && a.ErasureRequestedAt is null)
+                    || Attempts.Any(a => a.CandidateId == candidateId && CreatesInFlight.ContainsKey(a.Id)),
                 Attempts.Any(a => a.CandidateId == candidateId && CreatesInFlight.TryGetValue(a.Id, out var begun)
                     && begun >= DbNow - ProviderCreateFence.StaleAfter)));
 

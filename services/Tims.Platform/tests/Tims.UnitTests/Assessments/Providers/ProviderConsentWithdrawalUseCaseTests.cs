@@ -324,6 +324,33 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         Assert.False(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
     }
 
+    // Codex ats-final run 3 [P1]: a RE-SEND of a failed create (its attempt already records subject S) begins its fence;
+    // the erasure deletes S and erases the attempt; the re-send's EnsureSubject then creates S2 (the provider forgot S's
+    // external_ref), which RecordSubjectAsync never records over S. Once the fence is stale, the next erasure must still
+    // resolve (tenant, candidate id) and erase S2, not report the candidate erased.
+    [Fact]
+    public async Task A_subject_a_resend_creates_after_the_erasure_is_resolved_and_erased_by_the_next_run()
+    {
+        var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
+        var first = pending.ProviderSubjectId!.Value;
+        Assert.True(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+
+        var during = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+        Assert.Equal(ProviderErasureOutcome.Incomplete, during.Outcome);
+        Assert.Equal(ProviderAttemptStates.Erased, _repository.Attempts.Single().State);
+
+        // The re-send's late EnsureSubject made S2; its process died before any answer, so the fence goes stale.
+        var late = Guid.NewGuid();
+        _provider.SubjectId = late;
+        _repository.DbNow += ProviderCreateFence.StaleAfter + TimeSpan.FromMinutes(1);
+
+        var after = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Requested, after.Outcome);
+        Assert.Contains(first, _provider.ErasedSubjects);
+        Assert.Contains(late, _provider.ErasedSubjects);
+    }
+
     [Fact]
     public async Task A_create_fence_gone_stale_without_a_recorded_subject_is_resolved_and_erased_on_retry()
     {

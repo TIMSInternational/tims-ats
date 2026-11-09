@@ -374,14 +374,16 @@ public sealed partial class AssessmentProviderRepository
                 .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId
                     && a.State != ProviderAttemptStates.Erased && a.ProviderErasureRequestedAt == null, cancellationToken)
                 .ConfigureAwait(false);
-            // A create announced (BeginCreateAsync) and never answered: it may have created a provider subject before it
-            // recorded it, so that subject is resolved even after an erasure was requested (Codex ats-final run 2). And
-            // one still live (database clock) may create a subject AFTER the erasure resolved the candidate's.
+            // A create announced (BeginCreateAsync) and never answered: its EnsureSubject may have created a provider
+            // subject no attempt records (Codex ats-final runs 2 and 3) - before the subject was recorded, or AFTER an
+            // erasure made the provider forget the recorded one's external_ref (RecordSubjectAsync never replaces a
+            // recorded subject, and MarkCreatedAsync ignores an erased attempt). So ANY unanswered fence, whatever the
+            // attempt's subject or state, makes the candidate's subject be resolved by (tenant, candidate id) again, even
+            // under an erasure request. And one still live (database clock) may create a subject after this read.
             var createStaleSeconds = ProviderCreateFence.StaleAfter.TotalSeconds;
             var fences = await _db.Database.SqlQuery<CreateFenceFacts>(
                     $"""
-                     SELECT COALESCE(bool_or(provider_subject_id IS NULL AND state <> {ProviderAttemptStates.Erased}), false)
-                                AS "Unrecorded",
+                     SELECT count(*) > 0 AS "Unanswered",
                             COALESCE(bool_or(create_started_at >= clock_timestamp() - make_interval(secs => {createStaleSeconds})),
                                 false) AS "Live"
                        FROM assessment_provider_attempts
@@ -389,7 +391,7 @@ public sealed partial class AssessmentProviderRepository
                         AND create_started_at IS NOT NULL
                      """)
                 .SingleAsync(cancellationToken).ConfigureAwait(false);
-            needsResolution |= fences.Unrecorded;
+            needsResolution |= fences.Unanswered;
             var erased = new List<Guid>();
             foreach (var subject in subjects)
             {
@@ -451,7 +453,7 @@ public sealed partial class AssessmentProviderRepository
 
     private sealed class CreateFenceFacts
     {
-        public bool Unrecorded { get; init; }
+        public bool Unanswered { get; init; }
 
         public bool Live { get; init; }
     }

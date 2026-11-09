@@ -373,8 +373,9 @@ public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 /// Whether the provider's subject for (tenant, candidate id) must still be resolved: some attempt of the candidate is
 /// neither erased nor under an accepted erasure request. False once every attempt is: the provider forgets the
 /// subject's external_ref when erasure is requested, so resolving it again would CREATE a fresh, empty subject. Also true
-/// while an attempt holds an UNANSWERED create (its create fence set, no subject recorded): that create may have made a
-/// provider subject no attempt names.
+/// while any attempt holds an UNANSWERED create (its create fence set, whatever its subject or state): that create may
+/// have made a provider subject no attempt names, including one created after an erasure made the provider forget the
+/// recorded subject's external_ref.
 /// </param>
 /// <param name="CreatesInFlight">
 /// Whether some attempt of the candidate holds a create announced by
