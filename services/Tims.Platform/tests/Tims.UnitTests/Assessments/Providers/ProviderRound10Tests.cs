@@ -359,8 +359,50 @@ public sealed class ProviderRound10Tests
             attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
 
         Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
-        Assert.Empty(_repository.OptionalDecisions);
+        // The decline is on record (the next launch enforces it again); no sitting started meanwhile.
+        Assert.Equal([ConsentPurposes.Voice], Assert.Single(_repository.OptionalDecisions).Declined);
         Assert.DoesNotContain(_provider.Calls, c => c == "launch");
+    }
+
+    [Fact]
+    public async Task A_grant_recorded_by_another_tab_after_this_decline_wins_and_is_not_withdrawn()
+    {
+        // Codex r10 run 2 [P1]: tab A declines voice; before A's launch takes its locks, tab B captures voice and records
+        // the grant. The provider must then hold exactly what was recorded LAST: voice active, attempt "granted".
+        var attempt = _repository.AddCreatedAttempt("english");
+        var subject = attempt.ProviderSubjectId!.Value;
+        var voice = Guid.NewGuid();
+        _repository.BeforeLockedLaunchChecks = () =>
+        {
+            _provider.SubjectConsents[subject] = [new ProviderConsentRecord(voice, ConsentPurposes.Voice, "active")];
+            _repository.RecordOptionalConsentDecisionsAsync(FakeRepository.Org, attempt.Id, [ConsentPurposes.Voice], [],
+                CancellationToken.None).GetAwaiter().GetResult();
+        };
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        Assert.Empty(_provider.WithdrawnConsents);
+        Assert.Equal([ConsentPurposes.Voice], _repository.Attempts.Single().GrantedOptionalConsents);
+        Assert.Null(OptionalConsents.SpeakingNotAssessedReason("english", _repository.Attempts.Single().DeclinedOptionalConsents!));
+    }
+
+    [Fact]
+    public async Task A_recorded_decline_is_enforced_under_the_launch_lock_even_against_a_later_capture()
+    {
+        // The decline was recorded earlier; another tab's capture then landed at the provider without recording a grant.
+        // Any later launch, under its locks, withdraws it again: the recorded decision is what the sitting gets.
+        var attempt = _repository.AddCreatedAttempt("english") with { DeclinedOptionalConsents = [ConsentPurposes.Voice] };
+        _repository.Attempts[0] = attempt;
+        var voice = Guid.NewGuid();
+        _provider.SubjectConsents[attempt.ProviderSubjectId!.Value] = [new ProviderConsentRecord(voice, ConsentPurposes.Voice, "active")];
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        Assert.Equal([(attempt.ProviderSubjectId.Value, voice)], _provider.WithdrawnConsents);
     }
 
     [Fact]

@@ -101,6 +101,35 @@ public sealed class FitV2VisibilityTests
         Assert.Equal(80, lead[1].OverallScore);
     }
 
+    // Codex r10 run 2 [P2]: two rows that tie once redacted must not keep the stored (hidden-score) order.
+    [Fact]
+    public async Task Ranking_And_Simulate_NarrowReader_BreakRedactedTiesByCandidateId_NotByTheHiddenScore()
+    {
+        const string LowerLia =
+            """{"assessment":30,"interview":null,"experience":100,"education":null,"languages":null,"llmJudgment":null,"fitVersion":2,"reviewPending":false,"assessments":[{"instrument":"lia","use":"scored","status":"completed","score":30,"gate":null,"min":{"globalPercentile":40}}]}""";
+        // Fetched by stored overall DESC: the higher hidden LIA (02, overall 75) before the lower (01, overall 65).
+        var repo = new Repo(
+            Row("ca000000-0000-0000-0000-000000000002", 75, BelowLia),
+            Row("ca000000-0000-0000-0000-000000000001", 65, LowerLia));
+        var useCase = new FitEngineReadUseCase(repo);
+        var weights = new Dictionary<string, double>
+        {
+            ["assessment"] = 0.5,
+            ["interview"] = 0,
+            ["experience"] = 0.5,
+            ["education"] = 0,
+            ["languages"] = 0,
+        };
+
+        var ranking = await useCase.GetRankingForVacancyAsync(OrgId, VacancyId, hideBelowMinimum: true, CancellationToken.None);
+        var simulated = await useCase.SimulateWeightsAsync(OrgId, VacancyId, weights, true, CancellationToken.None);
+
+        Assert.Equal(ranking[0].OverallScore, ranking[1].OverallScore); // both show experience only
+        Assert.EndsWith("01", ranking[0].CandidateId, StringComparison.Ordinal);
+        Assert.Equal(simulated[0].SimulatedScore, simulated[1].SimulatedScore);
+        Assert.EndsWith("01", simulated[0].CandidateId, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Simulate_NarrowReader_CannotReadTheHiddenDimensionBack()
     {

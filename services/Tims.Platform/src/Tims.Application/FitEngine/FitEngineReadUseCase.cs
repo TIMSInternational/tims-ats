@@ -30,7 +30,11 @@ public sealed class FitEngineReadUseCase(IFitEngineReadRepository repository)
         var rows = await _repository.GetFitScoresForVacancyAsync(organizationId, vacancyId, cancellationToken)
             .ConfigureAwait(false);
         var ranking = rows.Select(r => ToRankingRow(r, hideBelowMinimum)).ToList();
-        return hideBelowMinimum ? ranking.OrderByDescending(r => r.OverallScore).ToList() : ranking;
+        // Ties broken by candidate id, never by the fetch order: that order is the STORED overall's, so a stable sort
+        // would keep two redacted rows that now tie in their hidden order and reveal which hidden level is higher.
+        return hideBelowMinimum
+            ? ranking.OrderByDescending(r => r.OverallScore).ThenBy(r => r.CandidateId, StringComparer.Ordinal).ToList()
+            : ranking;
     }
 
     private static FitRankingRow ToRankingRow(FitScoreForVacancyData r, bool hideBelowMinimum)
@@ -125,7 +129,7 @@ public sealed class FitEngineReadUseCase(IFitEngineReadRepository repository)
     {
         var rows = await _repository.GetFitScoresForVacancyAsync(organizationId, vacancyId, cancellationToken)
             .ConfigureAwait(false);
-        return rows
+        var simulated = rows
             .Select(r =>
             {
                 var breakdown = JsonNode.Parse(r.Breakdown);
@@ -139,8 +143,12 @@ public sealed class FitEngineReadUseCase(IFitEngineReadRepository repository)
                 return new SimulatedRankingRow(
                     r.CandidateId.ToString(), r.FirstName, r.LastName, result.OverallScore, result.IsPartial);
             })
-            .OrderByDescending(r => r.SimulatedScore)
-            .ToList();
+            .OrderByDescending(r => r.SimulatedScore);
+        // For a narrow reader ties are broken by candidate id (see GetRankingForVacancyAsync): the stored order would
+        // leak the hidden levels. A wide reader keeps the JS-parity stable order.
+        return hideBelowMinimum
+            ? simulated.ThenBy(r => r.CandidateId, StringComparer.Ordinal).ToList()
+            : simulated.ToList();
     }
 
     /// <summary>

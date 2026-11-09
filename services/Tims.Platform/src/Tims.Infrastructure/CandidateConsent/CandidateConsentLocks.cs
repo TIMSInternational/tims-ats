@@ -20,7 +20,10 @@ namespace Tims.Infrastructure.CandidateConsent;
 /// </summary>
 public static class CandidateConsentLocks
 {
-    /// <summary>At most this many rows are locked (WithdrawByEmailAsync itself withdraws at most 20).</summary>
+    /// <summary>
+    /// At most this many rows are locked (WithdrawByEmailAsync itself withdraws at most 20); more fails the caller
+    /// closed instead of locking a partial set.
+    /// </summary>
     public const int MaxRows = 50;
 
     public static async Task LockCandidateAndSiblingsAsync(
@@ -31,10 +34,17 @@ public static class CandidateConsentLocks
         for (var round = 0; round < 3; round++)
         {
             var ids = await SiblingIdsAsync(database, organizationId, candidateId, cancellationToken).ConfigureAwait(false);
-            if (ids.Count == 0)
+            if (ids.Count > MaxRows)
             {
-                // No candidate row (a pipeline id): its own lock, as before.
-                ids = [candidateId];
+                // Fail closed: a set this large cannot be locked within the bound, and a partial set could leave out
+                // a row whose withdrawal the caller's re-check counts. The caller writes nothing.
+                throw new InvalidOperationException("Too many same-email candidate rows to lock for the #312 re-check.");
+            }
+
+            if (!ids.Contains(candidateId))
+            {
+                // No candidate row (a pipeline id): its own lock, as before. The target is ALWAYS locked.
+                ids.Add(candidateId);
             }
 
             var added = false;
@@ -67,7 +77,7 @@ public static class CandidateConsentLocks
                     AND (other.id = target.id
                          OR (btrim(target.email) <> '' AND lower(btrim(other.email)) = lower(btrim(target.email))))
                   ORDER BY other.id
-                  LIMIT {MaxRows}
+                  LIMIT {MaxRows + 1}
                  """)
             .ToListAsync(cancellationToken);
 }

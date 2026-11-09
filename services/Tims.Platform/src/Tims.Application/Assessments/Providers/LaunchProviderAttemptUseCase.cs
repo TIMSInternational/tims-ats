@@ -209,16 +209,11 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         var offered = OptionalConsents.For(attempt.Instrument);
         var grantedOptional = captured.Where(offered.Contains).ToList();
         var declinedNow = declinedOptional.Where(offered.Contains).ToList();
-        if (declinedNow.Count > 0
-            && !await WithdrawDeclinedAsync(attempt.ProviderSubjectId.Value, declinedNow, now, cancellationToken).ConfigureAwait(false))
-        {
-            // A decline the provider does not reflect yet would let it administer what the candidate refused while HR
-            // reads "not assessed": nothing is recorded or launched; the candidate retries.
-            return LaunchResult.Fail(LaunchOutcome.ProviderUnavailable, "optional_consent_withdrawal_failed");
-        }
-
         if (grantedOptional.Count > 0 || declinedNow.Count > 0)
         {
+            // Recorded under the attempt lock. The provider is made to match the RECORDED declines inside the launch's
+            // own locks (LaunchAtProviderAsync), so a concurrent grant from another tab can never interleave between a
+            // withdrawal and the launch: whichever decision was recorded last is the one the provider holds at launch.
             await _repository.RecordOptionalConsentDecisionsAsync(
                 found.OrganizationId, attempt.Id, grantedOptional, declinedNow, cancellationToken).ConfigureAwait(false);
         }
@@ -236,7 +231,7 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         var returnPath = !embedded && slug is { Length: > 0 } ? $"/careers/{slug}/dashboard" : null;
         var locked = await _repository.LaunchUnderCandidateLockAsync(
             found.OrganizationId, attempt.Id,
-            (fresh, ct) => LaunchAtProviderAsync(fresh, context, returnPath, ct), now, cancellationToken).ConfigureAwait(false);
+            (fresh, ct) => LaunchAtProviderAsync(fresh, context, returnPath, now, ct), now, cancellationToken).ConfigureAwait(false);
         switch (locked.Outcome)
         {
             case LockedLaunchOutcome.NotFound:
@@ -303,8 +298,18 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     // Runs inside the candidate lock: the hosted launch, plus the contract's recovery for a link-out sitting that needs the
     // subject's names and email (PATCH the subject from the candidate record, then launch again, once).
     private async Task<ProviderCall<ProviderLaunch>> LaunchAtProviderAsync(
-        AttemptRow attempt, LaunchContext context, string? returnPath, CancellationToken cancellationToken)
+        AttemptRow attempt, LaunchContext context, string? returnPath, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        // The candidate's RECORDED optional declines, read fresh under the attempt lock (no decision can change while it is
+        // held), are enforced at the provider before the sitting starts: an active consent for a declined purpose (an
+        // earlier grant, another tab) is withdrawn, so the provider never administers what HR reads as "not assessed".
+        var declined = (attempt.DeclinedOptionalConsents ?? []).Where(OptionalConsents.For(attempt.Instrument).Contains).ToList();
+        if (declined.Count > 0 && attempt.ProviderSubjectId is { } subjectId
+            && !await WithdrawDeclinedAsync(subjectId, declined, now, cancellationToken).ConfigureAwait(false))
+        {
+            return ProviderCall<ProviderLaunch>.Fail(new ProviderFailure(null, "optional_consent_withdrawal_failed", true, []));
+        }
+
         var launched = await _provider.LaunchAsync(attempt.ProviderAssignmentId!.Value, returnPath, cancellationToken)
             .ConfigureAwait(false);
         if (!launched.Ok && launched.Failure!.Code == ProviderFailure.SubjectDataRequired

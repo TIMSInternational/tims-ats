@@ -261,6 +261,22 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
             $"SELECT withdrawal_state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
 
+    [Fact]
+    public async Task More_same_email_rows_than_the_lock_bound_fail_the_writer_closed()
+    {
+        // Codex r10 run 2 [P2]: a partial set could leave out the target or a withdrawn sibling; nothing is written.
+        var org = await OrgAsync();
+        var email = $"{Guid.NewGuid():N}@r10.example";
+        var values = string.Join(", ", Enumerable.Range(0, 51).Select(i =>
+            $"(gen_random_uuid(), '{org}', 'C', '{i}', '{(i % 2 == 0 ? email : email.ToUpperInvariant())}')"));
+        await fixture.ExecuteAsync($"INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES {values}");
+        var target = (Guid)(await fixture.ScalarAsync(
+            $"SELECT id FROM candidates WHERE organization_id = '{org}' ORDER BY id DESC LIMIT 1"))!; // outside the first 50
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            WithRepository(r => r.StageConsentWithdrawalAsync(org, target, Now, CancellationToken.None)));
+    }
+
     // ── 2 and 3. Optional consents and DSAR facts ──────────────────────────────────────────────────────────────────
 
     [Fact]
