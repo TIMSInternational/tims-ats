@@ -190,7 +190,9 @@ a single-use launch code: it goes to the candidate's own response body only, and
 
 - `return_url` = `AssessmentProviders:PortalBaseUrl` (an https origin registered at the provider) +
   `/careers/{org slug}/dashboard`, unless the portal asked for an **embedded** launch (it will frame the player, and the
-  portal refuses to be framed, so the player ends on its own screen).
+  portal refuses to be framed, so the player ends on its own screen). The portal asks for one only for a native
+  instrument with a configured player origin, and if the launch then cannot be framed it launches again top-level (the
+  new launch revokes the unused first code), so a top-level sitting always returns to the dashboard.
 - The portal frames the player only when the launch's frame ancestors include its own origin AND the URL is on
   `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN`, the only origin added to the portal's CSP `frame-src` and delegated camera and
   microphone. Otherwise it links out (top-level, same tab). A URL that is not https is never opened.
