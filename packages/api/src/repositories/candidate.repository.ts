@@ -110,7 +110,7 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput,
     fitScores: {
       where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
       orderBy: { calculatedAt: 'desc' as const },
-      select: { id: true, overallScore: true, breakdown: true, calculatedAt: true },
+      select: { id: true, overallScore: true, breakdown: true, weights: true, calculatedAt: true },
     },
     assessmentAssignments: {
       where: appScopeWhere as Prisma.AssessmentAssignmentWhereInput,

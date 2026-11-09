@@ -33,6 +33,14 @@ export type { BiasAnalysisResult } from './agents/bias-detector';
 export { scoreInterviewFit, fitScoreOutputSchema } from './agents/interview-fit-score';
 export type { FitScoreResult, FitScoreInput } from './agents/interview-fit-score';
 export { explainFit, fitExplainerOutputSchema } from './agents/fit-explainer';
+export {
+  FIT_DIMENSION_KEYS,
+  fitScoreAsShown,
+  hidesBelowMinimum,
+  redactFitBreakdownBelowMinimum,
+  redactFitScoreForNarrowReader,
+  weightedOverallScore,
+} from './fit-visibility';
 export type { FitExplainerResult, FitExplainerInput } from './agents/fit-explainer';
 export { suggestNextBestAction, pipelineOptimizerOutputSchema } from './agents/pipeline-optimizer';
 export type { PipelineOptimizerResult, PipelineOptimizerInput } from './agents/pipeline-optimizer';

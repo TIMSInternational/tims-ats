@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { consentGuard } from './consent-guard.service';
 import type { Prisma } from '@tims/db';
+import { fitScoreAsShown } from '@tims/ai';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { takeCursorPage } from '../lib/cursor-page';
 import { candidateAiService } from './candidate-ai.service';
@@ -40,6 +41,7 @@ export const candidateService = {
     scopeWhere: Prisma.CandidateWhereInput,
     id: string,
     appScopeWhere: Prisma.ApplicationWhereInput,
+    hideBelowMinimum = false,
   ) {
     const candidate = await candidateRepository.getById(orgId, scopeWhere, id, appScopeWhere);
     if (!candidate) {
@@ -54,6 +56,8 @@ export const candidateService = {
     return {
       ...candidate,
       applications: candidate.applications.map((a) => ({ ...a, rejectedBy: authors.get(a.id) ?? null })),
+      // FIT owner default D6 (@tims/ai fit-visibility); weights are read for it and never returned.
+      fitScores: candidate.fitScores.map((f) => fitScoreAsShown(f, hideBelowMinimum)),
     };
   },
 

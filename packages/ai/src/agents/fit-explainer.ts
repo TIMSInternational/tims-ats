@@ -22,6 +22,8 @@ Rules:
   it never lowers the score and never rejects the candidate; an "advisory" instrument is never scored
 - An instrument with status needs_review must be reviewed by a person before it counts — never describe it as a
   low score; no_result and no_value mean the result is unavailable
+- An instrument with belowMinimum true did not reach the vacancy's minimum; its level is deliberately not shown to
+  this reader — say only that it is below the minimum, never guess or describe a level or number for it
 - If reviewPending is true, the overall score is provisional: say a person must review it before it is final,
   even when every instrument shows completed
 - Do NOT recommend hire/no-hire — explain the score composition only
@@ -50,6 +52,8 @@ const instrumentEntrySchema = z.object({
   gate: z.enum(['met', 'not_met', 'unknown']).nullable().optional(),
   effectiveWeight: z.number().finite().nullable().optional(),
   reason: z.string().max(500).nullable().optional(),
+  // Owner default D6: set by redactFitBreakdownBelowMinimum for a narrow-scoped reader (the score is then null).
+  belowMinimum: z.literal(true).optional(),
 });
 
 type InstrumentSummary = {
@@ -60,6 +64,7 @@ type InstrumentSummary = {
   gate: string | null;
   effectiveWeight: number | null;
   reason: string | null;
+  belowMinimum?: true;
 };
 
 /** The valid per-instrument entries of a v2 breakdown, in order; [] for a v1 breakdown or garbage. */
@@ -78,6 +83,8 @@ export function summarizeInstruments(assessments: unknown): InstrumentSummary[] 
       gate: e.gate ?? null,
       effectiveWeight: e.effectiveWeight ?? null,
       reason: e.reason ? sanitizeInput(e.reason, MAX_REASON_CHARS) : null,
+      // Only on a redacted entry, so the message built for an unredacted row is unchanged.
+      ...(e.belowMinimum === true ? { belowMinimum: true as const } : {}),
     });
   }
   return out;

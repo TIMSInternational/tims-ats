@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { candidateService } from '../../services/candidate.service';
 import { scopeWhereFor, assertScoped } from '../../access';
+import { hidesBelowMinimum } from '@tims/ai';
 
 const cursorPaginationInput = z.object({
   cursor: z.string().uuid().optional(),
@@ -53,7 +54,7 @@ export const candidateCrudRouter = router({
       // Codex F1: child relations (applications/fitScores/assessments) are
       // filtered by the application-level fragment, not just the parent gate.
       const appScopeWhere = await scopeWhereFor('application', ctx.access, ctx.user.id);
-      return candidateService.getById(ctx.user.organizationId, scopeWhere, input.id, appScopeWhere);
+      return candidateService.getById(ctx.user.organizationId, scopeWhere, input.id, appScopeWhere, hidesBelowMinimum(ctx.access.scope));
     }),
 
   create: permissionProcedure('candidate', 'create')

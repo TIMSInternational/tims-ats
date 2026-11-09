@@ -147,4 +147,27 @@ describe('explainFit', () => {
   it('the system prompt says English counts once, in languages (owner default D3)', () => {
     expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/except english, which counts once and only in\s+the languages dimension/);
   });
+
+  it('a redacted entry (owner default D6) reaches the model as belowMinimum with no score, and nothing else marks it', async () => {
+    invokeAgentMock.mockResolvedValue({ data: { narrative: 'x' }, model: 'sonnet' });
+    const entry = {
+      instrument: 'lia', use: 'scored', status: 'completed', score: null, gate: null, effectiveWeight: 0.4,
+      min: { globalPercentile: 40 }, reason: null, resultId: 'r1', source: 'provider',
+    };
+    await explainFit('org-1', {
+      overallScore: 92,
+      breakdown: {
+        ...V1_BREAKDOWN, assessment: null, fitVersion: 2,
+        assessments: [{ ...entry, belowMinimum: true }, { ...entry, instrument: 'itcia', score: 100, min: { level: 3 } }],
+      },
+      vacancyTitle: 'Analyst',
+    });
+    const message = lastMessage();
+    expect(message).toContain('"instrument":"lia","use":"scored","status":"completed","score":null');
+    expect(message).toContain('"belowMinimum":true');
+    expect(message.match(/belowMinimum/g)).toHaveLength(1); // only the redacted entry
+    expect(message).not.toContain('globalPercentile');
+    expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/belowMinimum true did not reach the vacancy's minimum/);
+    expect(FIT_EXPLAINER_SYSTEM_PROMPT).toMatch(/never guess or describe a level or number/);
+  });
 });
