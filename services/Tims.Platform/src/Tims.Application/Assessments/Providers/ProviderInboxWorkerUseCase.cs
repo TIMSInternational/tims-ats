@@ -52,10 +52,16 @@ public sealed class ProviderInboxSignal
 /// </list>
 /// Two instances never process one event at once (the lease), and an instance that dies mid-event frees it when the lease
 /// expires. Event application is idempotent in any case (forward-only state writes, revision-ordered results).
+/// <para>Time: a run can last long (events are processed one after another, each for up to
+/// <see cref="ProviderInboxProcessing.MaxProcessingDuration"/>), so each event is processed at, and its retry scheduled
+/// from, the run's <c>now</c> plus the time the run has taken so far (<paramref name="timeProvider"/>), never the run's
+/// start alone: a retry computed from a stale clock would already be due and be reclaimed at once (round 11, Codex).</para>
 /// </summary>
 /// <param name="maxProcessingDurationForTests">TEST-ONLY: replaces <see cref="ProviderInboxProcessing.MaxProcessingDuration"/>.</param>
+/// <param name="timeProvider">Measures the run's elapsed time; the system clock when null.</param>
 public sealed class ProviderInboxWorkerUseCase(
-    IAssessmentProviderRepository repository, IAssessmentProvider provider, TimeSpan? maxProcessingDurationForTests = null)
+    IAssessmentProviderRepository repository, IAssessmentProvider provider, TimeSpan? maxProcessingDurationForTests = null,
+    TimeProvider? timeProvider = null)
     : IProviderInboxWorker
 {
     public const int MaxOrganizations = 200;
@@ -64,9 +70,12 @@ public sealed class ProviderInboxWorkerUseCase(
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly ProviderInboxProcessor _processor = new(repository, provider);
     private readonly TimeSpan _maxProcessingDuration = maxProcessingDurationForTests ?? ProviderInboxProcessing.MaxProcessingDuration;
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
     public async Task<InboxRun> RunAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        var runStarted = _time.GetTimestamp();
+        DateTimeOffset Current() => now + _time.GetElapsedTime(runStarted);
         var organizations = await _repository.ListOrganizationsWithDueInboxEventsAsync(MaxOrganizations, cancellationToken)
             .ConfigureAwait(false);
         int processed = 0, rescheduled = 0, givenUp = 0, failedOrganizations = 0;
@@ -97,7 +106,7 @@ public sealed class ProviderInboxWorkerUseCase(
                     limit.CancelAfter(_maxProcessingDuration);
                     try
                     {
-                        outcome = await _processor.ProcessAsync(organizationId, claimed.Envelope, now, limit.Token)
+                        outcome = await _processor.ProcessAsync(organizationId, claimed.Envelope, Current(), limit.Token)
                             .ConfigureAwait(false);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -113,11 +122,14 @@ public sealed class ProviderInboxWorkerUseCase(
                     break;
                 }
 
+                // After the processing, which may have taken minutes: the retry is scheduled from now, not the run start.
+                var completedAt = Current();
                 DateTimeOffset? retryAt = null;
                 var code = outcome.Code;
                 if (outcome.Retry)
                 {
-                    retryAt = ProviderInboxProcessing.NextRetryAt(claimed.ProcessingAttempts + 1, claimed.ReceivedAt, now);
+                    retryAt = ProviderInboxProcessing.NextRetryAt(
+                        claimed.ProcessingAttempts + 1, claimed.ReceivedAt, completedAt);
                     if (retryAt is null)
                     {
                         code = "retry_exhausted";
@@ -125,7 +137,8 @@ public sealed class ProviderInboxWorkerUseCase(
                 }
 
                 await _repository.CompleteInboxAsync(
-                        organizationId, claimed.Envelope.EventId, owner, outcome.Status, code, retryAt, now, cancellationToken)
+                        organizationId, claimed.Envelope.EventId, owner, outcome.Status, code, retryAt, completedAt,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 if (!outcome.Retry)
                 {

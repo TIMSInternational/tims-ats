@@ -101,13 +101,53 @@ public sealed class ProviderRound10Tests
         });
         await Receive(body, eventId, "result.ready"); // the fake's default GetResult is an outage
 
-        var run = await new ProviderInboxWorkerUseCase(_repository, _provider).RunAsync(Owner, Now, CancellationToken.None);
+        var run = await new ProviderInboxWorkerUseCase(_repository, _provider, timeProvider: new SteppedTime())
+            .RunAsync(Owner, Now, CancellationToken.None);
 
         Assert.Equal(1, run.Rescheduled);
         var row = _repository.InboxRows[eventId];
         Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]);
         Assert.Equal(Now + ProviderInboxProcessing.FirstRetryDelay, row.NextAt);
         Assert.Null(row.LeaseOwner);
+    }
+
+    // Round 11 (Codex r11 run 1, P2): a run processes events one after another, each for up to 10 minutes. A retry
+    // scheduled from the run's START would already be due when written, and be reclaimed at once during an outage.
+    [Fact]
+    public async Task A_retry_is_scheduled_from_when_processing_ended_not_from_the_run_start()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.InProgress);
+        var (body, eventId) = Envelope("result.ready", new JsonObject
+        {
+            ["result_id"] = Guid.NewGuid().ToString(),
+            ["assignment_id"] = attempt.ProviderAssignmentId.ToString(),
+        });
+        await Receive(body, eventId, "result.ready");
+        var time = new SteppedTime();
+        _provider.OnGetResult = _ =>
+        {
+            time.Advance(TimeSpan.FromMinutes(8)); // a slow outage: the call fails after eight minutes
+            return ProviderCall<ParsedProviderResult>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        };
+
+        var run = await new ProviderInboxWorkerUseCase(_repository, _provider, timeProvider: time)
+            .RunAsync(Owner, Now, CancellationToken.None);
+
+        Assert.Equal(1, run.Rescheduled);
+        Assert.Equal(
+            Now + TimeSpan.FromMinutes(8) + ProviderInboxProcessing.FirstRetryDelay, _repository.InboxRows[eventId].NextAt);
+    }
+
+    // A clock that moves only when told to.
+    private sealed class SteppedTime : TimeProvider
+    {
+        private long _ticks;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _ticks;
+
+        public void Advance(TimeSpan by) => _ticks += by.Ticks;
     }
 
     [Fact]
