@@ -401,9 +401,13 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'rule). They are pinned instead by Tims.IntegrationTests FitRequirementsWriterTests, FitReviewStateTests ' +
       'and EssayGradingTests (authorization, scope, tenant isolation, atomicity). Registering them C#-only needs ' +
       'the same fixture-first work as the fit-engine group above (fit_engine/vacancy/assessment grants, seeded ' +
-      'fit_scores rows and a graded-assignment fixture), tracked with it.',
+      'fit_scores rows and a graded-assignment fixture), tracked with it. Release slice "fit" adds a fifth: the ' +
+      "candidate page's fit-scores read (FitEngineReadEnabled; D6-redacted for a narrow reader), whose TS " +
+      'counterpart is a field of candidate.getById rather than a procedure, pinned by Tims.IntegrationTests ' +
+      'FitV2IntegrityTests (authorization, vacancy scope, D6 redaction, flag off).',
     routes: [
       'PUT /fit-engine/vacancies/{vacancyId}/requirements',
+      'GET /fit-engine/candidates/{candidateId}/fit-scores',
       'POST /fit-engine/scores/review-state',
       'GET /fit-engine/assignments/{assignmentId}/essays',
       'POST /fit-engine/assignments/{assignmentId}/essays/{questionId}/grade',
@@ -655,7 +659,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         213 → 217 (PR #427, FIT v2, merged in release/assessments-fit-provider): the requirements writer,
     //         the review-state read and the two essay-grading routes, all C#-only and allowlisted in their own
     //         group above.
-    expect(deployed.size).toBe(217);
+    //         217 → 218 (release slice "fit"): the candidate page's fit-scores read joins that group.
+    expect(deployed.size).toBe(218);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -737,7 +742,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 114 → 115 (AS-5 review): the staff cancel joins that group.
     // 115 → 117 (AS-5, D15): the DSAR export and erasure routes join that group.
     // 117 → 121 (PR #427, release/assessments-fit-provider): FIT v2's four C#-only routes, in their own group.
-    expect(allowlistNormalised.length).toBe(121);
+    // 121 → 122 (release slice "fit"): the candidate fit-scores read joins that group.
+    expect(allowlistNormalised.length).toBe(122);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

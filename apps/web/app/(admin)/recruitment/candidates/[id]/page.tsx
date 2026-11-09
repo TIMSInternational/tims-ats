@@ -27,6 +27,7 @@ import { CandidateInterviewsTab } from './candidate-interviews-tab';
 import { CandidateOffersCard } from './candidate-offers-card';
 import { CandidateNotesPanel } from './notes-panel';
 import { ScheduleModal, type SchedulePrefill } from '../../interviews/schedule-modal';
+import { useCandidateFitScoresViaCsharp, withCandidatePageFitScores } from '../../../../../lib/platform-api/fit-engine-reads';
 
 function EmptyTabPanel({ title, message }: { title: string; message: string }) {
   return (
@@ -70,6 +71,8 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   };
 
   const candidate = trpc.candidate.getById.useQuery({ id });
+  // FIT v2 (flag on): the header, breakdown and assessment panels read the fit scores from C# (D6 for a team leader).
+  const csharpFitScores = useCandidateFitScoresViaCsharp(id);
   const timeline = trpc.candidate.getTimeline.useQuery({ candidateId: id });
 
   if (candidate.isLoading) {
@@ -111,7 +114,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
     );
   }
 
-  const c = candidate.data;
+  const c = withCandidatePageFitScores(candidate.data, csharpFitScores);
   const showAssessments = !isPilotScope();
   const appCount = c.applications?.length ?? 0;
   const tabLabels: Record<string, string> = {

@@ -3,6 +3,10 @@
 import { useI18n } from '../../../../../lib/i18n';
 import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
 import { fitBand, type FitBand } from '../../../../../lib/pipeline-fit';
+import { isReviewPending } from '../../../../../lib/platform-api/fit-engine';
+import { fitV2Entries } from '../../../../../lib/fit-v2-breakdown';
+import { FitReviewPendingBadge } from '../../fit-review-pending-badge';
+import { FitInstruments } from './fit-instruments';
 
 // The same FIT scale as the header, the pipeline and the filter (A-23).
 const FIT_BAR: Record<FitBand, string> = { high: 'bg-green-500', medium: 'bg-amber-500', low: 'bg-red-500' };
@@ -38,6 +42,10 @@ export function FitBreakdown({ fitScores }: { fitScores: FitScore[] }) {
 
   const raw = latestFit.breakdown as Partial<FitBreakdownShape> | null;
   if (!raw) return null;
+  // FIT v2: a provisional score is marked (a result it counts on awaits review), and an assessment dimension hidden
+  // from this reader (owner default D6) says "below minimum" rather than "no data".
+  const pending = isReviewPending(raw);
+  const assessmentBelowMinimum = raw.assessment == null && fitV2Entries(raw).some((e) => e.belowMinimum && e.instrument !== 'english');
 
   const dimensions: Array<{ key: keyof FitBreakdownShape; label: string }> = [
     { key: 'assessment', label: t.candidates.fitDimensionAssessment },
@@ -51,6 +59,11 @@ export function FitBreakdown({ fitScores }: { fitScores: FitScore[] }) {
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-1">{t.candidates.fitBreakdown}</h3>
       <AiSuggestionNotice className="mb-3" />
+      {pending && (
+        <div className="mb-3">
+          <FitReviewPendingBadge />
+        </div>
+      )}
       <div className="space-y-2">
         {dimensions.map((dim) => {
           const score = raw[dim.key];
@@ -59,7 +72,11 @@ export function FitBreakdown({ fitScores }: { fitScores: FitScore[] }) {
               <div className="flex justify-between text-[12px] mb-1">
                 <span className="text-[#585858]">{dim.label}</span>
                 <span className="text-[#1F114C] font-medium">
-                  {typeof score === 'number' ? `${score}/100` : t.candidates.fitDimensionUnavailable}
+                  {typeof score === 'number'
+                    ? `${score}/100`
+                    : dim.key === 'assessment' && assessmentBelowMinimum
+                      ? t.candidates.fitInstrumentBelowMinimum
+                      : t.candidates.fitDimensionUnavailable}
                 </span>
               </div>
               <ProgressBar score={typeof score === 'number' ? score : 0} />
@@ -67,6 +84,7 @@ export function FitBreakdown({ fitScores }: { fitScores: FitScore[] }) {
           );
         })}
       </div>
+      <FitInstruments breakdown={raw} />
     </div>
   );
 }

@@ -2436,6 +2436,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fit-engine/candidates/{candidateId}/fit-scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FitEngineGetCandidateFitScores"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fit-engine/vacancies/{vacancyId}/compute": {
         parameters: {
             query?: never;
@@ -3746,6 +3762,19 @@ export interface components {
             status: string;
             source: string;
             createdAt: string;
+        };
+        CandidateFitScoreRow: {
+            fitScoreId: string;
+            vacancyId: string;
+            /** Format: double */
+            overallScore: number | string;
+            breakdown: null | components["schemas"]["JsonNode"];
+            isPartial: boolean;
+            /** Format: date-time */
+            calculatedAt: unknown;
+        };
+        CandidateFitScoresResponse: {
+            items: components["schemas"]["CandidateFitScoreRow"][];
         };
         CandidateJoinResult: {
             outcome: string;
@@ -12846,6 +12875,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineGetCandidateFitScores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateFitScoresResponse"];
+                };
             };
             /** @description Unauthorized */
             401: {
