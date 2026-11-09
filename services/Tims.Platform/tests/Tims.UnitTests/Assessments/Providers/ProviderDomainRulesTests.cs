@@ -125,4 +125,16 @@ public sealed class ProviderDomainRulesTests
     {
         Assert.Equal(allowed, ProviderAttemptStates.CanTransition(from, to));
     }
+
+    [Theory]
+    [InlineData(ProviderAttemptStates.InProgress, false, false, true)]
+    [InlineData(ProviderAttemptStates.Voided, true, false, true)]
+    [InlineData(ProviderAttemptStates.Voided, false, false, false)]
+    [InlineData(ProviderAttemptStates.Voided, true, true, false)]
+    [InlineData(ProviderAttemptStates.ResultReady, true, true, false)]
+    [InlineData(ProviderAttemptStates.Completed, true, false, false)]
+    [InlineData(ProviderAttemptStates.Expired, true, false, false)]
+    public void A_staff_cancel_overwrites_only_cancellable_states_and_the_void_its_own_confirmed_cancel_caused(
+        string state, bool cancelledAtProvider, bool hasResult, bool expected) =>
+        Assert.Equal(expected, ProviderAttemptStates.CanStaffCancelOver(state, cancelledAtProvider, hasResult));
 }

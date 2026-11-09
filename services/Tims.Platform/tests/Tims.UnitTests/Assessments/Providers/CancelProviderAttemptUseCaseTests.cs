@@ -67,6 +67,34 @@ public sealed class CancelProviderAttemptUseCaseTests
         Assert.Equal(ProviderAttemptStates.Cancelled, State(pending.Id).State);
     }
 
+    [Fact]
+    public async Task The_providers_void_of_this_cancel_landing_first_still_ends_cancelled_not_needs_review()
+    {
+        // Cancelling an in-progress sitting voids it at the provider (administrative_void), and its assignment.voided
+        // webhook can commit between the provider's 200 and the local write (seen in the cross-system e2e).
+        var attempt = _repository.AddCreatedAttempt("english", ProviderAttemptStates.InProgress);
+        _repository.BeforeNextMarkCancelled = id => _repository.SetState(id, ProviderAttemptStates.Voided);
+
+        var result = await Cancel(attempt);
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, result.Outcome);
+        Assert.Equal(ProviderAttemptStates.Cancelled, result.Item!.State);
+        Assert.Equal(["staff_cancel:provider"], _repository.Writes);
+        Assert.Equal(ProviderAttemptStates.Cancelled, State(attempt.Id).State);
+    }
+
+    [Fact]
+    public async Task A_void_with_a_stored_result_is_never_overwritten_by_a_cancel()
+    {
+        var attempt = _repository.AddCreatedAttempt("english", ProviderAttemptStates.InProgress);
+        _repository.BeforeNextMarkCancelled = id => _repository.SetState(id, ProviderAttemptStates.Voided, Guid.NewGuid());
+
+        await Cancel(attempt);
+
+        Assert.Equal(ProviderAttemptStates.Voided, State(attempt.Id).State);
+        Assert.Empty(_repository.Writes);
+    }
+
     [Theory]
     [InlineData(ProviderAttemptStates.Completed)]
     [InlineData(ProviderAttemptStates.ResultReady)]

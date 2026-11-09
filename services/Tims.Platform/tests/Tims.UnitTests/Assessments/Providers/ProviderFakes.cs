@@ -395,7 +395,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         BeforeNextMarkCancelled = null;
         before?.Invoke(attemptId);
         var current = Attempts.FirstOrDefault(a => a.Id == attemptId);
-        if (current is not null && ProviderAttemptStates.IsCancellable(current.State)
+        if (current is not null
+            && ProviderAttemptStates.CanStaffCancelOver(current.State, cancelledAtProvider, current.LatestResultId is not null)
             && current.ProviderAssignmentId == expectedProviderAssignmentId)
         {
             Writes.Add(cancelledAtProvider ? "staff_cancel:provider" : "staff_cancel:local");
@@ -404,6 +405,10 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
         return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId)?.State);
     }
+
+    /// <summary>A concurrent transition (a webhook), optionally with a stored result.</summary>
+    public void SetState(Guid attemptId, string state, Guid? latestResultId = null) =>
+        Replace(attemptId, a => a with { State = state, LatestResultId = latestResultId ?? a.LatestResultId });
 
     public void MapAttempt(Guid attemptId, Guid providerAssignmentId) =>
         Replace(attemptId, a => a with

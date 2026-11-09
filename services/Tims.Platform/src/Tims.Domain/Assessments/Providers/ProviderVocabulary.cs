@@ -167,6 +167,17 @@ public static class ProviderAttemptStates
     public static bool IsCancellable(string state) => state is PendingCreate or Created or Launched or InProgress;
 
     /// <summary>
+    /// Whether a staff cancel may write <c>cancelled</c> over the attempt's current state. Anything still cancellable,
+    /// and ALSO a <c>voided</c> attempt without a stored result once the provider has confirmed THIS cancel: cancelling an
+    /// in-progress sitting voids it at the provider (<c>administrative_void</c>), whose <c>assignment.voided</c> and
+    /// <c>session.voided</c> webhooks can commit between the provider's answer and the local write. That void is the
+    /// echo of the cancel, not a sitting to review: without this the attempt read "needs review" (D4) after HR cancelled
+    /// it (found by the cross-system e2e). A result, or a void not caused by this confirmed cancel, is never overwritten.
+    /// </summary>
+    public static bool CanStaffCancelOver(string state, bool cancelledAtProvider, bool hasResult) =>
+        IsCancellable(state) || (cancelledAtProvider && state == Voided && !hasResult);
+
+    /// <summary>
     /// Forward order of the non-terminal lifecycle. Webhooks are delivered unordered, so a lifecycle event only
     /// moves an attempt forward (a late <c>assignment.started</c> never rewinds a completed attempt).
     /// </summary>

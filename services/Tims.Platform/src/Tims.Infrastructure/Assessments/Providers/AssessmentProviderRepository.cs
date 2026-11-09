@@ -327,7 +327,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             .ConfigureAwait(false);
         // Mapped to a provider assignment the caller did not cancel (the create was answered meanwhile): leave it, so the
         // caller cancels THAT assignment at the provider first. Never a local cancel over a live provider assignment.
-        if (attempt is not null && ProviderAttemptStates.IsCancellable(attempt.State)
+        if (attempt is not null
+            && ProviderAttemptStates.CanStaffCancelOver(attempt.State, cancelledAtProvider, attempt.LatestResultId is not null)
             && attempt.ProviderAssignmentId == expectedProviderAssignmentId)
         {
             var from = attempt.State;
