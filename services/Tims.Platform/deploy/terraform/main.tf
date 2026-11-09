@@ -102,11 +102,13 @@ locals {
     # Q0b slice 2 (#172): the cross-org alert-metric surface. Enabling it WITHOUT populating the
     # alert_metrics_cron secret above is inert, not open — the gate refuses everything.
     Platform__AlertMetricsCronReadEnabled = tostring(var.feature_flags.alert_metrics_cron_read)
-    # AS-5: the TIMS Assessments provider connector (seven routes). Inert, not open, until the out-of-band
-    # AssessmentProviders__* client credentials and webhook secret are set AND migration
-    # 20261107232524_assessment_providers is applied: an unconfigured client answers provider_unconfigured and an
-    # unsigned webhook is refused. Those secrets are deliberately NOT in base_secrets here (see the README's
-    # placeholder-secret note); the options class treats REPLACE_ME_OUT_OF_BAND as unset.
+    # AS-5: the TIMS Assessments provider connector (nine routes, plus the #312 sweep and the D17 poller, both
+    # registered only with this flag on). Inert, not open, until the out-of-band AssessmentProviders__* client
+    # credentials and webhook secret are set AND the three provider migrations (20261107232524, 20261108224533,
+    # 20261109001134) are applied: an unconfigured client answers provider_unconfigured and an unsigned webhook is
+    # refused. Those secrets are deliberately NOT in base_secrets here (see the README's placeholder-secret note); the
+    # options class treats REPLACE_ME_OUT_OF_BAND as unset. AssessmentProviders__PortalBaseUrl (optional, an https
+    # origin registered at the provider) is the candidate portal the hosted player returns to (D16).
     Platform__AssessmentProvidersEnabled = tostring(var.feature_flags.assessment_providers)
     # FIT v2 (per-instrument fit). Changes only POST /fit-engine/vacancies/{id}/compute, and only for vacancies
     # whose fit_requirements carry an `assessments` array; inert while Platform__FitEngineWriteEnabled is off
