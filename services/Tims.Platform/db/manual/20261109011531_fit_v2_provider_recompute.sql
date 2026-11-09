@@ -6,13 +6,15 @@ BEGIN
     CREATE OR REPLACE FUNCTION public.fit_v2_provider_attempt_changed()
     RETURNS trigger
     LANGUAGE plpgsql
+    SECURITY DEFINER
     SET search_path = pg_catalog, public
     AS $fn$
     BEGIN
       IF TG_OP = 'UPDATE' AND NEW.state IS NOT DISTINCT FROM OLD.state THEN
         RETURN NULL;
       END IF;
-      IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NOT NULL THEN
+      IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NOT NULL
+         AND has_function_privilege('public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute') THEN
         PERFORM public.fit_v2_request_recompute(NEW.organization_id, NEW.candidate_id, NEW.vacancy_id);
       END IF;
       RETURN NULL;
@@ -37,12 +39,14 @@ BEGIN
     CREATE OR REPLACE FUNCTION public.fit_v2_provider_result_changed()
     RETURNS trigger
     LANGUAGE plpgsql
+    SECURITY DEFINER
     SET search_path = pg_catalog, public
     AS $fn$
     DECLARE
       a record;
     BEGIN
-      IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NULL THEN
+      IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NULL
+         OR NOT has_function_privilege('public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute') THEN
         RETURN NULL;
       END IF;
       SELECT x.organization_id, x.candidate_id, x.vacancy_id INTO a
