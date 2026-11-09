@@ -295,6 +295,6 @@ const fs=require("fs"),s=process.argv[1],r=(f)=>fs.readFileSync(s+"/"+f,"utf8").
 fs.writeFileSync(s+"/cross.json",JSON.stringify({
   baseURL:"https://localhost:'$WEB_PORT'", apiURL:"https://localhost:'$API_TLS_PORT'", authURL:"http://127.0.0.1:'$AUTH_PROXY_PORT'/auth/v1",
   anonKey:r("anon.key"), caFile:s+"/tls/ca.pem", atsDatabaseUrl:"'$DB'", mailpitURL:"http://127.0.0.1:'$MAIL_PORT'",
-  owner:{email:"federico@nexadev.ai",password:r("owner.pw")}, staffPassword:"Pw-"+r("seed-user.pw"), orgSlug:"tims-international",
+  owner:{email:"federico@nexadev.ai",password:r("owner.pw")}, staffPassword:"Pw-"+r("seed-user.pw"), orgSlug:"tims-international", prefix:"'$P'",
   suite:{dbContainer:suite.dbContainer,apiUrl:suite.apiUrl,playerOrigin:suite.playerOrigin,cronSecret:suite.cronSecret}},null,2),{mode:0o600});' "$STATE"
 log "both stacks are up. Run the spec with ASSESSMENTS_CROSS_STATE=$STATE/cross.json (README.md)"

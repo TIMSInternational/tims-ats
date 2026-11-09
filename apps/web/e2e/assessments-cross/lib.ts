@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { request } from 'node:https';
 import { expect, type Page } from '@playwright/test';
+import { isHarnessSuiteDb } from './state-guard';
 
 /** What stack/up.sh wrote (ASSESSMENTS_CROSS_STATE). Every URL in it is local. */
 export interface CrossState {
@@ -15,6 +16,8 @@ export interface CrossState {
   owner: { email: string; password: string };
   staffPassword: string;
   orgSlug: string;
+  /** CROSS_PREFIX of the bring-up; every container is named after it. */
+  prefix: string;
   suite: { dbContainer: string; apiUrl: string; playerOrigin: string; cronSecret: string };
 }
 
@@ -36,7 +39,7 @@ export function readState(): CrossState | null {
     const host = new URL(url).hostname;
     if (!LOCAL.test(host)) throw new Error(`assessments-cross: refusing a non-local URL (${host})`);
   }
-  if (!s.suite.dbContainer.startsWith('r10-') && !s.suite.dbContainer.includes('cross'))
+  if (!isHarnessSuiteDb(s.suite.dbContainer, s.prefix))
     throw new Error('assessments-cross: the suite database container is not this harness’s');
   return s;
 }
