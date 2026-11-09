@@ -46,14 +46,16 @@ H1 bind the org (token, catalog, tenant) · H2 HR sets LIA (scored), English (ga
 vacancy · H3 two candidates apply on the careers page · H4 HR assigns (age band, notice) and the ATS creates the
 subject and one `/v1` assignment per test · H5 candidate A signs in with the mailed code, consents and completes the
 three sittings in the hosted player (link-out, back to the portal) · H6 signed events reach the ATS inbox and every
-result is fetched · H7 HR computes the ranking and FIT v2 reads the provider results · H8 HR sees each result · H9 a
+result is fetched · H7 the provider results create the candidate's FIT v2 row, with no HR compute · H8 HR sees each result · H9 a
 team leader sees only "below minimum" (D6) · H10 candidate B accepts the optional voice consents and the English
 sitting serves its speaking item · H11 HR cancels B's English · H12 B's Personality expires (time travel in the
 suite database, then the scheduled run) · H13 B withdraws consent in the portal and the ATS cascades to the provider ·
 H14 DSAR export, then erasure (time travel past the upload-fence drain) and `subject.erased`.
 
 Local fixtures the spec sets itself: the vacancy is moved to the team the seeded leader leads, and the seeded
-`leader` role gets `assessment:read` at team scope (the seed grants it none, so it would see no card at all).
+`leader` role gets `assessment:read` at team scope by applying the owner step
+`services/Tims.Platform/db/owner/leader_assessment_read.sql` verbatim (the seed grants it none, so without that step it
+would see no card at all).
 
 **Not covered locally:** anything that needs AWS — the English speaking upload (S3) and its AI scoring (Bedrock), and
 the ITC-IA judge. ITC-IA, MI and PCA are not assignable from the ATS (selection is refused, or PCA is not listed).

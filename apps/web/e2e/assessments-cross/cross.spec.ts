@@ -1,6 +1,7 @@
+import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import {
   atsSql,
@@ -318,13 +319,10 @@ test('H6 the suite signs and delivers events; the ATS verifies them and fetches 
   record('H6 events + results', `ATS inbox: ${inbox}; suite deliveries status: ${delivered}; attempts: ${states}`);
 });
 
-test('H7 FIT v2 computes the candidate with the provider results (HR computes the ranking)', async ({ browser }) => {
-  // A provider result recomputes an EXISTING FIT row (fit_v2_request_recompute); the first row comes from a
-  // compute, so HR computes the vacancy ranking, as in production.
-  const hr = await persona(browser);
-  await staffSignIn(hr, 'hr@tims.co', st.staffPassword);
-  await hr.goto(`/recruitment/vacancies/${vacancy.id}`);
-  await hr.getByRole('button', { name: 'Compute Rankings' }).click();
+test('H7 FIT v2 scores the candidate from the provider results, with no HR compute', async () => {
+  // Round 11: a provider result creates the missing FIT v2 row for a candidate with an active application
+  // (FitRecomputeHostedService drains the queue). Nobody clicks Compute Rankings anywhere in this spec, so the
+  // row below can only come from the provider results.
   await expect
     .poll(
       () =>
@@ -368,17 +366,20 @@ test('H8 HR reads each result on the candidate (exact levels)', async ({ browser
 });
 
 test('H9 a team leader sees only "below minimum" for English, never the level (D6)', async ({ browser }) => {
-  // Local fixture: the vacancy belongs to the team the seeded leader leads, and the seeded `leader` role may read
-  // assessments at TEAM scope (the seed grants it no assessment permission at all, so it would see no card).
+  // Local fixture: the vacancy belongs to the team the seeded leader leads. The leader's assessment:read at TEAM
+  // scope comes from the round-11 owner step, applied verbatim (the seed grants the leader role none).
   const leaderId = atsSql(st, `select id from users where email='leader@tims.co'`);
   atsSql(
     st,
     `update vacancies set team_id=(select id from teams where leader_id=${sqlStr(leaderId)} limit 1) where id=${sqlStr(vacancy.id)}`,
   );
-  atsSql(
-    st,
-    `insert into role_permissions (id, role_id, permission_id, scope) select gen_random_uuid(), r.id, p.id, 'team' from roles r, permissions p where r.organization_id=${sqlStr(orgId)} and r.slug='leader' and p.module='assessment' and p.action='read' on conflict do nothing`,
-  );
+  const ownerSql = resolve(__dirname, '../../../../services/Tims.Platform/db/owner/leader_assessment_read.sql');
+  const granted = execFileSync(
+    'psql',
+    [st.atsDatabaseUrl, '-X', '-At', '-v', 'ON_ERROR_STOP=1', '-v', `org_id=${orgId}`, '-f', ownerSql],
+    { encoding: 'utf8' },
+  ).trim();
+  expect(granted).toContain('read|team');
   const english = atsSql(
     st,
     `select coalesce(cefr,'') from assessment_provider_results where attempt_id=${sqlStr(attemptsA.english)}`,
@@ -393,7 +394,7 @@ test('H9 a team leader sees only "below minimum" for English, never the level (D
   if (english) await expect(row.getByText(`CEFR ${english}`)).toHaveCount(0);
   record(
     'H9 D6 team leader',
-    `leader ${leaderId} sees "Below minimum" for English (HR's exact CEFR ${english || 'n/a'} hidden)`,
+    `owner SQL leader_assessment_read.sql granted ${granted.split('\n').pop()}; leader ${leaderId} sees "Below minimum" for English (HR's exact CEFR ${english || 'n/a'} hidden)`,
   );
 });
 
