@@ -452,6 +452,38 @@ it too. A present non-boolean value is off contract and the result is refused.
 - The provider-held export must fit the client's 256 KiB response cap; a larger one fails the export closed (503).
 - D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
 
+## The empty-body 401 after a cancel (round 11)
+
+The round-10 e2e saw one `GET /api/platform/assessments/provider-attempts` answer 401 with an empty body right after
+HR cancelled an attempt; it did not recur in 12 direct calls, and the spec now reloads the page after the cancel. The
+Playwright trace (`trace11`) was re-read in round 11. What it shows, and what that rules out:
+
+- The 401 carried no `content-type` and an empty body, through the relay (its `cache-control: no-store` is the
+  relay's). The relay's own refusals are `{"error":"platform_request_rejected"}` with `application/json`, and
+  `apps/web/middleware.ts` returns early for every `/api/` path, so neither produced it: it came from C#.
+- The bearer was the same token (issued 07:51:22, expiring an hour later) that had just succeeded on the same path,
+  and the cancel itself succeeded with it. GoTrue tokens carry no `nbf`, and JWT validation allows 30 s of skew. An
+  expired or not-yet-valid token is ruled out.
+- "Never reached C#" was inferred from the API's request log. That inference does not hold:
+  `RelayAttributionMiddleware` runs right after authentication and before `UseSerilogRequestLogging` (and before the
+  denial observer), and every refusal it makes is exactly this response, an empty-body 401. So the request most
+  likely reached C# and was refused there without a trace.
+- Of that middleware's checks, the ones that could fail once, for one request, with an unchanged token, cookie, path
+  and method are: the envelope's timestamp window (at most 30 s old, at most 5 s ahead of the API's clock), and the
+  nonce claim (`RelayNonceStore`). The relay signs a fresh random nonce per request, so a replay needs the HTTP client
+  to resend a signed request; nothing showed that.
+- The timestamp window is the best-supported candidate, but it is not proven. In that stack the web relay ran on the
+  host and the API in a Docker container, so the signer and the checker used two clocks. The trace also shows the
+  cancel POST starting at 07:51:22.8 while its response's `Date` (stamped by Next on the host) reads 07:51:32, so the
+  cancel took about 10 s of host time. A container that stalled for that long and resumed with its clock behind the
+  host's would refuse the next envelope as "from the future" until the clock re-synced.
+
+What changed: every refusal by `RelayAttributionMiddleware` now logs one warning naming its reason (`FromTheFuture`,
+`Stale` with the clock difference in seconds, `NonceRejected`, `Unauthenticated` with the authentication failure's
+type, and so on), the method and the path (never the query, the envelope, a token or an address). The response is
+unchanged. If it happens again, the API's log names the cause. The cross-system spec's reload after the cancel is
+still in place.
+
 ## Owner steps, in order
 
 1. Review the SQL. Apply the files in `services/Tims.Platform/db/manual`, in this order, with psql on the direct
