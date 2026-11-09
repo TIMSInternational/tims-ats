@@ -690,6 +690,9 @@ try
             ? [sp.GetRequiredService<AtsAssessmentResultSource>(), sp.GetRequiredService<ProviderFitResultSource>()]
             : [sp.GetRequiredService<AtsAssessmentResultSource>()]));
     builder.Services.AddScoped<FitEngineWriteUseCase>();
+    // FIT v2: the vacancy assessments editor's read and conditional replace of fit_requirements.assessments[] only.
+    builder.Services.AddScoped<IFitAssessmentRequirementsRepository, FitAssessmentRequirementsRepository>();
+    builder.Services.AddScoped<FitAssessmentRequirementsUseCase>();
     builder.Services.AddScoped<IEssayGradingRepository, EssayGradingRepository>();
     // FIT v2: the recompute queue (database triggers enqueue; this drains). The loop runs only while the FIT v2
     // compute is live.
@@ -1650,6 +1653,7 @@ try
         app.MapProviderCandidateEndpoints();
         app.MapProviderPortalEndpoints();
         app.MapProviderSubjectRightsEndpoints();
+        app.MapProviderStaffReadEndpoints(); // AS-7 / AS-14: the staff catalog and a candidate's attempts with results
     }
 
     // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service
@@ -1721,6 +1725,7 @@ try
     if ((externalOptions.FitEngineWriteEnabled && externalOptions.FitEngineV2Enabled) || isOpenApiDocGeneration)
     {
         app.MapFitRequirementsEndpoints();
+        app.MapFitAssessmentRequirementsEndpoints(); // the vacancy assessments editor (assessments[] only, conditional)
     }
 
     // FIT v2 / owner default D5: minimal manual essay grading (a quiz awaiting a grade is needs review in FIT v2).

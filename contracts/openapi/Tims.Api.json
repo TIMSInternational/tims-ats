@@ -5182,6 +5182,88 @@
         }
       }
     },
+    "/assessments/provider-catalog": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderStaffCatalog",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffCatalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/assessments/provider-attempts": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderStaffAttempts",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffCandidateAttemptList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/tenant/data-subject-requests": {
       "get": {
         "tags": [
@@ -6562,6 +6644,114 @@
           },
           "404": {
             "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/fit-engine/vacancies/{vacancyId}/requirements/assessments": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineGetAssessmentRequirements",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitAssessmentRequirementsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineReplaceAssessmentRequirements",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitAssessmentRequirementsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitAssessmentRequirementsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitRequirementsError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitAssessmentRequirementsConflict"
+                }
+              }
+            }
           }
         }
       }
@@ -13359,6 +13549,50 @@
           }
         }
       },
+      "FitAssessmentMinimumDto": {
+        "required": [
+          "globalPercentile",
+          "cefr",
+          "level",
+          "score"
+        ],
+        "type": "object",
+        "properties": {
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "FitAssessmentRequirementBody": {
         "required": [
           "instrument",
@@ -13405,6 +13639,110 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "FitAssessmentRequirementDto": {
+        "required": [
+          "instrument",
+          "use",
+          "min",
+          "weight",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "instrument": {
+            "type": "string"
+          },
+          "use": {
+            "type": "string"
+          },
+          "min": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitAssessmentMinimumDto"
+              }
+            ]
+          },
+          "weight": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FitAssessmentRequirementsBody": {
+        "required": [
+          "assessments",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "assessments": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitAssessmentRequirementBody"
+            }
+          },
+          "expectedVersion": {
+            "maxLength": 32,
+            "minLength": 32,
+            "type": "string"
+          }
+        }
+      },
+      "FitAssessmentRequirementsConflict": {
+        "required": [
+          "error",
+          "current"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/FitAssessmentRequirementsResponse"
+          }
+        }
+      },
+      "FitAssessmentRequirementsResponse": {
+        "required": [
+          "assessments",
+          "version",
+          "issues"
+        ],
+        "type": "object",
+        "properties": {
+          "assessments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitAssessmentRequirementDto"
+            }
+          },
+          "version": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitRequirementIssueDto"
+            }
           }
         }
       },
@@ -17366,6 +17704,100 @@
           }
         }
       },
+      "StaffCandidateAttemptList": {
+        "required": [
+          "consentWithdrawn",
+          "attempts"
+        ],
+        "type": "object",
+        "properties": {
+          "consentWithdrawn": {
+            "type": "boolean"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffProviderAttempt"
+            }
+          }
+        }
+      },
+      "StaffCatalog": {
+        "required": [
+          "connected",
+          "instruments"
+        ],
+        "type": "object",
+        "properties": {
+          "connected": {
+            "type": "boolean"
+          },
+          "instruments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffCatalogInstrument"
+            }
+          }
+        }
+      },
+      "StaffCatalogInstrument": {
+        "required": [
+          "instrument",
+          "delivery",
+          "locales",
+          "requiredConsents",
+          "versions",
+          "pinnedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "instrument": {
+            "type": "string"
+          },
+          "delivery": {
+            "type": "string"
+          },
+          "locales": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiredConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffCatalogVersion"
+            }
+          },
+          "pinnedVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "StaffCatalogVersion": {
+        "required": [
+          "instrumentVersion",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "instrumentVersion": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "StaffConsentWithdrawalBody": {
         "required": [
           "channel"
@@ -17388,6 +17820,183 @@
               "null",
               "boolean"
             ]
+          }
+        }
+      },
+      "StaffProviderAttempt": {
+        "required": [
+          "attemptId",
+          "vacancyId",
+          "instrument",
+          "status",
+          "instrumentVersion",
+          "missingConsents",
+          "expiresAt",
+          "createdAt",
+          "completedAt",
+          "lastErrorCode",
+          "timeMultiplier",
+          "aids",
+          "countsIn",
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vacancyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "instrumentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "missingConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastErrorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timeMultiplier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "aids": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "countsIn": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StaffProviderResult"
+              }
+            ]
+          }
+        }
+      },
+      "StaffProviderResult": {
+        "required": [
+          "validity",
+          "validityReasons",
+          "requiresHumanReview",
+          "reviewPending",
+          "minimum",
+          "globalPercentile",
+          "cefr",
+          "level",
+          "instrumentVersion",
+          "normVersion",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "validity": {
+            "type": "string"
+          },
+          "validityReasons": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiresHumanReview": {
+            "type": "boolean"
+          },
+          "reviewPending": {
+            "type": "boolean"
+          },
+          "minimum": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "instrumentVersion": {
+            "type": "string"
+          },
+          "normVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedAt": {
+            "type": "string"
           }
         }
       },
