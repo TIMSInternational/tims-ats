@@ -83,6 +83,12 @@ model ProctoringSession {
   flagCount      Int       @default(0) @map("flag_count")
   severity       String?
   events         Json?
+  // FIT v2 review-completion signal (migration 20261109100000_fit_v2_integrity, CHECK-constrained):
+  // unreviewed | clear | concern | inconclusive. Only 'clear' releases a high/critical session's result.
+  reviewStatus   String    @default("unreviewed") @map("review_status")
+  reviewNotes    String?   @map("review_notes") @db.Text
+  reviewedAt     DateTime? @map("reviewed_at")
+  reviewedById   String?   @map("reviewed_by_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -192,4 +198,24 @@ model FitScore {
   @@index([organizationId])
   @@index([vacancyId])
   @@map("fit_scores")
+}
+
+// FIT v2: one pending recompute per (candidate, vacancy), written by database triggers on assessment_assignments,
+// assessment_results and proctoring_sessions (and the provider tables) and drained by the C# service. Ids only, no
+// foreign keys (a request whose candidate or vacancy is gone is dropped). Its DDL, RLS and triggers live in migration
+// 20261109100000_fit_v2_integrity; TS never reads or writes it.
+model FitRecomputeRequest {
+  candidateId    String   @map("candidate_id") @db.Uuid
+  vacancyId      String   @map("vacancy_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  requestSeq     BigInt   @default(1) @map("request_seq")
+  requestedAt    DateTime @default(now()) @map("requested_at") @db.Timestamptz(3)
+  availableAt    DateTime @default(now()) @map("available_at") @db.Timestamptz(3)
+  attempts       Int      @default(0)
+  lastError      String?  @map("last_error") @db.VarChar(200)
+
+  @@id([candidateId, vacancyId])
+  @@index([organizationId, availableAt])
+  @@index([availableAt])
+  @@map("fit_recompute_requests")
 }
