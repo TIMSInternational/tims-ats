@@ -104,3 +104,34 @@ it('routes browser reads and writes through same-origin transport', async () => 
     expect(options.headers.Authorization).toBe('Bearer test.jwt.signature');
   }
 });
+
+// The browser client sends PUT (FIT requirements, a vacancy's assessments, org-structure assignments:
+// apps/web/lib/platform-api/client.ts platformSendRaw), so the relay route must export it. Without the
+// export Next answers 405 and the write never reaches the C# API (found by the cross-system e2e,
+// apps/web/e2e/assessments-cross, saving a vacancy's assessments).
+describe('platform relay route', () => {
+  it('exports every method the platform client sends, PUT included', async () => {
+    const route = await import('../../apps/web/app/api/platform/[...path]/route');
+    for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      expect(route[method], method).toBe(proxyPlatformRequest);
+    }
+  });
+
+  it('forwards a PUT with its body', async () => {
+    vi.stubEnv('NEXT_PUBLIC_TIMS_PLATFORM_API_URL', 'https://platform.test');
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetcher);
+    const response = await proxyPlatformRequest(
+      new Request('https://tims.test/api/platform/fit-engine/vacancies/v1/requirements/assessments', {
+        method: 'PUT',
+        headers: { authorization: 'Bearer token', 'content-type': 'application/json' },
+        body: '{"assessments":[]}',
+      }),
+    );
+    expect(response.status).toBe(204);
+    const [url, options] = fetcher.mock.calls[0]!;
+    expect(String(url)).toBe('https://platform.test/fit-engine/vacancies/v1/requirements/assessments');
+    expect(options.method).toBe('PUT');
+    expect(new TextDecoder().decode(options.body as ArrayBuffer)).toBe('{"assessments":[]}');
+  });
+});
