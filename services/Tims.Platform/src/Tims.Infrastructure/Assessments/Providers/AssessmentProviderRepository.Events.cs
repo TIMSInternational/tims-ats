@@ -363,6 +363,38 @@ public sealed partial class AssessmentProviderRepository
         return ToRow(binding);
     }
 
+    public async Task<Guid?> FindActiveOrganizationBySlugAsync(string slug, CancellationToken cancellationToken) =>
+        await _db.Organizations.AsNoTracking()
+            .Where(o => o.Slug == slug && o.IsActive && o.DeletedAt == null)
+            .Select(o => (Guid?)o.Id)
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<AttemptRow>> ListCandidateAttemptsByEmailAsync(
+        Guid organizationId, string verifiedEmail, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(verifiedEmail);
+        var email = verifiedEmail.Trim().ToLowerInvariant();
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var candidates = await _db.Candidates.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.IsActive && c.DeletedAt == null
+                && c.Email.Trim().ToLower() == email)
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        List<ProviderAttemptEntity> rows = [];
+        if (candidates.Count > 0
+            && !await IsWithdrawnAsync(organizationId, candidates[0], cancellationToken).ConfigureAwait(false))
+        {
+            rows = await _db.Attempts.AsNoTracking()
+                .Where(a => a.OrganizationId == organizationId && candidates.Contains(a.CandidateId))
+                .OrderByDescending(a => a.CreatedAt).ThenBy(a => a.Id)
+                .Take(50)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Select(a => ToRow(a, isNew: false)).ToList();
+    }
+
     public async Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken) =>
         await _db.Organizations.AsNoTracking()
             .Where(o => o.Id == organizationId && o.IsActive && o.DeletedAt == null)

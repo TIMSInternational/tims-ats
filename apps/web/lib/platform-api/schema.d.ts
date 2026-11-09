@@ -1988,6 +1988,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/portal/assessment-attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderPortalAttempts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/portal/assessment-attempts/{attemptId}/consent-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderPortalConsentTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export": {
         parameters: {
             query?: never;
@@ -3855,6 +3887,15 @@ export interface components {
             /** Format: int32 */
             computed: number | string;
         };
+        ConsentTextBlock: {
+            type: string;
+            text: null | string;
+            /** Format: int32 */
+            level?: null | number | string;
+            ordered?: null | boolean;
+            items?: null | string[];
+            tone?: null | string;
+        };
         CoverageRow: {
             roleId: string;
             title: string;
@@ -4877,6 +4918,22 @@ export interface components {
             /** Format: date-time */
             deletedAt: null | string;
         };
+        PortalAttemptsResponse: {
+            attempts: components["schemas"]["PortalAttemptView"][];
+        };
+        PortalAttemptView: {
+            /** Format: uuid */
+            attemptId: string;
+            instrument: string;
+            status: string;
+            missingConsents: string[];
+            /** Format: date-time */
+            expiresAt: null | string;
+            delivery: string;
+        };
+        PortalConsentTemplatesResponse: {
+            templates: components["schemas"]["ProviderConsentTemplate"][];
+        };
         PortalConsentWithdrawalBody: {
             organizationSlug: string;
         };
@@ -4935,6 +4992,14 @@ export interface components {
             providerTenantId: string;
             enabledInstruments: string[];
             defaultLocale: string;
+        };
+        ProviderConsentTemplate: {
+            purpose: string;
+            textVersion: string;
+            locale: string;
+            title: string;
+            blocks: components["schemas"]["ConsentTextBlock"][];
+            disclosures: string[];
         };
         ProviderErasureView: {
             /** Format: int32 */
@@ -11462,6 +11527,122 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderPortalAttempts: {
+        parameters: {
+            query?: {
+                organizationSlug?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalAttemptsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderPortalConsentTemplates: {
+        parameters: {
+            query?: {
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                attemptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalConsentTemplatesResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -60,32 +60,11 @@ public static class ProviderCandidateEndpoints
             {
                 httpContext.Response.Headers.CacheControl = "no-store";
                 httpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
-                var sub = user.FindFirst("sub")?.Value;
-                var token = BearerToken(httpContext);
-                if (string.IsNullOrEmpty(sub) || token is null)
+                var (email, failure) = await ProviderPortalIdentity.VerifyAsync(
+                    user, httpContext, identities, authSettings, cancellationToken);
+                if (failure is not null)
                 {
-                    return Results.StatusCode(StatusCodes.Status401Unauthorized);
-                }
-
-                if (!await authSettings.RequiresEmailConfirmationAsync(cancellationToken))
-                {
-                    return Results.Json(new { error = "self_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
-                }
-
-                SetupIdentity? identity;
-                try
-                {
-                    identity = await identities.VerifyAsync(token, cancellationToken);
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or System.Text.Json.JsonException
-                    || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
-                {
-                    return Results.Json(new { error = "self_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
-                }
-
-                if (identity is null || !string.Equals(identity.Id, sub, StringComparison.Ordinal))
-                {
-                    return Results.Json(new { code = "email_not_verified" }, statusCode: StatusCodes.Status403Forbidden);
+                    return failure;
                 }
 
                 var node = await ProviderEndpointJson.TryReadAsync(httpContext, cancellationToken);
@@ -95,7 +74,7 @@ public static class ProviderCandidateEndpoints
                 }
 
                 var result = await useCase.LaunchAsync(
-                    attemptId, identity.Email, consents, timeProvider.GetUtcNow(), cancellationToken);
+                    attemptId, email!, consents, timeProvider.GetUtcNow(), cancellationToken);
                 // Outcome only: never the token, the email or the attempt's candidate.
                 loggers.CreateLogger("Tims.Api.Assessments").LogInformation(
                     "Assessment provider launch outcome {Outcome}", result.Outcome);
@@ -187,14 +166,6 @@ public static class ProviderCandidateEndpoints
         return length is 0 || length > maxBytes ? null : buffer.AsSpan(0, length).ToArray();
     }
 
-    private static string? BearerToken(HttpContext httpContext)
-    {
-        var header = httpContext.Request.Headers.Authorization.ToString();
-        const string prefix = "Bearer ";
-        return header.StartsWith(prefix, StringComparison.Ordinal) && header.Length > prefix.Length
-            ? header[prefix.Length..].Trim()
-            : null;
-    }
 }
 
 /// <summary>OpenAPI request schema for a launch: the consents the candidate just gave, one per purpose.</summary>

@@ -34,6 +34,24 @@ internal sealed class FakeProvider : IAssessmentProvider
 
     public Guid SubjectId { get; set; } = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
 
+    public List<(string Purpose, string Locale)> TemplateRequests { get; } = [];
+
+    public Func<string, string, ProviderCall<ProviderConsentTemplate>>? OnConsentTemplate { get; set; }
+
+    public static ProviderConsentTemplate Template(string purpose, string locale) => new(
+        purpose, purpose + "-v2026-11", locale, "Consentimiento: " + purpose,
+        [new ConsentTextBlock("paragraph", "Texto de prueba."), new ConsentTextBlock("list", null, Ordered: false, Items: ["Uno"])],
+        ["purpose", "retention"]);
+
+    public Task<ProviderCall<ProviderConsentTemplate>> GetConsentTemplateAsync(
+        string purpose, string locale, CancellationToken cancellationToken)
+    {
+        Calls.Add("consent_template:" + purpose + ":" + locale);
+        TemplateRequests.Add((purpose, locale));
+        return Task.FromResult(OnConsentTemplate?.Invoke(purpose, locale)
+            ?? ProviderCall<ProviderConsentTemplate>.Success(Template(purpose, locale)));
+    }
+
     public Task<ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>> ListInstrumentsAsync(CancellationToken cancellationToken)
     {
         Calls.Add("catalog");
@@ -516,6 +534,17 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken) =>
         Task.FromResult(OrganizationSlug);
+
+    public Task<Guid?> FindActiveOrganizationBySlugAsync(string slug, CancellationToken cancellationToken) =>
+        Task.FromResult(slug == OrganizationSlug ? (Guid?)Org : null);
+
+    /// <summary>What the portal listing returns for the verified email (by default: every attempt, when it is CandidateEmail).</summary>
+    public Task<IReadOnlyList<AttemptRow>> ListCandidateAttemptsByEmailAsync(
+        Guid organizationId, string verifiedEmail, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AttemptRow>>(
+            string.Equals(verifiedEmail.Trim(), CandidateEmail, StringComparison.OrdinalIgnoreCase) && !LaunchWithdrawn
+                ? Attempts.Where(a => a.OrganizationId == organizationId).ToList()
+                : []);
 
     public Task MarkExpiredAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
     {

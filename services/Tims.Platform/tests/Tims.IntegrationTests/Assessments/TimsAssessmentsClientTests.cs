@@ -705,6 +705,43 @@ public sealed class TimsAssessmentsClientTests
         Assert.Equal(ProviderFailure.NotFoundUnconfirmed, result.Failure.Code);
     }
 
+    // The host shows the provider's counsel-reviewed text and records the consent against its text_version. Only the
+    // four plain-text block kinds are accepted, within the contract's bounds; anything else refuses the whole template.
+    [Fact]
+    public async Task A_consent_template_is_read_as_plain_text_blocks()
+    {
+        var json = """
+            {"purpose":"voice","text_version":"voice-v2026-11","locale":"en","title":"Voice recording",
+             "blocks":[{"type":"heading","text":"What we record","level":2},{"type":"paragraph","text":"Your spoken answers."},
+                       {"type":"list","ordered":true,"items":["Audio","Transcript"]},{"type":"callout","tone":"warning","text":"Optional."}],
+             "disclosures":["purpose","retention"]}
+            """;
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var template = await Client().GetConsentTemplateAsync("voice", "en", CancellationToken.None);
+
+        Assert.True(template.Ok);
+        Assert.Equal(("voice-v2026-11", 4), (template.Value!.TextVersion, template.Value.Blocks.Count));
+        Assert.Equal(["Audio", "Transcript"], template.Value.Blocks[2].Items);
+        Assert.Equal("https://assessments.test/v1/catalog/consent-templates/voice?locale=en", _handler.Requests.Last().Uri);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"html","text":"<b>x</b>"}""")]
+    [InlineData("""{"type":"heading","text":"x","level":7}""")]
+    [InlineData("""{"type":"callout","tone":"danger","text":"x"}""")]
+    [InlineData("""{"type":"list","ordered":false,"items":[]}""")]
+    public async Task A_consent_template_with_an_off_contract_block_is_refused_whole(string block)
+    {
+        var json = "{\"purpose\":\"assessment\",\"text_version\":\"a-1\",\"locale\":\"es\",\"title\":\"T\",\"blocks\":[{\"type\":\"paragraph\",\"text\":\"ok\"},"
+            + block + "],\"disclosures\":[]}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var template = await Client().GetConsentTemplateAsync("assessment", "es", CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, template.Failure!.Code);
+    }
+
     // D15 DSAR access: the provider's export asks for a token with subjects:export ALONE (never added to the default
     // scopes every other call carries), and its body is checked to be this subject's SubjectExport.
     [Fact]

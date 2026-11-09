@@ -4974,6 +4974,103 @@
         }
       }
     },
+    "/portal/assessment-attempts": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderPortalAttempts",
+        "parameters": [
+          {
+            "name": "organizationSlug",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalAttemptsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/portal/assessment-attempts/{attemptId}/consent-templates": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderPortalConsentTemplates",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalConsentTemplatesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export": {
       "get": {
         "tags": [
@@ -11226,6 +11323,54 @@
           }
         }
       },
+      "ConsentTextBlock": {
+        "required": [
+          "type",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "ordered": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "items": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "tone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CoverageRow": {
         "required": [
           "roleId",
@@ -15593,6 +15738,73 @@
           }
         }
       },
+      "PortalAttemptsResponse": {
+        "required": [
+          "attempts"
+        ],
+        "type": "object",
+        "properties": {
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortalAttemptView"
+            }
+          }
+        }
+      },
+      "PortalAttemptView": {
+        "required": [
+          "attemptId",
+          "instrument",
+          "status",
+          "missingConsents",
+          "expiresAt",
+          "delivery"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "missingConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "delivery": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalConsentTemplatesResponse": {
+        "required": [
+          "templates"
+        ],
+        "type": "object",
+        "properties": {
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderConsentTemplate"
+            }
+          }
+        }
+      },
       "PortalConsentWithdrawalBody": {
         "required": [
           "organizationSlug"
@@ -15836,6 +16048,43 @@
           },
           "defaultLocale": {
             "type": "string"
+          }
+        }
+      },
+      "ProviderConsentTemplate": {
+        "required": [
+          "purpose",
+          "textVersion",
+          "locale",
+          "title",
+          "blocks",
+          "disclosures"
+        ],
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string"
+          },
+          "textVersion": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsentTextBlock"
+            }
+          },
+          "disclosures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

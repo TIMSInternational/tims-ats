@@ -56,6 +56,19 @@ public sealed class TimsAssessmentsClient(
             HttpMethod.Get, "v1/catalog/instruments", null, null, "list_instruments", ProviderResponses.Catalog,
             cancellationToken);
 
+    public Task<ProviderCall<ProviderConsentTemplate>> GetConsentTemplateAsync(
+        string purpose, string locale, CancellationToken cancellationToken)
+    {
+        if (!ConsentPurposes.IsKnown(purpose) || !ProviderFormats.IsLocale(locale))
+        {
+            return Task.FromResult(ProviderCall<ProviderConsentTemplate>.Fail(
+                ProviderFailure.Local(ProviderFailure.ContractViolation, transient: false)));
+        }
+
+        return SendAsync(HttpMethod.Get, $"v1/catalog/consent-templates/{purpose}?locale={Uri.EscapeDataString(locale)}", null,
+            null, "get_consent_template", root => ProviderResponses.ConsentTemplate(root, purpose), cancellationToken);
+    }
+
     public Task<ProviderCall<ProviderTenant>> EnsureTenantAsync(
         ProviderTenantRequest request, string idempotencyKey, CancellationToken cancellationToken)
     {

@@ -94,6 +94,17 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid attemptId, Func<AttemptRow, CancellationToken, Task<ProviderCall<ProviderLaunch>>> launch,
         DateTimeOffset now, CancellationToken cancellationToken);
 
+    /// <summary>PRE-TENANT (privileged): the active organization with this public slug, or null. Only the id leaves.</summary>
+    Task<Guid?> FindActiveOrganizationBySlugAsync(string slug, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The candidate portal's own attempts: those of the org's ACTIVE candidates whose <c>lower(btrim(email))</c> equals the
+    /// verified email's, newest first, at most 50. Empty when that person's #312 recruitment consent is withdrawn (the
+    /// sibling predicate covers every candidate row with that email). Under the tenant scope.
+    /// </summary>
+    Task<IReadOnlyList<AttemptRow>> ListCandidateAttemptsByEmailAsync(
+        Guid organizationId, string verifiedEmail, CancellationToken cancellationToken);
+
     /// <summary>Privileged read of an active organization's public slug (its portal path), or null.</summary>
     Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken);
 

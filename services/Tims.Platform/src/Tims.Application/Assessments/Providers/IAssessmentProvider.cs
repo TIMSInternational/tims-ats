@@ -17,6 +17,13 @@ public interface IAssessmentProvider
     /// <summary>False when the client credentials, the base URL or the webhook secret are unset or placeholders.</summary>
     bool IsConfigured { get; }
 
+    /// <summary>
+    /// <c>GET /v1/catalog/consent-templates/{purpose}?locale=</c> (<c>catalog:read</c>): the counsel-reviewed text the host
+    /// shows before recording a consent with the returned <c>text_version</c>. Plain-text blocks only (never markup).
+    /// </summary>
+    Task<ProviderCall<ProviderConsentTemplate>> GetConsentTemplateAsync(
+        string purpose, string locale, CancellationToken cancellationToken);
+
     /// <summary><c>GET /v1/catalog/instruments</c> (<c>catalog:read</c>).</summary>
     Task<ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>> ListInstrumentsAsync(CancellationToken cancellationToken);
 
@@ -205,6 +212,18 @@ public sealed record ProviderCatalogInstrument(string Instrument, IReadOnlyList<
     public bool OfferedForSelection =>
         Versions.Any(v => v.SelectionAllowed && v.Status is "ga" or "beta");
 }
+
+/// <summary>
+/// A consent template (<c>ConsentTemplate</c>): the purpose, the <c>text_version</c> a consent is recorded against, and
+/// the text as plain blocks (<c>RichTextBlock</c>: paragraph, heading, list, callout), which the portal renders as text.
+/// </summary>
+public sealed record ProviderConsentTemplate(
+    string Purpose, string TextVersion, string Locale, string Title, IReadOnlyList<ConsentTextBlock> Blocks,
+    IReadOnlyList<string> Disclosures);
+
+/// <summary>One plain-text block: <c>paragraph</c>/<c>callout</c> (text), <c>heading</c> (text, level), <c>list</c> (items).</summary>
+public sealed record ConsentTextBlock(
+    string Type, string? Text, int? Level = null, bool? Ordered = null, IReadOnlyList<string>? Items = null, string? Tone = null);
 
 public sealed record ProviderTenantRequest(string ExternalOrgRef, string DisplayName, string DefaultLocale);
 

@@ -55,6 +55,71 @@ internal static partial class ProviderResponses
         return instruments;
     }
 
+    /// <summary>
+    /// <c>ConsentTemplate</c> for the purpose asked for: a <c>text_version</c> (the ContentVersion shape), a locale, a title
+    /// and 1..50 plain-text blocks, each one of the four <c>RichTextBlock</c> kinds with the contract's bounds. Anything
+    /// else (a markup-bearing block type, an oversized text) refuses the whole template: a consent is never shown partially.
+    /// </summary>
+    public static ProviderConsentTemplate? ConsentTemplate(JsonElement root, string purpose)
+    {
+        if (root.ValueKind != JsonValueKind.Object || Str(root, "purpose") != purpose
+            || Str(root, "text_version", 64) is not { } textVersion || !ProviderFormats.IsContentVersion(textVersion)
+            || Str(root, "locale") is not { } locale || !ProviderFormats.IsLocale(locale)
+            || Str(root, "title", 200) is not { } title
+            || !root.TryGetProperty("blocks", out var blocks) || blocks.ValueKind != JsonValueKind.Array
+            || blocks.GetArrayLength() is < 1 or > 50)
+        {
+            return null;
+        }
+
+        var parsed = new List<ConsentTextBlock>();
+        foreach (var block in blocks.EnumerateArray())
+        {
+            ConsentTextBlock? item = Str(block, "type") switch
+            {
+                "paragraph" when Str(block, "text", 4000) is { } text => new ConsentTextBlock("paragraph", text),
+                "heading" when Str(block, "text", 200) is { } text && block.TryGetProperty("level", out var level)
+                    && level.TryGetInt32(out var n) && n is >= 1 and <= 3 => new ConsentTextBlock("heading", text, n),
+                "callout" when Str(block, "text", 1000) is { } text && Str(block, "tone") is ({ } tone and ("info" or "warning"))
+                    => new ConsentTextBlock("callout", text, Tone: tone),
+                "list" when block.TryGetProperty("ordered", out var ordered)
+                    && ordered.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    && ListItems(block) is { Count: >= 1 and <= 30 } items
+                    => new ConsentTextBlock("list", null, Ordered: ordered.GetBoolean(), Items: items),
+                _ => null,
+            };
+            if (item is null)
+            {
+                return null;
+            }
+
+            parsed.Add(item);
+        }
+
+        return new ProviderConsentTemplate(purpose, textVersion, locale, title, parsed, StrArray(root, "disclosures") ?? []);
+    }
+
+    private static List<string>? ListItems(JsonElement block)
+    {
+        if (!block.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() > 30)
+        {
+            return null;
+        }
+
+        var values = new List<string>();
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || item.GetString() is not { Length: > 0 and <= 1000 } value)
+            {
+                return null;
+            }
+
+            values.Add(value);
+        }
+
+        return values;
+    }
+
     public static ProviderTenant? Tenant(JsonElement root) =>
         GuidOf(root, "tenant_id") is { } id && Str(root, "external_org_ref") is { } externalRef && Str(root, "status") is { } status
             ? new ProviderTenant(id, externalRef, status)

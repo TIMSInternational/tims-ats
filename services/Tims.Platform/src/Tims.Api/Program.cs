@@ -1639,6 +1639,7 @@ try
     {
         app.MapProviderAssignmentEndpoints();
         app.MapProviderCandidateEndpoints();
+        app.MapProviderPortalEndpoints();
         app.MapProviderSubjectRightsEndpoints();
     }
 

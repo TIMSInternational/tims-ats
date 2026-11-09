@@ -41,6 +41,7 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddScoped<AssignProviderInstrumentsUseCase>();
         services.AddScoped<CancelProviderAttemptUseCase>();
         services.AddScoped<LaunchProviderAttemptUseCase>();
+        services.AddScoped<ProviderPortalUseCase>();
         services.AddScoped<ProviderWebhookUseCase>();
         services.AddScoped<ProviderBindingUseCase>();
         services.AddScoped<ProviderConsentWithdrawalUseCase>();
