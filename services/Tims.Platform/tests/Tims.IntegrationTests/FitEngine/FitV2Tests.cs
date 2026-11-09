@@ -238,7 +238,8 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         while (!taskB.IsCompleted && DateTime.UtcNow < deadline)
         {
             var waiting = (long)(await _fixture.ExecuteScalarAsync(
-                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"))!;
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted "
+                + "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"))!;
             if (waiting > 0)
             {
                 break;
@@ -307,7 +308,8 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         Assert.Equal(before.Breakdown, after.Breakdown);
         Assert.Equal(before.UpdatedAt, after.UpdatedAt);
         Assert.Equal(0, (long)(await _fixture.ExecuteScalarAsync(
-            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'"))!);
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+            + "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"))!);
     }
 
     // Lets the first read through, then holds the caller until released; every later read fails.

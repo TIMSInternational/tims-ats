@@ -518,7 +518,8 @@ public sealed class FitV2UseCaseTests
         var repo = Repo("""{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"}}]}""");
         repo.RowExists = false;
         var source = new ScriptedResultSource(
-            [Result(FitInstruments.English, "r-en", cefr: "C1", source: "provider")]) { Events = repo.Events };
+            [Result(FitInstruments.English, "r-en", cefr: "C1", source: "provider")])
+        { Events = repo.Events };
 
         var written = await new FitEngineWriteUseCase(repo, source).RecomputeExistingAsync(
             OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);

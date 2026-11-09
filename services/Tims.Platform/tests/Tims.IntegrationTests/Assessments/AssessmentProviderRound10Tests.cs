@@ -360,7 +360,7 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
 
         // Codex ats-final run 3: a recorded subject (or an erased attempt) does not end it; only an answer does.
         await fixture.ExecuteAsync(
-            $"UPDATE assessment_provider_attempts SET provider_subject_id = gen_random_uuid(), state = 'erased' WHERE id = '{attempt}'");
+            $"UPDATE assessment_provider_attempts SET provider_subject_id = gen_random_uuid(), provider_assignment_id = gen_random_uuid(), state = 'erased' WHERE id = '{attempt}'");
         var recorded = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
         Assert.False(recorded!.CreatesInFlight);
         Assert.True(recorded.NeedsResolution);
