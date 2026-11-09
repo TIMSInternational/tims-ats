@@ -89,7 +89,9 @@ public sealed class FitAssessmentRequirementsRepository(FitEngineWriteDbContext 
             return new AssessmentRequirementsWriteResult(false, current.AssessmentsJson, current.Version);
         }
 
-        await using var write = new NpgsqlCommand(rowId is null ? InsertSql : UpdateSql, connection, transaction);
+        await using var write = rowId is null
+            ? new NpgsqlCommand(InsertSql, connection, transaction)
+            : new NpgsqlCommand(UpdateSql, connection, transaction);
         AddKeys(write, organizationId, vacancyId);
         write.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = rowId ?? Guid.NewGuid() });
         write.Parameters.Add(new NpgsqlParameter("assessments", NpgsqlDbType.Jsonb) { Value = assessmentsJson });
