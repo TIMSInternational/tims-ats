@@ -424,7 +424,6 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add("created");
-        CreatesInFlight.Remove(attemptId);
         Replace(attemptId, a => a.State == ProviderAttemptStates.PendingCreate
             ? a with
             {
@@ -457,11 +456,6 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Guid organizationId, Guid attemptId, string errorCode, bool cancel, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add(cancel ? "cancelled:" + errorCode : "pending:" + errorCode);
-        if (cancel)
-        {
-            CreatesInFlight.Remove(attemptId);
-        }
-
         Replace(attemptId, a => a.State != ProviderAttemptStates.PendingCreate ? a : a with
         {
             State = cancel ? ProviderAttemptStates.Cancelled : a.State,
@@ -497,6 +491,17 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     {
         Writes.Add("withdrawal_reopened");
         Replace(attemptId, a => a.WithdrawalState == ProviderWithdrawalStates.Done ? a with { WithdrawalState = ProviderWithdrawalStates.Pending } : a);
+        return Task.CompletedTask;
+    }
+
+    public List<(Guid AttemptId, string TextVersion, string Locale)> NoticeAcknowledgments { get; } = [];
+
+    public Task AuditNoticeAcknowledgedAsync(
+        Guid organizationId, Guid candidateId, Guid attemptId, string textVersion, string locale,
+        CancellationToken cancellationToken)
+    {
+        NoticeAcknowledgments.Add((attemptId, textVersion, locale));
+        Writes.Add("notice:" + textVersion);
         return Task.CompletedTask;
     }
 
@@ -695,6 +700,22 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult(true);
     }
 
+    /// <summary>Mirrors the real repository: the stored copy of the result goes; the attempt moves to result_ready.</summary>
+    public Task<int> HideResultAsync(
+        Guid organizationId, AttemptRow attempt, Guid resultId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Writes.Add("hide:" + resultId);
+        var removed = StoredResults.RemoveAll(r => r.ResultId == resultId);
+        Replace(attempt.Id, a => a with
+        {
+            LatestResultId = a.LatestResultId == resultId ? null : a.LatestResultId,
+            State = ProviderAttemptStates.CanTransition(a.State, ProviderAttemptStates.ResultReady)
+                ? ProviderAttemptStates.ResultReady
+                : a.State,
+        });
+        return Task.FromResult(removed);
+    }
+
     public List<Guid> LocallyErasedSubjects { get; } = [];
 
     public Task<int> EraseSubjectAsync(Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -824,7 +845,13 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     }
 
     /// <summary>The create fence: attempt → when its create was announced (the fake's database clock).</summary>
-    public Dictionary<Guid, DateTimeOffset> CreatesInFlight { get; } = [];
+    /// <summary>Each attempt's create fences: one token per announced create, removed only by that create's end.</summary>
+    public Dictionary<Guid, List<DateTimeOffset>> CreateFences { get; } = [];
+
+    private bool HasCreateFence(Guid attemptId) => CreateFences.TryGetValue(attemptId, out var tokens) && tokens.Count > 0;
+
+    private bool HasLiveCreateFence(Guid attemptId) => CreateFences.TryGetValue(attemptId, out var tokens)
+        && tokens.Any(t => t >= DbNow - ProviderCreateFence.StaleAfter);
 
     /// <summary>Runs once, right after a create is announced (a withdrawal interleaving with the create).</summary>
     public Action? AfterBeginCreate { get; set; }
@@ -840,21 +867,45 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     /// <summary>Runs once, right after a reserve (a withdrawal landing before the first provider call).</summary>
     public Action? AfterReserve { get; set; }
 
-    public Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    public Task<DateTimeOffset?> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
     {
         if (Attempts.FirstOrDefault(a => a.Id == attemptId) is not
             { State: ProviderAttemptStates.PendingCreate, WithdrawalState: null, ErasureRequestedAt: null })
         {
             Writes.Add("create_refused");
-            return Task.FromResult(false);
+            return Task.FromResult<DateTimeOffset?>(null);
         }
 
-        CreatesInFlight[attemptId] = DbNow;
+        // Mirrors the real repository: stale tokens are pruned, and the new token is unique on the attempt.
+        var tokens = CreateFences.TryGetValue(attemptId, out var existing)
+            ? existing.Where(t => t >= DbNow - ProviderCreateFence.StaleAfter).ToList()
+            : [];
+        var token = tokens.Count > 0 && tokens.Max() >= DbNow ? tokens.Max().AddTicks(10) : DbNow;
+        tokens.Add(token);
+        CreateFences[attemptId] = tokens;
         Writes.Add("create_begun");
         var hook = AfterBeginCreate;
         AfterBeginCreate = null;
         hook?.Invoke();
-        return Task.FromResult(true);
+        return Task.FromResult<DateTimeOffset?>(token);
+    }
+
+    /// <summary>Mirrors the real repository's conditions for ending one create's fence.</summary>
+    public Task EndCreateAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset fence, ProviderAssignment? assignment,
+        CancellationToken cancellationToken)
+    {
+        var attempt = Attempts.FirstOrDefault(a => a.Id == attemptId);
+        var ends = attempt is not null && (assignment is not null
+            ? attempt.ProviderAssignmentId == assignment.AssignmentId && attempt.ProviderSubjectId == assignment.SubjectId
+            : attempt.State != ProviderAttemptStates.Erased && attempt.ErasureRequestedAt is null);
+        if (ends && CreateFences.TryGetValue(attemptId, out var tokens))
+        {
+            tokens.Remove(fence);
+            Writes.Add("create_ended");
+        }
+
+        return Task.CompletedTask;
     }
 
     public List<(Guid AttemptId, IReadOnlyList<string> Granted, IReadOnlyList<string> Declined)> OptionalDecisions { get; } = [];
@@ -892,10 +943,9 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             .Select(id =>
             {
                 var (generation, inFlight, startedAt) = CaptureOf(id);
-                var create = CreatesInFlight.TryGetValue(id, out var announced) ? announced : (DateTimeOffset?)null;
                 return new WithdrawalFence(id, generation, inFlight > 0,
                     inFlight > 0 && startedAt < DbNow - ProviderCleanup.ConsentCaptureStaleAfter,
-                    create is not null, create < DbNow - ProviderCreateFence.StaleAfter);
+                    HasCreateFence(id), HasCreateFence(id) && !HasLiveCreateFence(id));
             })
             .ToList();
         var hook = AfterReadFences;
@@ -932,7 +982,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
                 && a.LastErrorCode != ProviderCleanup.CancelPending
                 && capture.Generation == fence.CaptureGeneration
                 && (capture.InFlight == 0 || fence.CaptureStale)
-                && (!CreatesInFlight.ContainsKey(fence.AttemptId) || fence.CreateStale))
+                && (!HasCreateFence(fence.AttemptId) || fence.CreateStale))
             {
                 Replace(fence.AttemptId, x => x with { WithdrawalState = ProviderWithdrawalStates.Done });
                 moved++;
@@ -990,9 +1040,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
                 ErasedSubjects.ToList(),
                 Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
                     && a.ErasureRequestedAt is null)
-                    || Attempts.Any(a => a.CandidateId == candidateId && CreatesInFlight.ContainsKey(a.Id)),
-                Attempts.Any(a => a.CandidateId == candidateId && CreatesInFlight.TryGetValue(a.Id, out var begun)
-                    && begun >= DbNow - ProviderCreateFence.StaleAfter)));
+                    || Attempts.Any(a => a.CandidateId == candidateId && HasCreateFence(a.Id)),
+                Attempts.Any(a => a.CandidateId == candidateId && HasLiveCreateFence(a.Id))));
 
     /// <summary>Failure injection: the erasure marker's transaction throws (a crash or database failure at that point).</summary>
     public bool MarkErasureRequestedFails { get; set; }

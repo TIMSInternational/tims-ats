@@ -156,8 +156,9 @@ public sealed class ProviderConsentWithdrawalUseCase(
         }
 
         // A create still announced at the fence read blocks completion unless this pass found and recorded its assignment
-        // (the orphan, now cancelled): then the create's answer is on record, and MarkWithdrawalDoneAsync's own condition
-        // (create_started_at cleared by that record) re-checks it at the database.
+        // (the orphan, now cancelled). Even then MarkWithdrawalDoneAsync's own condition decides at the database: a create
+        // ends its OWN fence only when its answer is recorded (EndCreateAsync), so while any create of the attempt is
+        // still in flight and not stale the attempt stays pending, and a later pass completes it.
         var confirmed = fences
             .Where(f => !blocked.Contains(f.AttemptId) && f.CaptureAllowsCompletion
                 && current.FirstOrDefault(a => a.Id == f.AttemptId) is { } attempt

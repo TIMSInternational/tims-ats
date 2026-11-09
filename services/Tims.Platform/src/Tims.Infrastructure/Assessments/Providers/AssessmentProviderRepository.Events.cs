@@ -344,6 +344,66 @@ public sealed partial class AssessmentProviderRepository
         return true;
     }
 
+    public async Task<int> HideResultAsync(
+        Guid organizationId, AttemptRow attempt, Guid resultId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        var timestamp = now.UtcDateTime;
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // The lock order result storage uses (subject, then attempt): a store of this result in flight either committed
+        // first (and is deleted here) or runs after and stores it again only if a later fetch is visible again.
+        if (attempt.ProviderSubjectId is { } subjectId)
+        {
+            await LockSubjectAsync(subjectId, cancellationToken).ConfigureAwait(false);
+        }
+
+        await LockAttemptAsync(attempt.Id, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+        var entity = await _db.Attempts
+            .FirstOrDefaultAsync(a => a.Id == attempt.Id && a.OrganizationId == organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (entity is null)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return 0;
+        }
+
+        // The DELETE fires fit_v2_provider_result_changed (AFTER ... DELETE), which enqueues this candidate's FIT v2
+        // recompute in this transaction: FIT stops counting the result when the drain runs.
+        var removed = await _db.Results
+            .Where(r => r.OrganizationId == organizationId && r.AttemptId == entity.Id && r.ProviderResultId == resultId)
+            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        var from = entity.State;
+        if (entity.LatestResultId == resultId)
+        {
+            entity.LatestResultId = null;
+        }
+
+        // The sitting finished either way: the attempt moves to result_ready when it still may (never backward, never
+        // out of a terminal state), exactly as the not-visible answer always did.
+        if (ProviderAttemptStates.CanTransition(entity.State, ProviderAttemptStates.ResultReady))
+        {
+            entity.State = ProviderAttemptStates.ResultReady;
+        }
+
+        if (removed > 0 || from != entity.State)
+        {
+            entity.UpdatedAt = timestamp;
+            AddAudit(organizationId, null, "assessment_provider_result_hidden", entity.Id, new Dictionary<string, object?>
+            {
+                ["instrument"] = entity.Instrument,
+                ["resultId"] = resultId,
+                ["removed"] = removed,
+                ["from"] = from,
+                ["to"] = entity.State,
+            });
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return removed;
+    }
+
     public async Task<int> EraseSubjectAsync(
         Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken)
     {

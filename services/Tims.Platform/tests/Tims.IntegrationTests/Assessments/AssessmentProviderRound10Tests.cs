@@ -172,12 +172,12 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
     {
         var org = await OrgAsync();
         var attempt = await AttemptAsync(org, "pending_create", mapped: false);
-        Assert.True(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
+        Assert.NotNull(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
 
         // The candidate withdraws while the create is in flight: no new create may begin, and completion is refused.
         await fixture.ExecuteAsync(
             $"UPDATE assessment_provider_attempts SET state = 'cancelled', withdrawal_state = 'pending' WHERE id = '{attempt}'");
-        Assert.False(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
+        Assert.Null(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
         var fence = Assert.Single(await WithRepository(r => r.ReadWithdrawalFencesAsync(org, [attempt], CancellationToken.None)));
         Assert.True(fence.CreateInFlight);
         Assert.False(fence.CreateStale);
@@ -185,7 +185,7 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
 
         // Once the announcement is stale (no create can still land), the fence no longer blocks.
         await fixture.ExecuteAsync(
-            $"UPDATE assessment_provider_attempts SET create_started_at = now() - interval '11 minutes' WHERE id = '{attempt}'");
+            $"UPDATE assessment_provider_attempts SET create_fences = ARRAY[now() - interval '11 minutes'] WHERE id = '{attempt}'");
         var stale = Assert.Single(await WithRepository(r => r.ReadWithdrawalFencesAsync(org, [attempt], CancellationToken.None)));
         Assert.True(stale.CreateStale);
         Assert.Equal(1, await WithRepository(r => r.MarkWithdrawalDoneAsync(org, [stale], Now, CancellationToken.None)));
@@ -196,15 +196,20 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
     {
         var org = await OrgAsync();
         var attempt = await AttemptAsync(org, "pending_create", mapped: false);
-        await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None));
+        var fence = (await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)))!.Value;
         var subject = Guid.NewGuid();
-
-        await WithRepository(r => r.MarkCreatedAsync(org, attempt, new ProviderAssignment(
+        var assignment = new ProviderAssignment(
             Guid.NewGuid(), Guid.NewGuid(), subject, "lia", "1.0", "content-1", "created", ["assessment"], [], Now.AddDays(7),
-            attempt.ToString()), Now, CancellationToken.None));
+            attempt.ToString());
 
-        Assert.Equal(true, await fixture.ScalarAsync(
-            $"SELECT create_started_at IS NULL FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        await WithRepository(r => r.MarkCreatedAsync(org, attempt, assignment, Now, CancellationToken.None));
+        // Recording the mapping alone ends no create: only that create's own end does (round 12).
+        Assert.Equal(1, await fixture.ScalarAsync(
+            $"SELECT cardinality(create_fences) FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        await WithRepository(async r => { await r.EndCreateAsync(org, attempt, fence, assignment, CancellationToken.None); return 0; });
+
+        Assert.Equal(0, await fixture.ScalarAsync(
+            $"SELECT cardinality(create_fences) FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
 
     [Fact]
@@ -344,7 +349,7 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         await fixture.ExecuteAsync(
             $"INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES ('{candidate}', '{org}', 'B', 'C', 'f@r10.example')");
         var attempt = await AttemptAsync(org, "pending_create", candidate, mapped: false);
-        Assert.True(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
+        Assert.NotNull(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
         await fixture.ExecuteAsync(
             $"UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now() WHERE id = '{attempt}'");
 
@@ -353,7 +358,7 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         Assert.True(live.NeedsResolution);
 
         await fixture.ExecuteAsync(
-            $"UPDATE assessment_provider_attempts SET create_started_at = now() - interval '11 minutes' WHERE id = '{attempt}'");
+            $"UPDATE assessment_provider_attempts SET create_fences = ARRAY[now() - interval '11 minutes'] WHERE id = '{attempt}'");
         var stale = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
         Assert.False(stale!.CreatesInFlight);
         Assert.True(stale.NeedsResolution);
@@ -366,7 +371,7 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         Assert.True(recorded.NeedsResolution);
 
         await fixture.ExecuteAsync(
-            $"UPDATE assessment_provider_attempts SET create_started_at = NULL WHERE id = '{attempt}'");
+            $"UPDATE assessment_provider_attempts SET create_fences = '{{}}' WHERE id = '{attempt}'");
         var answered = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
         Assert.False(answered!.CreatesInFlight);
         Assert.False(answered.NeedsResolution);

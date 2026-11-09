@@ -13,8 +13,12 @@ public sealed class LaunchProviderAttemptUseCaseTests
     private readonly FakeRepository _repository = new();
     private readonly FakeProvider _provider = new();
 
+    /// <summary>The current ATS notice, acknowledged in Spanish (round 12: required to launch a sitting not started).</summary>
+    internal static readonly NoticeAcknowledgment Notice = new(AtsNotice.CurrentVersion, "es");
+
     private Task<LaunchResult> Launch(Guid attemptId, string email = "ana@example.com", params CapturedConsent[] consents) =>
-        new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(attemptId, email, consents, Now, CancellationToken.None);
+        new LaunchProviderAttemptUseCase(_repository, _provider)
+            .LaunchAsync(attemptId, email, consents, Now, CancellationToken.None, notice: Notice);
 
     // D16: the hosted player's single-use URL and the origins that may frame it; never a candidate token. The player
     // returns the candidate to the org's portal dashboard.
@@ -42,7 +46,7 @@ public sealed class LaunchProviderAttemptUseCaseTests
         var attempt = _repository.AddCreatedAttempt("lia");
 
         var result = await new LaunchProviderAttemptUseCase(_repository, _provider)
-            .LaunchAsync(attempt.Id, "ana@example.com", [], Now, CancellationToken.None, embedded: true);
+            .LaunchAsync(attempt.Id, "ana@example.com", [], Now, CancellationToken.None, embedded: true, notice: Notice);
 
         Assert.Equal(LaunchOutcome.Launched, result.Outcome);
         Assert.Equal([null], _provider.LaunchReturnPaths);

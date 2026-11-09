@@ -98,7 +98,11 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - Voided or review results, and a multiplier mismatch, are `NeedsReview`, with no value.
   - `development` results are never reported.
 - **Visibility.** Results are fetched with `audience=tenant_hr`, and the provider enforces the level. A
-  `result_not_visible` answer stores nothing.
+  `result_not_visible` answer stores nothing, and it DELETES a copy of that result stored earlier (round 12, Codex
+  round 11 P1: a tenant that lowers its `tenant_hr` visibility after a result was delivered). The attempt's latest
+  result is cleared, staff reads and FIT stop using it at once, and the deletion enqueues the candidate's FIT v2
+  recompute (migration `20261109233537_assessment_provider_round12` makes the provider result trigger fire on DELETE).
+  Audit action `assessment_provider_result_hidden`.
 - **Audit.** Every write to an attempt, a result or a binding appends its `audit_logs` row in the same transaction.
   The cases:
   - assign (the reserve);
@@ -409,6 +413,22 @@ the create's answer (Codex P1). Migration `20261109055548_assessment_provider_qu
 3. A pass reads it with the consent fence, BEFORE any lookup. While it is set and not stale (10 minutes), the attempt
    stays pending unless that pass found and recorded the assignment; `done` is also conditional on it at the database.
 
+**Round 12: one fence per create.** Codex round 11 P1: two overlapping creates of the same pending attempt (a double
+submit, two staff) shared that one timestamp, so the first answer cleared it while the second was still in flight, and
+an erasure in that window could report done while the second create re-created the provider subject with names and
+email. Migration `20261109233537_assessment_provider_round12` replaces it with `create_fences timestamptz[]` (existing
+unanswered fences are copied in; `create_started_at` is kept but no longer read or written):
+
+- `BeginCreateAsync` appends THIS create's own token (the database clock, bumped past every token on the row so it is
+  unique) and prunes stale ones, under the same conditions as before. It returns the token.
+- `EndCreateAsync` removes only that token: after an answer, when the attempt records that assignment AND its subject;
+  after a definitive refusal, when no erasure (requested or done) touched the attempt. Otherwise the token stays until it
+  is stale, and an unanswered token keeps the candidate's subject resolved by `external_ref` on later exports and
+  erasures (that create may have made a subject no attempt names).
+- Recording a mapping found by a webhook or a withdrawal pass ends no create. The fence read, the `done` condition and
+  the erasure's subject facts (`CreatesInFlight`, `NeedsResolution`) now ask whether ANY token is live / present, so a
+  withdrawal whose pass found the orphan completes once every create of the attempt has answered or gone stale.
+
 ### The cascade's lease
 
 Every pass (after a withdrawal, from a webhook, from a launch, or the scheduled sweep) claims the pending attempts it
@@ -489,7 +509,8 @@ still in place.
 1. Review the SQL. Apply the files in `services/Tims.Platform/db/manual`, in this order, with psql on the direct
    connection (`:5432`): `20261107232524_assessment_providers.sql`, `20261108224533_assessment_provider_consent_capture.sql`,
    `20261109010328_assessment_provider_attempt_poll.sql`, `20261109011531_fit_v2_provider_recompute.sql`,
-   `20261109030506_fit_v2_provider_erasure_recompute.sql`, then `20261109055548_assessment_provider_queues.sql`.
+   `20261109030506_fit_v2_provider_erasure_recompute.sql`, `20261109055548_assessment_provider_queues.sql`, then
+   `20261109233537_assessment_provider_round12.sql` (round 12: per-create fences, and the result trigger on DELETE).
 2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be these
    four tables, their policies, grants and indexes). Then run `/gate` checks 14, 16 and 17.
    - Check 18 (`pre-flip-scan --flip-diff`) will list the four tables as "newly efcore-owned". They are new tables,

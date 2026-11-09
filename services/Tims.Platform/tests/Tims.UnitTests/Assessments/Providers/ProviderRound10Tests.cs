@@ -210,7 +210,7 @@ public sealed class ProviderRound10Tests
 
         var result = await launch.LaunchAsync(
             attempt.Id, "ana@example.com", [new CapturedConsent(ConsentPurposes.AiScoring, "v1", "es")], Now,
-            CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+            CancellationToken.None, declinedOptional: [ConsentPurposes.Voice], notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Equal(LaunchOutcome.Launched, result.Outcome);
         var decision = Assert.Single(_repository.OptionalDecisions);
@@ -229,7 +229,7 @@ public sealed class ProviderRound10Tests
         var attempt = _repository.AddCreatedAttempt("lia");
 
         await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
-            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice], notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Empty(_repository.OptionalDecisions);
     }
@@ -321,14 +321,22 @@ public sealed class ProviderRound10Tests
         Assert.NotNull(sent);
         Assert.Equal(ProviderWithdrawalStates.Pending, row.WithdrawalState); // NOT done: the create could still land
 
-        // The next pass (the sweep) finds the orphan by external_ref, records and cancels it, and only then completes.
+        // The next pass (the sweep) finds the orphan by external_ref, records and cancels it. The create that made it
+        // never recorded its own answer, so its fence still holds the cascade (round 12: one fence per create, ended only
+        // by that create's answer) until it is stale; the first pass after that completes.
         var next = await new ProviderConsentWithdrawalUseCase(_repository, _provider)
             .PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
 
         row = _repository.Attempts.Single();
-        Assert.Equal(1, next.Confirmed);
-        Assert.Equal(ProviderWithdrawalStates.Done, row.WithdrawalState);
+        Assert.Equal(0, next.Confirmed);
+        Assert.Equal(ProviderWithdrawalStates.Pending, row.WithdrawalState);
         Assert.Equal([_provider.ByExternalRef[row.Id.ToString()].AssignmentId], _provider.Cancelled);
+
+        _repository.DbNow += ProviderCreateFence.StaleAfter + TimeSpan.FromMinutes(1);
+        var after = await new ProviderConsentWithdrawalUseCase(_repository, _provider)
+            .PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
+        Assert.Equal(1, after.Confirmed);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
     }
 
     [Fact]
@@ -381,7 +389,7 @@ public sealed class ProviderRound10Tests
         ];
 
         var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
-            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice], notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Equal(LaunchOutcome.Launched, result.Outcome);
         Assert.Equal([(attempt.ProviderSubjectId.Value, granted)], _provider.WithdrawnConsents);
@@ -406,7 +414,7 @@ public sealed class ProviderRound10Tests
         ];
 
         var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
-            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice], notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Equal(LaunchOutcome.Launched, result.Outcome);
         var subject = attempt.ProviderSubjectId.Value;
@@ -422,7 +430,7 @@ public sealed class ProviderRound10Tests
         _provider.OnWithdrawConsent = _ => ProviderCall<ProviderConsentRecord>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
 
         var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
-            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice], notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
         // The decline is on record (the next launch enforces it again); no sitting started meanwhile.
@@ -446,7 +454,7 @@ public sealed class ProviderRound10Tests
         };
 
         var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
-            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice], notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Equal(LaunchOutcome.Launched, result.Outcome);
         Assert.Empty(_provider.WithdrawnConsents);
@@ -465,7 +473,7 @@ public sealed class ProviderRound10Tests
             _repository.BeginConsentCaptureAsync(FakeRepository.Org, attempt.Id, Now, CancellationToken.None).GetAwaiter().GetResult();
 
         var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
-            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice], notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
         Assert.Equal("consent_capture_in_flight", result.Detail);
@@ -483,7 +491,7 @@ public sealed class ProviderRound10Tests
         _provider.SubjectConsents[attempt.ProviderSubjectId!.Value] = [new ProviderConsentRecord(voice, ConsentPurposes.Voice, "active")];
 
         var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
-            attempt.Id, "ana@example.com", [], Now, CancellationToken.None);
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, notice: LaunchProviderAttemptUseCaseTests.Notice);
 
         Assert.Equal(LaunchOutcome.Launched, result.Outcome);
         Assert.Equal([(attempt.ProviderSubjectId.Value, voice)], _provider.WithdrawnConsents);
@@ -499,7 +507,7 @@ public sealed class ProviderRound10Tests
             WithdrawalState = ProviderWithdrawalStates.Pending,
         };
         _repository.Attempts[0] = attempt;
-        _repository.CreatesInFlight[attempt.Id] = _repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromSeconds(1);
+        _repository.CreateFences[attempt.Id] = [_repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromSeconds(1)];
 
         var pass = await new ProviderConsentWithdrawalUseCase(_repository, _provider)
             .PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
@@ -518,7 +526,7 @@ public sealed class ProviderRound10Tests
         };
         _repository.Attempts[0] = attempt;
 
-        Assert.False(await _repository.BeginCreateAsync(FakeRepository.Org, attempt.Id, CancellationToken.None));
+        Assert.Null(await _repository.BeginCreateAsync(FakeRepository.Org, attempt.Id, CancellationToken.None));
     }
 
     // ── 7. The cascade's lease ─────────────────────────────────────────────────────────────────────────────────────

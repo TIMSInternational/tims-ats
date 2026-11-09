@@ -69,13 +69,14 @@ public static class ProviderCandidateEndpoints
 
                 var node = await ProviderEndpointJson.TryReadAsync(httpContext, cancellationToken);
                 if (!node.Ok
-                    || !LaunchProviderAttemptUseCase.TryParseBody(node.Node, out var consents, out var embedded, out var declined))
+                    || !LaunchProviderAttemptUseCase.TryParseBody(
+                        node.Node, out var consents, out var embedded, out var declined, out var notice))
                 {
                     return Results.BadRequest(new { error = "invalid_input" });
                 }
 
                 var result = await useCase.LaunchAsync(
-                    attemptId, email!, consents, timeProvider.GetUtcNow(), cancellationToken, embedded, declined);
+                    attemptId, email!, consents, timeProvider.GetUtcNow(), cancellationToken, embedded, declined, notice);
                 // Outcome only: never the token, the email or the attempt's candidate.
                 loggers.CreateLogger("Tims.Api.Assessments").LogInformation(
                     "Assessment provider launch outcome {Outcome}", result.Outcome);
@@ -93,6 +94,7 @@ public static class ProviderCandidateEndpoints
                     LaunchOutcome.ConsentRequired => Results.Conflict(
                         new { error = "consent_required", code = "consent_required", missingConsents = result.Missing }),
                     LaunchOutcome.ConsentRejected => Results.UnprocessableEntity(new { error = "consent_rejected", code = result.Detail }),
+                    LaunchOutcome.NoticeRequired => Results.UnprocessableEntity(new { error = "notice_required", code = "notice_required" }),
                     LaunchOutcome.ProviderRefused => Results.Json(
                         new { error = "provider_refused", code = result.Detail }, statusCode: StatusCodes.Status502BadGateway),
                     LaunchOutcome.ProviderUnconfigured => Results.Json(
@@ -185,6 +187,20 @@ public sealed class ProviderLaunchBody
     /// <c>ai_scoring</c>). Never also among <see cref="Consents"/>.
     /// </summary>
     public IReadOnlyList<string>? DeclinedConsents { get; init; }
+
+    /// <summary>
+    /// The ATS notice the candidate acknowledged before this launch. Required to launch a sitting that has not started
+    /// (422 <c>notice_required</c> otherwise); recorded with its version and language.
+    /// </summary>
+    public ProviderLaunchNoticeBody? Notice { get; init; }
+}
+
+/// <summary>The ATS notice's version (for example <c>2026-11-09-ats-notice-v1</c>) and the language it was read in.</summary>
+public sealed class ProviderLaunchNoticeBody
+{
+    public string TextVersion { get; init; } = string.Empty;
+
+    public string Locale { get; init; } = string.Empty;
 }
 
 public sealed class ProviderLaunchConsentBody

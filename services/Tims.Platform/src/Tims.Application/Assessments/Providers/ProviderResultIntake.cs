@@ -30,9 +30,12 @@ public static class ProviderResultIntake
 
             if (failure.Code == "result_not_visible")
             {
-                // tenant_hr may see the status only: the attempt is finished, but there is nothing to store or score.
-                await repository.AdvanceAttemptAsync(organizationId, attempt.Id, ProviderAttemptStates.ResultReady,
-                    null, now, cancellationToken).ConfigureAwait(false);
+                // tenant_hr may see the status only: the attempt is finished, but there is nothing to store or score. A
+                // copy stored EARLIER (before the tenant lowered its visibility) is deleted with it (Codex round 11 P1):
+                // staff reads and FIT must never keep using a result the tenant may no longer see. The deletion enqueues
+                // the FIT v2 recompute.
+                await repository.HideResultAsync(organizationId, attempt, resultId, now, cancellationToken)
+                    .ConfigureAwait(false);
                 return new ResultIntake(InboxStatuses.Processed, failure.Code, false);
             }
 

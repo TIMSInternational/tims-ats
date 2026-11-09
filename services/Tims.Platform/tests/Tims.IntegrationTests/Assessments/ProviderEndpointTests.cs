@@ -412,7 +412,7 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
         await using var factory = Factory(identities: identities);
         using var client = factory.CreateClient();
 
-        var response = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), null, token);
+        var response = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), NoticeBody, token);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
@@ -420,7 +420,39 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
         Assert.Equal(FakeProvider.PlayerUrl, json.GetProperty("hostedUrl").GetString());
         Assert.Equal("https://ats.test", json.GetProperty("frameAncestors")[0].GetString());
         Assert.False(json.TryGetProperty("candidateToken", out _)); // D16: no candidate token exists on this path
+        // Round 12: the ATS notice the candidate acknowledged is on record with its version and language.
+        Assert.True((long)(await fixture.ScalarAsync(
+            $"""
+             SELECT count(*) FROM audit_logs
+              WHERE entity_id = '{ProviderEndpointFixture.LaunchAttempt}' AND action = 'assessment_provider_notice_acknowledged'
+                AND metadata::jsonb ->> 'textVersion' = '{AtsNotice.CurrentVersion}' AND metadata::jsonb ->> 'locale' = 'es'
+             """))! >= 1);
     }
+
+    // Round 12: a sitting that has not started is never launched without the acknowledgment of the CURRENT ATS notice;
+    // nothing is captured or sent to the provider.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("""{"notice":{"textVersion":"2026-01-01-ats-notice-v0","locale":"es"}}""")]
+    [InlineData("""{"notice":{"textVersion":"2026-11-09-ats-notice-v1","locale":"fr"}}""")]
+    public async Task Launch_WithoutTheCurrentNoticeAcknowledged_Is422_AndNothingIsSent(string? body)
+    {
+        const string sub = "candidate-luz";
+        var identities = new FakeIdentities();
+        var token = Mint(sub);
+        identities.Confirmed[token] = new SetupIdentity(sub, "LUZ@a.example");
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider, identities: identities);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Launch(ProviderEndpointFixture.LaunchAttempt), body, token);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal("notice_required", (await ReadJson(response)).GetProperty("code").GetString());
+        Assert.DoesNotContain("launch", provider.Calls);
+    }
+
+    private const string NoticeBody = """{"notice":{"textVersion":"2026-11-09-ats-notice-v1","locale":"es"}}""";
 
     // ── Portal reads (the candidate, by confirmed email; D16) ────────────────────────────
 

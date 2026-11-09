@@ -111,10 +111,20 @@ public sealed class ProviderAttemptEntity
     public string? AgeBand { get; set; }
 
     /// <summary>
-    /// The create fence: when a create of this attempt was announced (database clock), BEFORE it was sent; null once its
-    /// answer is recorded. A #312 withdrawal pass keeps the attempt pending while it is set and not stale.
+    /// SUPERSEDED by <see cref="CreateFences"/> (round 12) and no longer written or read: one shared timestamp let the
+    /// first of two overlapping creates clear the fence while the second was still in flight. Kept (and copied into
+    /// <see cref="CreateFences"/> by the migration) only so a rolling deploy never meets a missing column.
     /// </summary>
     public DateTime? CreateStartedAt { get; set; }
+
+    /// <summary>
+    /// The create fences, ONE PER CREATE: each create of this attempt appends its own token (the database clock when it
+    /// was announced, unique per attempt) BEFORE anything is sent, and only that create's recorded answer removes it. A
+    /// create that ends without an answer leaves its token until it is stale
+    /// (<see cref="Domain.Assessments.Providers.ProviderCreateFence.StaleAfter"/>); stale tokens are pruned when the next
+    /// create is announced. A #312 withdrawal or an erasure waits while any token is live.
+    /// </summary>
+    public DateTime[] CreateFences { get; set; } = [];
 
     /// <summary>The #312 cascade's lease: the pass that claimed this attempt, and until when (database clock).</summary>
     public Guid? WithdrawalLeaseOwner { get; set; }

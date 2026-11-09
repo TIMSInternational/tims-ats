@@ -6,6 +6,9 @@ namespace Tims.Application.Assessments.Providers;
 /// <summary>A consent the candidate just gave in the ATS portal, for one purpose, to one text version.</summary>
 public sealed record CapturedConsent(string Purpose, string TextVersion, string Locale);
 
+/// <summary>The ATS notice (<see cref="AtsNotice"/>) the candidate acknowledged before launching: its version and language.</summary>
+public sealed record NoticeAcknowledgment(string TextVersion, string Locale);
+
 public enum LaunchOutcome
 {
     Launched,
@@ -20,6 +23,12 @@ public enum LaunchOutcome
 
     /// <summary>The provider refused a consent record (for example an unknown text version).</summary>
     ConsentRejected,
+
+    /// <summary>
+    /// A sitting that has not started was launched without the acknowledgment of the current ATS notice
+    /// (<see cref="AtsNotice"/>): nothing was recorded or sent.
+    /// </summary>
+    NoticeRequired,
     ProviderUnconfigured,
     ProviderUnavailable,
     ProviderRefused,
@@ -66,9 +75,15 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     /// tell "speaking not assessed (no voice consent)" from a provider-side gap. Purposes the instrument does not offer
     /// as optional are ignored.
     /// </param>
+    /// <param name="notice">
+    /// The ATS notice the candidate acknowledged in the portal (round 12). REQUIRED to launch a sitting that has not
+    /// started (only a sitting in progress resumes without it), and recorded with its version and language before any
+    /// consent is captured or anything is launched.
+    /// </param>
     public async Task<LaunchResult> LaunchAsync(
         Guid attemptId, string verifiedEmail, IReadOnlyList<CapturedConsent> consents, DateTimeOffset now,
-        CancellationToken cancellationToken, bool embedded = false, IReadOnlyList<string>? declinedOptional = null)
+        CancellationToken cancellationToken, bool embedded = false, IReadOnlyList<string>? declinedOptional = null,
+        NoticeAcknowledgment? notice = null)
     {
         ArgumentNullException.ThrowIfNull(consents);
         declinedOptional ??= [];
@@ -125,6 +140,22 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         if (!_provider.IsConfigured)
         {
             return LaunchResult.Fail(LaunchOutcome.ProviderUnconfigured);
+        }
+
+        // The ATS notice: a sitting that has not started is never launched unless the candidate acknowledged the
+        // CURRENT notice, and that acknowledgment is on record (version and language) before anything is captured or
+        // launched. A sitting in progress resumes without it (it was acknowledged when the sitting was first launched).
+        if (attempt.State != ProviderAttemptStates.InProgress
+            && (notice is null || !AtsNotice.IsKnown(notice.TextVersion) || !AtsNotice.IsLocale(notice.Locale)))
+        {
+            return LaunchResult.Fail(LaunchOutcome.NoticeRequired);
+        }
+
+        if (notice is not null && AtsNotice.IsKnown(notice.TextVersion) && AtsNotice.IsLocale(notice.Locale))
+        {
+            await _repository.AuditNoticeAcknowledgedAsync(
+                found.OrganizationId, attempt.CandidateId, attempt.Id, notice.TextVersion, notice.Locale, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         // Announced durably BEFORE any capture is sent (and refused for an attempt that entered a #312 withdrawal since
@@ -361,19 +392,41 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     /// also among <paramref name="consents"/>. Which of them the instrument really offers is checked by the launch.
     /// </param>
     public static bool TryParseBody(
-        JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded, out IReadOnlyList<string> declined)
+        JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded, out IReadOnlyList<string> declined) =>
+        TryParseBody(node, out consents, out embedded, out declined, out _);
+
+    /// <param name="notice">
+    /// The ATS notice the candidate acknowledged (<c>notice: { textVersion, locale }</c>), or null when absent. Its
+    /// version and language are checked against <see cref="AtsNotice"/> by the launch, not here.
+    /// </param>
+    public static bool TryParseBody(
+        JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded, out IReadOnlyList<string> declined,
+        out NoticeAcknowledgment? notice)
     {
         consents = [];
         embedded = false;
         declined = [];
+        notice = null;
         if (node is null)
         {
             return true;
         }
 
-        if (node is not JsonObject body || body.Any(p => p.Key is not ("consents" or "embedded" or "declinedConsents")))
+        if (node is not JsonObject body
+            || body.Any(p => p.Key is not ("consents" or "embedded" or "declinedConsents" or "notice")))
         {
             return false;
+        }
+
+        if (body["notice"] is { } noticeNode)
+        {
+            if (noticeNode is not JsonObject ack || ack.Any(p => p.Key is not ("textVersion" or "locale"))
+                || !TryString(ack["textVersion"], 64, out var version) || !TryString(ack["locale"], 5, out var language))
+            {
+                return false;
+            }
+
+            notice = new NoticeAcknowledgment(version!, language!);
         }
 
         if (body["declinedConsents"] is { } declinedNode)

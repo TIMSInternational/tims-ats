@@ -73,6 +73,14 @@ public interface IAssessmentProviderRepository
     Task<LaunchContext?> LoadLaunchContextAsync(
         Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Records, as an audit row (<c>assessment_provider_notice_acknowledged</c>), that the candidate acknowledged the ATS
+    /// notice of this version and language before launching the attempt (round 12). Fail-closed: no row, no launch.
+    /// </summary>
+    Task AuditNoticeAcknowledgedAsync(
+        Guid organizationId, Guid candidateId, Guid attemptId, string textVersion, string locale,
+        CancellationToken cancellationToken);
+
     /// <summary>Appends a consent-capture audit row with a caller-chosen id (sent to the provider as host_record_ref).</summary>
     Task AuditConsentCapturedAsync(
         Guid organizationId, Guid auditId, Guid candidateId, Guid attemptId, string purpose, string textVersion,
@@ -162,6 +170,17 @@ public interface IAssessmentProviderRepository
         Guid organizationId, AttemptRow attempt, ParsedProviderResult result, DateTimeOffset now,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The provider answered <c>result_not_visible</c> for <paramref name="resultId"/> (the tenant's visibility no longer
+    /// lets <c>tenant_hr</c> read it): under the attempt lock, DELETES the ATS's stored copy of that result, clears the
+    /// attempt's latest result when it was that one, and moves the attempt to <c>result_ready</c> when it may still move
+    /// there (the sitting finished; there is nothing to store or score). Staff reads and FIT stop using the result at
+    /// once; the deletion enqueues the candidate's FIT v2 recompute (the provider result trigger fires on DELETE). One
+    /// audit row. Returns how many stored rows were removed.
+    /// </summary>
+    Task<int> HideResultAsync(
+        Guid organizationId, AttemptRow attempt, Guid resultId, DateTimeOffset now, CancellationToken cancellationToken);
+
     /// <summary>DSAR cascade from <c>subject.erased</c>: deletes the subject's stored results, marks attempts erased.</summary>
     Task<int> EraseSubjectAsync(
         Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken);
@@ -210,14 +229,29 @@ public interface IAssessmentProviderRepository
         Guid organizationId, IReadOnlyList<Guid> attemptIds, Guid owner, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The create fence: announces, durably and BEFORE anything of the create is sent (the subject, its enrichment, the
-    /// lookup and <c>POST /v1/assignments</c>), that a create of this
-    /// <c>pending_create</c> attempt is in flight (<c>create_started_at</c>, database clock). Refused (false, nothing
-    /// written) for an attempt already in a #312 withdrawal, erased-requested, or no longer pending: row locking orders it
-    /// against the withdrawal's staging write. Cleared when the create's answer is recorded (created, or a definitive
-    /// refusal); left in place when there was no answer, until it is stale.
+    /// The create fence, ONE PER CREATE: announces, durably and BEFORE anything of the create is sent (the subject, its
+    /// enrichment, the lookup and <c>POST /v1/assignments</c>), that THIS create of the <c>pending_create</c> attempt is in
+    /// flight, by appending its own token (the database clock, unique per attempt) to <c>create_fences</c>; stale tokens
+    /// are pruned at the same time. Returns the token, or null (nothing written) for an attempt already in a #312
+    /// withdrawal, erased-requested, or no longer pending: row locking orders it against the withdrawal's staging write.
+    /// Only <see cref="EndCreateAsync"/> with the same token removes it, so two overlapping creates of one attempt each
+    /// keep the attempt fenced until their OWN answer is recorded (Codex round 11 P1); a create that ends without an
+    /// answer leaves its token until it is stale.
     /// </summary>
-    Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
+    Task<DateTimeOffset?> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Ends ONE create's fence after its answer was recorded, under the attempt lock: removes <paramref name="fence"/>
+    /// when the answer was an <paramref name="assignment"/> the attempt now records (its assignment AND subject: the
+    /// create's own subject is then traceable), or, with <paramref name="assignment"/> null, a definitive refusal on an
+    /// attempt with no erasure (requested or done). In every other case the token stays until it is stale: such a create
+    /// may have made a provider subject the attempt does not name (for example one created after an erasure made the
+    /// provider forget the recorded subject's external_ref), and an unanswered token keeps the candidate's subject
+    /// resolved by external_ref on every later export or erasure.
+    /// </summary>
+    Task EndCreateAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset fence, ProviderAssignment? assignment,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Records the provider subject a create resolved on an attempt that has none yet (conditional, no other change), so
@@ -463,9 +497,10 @@ public static class ProviderCleanup
 /// <see cref="CaptureGeneration"/> changes whenever a launch begins or ends a capture; <see cref="CaptureInFlight"/> is
 /// true while a begun capture has not ended; <see cref="CaptureStale"/> is true when that in-flight capture began more than
 /// <see cref="ProviderCleanup.ConsentCaptureStaleAfter"/> before the read (database clock).
-/// <para>The create fence rides along: <see cref="CreateInFlight"/> is true while a create announced by
-/// <see cref="IAssessmentProviderRepository.BeginCreateAsync"/> has no recorded answer, <see cref="CreateStale"/> when it
-/// was announced more than <see cref="Domain.Assessments.Providers.ProviderCreateFence.StaleAfter"/> before the read. A
+/// <para>The create fences ride along: <see cref="CreateInFlight"/> is true while any create announced by
+/// <see cref="IAssessmentProviderRepository.BeginCreateAsync"/> has no recorded answer, <see cref="CreateStale"/> when
+/// every such create was announced more than <see cref="Domain.Assessments.Providers.ProviderCreateFence.StaleAfter"/>
+/// before the read. A
 /// pass reads the fence BEFORE it looks the attempt up by external_ref, so a lookup that comes back empty while a create
 /// may still land keeps the attempt pending.</para>
 /// </summary>
@@ -480,8 +515,9 @@ public sealed record WithdrawalFence(
     public bool CaptureAllowsCompletion => !CaptureInFlight || CaptureStale;
 
     /// <summary>
-    /// No create announced and unanswered at the read, or only a stale one. A pass that then FOUND and recorded the
-    /// assignment (the create did land) has its answer: the database's own condition (the fence cleared) decides.
+    /// No create announced and unanswered at the read, or only stale ones. A pass that then FOUND and recorded the
+    /// assignment may try to complete: the database's own condition (no unanswered create left, or only stale ones at
+    /// the read) decides, so a create still in flight keeps the attempt pending until its own answer or staleness.
     /// </summary>
     public bool CreateAllowsCompletion => !CreateInFlight || CreateStale;
 }

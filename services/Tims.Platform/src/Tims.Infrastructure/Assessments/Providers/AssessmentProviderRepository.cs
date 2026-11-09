@@ -201,7 +201,6 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.MissingConsents = [.. assignment.MissingConsents.Where(ConsentPurposes.IsKnown).Distinct()];
             attempt.ExpiresAt = assignment.ExpiresAt.UtcDateTime;
             attempt.LastErrorCode = null;
-            attempt.CreateStartedAt = null;
             attempt.UpdatedAt = now.UtcDateTime;
             AddAudit(organizationId, null,
                 erased ? "assessment_provider_attempt_erased_on_create" : "assessment_provider_attempt_created", attempt.Id,
@@ -224,7 +223,6 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.ProviderSubjectId = assignment.SubjectId;
             attempt.ProviderAssignmentId = assignment.AssignmentId;
             attempt.LastErrorCode = ProviderCleanup.CancelPending;
-            attempt.CreateStartedAt = null;
             if (attempt.WithdrawalState == ProviderWithdrawalStates.Done)
             {
                 // A withdrawal already confirmed for this attempt: the new orphan re-opens its cascade (D15).
@@ -298,15 +296,6 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                     ["to"] = attempt.State,
                 });
 
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        if (attempt is not null && cancel && attempt.CreateStartedAt is not null)
-        {
-            // A definitive refusal proves the provider created nothing: the create fence is lifted at once, also on an
-            // attempt a withdrawal or a staff cancel already moved on, instead of waiting until it is stale. Any other
-            // failure (a timeout, an outage) leaves it: the provider may still create the assignment.
-            attempt.CreateStartedAt = null;
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -412,6 +401,30 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 ["locale"] = locale,
                 ["captureMethod"] = "host_ui",
                 ["recordedAtProvider"] = recordedAtProvider,
+            }),
+        });
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task AuditNoticeAcknowledgedAsync(
+        Guid organizationId, Guid candidateId, Guid attemptId, string textVersion, string locale,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        _db.AuditLogs.Add(new AuditLogEntity
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            Action = "assessment_provider_notice_acknowledged",
+            Entity = AuditEntity,
+            EntityId = attemptId.ToString(),
+            Metadata = JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                ["candidateId"] = candidateId,
+                ["textVersion"] = textVersion,
+                ["locale"] = locale,
+                ["captureMethod"] = "host_ui",
             }),
         });
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

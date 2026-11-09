@@ -107,6 +107,13 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("content_version");
 
+                    b.PrimitiveCollection<DateTime[]>("CreateFences")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone[]")
+                        .HasColumnName("create_fences")
+                        .HasDefaultValueSql("'{}'::timestamptz[]");
+
                     b.Property<DateTime?>("CreateStartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("create_started_at");

@@ -168,6 +168,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(a => a.LastPolledAt).HasColumnName("last_polled_at");
             entity.Property(a => a.AgeBand).HasColumnName("age_band");
             entity.Property(a => a.CreateStartedAt).HasColumnName("create_started_at");
+            entity.Property(a => a.CreateFences).HasColumnName("create_fences")
+                .HasColumnType("timestamp with time zone[]").HasDefaultValueSql("'{}'::timestamptz[]");
             entity.Property(a => a.WithdrawalLeaseOwner).HasColumnName("withdrawal_lease_owner");
             entity.Property(a => a.WithdrawalLeaseUntil).HasColumnName("withdrawal_lease_until");
             entity.Property(a => a.GrantedOptionalConsents).HasColumnName("granted_optional_consents")

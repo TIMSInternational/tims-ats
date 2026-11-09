@@ -179,8 +179,16 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         var orphan = _provider.ByExternalRef[row.Id.ToString()];
         Assert.Equal([orphan.AssignmentId], _provider.Cancelled);
         Assert.Equal(orphan.AssignmentId, row.ProviderAssignmentId);
-        Assert.Equal(ProviderWithdrawalStates.Done, row.WithdrawalState);
-        Assert.Equal(1, outcome.Confirmed);
+        // Round 12: the create itself never recorded an answer, so its own fence stays until it is stale; finding the
+        // assignment ends no create's fence. The cascade completes on the first pass after that.
+        Assert.Equal(ProviderWithdrawalStates.Pending, row.WithdrawalState);
+        Assert.Equal(0, outcome.Confirmed);
+
+        _repository.DbNow += ProviderCreateFence.StaleAfter + TimeSpan.FromMinutes(1);
+        var later = await UseCase.PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
+
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single().WithdrawalState);
+        Assert.Equal(1, later.Confirmed);
     }
 
     [Fact]
@@ -315,13 +323,13 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
     {
         _repository.AddCreatedAttempt("lia");
         var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
-        Assert.True(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+        Assert.NotNull(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
 
         var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 
         Assert.Equal(ProviderErasureOutcome.Incomplete, result.Outcome);
         // The create can no longer begin again: its attempt is under the erasure marker.
-        Assert.False(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+        Assert.Null(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
     }
 
     // Codex ats-final run 3 [P1]: a RE-SEND of a failed create (its attempt already records subject S) begins its fence;
@@ -333,7 +341,7 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
     {
         var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
         var first = pending.ProviderSubjectId!.Value;
-        Assert.True(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+        Assert.NotNull(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
 
         var during = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
         Assert.Equal(ProviderErasureOutcome.Incomplete, during.Outcome);
@@ -356,7 +364,7 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
     {
         var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
         _repository.Replace(pending.Id, a => a with { ProviderSubjectId = null, ErasureRequestedAt = Now });
-        _repository.CreatesInFlight[pending.Id] = _repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromMinutes(1);
+        _repository.CreateFences[pending.Id] = [_repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromMinutes(1)];
 
         var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 

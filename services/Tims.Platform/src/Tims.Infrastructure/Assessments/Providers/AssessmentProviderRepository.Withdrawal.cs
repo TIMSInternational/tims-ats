@@ -124,20 +124,63 @@ public sealed partial class AssessmentProviderRepository
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    public async Task<DateTimeOffset?> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var staleSeconds = ProviderCreateFence.StaleAfter.TotalSeconds;
         // Refused (0 rows) once the attempt is in a withdrawal, under an erasure request, or no longer pending. Against the
         // withdrawal's staging UPDATE of the same row, row locking decides the order: the loser re-evaluates its WHERE on
         // the winner's row version, so either the staging sees the announcement or the announcement sees the staging.
-        var begun = await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-             UPDATE assessment_provider_attempts SET create_started_at = clock_timestamp()
-              WHERE organization_id = {organizationId} AND id = {attemptId} AND state = 'pending_create'
-                AND withdrawal_state IS NULL AND provider_erasure_requested_at IS NULL
-             """, cancellationToken).ConfigureAwait(false);
+        // The token is THIS create's own (database clock, bumped past every token already on the row so it is unique);
+        // tokens already stale are pruned. One read of the clock: the CTE is evaluated once.
+        var tokens = await _db.Database.SqlQuery<DateTime>(
+                $"""
+                 WITH clock AS (SELECT clock_timestamp() AS ts)
+                 UPDATE assessment_provider_attempts a
+                    SET create_fences = array_append(
+                          ARRAY(SELECT f FROM unnest(a.create_fences) AS f
+                                 WHERE f >= clock.ts - make_interval(secs => {staleSeconds}) ORDER BY f),
+                          GREATEST(clock.ts, (SELECT max(f) + interval '1 microsecond' FROM unnest(a.create_fences) AS f)))
+                   FROM clock
+                  WHERE a.organization_id = {organizationId} AND a.id = {attemptId} AND a.state = 'pending_create'
+                    AND a.withdrawal_state IS NULL AND a.provider_erasure_requested_at IS NULL
+                 RETURNING a.create_fences[cardinality(a.create_fences)] AS "Value"
+                 """)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return begun > 0;
+        return tokens.Count == 0 ? null : new DateTimeOffset(DateTime.SpecifyKind(tokens[0], DateTimeKind.Utc));
+    }
+
+    public async Task EndCreateAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset fence, ProviderAssignment? assignment,
+        CancellationToken cancellationToken)
+    {
+        var token = fence.UtcDateTime;
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        // One conditional, atomic write (never a read-modify-write of the array: a concurrent create's append must
+        // survive). An answered create ends its fence only when the attempt records ITS assignment and subject; a
+        // definitive refusal only while no erasure touched the attempt (see the interface for why).
+        if (assignment is not null)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                 UPDATE assessment_provider_attempts SET create_fences = array_remove(create_fences, {token})
+                  WHERE organization_id = {organizationId} AND id = {attemptId}
+                    AND provider_assignment_id = {assignment.AssignmentId} AND provider_subject_id = {assignment.SubjectId}
+                 """, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                 UPDATE assessment_provider_attempts SET create_fences = array_remove(create_fences, {token})
+                  WHERE organization_id = {organizationId} AND id = {attemptId}
+                    AND state <> 'erased' AND provider_erasure_requested_at IS NULL
+                 """, cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<WithdrawalFence>> ReadWithdrawalFencesAsync(
@@ -160,9 +203,10 @@ public sealed partial class AssessmentProviderRepository
                         consent_captures_in_flight > 0 AS "InFlight",
                         (consent_captures_in_flight > 0
                          AND consent_capture_started_at < clock_timestamp() - make_interval(secs => {staleSeconds})) AS "Stale",
-                        create_started_at IS NOT NULL AS "CreateInFlight",
-                        (create_started_at IS NOT NULL
-                         AND create_started_at < clock_timestamp() - make_interval(secs => {createStaleSeconds})) AS "CreateStale"
+                        cardinality(create_fences) > 0 AS "CreateInFlight",
+                        (cardinality(create_fences) > 0
+                         AND NOT EXISTS (SELECT 1 FROM unnest(create_fences) AS f
+                                          WHERE f >= clock_timestamp() - make_interval(secs => {createStaleSeconds}))) AS "CreateStale"
                    FROM assessment_provider_attempts
                   WHERE organization_id = {organizationId} AND id = ANY({ids})
                  """)
@@ -210,7 +254,7 @@ public sealed partial class AssessmentProviderRepository
         // Conditional at the database: an orphan recorded meanwhile (marker set) keeps the attempt pending, and so does a
         // consent capture that began or ended after the fence was read (generation changed) or is still in flight and was
         // not stale at that read (same generation means in-flight count and start are unchanged since the read), and so
-        // does a create still announced that was not stale at that read (no create can be announced after staging).
+        // does any create still announced that was not stale at that read (no create can be announced after staging).
         var moved = await _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
              UPDATE assessment_provider_attempts a
@@ -222,7 +266,7 @@ public sealed partial class AssessmentProviderRepository
                 AND a.last_error_code IS DISTINCT FROM 'provider_cancel_pending'
                 AND a.consent_capture_generation = f.generation
                 AND (a.consent_captures_in_flight = 0 OR f.stale)
-                AND (a.create_started_at IS NULL OR f.create_stale)
+                AND (cardinality(a.create_fences) = 0 OR f.create_stale)
              """, cancellationToken).ConfigureAwait(false);
         if (moved > 0)
         {
@@ -384,11 +428,12 @@ public sealed partial class AssessmentProviderRepository
             var fences = await _db.Database.SqlQuery<CreateFenceFacts>(
                     $"""
                      SELECT count(*) > 0 AS "Unanswered",
-                            COALESCE(bool_or(create_started_at >= clock_timestamp() - make_interval(secs => {createStaleSeconds})),
-                                false) AS "Live"
+                            COALESCE(bool_or(EXISTS (
+                                SELECT 1 FROM unnest(create_fences) AS f
+                                 WHERE f >= clock_timestamp() - make_interval(secs => {createStaleSeconds}))), false) AS "Live"
                        FROM assessment_provider_attempts
                       WHERE organization_id = {organizationId} AND candidate_id = {candidateId}
-                        AND create_started_at IS NOT NULL
+                        AND cardinality(create_fences) > 0
                      """)
                 .SingleAsync(cancellationToken).ConfigureAwait(false);
             needsResolution |= fences.Unanswered;

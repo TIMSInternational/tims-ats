@@ -177,6 +177,10 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
             "UPDATE assessment_provider_results SET requires_human_review = true WHERE attempt_id = 'e0000000-0000-4000-8000-0000000000a1'"));
         Assert.Null(await SeqAfterAsync(
             "UPDATE assessment_provider_attempts SET state = state WHERE id = 'e0000000-0000-4000-8000-0000000000a1'"));
+        // Round 12 (Codex round 11 P1): a stored provider result DELETED because the provider answered result_not_visible
+        // must leave FIT, so the result trigger fires on DELETE too (migration 20261109233537_assessment_provider_round12).
+        Assert.Equal(1, await SeqAfterAsync(
+            "DELETE FROM assessment_provider_results WHERE attempt_id = 'e0000000-0000-4000-8000-0000000000a1'"));
         // Codex atsux run 1 [P1]: an accepted erasure takes the result out of FIT, so its marker enqueues too
         // (migration 20261109030506_fit_v2_provider_erasure_recompute).
         Assert.Equal(1, await SeqAfterAsync(
@@ -287,6 +291,83 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Equal("met", english["gate"]!.GetValue<string>());
         Assert.Equal("provider", english["source"]!.GetValue<string>());
         Assert.Null(await _fixture.Fit.GetFitScoreAsync(gone, vacancy)); // no active application: HR's compute decides
+    }
+
+    // Round 12 (Codex round 11 P1): a result the provider no longer lets tenant_hr see (result_not_visible) is deleted
+    // from the ATS (HideResultAsync's writes, as app_tenant), and the deletion itself enqueues the recompute: the drain
+    // rewrites the candidate's FIT row without it. Own vacancy and candidate.
+    [Fact]
+    public async Task A_result_no_longer_visible_leaves_fit_through_the_recompute_queue()
+    {
+        const string Seed =
+            """
+            INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+              ('7ac00000-0000-0000-0000-0000000000d9', '11111111-1111-1111-1111-111111111111', 'FIT v2 hidden', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
+              ('9f000000-0000-0000-0000-0000000000d9', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-0000000000d9',
+               '{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"},"reason":"clientes"}]}');
+            INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+              ('ca000000-0000-0000-0000-0000000000d9', '11111111-1111-1111-1111-111111111111', 'prov-hidden@fit.test', 'Hilda', 'Hidden', 4, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
+              ('ab000000-0000-0000-0000-0000000000d9', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000d9', '7ac00000-0000-0000-0000-0000000000d9', 'active');
+            INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                instrument_version, content_version, latest_result_id, assigned_by_id, created_at) VALUES
+              ('e0000000-0000-4000-8000-0000000000d9', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-4000-8000-0000000000a0', 'ca000000-0000-0000-0000-0000000000d9', '7ac00000-0000-0000-0000-0000000000d9', 'english', 'result_ready',
+               'selection', 'clientes', 'es', 1, 'f0000000-0000-4000-8000-0000000000d9', 'aa000000-0000-4000-8000-0000000000d9', '1.0', 'english-2026.11.1', 'd0000000-0000-4000-8000-0000000000d9', 'c0000000-0000-0000-0000-000000000001', '2026-11-01 09:00:00+00');
+            INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
+                result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version,
+                scoring_method, purpose, validity_status, completion, global_percentile, cefr, level, time_multiplier_applied,
+                rendered_for, rendered_level, completed_at, scored_at) VALUES
+              (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'e0000000-0000-4000-8000-0000000000d9', 'd0000000-0000-4000-8000-0000000000d9', 1,
+               'EnglishResultV1', 'english', '1.0', 'english-2026.11.1', repeat('9', 64), NULL, 'scoring-1', 'deterministic', 'selection', 'valid', 'complete', NULL, 'C1', NULL, 1,
+               'tenant_hr', 'full', '2026-11-02 10:00:00+00', '2026-11-02 10:00:05+00');
+            """;
+        var candidate = Guid.Parse("ca000000-0000-0000-0000-0000000000d9");
+        var vacancy = Guid.Parse("7ac00000-0000-0000-0000-0000000000d9");
+        var attemptId = Guid.Parse("e0000000-0000-4000-8000-0000000000d9");
+        var resultId = Guid.Parse("d0000000-0000-4000-8000-0000000000d9");
+        await _fixture.Fit.ExecuteScalarAsync(Seed);
+        await using var factory = Factory(providers: true);
+        await DrainAsync(factory, candidate, vacancy);
+        var before = await _fixture.Fit.GetFitScoreAsync(candidate, vacancy);
+        Assert.NotNull(before);
+        Assert.Equal("met", Entry(JsonNode.Parse(before.Breakdown)!, "english")["gate"]!.GetValue<string>());
+
+        // HideResultAsync's two writes, as app_tenant under the org (the repository itself, with its audit row, is pinned
+        // in Assessments/AssessmentProviderRound12Tests; this fixture has no audit_logs table).
+        await _fixture.Fit.ExecuteScalarAsync(
+            "BEGIN; SET LOCAL ROLE app_tenant; SELECT set_config('app.current_org_id', '11111111-1111-1111-1111-111111111111', true); "
+            + $"DELETE FROM assessment_provider_results WHERE provider_result_id = '{resultId}'; "
+            + $"UPDATE assessment_provider_attempts SET latest_result_id = NULL WHERE id = '{attemptId}'; COMMIT;");
+
+        Assert.NotNull(await _fixture.Fit.GetRecomputeRequestAsync(candidate, vacancy)); // the DELETE enqueued it
+        await DrainAsync(factory, candidate, vacancy);
+        var after = await _fixture.Fit.GetFitScoreAsync(candidate, vacancy);
+        Assert.NotNull(after);
+        var english = Entry(JsonNode.Parse(after.Breakdown)!, "english");
+        Assert.Equal("no_result", english["status"]!.GetValue<string>());
+        Assert.Equal("unknown", english["gate"]!.GetValue<string>());
+        Assert.Null(english["resultId"]);
+    }
+
+    private async Task DrainAsync(WebApplicationFactory<Program> factory, Guid candidate, Guid vacancy)
+    {
+        // The registered drain may race this one; either way the request ends completed.
+        for (var pass = 0; pass < 20; pass++)
+        {
+            using var scope = factory.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<Tims.Application.FitEngine.FitRecomputeUseCase>()
+                .RunAsync(DateTimeOffset.UtcNow, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);
+            if (await _fixture.Fit.GetRecomputeRequestAsync(candidate, vacancy) is null)
+            {
+                return;
+            }
+
+            await Task.Delay(100);
+        }
+
+        Assert.Null(await _fixture.Fit.GetRecomputeRequestAsync(candidate, vacancy));
     }
 
     private static JsonNode Entry(JsonNode breakdown, string instrument) =>
