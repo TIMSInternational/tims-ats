@@ -272,6 +272,11 @@ panel (pre-existing, `candidate:read`), and a v2 row computed before this column
   DEFINER and executable by its owner only (app_tenant has neither EXECUTE nor INSERT on the queue); the five
   triggers are SECURITY DEFINER, cannot be called directly and pass only the written row's ids, and the function
   refuses an organization other than the session's tenant (Codex release round 1).
+- **The TS requirements writers can no longer erase `assessments[]`** (Codex release round 3). The
+  `job_profiles_keep_assessments` trigger (BEFORE UPDATE) keeps a stored array against any write that drops the key
+  (`vacancy.updateFitRequirements`, `upsertJobProfile`, a stale tab, a direct call) unless the writer set
+  `tims.fit_writer = fit_v2_aware`; the C# requirements writer does, and removes the array only on an explicit
+  `assessments: null`. This replaces "one active writer per deploy" as the guarantee.
 - **The TS writers can no longer overwrite a v2 row.** The `fit_scores_keep_v2` trigger (BEFORE UPDATE) keeps a v2
   row's score, breakdown, weights, partial flag and calculation time against any write that would replace it with a
   non-v2 breakdown, unless the writer set `tims.fit_writer = fit_v2_aware` for its transaction (only the C# engine
@@ -286,7 +291,9 @@ panel (pre-existing, `candidate:read`), and a v2 row computed before this column
   recomputes `raw_score` / `normalized_score` as the TS `computeResult` does. Grading the LAST essay also writes the
   local norm (`percentile`, `band`, `norm_sample_size`) exactly as the TS submission does for a quiz without essays
   (`AssessmentNormBands`, the `computeNormBandFromCounts` arithmetic over the organization's other completed, fully
-  graded results of the same quiz; no percentile below 5). The grade's result change enqueues the FIT recompute.
+  graded results of the same quiz; no percentile below 5). The grade's result change enqueues the FIT recompute. A
+  grade takes the #312 withdrawal's candidate lock and re-checks consent first (409 `consent_withdrawn`), and the
+  pending-essays read shows nothing for a withdrawn candidate (Codex release round 3).
 - The web app calls the C# compute under `NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP` (the vacancy ranking's Compute
   button). The TS writers stay live for the flag-off path and for `screenCandidate`; the trigger above keeps them
   off v2 rows.
