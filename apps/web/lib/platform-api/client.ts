@@ -43,6 +43,11 @@ export class PlatformApiError extends Error {
   readonly hasHandlerMessage: boolean;
   /** Stable machine-readable `code` from a `{ code, message }` error body (e.g. a 409 conflict), if any. */
   readonly code: string | undefined;
+  /**
+   * The parsed JSON error body, unvalidated (undefined when it was not JSON). For endpoints whose error body carries
+   * more than a message, e.g. `{ error, current }` on a conflict: a caller must validate it before use.
+   */
+  readonly body: unknown;
 
   constructor(status: number, statusText: string, body?: unknown) {
     const handlerMessage = extractErrorMessage(body);
@@ -51,6 +56,7 @@ export class PlatformApiError extends Error {
     this.status = status;
     this.hasHandlerMessage = handlerMessage !== undefined;
     this.code = extractErrorCode(body);
+    this.body = body;
   }
 }
 
