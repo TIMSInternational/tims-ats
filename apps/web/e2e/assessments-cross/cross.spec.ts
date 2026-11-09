@@ -394,7 +394,7 @@ test('H9 a team leader sees only "below minimum" for English, never the level (D
   if (english) await expect(row.getByText(`CEFR ${english}`)).toHaveCount(0);
   record(
     'H9 D6 team leader',
-    `owner SQL leader_assessment_read.sql granted ${granted.split('\n').pop()}; leader ${leaderId} sees "Below minimum" for English (HR's exact CEFR ${english || 'n/a'} hidden)`,
+    `owner SQL leader_assessment_read.sql granted ${granted.split('\n').find((l) => l.includes('|')) ?? 'nothing'}; leader ${leaderId} sees "Below minimum" for English (HR's exact CEFR ${english || 'n/a'} hidden)`,
   );
 });
 
