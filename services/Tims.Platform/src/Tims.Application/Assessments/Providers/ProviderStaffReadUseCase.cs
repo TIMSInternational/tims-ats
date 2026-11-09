@@ -26,8 +26,10 @@ public sealed record StaffAttemptRecord(
 
 /// <summary>
 /// One candidate's provider attempts (newest first) with their latest stored results, the <c>fit_requirements</c> jsonb
-/// of each vacancy they belong to, and whether the candidate's #312 recruitment consent is withdrawn (then no attempt is
-/// returned).
+/// of each vacancy they belong to (keyed by vacancy id), and whether the candidate's #312 recruitment consent is
+/// withdrawn. A withdrawn candidate's attempts are not returned, but their vacancy ids still key
+/// <see cref="VacancyRequirements"/> (with no requirements): the caller reveals the withdrawal only to a reader with one
+/// of those vacancies in scope.
 /// </summary>
 public sealed record StaffCandidateAttempts(
     bool ConsentWithdrawn, IReadOnlyList<StaffAttemptRecord> Attempts, IReadOnlyDictionary<Guid, string?> VacancyRequirements);
@@ -186,7 +188,17 @@ public sealed class ProviderStaffReadUseCase(
         if (stored.ConsentWithdrawn)
         {
             // #312: a withdrawn candidate's results leave FIT and every staff view (the fit-scores read hides them too).
-            return new StaffCandidateAttemptList(true, []);
+            // The withdrawal itself is told only to a reader who could see one of the candidate's attempts: anyone else
+            // gets the plain empty answer an unknown candidate gets (Codex atsux run 1: no oracle).
+            foreach (var vacancyId in stored.VacancyRequirements.Keys)
+            {
+                if (await isVacancyInScope(vacancyId).ConfigureAwait(false))
+                {
+                    return new StaffCandidateAttemptList(true, []);
+                }
+            }
+
+            return new StaffCandidateAttemptList(false, []);
         }
 
         var inScope = new Dictionary<Guid, bool>();

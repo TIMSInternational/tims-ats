@@ -5169,7 +5169,7 @@
     "conflict": "Someone else changed these assessments. Their version is shown now: review it and save again.",
     "ignored": "{count} stored entries are not valid and will be removed when you save.",
     "discard": "Discard changes",
-    "errorReasonRequired": "Explain why this test is job-related (up to 500 characters).",
+    "errorReasonRequired": "Explain why this test is job-related (3 to 500 characters).",
     "errorMinimumInvalid": "Enter a valid minimum for this test.",
     "errorUseNotAllowed": "This test can only be advisory."
   },

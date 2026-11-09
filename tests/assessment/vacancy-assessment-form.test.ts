@@ -44,24 +44,29 @@ describe('vacancy assessment form rules', () => {
     expect(errors([row()])).toEqual([]);
     expect(errors([row({ reason: '   ' })])).toEqual(['rows.0.reason:errorReasonRequired']);
     expect(errors([row({ reason: 'x'.repeat(501) })])).toEqual(['rows.0.reason:errorReasonRequired']);
+    // Codex atsux run 1 [P2]: the assignment refuses fewer than 3 characters or a control character.
+    expect(errors([row({ reason: 'IA' })])).toEqual(['rows.0.reason:errorReasonRequired']);
+    expect(errors([row({ reason: 'uso\u0007datos' })])).toEqual(['rows.0.reason:errorReasonRequired']);
+    expect(errors([row({ reason: 'dos\nlíneas' })])).toEqual([]); // a line break is sent as a space
+    expect(toInput(row({ reason: ' dos\n  líneas ' })).reason).toBe('dos líneas');
   });
 
   it('checks each minimum by its instrument', () => {
     expect(errors([row({ minimum: '' })])).toEqual(['rows.0.minimum:errorMinimumInvalid']);
     expect(errors([row({ minimum: '140' })])).toEqual(['rows.0.minimum:errorMinimumInvalid']);
-    expect(errors([{ ...newRow('english'), reason: 'r', minimum: 'B3' }])).toEqual([
+    expect(errors([{ ...newRow('english'), reason: 'Razón', minimum: 'B3' }])).toEqual([
       'rows.0.minimum:errorMinimumInvalid',
     ]);
-    expect(errors([{ ...newRow('itcia'), reason: 'r', minimum: '2.5' }])).toEqual([
+    expect(errors([{ ...newRow('itcia'), reason: 'Razón', minimum: '2.5' }])).toEqual([
       'rows.0.minimum:errorMinimumInvalid',
     ]);
-    expect(errors([{ ...newRow('itcia'), reason: 'r', minimum: '3' }])).toEqual([]);
-    expect(errors([{ ...newRow('native_quiz'), reason: 'r', minimum: '' }])).toEqual([]);
+    expect(errors([{ ...newRow('itcia'), reason: 'Razón', minimum: '3' }])).toEqual([]);
+    expect(errors([{ ...newRow('native_quiz'), reason: 'Razón', minimum: '' }])).toEqual([]);
     expect(errors([row({ use: 'advisory', minimum: 'garbage' })])).toEqual([]);
   });
 
   it('refuses a use the instrument does not allow, and a duplicate instrument', () => {
-    expect(errors([{ ...newRow('personality'), reason: 'r', use: 'scored' }])).toEqual([
+    expect(errors([{ ...newRow('personality'), reason: 'Razón', use: 'scored' }])).toEqual([
       'rows.0.use:errorUseNotAllowed',
     ]);
     expect(errors([row(), row()])).toHaveLength(1);
@@ -80,11 +85,11 @@ describe('vacancy assessment form rules', () => {
       use: 'advisory',
       reason: 'Análisis',
     });
-    expect(toInput({ ...newRow('english'), use: 'scored', minimum: 'B2', reason: 'r', weight: 3 })).toEqual({
+    expect(toInput({ ...newRow('english'), use: 'scored', minimum: 'B2', reason: 'Razón', weight: 3 })).toEqual({
       instrument: 'english',
       use: 'scored',
       min: { cefr: 'B2' },
-      reason: 'r',
+      reason: 'Razón',
     });
   });
 

@@ -45,6 +45,11 @@ public sealed class FitAssessmentRequirementsTests
     [InlineData("""[{"instrument":"lia","use":"scored","min":{"globalPercentile":40}}]""")]
     [InlineData("""[{"instrument":"lia","use":"scored","min":{"globalPercentile":40},"reason":"   "}]""")]
     [InlineData("""[{"instrument":"personality","use":"advisory"}]""")]
+    // Codex atsux run 1 [P2]: what FIT keeps but the assignment refuses (ProviderFormats.IsReason) is refused here too,
+    // or the vacancy saves a reason that makes every assignment fail.
+    [InlineData("""[{"instrument":"lia","use":"scored","min":{"globalPercentile":40},"reason":"IA"}]""")]
+    [InlineData("""[{"instrument":"lia","use":"scored","min":{"globalPercentile":40},"reason":"uso\u0007de datos"}]""")]
+    [InlineData("""[{"instrument":"lia","use":"scored","min":{"globalPercentile":40},"reason":"dos\nlíneas"}]""")]
     public void Every_entry_needs_a_job_relatedness_reason(string assessments)
     {
         var write = Validate(Body(assessments), out var error, out var issues);

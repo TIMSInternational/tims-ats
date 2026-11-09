@@ -196,6 +196,32 @@ public sealed partial class ProviderEndpointTests
         Assert.Empty(unknown.GetProperty("attempts").EnumerateArray()); // no oracle
     }
 
+    // Codex atsux run 1 [P2]: the withdrawal is told only to a reader with one of the candidate's vacancies in scope; for
+    // anyone else the answer is the same as for an unknown candidate.
+    [Fact]
+    public async Task Attempts_AWithdrawalIsNotRevealedOutsideTheReadersScope()
+    {
+        await GrantReadAsync();
+        var candidate = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO candidates (id, organization_id, first_name, last_name, email)
+               VALUES ('{candidate}', '{ProviderEndpointFixture.OrgA}', 'Wil', 'Drawn', 'wd-{candidate:N}@a.example');
+             INSERT INTO data_consents (id, organization_id, subject_user_id, consent_type, withdrawn_at)
+               VALUES (gen_random_uuid(), '{ProviderEndpointFixture.OrgA}', '{candidate}', 'recruitment_data_processing', now());
+             """);
+        await ResultAttemptAsync(candidate, ProviderEndpointFixture.VacancyA); // VacancyA: outside the leader's own scope
+        await using var factory = Factory();
+        using var client = factory.CreateClient();
+
+        var leader = await ReadJson(await Get(client, $"{Attempts}?candidateId={candidate}", Mint(ProviderEndpointFixture.OwnSub)));
+        var hr = await ReadJson(await Get(client, $"{Attempts}?candidateId={candidate}", Mint(ProviderEndpointFixture.ReaderSub)));
+
+        Assert.False(leader.GetProperty("consentWithdrawn").GetBoolean());
+        Assert.Empty(leader.GetProperty("attempts").EnumerateArray());
+        Assert.True(hr.GetProperty("consentWithdrawn").GetBoolean());
+    }
+
     // Design §6.3: a second candidate of a vacancy already pinned to a version gets that version, stored at reserve and
     // sent on the create.
     [Fact]

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Tims.Domain.Assessments.Providers;
 
 namespace Tims.Domain.FitEngine;
 
@@ -20,7 +21,11 @@ public sealed record FitAssessmentRequirementsWrite(
 /// </summary>
 public static partial class FitAssessmentRequirementsInput
 {
-    /// <summary>A kept entry with no usable reason (absent, blank, or longer than the maximum).</summary>
+    /// <summary>
+    /// A kept entry with no usable reason: absent, blank, or one the assignment would refuse
+    /// (<see cref="ProviderFormats.IsReason"/>: 3 to 500 characters, no control characters). The vacancy's reason is what
+    /// every assignment sends, so an editor must never store one that makes assigning fail.
+    /// </summary>
     public const string ReasonRequired = "reason_required";
 
     [GeneratedRegex("^[0-9a-f]{32}$", RegexOptions.CultureInvariant)]
@@ -64,7 +69,8 @@ public static partial class FitAssessmentRequirementsInput
         {
             for (var i = 0; i < kept.Count; i++)
             {
-                if (kept[i] is JsonObject entry && entry["reason"] is null)
+                if (kept[i] is JsonObject entry
+                    && (entry["reason"] is not JsonValue reason || !ProviderFormats.IsReason(reason.GetValue<string>())))
                 {
                     refused.Add(new FitRequirementIssue(i, entry["instrument"]?.GetValue<string>(), ReasonRequired, Dropped: true));
                 }

@@ -5169,7 +5169,7 @@
     "conflict": "Otra persona cambió estas evaluaciones. Ahora se muestra su versión: revísela y vuelva a guardar.",
     "ignored": "{count} entradas guardadas no son válidas y se eliminarán al guardar.",
     "discard": "Descartar cambios",
-    "errorReasonRequired": "Explique por qué esta prueba se relaciona con el puesto (hasta 500 caracteres).",
+    "errorReasonRequired": "Explique por qué esta prueba se relaciona con el puesto (de 3 a 500 caracteres).",
     "errorMinimumInvalid": "Ingrese un mínimo válido para esta prueba.",
     "errorUseNotAllowed": "Esta prueba solo puede ser informativa."
   },

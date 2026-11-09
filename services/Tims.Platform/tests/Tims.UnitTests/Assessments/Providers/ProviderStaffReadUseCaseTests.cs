@@ -177,6 +177,20 @@ public sealed class ProviderStaffReadUseCaseTests
         Assert.Empty(list.Attempts);
     }
 
+    // Codex atsux run 1 [P2]: a reader with none of the candidate's vacancies in scope cannot tell a withdrawal from an
+    // unknown candidate.
+    [Fact]
+    public async Task A_withdrawal_is_not_revealed_to_a_reader_without_any_of_the_candidates_vacancies()
+    {
+        _staff.Add(Attempt("lia", ProviderAttemptStates.ResultReady), Result(percentile: 90));
+        _staff.Withdrawn = true;
+
+        var list = await List(inScope: _ => Task.FromResult(false));
+
+        Assert.False(list.ConsentWithdrawn);
+        Assert.Empty(list.Attempts);
+    }
+
     [Fact]
     public async Task An_attempt_the_withdrawal_cascade_reached_shows_no_result()
     {
@@ -275,7 +289,8 @@ public sealed class ProviderStaffReadUseCaseTests
         public Task<StaffCandidateAttempts> ListCandidateAttemptsAsync(
             Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken) =>
             Task.FromResult(Withdrawn
-                ? new StaffCandidateAttempts(true, [], new Dictionary<Guid, string?>())
+                ? new StaffCandidateAttempts(true, [], _attempts.Select(a => a.Attempt.VacancyId).Distinct()
+                    .ToDictionary(id => id, _ => (string?)null))
                 : new StaffCandidateAttempts(false, _attempts,
                     new Dictionary<Guid, string?> { [FakeRepository.Vacancy] = Requirements, [OtherVacancy] = Requirements }));
     }

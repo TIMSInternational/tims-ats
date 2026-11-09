@@ -498,9 +498,13 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // An attempt whose provider subject's erasure was accepted (D15) no longer feeds FIT, from the moment the
+        // erasure is accepted, not only once the provider confirms it (Codex atsux run 1); the marker's write enqueues a
+        // recompute (migration 20261109030506_fit_v2_provider_erasure_recompute).
         var rows = await (
                 from a in _db.Attempts.AsNoTracking()
                 where a.OrganizationId == organizationId && a.CandidateId == candidateId && a.VacancyId == vacancyId
+                    && a.ProviderErasureRequestedAt == null
                 join r in _db.Results.AsNoTracking().Where(r => r.OrganizationId == organizationId)
                     on a.LatestResultId equals (Guid?)r.ProviderResultId into results
                 from r in results.DefaultIfEmpty()

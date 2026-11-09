@@ -16,6 +16,19 @@ import {
 // is strict too, so nothing the editor sends is silently dropped.
 
 export const MAX_REASON_LENGTH = 500;
+export const MIN_REASON_LENGTH = 3;
+
+/**
+ * The reason as it is sent: whitespace runs (a textarea's line breaks included) collapse to one space, so the stored
+ * text has no control character. The server and every assignment then apply the same rule: 3 to 500 characters, no
+ * control characters (ProviderFormats.IsReason).
+ */
+export function normalizeReason(reason: string): string {
+  return reason.replace(/\s+/g, ' ').trim();
+}
+
+// Unicode Cc, as .NET char.IsControl counts it.
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 /** Personality, MI and PCA are never scored and never gate (no evidence a higher result predicts performance). */
 export function allowedUses(instrument: FitRequirementInstrument): readonly InstrumentUse[] {
@@ -81,7 +94,11 @@ export function newRow(instrument: FitRequirementInstrument): AssessmentRow {
 
 /** The entry sent to the server: a minimum only where the use takes one, a weight only on a scored non-English entry. */
 export function toInput(row: AssessmentRow): AssessmentRequirementInput {
-  const input: AssessmentRequirementInput = { instrument: row.instrument, use: row.use, reason: row.reason.trim() };
+  const input: AssessmentRequirementInput = {
+    instrument: row.instrument,
+    use: row.use,
+    reason: normalizeReason(row.reason),
+  };
   const kind = minimumKind(row.instrument);
   if (row.use !== 'advisory' && kind && row.minimum.trim() !== '') {
     input.min = kind === 'cefr' ? { cefr: row.minimum as CefrLevel } : { [kind]: Number(row.minimum) };
@@ -115,8 +132,8 @@ const rowSchema = z
     weight: z.number().nullable(),
   })
   .superRefine((row, ctx) => {
-    const reason = row.reason.trim();
-    if (reason.length === 0 || reason.length > MAX_REASON_LENGTH) {
+    const reason = normalizeReason(row.reason);
+    if (reason.length < MIN_REASON_LENGTH || reason.length > MAX_REASON_LENGTH || CONTROL.test(reason)) {
       ctx.addIssue({ code: 'custom', path: ['reason'], message: ROW_ERRORS.reason });
     }
     if (!allowedUses(row.instrument).includes(row.use)) {

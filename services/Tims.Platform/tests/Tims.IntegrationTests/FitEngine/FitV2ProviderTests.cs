@@ -99,6 +99,30 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Equal("unknown", noEnglish["gate"]!.GetValue<string>());
     }
 
+    // Codex atsux run 1 [P1] (D15): once an ATS-initiated erasure of the provider subject is accepted, its results stop
+    // feeding FIT at once, not only when the provider confirms the erasure.
+    [Fact]
+    public async Task ConnectorOn_AnAttemptWhoseErasureWasAccepted_NoLongerFeedsFit()
+    {
+        const string Mark =
+            "UPDATE assessment_provider_attempts SET provider_erasure_requested_at = {0} WHERE id = 'e0000000-0000-4000-8000-0000000000a2'";
+        await _fixture.Fit.ExecuteScalarAsync(string.Format(System.Globalization.CultureInfo.InvariantCulture, Mark, "now()"));
+        try
+        {
+            await ComputeAsync(providers: true);
+
+            var scored = await ReadBreakdownAsync(FitV2ProviderFixture.CandScored);
+            var itcia = Entry(scored.Breakdown, "itcia");
+            Assert.Equal("no_result", itcia["status"]!.GetValue<string>());
+            Assert.Null(itcia["resultId"]);
+            Assert.Equal("completed", Entry(scored.Breakdown, "english")["status"]!.GetValue<string>()); // untouched
+        }
+        finally
+        {
+            await _fixture.Fit.ExecuteScalarAsync(string.Format(System.Globalization.CultureInfo.InvariantCulture, Mark, "NULL"));
+        }
+    }
+
     [Fact]
     public async Task ConnectorOff_TheSameStoredResultsDoNotFeedFit()
     {
@@ -153,6 +177,10 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
             "UPDATE assessment_provider_results SET requires_human_review = true WHERE attempt_id = 'e0000000-0000-4000-8000-0000000000a1'"));
         Assert.Null(await SeqAfterAsync(
             "UPDATE assessment_provider_attempts SET state = state WHERE id = 'e0000000-0000-4000-8000-0000000000a1'"));
+        // Codex atsux run 1 [P1]: an accepted erasure takes the result out of FIT, so its marker enqueues too
+        // (migration 20261109030506_fit_v2_provider_erasure_recompute).
+        Assert.Equal(1, await SeqAfterAsync(
+            "UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now() WHERE id = 'e0000000-0000-4000-8000-0000000000a1'"));
 
         // The C# provider writes run as app_tenant under TenantScope, which may not execute the enqueue function
         // itself: the SECURITY DEFINER trigger does it for the row being written.

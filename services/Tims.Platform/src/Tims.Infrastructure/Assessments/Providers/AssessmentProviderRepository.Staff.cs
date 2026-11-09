@@ -35,8 +35,13 @@ public sealed partial class AssessmentProviderRepository : IProviderStaffReadRep
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         if (await IsWithdrawnAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false))
         {
+            // No attempt or result leaves; only the vacancies they belong to, so the caller can scope the withdrawal.
+            var withdrawnVacancies = await _db.Attempts.AsNoTracking()
+                .Where(a => a.OrganizationId == organizationId && a.CandidateId == candidateId)
+                .Select(a => a.VacancyId).Distinct()
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return new StaffCandidateAttempts(true, [], new Dictionary<Guid, string?>());
+            return new StaffCandidateAttempts(true, [], withdrawnVacancies.ToDictionary(id => id, _ => (string?)null));
         }
 
         var rows = await (

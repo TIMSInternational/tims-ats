@@ -90,6 +90,18 @@ function renderSection(locale: 'EN' | 'ES' = 'EN') {
   );
 }
 
+// A sitting not started yet shows the organization's notice first (Codex atsux run 1): Start opens it, the notice is
+// marked read, and only then does Start launch.
+async function startReady() {
+  fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
+  const notice = await screen.findByTestId('assessment-consent-notice');
+  expect(notice).toHaveTextContent('Data Analyst');
+  const start = screen.getByRole('button', { name: m.providerStart });
+  expect(start).toBeDisabled();
+  fireEvent.click(screen.getByLabelText(en.assessmentConsentNotice.readAck));
+  fireEvent.click(start);
+}
+
 describe('DashboardProviderAssessments', () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -151,7 +163,7 @@ describe('DashboardProviderAssessments', () => {
     });
     renderSection();
 
-    fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
+    await startReady();
 
     await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://player.test/launch/code-2'));
     expect(openTopLevel).toHaveBeenCalledTimes(1);
@@ -176,7 +188,7 @@ describe('DashboardProviderAssessments', () => {
     });
     renderSection();
 
-    fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
+    await startReady();
 
     await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://pca.test/sit/1'));
     expect(launchBodies).toEqual([{ embedded: false }]);
@@ -271,7 +283,7 @@ describe('DashboardProviderAssessments', () => {
     });
     renderSection();
 
-    fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
+    await startReady();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
     expect(openTopLevel).not.toHaveBeenCalled();
@@ -290,7 +302,7 @@ describe('DashboardProviderAssessments', () => {
     });
     renderSection();
 
-    fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
+    await startReady();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(m.providerLaunchError);
     expect(openTopLevel).not.toHaveBeenCalled();

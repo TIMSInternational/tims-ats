@@ -118,7 +118,7 @@ public sealed class FitAssessmentRequirementsEndpointTests(FitEngineFixture fixt
         var version = (await SendAsync(HttpMethod.Get, vacancy, null)).Body!["version"]!.GetValue<string>();
 
         var refused = await SendAsync(HttpMethod.Put, vacancy, Body(
-            """[{"instrument":"english","use":"gate","min":{"cefr":"B2"},"reason":"ok"},{"instrument":"personality"}]""", version));
+            """[{"instrument":"english","use":"gate","min":{"cefr":"B2"},"reason":"Clientes"},{"instrument":"personality"}]""", version));
 
         Assert.Equal(HttpStatusCode.BadRequest, refused.Status);
         Assert.Equal("invalid_assessments", refused.Body!["error"]!.GetValue<string>());

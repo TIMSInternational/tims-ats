@@ -7,6 +7,7 @@ import type {
   PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { ProviderAssessmentConsent } from './provider-assessment-consent';
+import { ProviderAssessmentNoticeStep } from './provider-assessment-notice-step';
 
 // One provider assessment in the candidate portal: its name, one coarse status with a hint, the start deadline while it
 // has not started, and the one action its status allows (read the consent, start, continue). Completed, expired and
@@ -68,7 +69,9 @@ export function ProviderAssessmentItem({
   onStart: (consents: AcceptedConsent[]) => void;
 }) {
   const name = t[INSTRUMENT_LABEL[attempt.instrument] ?? 'providerInstrumentOther'];
-  const launchable = attempt.status === 'ready' || attempt.status === 'in_progress';
+  // A sitting not started yet first shows the organization's notice (Codex atsux run 1): through the consent step when
+  // the provider still needs a consent, otherwise through the notice step. Only a started sitting resumes directly.
+  const launchable = attempt.status === 'in_progress';
   const notStarted = attempt.status === 'ready' || attempt.status === 'consent_needed';
   return (
     <li className="rounded-xl border border-[#EDEDED] p-4" data-status={attempt.status}>
@@ -102,9 +105,23 @@ export function ProviderAssessmentItem({
           </button>
         ))}
 
+      {attempt.status === 'ready' &&
+        (consentOpen ? (
+          <ProviderAssessmentNoticeStep
+            notice={{ ...notice, instrumentName: name }}
+            busy={busy}
+            onStart={() => onStart([])}
+            onCancel={onCancelConsent}
+          />
+        ) : (
+          <button type="button" onClick={onOpenConsent} className={BUTTON}>
+            {t.providerStart}
+          </button>
+        ))}
+
       {launchable && (
         <button type="button" disabled={busy} onClick={() => onStart([])} className={BUTTON}>
-          {busy ? t.providerOpening : attempt.status === 'in_progress' ? t.providerContinue : t.providerStart}
+          {busy ? t.providerOpening : t.providerContinue}
         </button>
       )}
 
