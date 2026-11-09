@@ -3917,7 +3917,6 @@
     "providerFrameClose": "Close the assessment",
     "providerOptionalTitle": "Optional consents: English speaking section",
     "providerOptionalIntro": "These consents are optional. You may leave them unticked and still take the test: the speaking section is then not given, and the hiring team will see that it was not assessed because you did not consent. Ticking these boxes or not changes nothing else about your application.",
-    "providerOptionalDraft": "DRAFT PENDING LEGAL REVIEW (owner decision D22): these optional texts have not been approved by counsel.",
     "providerOptionalAccept": "I agree (optional).",
     "providerFrameHint": "When you finish, close this window to return to your dashboard."
   },
@@ -5181,6 +5180,7 @@
     "title": "TIMS Assessments",
     "loading": "Loading the assessments…",
     "error": "The assessments could not be loaded.",
+    "noReadPermission": "Your role does not have the permission to see assessments (assessment:read), so neither the results nor whether the minimum was met are shown here. Ask an administrator of your organization to add it to your role.",
     "empty": "No assessments assigned yet.",
     "withdrawn": "The candidate withdrew consent: no assessment data is shown.",
     "assign": "Assign the vacancy's assessments",
@@ -5289,19 +5289,17 @@
     }
   },
   "assessmentConsentNotice": {
-    "title": "Notice and consent: online assessments",
-    "draftBanner": "DRAFT PENDING LEGAL REVIEW (owner decision D22). This text has not been approved by counsel and must not be used with real candidates.",
-    "intro": "{org} (responsible for your data) asks you to take online assessments run by TIMS Assessments, a service of TIMS International that processes your data on behalf of {org}.",
+    "title": "Notice: online assessments",
+    "intro": "{org} invites you to take online assessments for your application. They are run by TIMS Assessments, a service of TIMS International that receives and processes your data on behalf of {org}, as its processor.",
     "purposeTitle": "Purpose",
-    "purpose": "Selection for the vacancy “{vacancy}”. The results are used only for this selection process.",
+    "purpose": "Selection for the vacancy “{vacancy}”. {org} uses the results in this selection process.",
     "testsTitle": "Tests",
-    "recipientsTitle": "Who sees the results",
-    "recipients": "The human resources and recruiting team of {org}. Hiring leaders who take part in the selection see only whether a required minimum was met, never your result. No test rejects you automatically: a person decides.",
-    "retentionTitle": "Retention",
-    "retention": "The results are kept for the selection process and for at most 24 months after it closes; then they are deleted or anonymised.",
-    "rightsTitle": "Your rights",
-    "rights": "Under the applicable data protection law you may access your results, ask for them to be corrected or deleted, and withdraw this consent at any time from your candidate portal or by contacting {org}. Withdrawing stops pending tests and removes the results from your application.",
-    "providerConsents": "Before each test starts, TIMS Assessments shows you its own consent texts (for example for AI scoring or a voice recording), and you accept each one separately.",
+    "decisionTitle": "Who decides",
+    "decision": "No test rejects you automatically: a person on {org}'s hiring team decides.",
+    "withdrawTitle": "How to withdraw your authorization",
+    "withdraw": "You can withdraw it at any time from the privacy section of this portal. Withdrawing it cancels the tests you have pending, and {org} stops receiving new results.",
+    "providerConsents": "Before a test starts, TIMS Assessments shows you its own consent texts, and you accept each one separately. You may leave the optional ones unticked, such as the voice recording of the English speaking section.",
+    "versionLabel": "Notice version: {version}",
     "readAck": "I have read this notice."
   }
 }

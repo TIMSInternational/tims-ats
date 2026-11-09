@@ -58,9 +58,15 @@ const attempt = (status: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+// The provider serves its approved texts, versioned '2026-11-09-<purpose>-v1' (the suite registers them; the ATS renders
+// them as served and sends that exact version back).
+const approved = (purpose: string) => `2026-11-09-${purpose}-v1`;
+// The ATS notice acknowledgment every launch of a sitting not started carries (round 12), here in English.
+const NOTICE = { textVersion: '2026-11-09-ats-notice-v1', locale: 'en' };
+
 const template = {
   purpose: 'assessment',
-  textVersion: 'assessment-v2026-11',
+  textVersion: approved('assessment'),
   locale: 'en',
   title: 'Assessment consent',
   blocks: [
@@ -168,7 +174,11 @@ describe('DashboardProviderAssessments', () => {
 
     await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://player.test/launch/code-2'));
     expect(openTopLevel).toHaveBeenCalledTimes(1);
-    expect(launchBodies).toEqual([{ embedded: true }, { embedded: false }]);
+    // The notice acknowledged before the start travels with both launches (the relaunch is of a sitting not started).
+    expect(launchBodies).toEqual([
+      { notice: NOTICE, embedded: true },
+      { notice: NOTICE, embedded: false },
+    ]);
     expect(screen.queryByTitle(m.providerFrameTitle)).not.toBeInTheDocument();
   });
 
@@ -192,19 +202,22 @@ describe('DashboardProviderAssessments', () => {
     await startReady();
 
     await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://pca.test/sit/1'));
-    expect(launchBodies).toEqual([{ embedded: false }]);
+    expect(launchBodies).toEqual([{ notice: NOTICE, embedded: false }]);
   });
 
   it('frames the hosted player when this site is a registered ancestor, and refreshes on close', async () => {
     let lists = 0;
+    const launchBodies: unknown[] = [];
     respond({
-      '/launch': () =>
-        json({
+      '/launch': (init) => {
+        launchBodies.push(JSON.parse(String(init?.body)));
+        return json({
           delivery: 'native',
           expiresAt: '2026-11-09T14:05:00Z',
           hostedUrl: 'https://player.test/launch/code-2',
           frameAncestors: [window.location.origin],
-        }),
+        });
+      },
       '/portal/assessment-attempts': () => {
         lists++;
         return json({ attempts: [attempt('in_progress')] });
@@ -221,6 +234,8 @@ describe('DashboardProviderAssessments', () => {
     fireEvent.click(screen.getByRole('button', { name: m.providerFrameClose }));
     await waitFor(() => expect(screen.queryByTitle(m.providerFrameTitle)).not.toBeInTheDocument());
     await waitFor(() => expect(lists).toBe(2));
+    // A sitting in progress resumes: its notice was acknowledged when it was first launched.
+    expect(launchBodies).toEqual([{ embedded: true }]);
   });
 
   it('shows each consent text as plain text and launches only once every one is accepted, with its text version', async () => {
@@ -244,13 +259,17 @@ describe('DashboardProviderAssessments', () => {
     fireEvent.click(await screen.findByRole('button', { name: m.providerReviewConsent }));
     expect(await screen.findByText('<b>Plain</b> text only.')).toBeInTheDocument(); // never parsed as HTML
     expect(screen.getByText('Who sees it')).toBeInTheDocument();
-    // Design §6.3: the organization's own notice comes first: TIMS Assessments named, the purpose "selection for
-    // vacancy X", marked as a draft pending counsel (D22).
+    // Design §6.3: the ATS's own short notice comes first: TIMS Assessments named as processor for the organization,
+    // the purpose "selection for vacancy X", a person decides, how to withdraw; with its version and no draft marker.
     const notice = screen.getByTestId('assessment-consent-notice');
     expect(notice).toHaveTextContent('TIMS Assessments');
     expect(notice).toHaveTextContent('Acme Corp');
-    expect(notice).toHaveTextContent(en.assessmentConsentNotice.purpose.replace('{vacancy}', 'Data Analyst'));
-    expect(notice).toHaveTextContent(en.assessmentConsentNotice.draftBanner);
+    expect(notice).toHaveTextContent(
+      en.assessmentConsentNotice.purpose.replace('{vacancy}', 'Data Analyst').replaceAll('{org}', 'Acme Corp'),
+    );
+    expect(notice).toHaveTextContent(en.assessmentConsentNotice.decision.replaceAll('{org}', 'Acme Corp'));
+    expect(notice).toHaveTextContent('2026-11-09-ats-notice-v1');
+    expect(notice).not.toHaveTextContent(/draft|counsel|D22/i);
     const accept = screen.getByRole('button', { name: m.providerAcceptAndStart });
     expect(accept).toBeDisabled();
 
@@ -263,8 +282,12 @@ describe('DashboardProviderAssessments', () => {
     await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://player.test/l/3'));
     // The consents travel with the first launch only; the top-level relaunch (not framable here) records none again.
     expect(launchBodies).toEqual([
-      { consents: [{ purpose: 'assessment', textVersion: 'assessment-v2026-11', locale: 'en' }], embedded: true },
-      { embedded: false },
+      {
+        consents: [{ purpose: 'assessment', textVersion: approved('assessment'), locale: 'en' }],
+        notice: NOTICE,
+        embedded: true,
+      },
+      { notice: NOTICE, embedded: false },
     ]);
   });
 
@@ -275,7 +298,7 @@ describe('DashboardProviderAssessments', () => {
     const optional = (purpose: string, title: string) => ({
       ...template,
       purpose,
-      textVersion: `${purpose}-v1`,
+      textVersion: approved(purpose),
       title,
       blocks: [{ type: 'paragraph', text: `${title} text.` }],
     });
@@ -304,7 +327,10 @@ describe('DashboardProviderAssessments', () => {
     fireEvent.click(await screen.findByRole('button', { name: m.providerReviewConsent }));
     const section = await screen.findByTestId('provider-optional-consents');
     expect(section).toHaveTextContent(m.providerOptionalTitle);
-    expect(section).toHaveTextContent(m.providerOptionalDraft); // D22: pending counsel
+    // The provider's own approved texts, rendered as served: no draft marker of the ATS's.
+    expect(section).toHaveTextContent('Voice recording text.');
+    expect(section).toHaveTextContent('AI scoring text.');
+    expect(section).not.toHaveTextContent(/draft|counsel|D22/i);
     const boxes = within(section).getAllByLabelText(m.providerOptionalAccept);
     expect(boxes).toHaveLength(2);
     boxes.forEach((box) => expect(box).not.toBeChecked()); // optional: never pre-ticked
@@ -318,8 +344,9 @@ describe('DashboardProviderAssessments', () => {
     await screen.findByTitle(m.providerFrameTitle);
     expect(launchBodies).toEqual([
       {
-        consents: [{ purpose: 'ai_scoring', textVersion: 'ai_scoring-v1', locale: 'en' }],
+        consents: [{ purpose: 'ai_scoring', textVersion: approved('ai_scoring'), locale: 'en' }],
         declinedConsents: ['voice'],
+        notice: NOTICE,
         embedded: true,
       },
     ]);

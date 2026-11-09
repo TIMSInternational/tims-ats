@@ -65,7 +65,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
         // It cannot be framed after all: launch again for a top-level sitting, so the player returns the candidate to
         // this dashboard. A new launch revokes the first, unused launch code; consents (and declined optional purposes)
         // were recorded by the first.
-        launch = await launchProviderAttempt(attemptId, { accepted: [], declined: [] }, false);
+        launch = await launchProviderAttempt(attemptId, { accepted: [], declined: [], notice: decision.notice }, false);
         target = chooseLaunchTarget(launch, window.location.origin, PLAYER_ORIGIN);
         if (target.kind === 'iframe') target = { kind: 'navigate', url: target.url };
       }

@@ -6,7 +6,8 @@ import { ProviderConsentTemplateCard } from './provider-consent-template-card';
 
 // The OPTIONAL consents of a provider assessment (English speaking: voice recording and AI scoring), shown apart from
 // the required ones, each with its own checkbox, UNTICKED by default. Leaving them unticked never blocks the start: the
-// speaking section is then not given and HR is told why. The wording is a draft pending counsel (D22).
+// speaking section is then not given and HR is told why. Each text is the provider's own template (its approved
+// wording and text_version), rendered as served.
 export function ProviderOptionalConsents({
   templates,
   accepted,
@@ -27,9 +28,6 @@ export function ProviderOptionalConsents({
       <h3 id="provider-optional-consents-title" className="text-[13px] font-semibold text-[#1F114C]">
         {t.portalDashboard.providerOptionalTitle}
       </h3>
-      <p role="note" className="rounded-lg bg-[#FFF4E5] p-2 text-[11px] font-medium text-[#8A4B00]">
-        {t.portalDashboard.providerOptionalDraft}
-      </p>
       <p className="text-[12px] text-[#585858]">{t.portalDashboard.providerOptionalIntro}</p>
       {templates.map((template) => (
         <ProviderConsentTemplateCard

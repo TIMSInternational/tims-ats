@@ -3917,7 +3917,6 @@
     "providerFrameClose": "Cerrar la evaluación",
     "providerOptionalTitle": "Consentimientos opcionales: sección oral de inglés",
     "providerOptionalIntro": "Estos consentimientos son opcionales. Puede dejarlos sin marcar y presentar la prueba igualmente: en ese caso la sección oral (hablar) no se administra y el equipo de selección verá que no se evaluó por falta de su consentimiento. Marcar o no estas casillas no cambia nada más de su postulación.",
-    "providerOptionalDraft": "BORRADOR PENDIENTE DE REVISIÓN LEGAL (decisión D22): estos textos opcionales no han sido aprobados por asesoría legal.",
     "providerOptionalAccept": "Acepto (opcional).",
     "providerFrameHint": "Cuando termine, cierre esta ventana para volver a su panel."
   },
@@ -5181,6 +5180,7 @@
     "title": "TIMS Assessments",
     "loading": "Cargando las evaluaciones…",
     "error": "No se pudieron cargar las evaluaciones.",
+    "noReadPermission": "Tu rol no tiene el permiso para ver evaluaciones (assessment:read), así que aquí no se muestran sus resultados ni si se alcanzó el mínimo. Pide a un administrador de tu organización que lo agregue a tu rol.",
     "empty": "Aún no hay evaluaciones asignadas.",
     "withdrawn": "El candidato retiró su consentimiento: no se muestran datos de evaluaciones.",
     "assign": "Asignar las evaluaciones de la vacante",
@@ -5289,19 +5289,17 @@
     }
   },
   "assessmentConsentNotice": {
-    "title": "Aviso y consentimiento: evaluaciones en línea",
-    "draftBanner": "BORRADOR PENDIENTE DE REVISIÓN LEGAL (decisión D22). Este texto no ha sido aprobado por asesoría legal y no debe usarse con candidatos reales.",
-    "intro": "{org} (responsable de sus datos) le invita a presentar evaluaciones en línea que administra TIMS Assessments, un servicio de TIMS International que trata sus datos por encargo de {org}.",
+    "title": "Aviso: evaluaciones en línea",
+    "intro": "{org} le invita a presentar evaluaciones en línea para su postulación. Las administra TIMS Assessments, un servicio de TIMS International que recibe y trata sus datos por cuenta de {org}, como encargado.",
     "purposeTitle": "Finalidad",
-    "purpose": "Selección para la vacante «{vacancy}». Los resultados se usan solo para este proceso de selección.",
+    "purpose": "Selección para la vacante «{vacancy}». {org} usa los resultados en este proceso de selección.",
     "testsTitle": "Pruebas",
-    "recipientsTitle": "Quién ve los resultados",
-    "recipients": "El equipo de recursos humanos y de reclutamiento de {org}. Los líderes que participan en la selección solo ven si se alcanzó un mínimo requerido, nunca su resultado. Ninguna prueba lo rechaza automáticamente: una persona decide.",
-    "retentionTitle": "Conservación",
-    "retention": "Los resultados se conservan durante el proceso de selección y como máximo 24 meses después de su cierre; luego se eliminan o se anonimizan.",
-    "rightsTitle": "Sus derechos",
-    "rights": "Conforme a la legislación de protección de datos aplicable, usted puede acceder a sus resultados, pedir su rectificación o supresión y retirar este consentimiento en cualquier momento desde su portal de candidato o comunicándose con {org}. Retirarlo detiene las pruebas pendientes y quita los resultados de su postulación.",
-    "providerConsents": "Antes de iniciar cada prueba, TIMS Assessments le muestra sus propios textos de consentimiento (por ejemplo, para la calificación con inteligencia artificial o una grabación de voz), y usted acepta cada uno por separado.",
+    "decisionTitle": "Quién decide",
+    "decision": "Ninguna prueba lo rechaza automáticamente: una persona del equipo de selección de {org} decide.",
+    "withdrawTitle": "Cómo retirar su autorización",
+    "withdraw": "Puede retirarla en cualquier momento desde la sección de privacidad de este portal. Al retirarla se cancelan las pruebas que tenga pendientes y {org} deja de recibir resultados nuevos.",
+    "providerConsents": "Antes de iniciar una prueba, TIMS Assessments le muestra sus propios textos de consentimiento y usted acepta cada uno por separado. Los opcionales, como la grabación de voz de la sección oral de inglés, puede dejarlos sin marcar.",
+    "versionLabel": "Versión del aviso: {version}",
     "readAck": "Leí este aviso."
   }
 }

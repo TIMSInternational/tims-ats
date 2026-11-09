@@ -127,10 +127,21 @@ export interface AcceptedConsent {
   locale: string;
 }
 
-/** What the candidate decided in the consent step: the texts accepted, and the OPTIONAL purposes left unticked. */
+/** The ATS notice the candidate acknowledged: its version and the language it was shown in (recorded by the launch). */
+export interface NoticeAcknowledgment {
+  textVersion: string;
+  locale: 'es' | 'en';
+}
+
+/**
+ * What the candidate decided before a launch: the texts accepted, the OPTIONAL purposes left unticked, and the ATS
+ * notice acknowledged. The notice is REQUIRED to launch a sitting that has not started (422 `notice_required`); only a
+ * sitting in progress resumes without it.
+ */
 export interface ConsentDecision {
   accepted: AcceptedConsent[];
   declined: ConsentPurpose[];
+  notice?: NoticeAcknowledgment;
 }
 
 /**
@@ -144,13 +155,14 @@ export async function launchProviderAttempt(
   embedded: boolean,
 ): Promise<ProviderLaunch> {
   if (!isProviderAssessmentsPortalEnabled()) throw new Error('Provider assessments are not enabled');
-  const { accepted, declined } = decision;
+  const { accepted, declined, notice } = decision;
   return launchSchema.parse(
     await platformPost(
       '/portal/assessment-attempts/{attemptId}/launch',
       {
         consents: accepted.length > 0 ? accepted : undefined,
         declinedConsents: declined.length > 0 ? declined : undefined,
+        notice,
         embedded,
       },
       { attemptId },

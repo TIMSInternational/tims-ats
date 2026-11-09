@@ -3,11 +3,24 @@
 import { useId } from 'react';
 import { useI18n } from '../lib/i18n';
 
-// The ATS's own notice for TIMS Assessments (design §6.3, "consent and transparency"): it names TIMS Assessments as the
-// service that runs the tests on the organization's behalf, the purpose ("selection for vacancy X"), the tests, who sees
-// the results, retention and the candidate's rights. The SAME text is what HR reviews when assigning and what the
-// candidate reads in the portal before the provider's own per-purpose consent texts. Owner default D22: it is a draft
-// pending counsel, and says so on its face. Rendered as text nodes only (names and titles are never HTML).
+/**
+ * The version of the ATS notice below (round 12). The C# launch accepts only this version and records it, with the
+ * language it was read in, when the candidate acknowledges it (services/Tims.Platform AtsNotice.CurrentVersion; the two
+ * are pinned equal by tests/assessment/ats-notice-version.test.tsx). Changing a word of `assessmentConsentNotice` means a
+ * new version here AND there.
+ */
+export const ATS_NOTICE_VERSION = '2026-11-09-ats-notice-v1';
+
+/** The acknowledgment the portal sends with a launch: the notice version and the language it was shown in. */
+export function atsNoticeAcknowledgment(locale: string): { textVersion: string; locale: 'es' | 'en' } {
+  return { textVersion: ATS_NOTICE_VERSION, locale: locale === 'EN' ? 'en' : 'es' };
+}
+
+// The ATS's own short notice for TIMS Assessments (design §6.3, consent and transparency). It states only what the ATS
+// does: who receives the data (TIMS Assessments, as processor for the hiring organization), the purpose (selection for
+// this vacancy), that a person decides, and how to withdraw in the portal. The provider's own per-purpose consent texts
+// (the approved wording, served by the provider) follow it. The SAME text is what HR reviews when assigning and what the
+// candidate reads in the portal. Rendered as text nodes only (names and titles are never HTML).
 export function AssessmentConsentNotice({
   orgName,
   vacancyTitle,
@@ -24,9 +37,8 @@ export function AssessmentConsentNotice({
   const fill = (text: string) => text.replaceAll('{org}', orgName).replaceAll('{vacancy}', vacancyTitle);
   const sections: Array<[string, string]> = [
     [n.purposeTitle, fill(n.purpose)],
-    [n.recipientsTitle, fill(n.recipients)],
-    [n.retentionTitle, fill(n.retention)],
-    [n.rightsTitle, fill(n.rights)],
+    [n.decisionTitle, fill(n.decision)],
+    [n.withdrawTitle, fill(n.withdraw)],
   ];
 
   return (
@@ -34,13 +46,11 @@ export function AssessmentConsentNotice({
       aria-labelledby={titleId}
       className="rounded-xl border border-[#EDEDED] p-4 space-y-2 text-[12px] text-[#585858]"
       data-testid="assessment-consent-notice"
+      data-notice-version={ATS_NOTICE_VERSION}
     >
       <h3 id={titleId} className="text-[13px] font-semibold text-[#1F114C]">
         {n.title}
       </h3>
-      <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-2 font-semibold text-amber-800">
-        {n.draftBanner}
-      </p>
       <div className="max-h-64 overflow-y-auto space-y-2">
         <p>{fill(n.intro)}</p>
         <h4 className="font-semibold text-[#1F114C]">{n.testsTitle}</h4>
@@ -56,6 +66,7 @@ export function AssessmentConsentNotice({
           </div>
         ))}
         <p>{n.providerConsents}</p>
+        <p className="text-[11px] text-muted">{n.versionLabel.replace('{version}', ATS_NOTICE_VERSION)}</p>
       </div>
     </section>
   );

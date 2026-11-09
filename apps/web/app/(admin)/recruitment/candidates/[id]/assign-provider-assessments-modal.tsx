@@ -38,7 +38,7 @@ const isProviderInstrument = (instrument: string): instrument is ProviderInstrum
 // Assigning a vacancy's tests to one candidate (AS-14): every provider test the vacancy lists and this organization
 // may assign, never a hand-picked subset (design §6.3: every candidate gets the same tests and versions; the server
 // pins the version). Step 1 sets the conditions; step 2 shows the notice the candidate will read before the provider's
-// own consent texts (D22: a draft pending counsel), which HR must acknowledge before anything is sent.
+// own consent texts, which HR must acknowledge before anything is sent.
 export function AssignProviderAssessmentsModal({
   candidateId,
   vacancy,

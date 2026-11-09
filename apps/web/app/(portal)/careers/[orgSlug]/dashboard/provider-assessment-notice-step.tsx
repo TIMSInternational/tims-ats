@@ -2,11 +2,16 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import { AssessmentConsentNotice } from '../../../../../components/assessment-consent-notice';
+import {
+  AssessmentConsentNotice,
+  atsNoticeAcknowledgment,
+} from '../../../../../components/assessment-consent-notice';
+import type { NoticeAcknowledgment } from '../../../../../lib/platform-api/assessment-provider-portal';
 
 // Before a sitting that needs no provider consent any more (status "ready": the provider already holds every purpose),
-// the candidate still reads the organization's notice for this vacancy (design §6.3; D22: a draft pending counsel), so
-// no assessment ever starts without it. "Start" stays disabled until the notice is marked read.
+// the candidate still reads the ATS notice for this vacancy (design §6.3), so no assessment ever starts without it.
+// "Start" stays disabled until the notice is marked read, and hands back the acknowledgment (version and language) the
+// launch records.
 export function ProviderAssessmentNoticeStep({
   notice,
   busy,
@@ -15,10 +20,10 @@ export function ProviderAssessmentNoticeStep({
 }: {
   notice: { orgName: string; vacancyTitle: string; instrumentName: string };
   busy: boolean;
-  onStart: () => void;
+  onStart: (notice: NoticeAcknowledgment) => void;
   onCancel: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [read, setRead] = useState(false);
   return (
     <div className="mt-3 space-y-3">
@@ -35,7 +40,7 @@ export function ProviderAssessmentNoticeStep({
         <button
           type="button"
           disabled={!read || busy}
-          onClick={onStart}
+          onClick={() => onStart(atsNoticeAcknowledgment(locale))}
           className="inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition disabled:opacity-50"
         >
           {busy ? t.portalDashboard.providerOpening : t.portalDashboard.providerStart}

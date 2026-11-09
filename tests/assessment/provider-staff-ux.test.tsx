@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   catalog: null as unknown,
   catalogError: false,
   attempts: null as unknown,
+  attemptsError: null as unknown,
   saveMutate: vi.fn(),
   savePending: false,
   assignMutate: vi.fn(),
@@ -59,7 +60,10 @@ vi.mock('../../apps/web/lib/platform-api/assessment-providers-staff', async (ori
     mocks.catalogError
       ? { data: undefined, isError: true, isLoading: false }
       : { data: mocks.catalog, isError: false, isLoading: false },
-  useCandidateProviderAttempts: () => ({ data: mocks.attempts, isLoading: false, isError: false }),
+  useCandidateProviderAttempts: () =>
+    mocks.attemptsError
+      ? { data: undefined, isLoading: false, isError: true, error: mocks.attemptsError }
+      : { data: mocks.attempts, isLoading: false, isError: false, error: null },
   useCancelProviderAttempt: () => ({ mutate: mocks.cancelMutate, isPending: false, variables: undefined }),
   useAssignProviderAssessments: () => ({ mutate: mocks.assignMutate, isPending: false }),
 }));
@@ -108,6 +112,7 @@ beforeEach(() => {
     },
     catalogError: false,
     attempts: { consentWithdrawn: false, attempts: [] },
+    attemptsError: null,
     savePending: false,
     orgName: 'Acme Corp',
     locale: 'en',
@@ -313,6 +318,25 @@ describe('ProviderAssessmentsCard', () => {
     expect(screen.getByText(pa.validity.needs_review)).toBeInTheDocument();
   });
 
+  // Leader assessment:read (round 12): the grant is an owner SQL step (connector owner step 8), so a leader without it
+  // gets a 403 from the C# read. The card says why, instead of a generic load error.
+  it('tells a reader without assessment:read why no results are shown', () => {
+    mocks.attemptsError = new PlatformApiError(403, 'Forbidden', { error: 'forbidden' });
+    mocks.canCreateAssessment = false;
+    render(<ProviderAssessmentsCard candidateId="c1" applications={[]} />);
+
+    expect(screen.getByTestId('provider-assessments-no-permission')).toHaveTextContent(pa.noReadPermission);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic error for any other failed read', () => {
+    mocks.attemptsError = new PlatformApiError(503, 'Service Unavailable', { error: 'provider_unavailable' });
+    render(<ProviderAssessmentsCard candidateId="c1" applications={[]} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(pa.error);
+    expect(screen.queryByTestId('provider-assessments-no-permission')).not.toBeInTheDocument();
+  });
+
   it('shows nothing for a candidate who withdrew consent, and offers no assignment', () => {
     mocks.attempts = { consentWithdrawn: true, attempts: [] };
     renderCard();
@@ -371,11 +395,13 @@ describe('ProviderAssessmentsCard', () => {
     const notice = await within(dialog).findByTestId('assessment-consent-notice');
     expect(notice).toHaveTextContent('TIMS Assessments');
     expect(notice).toHaveTextContent('Acme Corp');
-    expect(notice).toHaveTextContent(en.assessmentConsentNotice.purpose.replace('{vacancy}', 'Data Analyst'));
-    expect(notice).toHaveTextContent(en.assessmentConsentNotice.recipientsTitle);
-    expect(notice).toHaveTextContent(en.assessmentConsentNotice.retentionTitle);
-    expect(notice).toHaveTextContent(en.assessmentConsentNotice.rightsTitle);
-    expect(within(notice).getByRole('note')).toHaveTextContent(en.assessmentConsentNotice.draftBanner); // D22
+    expect(notice).toHaveTextContent(
+      en.assessmentConsentNotice.purpose.replace('{vacancy}', 'Data Analyst').replaceAll('{org}', 'Acme Corp'),
+    );
+    // HR reviews the SAME final notice the candidate reads (round 12): no draft marker any more.
+    expect(notice).toHaveTextContent(en.assessmentConsentNotice.decisionTitle);
+    expect(notice).toHaveTextContent(en.assessmentConsentNotice.withdrawTitle);
+    expect(notice).not.toHaveTextContent(/draft|counsel|D22/i);
     const submit = within(dialog).getByRole('button', { name: ap.submit });
     expect(submit).toBeDisabled();
     fireEvent.click(within(dialog).getByLabelText(ap.consentAck));

@@ -14,7 +14,7 @@ import { ProviderAssessmentNoticeStep } from './provider-assessment-notice-step'
 // needs-review entries have no action: the hint tells the candidate what happens next.
 export type PortalMessages = ReturnType<typeof useI18n>['t']['portalDashboard'];
 
-/** A launch with nothing newly accepted or declined (no consent step shown). */
+/** A launch with nothing newly accepted or declined (a sitting in progress resumes without the notice). */
 const NO_DECISION: ConsentDecision = { accepted: [], declined: [] };
 
 const STATUS_LABEL: Record<PortalStatus, keyof PortalMessages> = {
@@ -113,7 +113,7 @@ export function ProviderAssessmentItem({
           <ProviderAssessmentNoticeStep
             notice={{ ...notice, instrumentName: name }}
             busy={busy}
-            onStart={() => onStart(NO_DECISION)}
+            onStart={(acknowledged) => onStart({ ...NO_DECISION, notice: acknowledged })}
             onCancel={onCancelConsent}
           />
         ) : (

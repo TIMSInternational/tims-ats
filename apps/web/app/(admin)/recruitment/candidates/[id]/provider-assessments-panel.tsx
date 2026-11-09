@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { useCan } from '../../../../../lib/permissions';
 import { toast } from '../../../../../lib/toast';
+import { PlatformApiError } from '../../../../../lib/platform-api/client';
 import {
   useCancelProviderAttempt,
   useCandidateProviderAttempts,
@@ -13,7 +14,9 @@ import { AssignProviderAssessmentsModal } from './assign-provider-assessments-mo
 
 import type { ProviderCardApplication } from './provider-assessments-card';
 
-// The candidate's TIMS Assessments card once enabled: the attempts per vacancy, cancel, and the assign entry points.
+// The candidate's TIMS Assessments card once enabled: the attempts per vacancy, cancel, and the assign entry points. A
+// reader the C# read refuses (403: no assessment:read, e.g. a team leader before the owner grant of connector owner step
+// 8) is told so, instead of a generic load error: the D6 view explains itself.
 export function ProviderAssessmentsPanel({
   candidateId,
   applications,
@@ -35,7 +38,12 @@ export function ProviderAssessmentsPanel({
   const content = () => {
     if (attempts.isLoading) return <p className="text-[12px] text-[#8B8B8B]">{pa.loading}</p>;
     if (attempts.isError || !attempts.data) {
-      return (
+      const forbidden = attempts.error instanceof PlatformApiError && attempts.error.status === 403;
+      return forbidden ? (
+        <p role="status" className="text-[12px] text-[#585858]" data-testid="provider-assessments-no-permission">
+          {pa.noReadPermission}
+        </p>
+      ) : (
         <p role="alert" className="text-[12px] text-[#B42318]">
           {pa.error}
         </p>

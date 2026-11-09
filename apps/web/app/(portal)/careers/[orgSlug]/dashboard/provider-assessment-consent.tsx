@@ -2,7 +2,10 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import { AssessmentConsentNotice } from '../../../../../components/assessment-consent-notice';
+import {
+  AssessmentConsentNotice,
+  atsNoticeAcknowledgment,
+} from '../../../../../components/assessment-consent-notice';
 import {
   useProviderConsentTemplates,
   type ConsentDecision,
@@ -18,12 +21,13 @@ const accept = (template: ConsentTemplate) => ({
 });
 
 // The consent step before a provider assessment (D16, design §2.2 "the host shows its own consent text, using a
-// template served by the API"). Each purpose the provider still needs is shown in full, as plain text (the API's
-// blocks carry no markup and are rendered as text nodes only), with its own acceptance checkbox. "Accept and start"
-// stays disabled until every REQUIRED text is accepted; it hands back each accepted purpose with the exact text_version
-// shown, and the OPTIONAL purposes left unticked as declined (English speaking: ProviderOptionalConsents). First
-// comes the organization's own notice (design §6.3: TIMS Assessments named, the purpose "selection for vacancy X",
-// who sees the results, retention, rights; D22: a draft pending counsel), which must be read before starting.
+// template served by the API"). Each purpose the provider still needs, required AND optional (English speaking: voice,
+// ai_scoring), is shown in full from the provider's template, so the provider is the single source of the approved
+// wording; as plain text (the API's blocks carry no markup and are rendered as text nodes only), with its own
+// acceptance checkbox. "Accept and start" stays disabled until every REQUIRED text is accepted; it hands back each
+// accepted purpose with the exact text_version shown, and the OPTIONAL purposes left unticked as declined
+// (ProviderOptionalConsents). First comes the ATS's own short notice (AssessmentConsentNotice), which must be read
+// before starting; its version and language travel with the launch, which records the acknowledgment.
 export function ProviderAssessmentConsent({
   attemptId,
   busy,
@@ -63,6 +67,7 @@ export function ProviderAssessmentConsent({
   const decide = (): ConsentDecision => ({
     accepted: data.templates.filter((template) => accepted[template.purpose] === true).map(accept),
     declined: offered.filter((template) => accepted[template.purpose] !== true).map((template) => template.purpose),
+    notice: atsNoticeAcknowledgment(locale),
   });
   const toggle = (purpose: string, value: boolean) => setAccepted((current) => ({ ...current, [purpose]: value }));
   return (
