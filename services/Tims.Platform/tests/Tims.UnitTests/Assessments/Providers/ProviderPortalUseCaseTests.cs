@@ -97,8 +97,11 @@ public sealed class ProviderPortalUseCaseTests
         var result = await Portal.ConsentTemplatesAsync(attempt.Id, "ana@example.com", "en", Now, CancellationToken.None);
 
         Assert.Equal(PortalOutcome.Ok, result.Outcome);
-        Assert.Equal(["assessment", "voice"], result.Templates.Select(t => t.Purpose));
-        Assert.Equal([("assessment", "en"), ("voice", "en")], _provider.TemplateRequests);
+        // Required first (voice is required for this version, so it is not offered as optional), then the optional
+        // purpose English offers and the candidate has not decided on yet.
+        Assert.Equal(["assessment", "voice", "ai_scoring"], result.Templates.Select(t => t.Purpose));
+        Assert.Equal(["ai_scoring"], result.OptionalPurposes);
+        Assert.Equal([("assessment", "en"), ("voice", "en"), ("ai_scoring", "en")], _provider.TemplateRequests);
     }
 
     [Fact]

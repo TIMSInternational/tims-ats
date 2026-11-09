@@ -4,6 +4,7 @@ using Npgsql;
 using NpgsqlTypes;
 using Tims.Application.FitEngine;
 using Tims.Domain.FitEngine;
+using Tims.Infrastructure.CandidateConsent;
 
 namespace Tims.Infrastructure.FitEngine;
 
@@ -264,9 +265,10 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
 
         if (lockCandidate)
         {
-            var lockKey = candidate.ToString();
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
+            // The candidate AND its same-email siblings: the withdrawn check below is email-aware, so a sibling's
+            // withdrawal must not commit between it and the grade (Codex P1).
+            await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidate, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         var withdrawn = await FitEngineWriteRepository

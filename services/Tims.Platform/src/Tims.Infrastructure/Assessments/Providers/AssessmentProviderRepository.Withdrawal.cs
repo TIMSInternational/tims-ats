@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tims.Application.Assessments.Providers;
 using Tims.Domain.Assessments.Providers;
+using Tims.Infrastructure.CandidateConsent;
 
 namespace Tims.Infrastructure.Assessments.Providers;
 
@@ -11,9 +12,8 @@ public sealed partial class AssessmentProviderRepository
         Guid organizationId, Guid candidateId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
-        var lockKey = candidateId.ToString();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidateId, cancellationToken)
+            .ConfigureAwait(false);
         if (!await IsWithdrawnAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false))
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -42,27 +42,89 @@ public sealed partial class AssessmentProviderRepository
         // OLDEST pending attempt (then id), not by id: a pass defers what it leaves pending (DeferPendingWithdrawalsAsync),
         // so an organization whose attempts keep failing moves behind the others and the bound can never starve the
         // organizations after it (Codex release round 3 [P2]).
-        return await _db.Attempts.AsNoTracking()
-            .Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending)
-            .GroupBy(a => a.OrganizationId)
-            .Select(g => new { OrganizationId = g.Key, Oldest = g.Min(a => a.UpdatedAt) })
-            .OrderBy(g => g.Oldest).ThenBy(g => g.OrganizationId)
-            .Select(g => g.OrganizationId)
-            .Take(max)
+        // Attempts another pass holds under a live lease are skipped (by the database clock), so a sweep does not visit an
+        // organization whose pending work is already being done elsewhere.
+        return await _db.Database.SqlQuery<Guid>(
+                $"""
+                 SELECT organization_id AS "Value"
+                   FROM assessment_provider_attempts
+                  WHERE withdrawal_state = 'pending'
+                    AND (withdrawal_lease_until IS NULL OR withdrawal_lease_until < clock_timestamp())
+                  GROUP BY organization_id
+                  ORDER BY min(updated_at), organization_id
+                  LIMIT {max}
+                 """)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(
-        Guid organizationId, int max, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<AttemptRow>> ClaimPendingWithdrawalsAsync(
+        Guid organizationId, Guid owner, int max, CancellationToken cancellationToken)
     {
+        var lease = ProviderWithdrawalLeasing.LeaseDuration.TotalSeconds;
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
-        var rows = await _db.Attempts.AsNoTracking()
-            .Where(a => a.OrganizationId == organizationId && a.WithdrawalState == ProviderWithdrawalStates.Pending)
-            .OrderBy(a => a.UpdatedAt).ThenBy(a => a.Id)
-            .Take(max)
+        // ONE statement, like the poller's claim: the subquery locks what it picks (SKIP LOCKED: never waits on a row
+        // another pass is claiming), and a row another pass claimed and committed meanwhile is re-checked against its new
+        // version, whose live lease excludes it. Oldest first (updated_at, id): a pass defers what it leaves pending.
+        var claimed = await _db.Database.SqlQuery<Guid>(
+                $"""
+                 UPDATE assessment_provider_attempts a
+                    SET withdrawal_lease_owner = {owner},
+                        withdrawal_lease_until = clock_timestamp() + make_interval(secs => {lease})
+                  WHERE a.organization_id = {organizationId}
+                    AND a.id IN (
+                        SELECT p.id FROM assessment_provider_attempts p
+                         WHERE p.organization_id = {organizationId} AND p.withdrawal_state = 'pending'
+                           AND (p.withdrawal_lease_until IS NULL OR p.withdrawal_lease_until < clock_timestamp())
+                         ORDER BY p.updated_at, p.id
+                         LIMIT {max}
+                         FOR UPDATE SKIP LOCKED)
+                 RETURNING a.id AS "Value"
+                 """)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var rows = claimed.Count == 0
+            ? []
+            : await _db.Attempts.AsNoTracking()
+                .Where(a => a.OrganizationId == organizationId && claimed.Contains(a.Id))
+                .OrderBy(a => a.UpdatedAt).ThenBy(a => a.Id)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return rows.Select(a => ToRow(a, isNew: false)).ToList();
+    }
+
+    public async Task ReleaseWithdrawalLeasesAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, Guid owner, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(attemptIds);
+        if (attemptIds.Count == 0)
+        {
+            return;
+        }
+
+        var ids = attemptIds.ToArray();
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts
+                SET withdrawal_lease_owner = NULL, withdrawal_lease_until = NULL
+              WHERE organization_id = {organizationId} AND id = ANY({ids}) AND withdrawal_lease_owner = {owner}
+             """, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // Refused (0 rows) once the attempt is in a withdrawal, under an erasure request, or no longer pending. Against the
+        // withdrawal's staging UPDATE of the same row, row locking decides the order: the loser re-evaluates its WHERE on
+        // the winner's row version, so either the staging sees the announcement or the announcement sees the staging.
+        var begun = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts SET create_started_at = clock_timestamp()
+              WHERE organization_id = {organizationId} AND id = {attemptId} AND state = 'pending_create'
+                AND withdrawal_state IS NULL AND provider_erasure_requested_at IS NULL
+             """, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return begun > 0;
     }
 
     public async Task<IReadOnlyList<WithdrawalFence>> ReadWithdrawalFencesAsync(
@@ -77,19 +139,23 @@ public sealed partial class AssessmentProviderRepository
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         var ids = attemptIds.ToArray();
         var staleSeconds = ProviderCleanup.ConsentCaptureStaleAfter.TotalSeconds;
-        // Staleness by the DATABASE clock (the same clock that stamped consent_capture_started_at), at this read.
+        var createStaleSeconds = ProviderCreateFence.StaleAfter.TotalSeconds;
+        // Staleness by the DATABASE clock (the same clock that stamped both fences), at this read.
         var rows = await _db.Database.SqlQuery<FenceRow>(
                 $"""
                  SELECT id AS "AttemptId", consent_capture_generation AS "Generation",
                         consent_captures_in_flight > 0 AS "InFlight",
                         (consent_captures_in_flight > 0
-                         AND consent_capture_started_at < clock_timestamp() - make_interval(secs => {staleSeconds})) AS "Stale"
+                         AND consent_capture_started_at < clock_timestamp() - make_interval(secs => {staleSeconds})) AS "Stale",
+                        create_started_at IS NOT NULL AS "CreateInFlight",
+                        (create_started_at IS NOT NULL
+                         AND create_started_at < clock_timestamp() - make_interval(secs => {createStaleSeconds})) AS "CreateStale"
                    FROM assessment_provider_attempts
                   WHERE organization_id = {organizationId} AND id = ANY({ids})
                  """)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return rows.Select(r => new WithdrawalFence(r.AttemptId, r.Generation, r.InFlight, r.Stale)).ToList();
+        return rows.Select(r => new WithdrawalFence(r.AttemptId, r.Generation, r.InFlight, r.Stale, r.CreateInFlight, r.CreateStale)).ToList();
     }
 
     public async Task DeferPendingWithdrawalsAsync(
@@ -126,20 +192,24 @@ public sealed partial class AssessmentProviderRepository
         var ids = fences.Select(f => f.AttemptId).ToArray();
         var generations = fences.Select(f => f.CaptureGeneration).ToArray();
         var stale = fences.Select(f => f.CaptureStale).ToArray();
+        var createStale = fences.Select(f => f.CreateStale).ToArray();
         var timestamp = now.UtcDateTime;
         // Conditional at the database: an orphan recorded meanwhile (marker set) keeps the attempt pending, and so does a
         // consent capture that began or ended after the fence was read (generation changed) or is still in flight and was
-        // not stale at that read (same generation means in-flight count and start are unchanged since the read).
+        // not stale at that read (same generation means in-flight count and start are unchanged since the read), and so
+        // does a create still announced that was not stale at that read (no create can be announced after staging).
         var moved = await _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
              UPDATE assessment_provider_attempts a
                 SET withdrawal_state = 'done', updated_at = {timestamp}
-               FROM unnest({ids}::uuid[], {generations}::integer[], {stale}::boolean[]) AS f(id, generation, stale)
+               FROM unnest({ids}::uuid[], {generations}::integer[], {stale}::boolean[], {createStale}::boolean[])
+                    AS f(id, generation, stale, create_stale)
               WHERE a.organization_id = {organizationId} AND a.id = f.id
                 AND a.withdrawal_state = 'pending'
                 AND a.last_error_code IS DISTINCT FROM 'provider_cancel_pending'
                 AND a.consent_capture_generation = f.generation
                 AND (a.consent_captures_in_flight = 0 OR f.stale)
+                AND (a.create_started_at IS NULL OR f.create_stale)
              """, cancellationToken).ConfigureAwait(false);
         if (moved > 0)
         {
@@ -214,6 +284,10 @@ public sealed partial class AssessmentProviderRepository
         public bool InFlight { get; init; }
 
         public bool Stale { get; init; }
+
+        public bool CreateInFlight { get; init; }
+
+        public bool CreateStale { get; init; }
     }
 
     public async Task<ProviderSubjectExport?> ExportCandidateAsync(
@@ -278,7 +352,22 @@ public sealed partial class AssessmentProviderRepository
             var hasAttempts = await _db.Attempts.AsNoTracking()
                 .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId, cancellationToken)
                 .ConfigureAwait(false);
-            result = new ProviderCandidateSubjects(subjects, hasAttempts);
+            // A stored erasure is terminal: an attempt erased, or under an accepted erasure request, needs no subject
+            // resolution (the provider forgot its external_ref, so resolving would create a fresh, empty subject).
+            var needsResolution = await _db.Attempts.AsNoTracking()
+                .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId
+                    && a.State != ProviderAttemptStates.Erased && a.ProviderErasureRequestedAt == null, cancellationToken)
+                .ConfigureAwait(false);
+            var erased = new List<Guid>();
+            foreach (var subject in subjects)
+            {
+                if (await IsSubjectErasedAsync(organizationId, subject, cancellationToken).ConfigureAwait(false))
+                {
+                    erased.Add(subject);
+                }
+            }
+
+            result = new ProviderCandidateSubjects(subjects, hasAttempts, erased, needsResolution);
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);

@@ -619,6 +619,9 @@ try
         // D17: the polling fallback. Webhooks stay the primary signal; stale attempts are re-read every 5 minutes under
         // a per-attempt lease, so two instances never poll the same attempt.
         builder.Services.AddHostedService<ProviderAttemptPollHostedService>();
+        // Contract step 6: the webhook route only verifies and commits the inbox row (2xx fast); this worker applies
+        // the events under per-row leases, with backoff retries, woken by the route.
+        builder.Services.AddHostedService<ProviderInboxWorkerHostedService>();
     }
     else
     {

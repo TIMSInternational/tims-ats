@@ -122,6 +122,12 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                     "(poll_lease_owner IS NULL) = (poll_lease_until IS NULL)");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_age_band",
                     $"age_band IS NULL OR age_band IN ({InList(ProviderAgeBands.All)})");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_withdrawal_lease",
+                    "(withdrawal_lease_owner IS NULL) = (withdrawal_lease_until IS NULL)");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_optional_consents",
+                    $"granted_optional_consents <@ {TextArray(ConsentPurposes.All)} "
+                    + $"AND declined_optional_consents <@ {TextArray(ConsentPurposes.All)} "
+                    + "AND NOT (granted_optional_consents && declined_optional_consents)");
                 // Past pending_create every attempt must carry the provider's ids (a cancelled one may never have had them).
                 t.HasCheckConstraint("ck_assessment_provider_attempts_external_ids",
                     "state IN ('pending_create', 'cancelled') OR (provider_assignment_id IS NOT NULL AND provider_subject_id IS NOT NULL)");
@@ -161,6 +167,13 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(a => a.PollLeaseUntil).HasColumnName("poll_lease_until");
             entity.Property(a => a.LastPolledAt).HasColumnName("last_polled_at");
             entity.Property(a => a.AgeBand).HasColumnName("age_band");
+            entity.Property(a => a.CreateStartedAt).HasColumnName("create_started_at");
+            entity.Property(a => a.WithdrawalLeaseOwner).HasColumnName("withdrawal_lease_owner");
+            entity.Property(a => a.WithdrawalLeaseUntil).HasColumnName("withdrawal_lease_until");
+            entity.Property(a => a.GrantedOptionalConsents).HasColumnName("granted_optional_consents")
+                .HasDefaultValueSql("'{}'::text[]");
+            entity.Property(a => a.DeclinedOptionalConsents).HasColumnName("declined_optional_consents")
+                .HasDefaultValueSql("'{}'::text[]");
             entity.Property(a => a.AssignedById).HasColumnName("assigned_by_id");
             entity.Property(a => a.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(a => a.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
@@ -263,6 +276,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                 t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_attempts", "processing_attempts >= 0");
                 t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_error_code",
                     "last_error_code IS NULL OR char_length(last_error_code) <= 64");
+                t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_lease",
+                    "(lease_owner IS NULL) = (lease_until IS NULL)");
             });
             entity.HasKey(i => i.Id);
             entity.Property(i => i.Id).HasColumnName("id").ValueGeneratedNever();
@@ -279,6 +294,13 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(i => i.Data).HasColumnName("data").HasColumnType("jsonb");
             entity.Property(i => i.ReceivedAt).HasColumnName("received_at").HasDefaultValueSql("now()");
             entity.Property(i => i.ProcessedAt).HasColumnName("processed_at");
+            entity.Property(i => i.NextAttemptAt).HasColumnName("next_attempt_at");
+            entity.Property(i => i.LeaseOwner).HasColumnName("lease_owner");
+            entity.Property(i => i.LeaseUntil).HasColumnName("lease_until");
+            // The inbox worker's queue: rows still to (re)process, by due time.
+            entity.HasIndex(i => new { i.OrganizationId, i.NextAttemptAt })
+                .HasFilter("next_attempt_at IS NOT NULL")
+                .HasDatabaseName("ix_assessment_provider_webhook_inbox_due");
             entity.HasIndex(i => new { i.OrganizationId, i.EventId }).IsUnique()
                 .HasDatabaseName("ux_assessment_provider_webhook_inbox_event");
         });

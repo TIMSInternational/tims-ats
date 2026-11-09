@@ -82,7 +82,8 @@ public static class ProviderPortalEndpoints
                     attemptId, email!, requested, timeProvider.GetUtcNow(), cancellationToken);
                 return templates.Outcome switch
                 {
-                    PortalOutcome.Ok => Results.Ok(new PortalConsentTemplatesResponse(templates.Templates)),
+                    PortalOutcome.Ok => Results.Ok(new PortalConsentTemplatesResponse(
+                        templates.Templates, templates.OptionalPurposes ?? [])),
                     PortalOutcome.NotFound => Results.NotFound(),
                     PortalOutcome.ProviderUnconfigured => Results.Json(
                         new { error = "provider_unconfigured" }, statusCode: StatusCodes.Status503ServiceUnavailable),
@@ -102,13 +103,19 @@ public static class ProviderPortalEndpoints
 public sealed record PortalAttemptsResponse(IReadOnlyList<PortalAttemptView> Attempts);
 
 /// <summary>One attempt in the candidate portal. <c>Status</c> is one of <see cref="ProviderPortalStatuses"/>.</summary>
+/// <param name="OptionalConsents">
+/// OPTIONAL purposes the candidate has not decided on yet (English speaking: voice, ai_scoring); empty unless the status is
+/// consent_needed.
+/// </param>
 public sealed record PortalAttemptView(
     Guid AttemptId, string Instrument, string Status, IReadOnlyList<string> MissingConsents, DateTimeOffset? ExpiresAt,
-    string Delivery, Guid VacancyId)
+    string Delivery, Guid VacancyId, IReadOnlyList<string> OptionalConsents)
 {
     public static PortalAttemptView From(PortalAttempt attempt) =>
         new(attempt.AttemptId, attempt.Instrument, attempt.Status, attempt.MissingConsents, attempt.ExpiresAt, attempt.Delivery,
-            attempt.VacancyId);
+            attempt.VacancyId, attempt.OptionalConsents ?? []);
 }
 
-public sealed record PortalConsentTemplatesResponse(IReadOnlyList<ProviderConsentTemplate> Templates);
+/// <param name="OptionalPurposes">The purposes among the templates the candidate may decline (separate, unticked).</param>
+public sealed record PortalConsentTemplatesResponse(
+    IReadOnlyList<ProviderConsentTemplate> Templates, IReadOnlyList<string> OptionalPurposes);

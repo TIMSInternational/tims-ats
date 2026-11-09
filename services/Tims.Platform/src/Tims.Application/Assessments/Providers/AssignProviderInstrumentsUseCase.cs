@@ -290,6 +290,17 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             attempt.Id.ToString(),
             attempt.AgeBand!,
             attempt.InstrumentVersion);
+
+        // The create fence, committed BEFORE the create leaves: a #312 withdrawal pass that looks this attempt up by
+        // external_ref and finds nothing keeps it pending while this create may still land, so an assignment created
+        // after the lookup (and never recorded, if this process dies) can never escape the cascade. Refused once the
+        // attempt is in a withdrawal or no longer pending: nothing is sent then.
+        if (!await _repository.BeginCreateAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false))
+        {
+            return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, ProviderAttemptStates.Cancelled, null, [],
+                null, AttemptCancelledCode, attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
+        }
+
         var created = await _provider.CreateAssignmentAsync(request, IdempotencyKeys.Assignment(attempt.Id), cancellationToken)
             .ConfigureAwait(false);
         if (!created.Ok)

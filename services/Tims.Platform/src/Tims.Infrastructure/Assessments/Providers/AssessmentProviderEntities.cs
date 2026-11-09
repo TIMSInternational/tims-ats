@@ -110,6 +110,23 @@ public sealed class ProviderAttemptEntity
     /// <summary>The age band HR attested at assignment (<c>18_plus</c> or <c>16_17</c>), sent as <c>age_attestation</c>.</summary>
     public string? AgeBand { get; set; }
 
+    /// <summary>
+    /// The create fence: when a create of this attempt was announced (database clock), BEFORE it was sent; null once its
+    /// answer is recorded. A #312 withdrawal pass keeps the attempt pending while it is set and not stale.
+    /// </summary>
+    public DateTime? CreateStartedAt { get; set; }
+
+    /// <summary>The #312 cascade's lease: the pass that claimed this attempt, and until when (database clock).</summary>
+    public Guid? WithdrawalLeaseOwner { get; set; }
+
+    public DateTime? WithdrawalLeaseUntil { get; set; }
+
+    /// <summary>OPTIONAL consent purposes the candidate granted (recorded at the provider) for this attempt.</summary>
+    public string[] GrantedOptionalConsents { get; set; } = [];
+
+    /// <summary>OPTIONAL consent purposes the candidate declined for this attempt (English: no speaking section).</summary>
+    public string[] DeclinedOptionalConsents { get; set; } = [];
+
     public Guid AssignedById { get; set; }
 
     public DateTime CreatedAt { get; set; }
@@ -207,6 +224,14 @@ public sealed class ProviderWebhookInboxEntity
     public DateTime ReceivedAt { get; set; }
 
     public DateTime? ProcessedAt { get; set; }
+
+    /// <summary>When the inbox worker should (re)process this row; null once it is final (processed, ignored, given up).</summary>
+    public DateTime? NextAttemptAt { get; set; }
+
+    /// <summary>The inbox worker's lease: the worker that claimed this row, and until when (database clock).</summary>
+    public Guid? LeaseOwner { get; set; }
+
+    public DateTime? LeaseUntil { get; set; }
 }
 
 // Prisma-OWNED rows mapped read-only (ExcludeFromMigrations).

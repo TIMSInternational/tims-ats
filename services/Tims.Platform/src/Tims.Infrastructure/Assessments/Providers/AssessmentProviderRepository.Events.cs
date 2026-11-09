@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Tims.Application.Assessments.Providers;
 using Tims.Domain.Assessments.Providers;
 using Tims.Infrastructure.Audit;
+using Tims.Infrastructure.CandidateConsent;
 
 namespace Tims.Infrastructure.Assessments.Providers;
 
@@ -32,14 +33,16 @@ public sealed partial class AssessmentProviderRepository
         var occurredAt = envelope.OccurredAt.UtcDateTime;
         var receivedAt = now.UtcDateTime;
         var data = envelope.DataJson;
-        // ON CONFLICT DO NOTHING (not catch-23505): a unique violation would abort the whole transaction.
+        // ON CONFLICT DO NOTHING (not catch-23505): a unique violation would abort the whole transaction. The row is due at
+        // once (database clock): committing it is all the request does before its 2xx; the inbox worker applies it.
         var inserted = await _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
              INSERT INTO assessment_provider_webhook_inbox
                  (id, organization_id, event_id, event_type, event_version, provider_tenant_id, occurred_at,
-                  delivery_attempt, status, processing_attempts, data, received_at)
+                  delivery_attempt, status, processing_attempts, data, received_at, next_attempt_at)
              VALUES ({id}, {organizationId}, {envelope.EventId}, {envelope.EventType}, 1, {envelope.ProviderTenantId},
-                     {occurredAt}, CAST({deliveryAttempt} AS integer), 'received', 0, CAST({data} AS jsonb), {receivedAt})
+                     {occurredAt}, CAST({deliveryAttempt} AS integer), 'received', 0, CAST({data} AS jsonb), {receivedAt},
+                     clock_timestamp())
              ON CONFLICT (organization_id, event_id) DO NOTHING
              """, cancellationToken).ConfigureAwait(false);
         if (inserted == 1)
@@ -48,32 +51,112 @@ public sealed partial class AssessmentProviderRepository
             return InboxOutcome.New;
         }
 
-        var status = await _db.Inbox.AsNoTracking()
-            .Where(i => i.OrganizationId == organizationId && i.EventId == envelope.EventId)
-            .Select(i => i.Status)
-            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        // A redelivery of an event that is not final yet makes it due now (the sender retried, so its cause may be
+        // gone). A final one (processed, ignored) is acknowledged as a duplicate; a failed one given up on is re-armed.
+        var rearmed = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_webhook_inbox
+                SET next_attempt_at = LEAST(COALESCE(next_attempt_at, clock_timestamp()), clock_timestamp())
+              WHERE organization_id = {organizationId} AND event_id = {envelope.EventId}
+                AND status NOT IN ('processed', 'ignored')
+             """, cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return status is InboxStatuses.Processed or InboxStatuses.Ignored ? InboxOutcome.Done : InboxOutcome.Retry;
+        return rearmed > 0 ? InboxOutcome.Retry : InboxOutcome.Done;
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListOrganizationsWithDueInboxEventsAsync(int max, CancellationToken cancellationToken)
+    {
+        // PRE-TENANT on the privileged connection, like the poller's listing: only org ids leave; each is then claimed
+        // under its own tenant scope. Served by ix_assessment_provider_webhook_inbox_due.
+        return await _db.Database.SqlQuery<Guid>(
+                $"""
+                 SELECT organization_id AS "Value"
+                   FROM assessment_provider_webhook_inbox
+                  WHERE next_attempt_at IS NOT NULL AND next_attempt_at <= clock_timestamp()
+                    AND (lease_until IS NULL OR lease_until < clock_timestamp())
+                  GROUP BY organization_id
+                  ORDER BY min(next_attempt_at), organization_id
+                  LIMIT {max}
+                 """)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ClaimedInboxEvent?> ClaimInboxEventAsync(Guid organizationId, Guid owner, CancellationToken cancellationToken)
+    {
+        var lease = ProviderInboxProcessing.LeaseDuration.TotalSeconds;
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // ONE statement: the subquery locks the row it picks (SKIP LOCKED: a row another worker is claiming right now is
+        // skipped, never waited for), and a row another worker claimed and committed meanwhile is re-checked against its
+        // new version, whose live lease excludes it. So no event is ever leased to two workers at once.
+        var claimed = await _db.Database.SqlQuery<InboxClaimRow>(
+                $"""
+                 UPDATE assessment_provider_webhook_inbox i
+                    SET lease_owner = {owner}, lease_until = clock_timestamp() + make_interval(secs => {lease})
+                  WHERE i.organization_id = {organizationId}
+                    AND i.id = (
+                        SELECT q.id FROM assessment_provider_webhook_inbox q
+                         WHERE q.organization_id = {organizationId}
+                           AND q.next_attempt_at IS NOT NULL AND q.next_attempt_at <= clock_timestamp()
+                           AND (q.lease_until IS NULL OR q.lease_until < clock_timestamp())
+                         ORDER BY q.next_attempt_at, q.occurred_at, q.id
+                         LIMIT 1
+                         FOR UPDATE SKIP LOCKED)
+                 RETURNING i.event_id AS "EventId", i.event_type AS "EventType", i.occurred_at AS "OccurredAt",
+                           i.provider_tenant_id AS "ProviderTenantId", i.data::text AS "Data",
+                           i.processing_attempts AS "ProcessingAttempts", i.received_at AS "ReceivedAt"
+                 """)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        if (claimed.Count == 0)
+        {
+            return null;
+        }
+
+        var row = claimed[0];
+        return new ClaimedInboxEvent(
+            new ProviderEventEnvelope(row.EventId, row.EventType, AsUtc(row.OccurredAt), row.ProviderTenantId, row.Data),
+            row.ProcessingAttempts, AsUtc(row.ReceivedAt));
     }
 
     public async Task CompleteInboxAsync(
-        Guid organizationId, Guid eventId, string status, string? errorCode, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        Guid organizationId, Guid eventId, Guid owner, string status, string? errorCode, DateTimeOffset? retryAt,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(status);
+        var code = errorCode is null ? null : errorCode.Length <= 64 ? errorCode : errorCode[..64];
+        var processedAt = status is InboxStatuses.Processed or InboxStatuses.Ignored ? (DateTime?)now.UtcDateTime : null;
+        var next = retryAt?.UtcDateTime;
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
-        var row = await _db.Inbox
-            .FirstOrDefaultAsync(i => i.OrganizationId == organizationId && i.EventId == eventId, cancellationToken)
-            .ConfigureAwait(false);
-        if (row is not null)
-        {
-            row.Status = status;
-            row.LastErrorCode = errorCode is null ? null : errorCode.Length <= 64 ? errorCode : errorCode[..64];
-            row.ProcessingAttempts += 1;
-            row.ProcessedAt = status is InboxStatuses.Processed or InboxStatuses.Ignored ? now.UtcDateTime : null;
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        }
-
+        // Conditional on the owner: a worker whose lease expired (and whose row another worker claimed) records nothing.
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_webhook_inbox
+                SET status = {status}, last_error_code = {code}, processing_attempts = processing_attempts + 1,
+                    processed_at = CAST({processedAt} AS timestamptz), next_attempt_at = CAST({next} AS timestamptz),
+                    lease_owner = NULL, lease_until = NULL
+              WHERE organization_id = {organizationId} AND event_id = {eventId} AND lease_owner = {owner}
+             """, cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static DateTimeOffset AsUtc(DateTime value) =>
+        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+    private sealed class InboxClaimRow
+    {
+        public Guid EventId { get; init; }
+
+        public string EventType { get; init; } = string.Empty;
+
+        public DateTime OccurredAt { get; init; }
+
+        public Guid ProviderTenantId { get; init; }
+
+        public string Data { get; init; } = "{}";
+
+        public int ProcessingAttempts { get; init; }
+
+        public DateTime ReceivedAt { get; init; }
     }
 
     public async Task<AttemptRow?> FindAttemptByProviderAssignmentAsync(
@@ -145,9 +228,8 @@ public sealed partial class AssessmentProviderRepository
         // The per-candidate lock a #312 withdrawal holds while it stages this attempt (D15): once it is ours, a
         // withdrawal either committed before (and is seen below) or waits until this write commits. Lock order
         // subject -> attempt -> candidate, as everywhere a write takes more than one.
-        var candidateKey = attempt.CandidateId.ToString();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({candidateKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(
+            _db.Database, organizationId, attempt.CandidateId, cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
 
         // Checked under the locks erasure and withdrawal also take, on a fresh read, BEFORE anything is inserted: a

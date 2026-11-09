@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Tims.Application.Assessments.Providers;
 using Tims.Domain.Assessments.Providers;
 using Tims.Infrastructure.Audit;
+using Tims.Infrastructure.CandidateConsent;
 
 namespace Tims.Infrastructure.Assessments.Providers;
 
@@ -83,9 +84,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         _db.ChangeTracker.Clear();
 
         // The lock CandidateConsentRepository.WithdrawOneAsync and the FIT upsert take for this candidate.
-        var lockKey = candidateId.ToString();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidateId, cancellationToken)
+            .ConfigureAwait(false);
         if (await IsWithdrawnAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false))
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -201,6 +201,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.MissingConsents = [.. assignment.MissingConsents.Where(ConsentPurposes.IsKnown).Distinct()];
             attempt.ExpiresAt = assignment.ExpiresAt.UtcDateTime;
             attempt.LastErrorCode = null;
+            attempt.CreateStartedAt = null;
             attempt.UpdatedAt = now.UtcDateTime;
             AddAudit(organizationId, null,
                 erased ? "assessment_provider_attempt_erased_on_create" : "assessment_provider_attempt_created", attempt.Id,
@@ -223,6 +224,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.ProviderSubjectId = assignment.SubjectId;
             attempt.ProviderAssignmentId = assignment.AssignmentId;
             attempt.LastErrorCode = ProviderCleanup.CancelPending;
+            attempt.CreateStartedAt = null;
             if (attempt.WithdrawalState == ProviderWithdrawalStates.Done)
             {
                 // A withdrawal already confirmed for this attempt: the new orphan re-opens its cascade (D15).
@@ -296,6 +298,15 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                     ["to"] = attempt.State,
                 });
 
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (attempt is not null && cancel && attempt.CreateStartedAt is not null)
+        {
+            // A definitive refusal proves the provider created nothing: the create fence is lifted at once, also on an
+            // attempt a withdrawal or a staff cancel already moved on, instead of waiting until it is stale. Any other
+            // failure (a timeout, an outage) leaves it: the provider may still create the assignment.
+            attempt.CreateStartedAt = null;
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -426,9 +437,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             return new LockedLaunch(LockedLaunchOutcome.NotFound, null, null);
         }
 
-        var candidateKey = attempt.CandidateId.ToString();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({candidateKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(
+            _db.Database, organizationId, attempt.CandidateId, cancellationToken).ConfigureAwait(false);
         await _db.Entry(attempt).ReloadAsync(cancellationToken).ConfigureAwait(false);
         if (attempt.ProviderErasureRequestedAt is not null)
         {
@@ -584,7 +594,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         new(a.Id, a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument, a.State, a.JobRelatednessReason, a.Locale,
             a.TimeMultiplier, a.Aids, ToOffset(a.RequestedExpiresAt), a.ProviderSubjectId, a.ProviderAssignmentId,
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
-            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand, a.LatestResultId);
+            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand, a.LatestResultId,
+            a.GrantedOptionalConsents, a.DeclinedOptionalConsents);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

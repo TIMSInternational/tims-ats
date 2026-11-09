@@ -96,7 +96,8 @@ public sealed record StaffProviderResult(
 /// <summary>
 /// One attempt as staff see it: the status chip (<see cref="ProviderStaffStatuses"/>), how the vacancy counts the
 /// instrument (<see cref="ProviderCountsIn"/>, D3/D20), and the result. The accommodation (multiplier and aids) is for
-/// company-scope readers only.
+/// company-scope readers only. <c>SpeakingNotAssessed</c> (English only): <c>no_voice_consent</c> or
+/// <c>no_ai_scoring_consent</c> when the candidate declined an optional purpose the speaking section needs.
 /// </summary>
 public sealed record StaffProviderAttempt(
     Guid AttemptId,
@@ -112,7 +113,8 @@ public sealed record StaffProviderAttempt(
     decimal? TimeMultiplier,
     IReadOnlyList<string>? Aids,
     string CountsIn,
-    StaffProviderResult? Result);
+    StaffProviderResult? Result,
+    string? SpeakingNotAssessed = null);
 
 public sealed record StaffCandidateAttemptList(bool ConsentWithdrawn, IReadOnlyList<StaffProviderAttempt> Attempts);
 
@@ -267,7 +269,10 @@ public sealed class ProviderStaffReadUseCase(
             hidesLevels ? null : a.TimeMultiplier,
             hidesLevels ? null : a.Aids,
             ProviderCountsIn.For(a.Instrument, requirement),
-            view);
+            view,
+            // The candidate declined an optional English purpose: the provider does not administer speaking, and HR is
+            // told why instead of reading a gap in the result as a provider fault.
+            OptionalConsents.SpeakingNotAssessedReason(a.Instrument, a.DeclinedOptionalConsents ?? []));
     }
 
     private static IReadOnlyList<AssessmentRequirement> ParseRequirements(string? json, bool liaScoredAllowed)

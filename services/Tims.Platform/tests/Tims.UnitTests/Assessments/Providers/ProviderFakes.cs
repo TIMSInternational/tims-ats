@@ -416,6 +416,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Guid organizationId, Guid attemptId, ProviderAssignment assignment, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add("created");
+        CreatesInFlight.Remove(attemptId);
         Replace(attemptId, a => a.State == ProviderAttemptStates.PendingCreate
             ? a with
             {
@@ -448,6 +449,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Guid organizationId, Guid attemptId, string errorCode, bool cancel, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add(cancel ? "cancelled:" + errorCode : "pending:" + errorCode);
+        if (cancel)
+        {
+            CreatesInFlight.Remove(attemptId);
+        }
+
         Replace(attemptId, a => a.State != ProviderAttemptStates.PendingCreate ? a : a with
         {
             State = cancel ? ProviderAttemptStates.Cancelled : a.State,
@@ -579,22 +585,66 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     public Task<Guid?> FindOrganizationByProviderTenantAsync(Guid providerTenantId, CancellationToken cancellationToken) =>
         Task.FromResult(OrganizationForTenant);
 
+    /// <summary>The inbox as a queue: per event, the envelope, attempts made, received time, due time and lease owner.</summary>
+    public Dictionary<Guid, InboxRow> InboxRows { get; } = [];
+
+    public sealed record InboxRow(
+        Guid OrganizationId, ProviderEventEnvelope Envelope, int Attempts, DateTimeOffset ReceivedAt, DateTimeOffset? NextAt,
+        Guid? LeaseOwner, string? Code = null);
+
     public Task<InboxOutcome> RecordInboxAsync(
         Guid organizationId, ProviderEventEnvelope envelope, int? deliveryAttempt, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (!Inbox.TryGetValue(envelope.EventId, out var status))
         {
             Inbox[envelope.EventId] = InboxStatuses.Received;
+            InboxRows[envelope.EventId] = new InboxRow(organizationId, envelope, 0, now, DbNow, null);
             return Task.FromResult(InboxOutcome.New);
         }
 
-        return Task.FromResult(status is InboxStatuses.Processed or InboxStatuses.Ignored ? InboxOutcome.Done : InboxOutcome.Retry);
+        if (status is InboxStatuses.Processed or InboxStatuses.Ignored)
+        {
+            return Task.FromResult(InboxOutcome.Done);
+        }
+
+        if (InboxRows.TryGetValue(envelope.EventId, out var row))
+        {
+            InboxRows[envelope.EventId] = row with { NextAt = row.NextAt is { } next && next < DbNow ? next : DbNow };
+        }
+
+        return Task.FromResult(InboxOutcome.Retry);
+    }
+
+    public Task<IReadOnlyList<Guid>> ListOrganizationsWithDueInboxEventsAsync(int max, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>>(InboxRows.Values
+            .Where(r => r.NextAt is { } next && next <= DbNow && r.LeaseOwner is null)
+            .Select(r => r.OrganizationId).Distinct().Take(max).ToList());
+
+    public Task<ClaimedInboxEvent?> ClaimInboxEventAsync(Guid organizationId, Guid owner, CancellationToken cancellationToken)
+    {
+        var due = InboxRows.Values
+            .Where(r => r.OrganizationId == organizationId && r.NextAt is { } next && next <= DbNow && r.LeaseOwner is null)
+            .OrderBy(r => r.NextAt).ThenBy(r => r.Envelope.OccurredAt)
+            .FirstOrDefault();
+        if (due is null)
+        {
+            return Task.FromResult<ClaimedInboxEvent?>(null);
+        }
+
+        InboxRows[due.Envelope.EventId] = due with { LeaseOwner = owner };
+        return Task.FromResult<ClaimedInboxEvent?>(new ClaimedInboxEvent(due.Envelope, due.Attempts, due.ReceivedAt));
     }
 
     public Task CompleteInboxAsync(
-        Guid organizationId, Guid eventId, string status, string? errorCode, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, Guid eventId, Guid owner, string status, string? errorCode, DateTimeOffset? retryAt,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
-        Inbox[eventId] = status;
+        if (InboxRows.TryGetValue(eventId, out var row) && row.LeaseOwner == owner)
+        {
+            InboxRows[eventId] = row with { Attempts = row.Attempts + 1, NextAt = retryAt, LeaseOwner = null, Code = errorCode };
+            Inbox[eventId] = status;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -607,6 +657,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     public Task<AttemptRow?> FindAttemptByProviderAssignmentAsync(
         Guid organizationId, Guid providerAssignmentId, CancellationToken cancellationToken)
     {
+        if (ThrowOnFindByAssignment)
+        {
+            throw new InvalidOperationException("database unavailable");
+        }
+
         if (MissNextLookupByAssignment)
         {
             MissNextLookupByAssignment = false;
@@ -659,6 +714,9 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     /// <summary>Candidates whose #312 consent is withdrawn (what StageConsentWithdrawalAsync's predicate sees).</summary>
     public HashSet<Guid> WithdrawnCandidates { get; } = [];
 
+    /// <summary>When set, the lookup by provider assignment throws (a database failure mid-processing).</summary>
+    public bool ThrowOnFindByAssignment { get; set; }
+
     // Mirrors ProviderWithdrawalSql: open attempts cancelled (mapped ones get the cleanup marker), all marked pending.
     public Task<int> StageConsentWithdrawalAsync(
         Guid organizationId, Guid candidateId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -701,10 +759,18 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     public Task<IReadOnlyList<Guid>> ListOrganizationsWithPendingWithdrawalsAsync(int max, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Guid>>(
             ExtraPendingOrganizations
-                .Concat(Attempts.Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending).Select(a => a.OrganizationId))
+                .Concat(Attempts.Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending && !WithdrawalLeases.ContainsKey(a.Id))
+                    .Select(a => a.OrganizationId))
                 .Distinct().Take(max).ToList());
 
-    public Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(Guid organizationId, int max, CancellationToken cancellationToken)
+    /// <summary>Live withdrawal leases: attempt → owner (they never expire in the fake).</summary>
+    public Dictionary<Guid, Guid> WithdrawalLeases { get; } = [];
+
+    /// <summary>Every lease owner a claim used, in order.</summary>
+    public List<Guid> WithdrawalClaimOwners { get; } = [];
+
+    public Task<IReadOnlyList<AttemptRow>> ClaimPendingWithdrawalsAsync(
+        Guid organizationId, Guid owner, int max, CancellationToken cancellationToken)
     {
         PendingListings++;
         if (organizationId == FailingOrganization)
@@ -712,9 +778,70 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             throw new InvalidOperationException("listing failed");
         }
 
-        return Task.FromResult<IReadOnlyList<AttemptRow>>(
-            Attempts.Where(a => a.OrganizationId == organizationId && a.WithdrawalState == ProviderWithdrawalStates.Pending)
-                .Take(max).ToList());
+        var claimed = Attempts
+            .Where(a => a.OrganizationId == organizationId && a.WithdrawalState == ProviderWithdrawalStates.Pending
+                && !WithdrawalLeases.ContainsKey(a.Id))
+            .Take(max).ToList();
+        foreach (var attempt in claimed)
+        {
+            WithdrawalLeases[attempt.Id] = owner;
+        }
+
+        WithdrawalClaimOwners.Add(owner);
+        return Task.FromResult<IReadOnlyList<AttemptRow>>(claimed);
+    }
+
+    public Task ReleaseWithdrawalLeasesAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, Guid owner, CancellationToken cancellationToken)
+    {
+        foreach (var id in attemptIds)
+        {
+            if (WithdrawalLeases.TryGetValue(id, out var holder) && holder == owner)
+            {
+                WithdrawalLeases.Remove(id);
+            }
+        }
+
+        Writes.Add("withdrawal_released:" + attemptIds.Count);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The create fence: attempt → when its create was announced (the fake's database clock).</summary>
+    public Dictionary<Guid, DateTimeOffset> CreatesInFlight { get; } = [];
+
+    /// <summary>Runs once, right after a create is announced (a withdrawal interleaving with the create).</summary>
+    public Action? AfterBeginCreate { get; set; }
+
+    public Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    {
+        if (Attempts.FirstOrDefault(a => a.Id == attemptId) is not
+            { State: ProviderAttemptStates.PendingCreate, WithdrawalState: null, ErasureRequestedAt: null })
+        {
+            Writes.Add("create_refused");
+            return Task.FromResult(false);
+        }
+
+        CreatesInFlight[attemptId] = DbNow;
+        Writes.Add("create_begun");
+        var hook = AfterBeginCreate;
+        AfterBeginCreate = null;
+        hook?.Invoke();
+        return Task.FromResult(true);
+    }
+
+    public List<(Guid AttemptId, IReadOnlyList<string> Granted, IReadOnlyList<string> Declined)> OptionalDecisions { get; } = [];
+
+    public Task RecordOptionalConsentDecisionsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> granted, IReadOnlyList<string> declined,
+        CancellationToken cancellationToken)
+    {
+        OptionalDecisions.Add((attemptId, granted, declined));
+        Replace(attemptId, a => a with
+        {
+            GrantedOptionalConsents = (a.GrantedOptionalConsents ?? []).Except(declined).Union(granted).ToList(),
+            DeclinedOptionalConsents = (a.DeclinedOptionalConsents ?? []).Except(granted).Union(declined).ToList(),
+        });
+        return Task.CompletedTask;
     }
 
     /// <summary>Consent-capture fence state per attempt (mirrors the three attempt columns).</summary>
@@ -737,8 +864,10 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             .Select(id =>
             {
                 var (generation, inFlight, startedAt) = CaptureOf(id);
+                var create = CreatesInFlight.TryGetValue(id, out var announced) ? announced : (DateTimeOffset?)null;
                 return new WithdrawalFence(id, generation, inFlight > 0,
-                    inFlight > 0 && startedAt < DbNow - ProviderCleanup.ConsentCaptureStaleAfter);
+                    inFlight > 0 && startedAt < DbNow - ProviderCleanup.ConsentCaptureStaleAfter,
+                    create is not null, create < DbNow - ProviderCreateFence.StaleAfter);
             })
             .ToList();
         var hook = AfterReadFences;
@@ -774,7 +903,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             if (Attempts.FirstOrDefault(a => a.Id == fence.AttemptId) is { WithdrawalState: ProviderWithdrawalStates.Pending } a
                 && a.LastErrorCode != ProviderCleanup.CancelPending
                 && capture.Generation == fence.CaptureGeneration
-                && (capture.InFlight == 0 || fence.CaptureStale))
+                && (capture.InFlight == 0 || fence.CaptureStale)
+                && (!CreatesInFlight.ContainsKey(fence.AttemptId) || fence.CreateStale))
             {
                 Replace(fence.AttemptId, x => x with { WithdrawalState = ProviderWithdrawalStates.Done });
                 moved++;
@@ -828,7 +958,13 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             : new ProviderCandidateSubjects(
                 Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)
                     .Select(a => a.ProviderSubjectId!.Value).Distinct().ToList(),
-                Attempts.Any(a => a.CandidateId == candidateId)));
+                Attempts.Any(a => a.CandidateId == candidateId),
+                ErasedSubjects.ToList(),
+                Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
+                    && a.ErasureRequestedAt is null)));
+
+    /// <summary>Subjects whose subject.erased the fake has "recorded" (the real repository reads the inbox tombstone).</summary>
+    public HashSet<Guid> ErasedSubjects { get; } = [];
 
     public Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,

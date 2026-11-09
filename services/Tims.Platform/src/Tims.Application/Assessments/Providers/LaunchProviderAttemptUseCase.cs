@@ -60,11 +60,18 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     /// <c>return_url</c> is sent, so the player ends on its own screen inside the frame instead of navigating the frame to
     /// the portal (which refuses to be framed). Top-level (the default): the player returns the candidate to the portal.
     /// </param>
+    /// <param name="declinedOptional">
+    /// The OPTIONAL purposes (<see cref="OptionalConsents"/>) the candidate was offered and declined. Recorded on the
+    /// attempt with the optional purposes granted in <paramref name="consents"/>, once every capture succeeded, so HR can
+    /// tell "speaking not assessed (no voice consent)" from a provider-side gap. Purposes the instrument does not offer
+    /// as optional are ignored.
+    /// </param>
     public async Task<LaunchResult> LaunchAsync(
         Guid attemptId, string verifiedEmail, IReadOnlyList<CapturedConsent> consents, DateTimeOffset now,
-        CancellationToken cancellationToken, bool embedded = false)
+        CancellationToken cancellationToken, bool embedded = false, IReadOnlyList<string>? declinedOptional = null)
     {
         ArgumentNullException.ThrowIfNull(consents);
+        declinedOptional ??= [];
         if (string.IsNullOrWhiteSpace(verifiedEmail))
         {
             return LaunchResult.Fail(LaunchOutcome.NotFound);
@@ -199,6 +206,15 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return captureFailure;
         }
 
+        var offered = OptionalConsents.For(attempt.Instrument);
+        var grantedOptional = captured.Where(offered.Contains).ToList();
+        var declinedNow = declinedOptional.Where(offered.Contains).ToList();
+        if (grantedOptional.Count > 0 || declinedNow.Count > 0)
+        {
+            await _repository.RecordOptionalConsentDecisionsAsync(
+                found.OrganizationId, attempt.Id, grantedOptional, declinedNow, cancellationToken).ConfigureAwait(false);
+        }
+
         if (captured.Count > 0 && attempt.MissingConsents is { Count: > 0 } before)
         {
             // What the portal shows as "consent needed": the purposes just recorded are no longer missing. The provider
@@ -287,18 +303,49 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents) =>
         TryParseBody(node, out consents, out _);
 
-    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded)
+    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded) =>
+        TryParseBody(node, out consents, out embedded, out _);
+
+    /// <param name="declined">
+    /// The OPTIONAL purposes the candidate saw and left unticked (<c>declinedConsents</c>): known purposes, unique, never
+    /// also among <paramref name="consents"/>. Which of them the instrument really offers is checked by the launch.
+    /// </param>
+    public static bool TryParseBody(
+        JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded, out IReadOnlyList<string> declined)
     {
         consents = [];
         embedded = false;
+        declined = [];
         if (node is null)
         {
             return true;
         }
 
-        if (node is not JsonObject body || body.Any(p => p.Key is not ("consents" or "embedded")))
+        if (node is not JsonObject body || body.Any(p => p.Key is not ("consents" or "embedded" or "declinedConsents")))
         {
             return false;
+        }
+
+        if (body["declinedConsents"] is { } declinedNode)
+        {
+            if (declinedNode is not JsonArray declinedArray || declinedArray.Count > MaxConsents)
+            {
+                return false;
+            }
+
+            var parsedDeclined = new List<string>();
+            foreach (var entry in declinedArray)
+            {
+                if (!TryString(entry, 16, out var purpose) || !ConsentPurposes.IsKnown(purpose)
+                    || parsedDeclined.Contains(purpose!))
+                {
+                    return false;
+                }
+
+                parsedDeclined.Add(purpose!);
+            }
+
+            declined = parsedDeclined;
         }
 
         if (body["embedded"] is { } flag)
@@ -334,6 +381,12 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             }
 
             parsed.Add(new CapturedConsent(purpose!, textVersion!, locale!));
+        }
+
+        var declinedPurposes = declined;
+        if (parsed.Any(c => declinedPurposes.Contains(c.Purpose)))
+        {
+            return false;
         }
 
         consents = parsed;

@@ -7,7 +7,9 @@ namespace Tims.Application.Assessments.Providers;
 /// sitting's status, never its review or validity state):
 /// <list type="bullet">
 /// <item><see cref="ConsentNeeded"/>: launchable, and the provider still lacks a consent purpose the candidate must give
-/// first (the portal shows the provider's consent templates, then launches with them);</item>
+/// first, or the instrument offers an OPTIONAL purpose the candidate has not decided on yet (English speaking: voice and
+/// ai_scoring). The portal shows the provider's consent templates, the optional ones unticked and separately, then
+/// launches with what was accepted and what was declined;</item>
 /// <item><see cref="Ready"/>: launchable, nothing missing;</item>
 /// <item><see cref="InProgress"/>: a sitting has started; relaunching resumes it, even past the start deadline;</item>
 /// <item><see cref="Completed"/>: finished at the provider, whatever its result's validity: a result flagged for review,
@@ -42,7 +44,9 @@ public static class ProviderPortalStatuses
             ProviderAttemptStates.Created or ProviderAttemptStates.Launched when attempt.ExpiresAt is { } expiresAt && expiresAt <= now
                 => Expired,
             ProviderAttemptStates.Created or ProviderAttemptStates.Launched
-                => attempt.MissingConsents is { Count: > 0 } ? ConsentNeeded : Ready,
+                => attempt.MissingConsents is { Count: > 0 } || attempt.PendingOptionalConsents.Count > 0
+                    ? ConsentNeeded
+                    : Ready,
             ProviderAttemptStates.InProgress => InProgress,
             ProviderAttemptStates.Completed or ProviderAttemptStates.ResultReady => Completed,
             ProviderAttemptStates.Voided or ProviderAttemptStates.Expired when attempt.LatestResultId is not null => Completed,
@@ -59,7 +63,7 @@ public static class ProviderPortalStatuses
 /// </summary>
 public sealed record PortalAttempt(
     Guid AttemptId, string Instrument, string Status, IReadOnlyList<string> MissingConsents, DateTimeOffset? ExpiresAt,
-    string Delivery, Guid VacancyId = default);
+    string Delivery, Guid VacancyId = default, IReadOnlyList<string>? OptionalConsents = null);
 
 public enum PortalOutcome
 {
@@ -71,7 +75,9 @@ public enum PortalOutcome
 
 public sealed record PortalList(PortalOutcome Outcome, IReadOnlyList<PortalAttempt> Attempts);
 
-public sealed record PortalConsentTemplates(PortalOutcome Outcome, IReadOnlyList<ProviderConsentTemplate> Templates);
+/// <param name="OptionalPurposes">The purposes among <paramref name="Templates"/> the candidate may decline.</param>
+public sealed record PortalConsentTemplates(
+    PortalOutcome Outcome, IReadOnlyList<ProviderConsentTemplate> Templates, IReadOnlyList<string>? OptionalPurposes = null);
 
 /// <summary>
 /// The candidate portal's reads over the provider connector (D16). The candidate is identified only by the CONFIRMED email
@@ -111,7 +117,8 @@ public sealed class ProviderPortalUseCase(IAssessmentProviderRepository reposito
                 x.Attempt.Id, x.Attempt.Instrument, x.Status!,
                 x.Status == ProviderPortalStatuses.ConsentNeeded ? x.Attempt.MissingConsents ?? [] : [],
                 x.Attempt.ExpiresAt, ProviderInstruments.IsLinkOut(x.Attempt.Instrument) ? "link_out" : "native",
-                x.Attempt.VacancyId))
+                x.Attempt.VacancyId,
+                x.Status == ProviderPortalStatuses.ConsentNeeded ? x.Attempt.PendingOptionalConsents : []))
             .ToList();
         return new PortalList(PortalOutcome.Ok, listed);
     }
@@ -145,8 +152,12 @@ public sealed class ProviderPortalUseCase(IAssessmentProviderRepository reposito
             return new PortalConsentTemplates(PortalOutcome.ProviderUnconfigured, []);
         }
 
+        // Required purposes first (the provider's missing_consents), then each OPTIONAL purpose the candidate has not
+        // decided on yet. An optional purpose the provider already reports missing is required for this version.
+        var required = context.Attempt.MissingConsents ?? [];
+        var optional = context.Attempt.PendingOptionalConsents.Where(p => !required.Contains(p)).ToList();
         var templates = new List<ProviderConsentTemplate>();
-        foreach (var purpose in context.Attempt.MissingConsents ?? [])
+        foreach (var purpose in required.Concat(optional))
         {
             var template = await _provider.GetConsentTemplateAsync(purpose, locale, cancellationToken).ConfigureAwait(false);
             if (!template.Ok && template.Failure!.Code == "locale_not_supported" && locale != context.Attempt.Locale)
@@ -163,6 +174,6 @@ public sealed class ProviderPortalUseCase(IAssessmentProviderRepository reposito
             templates.Add(template.Value!);
         }
 
-        return new PortalConsentTemplates(PortalOutcome.Ok, templates);
+        return new PortalConsentTemplates(PortalOutcome.Ok, templates, optional);
     }
 }

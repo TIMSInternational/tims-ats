@@ -107,15 +107,33 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("content_version");
 
+                    b.Property<DateTime?>("CreateStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("create_started_at");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
 
+                    b.PrimitiveCollection<string[]>("DeclinedOptionalConsents")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("declined_optional_consents")
+                        .HasDefaultValueSql("'{}'::text[]");
+
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
+
+                    b.PrimitiveCollection<string[]>("GrantedOptionalConsents")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("granted_optional_consents")
+                        .HasDefaultValueSql("'{}'::text[]");
 
                     b.Property<string>("Instrument")
                         .IsRequired()
@@ -222,6 +240,14 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("vacancy_id");
 
+                    b.Property<Guid?>("WithdrawalLeaseOwner")
+                        .HasColumnType("uuid")
+                        .HasColumnName("withdrawal_lease_owner");
+
+                    b.Property<DateTime?>("WithdrawalLeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("withdrawal_lease_until");
+
                     b.Property<string>("WithdrawalState")
                         .HasColumnType("text")
                         .HasColumnName("withdrawal_state");
@@ -276,6 +302,8 @@ namespace Tims.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_missing_consents", "missing_consents <@ ARRAY['assessment', 'biometric', 'voice', 'ai_scoring']::text[]");
 
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_optional_consents", "granted_optional_consents <@ ARRAY['assessment', 'biometric', 'voice', 'ai_scoring']::text[] AND declined_optional_consents <@ ARRAY['assessment', 'biometric', 'voice', 'ai_scoring']::text[] AND NOT (granted_optional_consents && declined_optional_consents)");
+
                             t.HasCheckConstraint("ck_assessment_provider_attempts_poll_lease", "(poll_lease_owner IS NULL) = (poll_lease_until IS NULL)");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_purpose", "purpose = 'selection'");
@@ -287,6 +315,8 @@ namespace Tims.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_assessment_provider_attempts_state", "state IN ('pending_create', 'created', 'launched', 'in_progress', 'completed', 'result_ready', 'voided', 'expired', 'cancelled', 'erased')");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_time_multiplier", "time_multiplier BETWEEN 1 AND 3");
+
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_withdrawal_lease", "(withdrawal_lease_owner IS NULL) = (withdrawal_lease_until IS NULL)");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_withdrawal_state", "withdrawal_state IS NULL OR withdrawal_state IN ('pending', 'done')");
                         });
@@ -728,6 +758,18 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("last_error_code");
 
+                    b.Property<Guid?>("LeaseOwner")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lease_owner");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_at");
@@ -767,11 +809,17 @@ namespace Tims.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_assessment_provider_webhook_inbox_event");
 
+                    b.HasIndex("OrganizationId", "NextAttemptAt")
+                        .HasDatabaseName("ix_assessment_provider_webhook_inbox_due")
+                        .HasFilter("next_attempt_at IS NOT NULL");
+
                     b.ToTable("assessment_provider_webhook_inbox", null, t =>
                         {
                             t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_attempts", "processing_attempts >= 0");
 
                             t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_error_code", "last_error_code IS NULL OR char_length(last_error_code) <= 64");
+
+                            t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_lease", "(lease_owner IS NULL) = (lease_until IS NULL)");
 
                             t.HasCheckConstraint("ck_assessment_provider_webhook_inbox_status", "status IN ('received', 'processed', 'ignored', 'failed')");
 

@@ -31,11 +31,53 @@ public sealed class ProviderWebhookUseCaseTests
         return (Encoding.UTF8.GetBytes(envelope.ToJsonString()), id);
     }
 
-    private Task<WebhookResult> Deliver(byte[] body, Guid eventId, string type, long? signedAt = null, string? signature = null) =>
-        new ProviderWebhookUseCase(_repository, _provider).HandleAsync(
+    /// <summary>What a delivery led to once the inbox worker ran: the acknowledgement's outcome, then the processing's.</summary>
+    public enum Seen
+    {
+        /// <summary>Acknowledged, then processed (or recorded as failed for operators: no retry would help).</summary>
+        Accepted,
+        Duplicate,
+        Ignored,
+        Rejected,
+
+        /// <summary>The acknowledgement was 503, or the processing failed and the row was rescheduled.</summary>
+        RetryLater,
+    }
+
+    private sealed record Delivery(Seen Outcome, string Reason, WebhookResult Ack);
+
+    private static readonly Guid WorkerOwner = Guid.Parse("0f0f0f0f-0000-4000-8000-000000000001");
+
+    /// <summary>
+    /// One delivery as the sender sees it (the request: verify, record, 2xx), followed by one inbox worker run, which is
+    /// where the event is applied (contract step 6).
+    /// </summary>
+    private async Task<Delivery> Deliver(byte[] body, Guid eventId, string type, long? signedAt = null, string? signature = null)
+    {
+        var ack = await new ProviderWebhookUseCase(_repository, _provider).HandleAsync(
             body,
             signature ?? WebhookSignature.BuildHeader(FakeProvider.Secret, signedAt ?? Now.ToUnixTimeSeconds(), body),
             eventId.ToString(), type, 1, Now, CancellationToken.None);
+        if (ack.Outcome != WebhookOutcome.Queued)
+        {
+            var seen = ack.Outcome switch
+            {
+                WebhookOutcome.Duplicate => Seen.Duplicate,
+                WebhookOutcome.Ignored => Seen.Ignored,
+                WebhookOutcome.Rejected => Seen.Rejected,
+                _ => Seen.RetryLater,
+            };
+            return new Delivery(seen, ack.Reason, ack);
+        }
+
+        await new ProviderInboxWorkerUseCase(_repository, _provider).RunAsync(WorkerOwner, Now, CancellationToken.None);
+        var row = _repository.InboxRows[eventId];
+        var status = _repository.Inbox[eventId];
+        var processed = row.NextAt is not null && row.LeaseOwner is null && status == InboxStatuses.Failed
+            ? Seen.RetryLater
+            : status == InboxStatuses.Ignored ? Seen.Ignored : Seen.Accepted;
+        return new Delivery(processed, row.Code ?? (status == InboxStatuses.Processed ? "processed" : status), ack);
+    }
 
     private AttemptRow Attempt() => _repository.AddCreatedAttempt("lia", ProviderAttemptStates.InProgress);
 
@@ -76,8 +118,8 @@ public sealed class ProviderWebhookUseCaseTests
         var first = await Deliver(body, eventId, "result.ready");
         var redelivery = await Deliver(body, eventId, "result.ready");
 
-        Assert.Equal(WebhookOutcome.Accepted, first.Outcome);
-        Assert.Equal(WebhookOutcome.Duplicate, redelivery.Outcome); // at-least-once: de-duplicated on the event id
+        Assert.Equal(Seen.Accepted, first.Outcome);
+        Assert.Equal(Seen.Duplicate, redelivery.Outcome); // at-least-once: de-duplicated on the event id
         Assert.Equal(46.2, Assert.Single(_repository.StoredResults).GlobalPercentile);
         Assert.Equal(["result"], _provider.Calls);
         Assert.Equal(InboxStatuses.Processed, _repository.Inbox[eventId]);
@@ -91,7 +133,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "session.voided", signedAt: Now.ToUnixTimeSeconds() - 301);
 
-        Assert.Equal(WebhookOutcome.Rejected, result.Outcome);
+        Assert.Equal(Seen.Rejected, result.Outcome);
         Assert.Equal("signature_outsidereplaywindow", result.Reason);
         Assert.Empty(_repository.Inbox);
         Assert.Empty(_repository.Writes);
@@ -105,7 +147,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "subject.erased", signature: forged);
 
-        Assert.Equal(WebhookOutcome.Rejected, result.Outcome);
+        Assert.Equal(Seen.Rejected, result.Outcome);
         Assert.Empty(_repository.Writes);
     }
 
@@ -119,7 +161,7 @@ public sealed class ProviderWebhookUseCaseTests
             body, WebhookSignature.BuildHeader(FakeProvider.Secret, Now.ToUnixTimeSeconds(), body),
             JsonDocument.Parse(body).RootElement.GetProperty("event_id").GetString(), "result.ready", 1, Now, CancellationToken.None);
 
-        Assert.Equal(WebhookOutcome.Rejected, wrongId.Outcome);
+        Assert.Equal(Seen.Rejected, wrongId.Outcome);
         Assert.Equal(WebhookOutcome.Rejected, wrongType.Outcome);
         Assert.Empty(_repository.Writes);
     }
@@ -134,8 +176,8 @@ public sealed class ProviderWebhookUseCaseTests
         var first = await Deliver(body, eventId, "result.ready");
         var replay = await Deliver(body, Guid.NewGuid(), "result.ready"); // same signed body, rewritten header id
 
-        Assert.Equal(WebhookOutcome.Accepted, first.Outcome);
-        Assert.Equal(WebhookOutcome.Rejected, replay.Outcome);
+        Assert.Equal(Seen.Accepted, first.Outcome);
+        Assert.Equal(Seen.Rejected, replay.Outcome);
         Assert.Equal("header_mismatch", replay.Reason);
         Assert.Single(_repository.StoredResults);
         Assert.Equal([eventId], _repository.Inbox.Keys); // the inbox only ever saw the signed body's event id
@@ -154,7 +196,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "result.ready");
 
-        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal(Seen.Ignored, result.Outcome);
         Assert.Equal("consent_withdrawn", result.Reason);
         Assert.DoesNotContain("result", _provider.Calls);
         Assert.Empty(_repository.StoredResults);
@@ -173,7 +215,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "result.ready");
 
-        Assert.Equal(WebhookOutcome.RetryLater, result.Outcome);
+        Assert.Equal(Seen.RetryLater, result.Outcome);
         Assert.Equal("withdrawal_pending", result.Reason);
         Assert.DoesNotContain("result", _provider.Calls);
         Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
@@ -188,7 +230,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "assignment.started");
 
-        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal(Seen.Ignored, result.Outcome);
         Assert.Equal([attempt.ProviderAssignmentId!.Value], _provider.Cancelled);
         var row = _repository.Attempts.Single();
         Assert.Equal(ProviderAttemptStates.Cancelled, row.State);
@@ -209,7 +251,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "result.ready");
 
-        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal(Seen.Ignored, result.Outcome);
         Assert.Equal(withdrawn ? "consent_withdrawn" : "erasure_requested", result.Reason);
         Assert.DoesNotContain("result", _provider.Calls);
         Assert.Empty(_repository.StoredResults);
@@ -219,11 +261,11 @@ public sealed class ProviderWebhookUseCaseTests
     public async Task An_unbound_tenant_and_an_unknown_event_type_are_acknowledged_and_ignored()
     {
         var (body, eventId) = Envelope("assignment.paused", new JsonObject());
-        Assert.Equal(WebhookOutcome.Ignored, (await Deliver(body, eventId, "assignment.paused")).Outcome);
+        Assert.Equal(Seen.Ignored, (await Deliver(body, eventId, "assignment.paused")).Outcome);
 
         _repository.OrganizationForTenant = null;
         var (erased, erasedId) = Envelope("subject.erased", new JsonObject { ["subject_id"] = Guid.NewGuid().ToString() });
-        Assert.Equal(WebhookOutcome.Ignored, (await Deliver(erased, erasedId, "subject.erased")).Outcome);
+        Assert.Equal(Seen.Ignored, (await Deliver(erased, erasedId, "subject.erased")).Outcome);
         Assert.Empty(_repository.Writes);
     }
 
@@ -237,7 +279,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "result.ready");
 
-        Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
+        Assert.Equal(Seen.Accepted, result.Outcome);
         Assert.Equal("result_mismatch", result.Reason);
         Assert.Empty(_repository.StoredResults);
         Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]);
@@ -281,7 +323,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "result.ready");
 
-        Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
+        Assert.Equal(Seen.Accepted, result.Outcome);
         Assert.Equal("result_mismatch", result.Reason);
         Assert.Empty(_repository.StoredResults);
         Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]);
@@ -311,8 +353,8 @@ public sealed class ProviderWebhookUseCaseTests
         _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(FetchedResult(attempt, id));
         var retry = await Deliver(body, eventId, "result.ready");
 
-        Assert.Equal(WebhookOutcome.RetryLater, first.Outcome);
-        Assert.Equal(WebhookOutcome.Accepted, retry.Outcome);
+        Assert.Equal(Seen.RetryLater, first.Outcome);
+        Assert.Equal(Seen.Accepted, retry.Outcome);
         Assert.Single(_repository.StoredResults);
     }
 
@@ -333,7 +375,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "assignment.expired");
 
-        Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
+        Assert.Equal(Seen.Accepted, result.Outcome);
         Assert.Equal(["reserve", "created", "advance:expired"], _repository.Writes);
         Assert.Equal(providerAssignment, _repository.Attempts.Single().ProviderAssignmentId);
     }
@@ -352,7 +394,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "assignment.started");
 
-        Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
+        Assert.Equal(Seen.Accepted, result.Outcome);
         Assert.Equal(["advance:in_progress"], _repository.Writes);
         Assert.Equal(InboxStatuses.Processed, _repository.Inbox[eventId]);
     }
@@ -383,7 +425,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "assignment.started");
 
-        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal(Seen.Ignored, result.Outcome);
         Assert.Equal([orphan], _provider.Cancelled);
         // The orphan was recorded (ids + cleanup marker) BEFORE the cancel was sent, then cleared once confirmed.
         Assert.Equal(ProviderCleanup.CancelPending, markerWhenCancelSent);
@@ -393,10 +435,10 @@ public sealed class ProviderWebhookUseCaseTests
     }
 
     [Theory]
-    [InlineData(403, "forbidden", false, WebhookOutcome.Accepted)] // a refusal a redelivery would not change
-    [InlineData(503, "provider_unavailable", true, WebhookOutcome.RetryLater)]
+    [InlineData(403, "forbidden", false, Seen.Accepted)] // a refusal a redelivery would not change
+    [InlineData(503, "provider_unavailable", true, Seen.RetryLater)]
     public async Task A_reconciled_orphan_whose_cancel_fails_stays_recorded_and_a_staff_retry_cancels_it(
-        int status, string code, bool transient, WebhookOutcome outcome)
+        int status, string code, bool transient, Seen outcome)
     {
         // A crash lost the create's answer, staff cancelled the attempt, then an event for the orphan arrives and the
         // compensating cancel FAILS. The orphan must stay recorded with its cleanup marker, so a later staff cancel
@@ -456,12 +498,12 @@ public sealed class ProviderWebhookUseCaseTests
         Assert.DoesNotContain(_repository.Writes, w => w.StartsWith("advance:", StringComparison.Ordinal));
         if (providerUp)
         {
-            Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+            Assert.Equal(Seen.Ignored, result.Outcome);
             Assert.Null(_repository.Attempts[0].LastErrorCode);
         }
         else
         {
-            Assert.Equal(WebhookOutcome.RetryLater, result.Outcome); // the provider redelivers, so the cancel is retried
+            Assert.Equal(Seen.RetryLater, result.Outcome); // the provider redelivers, so the cancel is retried
             Assert.Equal(ProviderCleanup.CancelPending, _repository.Attempts[0].LastErrorCode);
         }
     }
@@ -474,7 +516,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "assignment.expired");
 
-        Assert.Equal(WebhookOutcome.RetryLater, result.Outcome);
+        Assert.Equal(Seen.RetryLater, result.Outcome);
         Assert.Equal(InboxStatuses.Failed, _repository.Inbox[eventId]); // a redelivery is processed, not "duplicate"
     }
 
@@ -488,7 +530,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "assignment.started");
 
-        Assert.Equal(WebhookOutcome.Ignored, result.Outcome);
+        Assert.Equal(Seen.Ignored, result.Outcome);
         Assert.Empty(_repository.Writes);
     }
 
@@ -500,7 +542,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, eventId, "subject.erased");
 
-        Assert.Equal(WebhookOutcome.RetryLater, result.Outcome);
+        Assert.Equal(Seen.RetryLater, result.Outcome);
         Assert.Empty(_repository.Writes);
     }
 
@@ -515,7 +557,7 @@ public sealed class ProviderWebhookUseCaseTests
         var attempt = Attempt();
         var (body, eventId) = Envelope(type, new JsonObject { ["assignment_id"] = attempt.ProviderAssignmentId.ToString() });
 
-        Assert.Equal(WebhookOutcome.Accepted, (await Deliver(body, eventId, type)).Outcome);
+        Assert.Equal(Seen.Accepted, (await Deliver(body, eventId, type)).Outcome);
         Assert.Equal(["advance:" + state], _repository.Writes);
     }
 
@@ -524,7 +566,7 @@ public sealed class ProviderWebhookUseCaseTests
     {
         var (body, eventId) = Envelope("subject.erased", new JsonObject { ["subject_id"] = Guid.NewGuid().ToString() });
 
-        Assert.Equal(WebhookOutcome.Accepted, (await Deliver(body, eventId, "subject.erased")).Outcome);
+        Assert.Equal(Seen.Accepted, (await Deliver(body, eventId, "subject.erased")).Outcome);
         Assert.Equal(["erase"], _repository.Writes);
     }
 
@@ -539,7 +581,7 @@ public sealed class ProviderWebhookUseCaseTests
 
         var result = await Deliver(body, Guid.Parse("c0ffee00-4444-4555-8666-777788889999"), "result.ready");
 
-        Assert.Equal(WebhookOutcome.Rejected, result.Outcome);
+        Assert.Equal(Seen.Rejected, result.Outcome);
         Assert.Empty(_repository.Inbox);
     }
 }

@@ -113,14 +113,36 @@ public interface IAssessmentProviderRepository
     /// <summary>Pre-tenant: the org bound to a provider tenant id (active bindings only), or null.</summary>
     Task<Guid?> FindOrganizationByProviderTenantAsync(Guid providerTenantId, CancellationToken cancellationToken);
 
-    /// <summary>Inserts the inbox row, or reports what an earlier delivery of the same event id already did.</summary>
+    /// <summary>
+    /// Inserts and COMMITS the inbox row, due at once (<c>next_attempt_at</c> = now), or reports what an earlier delivery
+    /// of the same event id already did. A redelivery of an event not yet processed or ignored makes it due again.
+    /// </summary>
     Task<InboxOutcome> RecordInboxAsync(
         Guid organizationId, ProviderEventEnvelope envelope, int? deliveryAttempt, DateTimeOffset now,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// PRE-TENANT (privileged connection): the organizations holding at least one inbox row due now (its
+    /// <c>next_attempt_at</c> passed, its lease free or expired), at most <paramref name="max"/>. Only org ids leave.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListOrganizationsWithDueInboxEventsAsync(int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Claims, for <paramref name="owner"/>, the org's oldest due inbox row whose lease is free or expired: one
+    /// conditional UPDATE with <c>FOR UPDATE SKIP LOCKED</c>, a lease of
+    /// <see cref="Domain.Assessments.Providers.ProviderInboxProcessing.LeaseDuration"/> by the database clock. Null when
+    /// nothing is due.
+    /// </summary>
+    Task<ClaimedInboxEvent?> ClaimInboxEventAsync(Guid organizationId, Guid owner, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records what processing a claimed row did and ends <paramref name="owner"/>'s lease, conditional on the owner (a
+    /// lease that expired and was claimed by another worker is left alone). <paramref name="retryAt"/> non-null keeps the
+    /// row due at that time; null makes it final.
+    /// </summary>
     Task CompleteInboxAsync(
-        Guid organizationId, Guid eventId, string status, string? errorCode, DateTimeOffset now,
-        CancellationToken cancellationToken);
+        Guid organizationId, Guid eventId, Guid owner, string status, string? errorCode, DateTimeOffset? retryAt,
+        DateTimeOffset now, CancellationToken cancellationToken);
 
     Task<AttemptRow?> FindAttemptAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
 
@@ -174,9 +196,27 @@ public interface IAssessmentProviderRepository
     /// </summary>
     Task<IReadOnlyList<Guid>> ListOrganizationsWithPendingWithdrawalsAsync(int max, CancellationToken cancellationToken);
 
-    /// <summary>The org's attempts whose provider-side withdrawal is not confirmed yet, oldest first, at most <paramref name="max"/>.</summary>
-    Task<IReadOnlyList<AttemptRow>> ListPendingWithdrawalsAsync(
-        Guid organizationId, int max, CancellationToken cancellationToken);
+    /// <summary>
+    /// Claims, for <paramref name="owner"/>, the org's attempts whose provider-side withdrawal is not confirmed yet and
+    /// whose withdrawal lease is free or expired, oldest first, at most <paramref name="max"/>: one conditional UPDATE with
+    /// <c>FOR UPDATE SKIP LOCKED</c>, a lease of <see cref="Domain.Assessments.Providers.ProviderWithdrawalLeasing.LeaseDuration"/>
+    /// by the database clock. Two passes (two instances' sweeps, a sweep and a webhook) never work on one attempt at once.
+    /// </summary>
+    Task<IReadOnlyList<AttemptRow>> ClaimPendingWithdrawalsAsync(
+        Guid organizationId, Guid owner, int max, CancellationToken cancellationToken);
+
+    /// <summary>Ends <paramref name="owner"/>'s withdrawal leases on the given attempts (conditional on the owner).</summary>
+    Task ReleaseWithdrawalLeasesAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, Guid owner, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The create fence: announces, durably and BEFORE <c>POST /v1/assignments</c> is sent, that a create of this
+    /// <c>pending_create</c> attempt is in flight (<c>create_started_at</c>, database clock). Refused (false, nothing
+    /// written) for an attempt already in a #312 withdrawal, erased-requested, or no longer pending: row locking orders it
+    /// against the withdrawal's staging write. Cleared when the create's answer is recorded (created, or a definitive
+    /// refusal); left in place when there was no answer, until it is stale.
+    /// </summary>
+    Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Reads each attempt's consent-capture fence (<see cref="WithdrawalFence"/>). A withdrawal pass reads it BEFORE it
@@ -276,7 +316,19 @@ public interface IAssessmentProviderRepository
     /// </summary>
     Task SetMissingConsentsAsync(
         Guid organizationId, Guid attemptId, IReadOnlyList<string> missingConsents, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records the candidate's decisions on the attempt's OPTIONAL consent purposes
+    /// (<see cref="Domain.Assessments.Providers.OptionalConsents"/>): a granted purpose leaves the declined list, a declined
+    /// one leaves the granted list. Purposes the instrument does not offer as optional are dropped. One audit row.
+    /// </summary>
+    Task RecordOptionalConsentDecisionsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> granted, IReadOnlyList<string> declined,
+        CancellationToken cancellationToken);
 }
+
+/// <summary>A claimed inbox row: the verified event, how often it was processed already, and when it was received.</summary>
+public sealed record ClaimedInboxEvent(ProviderEventEnvelope Envelope, int ProcessingAttempts, DateTimeOffset ReceivedAt);
 
 public enum LockedLaunchOutcome
 {
@@ -306,7 +358,17 @@ public sealed record LockedLaunch(LockedLaunchOutcome Outcome, ProviderCall<Prov
 /// <summary>An attempt the D17 poller claimed, with the provider tenant its binding maps to.</summary>
 public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 
-public sealed record ProviderCandidateSubjects(IReadOnlyList<Guid> Subjects, bool HasAttempts);
+/// <param name="ErasedSubjects">
+/// Subjects whose erasure the provider already confirmed (a recorded <c>subject.erased</c>): terminal, never exported,
+/// erased or resolved again.
+/// </param>
+/// <param name="NeedsResolution">
+/// Whether the provider's subject for (tenant, candidate id) must still be resolved: some attempt of the candidate is
+/// neither erased nor under an accepted erasure request. False once every attempt is: the provider forgets the
+/// subject's external_ref when erasure is requested, so resolving it again would CREATE a fresh, empty subject.
+/// </param>
+public sealed record ProviderCandidateSubjects(
+    IReadOnlyList<Guid> Subjects, bool HasAttempts, IReadOnlyList<Guid>? ErasedSubjects = null, bool NeedsResolution = true);
 
 /// <summary>
 /// The DSAR access export: the ATS's own provider tables (<see cref="Attempts"/>, <see cref="Results"/>) and what the
@@ -385,11 +447,27 @@ public static class ProviderCleanup
 /// <see cref="CaptureGeneration"/> changes whenever a launch begins or ends a capture; <see cref="CaptureInFlight"/> is
 /// true while a begun capture has not ended; <see cref="CaptureStale"/> is true when that in-flight capture began more than
 /// <see cref="ProviderCleanup.ConsentCaptureStaleAfter"/> before the read (database clock).
+/// <para>The create fence rides along: <see cref="CreateInFlight"/> is true while a create announced by
+/// <see cref="IAssessmentProviderRepository.BeginCreateAsync"/> has no recorded answer, <see cref="CreateStale"/> when it
+/// was announced more than <see cref="Domain.Assessments.Providers.ProviderCreateFence.StaleAfter"/> before the read. A
+/// pass reads the fence BEFORE it looks the attempt up by external_ref, so a lookup that comes back empty while a create
+/// may still land keeps the attempt pending.</para>
 /// </summary>
-public sealed record WithdrawalFence(Guid AttemptId, int CaptureGeneration, bool CaptureInFlight, bool CaptureStale)
+public sealed record WithdrawalFence(
+    Guid AttemptId, int CaptureGeneration, bool CaptureInFlight, bool CaptureStale, bool CreateInFlight = false,
+    bool CreateStale = false)
 {
     /// <summary>Whether the pass may complete this attempt, provided the generation is unchanged at completion.</summary>
-    public bool AllowsCompletion => !CaptureInFlight || CaptureStale;
+    public bool AllowsCompletion => CaptureAllowsCompletion && CreateAllowsCompletion;
+
+    /// <summary>No consent capture in flight at the read, or only a stale one.</summary>
+    public bool CaptureAllowsCompletion => !CaptureInFlight || CaptureStale;
+
+    /// <summary>
+    /// No create announced and unanswered at the read, or only a stale one. A pass that then FOUND and recorded the
+    /// assignment (the create did land) has its answer: the database's own condition (the fence cleared) decides.
+    /// </summary>
+    public bool CreateAllowsCompletion => !CreateInFlight || CreateStale;
 }
 
 public sealed record ProviderBindingRow(
@@ -450,8 +528,15 @@ public sealed record AttemptRow(
     DateTimeOffset? ErasureRequestedAt = null,
     IReadOnlyList<string>? MissingConsents = null,
     string? AgeBand = null,
-    Guid? LatestResultId = null)
+    Guid? LatestResultId = null,
+    IReadOnlyList<string>? GrantedOptionalConsents = null,
+    IReadOnlyList<string>? DeclinedOptionalConsents = null)
 {
+    /// <summary>The optional purposes the candidate has neither granted nor declined yet.</summary>
+    public IReadOnlyList<string> PendingOptionalConsents => Domain.Assessments.Providers.OptionalConsents.For(Instrument)
+        .Where(p => !(GrantedOptionalConsents ?? []).Contains(p) && !(DeclinedOptionalConsents ?? []).Contains(p))
+        .ToList();
+
     /// <summary>
     /// True once the candidate's #312 withdrawal reached this attempt (D15) or an erasure of its provider subject was
     /// requested: the ATS never fetches or stores a result for it again.

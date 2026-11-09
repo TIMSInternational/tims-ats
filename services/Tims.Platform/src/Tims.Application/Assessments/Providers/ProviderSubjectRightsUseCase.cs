@@ -64,6 +64,13 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         var held = new List<ProviderHeldSubjectExport>();
         foreach (var subject in subjects.Subjects)
         {
+            if (subjects.Erased.Contains(subject))
+            {
+                // The provider confirmed this subject's erasure (subject.erased): terminal, nothing left to read there.
+                held.Add(new ProviderHeldSubjectExport(subject, "erased", null));
+                continue;
+            }
+
             var exported = await _provider.ExportSubjectAsync(subject, cancellationToken).ConfigureAwait(false);
             if (exported.Ok)
             {
@@ -108,16 +115,22 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             .ConfigureAwait(false);
         if (known is null)
         {
-            return new ResolvedSubjects([], ProviderErasureOutcome.CandidateNotFound);
+            return new ResolvedSubjects([], [], ProviderErasureOutcome.CandidateNotFound);
         }
 
-        if (known.HasAttempts && !_provider.IsConfigured)
+        var erased = known.ErasedSubjects ?? [];
+        var live = known.Subjects.Where(s => !erased.Contains(s)).ToList();
+        if (known.HasAttempts && !_provider.IsConfigured && (live.Count > 0 || known.NeedsResolution))
         {
-            return new ResolvedSubjects(known.Subjects, ProviderErasureOutcome.ProviderUnconfigured);
+            return new ResolvedSubjects(known.Subjects, erased, ProviderErasureOutcome.ProviderUnconfigured);
         }
 
         var subjects = known.Subjects.ToList();
-        if (known.HasAttempts)
+        // A stored erasure is terminal (DSAR mismatch 8): once every attempt is erased or under an accepted erasure
+        // request, the subject is NOT resolved again. The provider forgets the subject's external_ref when its erasure is
+        // requested, so a re-POST of (tenant, candidate id) after the 24 h idempotency window would create a fresh, empty
+        // provider subject, and the export or erasure would then run against that new subject.
+        if (known.HasAttempts && known.NeedsResolution)
         {
             // The subject is created BEFORE its assignment and recorded only with it, so a failed or crashed create can
             // leave a provider subject (possibly with names and email) no attempt names. Subjects are idempotent on
@@ -125,7 +138,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             var binding = await _repository.GetActiveBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
             if (binding is null)
             {
-                return new ResolvedSubjects(subjects, ProviderErasureOutcome.Incomplete);
+                return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete);
             }
 
             var request = new ProviderSubjectRequest(binding.ProviderTenantId, candidateId.ToString(), null, null, null, null);
@@ -133,7 +146,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
                 request, IdempotencyKeys.Subject(organizationId, request), cancellationToken).ConfigureAwait(false);
             if (!resolved.Ok)
             {
-                return new ResolvedSubjects(subjects, ProviderErasureOutcome.Incomplete);
+                return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete);
             }
 
             if (!subjects.Contains(resolved.Value!.SubjectId))
@@ -142,10 +155,11 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             }
         }
 
-        return new ResolvedSubjects(subjects, null);
+        return new ResolvedSubjects(subjects, erased, null);
     }
 
-    private sealed record ResolvedSubjects(IReadOnlyList<Guid> Subjects, ProviderErasureOutcome? Outcome);
+    private sealed record ResolvedSubjects(
+        IReadOnlyList<Guid> Subjects, IReadOnlyList<Guid> Erased, ProviderErasureOutcome? Outcome);
 
     public async Task<ProviderErasureResult> EraseAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -160,6 +174,13 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         var requested = 0;
         foreach (var subject in subjects)
         {
+            if (resolved.Erased.Contains(subject))
+            {
+                // Already erased at the provider (subject.erased recorded, its handler deleted what the ATS stored).
+                requested++;
+                continue;
+            }
+
             var erased = await _provider.EraseSubjectAsync(subject, cancellationToken).ConfigureAwait(false);
             string? status = erased.Ok ? erased.Value!.Status : erased.Failure!.HttpStatus switch
             {

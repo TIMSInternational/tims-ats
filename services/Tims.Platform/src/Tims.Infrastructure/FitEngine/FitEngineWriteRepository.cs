@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using Tims.Application.FitEngine;
+using Tims.Infrastructure.CandidateConsent;
 
 namespace Tims.Infrastructure.FitEngine;
 
@@ -167,9 +168,8 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         // (CandidateConsentRepository.WithdrawOneAsync), then a re-check — a withdrawal that committed after the
         // pre-loop check (or one waiting on this lock) is seen here, so the score is not written. A withdrawal on a
         // same-email row takes that row's lock instead; the email-aware re-check still sees it once committed.
-        var lockKey = candidateId.ToString();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidateId, cancellationToken)
+            .ConfigureAwait(false);
         var withdrawn = await QueryWithdrawnAsync(organizationId, [candidateId], cancellationToken)
             .ConfigureAwait(false);
         if (withdrawn.Count > 0)
@@ -241,9 +241,8 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
             .ConfigureAwait(false);
 
         // #312 first (the same lock and re-check as the v1 write), so the lock order is always consent → FIT v2.
-        var consentKey = candidateId.ToString();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({consentKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidateId, cancellationToken)
+            .ConfigureAwait(false);
         var withdrawn = await QueryWithdrawnAsync(organizationId, [candidateId], cancellationToken)
             .ConfigureAwait(false);
         if (withdrawn.Count > 0)

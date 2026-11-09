@@ -18,22 +18,28 @@ public sealed record WithdrawalPropagation(int Confirmed, int StillPending);
 /// <item>each active consent of each provider subject is withdrawn
 /// (<c>POST /v1/subjects/{id}/consents/{consent_id}/withdrawal</c>), which makes the provider void open sittings and
 /// results and delete what D2 says it must;</item>
-/// <item>only then is the attempt marked <c>done</c>, by a conditional write on the consent-capture fence read before
-/// the consents were listed (<see cref="WithdrawalFence"/>): a launch that began or ended a consent capture since, or
-/// whose capture is still in flight, keeps the attempt pending, so a consent the listing could not see is never
-/// left behind by a completed cascade.</item>
+/// <item>only then is the attempt marked <c>done</c>, by a conditional write on the fence read before the consents were
+/// listed and before any lookup (<see cref="WithdrawalFence"/>): a launch that began or ended a consent capture since, or
+/// whose capture is still in flight, keeps the attempt pending, so a consent the listing could not see is never left
+/// behind by a completed cascade; and so does a create announced and not yet answered (the create fence), so an
+/// assignment created after an empty lookup is never left live at the provider.</item>
 /// </list>
+/// A pass works only on the attempts it CLAIMED under a lease (<see cref="ProviderWithdrawalLeasing"/>), so concurrent
+/// passes on several instances never duplicate the provider calls.
 /// Anything that fails stays pending and is retried by the next pass: every webhook for such an attempt runs one (and
 /// answers 503 while it is still pending, so the provider's 72 h redelivery is the retry queue), so does the next
 /// withdrawal in the org, and so does the scheduled sweep (<see cref="ProviderWithdrawalSweepUseCase"/>, every 10
 /// minutes) without any trigger. Never throws for a provider-side outcome.
 /// </summary>
-public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
+/// <param name="maxPassDurationForTests">TEST-ONLY: replaces <see cref="ProviderWithdrawalLeasing.MaxPassDuration"/>.</param>
+public sealed class ProviderConsentWithdrawalUseCase(
+    IAssessmentProviderRepository repository, IAssessmentProvider provider, TimeSpan? maxPassDurationForTests = null)
 {
     public const int MaxAttemptsPerPass = 50;
 
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
+    private readonly TimeSpan _maxPassDuration = maxPassDurationForTests ?? ProviderWithdrawalLeasing.MaxPassDuration;
 
     /// <summary>Stages the candidate (self-healing path, no-op unless withdrawn), then propagates the org's pending attempts.</summary>
     public async Task<WithdrawalPropagation> StageAndPropagateAsync(
@@ -46,12 +52,44 @@ public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderReposito
     public async Task<WithdrawalPropagation> PropagateAsync(
         Guid organizationId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var pending = await _repository.ListPendingWithdrawalsAsync(organizationId, MaxAttemptsPerPass, cancellationToken)
-            .ConfigureAwait(false);
-        if (pending.Count == 0 || !_provider.IsConfigured)
+        if (!_provider.IsConfigured)
         {
-            return new WithdrawalPropagation(0, pending.Count);
+            // Nothing could be sent; claiming would only hold the attempts away from a pass that can.
+            return new WithdrawalPropagation(0, 0);
         }
+
+        // Each pass is its own lease owner and works ONLY on the attempts it claimed: two passes (two instances' sweeps,
+        // a sweep and a webhook) never send the same cancels and withdrawals at once. The pass is cut off well before its
+        // claims expire, and they are released when it ends, whatever happened.
+        var owner = Guid.NewGuid();
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(_maxPassDuration);
+        var pending = await _repository.ClaimPendingWithdrawalsAsync(organizationId, owner, MaxAttemptsPerPass, budget.Token)
+            .ConfigureAwait(false);
+        if (pending.Count == 0)
+        {
+            return new WithdrawalPropagation(0, 0);
+        }
+
+        try
+        {
+            return await PropagateClaimedAsync(organizationId, pending, now, budget.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            await _repository.ReleaseWithdrawalLeasesAsync(
+                organizationId, pending.Select(a => a.Id).ToList(), owner, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<WithdrawalPropagation> PropagateClaimedAsync(
+        Guid organizationId, IReadOnlyList<AttemptRow> pending, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // The fences are read FIRST: before the consents are listed (a launch that begins or ends a consent capture after
+        // this read changes the fence, and completion is conditional on it) and before any lookup by external_ref (a
+        // create announced and not answered at this read keeps its attempt pending while it may still land, Codex P1).
+        var fences = await _repository.ReadWithdrawalFencesAsync(
+            organizationId, pending.Select(a => a.Id).ToList(), cancellationToken).ConfigureAwait(false);
 
         var binding = await _repository.GetActiveBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
         var blocked = new HashSet<Guid>();
@@ -61,7 +99,8 @@ public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderReposito
             var attempt = listed;
             if (attempt.ProviderAssignmentId is null)
             {
-                // An attempt whose create was sent but never answered may exist at the provider: look it up (D11).
+                // An attempt whose create was sent but never answered may exist at the provider: look it up (D11). An
+                // empty answer is conclusive only once no create can still be in flight (the fence, above).
                 if (binding is null)
                 {
                     blocked.Add(attempt.Id);
@@ -105,11 +144,6 @@ public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderReposito
             current.Add(attempt);
         }
 
-        // Read BEFORE the consents are listed: a launch that begins or ends a consent capture after this read changes the
-        // fence, and completion is conditional on it, so a capture this listing can miss keeps its attempt pending.
-        var fences = await _repository.ReadWithdrawalFencesAsync(
-            organizationId, current.Select(a => a.Id).ToList(), cancellationToken).ConfigureAwait(false);
-
         foreach (var subject in current.Where(a => a.ProviderSubjectId is not null).GroupBy(a => a.ProviderSubjectId!.Value))
         {
             if (!await WithdrawSubjectConsentsAsync(subject.Key, now, cancellationToken).ConfigureAwait(false))
@@ -121,8 +155,13 @@ public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderReposito
             }
         }
 
+        // A create still announced at the fence read blocks completion unless this pass found and recorded its assignment
+        // (the orphan, now cancelled): then the create's answer is on record, and MarkWithdrawalDoneAsync's own condition
+        // (create_started_at cleared by that record) re-checks it at the database.
         var confirmed = fences
-            .Where(f => !blocked.Contains(f.AttemptId) && f.AllowsCompletion && current.Any(a => a.Id == f.AttemptId))
+            .Where(f => !blocked.Contains(f.AttemptId) && f.CaptureAllowsCompletion
+                && current.FirstOrDefault(a => a.Id == f.AttemptId) is { } attempt
+                && (f.CreateAllowsCompletion || attempt.ProviderAssignmentId is not null))
             .ToList();
         var moved = await _repository.MarkWithdrawalDoneAsync(organizationId, confirmed, now, cancellationToken)
             .ConfigureAwait(false);

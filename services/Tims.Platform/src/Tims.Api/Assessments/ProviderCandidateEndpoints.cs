@@ -68,13 +68,14 @@ public static class ProviderCandidateEndpoints
                 }
 
                 var node = await ProviderEndpointJson.TryReadAsync(httpContext, cancellationToken);
-                if (!node.Ok || !LaunchProviderAttemptUseCase.TryParseBody(node.Node, out var consents, out var embedded))
+                if (!node.Ok
+                    || !LaunchProviderAttemptUseCase.TryParseBody(node.Node, out var consents, out var embedded, out var declined))
                 {
                     return Results.BadRequest(new { error = "invalid_input" });
                 }
 
                 var result = await useCase.LaunchAsync(
-                    attemptId, email!, consents, timeProvider.GetUtcNow(), cancellationToken, embedded);
+                    attemptId, email!, consents, timeProvider.GetUtcNow(), cancellationToken, embedded, declined);
                 // Outcome only: never the token, the email or the attempt's candidate.
                 loggers.CreateLogger("Tims.Api.Assessments").LogInformation(
                     "Assessment provider launch outcome {Outcome}", result.Outcome);

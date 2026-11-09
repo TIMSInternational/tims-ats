@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tims.Application.Assessments.Providers;
 
 namespace Tims.Infrastructure.Assessments.Providers;
@@ -46,6 +47,8 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddScoped<LaunchProviderAttemptUseCase>();
         services.AddScoped<ProviderPortalUseCase>();
         services.AddScoped<ProviderWebhookUseCase>();
+        services.TryAddSingleton<ProviderInboxSignal>();
+        services.AddScoped<IProviderInboxWorker, ProviderInboxWorkerUseCase>();
         services.AddScoped<ProviderBindingUseCase>();
         services.AddScoped<ProviderConsentWithdrawalUseCase>();
         services.AddScoped<ProviderSubjectRightsUseCase>();

@@ -16192,7 +16192,8 @@
           "missingConsents",
           "expiresAt",
           "delivery",
-          "vacancyId"
+          "vacancyId",
+          "optionalConsents"
         ],
         "type": "object",
         "properties": {
@@ -16225,12 +16226,19 @@
           "vacancyId": {
             "type": "string",
             "format": "uuid"
+          },
+          "optionalConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
       "PortalConsentTemplatesResponse": {
         "required": [
-          "templates"
+          "templates",
+          "optionalPurposes"
         ],
         "type": "object",
         "properties": {
@@ -16238,6 +16246,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProviderConsentTemplate"
+            }
+          },
+          "optionalPurposes": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -17923,6 +17937,12 @@
               {
                 "$ref": "#/components/schemas/StaffProviderResult"
               }
+            ]
+          },
+          "speakingNotAssessed": {
+            "type": [
+              "null",
+              "string"
             ]
           }
         }
