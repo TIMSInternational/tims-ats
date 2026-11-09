@@ -2052,6 +2052,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assessments/provider-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderStaffCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assessments/provider-attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderStaffAttempts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/data-subject-requests": {
         parameters: {
             query?: never;
@@ -2509,6 +2541,22 @@ export interface paths {
         };
         get?: never;
         put: operations["FitEngineUpdateFitRequirements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/vacancies/{vacancyId}/requirements/assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FitEngineGetAssessmentRequirements"];
+        put: operations["FitEngineReplaceAssessmentRequirements"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4367,6 +4415,15 @@ export interface components {
             /** Format: double */
             score: null | number | string;
         };
+        FitAssessmentMinimumDto: {
+            /** Format: double */
+            globalPercentile: null | number | string;
+            cefr: null | string;
+            /** Format: int32 */
+            level: null | number | string;
+            /** Format: double */
+            score: null | number | string;
+        };
         FitAssessmentRequirementBody: {
             instrument: string;
             use: null | string;
@@ -4374,6 +4431,27 @@ export interface components {
             /** Format: double */
             weight: null | number | string;
             reason: null | string;
+        };
+        FitAssessmentRequirementDto: {
+            instrument: string;
+            use: string;
+            min: null | components["schemas"]["FitAssessmentMinimumDto"];
+            /** Format: double */
+            weight: null | number | string;
+            reason: null | string;
+        };
+        FitAssessmentRequirementsBody: {
+            assessments: components["schemas"]["FitAssessmentRequirementBody"][];
+            expectedVersion: string;
+        };
+        FitAssessmentRequirementsConflict: {
+            error: string;
+            current: components["schemas"]["FitAssessmentRequirementsResponse"];
+        };
+        FitAssessmentRequirementsResponse: {
+            assessments: components["schemas"]["FitAssessmentRequirementDto"][];
+            version: string;
+            issues: components["schemas"]["FitRequirementIssueDto"][];
         };
         FitRankingRow: {
             fitScoreId: string;
@@ -5308,10 +5386,64 @@ export interface components {
             /** Format: int32 */
             hires: number | string;
         };
+        StaffCandidateAttemptList: {
+            consentWithdrawn: boolean;
+            attempts: components["schemas"]["StaffProviderAttempt"][];
+        };
+        StaffCatalog: {
+            connected: boolean;
+            instruments: components["schemas"]["StaffCatalogInstrument"][];
+        };
+        StaffCatalogInstrument: {
+            instrument: string;
+            delivery: string;
+            locales: string[];
+            requiredConsents: string[];
+            versions: components["schemas"]["StaffCatalogVersion"][];
+            pinnedVersion: null | string;
+        };
+        StaffCatalogVersion: {
+            instrumentVersion: string;
+            status: string;
+        };
         StaffConsentWithdrawalBody: {
             channel: string;
             reason?: null | string;
             requestDeletion?: null | boolean;
+        };
+        StaffProviderAttempt: {
+            /** Format: uuid */
+            attemptId: string;
+            /** Format: uuid */
+            vacancyId: string;
+            instrument: string;
+            status: string;
+            instrumentVersion: null | string;
+            missingConsents: string[];
+            expiresAt: null | string;
+            createdAt: string;
+            completedAt: null | string;
+            lastErrorCode: null | string;
+            /** Format: double */
+            timeMultiplier: null | number | string;
+            aids: null | string[];
+            countsIn: string;
+            result: null | components["schemas"]["StaffProviderResult"];
+        };
+        StaffProviderResult: {
+            validity: string;
+            validityReasons: null | string[];
+            requiresHumanReview: boolean;
+            reviewPending: boolean;
+            minimum: null | string;
+            /** Format: double */
+            globalPercentile: null | number | string;
+            cefr: null | string;
+            /** Format: int32 */
+            level: null | number | string;
+            instrumentVersion: string;
+            normVersion: null | string;
+            completedAt: string;
         };
         StaffValidationRow: {
             id: string;
@@ -11792,6 +11924,106 @@ export interface operations {
             };
         };
     };
+    AssessmentProviderStaffCatalog: {
+        parameters: {
+            query?: {
+                vacancyId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCatalog"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderStaffAttempts: {
+        parameters: {
+            query?: {
+                candidateId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCandidateAttemptList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     DataSubjectRequestsList: {
         parameters: {
             query?: {
@@ -13220,6 +13452,114 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    FitEngineGetAssessmentRequirements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vacancyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitAssessmentRequirementsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineReplaceAssessmentRequirements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vacancyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FitAssessmentRequirementsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitAssessmentRequirementsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitRequirementsError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitAssessmentRequirementsConflict"];
+                };
             };
         };
     };

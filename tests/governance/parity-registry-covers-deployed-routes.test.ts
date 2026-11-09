@@ -404,9 +404,14 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'fit_scores rows and a graded-assignment fixture), tracked with it. Release slice "fit" adds a fifth: the ' +
       "candidate page's fit-scores read (FitEngineReadEnabled; D6-redacted for a narrow reader), whose TS " +
       'counterpart is a field of candidate.getById rather than a procedure, pinned by Tims.IntegrationTests ' +
-      'FitV2IntegrityTests (authorization, vacancy scope, D6 redaction, flag off).',
+      'FitV2IntegrityTests (authorization, vacancy scope, D6 redaction, flag off). Release slice "atsux" adds the ' +
+      "vacancy assessments editor's read and conditional replace of assessments[] (same flags as the writer), " +
+      'pinned by Tims.IntegrationTests FitAssessmentRequirementsEndpointTests (vacancy:read/update, vacancy scope, ' +
+      'the version check, one winner under concurrency, the strict body, flags off).',
     routes: [
       'PUT /fit-engine/vacancies/{vacancyId}/requirements',
+      'GET /fit-engine/vacancies/{vacancyId}/requirements/assessments',
+      'PUT /fit-engine/vacancies/{vacancyId}/requirements/assessments',
       'GET /fit-engine/candidates/{candidateId}/fit-scores',
       'POST /fit-engine/scores/review-state',
       'GET /fit-engine/assignments/{assignmentId}/essays',
@@ -562,8 +567,13 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'calls the remote provider: covered by the same ProviderEndpointTests (401/403, export, erasure, unknown candidate). ' +
       'The two candidate-portal reads (D16: the attempt list and the consent templates) are authorized like the launch, ' +
       'by a CONFIRMED candidate email, never a role, and the templates come from the remote provider: covered by the same ' +
-      "ProviderEndpointTests (the dark flag, 401/403, only the candidate's own attempts, the 404 on another's attempt).",
+      "ProviderEndpointTests (the dark flag, 401/403, only the candidate's own attempts, the 404 on another's attempt). " +
+      "The two staff reads of release slice \"atsux\" (the assignable catalog and a candidate's attempts with results) " +
+      'read the remote catalog or provider-fed results and apply D6 by scope: covered by ProviderEndpointTests.Staff (the ' +
+      'dark flag, 401/403, the vacancy scope 404 and omission, D6 redaction for a narrow reader, #312, the pinned version).',
     routes: [
+      'GET /assessments/provider-catalog',
+      'GET /assessments/provider-attempts',
       'POST /assessments/provider-assignments',
       'POST /assessments/provider-assignments/{attemptId}/cancel',
       'POST /platform/assessment-providers/bindings',
@@ -667,7 +677,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         217 → 219 (release/assessments-fit-provider, D16): the candidate portal's attempt list and consent
     //         templates join the AS-5 group.
     //         219 → 220 (release slice "fit"): the candidate page's fit-scores read joins the FIT v2 group.
-    expect(deployed.size).toBe(220);
+    //         220 → 224 (release slice "atsux"): the two provider staff reads join the AS-5 group; the vacancy
+    //         assessments editor's GET and PUT join the FIT v2 group.
+    expect(deployed.size).toBe(224);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -751,7 +763,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 117 → 121 (PR #427, release/assessments-fit-provider): FIT v2's four C#-only routes, in their own group.
     // 121 → 123 (release/assessments-fit-provider, D16): the two candidate-portal reads join the AS-5 group.
     // 123 → 124 (release slice "fit"): the candidate fit-scores read joins the FIT v2 group.
-    expect(allowlistNormalised.length).toBe(124);
+    // 124 → 128 (release slice "atsux"): two staff reads join the AS-5 group, the editor's two routes the FIT v2 group.
+    expect(allowlistNormalised.length).toBe(128);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
