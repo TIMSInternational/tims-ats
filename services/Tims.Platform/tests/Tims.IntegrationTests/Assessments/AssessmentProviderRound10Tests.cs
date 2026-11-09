@@ -207,6 +207,21 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
             $"SELECT create_started_at IS NULL FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
 
+    [Fact]
+    public async Task A_resolved_subject_is_recorded_on_an_unmapped_attempt_only()
+    {
+        var org = await OrgAsync();
+        var pending = await AttemptAsync(org, "pending_create", mapped: false);
+        var mapped = await AttemptAsync(org, "created");
+        var subject = Guid.NewGuid();
+
+        await WithRepository(async r => { await r.RecordSubjectAsync(org, pending, subject, CancellationToken.None); return 0; });
+        await WithRepository(async r => { await r.RecordSubjectAsync(org, mapped, subject, CancellationToken.None); return 0; });
+
+        Assert.Equal(subject, await fixture.ScalarAsync($"SELECT provider_subject_id FROM assessment_provider_attempts WHERE id = '{pending}'"));
+        Assert.NotEqual(subject, await fixture.ScalarAsync($"SELECT provider_subject_id FROM assessment_provider_attempts WHERE id = '{mapped}'"));
+    }
+
     // ── 4b. The sibling-aware candidate lock ───────────────────────────────────────────────────────────────────────
 
     [Fact]
