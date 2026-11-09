@@ -81,6 +81,36 @@ CREATE TRIGGER "fit_scores_keep_v2"
   BEFORE UPDATE ON "fit_scores"
   FOR EACH ROW EXECUTE FUNCTION public.fit_scores_keep_v2();
 
+-- ── 2b. A vacancy's FIT v2 configuration is never erased by a writer that does not know it ────────────────────────
+-- The TS requirements writers (vacancy.updateFitRequirements, upsertJobProfile) replace the whole fit_requirements
+-- object without an `assessments` key: a direct tRPC call or a stale browser tab would silently erase the vacancy's
+-- instruments, and the next compute would run v1 over its v2 rows. An UPDATE that drops the key keeps the stored
+-- array unless the writer marked itself FIT v2-aware (the C# requirements writer, which removes it only on an explicit
+-- `assessments: null`). Codex release round 3 [P1].
+CREATE OR REPLACE FUNCTION public.job_profiles_keep_assessments()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  IF coalesce(jsonb_typeof(OLD.fit_requirements) = 'object' AND OLD.fit_requirements ? 'assessments', false)
+     AND NOT coalesce(jsonb_typeof(NEW.fit_requirements) = 'object' AND NEW.fit_requirements ? 'assessments', false)
+     AND coalesce(current_setting('tims.fit_writer', true), '') <> 'fit_v2_aware'
+  THEN
+    NEW.fit_requirements := CASE
+      WHEN coalesce(jsonb_typeof(NEW.fit_requirements) = 'object', false) THEN NEW.fit_requirements
+      ELSE '{}'::jsonb
+    END || jsonb_build_object('assessments', OLD.fit_requirements -> 'assessments');
+  END IF;
+  RETURN NEW;
+END
+$$;
+
+DROP TRIGGER IF EXISTS "job_profiles_keep_assessments" ON "job_profiles";
+CREATE TRIGGER "job_profiles_keep_assessments"
+  BEFORE UPDATE ON "job_profiles"
+  FOR EACH ROW EXECUTE FUNCTION public.job_profiles_keep_assessments();
+
 -- ── 3. Recompute requests ────────────────────────────────────────────────────────────────────────────────────────
 -- One row per (candidate, vacancy) whose FIT v2 inputs changed. request_seq counts the changes: the C# worker deletes
 -- a row only at the sequence it computed from, so a change that lands while it computes is not lost. Rows carry ids

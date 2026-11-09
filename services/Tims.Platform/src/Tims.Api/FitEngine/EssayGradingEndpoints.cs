@@ -124,6 +124,7 @@ public static class EssayGradingEndpoints
                     EssayGradeStatus.PointsOutOfRange => Results.BadRequest(new { error = "invalid_points" }),
                     EssayGradeStatus.NotPending => Results.Conflict(new { error = "not_pending" }),
                     EssayGradeStatus.QuestionsChanged => Results.Conflict(new { error = "questions_changed" }),
+                    EssayGradeStatus.ConsentWithdrawn => Results.Conflict(new { error = "consent_withdrawn" }),
                     _ => Results.NotFound(new { message = "Asignación no encontrada" }),
                 };
             })

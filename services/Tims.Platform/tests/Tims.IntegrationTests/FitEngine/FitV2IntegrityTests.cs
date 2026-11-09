@@ -414,6 +414,86 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         Assert.Equal(2, await _fixture.ExecuteScalarAsync("SELECT norm_sample_size FROM assessment_results WHERE assignment_id = @a", ("a", assignment)));
     }
 
+    // ── Codex release round 3 [P1]: the vacancy's FIT v2 configuration survives a writer that does not know it ──
+    [Fact]
+    public async Task A_requirements_writer_that_does_not_know_v2_keeps_the_assessments_and_only_the_csharp_writer_removes_them()
+    {
+        var vacancy = await SeedVacancyAsync(team: null, """{"minYearsExperience":1,"assessments":[{"instrument":"native_quiz","use":"scored"}]}""");
+
+        // The TS updateFitRequirements: a plain UPDATE of the whole object, without the key.
+        await SqlAsync("UPDATE job_profiles SET fit_requirements = '{\"minYearsExperience\":3}' WHERE vacancy_id = @v", ("v", vacancy));
+        var afterUpdate = JsonNode.Parse((await _fixture.GetFitRequirementsAsync(vacancy))!)!;
+        Assert.Equal(3, afterUpdate["minYearsExperience"]!.GetValue<int>());
+        Assert.Equal("native_quiz", afterUpdate["assessments"]![0]!["instrument"]!.GetValue<string>());
+
+        // The TS upsertJobProfile (INSERT … ON CONFLICT DO UPDATE) and a NULL object keep it too.
+        await SqlAsync(
+            "INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES (@id, @o, @v, NULL) "
+            + "ON CONFLICT (vacancy_id) DO UPDATE SET fit_requirements = EXCLUDED.fit_requirements",
+            ("id", Guid.NewGuid()), ("o", Org), ("v", vacancy));
+        Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse("""{"assessments":[{"instrument":"native_quiz","use":"scored"}]}"""),
+            JsonNode.Parse((await _fixture.GetFitRequirementsAsync(vacancy))!)));
+
+        // The C# writer removes the array only on an explicit null.
+        await using var db = _fixture.NewWriteContext();
+        var saved = await new FitEngineWriteUseCase(new FitEngineWriteRepository(db)).UpdateFitRequirementsAsync(
+            Org, vacancy, JsonNode.Parse("""{"minYearsExperience":2,"assessments":null}"""), Now, CancellationToken.None);
+        Assert.NotNull(saved);
+        Assert.False(JsonNode.Parse((await _fixture.GetFitRequirementsAsync(vacancy))!)!.AsObject().ContainsKey("assessments"));
+    }
+
+    // ── Codex release round 3 [P1]: essay grading honours a #312 consent withdrawal ──
+    [Fact]
+    public async Task Grading_refuses_a_candidate_whose_consent_is_withdrawn_and_hides_their_essays()
+    {
+        var (assignment, essay) = await SeedEssayAsync(Guid.NewGuid());
+        var candidate = (Guid)(await _fixture.ExecuteScalarAsync("SELECT candidate_id FROM assessment_assignments WHERE id = @a", ("a", assignment)))!;
+        await _fixture.WithdrawConsentAsync(Org, candidate);
+
+        await using var db = _fixture.NewWriteContext();
+        var repository = new EssayGradingRepository(db);
+        Assert.Empty(await repository.GetPendingEssaysAsync(Org, assignment, CancellationToken.None));
+        var outcome = await repository.GradeEssayAsync(Org, assignment, essay, 1, FitEngineFixture.OrgAdminId, Now, CancellationToken.None);
+
+        Assert.Equal(EssayGradeStatus.ConsentWithdrawn, outcome.Status);
+        Assert.Equal(DBNull.Value, await _fixture.ExecuteScalarAsync(
+            "SELECT points_awarded FROM assessment_responses WHERE assignment_id = @a AND question_id = @q", ("a", assignment), ("q", essay)));
+        Assert.Equal(1, await _fixture.ExecuteScalarAsync(
+            "SELECT jsonb_array_length(breakdown -> 'pendingManual') FROM assessment_results WHERE assignment_id = @a", ("a", assignment)));
+    }
+
+    [Fact]
+    public async Task A_withdrawal_committing_while_a_grade_waits_on_the_candidate_lock_is_seen_by_the_grade()
+    {
+        var (assignment, essay) = await SeedEssayAsync(Guid.NewGuid());
+        var candidate = (Guid)(await _fixture.ExecuteScalarAsync("SELECT candidate_id FROM assessment_assignments WHERE id = @a", ("a", assignment)))!;
+
+        // A withdrawal in flight: it holds the candidate's #312 lock and has written the withdrawn consent, uncommitted.
+        await using var withdrawal = new NpgsqlConnection(_fixture.ConnectionString);
+        await withdrawal.OpenAsync();
+        await using var tx = await withdrawal.BeginTransactionAsync();
+        await using (var hold = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(hashtextextended(@k, 0)); "
+            + "INSERT INTO data_consents (id, organization_id, subject_user_id, consent_type, text_version, agreed_at, withdrawn_at, updated_at) "
+            + "VALUES (gen_random_uuid(), @o, @c, 'recruitment_data_processing', 'v1', now(), now(), now())", withdrawal, tx))
+        {
+            hold.Parameters.AddWithValue("k", candidate.ToString());
+            hold.Parameters.AddWithValue("o", Org);
+            hold.Parameters.AddWithValue("c", candidate);
+            await hold.ExecuteNonQueryAsync();
+        }
+
+        await using var db = _fixture.NewWriteContext();
+        var grade = new EssayGradingRepository(db).GradeEssayAsync(
+            Org, assignment, essay, 1, FitEngineFixture.OrgAdminId, Now, CancellationToken.None);
+        await Task.Delay(500);
+        Assert.False(grade.IsCompleted); // waiting on the withdrawal's candidate lock
+        await tx.CommitAsync();
+
+        Assert.Equal(EssayGradeStatus.ConsentWithdrawn, (await grade).Status);
+    }
+
     // ── the candidate fit-scores read ──
     [Fact]
     public async Task Candidate_fit_scores_hr_sees_the_stored_row_a_team_lead_sees_d6_and_only_in_scope_vacancies()

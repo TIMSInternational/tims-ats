@@ -38,12 +38,16 @@ public sealed partial class AssessmentProviderRepository
     public async Task<IReadOnlyList<Guid>> ListOrganizationsWithPendingWithdrawalsAsync(int max, CancellationToken cancellationToken)
     {
         // PRE-TENANT on the privileged connection (no TenantScope), like FindAttemptOwnerAsync: only org ids leave it,
-        // served by the partial index ix_assessment_provider_attempts_withdrawal_pending.
+        // served by the partial index ix_assessment_provider_attempts_withdrawal_pending. Ordered by each organization's
+        // OLDEST pending attempt (then id), not by id: a pass defers what it leaves pending (DeferPendingWithdrawalsAsync),
+        // so an organization whose attempts keep failing moves behind the others and the bound can never starve the
+        // organizations after it (Codex release round 3 [P2]).
         return await _db.Attempts.AsNoTracking()
             .Where(a => a.WithdrawalState == ProviderWithdrawalStates.Pending)
-            .Select(a => a.OrganizationId)
-            .Distinct()
-            .OrderBy(id => id)
+            .GroupBy(a => a.OrganizationId)
+            .Select(g => new { OrganizationId = g.Key, Oldest = g.Min(a => a.UpdatedAt) })
+            .OrderBy(g => g.Oldest).ThenBy(g => g.OrganizationId)
+            .Select(g => g.OrganizationId)
             .Take(max)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
     }

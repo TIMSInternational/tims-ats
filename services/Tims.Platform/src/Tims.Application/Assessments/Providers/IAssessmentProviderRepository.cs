@@ -142,8 +142,9 @@ public interface IAssessmentProviderRepository
 
     /// <summary>
     /// PRE-TENANT (privileged connection): the organizations that hold at least one attempt whose provider-side withdrawal
-    /// is not confirmed yet, at most <paramref name="max"/>. Only organization ids leave this query; each is then
-    /// propagated under its own tenant scope.
+    /// is not confirmed yet, at most <paramref name="max"/>, the one whose oldest pending attempt is oldest first (so the
+    /// deferral of a failing pass rotates organizations as well as attempts). Only organization ids leave this query;
+    /// each is then propagated under its own tenant scope.
     /// </summary>
     Task<IReadOnlyList<Guid>> ListOrganizationsWithPendingWithdrawalsAsync(int max, CancellationToken cancellationToken);
 

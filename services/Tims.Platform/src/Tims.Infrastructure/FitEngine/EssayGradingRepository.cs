@@ -46,6 +46,13 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
 
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
+        if (await IsConsentWithdrawnAsync(organizationId, assignmentId, lockCandidate: false, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return [];
+        }
+
         var essays = new List<PendingEssay>();
         await using (var command = Command(sql))
         {
@@ -69,6 +76,15 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
+
+        // 0. #312 (Codex release round 3 [P1]): the withdrawal's candidate lock, then the consent re-check, before anything
+        //    is graded. A withdrawal that committed first is seen; one that starts now waits for this grade to commit.
+        if (await IsConsentWithdrawnAsync(organizationId, assignmentId, lockCandidate: true, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new EssayGradeOutcome(EssayGradeStatus.ConsentWithdrawn, 0, null);
+        }
 
         // 1. Lock the result row, then check the essay is still pending on it.
         const string lockSql =
@@ -228,6 +244,35 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
             command.Parameters.Add(new NpgsqlParameter("n", NpgsqlDbType.Integer) { Value = checked((int)sample) });
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    // The assignment's candidate, optionally under the same transaction-scoped advisory lock a #312 withdrawal of that
+    // candidate takes (CandidateConsentRepository.WithdrawOneAsync, FitEngineWriteRepository), then the shared withdrawn
+    // check (direct or same email). An unknown assignment is not "withdrawn": the grade's own lookup answers NotFound.
+    private async Task<bool> IsConsentWithdrawnAsync(
+        Guid organizationId, Guid assignmentId, bool lockCandidate, CancellationToken cancellationToken)
+    {
+        var candidateId = await _db.AssessmentAssignments.AsNoTracking()
+            .Where(a => a.Id == assignmentId && a.OrganizationId == organizationId)
+            .Select(a => (Guid?)a.CandidateId)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (candidateId is not { } candidate)
+        {
+            return false;
+        }
+
+        if (lockCandidate)
+        {
+            var lockKey = candidate.ToString();
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
+        }
+
+        var withdrawn = await FitEngineWriteRepository
+            .QueryWithdrawnAsync(_db, organizationId, [candidate], cancellationToken)
+            .ConfigureAwait(false);
+        return withdrawn.Count > 0;
     }
 
     private NpgsqlCommand Command(string sql) =>

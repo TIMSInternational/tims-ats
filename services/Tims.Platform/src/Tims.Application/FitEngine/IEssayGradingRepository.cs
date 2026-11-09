@@ -10,7 +10,10 @@ public interface IEssayGradingRepository
     /// <summary>The assignment's vacancy (for the caller's scope probe), or null when it is not in this organization.</summary>
     Task<Guid?> GetAssignmentVacancyAsync(Guid organizationId, Guid assignmentId, CancellationToken cancellationToken);
 
-    /// <summary>The essays still listed in the result's <c>breakdown.pendingManual</c>, in question order.</summary>
+    /// <summary>
+    /// The essays still listed in the result's <c>breakdown.pendingManual</c>, in question order; none for a candidate whose
+    /// recruitment consent is withdrawn (#312: their answers are not shown for grading).
+    /// </summary>
     Task<IReadOnlyList<PendingEssay>> GetPendingEssaysAsync(
         Guid organizationId, Guid assignmentId, CancellationToken cancellationToken);
 
@@ -39,6 +42,12 @@ public enum EssayGradeStatus
 
     /// <summary>An awarded score exceeds its question's current points (edited after submission): not graded.</summary>
     QuestionsChanged,
+
+    /// <summary>
+    /// The candidate's recruitment consent is withdrawn (#312): nothing is graded, and no score or norm is produced.
+    /// Checked under the withdrawal's candidate lock, so a withdrawal committing concurrently is seen.
+    /// </summary>
+    ConsentWithdrawn,
 }
 
 /// <summary>The outcome, and after a grade the essays still pending and the new normalized score.</summary>

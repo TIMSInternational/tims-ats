@@ -304,6 +304,13 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
         var transaction = (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
 
+        // This writer understands `assessments` (it removes the key only on an explicit null): mark it for the
+        // job_profiles_keep_assessments trigger, which keeps the array against every other writer.
+        await using (var mark = new NpgsqlCommand(FitV2AwareWriterSql, connection, transaction))
+        {
+            await mark.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = Guid.NewGuid() });
         command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
@@ -356,14 +363,23 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     // The withdrawn-consent query, run on the caller's open TenantScope transaction (the pre-loop check and the
     // per-candidate re-check inside the upsert share it).
-    private async Task<HashSet<Guid>> QueryWithdrawnAsync(
-        Guid organizationId, List<Guid> ids, CancellationToken cancellationToken)
+    private Task<HashSet<Guid>> QueryWithdrawnAsync(
+        Guid organizationId, List<Guid> ids, CancellationToken cancellationToken) =>
+        QueryWithdrawnAsync(_db, organizationId, ids, cancellationToken);
+
+    /// <summary>
+    /// #312: which of <paramref name="ids"/> have a withdrawn recruitment consent (directly or through a same-org
+    /// candidate with the same normalized email), on the caller's open TenantScope transaction. Shared by the FIT
+    /// writes and essay grading (<see cref="EssayGradingRepository"/>).
+    /// </summary>
+    internal static async Task<HashSet<Guid>> QueryWithdrawnAsync(
+        FitEngineWriteDbContext db, Guid organizationId, List<Guid> ids, CancellationToken cancellationToken)
     {
         var withdrawn = new HashSet<Guid>();
 
         // (1) Direct: the candidate itself is the withdrawn subject. Independent of the candidates table, so a
         //     pipeline id with no (or a soft-deleted) candidate row is still caught.
-        var direct = await _db.DataConsents.AsNoTracking()
+        var direct = await db.DataConsents.AsNoTracking()
             .Where(dc => dc.OrganizationId == organizationId
                 && dc.ConsentType == RecruitmentConsentType
                 && dc.WithdrawnAt != null
@@ -379,14 +395,14 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         //     normalized email never groups rows (it identifies nobody). Both sides explicitly org-filtered; RLS
         //     under TenantScope is the second layer.
         var viaEmail = await (
-                from target in _db.Candidates.AsNoTracking()
+                from target in db.Candidates.AsNoTracking()
                 where target.OrganizationId == organizationId
                     && ids.Contains(target.Id)
                     && target.Email.Trim() != string.Empty
-                    && _db.DataConsents.Any(dc => dc.OrganizationId == organizationId
+                    && db.DataConsents.Any(dc => dc.OrganizationId == organizationId
                         && dc.ConsentType == RecruitmentConsentType
                         && dc.WithdrawnAt != null
-                        && _db.Candidates.Any(other => other.OrganizationId == organizationId
+                        && db.Candidates.Any(other => other.OrganizationId == organizationId
                             && other.Id == dc.SubjectUserId
                             && other.Email.Trim().ToLower() == target.Email.Trim().ToLower()))
                 select target.Id)

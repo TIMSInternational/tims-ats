@@ -381,6 +381,37 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         }
     }
 
+    // Codex release round 3 [P2] (slice "fit"): the sweep visits organizations oldest pending work first, so an
+    // organization whose attempts keep failing (and are deferred) moves behind the others instead of holding the bound.
+    [Fact]
+    public async Task The_sweep_lists_organizations_by_their_oldest_pending_attempt_so_deferral_rotates_them()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: true);
+        var (attempt, _) = await AttemptAsync(candidate, "result_ready");
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET withdrawal_state = 'pending', updated_at = now() - interval '3 days' WHERE id = '{attempt}'");
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET withdrawal_state = 'pending', updated_at = now() - interval '1 day' WHERE id = '{AssessmentProviderSchemaFixture.AttemptB}'");
+        try
+        {
+            Assert.Equal([Org], await repository.ListOrganizationsWithPendingWithdrawalsAsync(1, CancellationToken.None));
+
+            await repository.DeferPendingWithdrawalsAsync(Org, [attempt], DateTimeOffset.UtcNow, CancellationToken.None);
+
+            Assert.Equal(
+                [AssessmentProviderSchemaFixture.OrgB],
+                await repository.ListOrganizationsWithPendingWithdrawalsAsync(1, CancellationToken.None));
+        }
+        finally
+        {
+            await fixture.ExecuteAsync($"UPDATE assessment_provider_attempts SET withdrawal_state = 'done' WHERE id = '{attempt}'");
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_attempts SET withdrawal_state = NULL WHERE id = '{AssessmentProviderSchemaFixture.AttemptB}'");
+        }
+    }
+
     // Codex release review, round 3 [P1]: the sweep's pre-tenant listing sees every organization with pending work.
     [Fact]
     public async Task The_sweep_lists_every_organization_holding_a_pending_withdrawal_and_no_other()
