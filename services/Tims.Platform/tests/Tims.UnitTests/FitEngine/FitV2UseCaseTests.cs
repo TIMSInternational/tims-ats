@@ -20,7 +20,8 @@ namespace Tims.UnitTests.FitEngine;
 ///   a SCORED English result verifies the languages dimension and counts there only (owner default D3; a gate
 ///     never moves a number);
 ///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
-///   the composite source's order. (The ATS adapter and the provider stub live in Tims.Infrastructure and are
+///   the composite source's order. Tests of the SCORED LIA curve pass liaScoredAllowed: true (norms confirmed); the
+///   production default treats LIA as a threshold gate (owner default D20, pinned in FitV2IntegrityTests). (The ATS adapter and the provider stub live in Tims.Infrastructure and are
 ///   pinned in Tims.IntegrationTests/FitEngine/FitV2Tests.)
 /// </summary>
 public sealed class FitV2UseCaseTests
@@ -84,7 +85,7 @@ public sealed class FitV2UseCaseTests
             Result(FitInstruments.Personality, "r-p"));
 
         await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
 
         var breakdown = SingleBreakdown(repo);
         Assert.Equal(
@@ -163,9 +164,9 @@ public sealed class FitV2UseCaseTests
             Result(FitInstruments.English, "r-en", cefr: "A2"));
 
         await new FitEngineWriteUseCase(withGate, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
         await new FitEngineWriteUseCase(withoutGate, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
 
         var gated = Assert.Single(withGate.FitScoreUpserts);
         var plain = Assert.Single(withoutGate.FitScoreUpserts);
@@ -255,13 +256,13 @@ public sealed class FitV2UseCaseTests
                 new FakeResultSource(
                     Result(FitInstruments.Lia, "r-lia", percentile: 40),
                     Result(FitInstruments.NativeQuiz, "a-1", score: 30, integrity: ResultIntegrity.NeedsReview)))
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
         await new FitEngineWriteUseCase(
                 valid,
                 new FakeResultSource(
                     Result(FitInstruments.Lia, "r-lia", percentile: 40),
                     Result(FitInstruments.NativeQuiz, "a-1", score: 30)))
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
 
         var pending = Assert.Single(review.FitScoreUpserts);
         var counted = Assert.Single(valid.FitScoreUpserts);
@@ -350,7 +351,7 @@ public sealed class FitV2UseCaseTests
             Result(FitInstruments.NativeQuiz, "a-1", score: 60));
 
         await new FitEngineWriteUseCase(repo, source)
-            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
 
         var upsert = Assert.Single(repo.FitScoreUpserts);
         var breakdown = JsonNode.Parse(upsert.BreakdownJson)!;
@@ -418,6 +419,76 @@ public sealed class FitV2UseCaseTests
     }
 
     // ── helpers ──
+    // ── owner default D20: LIA is a minimum threshold only (norms unconfirmed) ──
+    [Fact]
+    public async Task ByDefault_AScoredLia_IsAThresholdGate_ThatMovesNoNumber()
+    {
+        const string requirements =
+            """{"assessments":[{"instrument":"lia","use":"scored","min":{"globalPercentile":40},"weight":3},{"instrument":"native_quiz","use":"scored","weight":1}]}""";
+        var source = new FakeResultSource(
+            Result(FitInstruments.Lia, "r-lia", percentile: 10),
+            Result(FitInstruments.NativeQuiz, "a-1", score: 80));
+
+        var thresholdRepo = Repo(requirements);
+        await new FitEngineWriteUseCase(thresholdRepo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        var threshold = SingleBreakdown(thresholdRepo);
+        var lia = threshold["assessments"]!.AsArray()[0]!;
+        Assert.Equal("gate", lia["use"]!.GetValue<string>());
+        Assert.Equal("not_met", lia["gate"]!.GetValue<string>());
+        Assert.Null(lia["score"]);
+        Assert.Null(lia["weight"]);
+        Assert.Equal(80, threshold["assessment"]!.GetValue<double>()); // the quiz alone: LIA's p=10 ranks nobody
+
+        // Norms confirmed (Platform:FitEngineLiaScoredEnabled): the meet-or-exceed curve is back, weighted 3:1.
+        var scoredRepo = Repo(requirements);
+        await new FitEngineWriteUseCase(scoredRepo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+        var scored = SingleBreakdown(scoredRepo);
+        Assert.Equal("scored", scored["assessments"]!.AsArray()[0]!["use"]!.GetValue<string>());
+        Assert.Equal(39, scored["assessment"]!.GetValue<double>()); // (25×3 + 80×1)/4 = 38.75 → 39
+    }
+
+    // ── the recompute queue's single-row recompute ──
+    [Fact]
+    public async Task Recompute_RewritesAnExistingRow_UnderTheLock_WithTheThresholdPolicy()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"lia","use":"scored","min":{"globalPercentile":40}}]}""");
+        var source = new ScriptedResultSource([Result(FitInstruments.Lia, "r-lia", percentile: 50)]) { Events = repo.Events };
+
+        var rewritten = await new FitEngineWriteUseCase(repo, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);
+
+        Assert.True(rewritten);
+        // The existence check and the results read both run inside the locked write, in that order.
+        Assert.Equal(["consent", "exists?", "read", "write"], repo.Events);
+        Assert.Equal("met", SingleBreakdown(repo)["assessments"]!.AsArray()[0]!["gate"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Recompute_NeverCreatesARow_AndNeverRunsWithTheFlagOff_OrForAV1Vacancy()
+    {
+        var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 70));
+
+        var missing = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        missing.RowExists = false;
+        Assert.False(await new FitEngineWriteUseCase(missing, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(missing.FitScoreUpserts);
+        Assert.Contains("exists?", missing.Events);
+
+        var flagOff = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        Assert.False(await new FitEngineWriteUseCase(flagOff, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: false, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(flagOff.Events);
+
+        var v1 = Repo("""{"minYearsExperience":2}""");
+        Assert.False(await new FitEngineWriteUseCase(v1, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(v1.Events);
+        Assert.Empty(source.Calls);
+    }
+
     private static JsonObject SingleBreakdown(FakeWriteRepo repo) =>
         JsonNode.Parse(Assert.Single(repo.FitScoreUpserts).BreakdownJson)!.AsObject();
 
@@ -508,6 +579,10 @@ public sealed class FitV2UseCaseTests
             Guid organizationId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WeightProfileData>>([]);
 
+        public Task<IReadOnlyList<CandidateFitScoreData>> GetFitScoresForCandidateAsync(
+            Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<CandidateFitScoreData>>([]);
+
         public Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
             Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<FitReviewStateData>>([]);
@@ -593,12 +668,16 @@ public sealed class FitV2UseCaseTests
 
         public Action? OnLockTaken { get; set; }
 
+        /// <summary>What the in-lock existence check of a recompute sees.</summary>
+        public bool RowExists { get; set; } = true;
+
         public int RolledBack { get; private set; }
 
         // Mirrors the real transaction: consent re-check, lock, in-lock build, write; a throw rolls everything back.
         public async Task<bool> UpsertFitScoreV2Async(
             Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-            Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken)
+            Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+            bool onlyIfRowExists = false)
         {
             Events.Add("consent");
             if (WithdrawnAfterWrites is { } limit && FitScoreUpserts.Count >= limit)
@@ -607,6 +686,14 @@ public sealed class FitV2UseCaseTests
             }
 
             OnLockTaken?.Invoke();
+            if (onlyIfRowExists)
+            {
+                Events.Add("exists?");
+                if (!RowExists)
+                {
+                    return false;
+                }
+            }
             FitScoreWrite write;
             try
             {

@@ -96,6 +96,11 @@ public enum ResultIntegrity
 /// </summary>
 /// <param name="ResultId">The source's own id for the result (the assignment id for ATS native quizzes).</param>
 /// <param name="Source">Which adapter produced it: <c>ats</c> or <c>provider</c>.</param>
+/// <param name="Variant">
+/// Which test within the instrument, when an instrument covers several (a native quiz: its assessment type id).
+/// <see cref="FitV2Kernels"/> keeps the latest result PER variant and judges the variants together, so a second quiz
+/// never hides the first. Null for single-test instruments.
+/// </param>
 public sealed record InstrumentResult(
     string Instrument,
     string ResultId,
@@ -107,7 +112,8 @@ public sealed record InstrumentResult(
     string? Cefr,
     int? Level,
     string? ContentVersion,
-    string? NormVersion);
+    string? NormVersion,
+    string? Variant = null);
 
 /// <summary>
 /// One per-instrument entry of the v2 breakdown.
@@ -125,6 +131,10 @@ public sealed record InstrumentResult(
 /// dimension, <c>cv</c> when the CV self-report stood (always so for a gate or advisory English entry), null when
 /// the vacancy does not require English in <c>requiredLanguages</c>.
 /// </param>
+/// <param name="ResultIds">
+/// Set only when the entry judged more than one result (several native quizzes, one per quiz): every result id it
+/// combined, most recent first. <c>ResultId</c> is then the most recent one.
+/// </param>
 public sealed record InstrumentFitEntry(
     string Instrument,
     string Use,
@@ -140,7 +150,8 @@ public sealed record InstrumentFitEntry(
     string? Source,
     string? ContentVersion,
     string? NormVersion,
-    string? LanguagesEvidence);
+    string? LanguagesEvidence,
+    IReadOnlyList<string>? ResultIds = null);
 
 /// <summary>
 /// The FIT v2 result: the two dimensions it changes, the per-instrument entries, and whether a scored result

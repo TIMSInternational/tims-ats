@@ -35,25 +35,73 @@ public sealed class FitEngineReadUseCase(IFitEngineReadRepository repository)
 
     private static FitRankingRow ToRankingRow(FitScoreForVacancyData r, bool hideBelowMinimum)
     {
-        var breakdown = JsonNode.Parse(r.Breakdown);
-        var overall = r.OverallScore;
-        var isPartial = r.IsPartial;
-        if (hideBelowMinimum)
-        {
-            breakdown = FitV2Visibility.RedactBelowMinimum(breakdown, out var redacted);
-            if (redacted)
-            {
-                var weights = FitEngineKernels.ParseWeights(r.Weights is null ? null : JsonNode.Parse(r.Weights));
-                var shown = FitEngineKernels.ComputeWeightedScore(
-                    FitEngineKernels.ParseBreakdownScores(breakdown), weights);
-                overall = shown.OverallScore;
-                isPartial = true;
-            }
-        }
-
+        var (breakdown, overall, isPartial) = Shown(r.Breakdown, r.Weights, r.OverallScore, r.IsPartial, hideBelowMinimum);
         return new FitRankingRow(
             r.Id.ToString(), r.CandidateId.ToString(), r.FirstName, r.LastName, overall, breakdown, isPartial,
             r.CalculatedAt);
+    }
+
+    // What a reader may see of one stored row (owner default D6): for a narrow-scoped reader a FIT v2 row with an
+    // instrument below its minimum is redacted, its overall recomputed from the dimensions that remain (so it cannot be
+    // inverted back to the hidden level) and marked partial. Anything else is passed through.
+    private static (JsonNode? Breakdown, double Overall, bool IsPartial) Shown(
+        string breakdownJson, string? weightsJson, double overall, bool isPartial, bool hideBelowMinimum)
+    {
+        var breakdown = JsonNode.Parse(breakdownJson);
+        if (!hideBelowMinimum)
+        {
+            return (breakdown, overall, isPartial);
+        }
+
+        breakdown = FitV2Visibility.RedactBelowMinimum(breakdown, out var redacted);
+        if (!redacted)
+        {
+            return (breakdown, overall, isPartial);
+        }
+
+        var weights = FitEngineKernels.ParseWeights(weightsJson is null ? null : JsonNode.Parse(weightsJson));
+        var shown = FitEngineKernels.ComputeWeightedScore(FitEngineKernels.ParseBreakdownScores(breakdown), weights);
+        return (breakdown, shown.OverallScore, true);
+    }
+
+    /// <summary>Most fit scores returned for one candidate (one per vacancy they were scored for).</summary>
+    public const int MaxCandidateFitScores = 100;
+
+    /// <summary>
+    /// FIT v2: a candidate's stored fit scores for the candidate page, most recent first. Only rows whose vacancy passes
+    /// <paramref name="vacancyInScope"/> (the caller's scope probe, once per distinct vacancy) are returned: the same
+    /// authorization as the vacancy ranking, which already shows every candidate of an in-scope vacancy. An unknown
+    /// candidate is an empty list. <paramref name="hideBelowMinimum"/>: owner default D6, as in the ranking.
+    /// </summary>
+    public async Task<IReadOnlyList<CandidateFitScoreRow>> GetCandidateFitScoresAsync(
+        Guid organizationId, Guid candidateId, bool hideBelowMinimum, Func<Guid, Task<bool>> vacancyInScope,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _repository
+            .GetFitScoresForCandidateAsync(organizationId, candidateId, MaxCandidateFitScores, cancellationToken)
+            .ConfigureAwait(false);
+        var allowed = new Dictionary<Guid, bool>();
+        var result = new List<CandidateFitScoreRow>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (!allowed.TryGetValue(row.VacancyId, out var inScope))
+            {
+                inScope = await vacancyInScope(row.VacancyId).ConfigureAwait(false);
+                allowed[row.VacancyId] = inScope;
+            }
+
+            if (!inScope)
+            {
+                continue;
+            }
+
+            var (breakdown, overall, isPartial) =
+                Shown(row.Breakdown, row.Weights, row.OverallScore, row.IsPartial, hideBelowMinimum);
+            result.Add(new CandidateFitScoreRow(
+                row.Id.ToString(), row.VacancyId.ToString(), overall, breakdown, isPartial, row.CalculatedAt));
+        }
+
+        return result;
     }
 
     /// <summary>

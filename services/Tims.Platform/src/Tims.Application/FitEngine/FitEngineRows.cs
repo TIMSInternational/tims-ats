@@ -20,6 +20,16 @@ public sealed record FitScoreForVacancyData(
     string LastName,
     string? Weights = null);
 
+/// <summary>One of a candidate's fit_scores rows (the #312 hidden rows excluded), with its vacancy for the scope check.</summary>
+public sealed record CandidateFitScoreData(
+    Guid Id,
+    Guid VacancyId,
+    double OverallScore,
+    string Breakdown,
+    string? Weights,
+    bool IsPartial,
+    DateTimeOffset CalculatedAt);
+
 /// <summary>The review state of one fit_scores row, as returned to a caller.</summary>
 public sealed record FitReviewStateRow(string FitScoreId, bool ReviewPending);
 

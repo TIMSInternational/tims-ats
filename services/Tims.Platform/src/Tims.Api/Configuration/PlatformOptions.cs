@@ -514,6 +514,16 @@ public sealed class PlatformOptions
     public bool FitEngineV2Enabled { get; init; }
 
     /// <summary>
+    /// FIT v2, owner default D20 (2026-11-08): whether a SCORED LIA entry feeds the assessment number. DEFAULT false
+    /// while TIMS has not confirmed the LIA norms (norm population, Working Memory ceiling, global-percentile formula —
+    /// assessment-platform design §6.3): LIA is then a minimum threshold only, evaluated as a gate on the vacancy's
+    /// minimum (met / not met, never a number, never a rejection) and the requirements writer reports
+    /// <c>lia_threshold_only</c>. The stored configuration is unchanged, so turning this on (env
+    /// <c>Platform__FitEngineLiaScoredEnabled=true</c>) restores the scored curve at the next compute.
+    /// </summary>
+    public bool FitEngineLiaScoredEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 25 / #98 (efcoreReadOnly on notifications + notification_preferences — reads only): when
     /// true, the C# notification READ surface is mapped and live — <c>GET /notifications</c> (list, cursor-paged),
     /// <c>/notifications/unread-count</c> (unreadCount) and <c>/notifications/preferences</c> (getPreferences).

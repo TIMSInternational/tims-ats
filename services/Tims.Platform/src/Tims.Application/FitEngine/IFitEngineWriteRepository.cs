@@ -58,9 +58,14 @@ public interface IFitEngineWriteRepository
     /// <paramref name="buildInLock"/> throws or the token is cancelled, the transaction rolls back and the stored
     /// row is left exactly as it was.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="onlyIfRowExists"/>: a recompute of a stored row (the recompute queue) writes nothing when no
+    /// row exists for the pair once the FIT v2 lock is held, and returns false.
+    /// </remarks>
     Task<bool> UpsertFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-        Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken);
+        Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+        bool onlyIfRowExists = false);
 
     /// <summary>
     /// The C#-owned <c>job_profiles.fit_requirements</c> write, one atomic <c>INSERT … ON CONFLICT DO UPDATE</c> on the

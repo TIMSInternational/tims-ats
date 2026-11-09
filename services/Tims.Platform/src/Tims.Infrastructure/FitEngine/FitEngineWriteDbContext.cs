@@ -81,6 +81,7 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
             entity.Property(a => a.CandidateId).HasColumnName("candidate_id");
             entity.Property(a => a.VacancyId).HasColumnName("vacancy_id");
             entity.Property(a => a.Status).HasColumnName("status");
+            entity.Property(a => a.AssessmentTypeId).HasColumnName("assessment_type_id");
             entity.Property(a => a.CompletedAt).HasColumnName("completed_at").HasColumnType("timestamp");
         });
 
@@ -103,6 +104,7 @@ public sealed class FitEngineWriteDbContext(DbContextOptions<FitEngineWriteDbCon
             entity.Property(p => p.OrganizationId).HasColumnName("organization_id");
             entity.Property(p => p.AssignmentId).HasColumnName("assignment_id");
             entity.Property(p => p.Severity).HasColumnName("severity");
+            entity.Property(p => p.ReviewStatus).HasColumnName("review_status");
         });
 
         modelBuilder.Entity<FitAiInterviewSessionWriteEntity>(entity =>

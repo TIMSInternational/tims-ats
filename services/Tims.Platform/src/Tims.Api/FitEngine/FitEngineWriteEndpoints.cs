@@ -65,7 +65,8 @@ public static class FitEngineWriteEndpoints
 
                 var result = await useCase.ComputeForVacancyAsync(
                     Guid.Parse(gate.Context!.OrganizationId), vacancyId, timeProvider.GetUtcNow(),
-                    platformOptions.Value.FitEngineV2Enabled, cancellationToken);
+                    platformOptions.Value.FitEngineV2Enabled, platformOptions.Value.FitEngineLiaScoredEnabled,
+                    cancellationToken);
                 return Results.Ok(result);
             })
             .RequireAuthorization()

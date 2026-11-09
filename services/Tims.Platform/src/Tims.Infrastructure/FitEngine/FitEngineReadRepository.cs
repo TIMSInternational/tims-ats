@@ -95,6 +95,29 @@ public sealed class FitEngineReadRepository(FitEngineReadDbContext db) : IFitEng
             : new ExplainFitRowData(row.OverallScore, row.Breakdown, row.FirstName, row.LastName, row.Title);
     }
 
+    public async Task<IReadOnlyList<CandidateFitScoreData>> GetFitScoresForCandidateAsync(
+        Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var rows = await VisibleFitScores(organizationId)
+            .Where(f => f.OrganizationId == organizationId && f.CandidateId == candidateId)
+            .OrderByDescending(f => f.CalculatedAt)
+            .ThenBy(f => f.Id)
+            .Take(max)
+            .Select(f => new { f.Id, f.VacancyId, f.OverallScore, f.Breakdown, f.Weights, f.IsPartial, f.CalculatedAt })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return rows
+            .Select(r => new CandidateFitScoreData(
+                r.Id, r.VacancyId, r.OverallScore, r.Breakdown, r.Weights, r.IsPartial, ToUtc(r.CalculatedAt)))
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
         Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken)
     {

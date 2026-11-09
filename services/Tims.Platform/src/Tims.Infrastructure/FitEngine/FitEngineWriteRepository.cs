@@ -185,13 +185,34 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         return true;
     }
 
-    // The fit_scores upsert, on the caller's open TenantScope transaction.
+    private async Task<bool> FitScoreExistsAsync(
+        Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM fit_scores WHERE organization_id = @org AND candidate_id = @cand "
+            + "AND vacancy_id = @vac)",
+            (NpgsqlConnection)_db.Database.GetDbConnection(),
+            (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction());
+        command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+        command.Parameters.Add(new NpgsqlParameter("cand", NpgsqlDbType.Uuid) { Value = candidateId });
+        command.Parameters.Add(new NpgsqlParameter("vac", NpgsqlDbType.Uuid) { Value = vacancyId });
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    // The fit_scores upsert, on the caller's open TenantScope transaction. The C# engine knows both FIT versions, so
+    // it marks its write (transaction-local) for the fit_scores_keep_v2 trigger (migration
+    // 20261109100000_fit_v2_integrity): only a writer that does NOT set this is kept from replacing a v2 row with v1.
     private async Task ExecuteFitScoreUpsertAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
         string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
         var transaction = (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
+
+        await using (var mark = new NpgsqlCommand(FitV2AwareWriterSql, connection, transaction))
+        {
+            await mark.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         await using var command = new NpgsqlCommand(FitScoreUpsertSql, connection, transaction);
         command.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = Guid.NewGuid() });
@@ -209,7 +230,8 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     public async Task<bool> UpsertFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-        Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken)
+        Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+        bool onlyIfRowExists = false)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
@@ -232,6 +254,15 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({FitV2LockKey(organizationId, candidateId, vacancyId)}, 0))",
             cancellationToken).ConfigureAwait(false);
+
+        // A recompute keeps an existing row current and never creates one. Checked under the lock: a first compute
+        // still in flight holds it, so its row is visible here once it commits.
+        if (onlyIfRowExists && !await FitScoreExistsAsync(organizationId, candidateId, vacancyId, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
 
         // The in-lock read and evaluation, on this open transaction. A throw or a cancellation here (or in the write
         // below) disposes the scope without a commit: rollback, and the stored row is untouched.
@@ -364,6 +395,9 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
     // data_consents.consent_type for candidate recruitment processing (#312/#313) — mirrors
     // CandidateConsentConstants.ConsentType; duplicated so FitEngine does not depend on the consent slice.
     private const string RecruitmentConsentType = "recruitment_data_processing";
+
+    /// <summary>The transaction-local marker the fit_scores_keep_v2 trigger accepts as a FIT v2-aware writer.</summary>
+    public const string FitV2AwareWriterSql = "SELECT set_config('tims.fit_writer', 'fit_v2_aware', true)";
 
     private const string FitScoreUpsertSql =
         "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, "

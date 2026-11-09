@@ -1,0 +1,476 @@
+{
+  "description": "Owner default D6: what a narrow-scoped reader (team leader) sees of a stored fit score. Run by the C# FitV2Visibility + overall recompute (FitV2VisibilityFixtureTests) and by @tims/ai fit-visibility (tests/ai/fit-visibility.test.ts), so the two stacks redact identically. Hand-derived.",
+  "cases": [
+    {
+      "name": "scored LIA below its minimum: the entry loses its score (belowMinimum), the assessment dimension it feeds is dropped, and the overall is recomputed from interview 80, experience 100 and languages 100 over weights 0.2/0.2/0.1 = (16+20+10)/0.5 = 92, partial",
+      "input": {
+        "overallScore": 73,
+        "isPartial": true,
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "breakdown": {
+          "assessment": 50,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 100,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "lia",
+              "use": "scored",
+              "status": "completed",
+              "score": 50,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": {
+                "globalPercentile": 40
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "redacted": true,
+        "overallScore": 92,
+        "isPartial": true,
+        "breakdown": {
+          "assessment": null,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 100,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "lia",
+              "use": "scored",
+              "status": "completed",
+              "score": null,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": {
+                "globalPercentile": 40
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null,
+              "belowMinimum": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "scored English below its minimum (D3: it feeds only languages, which already says covered or not): the entry loses its score, the dimensions stay, the overall (16+20+5)/0.5 = 82 is recomputed and the row marked partial",
+      "input": {
+        "overallScore": 82,
+        "isPartial": false,
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "breakdown": {
+          "assessment": null,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 50,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "scored",
+              "status": "completed",
+              "score": 50,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": null,
+              "effectiveWeight": 0.05,
+              "min": {
+                "cefr": "C1"
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": "assessment"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "redacted": true,
+        "overallScore": 82,
+        "isPartial": true,
+        "breakdown": {
+          "assessment": null,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 50,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "english",
+              "use": "scored",
+              "status": "completed",
+              "score": null,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": null,
+              "effectiveWeight": 0.05,
+              "min": {
+                "cefr": "C1"
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": "assessment",
+              "belowMinimum": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a scored quiz at its minimum (100) and a not-met gate (already only met / not met): nothing is hidden, the stored overall stands",
+      "input": {
+        "overallScore": 96,
+        "isPartial": true,
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "breakdown": {
+          "assessment": 100,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 100,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "native_quiz",
+              "use": "scored",
+              "status": "completed",
+              "score": 100,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": {
+                "score": 60
+              },
+              "reason": null,
+              "resultId": "a1",
+              "source": "ats",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            },
+            {
+              "instrument": "lia",
+              "use": "gate",
+              "status": "completed",
+              "score": null,
+              "gate": "not_met",
+              "weight": null,
+              "assessmentShare": null,
+              "effectiveWeight": null,
+              "min": {
+                "globalPercentile": 40
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "redacted": false,
+        "overallScore": 96,
+        "isPartial": true,
+        "breakdown": {
+          "assessment": 100,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 100,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "native_quiz",
+              "use": "scored",
+              "status": "completed",
+              "score": 100,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": {
+                "score": 60
+              },
+              "reason": null,
+              "resultId": "a1",
+              "source": "ats",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            },
+            {
+              "instrument": "lia",
+              "use": "gate",
+              "status": "completed",
+              "score": null,
+              "gate": "not_met",
+              "weight": null,
+              "assessmentShare": null,
+              "effectiveWeight": null,
+              "min": {
+                "globalPercentile": 40
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a scored quiz with no minimum has no 'below minimum': its score stays",
+      "input": {
+        "overallScore": 40,
+        "isPartial": true,
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "breakdown": {
+          "assessment": 40,
+          "interview": null,
+          "experience": null,
+          "education": null,
+          "languages": null,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "native_quiz",
+              "use": "scored",
+              "status": "completed",
+              "score": 40,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": null,
+              "reason": null,
+              "resultId": "a1",
+              "source": "ats",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "redacted": false,
+        "overallScore": 40,
+        "isPartial": true,
+        "breakdown": {
+          "assessment": 40,
+          "interview": null,
+          "experience": null,
+          "education": null,
+          "languages": null,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "native_quiz",
+              "use": "scored",
+              "status": "completed",
+              "score": 40,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": null,
+              "reason": null,
+              "resultId": "a1",
+              "source": "ats",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a v1 row (no fitVersion) is never touched",
+      "input": {
+        "overallScore": 70,
+        "isPartial": true,
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        },
+        "breakdown": {
+          "assessment": 30,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 100,
+          "llmJudgment": null
+        }
+      },
+      "expected": {
+        "redacted": false,
+        "overallScore": 70,
+        "isPartial": true,
+        "breakdown": {
+          "assessment": 30,
+          "interview": 80,
+          "experience": 100,
+          "education": null,
+          "languages": 100,
+          "llmJudgment": null
+        }
+      }
+    },
+    {
+      "name": "ITC-IA below its minimum on a row whose stored weights are not an object: no dimension has a weight, so the overall is the no-data 0, partial",
+      "input": {
+        "overallScore": 62,
+        "isPartial": false,
+        "weights": null,
+        "breakdown": {
+          "assessment": 50,
+          "interview": 80,
+          "experience": null,
+          "education": null,
+          "languages": null,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "itcia",
+              "use": "scored",
+              "status": "completed",
+              "score": 60,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": {
+                "level": 4
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "redacted": true,
+        "overallScore": 0,
+        "isPartial": true,
+        "breakdown": {
+          "assessment": null,
+          "interview": 80,
+          "experience": null,
+          "education": null,
+          "languages": null,
+          "llmJudgment": null,
+          "fitVersion": 2,
+          "reviewPending": false,
+          "assessments": [
+            {
+              "instrument": "itcia",
+              "use": "scored",
+              "status": "completed",
+              "score": null,
+              "gate": null,
+              "weight": null,
+              "assessmentShare": 1,
+              "effectiveWeight": 0.4,
+              "min": {
+                "level": 4
+              },
+              "reason": null,
+              "resultId": "r1",
+              "source": "provider",
+              "contentVersion": null,
+              "normVersion": null,
+              "languagesEvidence": null,
+              "belowMinimum": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

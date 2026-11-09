@@ -21,6 +21,13 @@ public interface IFitEngineReadRepository
     Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
         Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// FIT v2: the candidate's fit_scores rows of this organization (the #312 withdrawn-consent rows excluded),
+    /// calculatedAt DESC then id. At most <paramref name="max"/>.
+    /// </summary>
+    Task<IReadOnlyList<CandidateFitScoreData>> GetFitScoresForCandidateAsync(
+        Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken);
+
     /// <summary><c>getFitScoreForExplain</c>: the (candidate, vacancy) row or null — at most one exists (unique pair).</summary>
     Task<ExplainFitRowData?> GetFitScoreForExplainAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken);

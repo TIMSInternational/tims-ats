@@ -134,6 +134,32 @@ public static class FitV2Kernels
     }
 
     /// <summary>
+    /// Owner default D20 (2026-11-08) and assessment-platform design §6.3: until TIMS confirms the LIA norms (the norm
+    /// population, the Working Memory ceiling and the global-percentile formula), LIA is used as a MINIMUM THRESHOLD
+    /// only, never for fine ranking. With <paramref name="liaScoredAllowed"/> false (the default, and the production
+    /// setting until <c>Platform:FitEngineLiaScoredEnabled</c> is turned on) a scored LIA entry is evaluated as a GATE
+    /// on the same minimum: met / not met / unknown, shown to HR, never part of any number and never a rejection. Its
+    /// weight is dropped, so the remaining scored instruments split the assessment weight. The stored configuration is
+    /// not changed: when the norms are confirmed, turning the option on restores the scored curve with no
+    /// reconfiguration. Every other entry is returned as is.
+    /// </summary>
+    public static IReadOnlyList<AssessmentRequirement> ApplyLiaThresholdPolicy(
+        IReadOnlyList<AssessmentRequirement> requirements, bool liaScoredAllowed = false)
+    {
+        ArgumentNullException.ThrowIfNull(requirements);
+        if (liaScoredAllowed)
+        {
+            return requirements;
+        }
+
+        return requirements
+            .Select(r => r.Instrument == FitInstruments.Lia && r.Use == FitInstrumentUses.Scored
+                ? r with { Use = FitInstrumentUses.Gate, Weight = null }
+                : r)
+            .ToList();
+    }
+
+    /// <summary>
     /// One entry, parsed by the rules of <see cref="ParseAssessmentRequirements"/>. When <paramref name="issues"/> is
     /// given, every reason the entry was dropped or changed is added to it as a stable code (see
     /// <see cref="FitRequirementIssueCodes"/>); the parse result is the same either way.
@@ -347,7 +373,7 @@ public static class FitV2Kernels
     {
         var assessmentWeight = profileWeights.TryGetValue("assessment", out var aw) ? aw : 0d;
         var languagesWeight = profileWeights.TryGetValue("languages", out var lw) ? lw : 0d;
-        var latest = SelectLatestPerInstrument(results);
+        var latest = SelectLatestPerInstrument(results, out var combinedIds);
 
         // Owner default D3 (2026-11-08): English counts ONCE, in the languages dimension. A scored English entry
         // never enters the assessment mean; it decides English among the required languages, and English is added
@@ -438,6 +464,9 @@ public static class FitV2Kernels
             // An advisory entry (personality, MI, PCA) carries its status only: no result id, source or versions
             // that would let a fit_engine reader without assessment:read locate the advisory result.
             var shownResult = requirement.Use == FitInstrumentUses.Advisory ? null : draft.Result;
+            var shownIds = shownResult is not null && combinedIds.TryGetValue(requirement.Instrument, out var ids)
+                ? ids
+                : null;
             entries.Add(new InstrumentFitEntry(
                 requirement.Instrument,
                 requirement.Use,
@@ -453,7 +482,8 @@ public static class FitV2Kernels
                 shownResult?.Source,
                 shownResult?.ContentVersion,
                 shownResult?.NormVersion,
-                languagesEvidence));
+                languagesEvidence,
+                shownIds));
         }
 
         return new FitV2Evaluation(assessment, languages, entries, reviewPending);
@@ -529,8 +559,22 @@ public static class FitV2Kernels
         return breakdown;
     }
 
-    /// <summary>One entry as stored: every key always present, nulls explicit.</summary>
-    public static JsonObject EntryToJson(InstrumentFitEntry entry) => new()
+    /// <summary>
+    /// One entry as stored: every key always present, nulls explicit, plus <c>resultIds</c> on an entry that judged
+    /// several results (several native quizzes).
+    /// </summary>
+    public static JsonObject EntryToJson(InstrumentFitEntry entry)
+    {
+        var json = EntryCoreToJson(entry);
+        if (entry.ResultIds is { Count: > 1 } ids)
+        {
+            json["resultIds"] = new JsonArray(ids.Select(id => (JsonNode)JsonValue.Create(id)).ToArray());
+        }
+
+        return json;
+    }
+
+    private static JsonObject EntryCoreToJson(InstrumentFitEntry entry) => new()
     {
         ["instrument"] = entry.Instrument,
         ["use"] = entry.Use,
@@ -665,20 +709,96 @@ public static class FitV2Kernels
     private static double RelativeWeight(AssessmentRequirement requirement, bool useDeclaredWeights) =>
         useDeclaredWeights ? requirement.Weight!.Value : 1d;
 
+    // The result judged per instrument. A single-test instrument: its most recent result (completedAt DESC, nulls
+    // last, then resultId). An instrument with variants (several native quizzes): the most recent result PER variant,
+    // combined by CombineVariants, so a later quiz never hides an earlier, different one. A result without a variant
+    // is its own variant-less group (the single-test rule).
     private static Dictionary<string, InstrumentResult> SelectLatestPerInstrument(
-        IReadOnlyList<InstrumentResult> results)
+        IReadOnlyList<InstrumentResult> results, out Dictionary<string, IReadOnlyList<string>> combinedIds)
     {
         var latest = new Dictionary<string, InstrumentResult>(StringComparer.Ordinal);
+        combinedIds = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var group in results.GroupBy(r => r.Instrument, StringComparer.Ordinal))
         {
-            latest[group.Key] = group
-                .OrderBy(r => r.CompletedAt is null ? 1 : 0)
-                .ThenByDescending(r => r.CompletedAt)
-                .ThenBy(r => r.ResultId, StringComparer.Ordinal)
-                .First();
+            var perVariant = group
+                .GroupBy(r => r.Variant ?? string.Empty, StringComparer.Ordinal)
+                .Select(MostRecent)
+                .ToList();
+            if (perVariant.Count == 1)
+            {
+                latest[group.Key] = perVariant[0];
+                continue;
+            }
+
+            var ordered = perVariant.OrderBy(r => r, RecencyComparer.Instance).ToList();
+            latest[group.Key] = CombineVariants(ordered);
+            combinedIds[group.Key] = ordered.Select(r => r.ResultId).ToList();
         }
 
         return latest;
+    }
+
+    private static InstrumentResult MostRecent(IEnumerable<InstrumentResult> results) =>
+        results.OrderBy(r => r, RecencyComparer.Instance).First();
+
+    /// <summary>
+    /// Several variants of one instrument (native quizzes: one per quiz the candidate sat for this vacancy), each
+    /// already its most recent result, most recent first, judged together:
+    /// <list type="bullet">
+    /// <item>any of them needs review → the instrument needs review (a flagged or ungraded quiz is never hidden
+    /// behind the others' mean, and never read as a low score);</item>
+    /// <item>otherwise the value is the mean normalized score of those that have one (each quiz counts once,
+    /// whatever its length), or no value when none has;</item>
+    /// <item>the most recent result stands for the id, source, completion time and versions; the entry also lists
+    /// every combined id (<c>resultIds</c>).</item>
+    /// </list>
+    /// </summary>
+    public static InstrumentResult CombineVariants(IReadOnlyList<InstrumentResult> mostRecentFirst)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(mostRecentFirst.Count);
+        var head = mostRecentFirst[0];
+        if (mostRecentFirst.Any(r => r.Integrity == ResultIntegrity.NeedsReview))
+        {
+            return head with { Integrity = ResultIntegrity.NeedsReview, NormalizedScore = null, Variant = null };
+        }
+
+        var values = mostRecentFirst
+            .Select(r => r.NormalizedScore)
+            .Where(v => v is { } d && double.IsFinite(d))
+            .Select(v => v!.Value)
+            .ToList();
+        return head with
+        {
+            Integrity = ResultIntegrity.Valid,
+            NormalizedScore = values.Count > 0 ? values.Sum() / values.Count : null,
+            Variant = null,
+        };
+    }
+
+    private sealed class RecencyComparer : IComparer<InstrumentResult>
+    {
+        public static readonly RecencyComparer Instance = new();
+
+        public int Compare(InstrumentResult? x, InstrumentResult? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            if (x is null || y is null)
+            {
+                return x is null ? 1 : -1;
+            }
+
+            if (x.CompletedAt is null != y.CompletedAt is null)
+            {
+                return x.CompletedAt is null ? 1 : -1;
+            }
+
+            var byTime = Nullable.Compare(y.CompletedAt, x.CompletedAt);
+            return byTime != 0 ? byTime : string.CompareOrdinal(x.ResultId, y.ResultId);
+        }
     }
 
     private static string? NormalizeCefr(string raw)

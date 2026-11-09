@@ -69,7 +69,8 @@ public static class FitRequirementsEndpoints
                 var saved = await useCase.UpdateFitRequirementsAsync(
                     Guid.Parse(gate.Context!.OrganizationId), vacancyId, body, timeProvider.GetUtcNow(),
                     cancellationToken,
-                    (error, issues) => invalid = new FitRequirementsError(error, issues.Select(ToDto).ToList()));
+                    (error, issues) => invalid = new FitRequirementsError(error, issues.Select(ToDto).ToList()),
+                    liaScoredAllowed: platformOptions.Value.FitEngineLiaScoredEnabled);
                 if (invalid is not null)
                 {
                     return Results.BadRequest(invalid);

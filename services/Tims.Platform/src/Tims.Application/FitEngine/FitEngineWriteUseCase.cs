@@ -57,9 +57,9 @@ public sealed class FitEngineWriteUseCase(
     /// </summary>
     public async Task<FitRequirementsSaved?> UpdateFitRequirementsAsync(
         Guid organizationId, Guid vacancyId, JsonNode? body, DateTimeOffset now, CancellationToken cancellationToken,
-        Action<string, IReadOnlyList<FitRequirementIssue>>? onInvalid = null)
+        Action<string, IReadOnlyList<FitRequirementIssue>>? onInvalid = null, bool liaScoredAllowed = false)
     {
-        if (FitRequirementsInput.Validate(body, out var error, out var issues) is not { } write)
+        if (FitRequirementsInput.Validate(body, liaScoredAllowed, out var error, out var issues) is not { } write)
         {
             onInvalid?.Invoke(error!, issues);
             return null;
@@ -91,8 +91,18 @@ public sealed class FitEngineWriteUseCase(
     /// <c>computeForVacancy</c> with the FIT v2 switch. <paramref name="fitV2Enabled"/> false is exactly v1. True
     /// takes the v2 path only for a vacancy whose requirements carry an <c>assessments</c> array.
     /// </summary>
-    public async Task<ComputeForVacancyResult> ComputeForVacancyAsync(
+    public Task<ComputeForVacancyResult> ComputeForVacancyAsync(
         Guid organizationId, Guid vacancyId, DateTimeOffset now, bool fitV2Enabled,
+        CancellationToken cancellationToken) =>
+        ComputeForVacancyAsync(organizationId, vacancyId, now, fitV2Enabled, liaScoredAllowed: false, cancellationToken);
+
+    /// <summary>
+    /// <c>computeForVacancy</c> with the FIT v2 switch and the LIA policy: <paramref name="liaScoredAllowed"/> false
+    /// (norms unconfirmed, owner default D20) evaluates a scored LIA entry as a threshold gate
+    /// (<see cref="FitV2Kernels.ApplyLiaThresholdPolicy"/>).
+    /// </summary>
+    public async Task<ComputeForVacancyResult> ComputeForVacancyAsync(
+        Guid organizationId, Guid vacancyId, DateTimeOffset now, bool fitV2Enabled, bool liaScoredAllowed,
         CancellationToken cancellationToken)
     {
         var pipelineIds = await _repository.GetPipelineCandidateIdsAsync(organizationId, vacancyId, cancellationToken)
@@ -120,7 +130,7 @@ public sealed class FitEngineWriteUseCase(
         var requirementsNode = ParseNullableJson(vacancy?.FitRequirements);
         var requirements = FitEngineKernels.ParseRequirements(requirementsNode);
         // null ⇒ v1 for every candidate (flag off, or no `assessments` array on this vacancy).
-        var assessmentRequirements = fitV2Enabled ? FitV2Kernels.ParseAssessmentRequirements(requirementsNode) : null;
+        var assessmentRequirements = fitV2Enabled ? ParseV2Requirements(requirementsNode, liaScoredAllowed) : null;
 
         var scored = 0;
         foreach (var candidateId in candidateIds)
@@ -132,7 +142,7 @@ public sealed class FitEngineWriteUseCase(
                     organizationId, candidateId, vacancyId, requirements, vacancy?.RoleFamily, now, cancellationToken)
                 : ComputeFitScoreV2Async(
                     organizationId, candidateId, vacancyId, requirements, assessmentRequirements, vacancy?.RoleFamily,
-                    now, cancellationToken);
+                    now, onlyIfRowExists: false, cancellationToken);
             if (await computed.ConfigureAwait(false))
             {
                 scored++;
@@ -141,6 +151,47 @@ public sealed class FitEngineWriteUseCase(
 
         return new ComputeForVacancyResult(scored);
     }
+
+    /// <summary>
+    /// Recompute ONE stored FIT v2 row after an input it depends on changed (an assignment cancelled, voided, flagged,
+    /// graded or reviewed; see the <c>fit_recompute_requests</c> queue). Only a vacancy configured for FIT v2 is
+    /// recomputed, only when the flag is on, and only a row that already exists: the check runs under the FIT v2
+    /// lock, so a first compute still in flight is waited for, and nothing is ever created here (computeForVacancy
+    /// decides who is scored). The same consent guard and in-lock result read as computeForVacancy. Returns true when
+    /// the row was rewritten.
+    /// </summary>
+    public async Task<bool> RecomputeExistingAsync(
+        Guid organizationId, Guid candidateId, Guid vacancyId, DateTimeOffset now, bool fitV2Enabled,
+        bool liaScoredAllowed, CancellationToken cancellationToken)
+    {
+        if (!fitV2Enabled)
+        {
+            return false;
+        }
+
+        var vacancy = await _repository.GetVacancyForFitAsync(organizationId, vacancyId, cancellationToken)
+            .ConfigureAwait(false);
+        if (vacancy is null)
+        {
+            return false;
+        }
+
+        var requirementsNode = ParseNullableJson(vacancy.FitRequirements);
+        if (ParseV2Requirements(requirementsNode, liaScoredAllowed) is not { } assessmentRequirements)
+        {
+            return false;
+        }
+
+        return await ComputeFitScoreV2Async(
+                organizationId, candidateId, vacancyId, FitEngineKernels.ParseRequirements(requirementsNode),
+                assessmentRequirements, vacancy.RoleFamily, now, onlyIfRowExists: true, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<AssessmentRequirement>? ParseV2Requirements(JsonNode? requirementsNode, bool liaScoredAllowed) =>
+        FitV2Kernels.ParseAssessmentRequirements(requirementsNode) is { } parsed
+            ? FitV2Kernels.ApplyLiaThresholdPolicy(parsed, liaScoredAllowed)
+            : null;
 
     // TS computeFitScore for one candidate: 4 reads → derive → resolve weights → weighted score → upsert.
     // A null candidate (soft-deleted while still holding an active application — getPipelineCandidateIds does
@@ -205,7 +256,7 @@ public sealed class FitEngineWriteUseCase(
     private async Task<bool> ComputeFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, FitRequirements requirements,
         IReadOnlyList<AssessmentRequirement> assessmentRequirements, string? roleFamily, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        bool onlyIfRowExists, CancellationToken cancellationToken)
     {
         var candidate = await _repository.GetCandidateForFitAsync(organizationId, candidateId, cancellationToken)
             .ConfigureAwait(false);
@@ -230,7 +281,8 @@ public sealed class FitEngineWriteUseCase(
                         assessmentRequirements, results, weights, requirements, candidateLanguages, interviewScore,
                         experience, education);
                 },
-                cancellationToken)
+                cancellationToken,
+                onlyIfRowExists)
             .ConfigureAwait(false);
     }
 

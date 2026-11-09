@@ -688,6 +688,15 @@ try
             : [sp.GetRequiredService<AtsAssessmentResultSource>()]));
     builder.Services.AddScoped<FitEngineWriteUseCase>();
     builder.Services.AddScoped<IEssayGradingRepository, EssayGradingRepository>();
+    // FIT v2: the recompute queue (database triggers enqueue; this drains). The loop runs only while the FIT v2
+    // compute is live.
+    builder.Services.AddScoped<IFitRecomputeQueue, FitRecomputeQueueRepository>();
+    builder.Services.AddScoped<FitRecomputeUseCase>();
+    if (builder.Configuration.GetValue<bool>("Platform:FitEngineWriteEnabled")
+        && builder.Configuration.GetValue<bool>("Platform:FitEngineV2Enabled"))
+    {
+        builder.Services.AddHostedService<FitRecomputeHostedService>();
+    }
 
     // Phase-5 Slice 25 / #98 — notification. ONE DbContext for both sides: the read and write flags cover the
     // SAME two tables, and getPreferences is a query that INSERTs, so the read path needs write capability.
@@ -1686,6 +1695,7 @@ try
     {
         app.MapFitEngineReadEndpoints();
         app.MapFitReviewStateEndpoints(); // FIT v2: the reviewPending marker for the candidate/talent-pool tables
+        app.MapFitCandidateScoresEndpoints(); // FIT v2: the candidate page's fit scores (D6-redacted)
     }
 
     // Phase-5 Slice 24 / #90 (efcoreStranglerWrite): the FIT-engine WRITE surface (2 writes) — POST

@@ -137,6 +137,12 @@ public sealed class FitV2VisibilityTests
             Guid organizationId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WeightProfileData>>([]);
 
+        public List<CandidateFitScoreData> CandidateRows { get; } = [];
+
+        public Task<IReadOnlyList<CandidateFitScoreData>> GetFitScoresForCandidateAsync(
+            Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<CandidateFitScoreData>>(CandidateRows.Take(max).ToList());
+
         public Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
             Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<FitReviewStateData>>([]);

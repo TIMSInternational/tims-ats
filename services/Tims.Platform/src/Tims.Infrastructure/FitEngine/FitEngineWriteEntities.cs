@@ -63,6 +63,9 @@ public sealed class FitAssessmentAssignmentWriteEntity
     /// <summary>Read ONLY by the FIT v2 native-quiz adapter (integrity: anything but 'completed' needs review).</summary>
     public string Status { get; set; } = null!;
 
+    /// <summary>Read ONLY by the FIT v2 native-quiz adapter: which quiz (each quiz is judged on its own latest result).</summary>
+    public Guid AssessmentTypeId { get; set; }
+
     public DateTime? CompletedAt { get; set; }
 }
 
@@ -99,6 +102,12 @@ public sealed class FitProctoringSessionReadEntity
     public Guid AssignmentId { get; set; }
 
     public string? Severity { get; set; }
+
+    /// <summary>
+    /// The review-completion signal (migration 20261109100000_fit_v2_integrity): unreviewed | clear | concern |
+    /// inconclusive. Only <c>clear</c> releases a high/critical session's result.
+    /// </summary>
+    public string ReviewStatus { get; set; } = null!;
 }
 
 /// <summary>ai_interview_sessions — fitScore + createdAt only (status, a native enum, deliberately unmapped).</summary>

@@ -16,6 +16,12 @@ public static class FitRequirementIssueCodes
     public const string InvalidWeight = "invalid_weight";
     public const string WeightIgnored = "weight_ignored";
     public const string ReasonDropped = "reason_dropped";
+
+    /// <summary>
+    /// Informational, never a drop: a scored LIA entry is stored as configured but evaluated as a gate on its minimum
+    /// while the LIA norms are unconfirmed (owner default D20, <see cref="FitV2Kernels.ApplyLiaThresholdPolicy"/>).
+    /// </summary>
+    public const string LiaThresholdOnly = "lia_threshold_only";
 }
 
 /// <summary>One finding about an <c>assessments[]</c> entry: its index in the request, and whether it was kept.</summary>
@@ -52,7 +58,15 @@ public static class FitRequirementsInput
     /// Validates a request body. Returns null with <paramref name="error"/> set when the body is invalid (a v1 key
     /// out of bounds, <c>assessments</c> neither null nor an array, or a non-empty array with no valid entry).
     /// </summary>
-    public static FitRequirementsWrite? Validate(JsonNode? body, out string? error, out IReadOnlyList<FitRequirementIssue> issues)
+    public static FitRequirementsWrite? Validate(JsonNode? body, out string? error, out IReadOnlyList<FitRequirementIssue> issues) =>
+        Validate(body, liaScoredAllowed: false, out error, out issues);
+
+    /// <summary>
+    /// <see cref="Validate(JsonNode?, out string?, out IReadOnlyList{FitRequirementIssue})"/>, telling HR when a scored
+    /// LIA entry will be evaluated as a threshold (<paramref name="liaScoredAllowed"/> false: the norms are unconfirmed).
+    /// </summary>
+    public static FitRequirementsWrite? Validate(
+        JsonNode? body, bool liaScoredAllowed, out string? error, out IReadOnlyList<FitRequirementIssue> issues)
     {
         error = null;
         issues = [];
@@ -127,7 +141,7 @@ public static class FitRequirementsInput
             return null;
         }
 
-        var (kept, found) = NormalizeAssessments(entries);
+        var (kept, found) = NormalizeAssessments(entries, liaScoredAllowed);
         issues = found;
         if (kept.Count == 0 && entries.Count > 0)
         {
@@ -140,7 +154,15 @@ public static class FitRequirementsInput
     }
 
     /// <summary>The valid entries, normalized, and every finding (dropped entries and changed fields).</summary>
-    public static (JsonArray Kept, IReadOnlyList<FitRequirementIssue> Issues) NormalizeAssessments(JsonArray entries)
+    public static (JsonArray Kept, IReadOnlyList<FitRequirementIssue> Issues) NormalizeAssessments(JsonArray entries) =>
+        NormalizeAssessments(entries, liaScoredAllowed: false);
+
+    /// <summary>
+    /// The valid entries, normalized, and every finding; with <paramref name="liaScoredAllowed"/> false a kept scored
+    /// LIA entry also reports <see cref="FitRequirementIssueCodes.LiaThresholdOnly"/>.
+    /// </summary>
+    public static (JsonArray Kept, IReadOnlyList<FitRequirementIssue> Issues) NormalizeAssessments(
+        JsonArray entries, bool liaScoredAllowed)
     {
         var kept = new JsonArray();
         var issues = new List<FitRequirementIssue>();
@@ -171,6 +193,11 @@ public static class FitRequirementsInput
             if (parsed is not null)
             {
                 kept.Add(ToStoredJson(parsed));
+                if (!liaScoredAllowed && parsed.Instrument == FitInstruments.Lia && parsed.Use == FitInstrumentUses.Scored)
+                {
+                    issues.Add(new FitRequirementIssue(
+                        i, parsed.Instrument, FitRequirementIssueCodes.LiaThresholdOnly, Dropped: false));
+                }
             }
         }
 

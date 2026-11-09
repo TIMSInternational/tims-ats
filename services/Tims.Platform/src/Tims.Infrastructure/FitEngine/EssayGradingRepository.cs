@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using Tims.Application.FitEngine;
+using Tims.Domain.FitEngine;
 
 namespace Tims.Infrastructure.FitEngine;
 
@@ -165,8 +166,68 @@ public sealed class EssayGradingRepository(FitEngineWriteDbContext db) : IEssayG
             normalized = reader.IsDBNull(1) ? null : reader.GetDouble(1);
         }
 
+        // 3. The last essay graded: the result is now final, so it gets its local norm (percentile, band, sample size)
+        //    exactly as the TS submission computes it for a quiz with no essay. Same transaction, under the row lock.
+        if (remaining == 0 && normalized is { } finalScore)
+        {
+            await WriteNormAsync(organizationId, assignmentId, finalScore, cancellationToken).ConfigureAwait(false);
+        }
+
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new EssayGradeOutcome(EssayGradeStatus.Graded, remaining, normalized);
+    }
+
+    // TS getNormCountsInTx: every OTHER result of the same organization and quiz whose assignment is completed, with a
+    // normalized score, and fully graded (pendingManual = []). Counts below / equal / all; the arithmetic is
+    // AssessmentNormBands (doubles, as in TS). norm_sample_size is written even below the minimum sample (TS does).
+    private async Task WriteNormAsync(
+        Guid organizationId, Guid assignmentId, double score, CancellationToken cancellationToken)
+    {
+        const string countSql =
+            "SELECT count(*) FILTER (WHERE o.normalized_score < @score), "
+            + "count(*) FILTER (WHERE o.normalized_score = @score), count(*) "
+            + "FROM assessment_results o "
+            + "JOIN assessment_assignments oa ON oa.id = o.assignment_id AND oa.organization_id = @org "
+            + "WHERE o.organization_id = @org AND o.normalized_score IS NOT NULL AND o.assignment_id <> @a "
+            + "AND oa.status = 'completed' AND o.breakdown -> 'pendingManual' = '[]'::jsonb "
+            + "AND oa.assessment_type_id = (SELECT t.assessment_type_id FROM assessment_assignments t "
+            + "WHERE t.id = @a AND t.organization_id = @org)";
+        long below;
+        long equal;
+        long sample;
+        await using (var command = Command(countSql))
+        {
+            command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+            command.Parameters.Add(new NpgsqlParameter("a", NpgsqlDbType.Uuid) { Value = assignmentId });
+            command.Parameters.Add(new NpgsqlParameter("score", NpgsqlDbType.Double) { Value = score });
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            below = reader.GetInt64(0);
+            equal = reader.GetInt64(1);
+            sample = reader.GetInt64(2);
+        }
+
+        var norm = AssessmentNormBands.FromCounts(below, equal, sample);
+
+        // band is the native enum "ScoreBand": bind text and cast (TRAP 8).
+        const string writeSql =
+            "UPDATE assessment_results SET percentile = @p, band = @band::\"ScoreBand\", norm_sample_size = @n "
+            + "WHERE assignment_id = @a AND organization_id = @org";
+        await using (var command = Command(writeSql))
+        {
+            command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+            command.Parameters.Add(new NpgsqlParameter("a", NpgsqlDbType.Uuid) { Value = assignmentId });
+            command.Parameters.Add(new NpgsqlParameter("p", NpgsqlDbType.Double)
+            {
+                Value = norm is { } withPercentile ? withPercentile.Percentile : DBNull.Value,
+            });
+            command.Parameters.Add(new NpgsqlParameter("band", NpgsqlDbType.Text)
+            {
+                Value = norm is { } withBand ? withBand.Band : DBNull.Value,
+            });
+            command.Parameters.Add(new NpgsqlParameter("n", NpgsqlDbType.Integer) { Value = checked((int)sample) });
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private NpgsqlCommand Command(string sql) =>
