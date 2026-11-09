@@ -119,15 +119,17 @@ describe('DashboardProviderAssessments', () => {
     expect(await screen.findByText(m.providerEmpty)).toBeInTheDocument();
   });
 
-  it('links out to the hosted player when this site is not a registered frame ancestor', async () => {
-    let launchBody: unknown;
+  // Codex release round A3 [P2]: an embedded launch asks for no return URL, so when the launch turns out not to be
+  // framable, the portal launches again top-level (revoking the unused first code) to keep the return to the dashboard.
+  it('links out with a fresh top-level launch when this site is not a registered frame ancestor', async () => {
+    const launchBodies: unknown[] = [];
     respond({
       '/launch': (init) => {
-        launchBody = JSON.parse(String(init?.body));
+        launchBodies.push(JSON.parse(String(init?.body)));
         return json({
           delivery: 'native',
           expiresAt: '2026-11-09T14:05:00Z',
-          hostedUrl: 'https://player.test/launch/code-1',
+          hostedUrl: `https://player.test/launch/code-${launchBodies.length}`,
           frameAncestors: ['https://someone-else.test'],
         });
       },
@@ -137,9 +139,33 @@ describe('DashboardProviderAssessments', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
 
-    await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://player.test/launch/code-1'));
-    expect(launchBody).toEqual({ embedded: true });
+    await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://player.test/launch/code-2'));
+    expect(openTopLevel).toHaveBeenCalledTimes(1);
+    expect(launchBodies).toEqual([{ embedded: true }, { embedded: false }]);
     expect(screen.queryByTitle(m.providerFrameTitle)).not.toBeInTheDocument();
+  });
+
+  it('never asks a link-out instrument for an embedded launch', async () => {
+    const launchBodies: unknown[] = [];
+    respond({
+      '/launch': (init) => {
+        launchBodies.push(JSON.parse(String(init?.body)));
+        return json({
+          delivery: 'link_out',
+          expiresAt: '2026-11-09T14:05:00Z',
+          hostedUrl: 'https://pca.test/sit/1',
+          frameAncestors: [],
+        });
+      },
+      '/portal/assessment-attempts': () =>
+        json({ attempts: [attempt('ready', { instrument: 'pca', delivery: 'link_out' })] }),
+    });
+    renderSection();
+
+    fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
+
+    await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://pca.test/sit/1'));
+    expect(launchBodies).toEqual([{ embedded: false }]);
   });
 
   it('frames the hosted player when this site is a registered ancestor, and refreshes on close', async () => {
@@ -171,11 +197,11 @@ describe('DashboardProviderAssessments', () => {
   });
 
   it('shows each consent text as plain text and launches only once every one is accepted, with its text version', async () => {
-    let launchBody: unknown;
+    const launchBodies: unknown[] = [];
     respond({
       '/consent-templates?locale=en': () => json({ templates: [template] }),
       '/launch': (init) => {
-        launchBody = JSON.parse(String(init?.body));
+        launchBodies.push(JSON.parse(String(init?.body)));
         return json({
           delivery: 'native',
           expiresAt: '2026-11-09T14:05:00Z',
@@ -199,10 +225,11 @@ describe('DashboardProviderAssessments', () => {
     fireEvent.click(accept);
 
     await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://player.test/l/3'));
-    expect(launchBody).toEqual({
-      consents: [{ purpose: 'assessment', textVersion: 'assessment-v2026-11', locale: 'en' }],
-      embedded: true,
-    });
+    // The consents travel with the first launch only; the top-level relaunch (not framable here) records none again.
+    expect(launchBodies).toEqual([
+      { consents: [{ purpose: 'assessment', textVersion: 'assessment-v2026-11', locale: 'en' }], embedded: true },
+      { embedded: false },
+    ]);
   });
 
   it.each([
