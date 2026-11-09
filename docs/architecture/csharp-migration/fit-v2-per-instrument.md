@@ -79,7 +79,9 @@ stored configuration is unchanged and the requirements writer reports `lia_thres
   `native_quiz` entry judges the most recent result of EACH quiz the candidate sat for the vacancy
   (`FitV2Kernels.CombineVariants`): if any of them needs review, the instrument needs review (never a mean of the rest);
   otherwise its value is the mean normalized score of those with one. Before this, a second quiz hid the first. The
-  entry then lists every combined id in `resultIds` (most recent first; `resultId` is the most recent).
+  entry then lists every combined id in `resultIds` (most recent first; `resultId` is the most recent). The adapter
+  reads only each quiz's latest result, picked in SQL (`DISTINCT ON` the quiz) before any bound, so many attempts of
+  one quiz can never hide another quiz awaiting review; past 50 quizzes it fails closed (needs review).
 - **Integrity.** A result that is voided, flagged or awaiting review shows as `needs_review`, its gate as
   `unknown`, and it is excluded from the `assessment` dimension: it is never read as a low instrument score. A
   valid result without the judged value (e.g. a partial LIA battery with no global percentile) shows as
@@ -263,7 +265,10 @@ quiz's own `normalizedScore`/percentile on the candidate page's assessment panel
   recomputes the stored row through `RecomputeExistingAsync` (the same consent guard, FIT v2 lock and in-lock read; the
   row's existence is checked under the lock, so a recompute never creates a row and waits for a first compute in
   flight), and deletes the request only at the sequence it claimed, so a change during the recompute is not lost. After
-  8 failed claims a request rests until a new change re-arms it.
+  8 failed claims a request rests until a new change re-arms it. Tenant isolation: the enqueue function is SECURITY
+  DEFINER and executable by its owner only (app_tenant has neither EXECUTE nor INSERT on the queue); the five
+  triggers are SECURITY DEFINER, cannot be called directly and pass only the written row's ids, and the function
+  refuses an organization other than the session's tenant (Codex release round 1).
 - **The TS writers can no longer overwrite a v2 row.** The `fit_scores_keep_v2` trigger (BEFORE UPDATE) keeps a v2
   row's score, breakdown, weights, partial flag and calculation time against any write that would replace it with a
   non-v2 breakdown, unless the writer set `tims.fit_writer = fit_v2_aware` for its transaction (only the C# engine
