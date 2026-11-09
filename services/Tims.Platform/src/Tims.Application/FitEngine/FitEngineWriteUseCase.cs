@@ -153,12 +153,16 @@ public sealed class FitEngineWriteUseCase(
     }
 
     /// <summary>
-    /// Recompute ONE stored FIT v2 row after an input it depends on changed (an assignment cancelled, voided, flagged,
-    /// graded or reviewed; see the <c>fit_recompute_requests</c> queue). Only a vacancy configured for FIT v2 is
-    /// recomputed, only when the flag is on, and only a row that already exists: the check runs under the FIT v2
-    /// lock, so a first compute still in flight is waited for, and nothing is ever created here (computeForVacancy
-    /// decides who is scored). The same consent guard and in-lock result read as computeForVacancy. Returns true when
-    /// the row was rewritten.
+    /// Recompute ONE FIT v2 row after an input it depends on changed (an assignment cancelled, voided, flagged,
+    /// graded or reviewed, or a provider result stored; see the <c>fit_recompute_requests</c> queue). Only a vacancy
+    /// configured for FIT v2 is recomputed, and only when the flag is on. A row that already exists is rewritten. A
+    /// MISSING row is created only for a provider result (round 11): the candidate holds an active application for
+    /// the vacancy (the computeForVacancy population) and the in-lock result read holds a provider result for an
+    /// instrument the vacancy lists, so a candidate whose provider result arrives before HR's first compute still gets
+    /// a FIT v2 row. Every other change to a pair without a row still writes nothing (computeForVacancy decides who
+    /// is scored). The existence check and that decision run under the FIT v2 lock, so a first compute still in
+    /// flight is waited for. The same consent guard and in-lock result read as computeForVacancy. Returns true when
+    /// the row was written.
     /// </summary>
     public async Task<bool> RecomputeExistingAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, DateTimeOffset now, bool fitV2Enabled,
@@ -182,11 +186,30 @@ public sealed class FitEngineWriteUseCase(
             return false;
         }
 
+        // Asked only for a missing row, in the lock: the repository has already checked the candidate holds an
+        // active application for the vacancy (the computeForVacancy population) on the same transaction.
+        Func<CancellationToken, Task<bool>> createIfMissing = async ct => HoldsProviderResult(
+            await _assessmentResults.GetResultsAsync(organizationId, candidateId, vacancyId, ct).ConfigureAwait(false),
+            assessmentRequirements);
+
         return await ComputeFitScoreV2Async(
                 organizationId, candidateId, vacancyId, FitEngineKernels.ParseRequirements(requirementsNode),
-                assessmentRequirements, vacancy.RoleFamily, now, onlyIfRowExists: true, cancellationToken)
+                assessmentRequirements, vacancy.RoleFamily, now, onlyIfRowExists: true, cancellationToken,
+                createIfMissing)
             .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// True when <paramref name="results"/> holds a provider result (any integrity: a needs-review result is reported
+    /// as such, never dropped) for an instrument <paramref name="requirements"/> lists.
+    /// </summary>
+    public static bool HoldsProviderResult(
+        IReadOnlyList<InstrumentResult> results, IReadOnlyList<AssessmentRequirement> requirements) =>
+        results.Any(r => string.Equals(r.Source, ProviderFitSourceName, StringComparison.Ordinal)
+            && requirements.Any(q => string.Equals(q.Instrument, r.Instrument, StringComparison.Ordinal)));
+
+    // Tims.Domain.Assessments.Providers.ProviderFitMapping.SourceName: the tag the provider adapter puts on its results.
+    private const string ProviderFitSourceName = Tims.Domain.Assessments.Providers.ProviderFitMapping.SourceName;
 
     private static IReadOnlyList<AssessmentRequirement>? ParseV2Requirements(JsonNode? requirementsNode, bool liaScoredAllowed) =>
         FitV2Kernels.ParseAssessmentRequirements(requirementsNode) is { } parsed
@@ -256,7 +279,8 @@ public sealed class FitEngineWriteUseCase(
     private async Task<bool> ComputeFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, FitRequirements requirements,
         IReadOnlyList<AssessmentRequirement> assessmentRequirements, string? roleFamily, DateTimeOffset now,
-        bool onlyIfRowExists, CancellationToken cancellationToken)
+        bool onlyIfRowExists, CancellationToken cancellationToken,
+        Func<CancellationToken, Task<bool>>? createIfMissing = null)
     {
         var candidate = await _repository.GetCandidateForFitAsync(organizationId, candidateId, cancellationToken)
             .ConfigureAwait(false);
@@ -282,7 +306,8 @@ public sealed class FitEngineWriteUseCase(
                         experience, education);
                 },
                 cancellationToken,
-                onlyIfRowExists)
+                onlyIfRowExists,
+                createIfMissing)
             .ConfigureAwait(false);
     }
 

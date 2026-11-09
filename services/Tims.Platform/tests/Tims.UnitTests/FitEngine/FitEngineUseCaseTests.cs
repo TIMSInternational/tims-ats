@@ -467,7 +467,7 @@ public sealed class FitEngineUseCaseTests
         public Task<bool> UpsertFitScoreV2Async(
             Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
             Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
-            bool onlyIfRowExists = false) =>
+            bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null) =>
             throw new InvalidOperationException("the v1 tests never reach the FIT v2 write");
 
         public Task<string?> UpsertFitRequirementsAsync(

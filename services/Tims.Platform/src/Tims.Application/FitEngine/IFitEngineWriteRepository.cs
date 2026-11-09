@@ -59,13 +59,16 @@ public interface IFitEngineWriteRepository
     /// row is left exactly as it was.
     /// </summary>
     /// <remarks>
-    /// <paramref name="onlyIfRowExists"/>: a recompute of a stored row (the recompute queue) writes nothing when no
-    /// row exists for the pair once the FIT v2 lock is held, and returns false.
+    /// <paramref name="onlyIfRowExists"/>: a recompute (the recompute queue) writes nothing when no row exists for
+    /// the pair once the FIT v2 lock is held, and returns false, unless <paramref name="createIfMissing"/> is given,
+    /// the candidate holds an active application for the vacancy (read on the same transaction: the computeForVacancy
+    /// population), and <paramref name="createIfMissing"/>, called in the lock, answers true: then the row is created
+    /// as a compute would create it.
     /// </remarks>
     Task<bool> UpsertFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
         Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
-        bool onlyIfRowExists = false);
+        bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null);
 
     /// <summary>
     /// The C#-owned <c>job_profiles.fit_requirements</c> write, one atomic <c>INSERT … ON CONFLICT DO UPDATE</c> on the

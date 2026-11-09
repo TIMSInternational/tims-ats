@@ -215,6 +215,80 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Equal(providers, hosted.Any(h => h is Tims.Api.Assessments.ProviderAttemptPollHostedService));
     }
 
+    // Round 11 (e2e H7): a provider result for a pipeline candidate who has no fit_scores row yet creates the FIT v2
+    // row through the recompute queue (the trigger enqueues, the drain creates), without HR's Compute Rankings. A
+    // candidate with the same provider result but no active application for the vacancy still gets no row. Own
+    // vacancy, so the shared seed (and the computed=2 of the compute tests) is untouched.
+    [Fact]
+    public async Task A_provider_result_creates_the_missing_fit_row_for_a_pipeline_candidate_only()
+    {
+        const string Seed =
+            """
+            INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+              ('7ac00000-0000-0000-0000-0000000000fc', '11111111-1111-1111-1111-111111111111', 'FIT v2 late', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
+              ('9f000000-0000-0000-0000-0000000000fc', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-0000000000fc',
+               '{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"},"reason":"clientes"}]}');
+            INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+              ('ca000000-0000-0000-0000-0000000000fc', '11111111-1111-1111-1111-111111111111', 'prov-late@fit.test', 'Lia', 'Late', 4, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00'),
+              ('ca000000-0000-0000-0000-0000000000fd', '11111111-1111-1111-1111-111111111111', 'prov-gone@fit.test', 'Gus', 'Gone', 4, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
+              ('ab000000-0000-0000-0000-0000000000fc', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000fc', '7ac00000-0000-0000-0000-0000000000fc', 'active'),
+              ('ab000000-0000-0000-0000-0000000000fd', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000fd', '7ac00000-0000-0000-0000-0000000000fc', 'rejected');
+            INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                instrument_version, content_version, latest_result_id, assigned_by_id, created_at) VALUES
+              ('e0000000-0000-4000-8000-0000000000e1', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-4000-8000-0000000000a0', 'ca000000-0000-0000-0000-0000000000fc', '7ac00000-0000-0000-0000-0000000000fc', 'english', 'result_ready',
+               'selection', 'clientes', 'es', 1, 'f0000000-0000-4000-8000-0000000000e1', 'aa000000-0000-4000-8000-0000000000e1', '1.0', 'english-2026.11.1', 'd0000000-0000-4000-8000-0000000000e1', 'c0000000-0000-0000-0000-000000000001', '2026-11-01 09:00:00+00'),
+              ('e0000000-0000-4000-8000-0000000000e2', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-4000-8000-0000000000a0', 'ca000000-0000-0000-0000-0000000000fd', '7ac00000-0000-0000-0000-0000000000fc', 'english', 'result_ready',
+               'selection', 'clientes', 'es', 1, 'f0000000-0000-4000-8000-0000000000e2', 'aa000000-0000-4000-8000-0000000000e2', '1.0', 'english-2026.11.1', 'd0000000-0000-4000-8000-0000000000e2', 'c0000000-0000-0000-0000-000000000001', '2026-11-01 09:00:00+00');
+            INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
+                result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version,
+                scoring_method, purpose, validity_status, completion, global_percentile, cefr, level, time_multiplier_applied,
+                rendered_for, rendered_level, completed_at, scored_at) VALUES
+              (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'e0000000-0000-4000-8000-0000000000e1', 'd0000000-0000-4000-8000-0000000000e1', 1,
+               'EnglishResultV1', 'english', '1.0', 'english-2026.11.1', repeat('1', 64), NULL, 'scoring-1', 'deterministic', 'selection', 'valid', 'complete', NULL, 'C1', NULL, 1,
+               'tenant_hr', 'full', '2026-11-02 10:00:00+00', '2026-11-02 10:00:05+00'),
+              (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'e0000000-0000-4000-8000-0000000000e2', 'd0000000-0000-4000-8000-0000000000e2', 1,
+               'EnglishResultV1', 'english', '1.0', 'english-2026.11.1', repeat('2', 64), NULL, 'scoring-1', 'deterministic', 'selection', 'valid', 'complete', NULL, 'C1', NULL, 1,
+               'tenant_hr', 'full', '2026-11-02 10:00:00+00', '2026-11-02 10:00:05+00');
+            """;
+        var late = Guid.Parse("ca000000-0000-0000-0000-0000000000fc");
+        var gone = Guid.Parse("ca000000-0000-0000-0000-0000000000fd");
+        var vacancy = Guid.Parse("7ac00000-0000-0000-0000-0000000000fc");
+        await _fixture.Fit.ExecuteScalarAsync(Seed);
+
+        // The provider writes enqueued both pairs; neither has a row.
+        Assert.NotNull(await _fixture.Fit.GetRecomputeRequestAsync(late, vacancy));
+        Assert.NotNull(await _fixture.Fit.GetRecomputeRequestAsync(gone, vacancy));
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(late, vacancy));
+
+        await using var factory = Factory(providers: true);
+        // The registered drain may race this one; either way both requests end completed.
+        for (var pass = 0; pass < 20; pass++)
+        {
+            using var scope = factory.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<Tims.Application.FitEngine.FitRecomputeUseCase>()
+                .RunAsync(DateTimeOffset.UtcNow, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);
+            if (await _fixture.Fit.GetRecomputeRequestAsync(late, vacancy) is null
+                && await _fixture.Fit.GetRecomputeRequestAsync(gone, vacancy) is null)
+            {
+                break;
+            }
+
+            await Task.Delay(100);
+        }
+
+        Assert.Null(await _fixture.Fit.GetRecomputeRequestAsync(late, vacancy));
+        Assert.Null(await _fixture.Fit.GetRecomputeRequestAsync(gone, vacancy));
+        var created = await _fixture.Fit.GetFitScoreAsync(late, vacancy);
+        Assert.NotNull(created);
+        var english = Entry(JsonNode.Parse(created.Breakdown)!, "english");
+        Assert.Equal("met", english["gate"]!.GetValue<string>());
+        Assert.Equal("provider", english["source"]!.GetValue<string>());
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(gone, vacancy)); // no active application: HR's compute decides
+    }
+
     private static JsonNode Entry(JsonNode breakdown, string instrument) =>
         Assert.Single(breakdown["assessments"]!.AsArray(), e => e!["instrument"]!.GetValue<string>() == instrument)!;
 

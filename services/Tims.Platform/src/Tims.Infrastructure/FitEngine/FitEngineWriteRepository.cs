@@ -198,6 +198,21 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         return (bool)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
     }
 
+    // getPipelineCandidateIds for ONE candidate, on the caller's open TenantScope transaction: does the candidate hold
+    // an active application for the vacancy? (status = 'active' is a literal on a plain-String column.)
+    private async Task<bool> HasActiveApplicationAsync(
+        Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            ActiveApplicationExistsSql,
+            (NpgsqlConnection)_db.Database.GetDbConnection(),
+            (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction());
+        command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+        command.Parameters.Add(new NpgsqlParameter("cand", NpgsqlDbType.Uuid) { Value = candidateId });
+        command.Parameters.Add(new NpgsqlParameter("vac", NpgsqlDbType.Uuid) { Value = vacancyId });
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
     // The fit_scores upsert, on the caller's open TenantScope transaction. The C# engine knows both FIT versions, so
     // it marks its write (transaction-local) for the fit_scores_keep_v2 trigger (migration
     // 20261109100000_fit_v2_integrity): only a writer that does NOT set this is kept from replacing a v2 row with v1.
@@ -235,7 +250,7 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
     public async Task<bool> UpsertFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
         Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
-        bool onlyIfRowExists = false)
+        bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
@@ -258,10 +273,15 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
             $"SELECT pg_advisory_xact_lock(hashtextextended({FitV2LockKey(organizationId, candidateId, vacancyId)}, 0))",
             cancellationToken).ConfigureAwait(false);
 
-        // A recompute keeps an existing row current and never creates one. Checked under the lock: a first compute
-        // still in flight holds it, so its row is visible here once it commits.
-        if (onlyIfRowExists && !await FitScoreExistsAsync(organizationId, candidateId, vacancyId, cancellationToken)
-                .ConfigureAwait(false))
+        // A recompute keeps an existing row current, and creates one only when createIfMissing says so (a provider
+        // result for a pipeline candidate, round 11). Checked under the lock: a first compute still in flight holds
+        // it, so its row is visible here once it commits.
+        if (onlyIfRowExists
+            && !await FitScoreExistsAsync(organizationId, candidateId, vacancyId, cancellationToken).ConfigureAwait(false)
+            && (createIfMissing is null
+                || !await HasActiveApplicationAsync(organizationId, candidateId, vacancyId, cancellationToken)
+                    .ConfigureAwait(false)
+                || !await createIfMissing(cancellationToken).ConfigureAwait(false)))
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
             return false;
@@ -417,6 +437,10 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     /// <summary>The transaction-local marker the fit_scores_keep_v2 trigger accepts as a FIT v2-aware writer.</summary>
     public const string FitV2AwareWriterSql = "SELECT set_config('tims.fit_writer', 'fit_v2_aware', true)";
+
+    private const string ActiveApplicationExistsSql =
+        "SELECT EXISTS (SELECT 1 FROM applications WHERE organization_id = @org AND candidate_id = @cand "
+        + "AND vacancy_id = @vac AND status = 'active')";
 
     private const string FitScoreExistsSql =
         "SELECT EXISTS (SELECT 1 FROM fit_scores WHERE organization_id = @org AND candidate_id = @cand "

@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using Tims.Infrastructure.FitEngine;
 
 namespace Tims.IntegrationTests.FitEngine;
@@ -26,7 +25,6 @@ namespace Tims.IntegrationTests.FitEngine;
 public sealed class FitEngineFixture : IAsyncLifetime
 {
     private const string LoginRole = "postgres";
-    private const string Password = "postgres";
     private const string Database = "tims_fit_engine";
 
     public static readonly Guid OrgA = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -133,28 +131,31 @@ public sealed class FitEngineFixture : IAsyncLifetime
     public static readonly Guid WpMarketing = Guid.Parse("3e000000-0000-0000-0000-000000000003");
     // OrgB deliberately has NO 'Default' profile (the compute bootstrap creates it).
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithUsername(LoginRole)
-        .WithPassword(Password)
-        .WithDatabase(Database)
-        .Build();
+    // A Testcontainers postgres:16-alpine (postgres/postgres) by default, or, when TIMS_IT_POSTGRES names a local
+    // disposable cluster, a fresh database on it (ProviderTestDatabase), dropped on dispose.
+    private Tims.IntegrationTests.Assessments.ProviderTestDatabase? _database;
 
     public string ConnectionString { get; private set; } = string.Empty;
 
     public async Task InitializeAsync()
     {
-        await _container.StartAsync();
-        ConnectionString = _container.GetConnectionString();
+        _database = await Tims.IntegrationTests.Assessments.ProviderTestDatabase.StartAsync(Database);
+        ConnectionString = _database.ConnectionString;
 
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
 
+        // Idempotent: roles are per cluster, and on a shared local cluster another fixture may have created it.
         await using (var role = connection.CreateCommand())
         {
             role.CommandText =
-                """
-                CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS;
-                GRANT app_tenant TO postgres;
+                $"""
+                DO $roles$
+                BEGIN
+                  BEGIN CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END;
+                  BEGIN GRANT app_tenant TO {LoginRole}; EXCEPTION WHEN unique_violation THEN NULL; END;
+                END
+                $roles$;
                 """;
             await role.ExecuteNonQueryAsync();
         }
@@ -190,7 +191,13 @@ public sealed class FitEngineFixture : IAsyncLifetime
             : null;
     }
 
-    public async Task DisposeAsync() => await _container.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        if (_database is not null)
+        {
+            await _database.DisposeAsync();
+        }
+    }
 
     public FitEngineReadDbContext NewReadContext() =>
         new(new DbContextOptionsBuilder<FitEngineReadDbContext>().UseNpgsql(ConnectionString).Options);

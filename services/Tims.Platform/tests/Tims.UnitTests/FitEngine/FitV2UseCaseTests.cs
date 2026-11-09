@@ -489,9 +489,11 @@ public sealed class FitV2UseCaseTests
     {
         var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 70));
 
+        // Round 11: only a provider result may create a missing row, so an ATS quiz result never does.
         var missing = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
         missing.RowExists = false;
-        Assert.False(await new FitEngineWriteUseCase(missing, source).RecomputeExistingAsync(
+        Assert.False(await new FitEngineWriteUseCase(
+            missing, new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 70))).RecomputeExistingAsync(
             OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
         Assert.Empty(missing.FitScoreUpserts);
         Assert.Contains("exists?", missing.Events);
@@ -506,6 +508,70 @@ public sealed class FitV2UseCaseTests
             OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
         Assert.Empty(v1.Events);
         Assert.Empty(source.Calls);
+    }
+
+    // Round 11 (e2e H7): a provider result for a pipeline candidate with no fit_scores row creates the FIT v2 row,
+    // instead of waiting for HR's Compute Rankings.
+    [Fact]
+    public async Task Recompute_CreatesTheMissingRow_ForAPipelineCandidateWithAProviderResult()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"}}]}""");
+        repo.RowExists = false;
+        var source = new ScriptedResultSource(
+            [Result(FitInstruments.English, "r-en", cefr: "C1", source: "provider")]) { Events = repo.Events };
+
+        var written = await new FitEngineWriteUseCase(repo, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);
+
+        Assert.True(written);
+        // The decision reads the results inside the lock, after the existence check, then the build reads them again.
+        Assert.Equal(["consent", "exists?", "create?", "read", "read", "write"], repo.Events);
+        var english = SingleBreakdown(repo)["assessments"]!.AsArray()[0]!;
+        Assert.Equal("met", english["gate"]!.GetValue<string>());
+        Assert.Equal("provider", english["source"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Recompute_DoesNotCreateTheMissingRow_OffThePipeline_ForAnUnlistedInstrument_OrForANonProviderResult()
+    {
+        const string requirements = """{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"}}]}""";
+        var provider = new FakeResultSource(Result(FitInstruments.English, "r-en", cefr: "C1", source: "provider"));
+
+        // Not an active application for the vacancy: computeForVacancy would not score the candidate either.
+        var offPipeline = Repo(requirements);
+        offPipeline.RowExists = false;
+        offPipeline.PipelineCandidateIds = [];
+        Assert.False(await new FitEngineWriteUseCase(offPipeline, provider).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(offPipeline.FitScoreUpserts);
+        Assert.DoesNotContain("create?", offPipeline.Events);
+
+        // A provider result for an instrument the vacancy does not list.
+        var unlisted = Repo("""{"assessments":[{"instrument":"lia","use":"gate","min":{"globalPercentile":40}}]}""");
+        unlisted.RowExists = false;
+        Assert.False(await new FitEngineWriteUseCase(unlisted, provider).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(unlisted.FitScoreUpserts);
+
+        // An ATS-native English-like result is not a provider result: HR's compute still decides.
+        var native = Repo(requirements);
+        native.RowExists = false;
+        Assert.False(await new FitEngineWriteUseCase(
+                native, new FakeResultSource(Result(FitInstruments.English, "a-1", cefr: "C1", source: "ats")))
+            .RecomputeExistingAsync(
+                OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(native.FitScoreUpserts);
+    }
+
+    [Fact]
+    public void HoldsProviderResult_MatchesTheProviderSourceTag()
+    {
+        Assert.Equal("provider", Tims.Domain.Assessments.Providers.ProviderFitMapping.SourceName);
+        var listed = new[] { new AssessmentRequirement(FitInstruments.Lia, "gate", null, null, null) };
+        Assert.True(FitEngineWriteUseCase.HoldsProviderResult(
+            [Result(FitInstruments.Lia, "r", percentile: 10, integrity: ResultIntegrity.NeedsReview, source: "provider")],
+            listed));
+        Assert.False(FitEngineWriteUseCase.HoldsProviderResult([Result(FitInstruments.Lia, "r", percentile: 10)], listed));
     }
 
     private static JsonObject SingleBreakdown(FakeWriteRepo repo) =>
@@ -536,8 +602,9 @@ public sealed class FitV2UseCaseTests
         double? percentile = null,
         string? cefr = null,
         int? level = null,
-        ResultIntegrity integrity = ResultIntegrity.Valid) =>
-        new(instrument, id, "test", integrity, Now.AddDays(-1), score, percentile, cefr, level, null, null);
+        ResultIntegrity integrity = ResultIntegrity.Valid,
+        string source = "test") =>
+        new(instrument, id, source, integrity, Now.AddDays(-1), score, percentile, cefr, level, null, null);
 
     private sealed record FitScoreUpsert(
         double OverallScore, string BreakdownJson, string WeightsJson, bool IsPartial, double? Restricted = null);
@@ -614,7 +681,7 @@ public sealed class FitV2UseCaseTests
 
     private sealed class FakeWriteRepo : IFitEngineWriteRepository
     {
-        public IReadOnlyList<Guid> PipelineCandidateIds { get; init; } = [];
+        public IReadOnlyList<Guid> PipelineCandidateIds { get; set; } = [];
 
         public VacancyForFitData? Vacancy { get; init; }
 
@@ -697,7 +764,7 @@ public sealed class FitV2UseCaseTests
         public async Task<bool> UpsertFitScoreV2Async(
             Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
             Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
-            bool onlyIfRowExists = false)
+            bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null)
         {
             Events.Add("consent");
             if (WithdrawnAfterWrites is { } limit && FitScoreUpserts.Count >= limit)
@@ -711,7 +778,17 @@ public sealed class FitV2UseCaseTests
                 Events.Add("exists?");
                 if (!RowExists)
                 {
-                    return false;
+                    // The real repository reads the candidate's active application on the locked transaction.
+                    if (createIfMissing is null || !PipelineCandidateIds.Contains(candidateId))
+                    {
+                        return false;
+                    }
+
+                    Events.Add("create?");
+                    if (!await createIfMissing(cancellationToken))
+                    {
+                        return false;
+                    }
                 }
             }
             FitScoreWrite write;

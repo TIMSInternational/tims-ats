@@ -3,7 +3,8 @@ namespace Tims.Application.FitEngine;
 /// <summary>
 /// Drains the FIT v2 recompute queue: for each organization with due requests, claims a batch and recomputes each
 /// stored row through <see cref="FitEngineWriteUseCase.RecomputeExistingAsync"/> (the same consent guard, FIT v2 lock
-/// and in-lock result read as a compute; a row that does not exist is never created). A request is completed (deleted)
+/// and in-lock result read as a compute; a row that does not exist is created only for a pipeline candidate holding a
+/// provider result for a listed instrument, otherwise never). A request is completed (deleted)
 /// only at the sequence it was claimed at, so a change that lands during the recompute leaves it queued for the next
 /// pass. A failure is recorded on the request, which its lease retries with backoff; after
 /// <see cref="MaxAttempts"/> claims it rests until a new change re-arms it. One failing request or organization never
