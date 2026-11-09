@@ -35,7 +35,7 @@ export const candidateService = {
     const { items, nextCursor } = takeCursorPage(rows, input.limit);
 
     // FIT owner default D6 (@tims/ai fit-visibility): the overall a narrow-scoped reader may see.
-    return { items: items.map((c) => ({ ...c, fitScores: c.fitScores.map((f) => fitOverallAsShown(f, hideBelowMinimum)) })), nextCursor };
+    return { items: items.map((c) => ({ ...c, fitScores: c.fitScores?.map((f) => fitOverallAsShown(f, hideBelowMinimum)) })), nextCursor };
   },
 
   async getById(

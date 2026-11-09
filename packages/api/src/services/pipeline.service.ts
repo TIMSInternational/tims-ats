@@ -80,7 +80,7 @@ export const pipelineService = {
         applications: stage.applications.map(({ movements, ...app }) => ({
           ...app,
           // FIT owner default D6 (@tims/ai fit-visibility): the overall a narrow-scoped reader may see.
-          candidate: { ...app.candidate, fitScores: app.candidate.fitScores.map((f) => fitOverallAsShown(f, hideBelowMinimum)) },
+          candidate: app.candidate && { ...app.candidate, fitScores: app.candidate.fitScores?.map((f) => fitOverallAsShown(f, hideBelowMinimum)) },
           // Same derivation as getSlaStatus: time-in-CURRENT-stage, not time
           // since the original application — a card that's been in the
           // pipeline a long time but just moved into this stage isn't overdue.
